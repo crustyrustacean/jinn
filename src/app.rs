@@ -281,6 +281,17 @@ impl App {
             svc
         };
 
+        // Load providers.toml early — fail-fast on a malformed file BEFORE
+        // any actor wiring runs, with a report naming the file and TOML detail.
+        // Config subcommands have already dispatched above, so `jinn config
+        // providers` remains usable as the recovery tool for a broken file.
+        if let Err(report) = providers_load_error_report(&config_storage) {
+            tracing::error!("failed to load providers config");
+            eprintln!("error: failed to load providers config:");
+            eprintln!("  {report:?}");
+            std::process::exit(1);
+        }
+
         let app_state_storage = {
             let backend =
                 FilesystemAppStateStorage::new(jinn_domain::AppPaths::default().state_file_path());
@@ -439,6 +450,22 @@ impl Default for App {
     fn default() -> Self {
         Self::new().expect("failed to create default App")
     }
+}
+
+/// Checks that `providers.toml` loads and parses, producing a fail-fast report.
+///
+/// A missing file is not an error here — the loader auto-creates the default
+/// template on first run. Only a load or parse failure produces an error, with
+/// the config path and the underlying TOML detail attached to the report.
+fn providers_load_error_report(storage: &ConfigStorageService) -> Result<(), Report<AppError>> {
+    if let Err(report) = storage.load() {
+        let path = jinn_domain::config_path();
+        return Err(report.change_context(AppError).attach(format!(
+            "failed to load providers config at {}",
+            path.display()
+        )));
+    }
+    Ok(())
 }
 
 /// Fetches model metadata from models.dev and saves it to the user's cache directory.
@@ -756,5 +783,50 @@ mod tests {
         // output in the test log shows the actual counts, making a human-readable check).
         assert!(result.is_ok(), "expected success, got: {:?}", result.err());
         mock.assert_async().await;
+    }
+
+    #[rstest::rstest]
+    fn providers_load_error_report_fails_with_parse_detail_on_malformed_file() {
+        // Given a config storage backed by a malformed providers.toml.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(
+            &path,
+            "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"\n",
+        )
+        .expect("write");
+        let storage = ConfigStorageService::new(Arc::new(FilesystemConfigStorage::new(path)));
+
+        // When checking the providers config.
+        let result = providers_load_error_report(&storage);
+
+        // Then the error render keeps the TOML detail attached upstream
+        // (attachments survive the change_context to AppError).
+        let report = result.expect_err("malformed providers.toml must fail");
+        let rendered = format!("{report:?}");
+        assert!(
+            rendered.contains("TOML parse error"),
+            "missing TOML parse detail: {rendered}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn providers_load_error_report_ok_when_file_missing() {
+        // Given a config storage backed by a directory with no providers.toml.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let storage =
+            ConfigStorageService::new(Arc::new(FilesystemConfigStorage::new(path.clone())));
+
+        // When checking the providers config.
+        let result = providers_load_error_report(&storage);
+
+        // Then the check passes (the loader auto-creates the default template).
+        assert!(result.is_ok(), "expected ok, got: {:?}", result.err());
+        // And the default file was created.
+        assert!(
+            path.exists(),
+            "first-run load should auto-create the config file"
+        );
     }
 }

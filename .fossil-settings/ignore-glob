@@ -26,3 +26,5 @@ mutants.out
 *.db-wal
 build/
 *.tgz
+
+^\.plans/
