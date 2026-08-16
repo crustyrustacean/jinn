@@ -151,6 +151,13 @@ pub struct UserPreferences {
     #[serde(default)]
     pub plugin: Vec<crate::feat::plugin::PluginConfig>,
 
+    /// Disable the built-in first-party themes plugin
+    /// (`jinn-themes`, auto-registered). With it disabled, theme
+    /// discovery falls back to whatever other plugins contribute; with no
+    /// contributors at all only the default theme is available.
+    #[serde(default)]
+    pub disable_builtin_themes_plugin: bool,
+
     /// The local IP address HTTP-mode MCP servers bind to. Used as the `<ip>`
     /// replacement token in a server's `args`, and as the bind address for
     /// jinn's port allocation. Defaults to `127.0.0.1` (loopback only).
@@ -257,6 +264,7 @@ impl Default for UserPreferences {
             projects: vec![],
             mcp_server: vec![],
             plugin: vec![],
+disable_builtin_themes_plugin: false,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -657,6 +665,7 @@ mod tests {
             projects: vec![],
             mcp_server: vec![],
             plugin: vec![],
+disable_builtin_themes_plugin: false,
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -745,6 +754,7 @@ mod tests {
             projects: vec![],
             mcp_server: vec![],
             plugin: vec![],
+disable_builtin_themes_plugin: false,
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -784,6 +794,7 @@ mod tests {
             projects: vec![],
             mcp_server: vec![],
             plugin: vec![],
+disable_builtin_themes_plugin: false,
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1094,6 +1105,7 @@ mod tests {
             projects: vec![],
             mcp_server: vec![],
             plugin: vec![],
+disable_builtin_themes_plugin: false,
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),

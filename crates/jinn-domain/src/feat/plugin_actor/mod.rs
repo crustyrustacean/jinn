@@ -23,6 +23,9 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::plugin_coordinator_actor::protocol::{PluginPhase, PluginStatus};
 
 use jinn_plugin::{PluginHost, PluginReader};
+
+#[cfg(test)]
+use jinn_plugin::FakeGuestScript;
 use jinn_plugin_api::{Envelope, HostToPlugin, PluginToHost, Welcome, PROTOCOL_VERSION};
 
 /// How long the handshake waits for the guest `Hello` before declaring the
@@ -81,6 +84,15 @@ pub struct PluginActorDeps {
     pub engine: std::sync::Arc<jinn_plugin::PluginEngine>,
     /// Coordinator's inbound-event channel.
     pub inbound_tx: tokio::sync::mpsc::Sender<PluginInbound>,
+    /// Test seam: when set, `on_start` exchanges the production host's
+    /// pipes for an in-process fake guest speaking the same wire. The
+    /// production path (real wasm guest) is unaffected when `None`.
+    ///
+    /// The slot holds the *script* the fake guest runs; the pipes are real
+    /// duplex streams, so the handshake and pump logic under test are the
+    /// production code paths.
+    #[cfg(test)]
+    pub fake_guest: std::sync::Arc<std::sync::Mutex<Option<FakeGuestScript>>>,
 }
 
 impl kameo::Actor for PluginActor {
@@ -100,18 +112,50 @@ impl kameo::Actor for PluginActor {
             })
             .await;
 
-        let mut host = PluginHost::start(
-            &args.engine,
-            &args.config.name,
-            &args.wasm_path,
-            &args.grants,
-        )
-        .map_err(|report: Report<jinn_plugin::PluginHostError>| {
-            tracing::warn!(plugin = %args.config.name, "{report:#}");
-            PluginActorError::Spawn
-        })?;
+        // Startup failure (spawn or handshake) is non-fatal to the actor:
+        // absorb it as a live-but-hostless actor publishing Dead. The
+        // coordinator clears its map entry from the status event — the
+        // same path a guest that dies at runtime takes.
+        let start_result = {
+            // Test seam: a scripted in-process guest replaces the wasm
+            // module. Same wire, same pipes, same codec — the handshake
+            // and pump code under test cannot tell the difference.
+            #[cfg(test)]
+            let start = match args.fake_guest.lock().ok().and_then(|g| g.clone()) {
+                Some(script) => Ok(PluginHost::fake(&args.config.name, script)),
+                None => start_real_guest(&args),
+            };
+            #[cfg(not(test))]
+            let start = start_real_guest(&args);
 
-        handshake(&mut host, &args).await?;
+            match start {
+                Ok(mut host) => match handshake(&mut host, &args).await {
+                    Ok(()) => Ok(host),
+                    Err(error) => {
+                        tracing::warn!(plugin = %args.config.name, error = ?error, "handshake failed");
+                        Err(())
+                    }
+                },
+                Err(error) => {
+                    tracing::warn!(plugin = %args.config.name, error = ?error, "guest failed to start");
+                    Err(())
+                }
+            }
+        };
+
+        let Ok(host) = start_result else {
+            args.deps
+                .publish(PluginStatus {
+                    name: args.config.name.clone(),
+                    phase: PluginPhase::Dead,
+                })
+                .await;
+            return Ok(Self {
+                deps: args.deps,
+                config: args.config,
+                host: None,
+            });
+        };
 
         args.deps
             .publish(PluginStatus {
@@ -125,6 +169,7 @@ impl kameo::Actor for PluginActor {
         // the coordinator's channel. The task ends at guest EOF, which
         // stops this actor (publishing Dead in on_stop) — the coordinator
         // observes the plugin's death via that status event.
+        let mut host = host;
         spawn_read_pump(
             host.split(),
             args.config.name.clone(),
@@ -196,6 +241,17 @@ fn spawn_read_pump(
             let _ = strong.stop_gracefully().await;
         }
     });
+}
+
+/// Starts the production wasm guest through the shared engine.
+fn start_real_guest(
+    args: &PluginActorDeps,
+) -> Result<PluginHost, PluginActorError> {
+    PluginHost::start(&args.engine, &args.config.name, &args.wasm_path, &args.grants)
+        .map_err(|report: Report<jinn_plugin::PluginHostError>| {
+            tracing::warn!(plugin = %args.config.name, "{report:#}");
+            PluginActorError::Spawn
+        })
 }
 
 /// Completes the v1 handshake: waits (bounded) for the guest `Hello`,

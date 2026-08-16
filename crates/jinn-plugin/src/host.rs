@@ -74,6 +74,9 @@ pub struct PluginHost {
 }
 
 impl PluginHost {
+}
+
+impl PluginHost {
     /// Instantiates and starts the guest for one plugin.
     ///
     /// `engine` is the shared wasmtime engine (one per process, reused
@@ -202,6 +205,116 @@ impl PluginHost {
         task.abort();
         let _ = task.await;
         let _ = self.write.stdin.shutdown().await;
+    }
+}
+
+/// A scripted stand-in guest, used by plugin-actor tests.
+///
+/// The fake replaces the wasm guest's stdio with a task speaking the same
+/// NDJSON wire over the same duplex pipes: it sends its `Hello` (and any
+/// scripted follow-up lines), then services the handshake reply by echoing
+/// nothing further and ending stdout on cue. Because the pipes and codec
+/// are the production ones, the handshake/pump code under test cannot tell
+/// the difference.
+#[derive(Debug, Clone)]
+pub enum FakeGuestScript {
+    /// Sends `Hello` with the given protocol version, then the given raw
+    /// NDJSON lines (already-encoded), then closes stdout.
+    HelloThenLines {
+        /// Protocol version the fake claims.
+        protocol_version: u32,
+        /// Raw wire lines to send after `Hello`.
+        lines: Vec<String>,
+    },
+    /// Sends nothing and closes stdout immediately (a guest that dies
+    /// before handshaking).
+    Silent,
+    /// Sends the given raw line as its very first message (a malformed
+    /// handshake), then closes stdout.
+    FirstLine(String),
+}
+
+impl PluginHost {
+    /// Test-only constructor: a host whose guest is an in-process scripted
+    /// fake speaking the same NDJSON wire over the same duplex pipes. No
+    /// wasm module is loaded — the engine and wasm path are irrelevant.
+    ///
+    /// The handshake and read-pump code cannot distinguish this from a real
+    /// guest: same pipes, same codec, same EOF semantics.
+    pub fn fake(name: &str, script: FakeGuestScript) -> Self {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let (host_to_guest, guest_rx) = tokio::io::duplex(PIPE_CAPACITY_BYTES);
+        let (guest_tx, host_rx) = tokio::io::duplex(PIPE_CAPACITY_BYTES);
+        let stderr_ring = Arc::new(Mutex::new(StderrRing::new()));
+        let name_owned = name.to_owned();
+
+        let guest_task = tokio::spawn(async move {
+            let mut guest_rx = guest_rx;
+            let mut guest_tx = guest_tx;
+            let mut discard = [0u8; 1024];
+            let script_task = async {
+                match script {
+                    FakeGuestScript::HelloThenLines {
+                        protocol_version,
+                        lines,
+                    } => {
+                        let hello = Envelope::for_plugin(
+                            jinn_plugin_api::PluginToHost::Hello(jinn_plugin_api::Hello {
+                                protocol_version,
+                                name: name_owned.clone(),
+                                subscriptions: vec![],
+                            }),
+                            0,
+                            0,
+                        );
+                        let mut out = serde_json::to_string(&hello).unwrap_or_default();
+                        out.push('\n');
+                        for line in lines {
+                            out.push_str(&line);
+                            out.push('\n');
+                        }
+                        let _ = guest_tx.write_all(out.as_bytes()).await;
+                    }
+                    FakeGuestScript::Silent => {}
+                    FakeGuestScript::FirstLine(line) => {
+                        let mut out = line;
+                        out.push('\n');
+                        let _ = guest_tx.write_all(out.as_bytes()).await;
+                    }
+                }
+                // Closing stdout signals guest end.
+                let _ = guest_tx.shutdown().await;
+            };
+            tokio::select! {
+                () = script_task => {}
+                read = guest_rx.read(&mut discard) => {
+                    // Host closed stdin before the script finished.
+                    let _ = read;
+                }
+            }
+            // Drain stdin so the host writer never blocks on a full pipe.
+            loop {
+                match guest_rx.read(&mut discard).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {}
+                }
+            }
+            Ok(())
+        });
+
+        Self {
+            guest_task,
+            write: HostWriter {
+                stdin: host_to_guest,
+            },
+            read_half: Some(BufReader::new(host_rx)),
+            stderr_ring,
+            spawn: SpawnInfo {
+                name: name.to_owned(),
+                wasm_path: std::path::PathBuf::new(),
+            },
+        }
     }
 }
 
