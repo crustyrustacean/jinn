@@ -13,16 +13,13 @@
 use std::collections::BTreeMap;
 
 use jinn_plugin_api::{
-    Envelope, HostToPlugin, PluginToHost, PluginToHostOrHostToPlugin, ThemeDef,
-    THEME_COLOR_SLOTS, Welcome,
+    Envelope, HostToPlugin, PluginToHost, PluginToHostOrHostToPlugin, THEME_COLOR_SLOTS, ThemeDef,
+    Welcome,
 };
 
 /// Compiles the committed schema file for validation.
 fn schema() -> jsonschema::Validator {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/plugin-api.schema.json"
-    );
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/plugin-api.schema.json");
     let schema_json: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).expect("schema file readable"))
             .expect("schema file is valid JSON");
@@ -32,10 +29,7 @@ fn schema() -> jsonschema::Validator {
 /// Serializes an envelope and validates it against the schema.
 fn assert_valid(envelope: &Envelope) {
     let json = serde_json::to_value(envelope).expect("serialize");
-    let errors: Vec<_> = schema()
-        .iter_errors(&json)
-        .map(|e| e.to_string())
-        .collect();
+    let errors: Vec<_> = schema().iter_errors(&json).map(|e| e.to_string()).collect();
     assert!(errors.is_empty(), "schema drift:\n{json}\n{errors:#?}");
 }
 
@@ -187,7 +181,9 @@ fn theme_def_serializes_slot_keys_as_snake_case() {
     // Given a theme def referencing two slots via the typed enum.
     let mut colors = BTreeMap::new();
     colors.insert(
-        jinn_plugin_api::ThemeColorSlot::FocusAccent.key().to_owned(),
+        jinn_plugin_api::ThemeColorSlot::FocusAccent
+            .key()
+            .to_owned(),
         "#ffffff".to_owned(),
     );
     colors.insert(

@@ -46,6 +46,12 @@ pub struct Cli {
     /// Each file contains the complete request payload verbatim.
     #[arg(long, value_hint = clap::ValueHint::DirPath)]
     pub dump_requests: Option<PathBuf>,
+    /// Hidden: run this process as a WASM plugin runner child. The parent
+    /// jinn process spawns `<self> --serve-wasm-plugin <wasm>` with grants
+    /// in the environment; stdout/stdin carry the NDJSON plugin wire.
+    #[arg(long, hide = true, value_hint = clap::ValueHint::FilePath)]
+    pub serve_wasm_plugin: Option<PathBuf>,
+
     /// The subcommand to run. If omitted, launches the TUI.
     #[command(subcommand)]
     pub command: Option<Commands>,

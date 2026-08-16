@@ -1,0 +1,229 @@
+//! Capability grants — what a plugin is allowed to touch.
+//!
+//! Grants are declared in the manifest (`jinn.toml` `[[plugin]]`) as path
+//! templates and expanded against jinn's real directories by the
+//! coordinator before spawn. The resolved [`Grants`] travel to the runner
+//! child via environment variables, and the runner turns them into WASI
+//! preopens / `wasi:http` availability. The default writable scratch dir
+//! (`<plugin_data_dir>`) is always granted, so persistence needs no
+//! manifest entry.
+
+use std::path::{Path, PathBuf};
+
+use error_stack::{Report, ResultExt as _};
+use serde::{Deserialize, Serialize};
+
+/// Grant resolution failed (bad manifest template).
+#[derive(Debug, wherror::Error)]
+#[error(debug)]
+pub enum GrantsError {
+    /// The template referenced a variable jinn does not define.
+    UnknownVariable,
+}
+
+/// Supported template variables in manifest paths.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TemplateVariable {
+    /// `<config_dir>` — jinn's user config directory.
+    ConfigDir,
+    /// `<data_dir>` — jinn's user data directory.
+    DataDir,
+    /// `<plugin_data_dir>` — this plugin's default writable scratch dir.
+    PluginDataDir,
+}
+
+impl TemplateVariable {
+    /// The literal token as it appears in the manifest.
+    #[must_use]
+    pub fn token(&self) -> &'static str {
+        match self {
+            Self::ConfigDir => "<config_dir>",
+            Self::DataDir => "<data_dir>",
+            Self::PluginDataDir => "<plugin_data_dir>",
+        }
+    }
+}
+
+/// Directories jinn resolves once and hands to grant expansion.
+#[derive(Debug, Clone)]
+pub struct DirContext {
+    /// User config directory (e.g. `~/.config/jinn`).
+    pub config_dir: PathBuf,
+    /// User data directory (e.g. `~/.local/share/jinn`).
+    pub data_dir: PathBuf,
+    /// The plugin's own name (selects the scratch dir).
+    pub plugin_name: String,
+}
+
+impl DirContext {
+    /// The plugin's default writable scratch dir:
+    /// `<data_dir>/plugins/<name>/`.
+    #[must_use]
+    pub fn plugin_data_dir(&self) -> PathBuf {
+        self.data_dir.join("plugins").join(&self.plugin_name)
+    }
+}
+
+/// Manifest-declared path grant: a template plus read/write intent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PathGrant {
+    /// Path template (e.g. `<config_dir>/themes`).
+    pub path: String,
+    /// Grant write access in addition to read.
+    #[serde(default)]
+    pub writable: bool,
+}
+
+/// The fully resolved capability set for one plugin.
+///
+/// Built by the coordinator from the manifest + [`DirContext`]; carried to
+/// the runner child via env; enforced by the runner (preopens, `wasi:http`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Grants {
+    /// Directories the plugin may read.
+    pub read_dirs: Vec<PathBuf>,
+    /// Directories the plugin may write (also readable).
+    pub write_dirs: Vec<PathBuf>,
+    /// Whether the plugin may make network requests.
+    pub http: bool,
+    /// Plugin-specific free-form config from the manifest.
+    pub config: serde_json::Value,
+}
+
+impl Grants {
+    /// The environment variables encoding these grants for the runner child
+    /// (values are `:`-separated paths; env, not argv, so nothing leaks via
+    /// `ps`).
+    #[must_use]
+    pub fn env_pairs(&self) -> Vec<(String, String)> {
+        let join = |dirs: &[PathBuf]| {
+            dirs.iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join(":")
+        };
+        vec![
+            ("JINN_PLUGIN_READ_DIRS".to_owned(), join(&self.read_dirs)),
+            ("JINN_PLUGIN_WRITE_DIRS".to_owned(), join(&self.write_dirs)),
+            (
+                "JINN_PLUGIN_HTTP".to_owned(),
+                u8::from(self.http).to_string(),
+            ),
+            ("JINN_PLUGIN_CONFIG".to_owned(), self.config.to_string()),
+        ]
+    }
+
+    /// Reconstructs grants from the runner child's environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a required variable is missing (the child was
+    /// not spawned by the coordinator).
+    pub fn from_env() -> Result<Self, Report<GrantsError>> {
+        let read_dirs = Self::split_env("JINN_PLUGIN_READ_DIRS")?;
+        let write_dirs = Self::split_env("JINN_PLUGIN_WRITE_DIRS")?;
+        let http = std::env::var("JINN_PLUGIN_HTTP")
+            .change_context(GrantsError::UnknownVariable)
+            .attach("missing JINN_PLUGIN_HTTP")?;
+        let http = http == "1";
+        let config = std::env::var("JINN_PLUGIN_CONFIG")
+            .change_context(GrantsError::UnknownVariable)
+            .attach("missing JINN_PLUGIN_CONFIG")?;
+        let config = serde_json::from_str(&config)
+            .change_context(GrantsError::UnknownVariable)
+            .attach("JINN_PLUGIN_CONFIG is not valid JSON")?;
+        Ok(Self {
+            read_dirs,
+            write_dirs,
+            http,
+            config,
+        })
+    }
+
+    fn split_env(name: &str) -> Result<Vec<PathBuf>, Report<GrantsError>> {
+        let raw = std::env::var(name)
+            .change_context(GrantsError::UnknownVariable)
+            .attach(format!("missing {name}"))?;
+        Ok(raw
+            .split(':')
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect())
+    }
+}
+
+/// Expands one manifest path template against the directory context.
+///
+/// Unknown variables (or a bare `<...>` jinn does not define) are an error
+/// for this plugin — the coordinator marks it Dead with a detail rather
+/// than spawning it with surprise access.
+///
+/// # Errors
+///
+/// Returns [`GrantsError::UnknownVariable`] if the template contains a
+/// `<token>` that is not a defined variable.
+pub fn expand_template(template: &str, ctx: &DirContext) -> Result<PathBuf, Report<GrantsError>> {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(start) = rest.find('<') {
+        let Some(end_rel) = rest.get(start..).and_then(|s| s.find('>')) else {
+            break;
+        };
+        let end = start + end_rel;
+        let Some(token) = rest.get(start..=end) else {
+            break;
+        };
+        let value = match token {
+            t if t == TemplateVariable::ConfigDir.token() => {
+                ctx.config_dir.to_string_lossy().into_owned()
+            }
+            t if t == TemplateVariable::DataDir.token() => {
+                ctx.data_dir.to_string_lossy().into_owned()
+            }
+            t if t == TemplateVariable::PluginDataDir.token() => {
+                ctx.plugin_data_dir().to_string_lossy().into_owned()
+            }
+            _ => {
+                return Err(Report::new(GrantsError::UnknownVariable))
+                    .attach(format!("unknown template variable {token}"));
+            }
+        };
+        if let Some(prefix) = rest.get(..start) {
+            out.push_str(prefix);
+        }
+        out.push_str(&value);
+        rest = rest.get(end + 1..).unwrap_or("");
+    }
+    out.push_str(rest);
+    Ok(Path::new(&out).to_path_buf())
+}
+
+/// Resolves a manifest grant list into grants, always including the default
+/// writable scratch dir.
+///
+/// # Errors
+///
+/// Returns an error if any template uses an undefined variable.
+pub fn resolve_grants(
+    grants: &[PathGrant],
+    http: bool,
+    config: serde_json::Value,
+    ctx: &DirContext,
+) -> Result<Grants, Report<GrantsError>> {
+    let mut read_dirs = Vec::new();
+    let mut write_dirs = vec![ctx.plugin_data_dir()];
+    for grant in grants {
+        let path = expand_template(&grant.path, ctx)?;
+        if grant.writable {
+            write_dirs.push(path);
+        } else {
+            read_dirs.push(path);
+        }
+    }
+    Ok(Grants {
+        read_dirs,
+        write_dirs,
+        http,
+        config,
+    })
+}
