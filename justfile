@@ -16,6 +16,10 @@ test:
 check:
     cargo check --workspace
 
+# Build the first-party wasm plugins (needs the wasm32-wasip2 target).
+build-plugins:
+    cargo build -p jinn-plugin-themes --target wasm32-wasip2 --release
+
 
 clippy:
     cargo clippy --workspace --all-targets

@@ -107,7 +107,10 @@ fn unknown_plugin_tag_deserializes_to_unknown() {
     let envelope: Envelope = serde_json::from_str(line).expect("tolerant deserialize");
 
     // Then the message is Unknown (payload dropped, no error).
-    assert_eq!(envelope.msg, jinn_plugin_api::PluginToHostOrHostToPlugin::Unknown);
+    assert_eq!(
+        envelope.msg,
+        jinn_plugin_api::PluginToHostOrHostToPlugin::Unknown
+    );
 }
 
 #[test]

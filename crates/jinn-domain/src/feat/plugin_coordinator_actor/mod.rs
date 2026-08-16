@@ -55,6 +55,8 @@ pub struct PluginCoordinatorActor {
     root: RootSupervisorRef,
     state: State,
     cap: crate::common::tcaps::PluginsCap,
+    /// Authority to apply a resolved theme to the frontend (late-apply).
+    frontend_cap: crate::common::tcaps::FrontendCap,
     /// Config dir / data dir context for grant resolution and wasm paths.
     dirs: PluginDirs,
     /// Live plugin actors by name.
@@ -95,6 +97,10 @@ pub struct PluginCoordinatorActorDeps {
     pub state: State,
     /// Authority to write the plugin contribution cache.
     pub cap: crate::common::tcaps::PluginsCap,
+    /// Authority to apply a resolved theme to the frontend (the late-apply
+    /// path: the persisted theme name may only resolve once the themes
+    /// plugin's first contribution lands).
+    pub frontend_cap: crate::common::tcaps::FrontendCap,
     /// Directory context for grant resolution and wasm paths.
     pub dirs: PluginDirs,
 }
@@ -103,10 +109,7 @@ impl kameo::Actor for PluginCoordinatorActor {
     type Args = PluginCoordinatorActorDeps;
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
             .subscribe(actor_ref.recipient::<PluginStatus>())
             .await;
@@ -116,6 +119,7 @@ impl kameo::Actor for PluginCoordinatorActor {
             root: args.root,
             state: args.state,
             cap: args.cap,
+            frontend_cap: args.frontend_cap,
             dirs: args.dirs,
             spawned: Mutex::new(HashMap::new()),
             #[cfg(test)]
@@ -184,19 +188,18 @@ impl PluginCoordinatorActor {
         .restart_policy(RestartPolicy::Never)
         .spawn()
         .await;
-        self.spawned
-            .lock()
-            .insert(config.name.clone(), actor_ref);
+        self.spawned.lock().insert(config.name.clone(), actor_ref);
         tracing::info!(plugin = %config.name, "plugin coordinator: spawned PluginActor");
 
         // The coordinator's inbound pump: every message from this plugin is
         // validated here before it may touch state.
         let state = self.state.clone();
         let cap = self.cap;
+        let frontend_cap = self.frontend_cap;
         let name = config.name.clone();
         tokio::spawn(async move {
             while let Some(inbound) = inbound_rx.recv().await {
-                handle_inbound(&state, cap, &name, inbound);
+                handle_inbound(&state, cap, frontend_cap, &name, inbound);
             }
         });
     }
@@ -219,10 +222,9 @@ impl PluginCoordinatorActor {
                 writable: g.writable,
             })
             .collect();
-        let config_value = config
-            .config
-            .clone()
-            .map_or(serde_json::Value::Null, |v| serde_json::to_value(&v).unwrap_or(serde_json::Value::Null));
+        let config_value = config.config.clone().map_or(serde_json::Value::Null, |v| {
+            serde_json::to_value(&v).unwrap_or(serde_json::Value::Null)
+        });
         jinn_plugin::resolve_grants(&path_grants, config.http, config_value, &ctx)
     }
 
@@ -297,7 +299,13 @@ fn first_party_themes_plugin() -> PluginConfig {
 /// through this function's match. Unknown variants are silently dropped
 /// (forward compatibility); malformed theme payloads are dropped with a
 /// warn. `Hello` outside the handshake is ignored.
-fn handle_inbound(state: &State, cap: crate::common::tcaps::PluginsCap, name: &str, inbound: PluginInbound) {
+fn handle_inbound(
+    state: &State,
+    cap: crate::common::tcaps::PluginsCap,
+    frontend_cap: crate::common::tcaps::FrontendCap,
+    name: &str,
+    inbound: PluginInbound,
+) {
     match inbound.event {
         jinn_plugin_api::PluginToHost::Hello(_) => {
             // Handshake was already completed by the actor; a second Hello
@@ -309,8 +317,39 @@ fn handle_inbound(state: &State, cap: crate::common::tcaps::PluginsCap, name: &s
                 tracing::warn!(plugin = %name, "all theme definitions failed translation");
             }
             state.with_plugins(&cap, |p| p.set_themes(name, themes));
+
+            // Late-apply: if the persisted theme name is not yet applied
+            // (app-state sync ran before this first contribution), resolve
+            // it against the now-populated cache and apply it.
+            apply_pending_theme(state, frontend_cap);
         }
     }
+}
+
+/// Applies the persisted theme name against the contribution cache when
+/// the frontend still holds the embedded default — the late-apply half of
+/// startup ordering (app-state sync may run before the themes plugin's
+/// first contribution lands).
+fn apply_pending_theme(state: &State, frontend_cap: crate::common::tcaps::FrontendCap) {
+    let pending_name = state.read().frontend.app_state.theme_name.clone();
+    let Some(name) = pending_name else {
+        return;
+    };
+
+    let theme = {
+        let snapshot = state.read();
+        let Some(contributed) = snapshot.plugins.theme(&name) else {
+            return;
+        };
+        contributed.theme.clone()
+    };
+
+    state.with_preferences(&frontend_cap, |ops| {
+        let frontend = ops.frontend();
+        frontend.theme = theme;
+        frontend.caches.invalidate_all();
+    });
+    tracing::debug!(theme = %name, "late-applied persisted theme from plugin cache");
 }
 
 impl Message<PluginStatus> for PluginCoordinatorActor {
@@ -322,7 +361,8 @@ impl Message<PluginStatus> for PluginCoordinatorActor {
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         let PluginStatus { name, phase } = msg;
-        self.state.with_plugins(&self.cap, |p| p.set_phase(name.clone(), phase));
+        self.state
+            .with_plugins(&self.cap, |p| p.set_phase(name.clone(), phase));
         // A dead plugin stays dead until the next app start
         // (RestartPolicy::Never); drop the actor ref so a future
         // reconciliation could respawn (v1: nothing reconciles).

@@ -26,7 +26,7 @@ use jinn_plugin::{PluginHost, PluginReader};
 
 #[cfg(test)]
 use jinn_plugin::FakeGuestScript;
-use jinn_plugin_api::{Envelope, HostToPlugin, PluginToHost, Welcome, PROTOCOL_VERSION};
+use jinn_plugin_api::{Envelope, HostToPlugin, PROTOCOL_VERSION, PluginToHost, Welcome};
 
 /// How long the handshake waits for the guest `Hello` before declaring the
 /// plugin dead. Guests booting a wasm runtime legitimately take a moment;
@@ -244,23 +244,23 @@ fn spawn_read_pump(
 }
 
 /// Starts the production wasm guest through the shared engine.
-fn start_real_guest(
-    args: &PluginActorDeps,
-) -> Result<PluginHost, PluginActorError> {
-    PluginHost::start(&args.engine, &args.config.name, &args.wasm_path, &args.grants)
-        .map_err(|report: Report<jinn_plugin::PluginHostError>| {
-            tracing::warn!(plugin = %args.config.name, "{report:#}");
-            PluginActorError::Spawn
-        })
+fn start_real_guest(args: &PluginActorDeps) -> Result<PluginHost, PluginActorError> {
+    PluginHost::start(
+        &args.engine,
+        &args.config.name,
+        &args.wasm_path,
+        &args.grants,
+    )
+    .map_err(|report: Report<jinn_plugin::PluginHostError>| {
+        tracing::warn!(plugin = %args.config.name, "{report:#}");
+        PluginActorError::Spawn
+    })
 }
 
 /// Completes the v1 handshake: waits (bounded) for the guest `Hello`,
 /// replies `Welcome`, and fails on timeout, version mismatch, or a
 /// non-`Hello` first message.
-async fn handshake(
-    host: &mut PluginHost,
-    args: &PluginActorDeps,
-) -> Result<(), PluginActorError> {
+async fn handshake(host: &mut PluginHost, args: &PluginActorDeps) -> Result<(), PluginActorError> {
     let envelope = match tokio::time::timeout(HANDSHAKE_TIMEOUT, host.read()).await {
         Ok(Ok(Some(env))) => env,
         Ok(Ok(None)) => {
@@ -280,7 +280,9 @@ async fn handshake(
         }
     };
 
-    let jinn_plugin_api::PluginToHostOrHostToPlugin::Plugin(PluginToHost::Hello(hello)) = envelope.msg else {
+    let jinn_plugin_api::PluginToHostOrHostToPlugin::Plugin(PluginToHost::Hello(hello)) =
+        envelope.msg
+    else {
         tracing::warn!(
             plugin = %args.config.name,
             "plugin sent non-Hello first message"
@@ -318,12 +320,10 @@ async fn handshake(
         0,
         now_ms(),
     );
-    host.write(&welcome)
-        .await
-        .map_err(|report| {
-            tracing::warn!(plugin = %args.config.name, "{report:#}");
-            PluginActorError::Write
-        })?;
+    host.write(&welcome).await.map_err(|report| {
+        tracing::warn!(plugin = %args.config.name, "{report:#}");
+        PluginActorError::Write
+    })?;
     Ok(())
 }
 

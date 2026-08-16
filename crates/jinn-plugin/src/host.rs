@@ -73,8 +73,7 @@ pub struct PluginHost {
     spawn: SpawnInfo,
 }
 
-impl PluginHost {
-}
+impl PluginHost {}
 
 impl PluginHost {
     /// Instantiates and starts the guest for one plugin.
@@ -124,7 +123,10 @@ impl PluginHost {
     pub fn split(&mut self) -> PluginReader {
         let (ended_tx, ended_rx) = tokio::io::duplex(1);
         drop(ended_tx); // no writer: immediate EOF
-        let stdout = self.read_half.take().unwrap_or_else(|| BufReader::new(ended_rx));
+        let stdout = self
+            .read_half
+            .take()
+            .unwrap_or_else(|| BufReader::new(ended_rx));
         PluginReader {
             stdout,
             name: self.spawn.name.clone(),

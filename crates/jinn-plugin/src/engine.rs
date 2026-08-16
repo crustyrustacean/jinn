@@ -23,8 +23,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
-use wasmtime_wasi::p3::bindings::Command;
 use wasmtime_wasi::cli::{AsyncStdinStream, AsyncStdoutStream};
+use wasmtime_wasi::p3::bindings::Command;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::WasiHttpCtx;
 use wasmtime_wasi_http::p3::WasiHttpView;
@@ -242,7 +242,8 @@ fn preopen_dirs(builder: &mut WasiCtxBuilder, grants: &Grants) -> Result<(), Rep
             continue; // already preopened read-only; skip duplicate mount
         }
         std::fs::create_dir_all(dir).map_err(|e| {
-            Report::new(EngineError::Preopen).attach(format!("creating scratch dir {}: {e}", dir.display()))
+            Report::new(EngineError::Preopen)
+                .attach(format!("creating scratch dir {}: {e}", dir.display()))
         })?;
         builder
             .preopened_dir(

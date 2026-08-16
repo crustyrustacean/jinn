@@ -11,7 +11,7 @@ anstyle = { workspace = true }
 anstyle-lossy = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
-jinn-selection-widget = { workspace = true }
+jinn-selection-widget = { workspace = true, optional = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
@@ -33,3 +33,9 @@ cast_possible_wrap = "allow"
 return_self_not_must_use = "allow"
 single_match = "allow"
 struct_excessive_bools = "allow"
+
+[features]
+# `entry` pulls in the picker-facing ThemeEntry (ratatui/crossterm world);
+# guests like jinn-plugin-themes use the crate loader-only.
+entry = ["dep:jinn-selection-widget"]
+default = ["entry"]

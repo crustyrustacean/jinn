@@ -1,0 +1,17 @@
+[package]
+name = "jinn-plugin-themes"
+version = "0.1.0"
+edition = "2024"
+description = "First-party jinn plugin: discovers and contributes TOML themes."
+license = "MIT"
+publish = false
+
+[dependencies]
+jinn-plugin-api = { path = "../jinn-plugin-api" }
+jinn-plugin-sdk = { path = "../jinn-plugin-sdk" }
+jinn-theme = { path = "../jinn-theme", default-features = false }
+serde_json = "1"
+error-stack = { workspace = true }
+
+[lints]
+workspace = true

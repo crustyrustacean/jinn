@@ -8,9 +8,13 @@
 
 use std::path::PathBuf;
 
+use jinn_plugin::{
+    DirContext, GrantsError, PathGrant, TemplateVariable, expand_template, resolve_grants,
+};
 use jinn_plugin::{FramingError, MAX_LINE_BYTES, decode_envelope, encode_envelope};
-use jinn_plugin::{DirContext, GrantsError, PathGrant, TemplateVariable, expand_template, resolve_grants};
-use jinn_plugin_api::{Envelope, HostToPlugin, PluginToHostOrHostToPlugin, Welcome, PROTOCOL_VERSION};
+use jinn_plugin_api::{
+    Envelope, HostToPlugin, PROTOCOL_VERSION, PluginToHostOrHostToPlugin, Welcome,
+};
 
 /// A `Welcome` envelope small enough to embed in scripted streams.
 fn welcome_envelope() -> Envelope {
@@ -88,7 +92,10 @@ fn decode_rejects_lines_over_the_cap() {
 
     // When decoding.
     // Then the line cap rejects it (bounded memory per message).
-    assert!(matches!(decode_envelope(&bytes), Err(FramingError::LineTooLong)));
+    assert!(matches!(
+        decode_envelope(&bytes),
+        Err(FramingError::LineTooLong)
+    ));
 }
 
 #[test]
@@ -147,8 +154,8 @@ fn expand_template_rejects_undefined_variables() {
 fn resolve_grants_always_includes_scratch_dir() {
     // Given a manifest with no path grants.
     // When resolving.
-    let grants = resolve_grants(&[], false, serde_json::Value::Null, &dir_context())
-        .expect("resolve");
+    let grants =
+        resolve_grants(&[], false, serde_json::Value::Null, &dir_context()).expect("resolve");
 
     // Then the default writable scratch dir is present.
     assert_eq!(grants.write_dirs, vec![PathBuf::from("/data/plugins/p")]);
@@ -169,13 +176,21 @@ fn resolve_grants_sorts_read_and_write_intents() {
     ];
 
     // When resolving.
-    let resolved = resolve_grants(&grants, true, serde_json::Value::Null, &dir_context())
-        .expect("resolve");
+    let resolved =
+        resolve_grants(&grants, true, serde_json::Value::Null, &dir_context()).expect("resolve");
 
     // Then each lands in its list with the scratch dir.
     assert_eq!(resolved.read_dirs, vec![PathBuf::from("/cfg/themes")]);
-    assert!(resolved.write_dirs.contains(&PathBuf::from("/data/scratch")));
-    assert!(resolved.write_dirs.contains(&PathBuf::from("/data/plugins/p")));
+    assert!(
+        resolved
+            .write_dirs
+            .contains(&PathBuf::from("/data/scratch"))
+    );
+    assert!(
+        resolved
+            .write_dirs
+            .contains(&PathBuf::from("/data/plugins/p"))
+    );
     // And the http flag carries through.
     assert!(resolved.http);
 }
@@ -187,8 +202,5 @@ fn template_tokens_are_the_documented_literals() {
     // Then they match the manifest documentation.
     assert_eq!(TemplateVariable::ConfigDir.token(), "<config_dir>");
     assert_eq!(TemplateVariable::DataDir.token(), "<data_dir>");
-    assert_eq!(
-        TemplateVariable::PluginDataDir.token(),
-        "<plugin_data_dir>"
-    );
+    assert_eq!(TemplateVariable::PluginDataDir.token(), "<plugin_data_dir>");
 }
