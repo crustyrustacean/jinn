@@ -1082,3 +1082,94 @@ fn annotation_produces_no_message() {
     // Then no messages are produced.
     assert!(messages.is_empty());
 }
+
+#[rstest::rstest]
+fn yank_text_user_entry_matches_text() {
+    // Given a user entry.
+    let entry = ChatEntry::user("hello world");
+
+    // When computing the yank text.
+    let yanked = entry.yank_text();
+
+    // Then it equals the entry's display text.
+    assert_eq!(yanked, entry.text());
+    assert_eq!(yanked, "hello world");
+}
+
+#[rstest::rstest]
+fn yank_text_tool_result_drops_name_prefix() {
+    // Given a tool result with a name and content.
+    let entry = ChatEntry::tool_result("id", "bash", "output text", ToolResultStatus::Success);
+
+    // When computing the yank text.
+    let yanked = entry.yank_text();
+
+    // Then only the content is returned, without the name prefix.
+    assert_eq!(yanked, "output text");
+}
+
+#[rstest::rstest]
+fn yank_text_tool_result_prefers_full_content_when_truncated() {
+    // Given a truncated tool result carrying the complete output.
+    let entry = ChatEntry::tool_result_truncated(
+        "id",
+        "read",
+        "truncated slice\n[Showing lines 1-2 of 10]".to_owned(),
+        "complete output\nwith all lines".to_owned(),
+        ToolResultStatus::Success,
+        jinn_provider::tool_types::TruncationMeta {
+            truncated_by: jinn_provider::tool_types::TruncatedBy::Lines,
+            total_lines: 10,
+            total_bytes: 100,
+            output_lines: 2,
+            output_bytes: 20,
+        },
+    );
+
+    // When computing the yank text.
+    let yanked = entry.yank_text();
+
+    // Then the untruncated full content wins over the truncated slice.
+    assert_eq!(yanked, "complete output\nwith all lines");
+}
+
+#[rstest::rstest]
+fn yank_text_tool_result_uses_content_when_no_full_copy() {
+    // Given a tool result with no full-content copy.
+    let entry = ChatEntry::tool_result("id", "bash", "only content", ToolResultStatus::Success);
+
+    // When computing the yank text.
+    let yanked = entry.yank_text();
+
+    // Then it falls back to the stored content.
+    assert_eq!(yanked, "only content");
+}
+
+#[rstest::rstest]
+fn yank_text_tool_call_returns_raw_arguments() {
+    // Given a tool call with JSON arguments.
+    let entry = ChatEntry::tool_call("id", "bash", r#"{"command":"ls"}"#);
+
+    // When computing the yank text.
+    let yanked = entry.yank_text();
+
+    // Then the raw arguments are returned, without the name prefix.
+    assert_eq!(yanked, r#"{"command":"ls"}"#);
+}
+
+#[rstest::rstest]
+fn yank_text_strips_ansi_escapes() {
+    // Given a tool result containing ANSI color codes.
+    let entry = ChatEntry::tool_result(
+        "id",
+        "bash",
+        "\x1b[31mError\x1b[0m: boom",
+        ToolResultStatus::Failure,
+    );
+
+    // When computing the yank text.
+    let yanked = entry.yank_text();
+
+    // Then the escape sequences are removed.
+    assert_eq!(yanked, "Error: boom");
+}
