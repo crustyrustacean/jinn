@@ -107,10 +107,7 @@ fn unknown_plugin_tag_deserializes_to_unknown() {
     let envelope: Envelope = serde_json::from_str(line).expect("tolerant deserialize");
 
     // Then the message is Unknown (payload dropped, no error).
-    assert_eq!(
-        envelope.msg,
-        jinn_plugin_api::PluginToHostOrHostToPlugin::Plugin(PluginToHost::Unknown)
-    );
+    assert_eq!(envelope.msg, jinn_plugin_api::PluginToHostOrHostToPlugin::Unknown);
 }
 
 #[test]
@@ -121,14 +118,9 @@ fn unknown_host_tag_deserializes_to_unknown() {
     // When deserializing.
     let envelope: Envelope = serde_json::from_str(line).expect("tolerant deserialize");
 
-    // Then the message is Unknown. (For unknown tags the direction is
-    // unknowable from the payload, so either arm is acceptable — the
-    // observable contract is "this line carries no message we understand".)
-    assert!(matches!(
-        envelope.msg,
-        PluginToHostOrHostToPlugin::Plugin(PluginToHost::Unknown)
-            | PluginToHostOrHostToPlugin::Host(HostToPlugin::Unknown)
-    ));
+    // Then the message is Unknown (direction is unknowable from an
+    // unknown tag; the observable contract is "no message we understand").
+    assert_eq!(envelope.msg, PluginToHostOrHostToPlugin::Unknown);
 }
 
 #[test]

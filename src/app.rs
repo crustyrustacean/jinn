@@ -131,13 +131,6 @@ impl App {
         #[cfg(debug_assertions)]
         use jinn_cli::cli::HeadlessCommands;
 
-        // Hidden runner mode: this process was spawned by a parent jinn to
-        // host a WASM plugin. Dispatch before ANY wiring — the guest's stdio
-        // IS the wire, so nothing may write to stdout before the engine runs.
-        if let Some(wasm_path) = cli.serve_wasm_plugin {
-            return serve_wasm_plugin(wasm_path).change_context(AppError);
-        }
-
         // Load config from providers.toml (auto-creates on first run).
         let config_storage =
             ConfigStorageService::new(Arc::new(FilesystemConfigStorage::default_path()));
@@ -551,27 +544,6 @@ async fn fetch_models_from_url(
     Ok(())
 }
 
-/// Runner-child entry: executes a WASM plugin under env-provided grants.
-///
-/// Runs to completion on a minimal single-threaded runtime; the guest's
-/// stdio is inherited, so wire traffic flows straight through.
-///
-/// # Errors
-///
-/// Returns an error if grants cannot be read from the environment or the
-/// guest fails to load, instantiate, or run.
-fn serve_wasm_plugin(wasm_path: std::path::PathBuf) -> Result<(), Report<AppError>> {
-    use jinn_plugin::{Grants, engine};
-
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .change_context(AppError)?;
-    let grants = Grants::from_env().change_context(AppError)?;
-    runtime
-        .block_on(engine::serve(&wasm_path, &grants))
-        .change_context(AppError)
-}
 
 #[cfg(test)]
 mod tests {

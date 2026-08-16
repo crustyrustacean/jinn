@@ -65,8 +65,8 @@ pub struct PluginDirs {
     pub config_dir: std::path::PathBuf,
     /// User data dir (e.g. `~/.local/share/jinn`).
     pub data_dir: std::path::PathBuf,
-    /// jinn's own executable (the runner child binary).
-    pub exe: std::path::PathBuf,
+    /// The shared wasmtime engine, reused across all plugin guests.
+    pub engine: std::sync::Arc<jinn_plugin::PluginEngine>,
 }
 
 /// Dependencies for [`PluginCoordinatorActor`].
@@ -158,7 +158,7 @@ impl PluginCoordinatorActor {
                 config: config.clone(),
                 grants,
                 wasm_path,
-                exe: self.dirs.exe.clone(),
+                engine: self.dirs.engine.clone(),
                 inbound_tx: inbound_tx.clone(),
             },
         )
@@ -177,7 +177,7 @@ impl PluginCoordinatorActor {
         let name = config.name.clone();
         tokio::spawn(async move {
             while let Some(inbound) = inbound_rx.recv().await {
-                handle_inbound(&state, &cap, &name, inbound);
+                handle_inbound(&state, cap, &name, inbound);
             }
         });
     }
@@ -203,8 +203,7 @@ impl PluginCoordinatorActor {
         let config_value = config
             .config
             .clone()
-            .map(|v| serde_json::to_value(&v).unwrap_or(serde_json::Value::Null))
-            .unwrap_or(serde_json::Value::Null);
+            .map_or(serde_json::Value::Null, |v| serde_json::to_value(&v).unwrap_or(serde_json::Value::Null));
         jinn_plugin::resolve_grants(&path_grants, config.http, config_value, &ctx)
     }
 
@@ -237,7 +236,7 @@ fn enabled_plugins(services: &crate::Services) -> Vec<PluginConfig> {
 /// through this function's match. Unknown variants are silently dropped
 /// (forward compatibility); malformed theme payloads are dropped with a
 /// warn. `Hello` outside the handshake is ignored.
-fn handle_inbound(state: &State, cap: &crate::common::tcaps::PluginsCap, name: &str, inbound: PluginInbound) {
+fn handle_inbound(state: &State, cap: crate::common::tcaps::PluginsCap, name: &str, inbound: PluginInbound) {
     match inbound.event {
         jinn_plugin_api::PluginToHost::Hello(_) => {
             // Handshake was already completed by the actor; a second Hello
@@ -248,10 +247,7 @@ fn handle_inbound(state: &State, cap: &crate::common::tcaps::PluginsCap, name: &
             if themes.is_empty() && !entries.themes.is_empty() {
                 tracing::warn!(plugin = %name, "all theme definitions failed translation");
             }
-            state.with_plugins(cap, |p| p.set_themes(name.to_owned(), themes));
-        }
-        jinn_plugin_api::PluginToHost::Unknown => {
-            tracing::debug!(plugin = %name, "plugin sent unknown message variant");
+            state.with_plugins(&cap, |p| p.set_themes(name, themes));
         }
     }
 }

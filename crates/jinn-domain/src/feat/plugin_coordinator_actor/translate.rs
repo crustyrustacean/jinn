@@ -11,6 +11,8 @@
 //! `ThemeDef` with any unparseable slot drops that one theme — never the
 //! whole batch, never the host.
 
+use std::fmt::Write as _;
+
 use jinn_plugin_api::ThemeDef;
 use jinn_theme::theme::ThemeFile;
 
@@ -41,7 +43,7 @@ fn translate_one(def: &ThemeDef) -> Option<(String, Option<String>, Theme)> {
         if slot.is_empty() || color.contains('\n') {
             return None;
         }
-        table.push_str(&format!("{slot} = {}\n", toml_basic_string(color)));
+        let _ = writeln!(table, "{slot} = {}", toml_basic_string(color));
     }
 
     let file: ThemeFile = toml::from_str(&table).ok()?;
