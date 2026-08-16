@@ -25,6 +25,6 @@ mod envelope;
 mod theme_def;
 mod wire;
 
-pub use envelope::{Envelope, PluginToHostOrHostToPlugin, PROTOCOL_VERSION};
-pub use theme_def::{ThemeColorSlot, ThemeDef, THEME_COLOR_SLOTS};
+pub use envelope::{Envelope, PROTOCOL_VERSION, PluginToHostOrHostToPlugin};
+pub use theme_def::{THEME_COLOR_SLOTS, ThemeColorSlot, ThemeDef};
 pub use wire::{Hello, HostToPlugin, PluginToHost, SetThemeEntries, Welcome};
