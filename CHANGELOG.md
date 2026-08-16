@@ -1,3 +1,8 @@
+## (development) v0.107.1
+
+- `jinn` will immediately exit on startup if `jinn.toml` or `providers.toml` is malformed.
+- Yanking from chat history tool results will now return a complete JSON object instead of the displayed text. This is to enable piping into `jq` for processing.
+
 ## 2026-08-15 v0.106.1
 
 - Add `[[providers.model_info]]` tables to `providers.toml`: per-model `context_length`, `input_modalities`, and `extra_body` overrides. Hand-authored values take precedence over API-discovered data and models.dev. Models that are only listed in `providers.toml` (never discovered) now appear in the model cache, so the status bar, compaction gate, and attachment gate resolve them; `input_modalities = ["text", "image"]` marks a local model vision-capable.
