@@ -2730,6 +2730,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-plugin-sdk"
+version = "0.1.0"
+dependencies = [
+ "jinn-plugin-api",
+ "serde_json",
+]
+
+[[package]]
+name = "jinn-plugin-themes"
+version = "0.1.0"
+dependencies = [
+ "error-stack",
+ "jinn-plugin-api",
+ "jinn-plugin-sdk",
+ "jinn-theme",
+ "serde_json",
+]
+
+[[package]]
 name = "jinn-provider"
 version = "0.106.0"
 dependencies = [

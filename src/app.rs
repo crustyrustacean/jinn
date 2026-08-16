@@ -544,7 +544,6 @@ async fn fetch_models_from_url(
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use jinn_domain::{AppState, State};

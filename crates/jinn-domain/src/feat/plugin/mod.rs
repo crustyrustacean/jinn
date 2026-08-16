@@ -47,8 +47,8 @@ pub fn default_true() -> bool {
     true
 }
 
-use std::collections::BTreeMap;
 use jinn_theme::Theme;
+use std::collections::BTreeMap;
 
 use crate::feat::plugin_coordinator_actor::protocol::PluginPhase;
 

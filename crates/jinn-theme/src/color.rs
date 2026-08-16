@@ -16,6 +16,12 @@ use serde::de::{self, Visitor};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThemeColor(pub Color);
 
+impl From<Color> for ThemeColor {
+    fn from(color: Color) -> Self {
+        Self(color)
+    }
+}
+
 impl ThemeColor {
     /// Returns the inner ratatui color.
     #[must_use]

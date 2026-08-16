@@ -503,6 +503,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     root: root.clone(),
                     state: state.clone(),
                     cap: jinn_domain::common::tcaps::mint::mint_plugins_cap(),
+                    frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                     dirs: jinn_domain::feat::plugin_coordinator_actor::PluginDirs {
                         config_dir: services.paths.config_dir().to_owned(),
                         data_dir: services.paths.data_dir().to_owned(),

@@ -52,9 +52,7 @@ async fn spawn_coordinator(
     let dirs = PluginDirs {
         config_dir: std::path::PathBuf::from("/nonexistent"),
         data_dir: std::path::PathBuf::from("/nonexistent"),
-        engine: Arc::new(
-            jinn_plugin::PluginEngine::new().expect("engine construction"),
-        ),
+        engine: Arc::new(jinn_plugin::PluginEngine::new().expect("engine construction")),
         system_data_dir: std::path::PathBuf::from("/nonexistent"),
     };
     let actor = PluginCoordinatorActor::supervise(
@@ -66,6 +64,7 @@ async fn spawn_coordinator(
             root: root.clone(),
             state: state.clone(),
             cap: mint_plugins_cap(),
+            frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
             dirs,
             fake_guest: Arc::new(std::sync::Mutex::new(Some(script))),
         },
@@ -147,7 +146,11 @@ async fn set_theme_entries_populates_contribution_cache() {
     }
 
     // Then the theme is cached with its contributing source.
-    let source = state.read().plugins.theme("ocean").map(|t| t.source.clone());
+    let source = state
+        .read()
+        .plugins
+        .theme("ocean")
+        .map(|t| t.source.clone());
     assert_eq!(source.as_deref(), Some("test-plugin"));
 }
 
@@ -176,7 +179,10 @@ async fn malformed_lines_are_dropped_not_fatal() {
         if state.read().plugins.theme("after-garbage").is_some() {
             break;
         }
-        assert!(deadline > tokio::time::Instant::now(), "valid line after garbage never arrived");
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "valid line after garbage never arrived"
+        );
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
 }
@@ -216,8 +222,12 @@ async fn silent_guest_dies_at_handshake() {
     // Given a coordinator with a guest that says nothing.
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<PluginStatus>().await;
-    let state = spawn_coordinator(&harness, vec![entry()], jinn_plugin::FakeGuestScript::Silent)
-        .await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::Silent,
+    )
+    .await;
 
     // When the handshake timeout lapses.
     let messages = await_recorded(&recorder, 1, WAIT).await;
