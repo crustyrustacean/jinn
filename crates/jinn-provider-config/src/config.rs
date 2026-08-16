@@ -480,6 +480,30 @@ target = "ollama/llama3""#;
     }
 
     #[rstest::rstest]
+    fn malformed_toml_render_includes_parse_detail() {
+        // Given a providers.toml with a missing comma (unclosed array).
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let toml = "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"\n";
+        std::fs::write(&path, toml).expect("write");
+
+        // When loading.
+        let result = load_config_from(&path);
+
+        // Then the rendered report carries the TOML parse detail with line info.
+        let report = result.expect_err("malformed toml must fail");
+        let rendered = format!("{report:?}");
+        assert!(
+            rendered.contains("TOML parse error"),
+            "missing TOML parse detail: {rendered}"
+        );
+        assert!(
+            rendered.contains("line"),
+            "missing line information: {rendered}"
+        );
+    }
+
+    #[rstest::rstest]
     fn legacy_array_syntax_fails_with_new_syntax_hint() {
         // Given a legacy [[providers]] array-format file.
         let dir = TempDir::new().expect("temp dir");
