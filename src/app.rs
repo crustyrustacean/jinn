@@ -274,6 +274,17 @@ impl App {
             svc
         };
 
+        // Load providers.toml early — fail-fast on a malformed file BEFORE
+        // any actor wiring runs, with a report naming the file and TOML detail.
+        // Config subcommands have already dispatched above, so `jinn config
+        // providers` remains usable as the recovery tool for a broken file.
+        if let Err(report) = providers_load_error_report(&config_storage) {
+            tracing::error!("failed to load providers config");
+            eprintln!("error: failed to load providers config:");
+            eprintln!("  {report:?}");
+            std::process::exit(1);
+        }
+
         let app_state_storage = {
             let backend =
                 FilesystemAppStateStorage::new(jinn_domain::AppPaths::default().state_file_path());
@@ -432,6 +443,23 @@ impl Default for App {
     fn default() -> Self {
         Self::new().expect("failed to create default App")
     }
+}
+
+/// Checks that `providers.toml` loads and parses, producing a fail-fast report.
+///
+/// A missing file is not an error here — the loader auto-creates the default
+/// template on first run. Only a load or parse failure produces an error, with
+/// the config path and the underlying TOML detail attached to the report.
+fn providers_load_error_report(
+    storage: &ConfigStorageService,
+) -> Result<(), Report<AppError>> {
+    if let Err(report) = storage.load() {
+        let path = jinn_domain::config_path();
+        return Err(report
+            .change_context(AppError)
+            .attach(format!("failed to load providers config at {}", path.display())));
+    }
+    Ok(())
 }
 
 /// Fetches model metadata from models.dev and saves it to the user's cache directory.
