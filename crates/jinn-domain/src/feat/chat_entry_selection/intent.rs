@@ -367,10 +367,12 @@ fn build_seed_entry(text: String, is_assistant: bool) -> ChatEntry {
         ChatEntry::user(text)
     }
 }
-/// Yanks (copies) the text of the currently selected chat entry to the clipboard.
+/// Yanks (copies) the selected chat entry's raw content to the clipboard.
 ///
-/// Extracts the entry's text via [`ChatEntry::text()`] and stashes it in
-/// [`TuiSignals::yank_text`] for the TUI layer to write to the system clipboard.
+/// Extracts the entry's clipboard text via [`ChatEntry::yank_text`] — tool
+/// results yield untruncated output without the tool-name prefix, tool calls
+/// yield the raw JSON arguments — and stashes it in [`TuiSignals::yank_text`]
+/// for the TUI layer to write to the system clipboard.
 pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
     if validator::validate_yank_selected(state).is_err() {
         return IntentResult::empty();
@@ -378,7 +380,7 @@ pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.active_session().selected_entry() else {
         return IntentResult::empty();
     };
-    let text = entry.text();
+    let text = entry.yank_text();
     state.frontend.tui_signals.yank_text = Some(text);
     IntentResult::empty()
 }
@@ -989,10 +991,31 @@ mod tests {
         // When handling yank selected.
         let _result = handle_yank_selected(&mut state);
 
-        // Then yank_text contains "bash: output text" (ChatEntry.text() format).
+        // Then yank_text contains the raw content, without the name prefix.
         assert_eq!(
             state.frontend.tui_signals.yank_text,
-            Some("bash: output text".to_owned())
+            Some("output text".to_owned())
+        );
+    }
+
+    #[rstest::rstest]
+    fn yank_selected_extracts_tool_call_arguments() {
+        // Given a state with a selected tool call.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::tool_call(
+            "id",
+            "bash",
+            "{\"command\":\"ls\"}",
+        ));
+        state.active_session_mut().select_next_entry();
+
+        // When handling yank selected.
+        let _result = handle_yank_selected(&mut state);
+
+        // Then yank_text contains the raw JSON arguments, without the name prefix.
+        assert_eq!(
+            state.frontend.tui_signals.yank_text,
+            Some("{\"command\":\"ls\"}".to_owned())
         );
     }
 
