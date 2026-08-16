@@ -90,68 +90,6 @@ pub struct Grants {
     pub config: serde_json::Value,
 }
 
-impl Grants {
-    /// The environment variables encoding these grants for the runner child
-    /// (values are `:`-separated paths; env, not argv, so nothing leaks via
-    /// `ps`).
-    #[must_use]
-    pub fn env_pairs(&self) -> Vec<(String, String)> {
-        let join = |dirs: &[PathBuf]| {
-            dirs.iter()
-                .map(|p| p.to_string_lossy().into_owned())
-                .collect::<Vec<_>>()
-                .join(":")
-        };
-        vec![
-            ("JINN_PLUGIN_READ_DIRS".to_owned(), join(&self.read_dirs)),
-            ("JINN_PLUGIN_WRITE_DIRS".to_owned(), join(&self.write_dirs)),
-            (
-                "JINN_PLUGIN_HTTP".to_owned(),
-                u8::from(self.http).to_string(),
-            ),
-            ("JINN_PLUGIN_CONFIG".to_owned(), self.config.to_string()),
-        ]
-    }
-
-    /// Reconstructs grants from the runner child's environment.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a required variable is missing (the child was
-    /// not spawned by the coordinator).
-    pub fn from_env() -> Result<Self, Report<GrantsError>> {
-        let read_dirs = Self::split_env("JINN_PLUGIN_READ_DIRS")?;
-        let write_dirs = Self::split_env("JINN_PLUGIN_WRITE_DIRS")?;
-        let http = std::env::var("JINN_PLUGIN_HTTP")
-            .change_context(GrantsError::UnknownVariable)
-            .attach("missing JINN_PLUGIN_HTTP")?;
-        let http = http == "1";
-        let config = std::env::var("JINN_PLUGIN_CONFIG")
-            .change_context(GrantsError::UnknownVariable)
-            .attach("missing JINN_PLUGIN_CONFIG")?;
-        let config = serde_json::from_str(&config)
-            .change_context(GrantsError::UnknownVariable)
-            .attach("JINN_PLUGIN_CONFIG is not valid JSON")?;
-        Ok(Self {
-            read_dirs,
-            write_dirs,
-            http,
-            config,
-        })
-    }
-
-    fn split_env(name: &str) -> Result<Vec<PathBuf>, Report<GrantsError>> {
-        let raw = std::env::var(name)
-            .change_context(GrantsError::UnknownVariable)
-            .attach(format!("missing {name}"))?;
-        Ok(raw
-            .split(':')
-            .filter(|s| !s.is_empty())
-            .map(PathBuf::from)
-            .collect())
-    }
-}
-
 /// Expands one manifest path template against the directory context.
 ///
 /// Unknown variables (or a bare `<...>` jinn does not define) are an error

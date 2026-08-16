@@ -3,9 +3,9 @@
 //! The structs ([`Hello`], [`SetThemeEntries`], ...) are the source of truth:
 //! each is versioned, tested, and evolves independently. The enums exist only
 //! as transport unions so a receiver can discriminate one line without
-//! knowing the type ahead of time, and so `#[serde(other)]` gives forward
-//! compatibility: a tag this build doesn't know deserializes to `Unknown`
-//! instead of erroring.
+//! knowing the type ahead of time, and `#[serde(other)]` on the
+//! direction-erased wrapper gives forward compatibility: a tag this build
+//! doesn't know deserializes to `Unknown` instead of erroring.
 //!
 //! # Forward-compatibility caveat
 //!
@@ -62,6 +62,10 @@ pub struct SetThemeEntries {
 }
 
 /// Plugin→host message union (transport only).
+///
+/// Unknown tags are handled one level up, in
+/// [`PluginToHostOrHostToPlugin`] — an `#[serde(other)]` arm here would
+/// shadow the host direction entirely (untagged tries `Plugin` first).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PluginToHost {
@@ -69,18 +73,15 @@ pub enum PluginToHost {
     Hello(Hello),
     /// Theme contribution (full set).
     SetThemeEntries(SetThemeEntries),
-    /// Unknown tag — payload dropped. See module docs.
-    #[serde(other)]
-    Unknown,
 }
 
 /// Host→plugin message union (transport only).
+///
+/// Unknown tags are handled one level up, in
+/// [`PluginToHostOrHostToPlugin`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HostToPlugin {
     /// Handshake reply.
     Welcome(Welcome),
-    /// Unknown tag — payload dropped. See module docs.
-    #[serde(other)]
-    Unknown,
 }

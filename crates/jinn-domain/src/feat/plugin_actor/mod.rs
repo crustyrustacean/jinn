@@ -1,20 +1,20 @@
-//! Plugin per-process actor — owns one plugin runner child end to end.
+//! Plugin guest actor — owns one hosted plugin end to end.
 //!
 //! Spawned (supervised, `RestartPolicy::Never`) by the plugin coordinator
 //! ([`crate::feat::plugin_coordinator_actor`]) for each enabled
 //! `[[plugin]]` entry at app start. This actor:
 //!
-//! - spawns the runner child (`PluginProcess` — jinn's own exe,
-//!   `--serve-wasm-plugin`),
+//! - starts the in-process guest ([`PluginHost`] — one wasm store on a
+//!   spawned task, stdio over in-memory pipes),
 //! - completes the v1 handshake: waits for the guest `Hello`, replies
 //!   `Welcome` (plugin name, resolved grant dirs, config),
 //! - spawns the read pump: a task that forwards every decoded inbound
 //!   envelope to the coordinator's private channel (the coordinator owns
 //!   the trust boundary and the contribution cache — this actor never
 //!   writes `AppState`),
-//! - dies with the child: `PluginProcess` is `kill_on_drop`, so a crashed
-//!   guest takes only this actor with it. `ShutdownPlugin` performs a
-//!   bounded graceful shutdown before the drop.
+//! - dies with the guest: guest EOF ends the read pump, which stops the
+//!   actor, publishing `Dead` in `on_stop`. `ShutdownPlugin` aborts the
+//!   guest task first.
 
 use error_stack::Report;
 use kameo::prelude::{Context, Message};
@@ -22,24 +22,15 @@ use kameo::prelude::{Context, Message};
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::plugin_coordinator_actor::protocol::{PluginPhase, PluginStatus};
 
-use jinn_plugin::{PluginProcess, PluginReader};
+use jinn_plugin::{PluginHost, PluginReader};
 use jinn_plugin_api::{Envelope, HostToPlugin, PluginToHost, Welcome, PROTOCOL_VERSION};
 
 /// How long the handshake waits for the guest `Hello` before declaring the
 /// plugin dead. Guests booting a wasm runtime legitimately take a moment;
 /// a wedged guest must not stall startup forever.
-#[expect(
-    clippy::duration_suboptimal_units,
-    reason = "5s is the intent, not 5_000ms"
-)]
 const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// How long a graceful shutdown waits before `PluginProcess`'s
-/// kill-on-drop does it the hard way.
-#[expect(
-    clippy::duration_suboptimal_units,
-    reason = "2s is the intent, not 2_000ms"
-)]
+/// How long a graceful shutdown waits before aborting the guest task.
 const SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// One inbound message from a plugin, tagged with its source.
@@ -58,11 +49,11 @@ pub struct PluginInbound {
 #[derive(Debug, wherror::Error)]
 #[error(debug)]
 pub enum PluginActorError {
-    /// The runner child could not be spawned.
+    /// The guest could not be loaded or instantiated.
     Spawn,
     /// The handshake failed (timeout, malformed `Hello`, or EOF first).
     Handshake,
-    /// Writing to the child failed (line cap exceeded, EPIPE).
+    /// Writing to the guest failed (line cap exceeded, closed pipe).
     Write,
 }
 
@@ -71,8 +62,8 @@ pub struct PluginActor {
     deps: ActorDeps,
     /// Manifest entry for this plugin.
     config: crate::feat::plugin::PluginConfig,
-    /// The runner child (writer half; the reader is pumped by a task).
-    process: Option<PluginProcess>,
+    /// The hosted guest (writer half; the reader is pumped by a task).
+    host: Option<PluginHost>,
 }
 
 /// Dependencies for [`PluginActor`].
@@ -82,12 +73,12 @@ pub struct PluginActorDeps {
     pub deps: ActorDeps,
     /// The manifest entry this actor serves.
     pub config: crate::feat::plugin::PluginConfig,
-    /// Resolved capability grants for the child.
+    /// Resolved capability grants for the guest.
     pub grants: jinn_plugin::Grants,
     /// Absolute path to the plugin `.wasm` file.
     pub wasm_path: std::path::PathBuf,
-    /// Jinn's own executable path (the runner child).
-    pub exe: std::path::PathBuf,
+    /// The shared wasmtime engine (one per process, reused per plugin).
+    pub engine: std::sync::Arc<jinn_plugin::PluginEngine>,
     /// Coordinator's inbound-event channel.
     pub inbound_tx: tokio::sync::mpsc::Sender<PluginInbound>,
 }
@@ -98,7 +89,7 @@ impl kameo::Actor for PluginActor {
 
     async fn on_start(
         args: Self::Args,
-        _actor_ref: kameo::actor::ActorRef<Self>,
+        actor_ref: kameo::actor::ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
         // Announce Starting so bus subscribers see the transition even if
         // the spawn immediately fails.
@@ -109,14 +100,18 @@ impl kameo::Actor for PluginActor {
             })
             .await;
 
-        let mut process =
-            PluginProcess::spawn(&args.exe, &args.config.name, &args.wasm_path, &args.grants)
-                .map_err(|report: Report<jinn_plugin::PluginProcessError>| {
-                    tracing::warn!(plugin = %args.config.name, "{report:#}");
-                    PluginActorError::Spawn
-                })?;
+        let mut host = PluginHost::start(
+            &args.engine,
+            &args.config.name,
+            &args.wasm_path,
+            &args.grants,
+        )
+        .map_err(|report: Report<jinn_plugin::PluginHostError>| {
+            tracing::warn!(plugin = %args.config.name, "{report:#}");
+            PluginActorError::Spawn
+        })?;
 
-        handshake(&mut process, &args).await?;
+        handshake(&mut host, &args).await?;
 
         args.deps
             .publish(PluginStatus {
@@ -127,16 +122,20 @@ impl kameo::Actor for PluginActor {
         tracing::info!(plugin = %args.config.name, "plugin actor: handshake complete");
 
         // Split the reader off and pump it: every decoded envelope goes to
-        // the coordinator's channel. The task ends at child EOF (the
-        // coordinator observes the plugin's death via the status event the
-        // actor publishes in on_stop) or when the channel closes.
-        let reader = process.split();
-        spawn_read_pump(reader, args.config.name.clone(), args.inbound_tx.clone());
+        // the coordinator's channel. The task ends at guest EOF, which
+        // stops this actor (publishing Dead in on_stop) — the coordinator
+        // observes the plugin's death via that status event.
+        spawn_read_pump(
+            host.split(),
+            args.config.name.clone(),
+            args.inbound_tx.clone(),
+            actor_ref.downgrade(),
+        );
 
         Ok(Self {
             deps: args.deps,
             config: args.config,
-            process: Some(process),
+            host: Some(host),
         })
     }
 
@@ -146,8 +145,9 @@ impl kameo::Actor for PluginActor {
         _reason: kameo::error::ActorStopReason,
     ) -> Result<(), Self::Error> {
         // Announce death so the coordinator clears its spawned map entry
-        // and the state cache reflects the loss. kill-on-drop reaps the
-        // child; bounded graceful shutdown already ran (or never applied).
+        // and the state cache reflects the loss. Dropping the host aborts
+        // the guest task; bounded graceful shutdown already ran (or never
+        // applied).
         self.deps
             .publish(PluginStatus {
                 name: self.config.name.clone(),
@@ -170,6 +170,7 @@ fn spawn_read_pump(
     mut reader: PluginReader,
     name: String,
     inbound_tx: tokio::sync::mpsc::Sender<PluginInbound>,
+    actor_ref: kameo::actor::WeakActorRef<PluginActor>,
 ) {
     tokio::spawn(async move {
         while let Ok(Some(envelope)) = reader.read_next().await {
@@ -178,7 +179,8 @@ fn spawn_read_pump(
                     name: name.clone(),
                     event: match envelope.msg {
                         jinn_plugin_api::PluginToHostOrHostToPlugin::Plugin(event) => event,
-                        jinn_plugin_api::PluginToHostOrHostToPlugin::Host(_) => continue,
+                        jinn_plugin_api::PluginToHostOrHostToPlugin::Host(_)
+                        | jinn_plugin_api::PluginToHostOrHostToPlugin::Unknown => continue,
                     },
                 })
                 .await
@@ -189,6 +191,10 @@ fn spawn_read_pump(
             }
         }
         tracing::info!(plugin = %name, "plugin read pump ended");
+        // Guest EOF (or read error): the actor has nothing left to serve.
+        if let Some(strong) = actor_ref.upgrade() {
+            let _ = strong.stop_gracefully().await;
+        }
     });
 }
 
@@ -196,10 +202,10 @@ fn spawn_read_pump(
 /// replies `Welcome`, and fails on timeout, version mismatch, or a
 /// non-`Hello` first message.
 async fn handshake(
-    process: &mut PluginProcess,
+    host: &mut PluginHost,
     args: &PluginActorDeps,
 ) -> Result<(), PluginActorError> {
-    let envelope = match tokio::time::timeout(HANDSHAKE_TIMEOUT, process.read()).await {
+    let envelope = match tokio::time::timeout(HANDSHAKE_TIMEOUT, host.read()).await {
         Ok(Ok(Some(env))) => env,
         Ok(Ok(None)) => {
             tracing::warn!(
@@ -256,8 +262,7 @@ async fn handshake(
         0,
         now_ms(),
     );
-    process
-        .write(&welcome)
+    host.write(&welcome)
         .await
         .map_err(|report| {
             tracing::warn!(plugin = %args.config.name, "{report:#}");
@@ -270,8 +275,7 @@ async fn handshake(
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 /// Message sent to a plugin actor requesting a bounded graceful shutdown.
@@ -286,10 +290,10 @@ impl Message<ShutdownPlugin> for PluginActor {
         _msg: ShutdownPlugin,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        if let Some(mut process) = self.process.take() {
-            let _ = tokio::time::timeout(SHUTDOWN_GRACE, process.shutdown()).await;
-            // Drop reaps whatever is left; the actor then dies (no process
-            // to serve), publishing Dead in on_stop.
+        if let Some(mut host) = self.host.take() {
+            let _ = tokio::time::timeout(SHUTDOWN_GRACE, host.shutdown()).await;
+            // Host drop aborts whatever is left; the actor then dies (no
+            // guest to serve), publishing Dead in on_stop.
         }
     }
 }

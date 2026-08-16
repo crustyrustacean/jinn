@@ -77,12 +77,12 @@ pub struct ContributedTheme {
     /// The contributing plugin's description, if any.
     pub description: Option<String>,
     /// The contributing plugin's name (for source-accurate replacement).
-    source: String,
+    pub source: String,
 }
 
 impl PluginContributions {
     /// Replaces the theme set contributed by one plugin.
-    pub fn set_themes(&mut self, source: String, themes: Vec<(String, Option<String>, Theme)>) {
+    pub fn set_themes(&mut self, source: &str, themes: Vec<(String, Option<String>, Theme)>) {
         // Remove this source's previous contributions first: the wire
         // message is a full replacement, not a delta.
         self.themes.retain(|_, t| t.source != source);
@@ -90,7 +90,7 @@ impl PluginContributions {
             self.themes.insert(
                 name,
                 ContributedTheme {
-                    source: source.clone(),
+                    source: source.to_owned(),
                     theme,
                     description,
                 },
@@ -99,7 +99,6 @@ impl PluginContributions {
     }
 
     /// All contributed themes, ordered by name.
-    #[must_use]
     pub fn themes(&self) -> impl Iterator<Item = (&str, &ContributedTheme)> {
         self.themes.iter().map(|(k, v)| (k.as_str(), v))
     }
