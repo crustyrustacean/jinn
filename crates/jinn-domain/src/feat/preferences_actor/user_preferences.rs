@@ -144,6 +144,13 @@ pub struct UserPreferences {
     #[serde(default)]
     pub mcp_server: Vec<crate::feat::mcp::McpServerConfig>,
 
+    /// Configured plugins. Each entry declares a `.wasm` component plus
+    /// its capability grants; the plugin coordinator spawns one runner
+    /// child per enabled entry at app start. See
+    /// [`PluginConfig`](crate::feat::plugin::PluginConfig).
+    #[serde(default)]
+    pub plugin: Vec<crate::feat::plugin::PluginConfig>,
+
     /// The local IP address HTTP-mode MCP servers bind to. Used as the `<ip>`
     /// replacement token in a server's `args`, and as the bind address for
     /// jinn's port allocation. Defaults to `127.0.0.1` (loopback only).
@@ -249,6 +256,7 @@ impl Default for UserPreferences {
             ],
             projects: vec![],
             mcp_server: vec![],
+            plugin: vec![],
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -455,6 +463,7 @@ where
         patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
         patcher.register_array_key(["project"], "path");
         patcher.register_array_key(["mcp_server"], "name");
+        patcher.register_array_key(["plugin"], "name");
 
         patcher
             .apply(new_table, doc.as_table_mut())
@@ -647,6 +656,7 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_server: vec![],
+            plugin: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -734,6 +744,7 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_server: vec![],
+            plugin: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -772,6 +783,7 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_server: vec![],
+            plugin: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1081,6 +1093,7 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_server: vec![],
+            plugin: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),

@@ -43,6 +43,8 @@ pub struct AppState {
     pub provider: ProviderState,
     /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
+    /// Plugin contributions - owned by plugin-coordinator-actor.
+    pub plugins: crate::feat::plugin::PluginContributions,
 }
 
 impl AppState {

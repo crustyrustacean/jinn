@@ -2638,6 +2638,8 @@ dependencies = [
  "jinn-common",
  "jinn-core-types",
  "jinn-mcp",
+ "jinn-plugin",
+ "jinn-plugin-api",
  "jinn-provider",
  "jinn-provider-config",
  "jinn-selection-widget",
