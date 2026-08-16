@@ -26,5 +26,5 @@ pub use framing::{FramingError, MAX_LINE_BYTES, decode_envelope, encode_envelope
 pub use grants::{
     DirContext, Grants, GrantsError, PathGrant, TemplateVariable, expand_template, resolve_grants,
 };
-pub use process::{PluginProcess, SpawnInfo};
+pub use process::{PluginProcess, PluginProcessError, PluginReader, SpawnInfo};
 pub use stderr_ring::StderrRing;

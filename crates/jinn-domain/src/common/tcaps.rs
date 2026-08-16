@@ -11,6 +11,7 @@ pub mod context;
 pub mod frontend;
 pub mod intent_handler;
 pub mod mint;
+pub mod plugins;
 pub mod provider;
 pub mod session;
 
@@ -20,5 +21,6 @@ mod tests;
 pub use context::ContextCap;
 pub use frontend::FrontendCap;
 pub use intent_handler::IntentHandlerCap;
+pub use plugins::PluginsCap;
 pub use provider::ProviderCap;
 pub use session::SessionCap;

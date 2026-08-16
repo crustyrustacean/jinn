@@ -42,13 +42,66 @@ pub struct SpawnInfo {
 /// [`StderrRing`] so guest diagnostics never reach jinn's terminal.
 /// Dropping this value kills the child (`kill_on_drop`); prefer
 /// [`PluginProcess::shutdown`] for bounded deterministic cleanup.
+///
+/// Ownership splits for actor use: [`PluginProcess::split`] hands the
+/// stdout read half to a pump task ([`PluginReader`]) while the actor
+/// keeps the writer half; the child stays owned here so kill-on-drop
+/// still reaps the whole process when the actor dies.
 pub struct PluginProcess {
     child: Child,
-    stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    write: PluginWriter,
+    /// The stdout read half, until [`PluginProcess::split`] takes it.
+    read_half: Option<BufReader<ChildStdout>>,
     /// Shared stderr ring, written by the drain task.
     stderr_ring: Arc<Mutex<StderrRing>>,
     spawn: SpawnInfo,
+}
+
+/// The write half of a runner child: stdin.
+struct PluginWriter {
+    stdin: ChildStdin,
+}
+
+/// The read half of a runner child's stdout, for a pump task.
+///
+/// Obtained via [`PluginProcess::split`]. Reading never fails on hostile
+/// input — malformed lines are skipped with a warn log.
+pub struct PluginReader {
+    stdout: BufReader<ChildStdout>,
+    /// The plugin name, for log context.
+    name: String,
+}
+
+impl PluginReader {
+    /// Reads the next valid envelope from the child's stdout.
+    ///
+    /// Returns `Ok(None)` on EOF (child exited). Malformed lines are
+    /// skipped with a warn log — hostile input never fails the read.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only on I/O failure of the stdout pipe itself.
+    pub async fn read_next(&mut self) -> Result<Option<Envelope>, Report<PluginProcessError>> {
+        loop {
+            let mut line = String::new();
+            let n = self
+                .stdout
+                .read_line(&mut line)
+                .await
+                .change_context(PluginProcessError)
+                .attach("plugin stdout read failed")?;
+            if n == 0 {
+                return Ok(None);
+            }
+            match decode_envelope(line.as_bytes()) {
+                Ok(Some(envelope)) => return Ok(Some(envelope)),
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::warn!(plugin = %self.name, err = ?e, "dropping malformed plugin line");
+                }
+            }
+        }
+    }
 }
 
 impl PluginProcess {
@@ -109,8 +162,8 @@ impl PluginProcess {
 
         Ok(Self {
             child,
-            stdin,
-            stdout: BufReader::new(stdout),
+            write: PluginWriter { stdin },
+            read_half: Some(BufReader::new(stdout)),
             stderr_ring,
             spawn: SpawnInfo {
                 name: name.to_owned(),
@@ -118,6 +171,18 @@ impl PluginProcess {
                 pid,
             },
         })
+    }
+
+    /// Splits off the stdout read half for a pump task.
+    ///
+    /// The returned [`PluginReader`] owns the child's stdout; this process
+    /// keeps the child, stdin, and stderr ring. Panics if called twice.
+    #[must_use]
+    pub fn split(&mut self) -> PluginReader {
+        PluginReader {
+            stdout: self.read_half.take().expect("split called twice"),
+            name: self.spawn.name.clone(),
+        }
     }
 
     /// Facts about the spawn (name, wasm path, pid).
@@ -141,12 +206,14 @@ impl PluginProcess {
         let line = encode_envelope(envelope)
             .change_context(PluginProcessError)
             .attach("failed to encode envelope")?;
-        self.stdin
+        self.write
+            .stdin
             .write_all(&line)
             .await
             .change_context(PluginProcessError)
             .attach("plugin stdin write failed")?;
-        self.stdin
+        self.write
+            .stdin
             .flush()
             .await
             .change_context(PluginProcessError)
@@ -164,25 +231,16 @@ impl PluginProcess {
     ///
     /// Returns an error only on I/O failure of the stdout pipe itself.
     pub async fn read(&mut self) -> Result<Option<Envelope>, Report<PluginProcessError>> {
-        loop {
-            let mut line = String::new();
-            let n = self
-                .stdout
-                .read_line(&mut line)
-                .await
-                .change_context(PluginProcessError)
-                .attach("plugin stdout read failed")?;
-            if n == 0 {
-                return Ok(None);
-            }
-            match decode_envelope(line.as_bytes()) {
-                Ok(Some(envelope)) => return Ok(Some(envelope)),
-                Ok(None) => {}
-                Err(e) => {
-                    tracing::warn!(plugin = %self.spawn.name, err = ?e, "dropping malformed plugin line");
-                }
-            }
-        }
+        let Some(stdout) = self.read_half.take() else {
+            return Err(Report::new(PluginProcessError).attach("read half was split off"));
+        };
+        let mut reader = PluginReader {
+            stdout,
+            name: self.spawn.name.clone(),
+        };
+        let result = reader.read_next().await;
+        self.read_half = Some(reader.stdout);
+        result
     }
 
     /// Sends a graceful stop and waits bounded for exit; force-kills on
@@ -192,9 +250,7 @@ impl PluginProcess {
     ///
     /// Returns an error if the wait itself fails.
     pub async fn shutdown(&mut self) -> Result<(), Report<PluginProcessError>> {
-        // Closing stdin is the graceful stop signal; a well-behaved runner
-        // exits when its host side goes away.
-        let _ = self.stdin.shutdown().await;
+        let _ = self.write.stdin.shutdown().await;
         match tokio::time::timeout(std::time::Duration::from_secs(5), self.child.wait()).await {
             Ok(_) => Ok(()),
             Err(_) => {
