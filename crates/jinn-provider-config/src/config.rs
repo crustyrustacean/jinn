@@ -173,20 +173,20 @@ where
         .change_context(ConfigError::Io)
         .attach("failed to read providers config")?;
 
-    toml::from_str(&content).map_err(|err| {
-        let report = Report::new(ConfigError::Parse)
-            .attach("failed to parse providers config")
-            .attach(err.to_string());
-        if content.contains("[[providers]]") {
-            report.attach(
-                "legacy [[providers]] array syntax is no longer supported; \
-                 providers are now declared as [providers.<name>] map tables \
-                 (e.g. [[providers]] name = \"ollama\" ... becomes [providers.ollama] ...)",
-            )
-        } else {
-            report
-        }
-    })
+    toml::from_str(&content)
+        .change_context(ConfigError::Parse)
+        .attach("failed to parse providers config")
+        .map_err(|report| {
+            if content.contains("[[providers]]") {
+                report.attach(
+                    "legacy [[providers]] array syntax is no longer supported; \
+                     providers are now declared as [providers.<name>] map tables \
+                     (e.g. [[providers]] name = \"ollama\" ... becomes [providers.ollama] ...)",
+                )
+            } else {
+                report
+            }
+        })
 }
 
 /// Creates the default config file at the standard location.
@@ -308,19 +308,18 @@ where
             .change_context(ConfigError::Io)
             .attach("failed to read existing providers config")?;
         let mut doc: toml_edit::DocumentMut =
-            existing.parse().map_err(|err: toml_edit::TomlError| {
-                Report::new(ConfigError::Parse)
-                    .attach("failed to parse existing providers config")
-                    .attach(err.to_string())
-            })?;
+            existing
+                .parse()
+                .change_context(ConfigError::Parse)
+                .attach("failed to parse existing providers config")?;
 
         let mut patcher = jinn_common::toml_patch::DocumentPatcher::new();
         patcher.register_array_key(["aliases"], "name");
         patcher.register_array_key(["providers", "*", "model_info"], "id");
 
-        let new_value = toml::Value::try_from(config).map_err(|_e| {
-            Report::new(ConfigError::Parse).attach("failed to serialize ProvidersConfig")
-        })?;
+        let new_value = toml::Value::try_from(config)
+            .change_context(ConfigError::Parse)
+            .attach("failed to serialize ProvidersConfig")?;
         let new_table: toml::value::Table = match new_value {
             toml::Value::Table(t) => t,
             _ => {
@@ -330,11 +329,8 @@ where
         };
         patcher
             .apply(&new_table, doc.as_table_mut())
-            .map_err(|err| {
-                Report::new(ConfigError::Parse)
-                    .attach("failed to patch providers config document")
-                    .attach(err.to_string())
-            })?;
+            .change_context(ConfigError::Parse)
+            .attach("failed to patch providers config document")?;
 
         std::fs::write(path, doc.to_string())
             .change_context(ConfigError::Io)
