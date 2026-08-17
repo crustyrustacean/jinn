@@ -66,7 +66,6 @@ Entries are added or amended **only with human approval**.
 - (identity) **This repository** uses Fossil for version control (the app supports git/hg/jj/fossil via marker detection).
 - (identity) **jinn** is a terminal-based agent harness written in Rust (edition 2024).
 - (identity) Jinn's multimodal scope is bounded to image input (vision) and text output; it has no image-generation pipeline and no art/editing tooling.
-- (identity) Four personas ship by default: `coding-assistant`, `general`, `brainstorm`, and `learning-tutor`.
 - (identity) The TUI is the default entrypoint; the Discord and headless frontends are alternative invocation modes.
 - (identity) The application ships three frontends: a TUI (default), a Discord gateway, and a debug-only headless mode.
 - (keybinds) Bare letters in pickers route to the filter input rather than triggering actions: `a` in the project picker types into the filter, and `d` removes the highlighted entry (not a filter character).
