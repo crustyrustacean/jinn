@@ -13,5 +13,12 @@ jinn-theme = { path = "../../crates/jinn-theme", default-features = false }
 serde_json = "1"
 error-stack = { workspace = true }
 
-[lints]
-workspace = true
+# Plugins are guest payloads, not core code — they run outside the
+# strict workspace lint profile on purpose (expect/unwrap are fine in a
+# short-lived guest; stdout/stderr ARE the wire).
+[lints.clippy]
+print_stdout = "allow"
+print_stderr = "allow"
+expect_used = "allow"
+unwrap_used = "allow"
+panic = "allow"

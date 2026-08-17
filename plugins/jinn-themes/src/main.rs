@@ -40,10 +40,6 @@ fn main() {
 }
 
 /// Writes a diagnostic to stderr (host-side diagnostics) and returns.
-#[expect(
-    clippy::print_stderr,
-    reason = "guest stderr is the designed diagnostics channel (host-side StderrRing)"
-)]
 fn note_exit(message: &str) {
     eprintln!("jinn-themes: {message}");
 }
@@ -81,10 +77,6 @@ fn merge_dir(
 }
 
 /// Notes one theme's load failure on stderr (host-side diagnostics).
-#[expect(
-    clippy::print_stderr,
-    reason = "guest stderr is the designed diagnostics channel (host-side StderrRing)"
-)]
 fn note_theme_failure(dir: &Path, name: &str, report: &ThemeReport) {
     eprintln!(
         "jinn-themes: skipping theme {name} in {}: {report}",
@@ -93,10 +85,6 @@ fn note_theme_failure(dir: &Path, name: &str, report: &ThemeReport) {
 }
 
 /// Notes one directory's scan failure on stderr.
-#[expect(
-    clippy::print_stderr,
-    reason = "guest stderr is the designed diagnostics channel (host-side StderrRing)"
-)]
 fn note_scan_failure(dir: &Path, report: &ThemeReport) {
     eprintln!("jinn-themes: cannot scan {}: {report}", dir.display());
 }
