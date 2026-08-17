@@ -68,15 +68,16 @@ fn main() {{
     )
 }
 
-/// The `Cargo.toml` template.
+/// The `Cargo.toml` template. Dependencies point at the jinn repo (git):
+/// the SDK crates are not published to crates.io.
 const CARGO_TOML: &str = r#"[package]
 name = "{name}"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-jinn-plugin-api = "0.1"
-jinn-plugin-sdk = "0.1"
+jinn-plugin-api = { git = "https://github.com/jayson-lennon/jinn" }
+jinn-plugin-sdk = { git = "https://github.com/jayson-lennon/jinn" }
 serde_json = "1"
 
 [[bin]]
@@ -96,6 +97,7 @@ const INSTRUCTIONS: &str = r#"Next steps:
   jinn plugin install target/wasm32-wasip2/release/{name}.wasm
   # restart jinn — plugins activate at startup
 
+Dependencies resolve from the jinn git repo (first build clones it).
 Edit src/main.rs to push real data over the wire. See the jinn-plugin
 SKILL.md (installed to your skills dir) for the full authoring loop.
 "#;
@@ -189,6 +191,8 @@ mod tests {
         assert!(dir.join(".gitignore").is_file());
         let manifest = std::fs::read_to_string(dir.join("Cargo.toml")).expect("read");
         assert!(manifest.contains("name = \"probe\""));
+        // And dependencies resolve from the jinn git repo, not crates.io.
+        assert!(manifest.contains("git = \"https://github.com/jayson-lennon/jinn\""));
         let main = std::fs::read_to_string(dir.join("src/main.rs")).expect("read");
         assert!(main.contains("\"probe\""));
 
