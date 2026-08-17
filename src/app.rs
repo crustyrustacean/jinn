@@ -221,28 +221,6 @@ impl App {
                         }
                     }
                 }
-                PluginCommands::Sdk { version } => {
-                    use jinn_cli::plugin_sdk::{self, DEFAULT_SDK_VERSION, HttpSdkFetcher};
-
-                    let version = version
-                        .clone()
-                        .unwrap_or_else(|| DEFAULT_SDK_VERSION.to_owned());
-                    let paths = jinn_domain::AppPaths::default();
-                    let base = paths.data_dir().join("plugin-sdks");
-                    let fetcher = HttpSdkFetcher::new(self.handle());
-                    match plugin_sdk::acquire(&version, &base, &fetcher) {
-                        Ok(paths) => {
-                            println!("SDK {version} ready:");
-                            println!("  {}", paths.api.display());
-                            println!("  {}", paths.sdk.display());
-                        }
-                        Err(report) => {
-                            eprintln!("{report:?}");
-                            return Err(report.change_context(AppError));
-                        }
-                    }
-                    return Ok(());
-                }
                 PluginCommands::Install { wasm, name, grants } => {
                     use jinn_domain::AppPaths;
                     use jinn_domain::feat::plugin::install::{PluginInstallOutcome, install};

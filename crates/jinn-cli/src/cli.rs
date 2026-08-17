@@ -168,12 +168,6 @@ pub enum PluginCommands {
         name: String,
     },
 
-    /// Download the SDK crates for local plugin authoring.
-    Sdk {
-        /// The SDK version to fetch (defaults to the wire version).
-        version: Option<String>,
-    },
-
     /// Install a built `.wasm` payload as a jinn plugin.
     Install {
         /// Path to the built `.wasm` file.

@@ -6,6 +6,5 @@
 
 pub mod cli;
 pub mod plugin_new;
-pub mod plugin_sdk;
 
 pub use cli::Cli;
