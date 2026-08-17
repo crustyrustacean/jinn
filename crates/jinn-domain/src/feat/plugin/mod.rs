@@ -7,6 +7,7 @@
 
 pub mod grant_serde;
 pub mod install;
+pub mod manifest;
 
 use serde::{Deserialize, Serialize};
 
