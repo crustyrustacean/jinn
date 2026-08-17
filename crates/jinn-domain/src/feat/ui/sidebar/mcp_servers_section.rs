@@ -96,8 +96,8 @@ pub(crate) fn enabled_server_names(state: &AppState) -> Vec<String> {
         .preferences
         .mcp_server
         .iter()
-        .filter(|s| enabled.contains(&s.name))
-        .map(|s| s.name.clone())
+        .filter(|(name, _)| enabled.contains(name.as_str()))
+        .map(|(name, _)| name.clone())
         .collect()
 }
 
@@ -192,7 +192,7 @@ impl SidebarSection for McpServersSection {
                 .preferences
                 .mcp_server
                 .iter()
-                .filter(|s| enabled.contains(&s.name))
+                .filter(|(name, _)| enabled.contains(name.as_str()))
                 .collect();
 
             let mut lines = Vec::new();
@@ -206,9 +206,9 @@ impl SidebarSection for McpServersSection {
             // Blank separator.
             lines.push(Line::from(""));
 
-            for (index, server) in servers.iter().enumerate() {
+            for (index, (name, _server)) in servers.iter().enumerate() {
                 let is_selected = section_focused && cursor == Some(index);
-                let row_state = ServerRowState::derive(statuses.get(&server.name).copied());
+                let row_state = ServerRowState::derive(statuses.get(name.as_str()).copied());
 
                 let indicator = if is_selected {
                     Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
@@ -224,7 +224,7 @@ impl SidebarSection for McpServersSection {
 
                 lines.push(Line::from(vec![
                     indicator,
-                    Span::styled(format!(" {}", server.name), name_style),
+                    Span::styled(format!(" {name}"), name_style),
                     Span::raw(" "),
                     Span::styled(row_state.label(), Style::default().fg(row_state.color())),
                 ]));
@@ -246,7 +246,7 @@ impl SidebarSection for McpServersSection {
             .preferences
             .mcp_server
             .iter()
-            .filter(|s| enabled.contains(&s.name))
+            .filter(|(name, _)| enabled.contains(name.as_str()))
             .count();
         if count == 0 {
             return 0;
@@ -277,13 +277,15 @@ mod tests {
     };
     use jinn_testutil::setup_term;
 
-    fn server(name: &str) -> McpServerConfig {
-        McpServerConfig {
-            name: name.to_owned(),
-            command: Some("echo".to_owned()),
-            args: vec![],
-            ..Default::default()
-        }
+    fn server(name: &str) -> (String, McpServerConfig) {
+        (
+            name.to_owned(),
+            McpServerConfig {
+                command: Some("echo".to_owned()),
+                args: vec![],
+                ..Default::default()
+            },
+        )
     }
 
     fn render_rows(state: &AppState, width: u16, height: u16) -> Vec<String> {
@@ -309,9 +311,9 @@ mod tests {
             .collect()
     }
 
-    fn state_with_servers(servers: &[McpServerConfig]) -> AppState {
+    fn state_with_servers(servers: &[(String, McpServerConfig)]) -> AppState {
         let mut state = AppState::default();
-        state.frontend.preferences.mcp_server = servers.to_vec();
+        state.frontend.preferences.mcp_server = servers.iter().cloned().collect();
         state
     }
 

@@ -32,8 +32,8 @@ pub(crate) fn load_mcp_picker_entries(state: &mut AppState) {
         .preferences
         .mcp_server
         .iter()
-        .map(|server| {
-            let name = server.name.clone();
+        .map(|(name, server)| {
+            let name = name.clone();
             let description = server.description_for_picker();
             McpServerEntry {
                 name: name.clone(),

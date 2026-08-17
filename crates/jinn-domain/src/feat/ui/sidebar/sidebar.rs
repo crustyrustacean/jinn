@@ -210,7 +210,7 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
                 .preferences
                 .mcp_server
                 .iter()
-                .any(|s| enabled.contains(&s.name))
+                .any(|(name, _)| enabled.contains(name.as_str()))
         }
         SidebarSectionId::Sessions => !state.session.is_empty(),
     }

@@ -63,8 +63,8 @@ pub enum PluginActorError {
 /// The per-plugin actor.
 pub struct PluginActor {
     deps: ActorDeps,
-    /// Manifest entry for this plugin.
-    config: crate::feat::plugin::PluginConfig,
+    /// The plugin's name — the `[plugin.<name>]` table key.
+    name: String,
     /// The hosted guest (writer half; the reader is pumped by a task).
     host: Option<PluginHost>,
 }
@@ -74,6 +74,9 @@ pub struct PluginActor {
 pub struct PluginActorDeps {
     /// Common actor dependencies (services + bus).
     pub deps: ActorDeps,
+    /// The plugin's name — the `[plugin.<name>]` table key. Carried
+    /// separately because `PluginConfig` no longer has a `name` field.
+    pub name: String,
     /// The manifest entry this actor serves.
     pub config: crate::feat::plugin::PluginConfig,
     /// Resolved capability grants for the guest.
@@ -107,7 +110,7 @@ impl kameo::Actor for PluginActor {
         // the spawn immediately fails.
         args.deps
             .publish(PluginStatus {
-                name: args.config.name.clone(),
+                name: args.name.clone(),
                 phase: PluginPhase::Starting,
             })
             .await;
@@ -122,7 +125,7 @@ impl kameo::Actor for PluginActor {
             // and pump code under test cannot tell the difference.
             #[cfg(test)]
             let start = match args.fake_guest.lock().ok().and_then(|g| g.clone()) {
-                Some(script) => Ok(PluginHost::fake(&args.config.name, script)),
+                Some(script) => Ok(PluginHost::fake(&args.name, script)),
                 None => start_real_guest(&args),
             };
             #[cfg(not(test))]
@@ -132,12 +135,12 @@ impl kameo::Actor for PluginActor {
                 Ok(mut host) => match handshake(&mut host, &args).await {
                     Ok(()) => Ok(host),
                     Err(error) => {
-                        tracing::warn!(plugin = %args.config.name, error = ?error, "handshake failed");
+                        tracing::warn!(plugin = %args.name, error = ?error, "handshake failed");
                         Err(())
                     }
                 },
                 Err(error) => {
-                    tracing::warn!(plugin = %args.config.name, error = ?error, "guest failed to start");
+                    tracing::warn!(plugin = %args.name, error = ?error, "guest failed to start");
                     Err(())
                 }
             }
@@ -146,24 +149,24 @@ impl kameo::Actor for PluginActor {
         let Ok(host) = start_result else {
             args.deps
                 .publish(PluginStatus {
-                    name: args.config.name.clone(),
+                    name: args.name.clone(),
                     phase: PluginPhase::Dead,
                 })
                 .await;
             return Ok(Self {
                 deps: args.deps,
-                config: args.config,
+                name: args.name,
                 host: None,
             });
         };
 
         args.deps
             .publish(PluginStatus {
-                name: args.config.name.clone(),
+                name: args.name.clone(),
                 phase: PluginPhase::Running,
             })
             .await;
-        tracing::info!(plugin = %args.config.name, "plugin actor: handshake complete");
+        tracing::info!(plugin = %args.name, "plugin actor: handshake complete");
 
         // Split the reader off and pump it: every decoded envelope goes to
         // the coordinator's channel. The task ends at guest EOF, which
@@ -172,14 +175,14 @@ impl kameo::Actor for PluginActor {
         let mut host = host;
         spawn_read_pump(
             host.split(),
-            args.config.name.clone(),
+            args.name.clone(),
             args.inbound_tx.clone(),
             actor_ref.downgrade(),
         );
 
         Ok(Self {
             deps: args.deps,
-            config: args.config,
+            name: args.name,
             host: Some(host),
         })
     }
@@ -195,7 +198,7 @@ impl kameo::Actor for PluginActor {
         // applied).
         self.deps
             .publish(PluginStatus {
-                name: self.config.name.clone(),
+                name: self.name.clone(),
                 phase: PluginPhase::Dead,
             })
             .await;
@@ -281,16 +284,12 @@ struct PublishPhase(PluginPhase);
 
 /// Starts the production wasm guest through the shared engine.
 fn start_real_guest(args: &PluginActorDeps) -> Result<PluginHost, PluginActorError> {
-    PluginHost::start(
-        &args.engine,
-        &args.config.name,
-        &args.wasm_path,
-        &args.grants,
+    PluginHost::start(&args.engine, &args.name, &args.wasm_path, &args.grants).map_err(
+        |report: Report<jinn_plugin::PluginHostError>| {
+            tracing::warn!(plugin = %args.name, "{report:#}");
+            PluginActorError::Spawn
+        },
     )
-    .map_err(|report: Report<jinn_plugin::PluginHostError>| {
-        tracing::warn!(plugin = %args.config.name, "{report:#}");
-        PluginActorError::Spawn
-    })
 }
 
 /// Completes the v1 handshake: waits (bounded) for the guest `Hello`,
@@ -301,17 +300,17 @@ async fn handshake(host: &mut PluginHost, args: &PluginActorDeps) -> Result<(), 
         Ok(Ok(Some(env))) => env,
         Ok(Ok(None)) => {
             tracing::warn!(
-                plugin = %args.config.name,
+                plugin = %args.name,
                 "plugin closed stdout before Hello"
             );
             return Err(PluginActorError::Handshake);
         }
         Ok(Err(report)) => {
-            tracing::warn!(plugin = %args.config.name, "{report:#}");
+            tracing::warn!(plugin = %args.name, "{report:#}");
             return Err(PluginActorError::Handshake);
         }
         Err(_) => {
-            tracing::warn!(plugin = %args.config.name, "plugin handshake timed out");
+            tracing::warn!(plugin = %args.name, "plugin handshake timed out");
             return Err(PluginActorError::Handshake);
         }
     };
@@ -320,14 +319,14 @@ async fn handshake(host: &mut PluginHost, args: &PluginActorDeps) -> Result<(), 
         envelope.msg
     else {
         tracing::warn!(
-            plugin = %args.config.name,
+            plugin = %args.name,
             "plugin sent non-Hello first message"
         );
         return Err(PluginActorError::Handshake);
     };
     if hello.protocol_version != PROTOCOL_VERSION {
         tracing::warn!(
-            plugin = %args.config.name,
+            plugin = %args.name,
             version = hello.protocol_version,
             "plugin protocol version mismatch"
         );
@@ -337,7 +336,7 @@ async fn handshake(host: &mut PluginHost, args: &PluginActorDeps) -> Result<(), 
     let welcome = Envelope::for_host(
         HostToPlugin::Welcome(Welcome {
             protocol_version: PROTOCOL_VERSION,
-            plugin_id: args.config.name.clone(),
+            plugin_id: args.name.clone(),
             read_dirs: args
                 .grants
                 .read_dirs
@@ -357,7 +356,7 @@ async fn handshake(host: &mut PluginHost, args: &PluginActorDeps) -> Result<(), 
         now_ms(),
     );
     host.write(&welcome).await.map_err(|report| {
-        tracing::warn!(plugin = %args.config.name, "{report:#}");
+        tracing::warn!(plugin = %args.name, "{report:#}");
         PluginActorError::Write
     })?;
     Ok(())
@@ -400,13 +399,13 @@ impl Message<PublishPhase> for PluginActor {
     ) -> Self::Reply {
         let PublishPhase(phase) = msg;
         tracing::warn!(
-            plugin = %self.config.name,
+            plugin = %self.name,
             phase = ?phase,
             "plugin actor: pump phase change"
         );
         self.deps
             .publish(PluginStatus {
-                name: self.config.name.clone(),
+                name: self.name.clone(),
                 phase,
             })
             .await;

@@ -266,6 +266,13 @@ impl App {
                             .unwrap_or_default()
                             .to_owned()
                     });
+                    // A plugin installed with no grants sees no dirs beyond its
+                    // scratch space — almost always an oversight worth naming.
+                    if grants.is_empty() {
+                        eprintln!(
+                            "note: {name} installed with no grants — it cannot read any\ndirectory except its own scratch dir. If it should see files, reinstall\nwith --grant '<config_dir>/…' (repeatable, :w for writable)."
+                        );
+                    }
                     // `--grant path` (read-only) or `--grant path:w` (writable);
                     // `<config_dir>`/`<data_dir>` variables pass through for the
                     // coordinator to expand at spawn.

@@ -5,29 +5,28 @@
 //! capability grants the plugin receives. The coordinator actor spawns one
 //! in-process guest per entry at app start; see `feat/plugin_coordinator_actor`.
 
+pub mod grant_serde;
 pub mod install;
 
 use serde::{Deserialize, Serialize};
 
 /// One configured plugin.
 ///
-/// Defined in `jinn.toml` under `[[plugin]]`. The `name` field is the array
-/// key the `DocumentPatcher` matches entries by; it also selects the plugin's
-/// default scratch dir (`<data_dir>/plugins/<name>/`) and namespaces its
-/// contributed state.
+/// Declared in `jinn.toml` under `[plugin.<name>]` — the table name IS the
+/// plugin's identity (contribution namespace + default scratch-dir
+/// selector); there is no `name` field to drift out of sync with the key.
+/// Grants are path templates with an optional `:w` suffix (`<config_dir>/themes:w`);
+/// every plugin additionally receives its own writable scratch dir without
+/// listing it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PluginConfig {
-    /// Unique plugin name. Doubles as the contribution namespace and the
-    /// default scratch-dir selector.
-    pub name: String,
     /// Path to the plugin's `.wasm` component. Relative paths resolve
     /// against jinn's plugin directory (`<data_dir>/plugins/`).
     pub wasm: String,
     /// Directory paths the plugin may access, as templates (e.g.
-    /// `<config_dir>/themes`). See [`PluginPathGrant`]. Every plugin
-    /// additionally receives its own writable scratch dir without listing
-    /// it here.
-    #[serde(default)]
+    /// `<config_dir>/themes`, `<data_dir>/notes:w`). `:w` marks a grant
+    /// writable. See [`PluginPathGrant`].
+    #[serde(default, with = "crate::feat::plugin::grant_serde")]
     pub grants: Vec<crate::feat::plugin::PluginPathGrant>,
     /// Whether the plugin may make network requests via `wasi:http`.
     #[serde(default)]

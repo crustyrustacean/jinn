@@ -19,7 +19,8 @@ check:
 # Build the in-repo wasm plugins from source (needs the wasm32-wasip2
 # target). Plugins are delivered as source and compiled per machine — then
 # installed like any user plugin:
-#   jinn plugin install target/wasm32-wasip2/release/<crate>.wasm
+#   jinn plugin install target/wasm32-wasip2/release/<crate>.wasm \
+#     --grant '<config_dir>/themes'   # themes plugin scans granted dirs
 # Equivalent to `jinn plugin build plugins/<dir>` per plugin.
 build-plugins:
     cargo build -p jinn-plugin-themes --target wasm32-wasip2 --release

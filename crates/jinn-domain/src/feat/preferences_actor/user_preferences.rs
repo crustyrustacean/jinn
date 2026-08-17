@@ -137,19 +137,21 @@ pub struct UserPreferences {
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
 
-    /// Configured MCP servers (Model Context Protocol). Each entry declares
-    /// a server jinn connects to (over stdio, local_http, or remote_http — see
-    /// [`TransportKind`](crate::feat::mcp::TransportKind)) when enabled per-session.
-    /// See [`McpServerConfig`].
+    /// Configured MCP servers, keyed by name — `[mcp_server.<name>]` in
+    /// `jinn.toml`. Each entry declares a server jinn connects to (over stdio,
+    /// local_http, or remote_http — see
+    /// [`TransportKind`](crate::feat::mcp::TransportKind)) when enabled
+    /// per-session. See [`McpServerConfig`].
     #[serde(default)]
-    pub mcp_server: Vec<crate::feat::mcp::McpServerConfig>,
+    pub mcp_server: std::collections::BTreeMap<String, crate::feat::mcp::McpServerConfig>,
 
-    /// Configured plugins. Each entry declares a `.wasm` component plus
-    /// its capability grants; the plugin coordinator hosts one in-process
-    /// WASM guest per enabled entry at app start. See
+    /// Configured plugins, keyed by name — `[plugin.<name>]` in `jinn.toml`.
+    /// Each entry declares a `.wasm` component plus its capability grants;
+    /// the plugin coordinator hosts one in-process WASM guest per enabled
+    /// entry at app start. See
     /// [`PluginConfig`](crate::feat::plugin::PluginConfig).
     #[serde(default)]
-    pub plugin: Vec<crate::feat::plugin::PluginConfig>,
+    pub plugin: std::collections::BTreeMap<String, crate::feat::plugin::PluginConfig>,
 
     /// The local IP address HTTP-mode MCP servers bind to. Used as the `<ip>`
     /// replacement token in a server's `args`, and as the bind address for
@@ -255,8 +257,8 @@ impl Default for UserPreferences {
                 },
             ],
             projects: vec![],
-            mcp_server: vec![],
-            plugin: vec![],
+            mcp_server: std::collections::BTreeMap::new(),
+            plugin: std::collections::BTreeMap::new(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -468,8 +470,9 @@ where
         patcher.register_array_key(["session_lifecycle"], "name");
         patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
         patcher.register_array_key(["project"], "path");
-        patcher.register_array_key(["mcp_server"], "name");
-        patcher.register_array_key(["plugin"], "name");
+        // `plugin` and `mcp_server` are map-keyed tables (`[plugin.<name>]`),
+        // not arrays — the table name is the identity, no key registration
+        // needed.
 
         patcher
             .apply(new_table, doc.as_table_mut())
@@ -681,8 +684,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_server: vec![],
-            plugin: vec![],
+            mcp_server: std::collections::BTreeMap::new(),
+            plugin: std::collections::BTreeMap::new(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -769,8 +772,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_server: vec![],
-            plugin: vec![],
+            mcp_server: std::collections::BTreeMap::new(),
+            plugin: std::collections::BTreeMap::new(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -808,8 +811,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_server: vec![],
-            plugin: vec![],
+            mcp_server: std::collections::BTreeMap::new(),
+            plugin: std::collections::BTreeMap::new(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1118,8 +1121,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_server: vec![],
-            plugin: vec![],
+            mcp_server: std::collections::BTreeMap::new(),
+            plugin: std::collections::BTreeMap::new(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1223,7 +1226,6 @@ mod tests {
     fn mcp_server_config_round_trips_through_toml() {
         // Given a server config with command + args.
         let server = crate::feat::mcp::McpServerConfig {
-            name: "excalimate".to_owned(),
             command: Some("npx".to_owned()),
             args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
             ..Default::default()
@@ -1234,29 +1236,34 @@ mod tests {
         let back: crate::feat::mcp::McpServerConfig = toml::from_str(&s).expect("deserialize");
 
         // Then the fields are preserved.
-        assert_eq!(back.name, "excalimate");
         assert_eq!(back.command.as_deref(), Some("npx"));
         assert_eq!(back.args, vec!["@excalimate/mcp-server", "--stdio"]);
     }
 
     #[rstest::rstest]
-    fn mcp_server_array_round_trips_through_preferences() {
+    fn mcp_server_map_round_trips_through_preferences() {
         // Given preferences with two configured servers.
         let prefs = UserPreferences {
-            mcp_server: vec![
-                crate::feat::mcp::McpServerConfig {
-                    name: "excalimate".to_owned(),
-                    command: Some("npx".to_owned()),
-                    args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
-                    ..Default::default()
-                },
-                crate::feat::mcp::McpServerConfig {
-                    name: "filesystem".to_owned(),
-                    command: Some("node".to_owned()),
-                    args: vec!["fs-server.js".to_owned()],
-                    ..Default::default()
-                },
-            ],
+            mcp_server: [
+                (
+                    "excalimate".to_owned(),
+                    crate::feat::mcp::McpServerConfig {
+                        command: Some("npx".to_owned()),
+                        args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "filesystem".to_owned(),
+                    crate::feat::mcp::McpServerConfig {
+                        command: Some("node".to_owned()),
+                        args: vec!["fs-server.js".to_owned()],
+                        ..Default::default()
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
             ..UserPreferences::default()
         };
 
@@ -1268,8 +1275,14 @@ mod tests {
 
         // Then both servers survive the round-trip.
         assert_eq!(reloaded.mcp_server.len(), 2);
-        assert_eq!(reloaded.mcp_server[0].name, "excalimate");
-        assert_eq!(reloaded.mcp_server[1].name, "filesystem");
+        assert_eq!(
+            reloaded.mcp_server["excalimate"].command.as_deref(),
+            Some("npx")
+        );
+        assert_eq!(
+            reloaded.mcp_server["filesystem"].command.as_deref(),
+            Some("node")
+        );
     }
 
     #[rstest::rstest]
@@ -1280,9 +1293,8 @@ mod tests {
         std::fs::write(
             &path,
             r#"# top-level comment
-[[mcp_server]]
+[mcp_server.excalimate]
 # this comment must survive
-name = "excalimate"
 command = "npx"
 args = ["@excalimate/mcp-server", "--stdio"]
 "#,
@@ -1291,12 +1303,16 @@ args = ["@excalimate/mcp-server", "--stdio"]
 
         // When saving the same config back.
         let prefs = UserPreferences {
-            mcp_server: vec![crate::feat::mcp::McpServerConfig {
-                name: "excalimate".to_owned(),
-                command: Some("npx".to_owned()),
-                args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
-                ..Default::default()
-            }],
+            mcp_server: [(
+                "excalimate".to_owned(),
+                crate::feat::mcp::McpServerConfig {
+                    command: Some("npx".to_owned()),
+                    args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+                    ..Default::default()
+                },
+            )]
+            .into_iter()
+            .collect(),
             ..UserPreferences::default()
         };
         save_preferences_to(&prefs, &path).expect("save");
@@ -1327,8 +1343,7 @@ args = ["@excalimate/mcp-server", "--stdio"]
 enabled = true
 min_tail_entries = 10
 
-[[plugin]]
-name = "p"
+[plugin.p]
 wasm = "p.wasm"
 enabled = true
 http = false

@@ -2592,6 +2592,7 @@ version = "0.106.0"
 dependencies = [
  "dirs",
  "error-stack",
+ "libc",
  "rstest",
  "tempfile",
  "toml 0.8.23",
@@ -2696,6 +2697,7 @@ version = "0.106.0"
 dependencies = [
  "axum",
  "error-stack",
+ "jinn-common",
  "jinn-provider",
  "reqwest 0.13.3",
  "rmcp",

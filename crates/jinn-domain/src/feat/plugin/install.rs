@@ -100,7 +100,6 @@ pub fn install(
         ))?;
 
     let entry = PluginConfig {
-        name: name.to_owned(),
         wasm: format!("{name}.wasm"),
         grants,
         http: false,
@@ -111,11 +110,8 @@ pub fn install(
     let mut prefs = storage
         .reload()
         .change_context(PluginInstallError::WriteConfig)?;
-    let existed = prefs.plugin.iter().any(|p| p.name == name);
-    if existed {
-        prefs.plugin.retain(|p| p.name != name);
-    }
-    prefs.plugin.push(entry);
+    let existed = prefs.plugin.remove(name).is_some();
+    prefs.plugin.insert(name.to_owned(), entry);
     storage
         .save(&prefs)
         .change_context(PluginInstallError::WriteConfig)?;
@@ -171,8 +167,8 @@ mod tests {
         assert!(
             prefs
                 .plugin
-                .iter()
-                .any(|p| p.name == "my-plugin" && p.wasm == "my-plugin.wasm")
+                .get("my-plugin")
+                .is_some_and(|p| p.wasm == "my-plugin.wasm")
         );
         assert!(matches!(
             outcome,
@@ -202,14 +198,7 @@ mod tests {
 
         // Then exactly one entry exists and Updated was returned.
         let prefs = storage.reload().expect("reload");
-        assert_eq!(
-            prefs
-                .plugin
-                .iter()
-                .filter(|p| p.name == "my-plugin")
-                .count(),
-            1
-        );
+        assert_eq!(prefs.plugin.keys().filter(|n| *n == "my-plugin").count(), 1);
         assert!(matches!(outcome, PluginInstallOutcome::Updated { .. }));
 
         let _ = std::fs::remove_dir_all(&base);
