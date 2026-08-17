@@ -166,6 +166,12 @@ pub enum PluginCommands {
     New {
         /// The plugin name (crate name; also the `[[plugin]]` entry name).
         name: String,
+
+        /// SDK source: a jinn checkout path (absolute or relative) for
+        /// local development, a git URL (optionally `@rev`-pinned), or
+        /// omitted for the default jinn repo.
+        #[arg(long = "sdk", value_name = "PATH|GIT_URL[@REV]")]
+        sdk: Option<String>,
     },
 
     /// Build a plugin crate to a jinn-installable `.wasm` payload.
@@ -173,7 +179,6 @@ pub enum PluginCommands {
         /// Path to the plugin crate directory (default: current dir).
         dir: Option<String>,
     },
-
     /// Install a built `.wasm` payload as a jinn plugin.
     Install {
         /// Path to the built `.wasm` file.

@@ -209,12 +209,19 @@ impl App {
             use jinn_cli::plugin_build;
             use jinn_cli::plugin_new;
             match subcommand {
-                PluginCommands::New { name } => {
+                PluginCommands::New { name, sdk } => {
                     let cwd = std::env::current_dir()
                         .change_context(AppError)
                         .attach("resolving current directory")?;
-                    match plugin_new::scaffold(&cwd, name) {
-                        Ok(dir) => plugin_new::report_success(&dir, name),
+                    let source = match sdk.as_deref() {
+                        None => plugin_new::SdkSource::DefaultGit,
+                        Some(value) => plugin_new::parse_sdk(value).map_err(|report| {
+                            eprintln!("{report:?}");
+                            report.change_context(AppError)
+                        })?,
+                    };
+                    match plugin_new::scaffold(&cwd, name, &source) {
+                        Ok(dir) => plugin_new::report_success(&dir, name, &source),
                         Err(report) => {
                             eprintln!("{report:?}");
                             return Err(report.change_context(AppError));
