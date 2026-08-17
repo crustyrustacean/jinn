@@ -724,6 +724,72 @@ mod tests {
         assert!(result.content.contains("failed to parse arguments"));
     }
 
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_child_has_no_controlling_tty() {
+        // Given a bash tool call that tries to open the controlling tty.
+        let call = ToolCall {
+            id: "call_tty".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({
+                "command": "exec 3>/dev/tty"
+            })
+            .to_string(),
+        };
+
+        // When executing the bash tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the child failed to open /dev/tty: it has no controlling
+        // terminal, so tty-writers cannot print over the TUI.
+        assert!(
+            !result.success,
+            "expected /dev/tty open to fail in an isolated bash child"
+        );
+    }
+
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_child_runs_in_new_session() {
+        // Given a bash tool call reporting its session id.
+        let call = ToolCall {
+            id: "call_sid".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({
+                "command": "ps -o sid= -p $$"
+            })
+            .to_string(),
+        };
+
+        // When executing the bash tool and reading the child's reported sid.
+        let result = execute(call, test_ctx()).await;
+        let child_sid: i64 = result
+            .content
+            .trim()
+            .parse()
+            .expect("ps should print a numeric sid");
+
+        // When reading the test process's session id via the same tool.
+        let own_sid: i64 = {
+            let out = std::process::Command::new("ps")
+                .args(["-o", "sid=", "-p", &std::process::id().to_string()])
+                .output()
+                .expect("ps should run");
+            String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .parse()
+                .expect("ps should print a numeric sid for the test process")
+        };
+
+        // Then the bash child runs in a different session from jinn.
+        assert_ne!(
+            child_sid, own_sid,
+            "bash-tool child must not share jinn's session"
+        );
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_no_timeout_when_default_is_none_and_no_per_call() {

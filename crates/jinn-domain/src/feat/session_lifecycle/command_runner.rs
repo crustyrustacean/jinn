@@ -144,8 +144,8 @@ pub async fn run_teardown_command(
 /// reader task.
 ///
 /// Carries:
-/// - `pid`: the process-group leader's id. On Unix the child is spawned with
-///   `process_group(0)`, so its pid _is_ the process-group id. The cancel
+/// - `pid`: the process-group leader's id. On Unix the child is spawned in
+///   its own session (setsid), so its pid _is_ the process-group id. The cancel
 ///   path signals the whole group via `kill_process_group_by_pid(pid)`, which
 ///   reaches the leader _and_ any backgrounded descendants (grandchildren)
 ///   in a single syscall — without touching the reader task's owned `Child`.
@@ -230,8 +230,8 @@ pub fn spawn_setup_command(command: &str, shell: &str, cwd: &std::path::Path) ->
     };
 
     // Capture the process-group id BEFORE moving the child into the reader task.
-    // On Unix the child was spawned with `process_group(0)`, so its pid is also
-    // its process-group id. The cancel path signals the whole group via
+    // On Unix the child was spawned in its own session via setsid, so its
+    // pid is also its process-group id. The cancel path signals the whole
     // `kill_process_group_by_pid(pid)`, which needs no Child handle.
     let pid = child.id().expect("child has a pid immediately after spawn");
 

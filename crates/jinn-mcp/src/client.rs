@@ -34,7 +34,6 @@ use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::transport::child_process::TokioChildProcess;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use tokio::io::AsyncBufReadExt;
-use tokio::process::Command;
 use wherror::Error;
 
 use crate::transport::{expand_tokens, parse_host, pick_free_port};
