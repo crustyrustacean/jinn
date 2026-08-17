@@ -1,6 +1,6 @@
 ---
 name: jinn-plugin
-description: Author, build, and install jinn plugins — WASM components hosted in-process by jinn. Use when the user wants to create a plugin, scaffold a plugin project, build a plugin to .wasm, install or remove a plugin (`jinn plugin add`/`build`/`install`), or write plugin code against the jinn plugin wire contract (handshake, event subscriptions, typed contributions).
+description: Author, build, and install jinn plugins — WASM components hosted in-process by jinn. Use when the user wants to create a new plugin, scaffold a plugin project, build a plugin to .wasm, install or remove a plugin (`jinn plugin add`/`build`/`install`), or write plugin code against the jinn plugin wire contract (handshake, event subscriptions, typed contributions).
 ---
 
 # jinn Plugin Authoring
@@ -33,9 +33,6 @@ declared grants. The separate primitives remain available:
 - `jinn plugin install <wasm>` — copies the payload, writes the config entry,
   applies embedded manifest grants
 
-jinn's own plugins (e.g. `plugins/theme-loader/`) are built and installed the
-same way — from source, per machine: `jinn plugin add plugins/theme-loader`.
-
 **Removing a plugin:** delete its `[plugin.<name>]` table from `jinn.toml`
 (or set `enabled = false`) and restart. There is no uninstall command yet.
 
@@ -44,10 +41,13 @@ same way — from source, per machine: `jinn plugin add plugins/theme-loader`.
 A plugin declares its needs in its `Cargo.toml`:
 
 ```toml
-[package.metadata.jinn]
-name = "optional-name-override"    # defaults to the crate name
-grants = ["<config_dir>/themes", "<data_dir>/notes:w"]
-http = false                        # true enables wasi:http
+[package.metadata.jinn]           # required — marks the crate as a jinn plugin
+name = "my-plugin"                # optional install name; defaults to the crate name
+grants = [                        # filesystem directories the guest may access
+  "<config_dir>/my-plugin",       # read-only preopen of a user config area
+  "<plugin_data_dir>:w",          # writable scratch dir, persistent across runs
+]
+http = false                      # true enables outbound wasi:http requests
 ```
 
 `plugin build` hard-errors without the section (a plain Rust crate is not a
@@ -63,10 +63,10 @@ with no embedded manifest (rebuild it with a current jinn).
 ## Wire contract
 
 Every line is `{"v":1,"seq":N,"ts":...,"msg":{...}}` (serde-tagged `"type"`).
-v1 message set:
+Message set:
 
-- Guest → host: `Hello` (protocol version + event subscriptions); contribution
-  messages — v1 ships `SetThemeEntries` as the first contribution type
+- Guest → host: `Hello` (protocol version + event subscriptions), plus
+  contribution messages — one typed struct per kind of data a plugin provides
 - Host → guest: `Welcome` (plugin id, granted dirs, config)
 - Unknown variants deserialize to `Unknown` on both ends — old jinn + new
   plugin (or vice versa) never crashes, messages are ignored
@@ -88,13 +88,16 @@ or repurpose existing ones.
 
 ## Capabilities (grants)
 
-Declared in the plugin's own manifest (or overridden in `jinn.toml`):
+Overridable in `jinn.toml` after install:
 
 ```toml
-[plugin.my-plugin]
-wasm = "my-plugin.wasm"   # relative to <data_dir>/plugins/
-http = false              # wasi:http network access
-grants = ["<config_dir>/themes"]   # read-only preopen; append :w for writable
+[plugin.my-plugin]                # table name IS the plugin identity
+wasm = "my-plugin.wasm"           # payload location; relative to <data_dir>/plugins/
+http = true                       # wasi:http network access
+enabled = true                    # false skips spawning without uninstalling
+grants = [                        # replaces the manifest-declared grant list
+  "<config_dir>/my-plugin",       # read-only preopen; append :w for writable
+]
 ```
 
 - `grants` = filesystem preopens; no grant means no filesystem access at all
@@ -119,12 +122,11 @@ Guest code depends on two crates, both resolved from the jinn repo via git
 
 ```toml
 [dependencies]
-jinn-plugin-api = { git = "https://github.com/jayson-lennon/jinn" }
-jinn-plugin-sdk = { git = "https://github.com/jayson-lennon/jinn" }
+jinn-plugin-api = { git = "..." }   # typed wire types — Envelope, Hello, Welcome, contributions
+jinn-plugin-sdk = { git = "..." }   # handshake + I/O helpers built on the api crate
 ```
 
-`jinn plugin new` scaffolds these for you. The SDK gives typed wire types
-(`Envelope`, `Hello`, `Welcome`, and the current contribution types) and
+`jinn plugin new` scaffolds these for you. The SDK gives typed wire types and
 helpers for the handshake — always prefer it over hand-rolling JSON.
 
 ## Gotchas
