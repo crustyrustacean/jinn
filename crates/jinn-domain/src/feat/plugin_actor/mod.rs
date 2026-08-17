@@ -209,8 +209,15 @@ impl BusPublish for PluginActor {
     }
 }
 
-/// Pumps the child's stdout until EOF, forwarding every decoded envelope to
+/// Pumps the guest's stdout until EOF, forwarding every decoded envelope to
 /// the coordinator's channel.
+///
+/// Backpressure is drop-newest: when the inbound channel is full (the
+/// coordinator is slow), the incoming message is dropped rather than
+/// blocking the pump. The first drop of an episode publishes
+/// [`PluginPhase::Unresponsive`]; the first successful send afterwards
+/// publishes [`PluginPhase::Running`] again. The pump never blocks — a
+/// flooding guest degrades the plugin's own status, never the host.
 fn spawn_read_pump(
     mut reader: PluginReader,
     name: String,
@@ -218,21 +225,33 @@ fn spawn_read_pump(
     actor_ref: kameo::actor::WeakActorRef<PluginActor>,
 ) {
     tokio::spawn(async move {
+        let mut unresponsive = false;
         while let Ok(Some(envelope)) = reader.read_next().await {
-            if inbound_tx
-                .send(PluginInbound {
-                    name: name.clone(),
-                    event: match envelope.msg {
-                        jinn_plugin_api::PluginToHostOrHostToPlugin::Plugin(event) => event,
-                        jinn_plugin_api::PluginToHostOrHostToPlugin::Host(_)
-                        | jinn_plugin_api::PluginToHostOrHostToPlugin::Unknown => continue,
-                    },
-                })
-                .await
-                .is_err()
-            {
-                // Coordinator gone: stop pumping.
-                break;
+            let event = match envelope.msg {
+                jinn_plugin_api::PluginToHostOrHostToPlugin::Plugin(event) => event,
+                jinn_plugin_api::PluginToHostOrHostToPlugin::Host(_)
+                | jinn_plugin_api::PluginToHostOrHostToPlugin::Unknown => continue,
+            };
+            match inbound_tx.try_send(PluginInbound {
+                name: name.clone(),
+                event,
+            }) {
+                Ok(()) => {
+                    if unresponsive {
+                        unresponsive = false;
+                        request_phase_publish(&actor_ref, PluginPhase::Running).await;
+                    }
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    if !unresponsive {
+                        unresponsive = true;
+                        request_phase_publish(&actor_ref, PluginPhase::Unresponsive).await;
+                    }
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    // Coordinator gone: stop pumping.
+                    break;
+                }
             }
         }
         tracing::info!(plugin = %name, "plugin read pump ended");
@@ -242,6 +261,23 @@ fn spawn_read_pump(
         }
     });
 }
+
+/// Asks the actor to publish a phase change on the bus. The pump outlives
+/// any borrow of the actor's bus handle, so it forwards through the actor
+/// ref; if the actor is already gone the status is moot and silently
+/// dropped.
+async fn request_phase_publish(
+    actor_ref: &kameo::actor::WeakActorRef<PluginActor>,
+    phase: PluginPhase,
+) {
+    if let Some(strong) = actor_ref.upgrade() {
+        let _ = strong.tell(PublishPhase(phase)).await;
+    }
+}
+
+/// Pump → actor request: publish this phase on the bus.
+#[derive(Debug)]
+struct PublishPhase(PluginPhase);
 
 /// Starts the production wasm guest through the shared engine.
 fn start_real_guest(args: &PluginActorDeps) -> Result<PluginHost, PluginActorError> {
@@ -351,5 +387,28 @@ impl Message<ShutdownPlugin> for PluginActor {
             // Host drop aborts whatever is left; the actor then dies (no
             // guest to serve), publishing Dead in on_stop.
         }
+    }
+}
+
+impl Message<PublishPhase> for PluginActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: PublishPhase,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let PublishPhase(phase) = msg;
+        tracing::warn!(
+            plugin = %self.config.name,
+            phase = ?phase,
+            "plugin actor: pump phase change"
+        );
+        self.deps
+            .publish(PluginStatus {
+                name: self.config.name.clone(),
+                phase,
+            })
+            .await;
     }
 }
