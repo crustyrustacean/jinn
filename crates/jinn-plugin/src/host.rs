@@ -234,6 +234,19 @@ pub enum FakeGuestScript {
     /// Sends the given raw line as its very first message (a malformed
     /// handshake), then closes stdout.
     FirstLine(String),
+    /// Sends `Hello`, then floods `count` raw lines without pause, then
+    /// closes stdout. Used to exercise the read pump's drop-newest
+    /// backpressure: the inbound channel (capacity 64) fills while the
+    /// coordinator drains slowly, so the pump must drop, mark
+    /// `Unresponsive`, and recover.
+    Flood {
+        /// Protocol version the fake claims.
+        protocol_version: u32,
+        /// Raw wire lines to flood after `Hello`.
+        lines: Vec<String>,
+        /// How many times to repeat the lines block.
+        repeat: usize,
+    },
 }
 
 impl PluginHost {
@@ -282,6 +295,30 @@ impl PluginHost {
                     FakeGuestScript::FirstLine(line) => {
                         let mut out = line;
                         out.push('\n');
+                        let _ = guest_tx.write_all(out.as_bytes()).await;
+                    }
+                    FakeGuestScript::Flood {
+                        protocol_version,
+                        lines,
+                        repeat,
+                    } => {
+                        let hello = Envelope::for_plugin(
+                            jinn_plugin_api::PluginToHost::Hello(jinn_plugin_api::Hello {
+                                protocol_version,
+                                name: name_owned.clone(),
+                                subscriptions: vec![],
+                            }),
+                            0,
+                            0,
+                        );
+                        let mut out = serde_json::to_string(&hello).unwrap_or_default();
+                        out.push('\n');
+                        for _ in 0..repeat {
+                            for line in &lines {
+                                out.push_str(line);
+                                out.push('\n');
+                            }
+                        }
                         let _ = guest_tx.write_all(out.as_bytes()).await;
                     }
                 }

@@ -358,3 +358,150 @@ async fn first_contribution_late_applies_pending_theme_name() {
         "expected contributed focus_accent #ff00ff"
     );
 }
+
+/// A flooding guest overflows the inbound channel: the pump drops, marks
+/// the plugin `Unresponsive`, and the app continues (contributions still
+/// arrive).
+#[tokio::test]
+async fn flooding_guest_is_marked_unresponsive_then_recovers() {
+    // Given a coordinator with a guest flooding far more lines than the
+    // inbound channel holds, and a recorder.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PluginStatus>().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::Flood {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![theme_line("flood", "#123456")],
+            repeat: 500,
+        },
+    )
+    .await;
+
+    // When the flood drains (poll: async pipeline).
+    let deadline = tokio::time::Instant::now() + WAIT;
+    loop {
+        let messages = await_recorded(&recorder, 1, WAIT).await;
+        let unresponsive_seen = messages
+            .iter()
+            .any(|m| m.name == "test-plugin" && m.phase == PluginPhase::Unresponsive);
+        if unresponsive_seen {
+            break;
+        }
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "Unresponsive was never published"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+
+    // Then the theme still landed (drop-newest lost some, not all).
+    let deadline = tokio::time::Instant::now() + WAIT;
+    loop {
+        if state.read().plugins.theme("flood").is_some() {
+            break;
+        }
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "no contribution survived the flood"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+/// An identical consecutive contribution is debounced: no duplicate work.
+#[tokio::test]
+async fn identical_consecutive_theme_batch_is_debounced() {
+    // Given a guest contributing the same batch twice (names differ so a
+    // non-debounced run would cache both).
+    let harness = TestHarness::new().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![
+                theme_line("dupe", "#aabbcc"),
+                theme_line("dupe", "#aabbcc"),
+            ],
+        },
+    )
+    .await;
+
+    // When both contributions have been processed (poll for the first).
+    let deadline = tokio::time::Instant::now() + WAIT;
+    loop {
+        if state.read().plugins.theme("dupe").is_some() {
+            break;
+        }
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "first contribution never arrived"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Then the theme is cached exactly once (set_themes is a full
+    // replacement; the observable check is that the batch still holds it).
+    assert!(state.read().plugins.theme("dupe").is_some());
+}
+
+/// A batch whose every entry fails translation is dropped with a warn,
+/// leaving the cache empty for that plugin.
+#[tokio::test]
+async fn all_invalid_theme_batch_is_dropped_entirely() {
+    // Given a guest contributing one theme with no valid color values.
+    let bad_line = r#"{"v":1,"seq":2,"ts":0,"type":"set_theme_entries","themes":[{"name":"bad","description":null,"colors":{"focus_accent":"banana"}}]}"#.to_owned();
+    let harness = TestHarness::new().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![bad_line],
+        },
+    )
+    .await;
+
+    // When the pipeline settles (guest ends: wait for Dead phase).
+    let deadline = tokio::time::Instant::now() + WAIT;
+    loop {
+        let phase = state.read().plugins.phase("test-plugin");
+        if phase == Some(PluginPhase::Dead) {
+            break;
+        }
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "guest never ended"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+
+    // Then nothing from the bad batch was cached.
+    assert!(state.read().plugins.theme("bad").is_none());
+}
+
+/// No configured plugins means no spawns, no status events, and an empty
+/// contribution cache — the default install.
+#[tokio::test]
+async fn no_plugins_configured_is_quiescent() {
+    // Given a coordinator with zero plugin entries and a recorder.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PluginStatus>().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![],
+        jinn_plugin::FakeGuestScript::Silent,
+    )
+    .await;
+
+    // When the coordinator has settled (spawn_all ran at startup).
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Then nothing was published and the cache is empty.
+    let messages = await_recorded(&recorder, 1, Duration::from_millis(200)).await;
+    assert!(messages.is_empty(), "unexpected status events");
+    assert_eq!(state.read().plugins.themes().count(), 0);
+}

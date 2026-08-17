@@ -43,6 +43,7 @@ use crate::common::state::State;
 use crate::feat::plugin::PluginConfig;
 use crate::feat::plugin_actor::{PluginActor, PluginActorDeps, PluginInbound};
 use crate::feat::plugin_coordinator_actor::protocol::{PluginPhase, PluginStatus};
+use jinn_plugin_api::SetThemeEntries;
 
 /// Channel capacity for plugin→coordinator inbound events. Small: events are
 /// rare (handshake + contributions); a full channel means a flooding plugin,
@@ -61,6 +62,10 @@ pub struct PluginCoordinatorActor {
     dirs: PluginDirs,
     /// Live plugin actors by name.
     spawned: Mutex<HashMap<String, ActorRef<PluginActor>>>,
+    /// Last `SetThemeEntries` payload seen per plugin (flooding debounce:
+    /// an identical consecutive contribution is skipped — no cache write,
+    /// no late-apply re-run).
+    last_theme_payload: std::sync::Arc<Mutex<HashMap<String, SetThemeEntries>>>,
     /// Test seam: when set, spawned plugin actors use a scripted fake
     /// guest instead of a real wasm module (see
     /// [`jinn_plugin::FakeGuestScript`]). Shared through deps so tests
@@ -120,6 +125,7 @@ impl kameo::Actor for PluginCoordinatorActor {
             frontend_cap: args.frontend_cap,
             dirs: args.dirs,
             spawned: Mutex::new(HashMap::new()),
+            last_theme_payload: std::sync::Arc::new(Mutex::new(HashMap::new())),
             #[cfg(test)]
             fake_guest: args.fake_guest.clone(),
         };
@@ -194,10 +200,11 @@ impl PluginCoordinatorActor {
         let state = self.state.clone();
         let cap = self.cap;
         let frontend_cap = self.frontend_cap;
+        let last_theme_payload = self.last_theme_payload.clone();
         let name = config.name.clone();
         tokio::spawn(async move {
             while let Some(inbound) = inbound_rx.recv().await {
-                handle_inbound(&state, cap, frontend_cap, &name, inbound);
+                handle_inbound(&state, cap, frontend_cap, &last_theme_payload, &name, inbound);
             }
         });
     }
@@ -260,6 +267,7 @@ fn handle_inbound(
     state: &State,
     cap: crate::common::tcaps::PluginsCap,
     frontend_cap: crate::common::tcaps::FrontendCap,
+    last_theme_payload: &std::sync::Arc<Mutex<HashMap<String, SetThemeEntries>>>,
     name: &str,
     inbound: PluginInbound,
 ) {
@@ -269,6 +277,16 @@ fn handle_inbound(
             // is protocol noise — ignore it.
         }
         jinn_plugin_api::PluginToHost::SetThemeEntries(entries) => {
+            // Flooding debounce: an identical consecutive payload is
+            // dropped before translation or any state work.
+            {
+                let mut last = last_theme_payload.lock();
+                if last.get(name) == Some(&entries) {
+                    tracing::debug!(plugin = %name, "duplicate theme batch debounced");
+                    return;
+                }
+                last.insert(name.to_owned(), entries.clone());
+            }
             let themes = crate::feat::plugin_coordinator_actor::translate::themes(&entries.themes);
             if themes.is_empty() && !entries.themes.is_empty() {
                 tracing::warn!(plugin = %name, "all theme definitions failed translation");

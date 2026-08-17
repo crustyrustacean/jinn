@@ -6,17 +6,18 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Lifecycle state of one configured plugin's runner child.
+/// Lifecycle state of one configured plugin's guest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PluginPhase {
-    /// The child process is spawned but the handshake has not completed.
+    /// The guest task spawned but the handshake has not completed.
     Starting,
     /// The handshake completed (`Hello` seen, `Welcome` sent).
     Running,
-    /// The child exited (crash or shutdown) or never came up.
+    /// The guest ended (crash, trap, or shutdown) or never came up.
     Dead,
-    /// The child lives but stopped reading: the bounded outbound queue
-    /// overflowed and oldest events were dropped.
+    /// The guest lives but is flooding: the inbound channel filled and
+    /// messages were dropped. Cleared back to `Running` when the channel
+    /// drains.
     Unresponsive,
 }
 
