@@ -208,19 +208,21 @@ pub fn spawn_setup_command(command: &str, shell: &str, cwd: &std::path::Path) ->
     use error_stack::ResultExt as _;
 
     let mut child = {
-        let mut cmd = tokio::process::Command::new(shell);
-        cmd.arg("-c")
+        let mut std_cmd = std::process::Command::new(shell);
+        std_cmd
+            .arg("-c")
             .arg(command)
             .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
-        // Place the child in its own process group on Unix so that
-        // `kill_process_tree` can atomically signal the whole group with
-        // `kill(-pgid)`. Windows ignores this (it has no process-group
-        // signalling analogue); its tree kill is enumerative via `kill_tree`.
-        #[cfg(unix)]
-        cmd.process_group(0);
+        // Terminal isolation: setsid (pid == pgid, no controlling tty) on
+        // Unix / CREATE_NO_WINDOW on Windows. Replaces the former
+        // `process_group(0)` — combining both would fail setsid with EPERM.
+        // The kill path (`kill_process_group_by_pid`) still works: the
+        // child's pid remains its process-group id.
+        jinn_common::process_isolation::isolate(&mut std_cmd);
+        let mut cmd = tokio::process::Command::from(std_cmd);
 
         cmd.spawn()
             .change_context(LifecycleCommandError::ExecutionFailed)
@@ -351,17 +353,19 @@ pub fn spawn_teardown_command(
     use error_stack::ResultExt as _;
 
     let mut child = {
-        let mut cmd = tokio::process::Command::new(shell);
-        cmd.arg("-c")
+        let mut std_cmd = std::process::Command::new(shell);
+        std_cmd
+            .arg("-c")
             .arg(command)
             .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
-        // Same process-group rationale as `spawn_setup_command` — see that
-        // function for the Unix/Windows split.
-        #[cfg(unix)]
-        cmd.process_group(0);
+        // Same terminal-isolation rationale as `spawn_setup_command` —
+        // see that function for the Unix/Windows split and the setsid
+        // invariant the PID-based cancel path relies on.
+        jinn_common::process_isolation::isolate(&mut std_cmd);
+        let mut cmd = tokio::process::Command::from(std_cmd);
 
         cmd.spawn()
             .change_context(LifecycleCommandError::ExecutionFailed)
