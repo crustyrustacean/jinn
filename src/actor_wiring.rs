@@ -833,7 +833,6 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .await
         );
 
-
         // Provider actor.
         let _provider = spawn_tracked!(
             &services.bus,

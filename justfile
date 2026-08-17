@@ -23,7 +23,7 @@ check:
 #     --grant '<config_dir>/themes'   # themes plugin scans granted dirs
 # Equivalent to `jinn plugin build plugins/<dir>` per plugin.
 build-plugins:
-    cargo build -p theme-loader --target wasm32-wasip2 --release
+    cargo build -p theme-loader -p persona-loader --target wasm32-wasip2 --release
 
 
 clippy:

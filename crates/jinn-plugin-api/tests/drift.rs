@@ -13,8 +13,8 @@
 use std::collections::BTreeMap;
 
 use jinn_plugin_api::{
-    Envelope, HostToPlugin, PersonaDef, PluginToHost, PluginToHostOrHostToPlugin, THEME_COLOR_SLOTS,
-    ThemeDef, Welcome,
+    Envelope, HostToPlugin, PersonaDef, PluginToHost, PluginToHostOrHostToPlugin,
+    THEME_COLOR_SLOTS, ThemeDef, Welcome,
 };
 
 /// Compiles the committed schema file for validation.

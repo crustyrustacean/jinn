@@ -3,7 +3,11 @@
 //! The fake replaces the wasm guest with in-process logic speaking the same
 //! NDJSON wire over the same pipes, so these tests exercise the production
 //! handshake, read-pump, and validation paths without a compiled plugin.
-#![allow(clippy::expect_used, reason = "test assertions")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "test assertions"
+)]
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -551,10 +555,7 @@ async fn duplicate_persona_batch_is_debounced() {
         plugins(),
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
-            lines: vec![
-                persona_line("coder", None),
-                persona_line("coder", None),
-            ],
+            lines: vec![persona_line("coder", None), persona_line("coder", None)],
         },
     )
     .await;
