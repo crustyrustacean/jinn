@@ -2579,6 +2579,7 @@ dependencies = [
  "clap-verbosity-flag",
  "clap_complete",
  "error-stack",
+ "jinn-domain",
  "rstest",
  "serde_json",
  "tokio",

@@ -1,14 +1,18 @@
 //! `jinn plugin build` — build a plugin crate to a jinn-installable payload.
 //!
 //! Wraps `cargo build --target wasm32-wasip2 --release` in the plugin's
-//! directory and reports the produced artifact. This is the same build the
-//! justfile `build-plugins` recipe performs for first-party plugins; the
-//! subcommand exists so external plugin authors never need the justfile.
+//! directory, then embeds the crate's `[package.metadata.jinn]` manifest
+//! into the artifact as a `jinn_manifest` custom section — the artifact
+//! leaves the build self-contained. A directory whose Cargo.toml lacks the
+//! metadata section is not a jinn plugin and is rejected (`NotAPlugin`),
+//! which also stops plain Rust crates from being "built as plugins".
 
 use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt as _};
 use wherror::Error;
+
+use jinn_domain::feat::plugin::manifest::{CrateManifest, embed_manifest, read_manifest};
 
 /// The build failed.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -16,12 +20,17 @@ use wherror::Error;
 pub enum PluginBuildError {
     /// The given directory contains no `Cargo.toml`.
     NotACrate,
+    /// The Cargo.toml carries no `[package.metadata.jinn]` section — not a
+    /// jinn plugin.
+    NotAPlugin,
     /// `cargo` could not be run (missing from PATH, or spawn failure).
     CargoSpawn,
     /// `cargo` exited non-zero (compile error).
     BuildFailed,
     /// The artifact the build should have produced was not found.
     ArtifactMissing,
+    /// The manifest could not be embedded into the artifact.
+    EmbedFailed,
 }
 
 /// The target jinn plugins are built for.
@@ -31,18 +40,13 @@ const TARGET: &str = "wasm32-wasip2";
 ///
 /// # Errors
 ///
-/// Returns an error if `dir` is not a cargo crate, cargo fails, or the
-/// expected `target/wasm32-wasip2/release/<name>.wasm` is missing after a
-/// successful build.
+/// Returns an error if `dir` is not a cargo crate (`NotACrate`), is a crate
+/// but not a jinn plugin (`NotAPlugin`), cargo fails, the expected
+/// `target/wasm32-wasip2/release/<name>.wasm` is missing after a successful
+/// build, or the manifest cannot be embedded.
 pub fn build(dir: &Path) -> Result<PathBuf, Report<PluginBuildError>> {
-    let manifest = dir.join("Cargo.toml");
-    if !manifest.is_file() {
-        return Err(
-            Report::new(PluginBuildError::NotACrate).attach(dir.to_string_lossy().to_string())
-        );
-    }
-
-    let crate_name = read_crate_name(&manifest)?;
+    let crate_manifest = read_plugin_manifest(dir)?;
+    let crate_name = crate_manifest.crate_name.clone();
     let mut child = std::process::Command::new("cargo")
         .args([
             "build",
@@ -84,7 +88,34 @@ pub fn build(dir: &Path) -> Result<PathBuf, Report<PluginBuildError>> {
         return Err(Report::new(PluginBuildError::ArtifactMissing)
             .attach(artifact.to_string_lossy().to_string()));
     }
+    embed_into_artifact(&artifact, crate_manifest)?;
     Ok(artifact)
+}
+
+/// Reads the Cargo.toml in `dir` as a jinn plugin manifest — missing file is
+/// `NotACrate`, missing `[package.metadata.jinn]` is `NotAPlugin`.
+fn read_plugin_manifest(dir: &Path) -> Result<CrateManifest, Report<PluginBuildError>> {
+    let manifest = dir.join("Cargo.toml");
+    let content = std::fs::read_to_string(&manifest)
+        .change_context(PluginBuildError::NotACrate)
+        .attach(manifest.to_string_lossy().to_string())?;
+    read_manifest(&content).map_err(|report| report.change_context(PluginBuildError::NotAPlugin))
+}
+
+/// Embeds the plugin's manifest into the built artifact in place.
+fn embed_into_artifact(
+    artifact: &Path,
+    crate_manifest: CrateManifest,
+) -> Result<(), Report<PluginBuildError>> {
+    let bytes = std::fs::read(artifact)
+        .change_context(PluginBuildError::EmbedFailed)
+        .attach(artifact.to_string_lossy().to_string())?;
+    let embedded = embed_manifest(&bytes, &crate_manifest.manifest)
+        .change_context(PluginBuildError::EmbedFailed)?;
+    std::fs::write(artifact, embedded)
+        .change_context(PluginBuildError::EmbedFailed)
+        .attach(artifact.to_string_lossy().to_string())?;
+    Ok(())
 }
 
 /// Reads cargo's JSON message stream line-by-line as it is produced:
@@ -106,8 +137,8 @@ fn stream_messages(stdout: Option<std::process::ChildStdout>) -> Option<PathBuf>
         };
         match value.get("reason").and_then(|r| r.as_str()) {
             Some("compiler-artifact") => {
-                if let Some(exe) = value.get("executable").and_then(|e| e.as_str()) {
-                    last = Some(PathBuf::from(exe));
+                if let Some(path) = artifact_path(&value) {
+                    last = Some(path);
                 }
             }
             Some("compiler-message") => print_rendered(&value),
@@ -115,6 +146,25 @@ fn stream_messages(stdout: Option<std::process::ChildStdout>) -> Option<PathBuf>
         }
     }
     last
+}
+
+/// Extracts the plugin artifact path from a compiler-artifact message.
+/// `executable` is null for cdylib targets — a legitimate guest shape —
+/// so fall back to the first `filenames` entry ending in `.wasm`.
+fn artifact_path(value: &serde_json::Value) -> Option<PathBuf> {
+    if let Some(exe) = value.get("executable").and_then(|e| e.as_str()) {
+        return Some(PathBuf::from(exe));
+    }
+    value
+        .get("filenames")
+        .and_then(|f| f.as_array())
+        .and_then(|names| {
+            names
+                .iter()
+                .filter_map(|n| n.as_str())
+                .find(|n| n.ends_with(".wasm"))
+                .map(PathBuf::from)
+        })
 }
 
 /// Prints one compiler diagnostic's rendered text (already formatted by
@@ -131,91 +181,95 @@ fn print_rendered(value: &serde_json::Value) {
     }
 }
 
-/// Reads `package.name` from a `Cargo.toml`.
-fn read_crate_name(manifest: &Path) -> Result<String, Report<PluginBuildError>> {
-    let content = std::fs::read_to_string(manifest)
-        .change_context(PluginBuildError::NotACrate)
-        .attach(manifest.to_string_lossy().to_string())?;
-    let value: toml::Value = content
-        .parse()
-        .change_context(PluginBuildError::NotACrate)
-        .attach(manifest.to_string_lossy().to_string())?;
-    value
-        .get("package")
-        .and_then(|p| p.get("name"))
-        .and_then(|n| n.as_str())
-        .map(str::to_owned)
-        .ok_or_else(|| {
-            Report::new(PluginBuildError::NotACrate)
-                .attach(manifest.to_string_lossy().to_string())
-                .attach("package.name is missing")
-        })
-}
-
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, reason = "test assertions")]
-
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        reason = "test assertions"
+    )]
     use super::*;
+    use jinn_domain::feat::plugin::manifest::extract_manifest;
+    use std::path::PathBuf;
 
-    /// A directory without Cargo.toml is rejected before cargo runs.
-    #[test]
-    fn build_rejects_directory_without_manifest() {
-        // Given an empty temp directory.
-        let tmp = std::env::temp_dir().join(format!("jinn-pb-{}", std::process::id()));
-        std::fs::create_dir_all(&tmp).expect("create temp dir");
-
-        // When building it.
-        let result = build(&tmp);
-
-        // Then it fails with NotACrate.
-        assert!(matches!(result, Err(ref report)
-                if report.current_context() == &PluginBuildError::NotACrate));
-
-        let _ = std::fs::remove_dir_all(&tmp);
+    fn tmp_dir(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("jinn-plugin-build-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create tmp dir");
+        dir
     }
 
-    /// The artifact name follows package.name, not the directory name.
+    // Given a directory with a Cargo.toml but no [package.metadata.jinn].
+    // When building.
+    // Then it fails with NotAPlugin (a plain crate is not a plugin).
     #[test]
-    fn artifact_name_follows_package_name() {
-        // Given a manifest whose package name differs from any assumption.
-        let tmp = std::env::temp_dir().join(format!("jinn-pb2-{}", std::process::id()));
-        std::fs::create_dir_all(&tmp).expect("create temp dir");
+    fn build_rejects_crate_without_metadata_section() {
+        let dir = tmp_dir("no-metadata");
         std::fs::write(
-            tmp.join("Cargo.toml"),
-            r#"[package]
-name = "my-renamed-plugin"
-version = "0.1.0"
-edition = "2024"
-
-[lib]
-crate-type = ["cdylib"]
-"#,
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"plain\"\nversion = \"0.1.0\"\n",
         )
         .expect("write manifest");
 
-        // When building (cargo may fail offline for git deps, but the name
-        // resolution is what is under test: build → BuildFailed, not
-        // NotACrate; on success the artifact name matches).
-        let result = build(&tmp);
+        let result = build(&dir);
 
-        // Then the manifest parsed and the crate name was extracted.
-        match result {
-            Err(report) => assert!(
-                report.current_context() != &PluginBuildError::NotACrate,
-                "manifest should parse"
-            ),
-            Ok(artifact) => {
-                assert!(
-                    artifact
-                        .to_string_lossy()
-                        .contains("my-renamed-plugin.wasm"),
-                    "artifact should carry package name: {}",
-                    artifact.display()
-                );
-            }
+        assert!(matches!(
+            result,
+            Err(e) if e.current_context() == &PluginBuildError::NotAPlugin
+        ));
+    }
+
+    // Given a directory with no Cargo.toml at all.
+    // When building.
+    // Then it fails with NotACrate (distinct from NotAPlugin).
+    #[test]
+    fn build_rejects_directory_without_cargo_toml() {
+        let dir = tmp_dir("no-crate");
+
+        let result = build(&dir);
+
+        assert!(matches!(
+            result,
+            Err(e) if e.current_context() == &PluginBuildError::NotACrate
+        ));
+    }
+    // Given a minimal plugin crate with a manifest (built with real cargo;
+    // needs wasm32-wasip2 target installed, else skipped).
+    // When building.
+    // Then the artifact carries the embedded manifest.
+    #[test]
+    fn build_embeds_manifest_into_artifact() {
+        if !target_installed() {
+            eprintln!("skipping: wasm32-wasip2 target not installed");
+            return;
         }
+        let dir = tmp_dir("embed");
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"tiny-plugin\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[package.metadata.jinn]\ngrants = [\"<config_dir>/themes\"]\nhttp = false\n\n[lib]\ncrate-type = [\"cdylib\"]\n",
+        )
+        .expect("write manifest");
+        std::fs::create_dir_all(dir.join("src")).expect("mkdir src");
+        std::fs::write(dir.join("src/lib.rs"), "").expect("write lib");
 
-        let _ = std::fs::remove_dir_all(&tmp);
+        let artifact = build(&dir).expect("build");
+
+        let bytes = std::fs::read(&artifact).expect("read artifact");
+        let manifest = extract_manifest(&bytes).expect("embedded manifest");
+        assert_eq!(manifest.grants.len(), 1);
+        assert_eq!(manifest.grants[0].path, "<config_dir>/themes");
+        assert!(!manifest.http);
+    }
+
+    fn target_installed() -> bool {
+        std::process::Command::new("rustup")
+            .args(["target", "list", "--installed"])
+            .output()
+            .is_ok_and(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .any(|l| l.trim() == "wasm32-wasip2")
+            })
     }
 }
