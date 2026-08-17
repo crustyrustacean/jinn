@@ -181,6 +181,11 @@ pub enum PluginCommands {
 
         /// The plugin name (defaults to the file stem).
         name: Option<String>,
+
+        /// Grant a preopened directory path (`<config_dir>`/`<data_dir>`
+        /// variables allowed). Repeatable; suffix `:w` for writable.
+        #[arg(long = "grant", value_name = "PATH[:w]")]
+        grants: Vec<String>,
     },
 }
 

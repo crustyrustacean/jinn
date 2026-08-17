@@ -353,7 +353,7 @@ min_age = 50
 [auto_prune.broken_edit]
 enabled = true
 # Only prune a broken-edit pattern when at least this many tail entries exist.
-min_tail_entries = 10
+min_age = 10
 
 
 # ---------------------------------------------------------------------------

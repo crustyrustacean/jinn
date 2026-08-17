@@ -1,4 +1,4 @@
-//! Bounded ring buffer for captured child-process stderr.
+//! Bounded ring buffer for captured guest stderr.
 //!
 //! Same shape as the MCP stderr buffer: newest content survives, memory is
 //! bounded by a byte budget, multibyte characters are never split.

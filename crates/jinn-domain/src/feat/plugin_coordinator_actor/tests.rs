@@ -53,7 +53,6 @@ async fn spawn_coordinator_prepared(
     {
         let mut prefs = services.user_preferences_storage.read().clone();
         prefs.plugin = plugins;
-        prefs.disable_builtin_themes_plugin = true;
         services
             .user_preferences_storage
             .save(&prefs)
@@ -66,7 +65,6 @@ async fn spawn_coordinator_prepared(
         config_dir: std::path::PathBuf::from("/nonexistent"),
         data_dir: std::path::PathBuf::from("/nonexistent"),
         engine: Arc::new(jinn_plugin::PluginEngine::new().expect("engine construction")),
-        system_data_dir: std::path::PathBuf::from("/nonexistent"),
     };
     let actor = PluginCoordinatorActor::supervise(
         &root,
@@ -308,33 +306,6 @@ async fn version_mismatch_fails_handshake() {
 
     // Then the future version's contributions are not trusted.
     assert!(state.read().plugins.theme("future").is_none());
-}
-
-/// Reserved names: a user entry using the first-party name is ignored.
-#[tokio::test]
-async fn user_entry_cannot_shadow_first_party_name() {
-    // Given a user entry named like the first-party themes plugin.
-    let harness = TestHarness::new().await;
-    let mut usurper = entry();
-    usurper.name = crate::feat::plugin_coordinator_actor::THEMES_PLUGIN_NAME.to_owned();
-    let recorder = harness.spawn_recorder::<PluginStatus>().await;
-    let state = spawn_coordinator(
-        &harness,
-        vec![usurper],
-        jinn_plugin::FakeGuestScript::HelloThenLines {
-            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
-            lines: vec![theme_line("usurped", "#000003")],
-        },
-    )
-    .await;
-
-    // When the coordinator spawns entries.
-    // Then the usurper's entry was skipped (no Running event for it) and
-    // nothing was contributed by it — the only phases it could publish are
-    // from the real (missing) first-party wasm, which fails fast here.
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    assert!(state.read().plugins.theme("usurped").is_none());
-    let _ = recorder;
 }
 
 /// A persisted theme name pending on startup is late-applied when the

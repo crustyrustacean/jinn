@@ -243,7 +243,7 @@ impl App {
                     }
                     return Ok(());
                 }
-                PluginCommands::Install { wasm, name } => {
+                PluginCommands::Install { wasm, name, grants } => {
                     use jinn_domain::AppPaths;
                     use jinn_domain::feat::plugin::install::{PluginInstallOutcome, install};
                     use jinn_domain::feat::preferences_actor::FilesystemUserPreferencesStorage;
@@ -256,9 +256,25 @@ impl App {
                             .unwrap_or_default()
                             .to_owned()
                     });
+                    // `--grant path` (read-only) or `--grant path:w` (writable);
+                    // `<config_dir>`/`<data_dir>` variables pass through for the
+                    // coordinator to expand at spawn.
+                    let grants = grants
+                        .iter()
+                        .map(|g| match g.strip_suffix(":w") {
+                            Some(path) => jinn_domain::feat::plugin::PluginPathGrant {
+                                path: path.to_owned(),
+                                writable: true,
+                            },
+                            None => jinn_domain::feat::plugin::PluginPathGrant {
+                                path: g.clone(),
+                                writable: false,
+                            },
+                        })
+                        .collect();
                     let paths = AppPaths::default();
                     let storage = FilesystemUserPreferencesStorage::default_path();
-                    match install(&wasm_path, &name, &paths.plugins_dir(), &storage) {
+                    match install(&wasm_path, &name, &paths.plugins_dir(), grants, &storage) {
                         Ok(PluginInstallOutcome::Installed { wasm_path, name }) => {
                             println!("Installed plugin {name}");
                             println!("  payload: {}", wasm_path.display());

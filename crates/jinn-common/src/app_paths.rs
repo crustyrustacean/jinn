@@ -213,14 +213,27 @@ impl AppPaths {
 
     /// Config directory (`~/.config/jinn`).
     #[must_use]
+    pub fn app_config_dir(&self) -> PathBuf {
+        self.config_dir.join(APP_NAME)
+    }
+
+    /// Base config directory (`~/.config`) — parent of all jinn config.
+    #[must_use]
     pub fn config_dir(&self) -> &Path {
         &self.config_dir
     }
 
-    /// Data directory (`~/.local/share/jinn`).
+    /// Base data directory (`~/.local/share`) — parent of all jinn data.
     #[must_use]
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+
+    /// App data directory (`~/.local/share/jinn`) — plugin payloads,
+    /// scratch dirs, and other jinn-owned data live here.
+    #[must_use]
+    pub fn app_data_dir(&self) -> PathBuf {
+        self.data_dir.join(APP_NAME)
     }
 
     /// System themes directory (`/usr/share/jinn/themes`).

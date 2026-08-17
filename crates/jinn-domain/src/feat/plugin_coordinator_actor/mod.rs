@@ -78,8 +78,6 @@ pub struct PluginDirs {
     pub data_dir: std::path::PathBuf,
     /// The shared wasmtime engine, reused across all plugin guests.
     pub engine: std::sync::Arc<jinn_plugin::PluginEngine>,
-    /// System data dir (`/usr/share/jinn`) — packaged first-party plugins.
-    pub system_data_dir: std::path::PathBuf,
 }
 
 /// Dependencies for [`PluginCoordinatorActor`].
@@ -228,69 +226,28 @@ impl PluginCoordinatorActor {
         jinn_plugin::resolve_grants(&path_grants, config.http, config_value, &ctx)
     }
 
-    /// Resolves a plugin's wasm path: absolute, or relative to a plugins
-    /// dir. The first-party plugin resolves against the system plugins dir
-    /// (packaged with jinn); user plugins against the data plugins dir.
+    /// Resolves a plugin's wasm path: absolute, or relative to the user
+    /// plugins dir (`<data_dir>/plugins/`) where `plugin install` places
+    /// payloads.
     fn wasm_path(&self, config: &PluginConfig) -> std::path::PathBuf {
         let candidate = std::path::PathBuf::from(&config.wasm);
         if candidate.is_absolute() {
             return candidate;
         }
-        let dir = if config.name == THEMES_PLUGIN_NAME {
-            self.dirs.system_data_dir.join("plugins")
-        } else {
-            self.dirs.data_dir.join("plugins")
-        };
-        dir.join(candidate)
+        self.dirs.data_dir.join("plugins").join(candidate)
     }
 }
 
 /// Reads the enabled plugin entries from user preferences.
-/// The reserved name for jinn's first-party themes plugin. User entries
-/// with this name are ignored (the auto-registered one wins) so a stale
-/// config cannot shadow or duplicate it.
-pub const THEMES_PLUGIN_NAME: &str = "jinn-themes";
-
 fn enabled_plugins(services: &crate::Services) -> Vec<PluginConfig> {
-    let mut plugins: Vec<PluginConfig> = services
+    services
         .user_preferences_storage
         .read()
         .plugin
         .iter()
-        .filter(|p| p.enabled && p.name != THEMES_PLUGIN_NAME)
+        .filter(|p| p.enabled)
         .cloned()
-        .collect();
-    // First-party themes plugin: always present, disabled only by an
-    // explicit opt-out key (see `themes_plugin_disabled`).
-    if !themes_plugin_disabled(services) {
-        plugins.push(first_party_themes_plugin());
-    }
-    plugins
-}
-
-/// Whether the user disabled the first-party themes plugin
-/// (`disable_builtin_themes_plugin = true` in jinn.toml).
-fn themes_plugin_disabled(services: &crate::Services) -> bool {
-    services
-        .user_preferences_storage
-        .read()
-        .disable_builtin_themes_plugin
-}
-
-/// The auto-registered first-party themes plugin entry. The `.wasm` is
-/// resolved from jinn's system data dir (packaged) by the host.
-fn first_party_themes_plugin() -> PluginConfig {
-    PluginConfig {
-        name: THEMES_PLUGIN_NAME.to_owned(),
-        wasm: "jinn-themes.wasm".to_owned(),
-        grants: vec![crate::feat::plugin::PluginPathGrant {
-            path: "<config_dir>/themes".to_owned(),
-            writable: false,
-        }],
-        http: false,
-        config: None,
-        enabled: true,
-    }
+        .collect()
 }
 
 /// Validates and applies one inbound plugin message.
@@ -316,6 +273,12 @@ fn handle_inbound(
             if themes.is_empty() && !entries.themes.is_empty() {
                 tracing::warn!(plugin = %name, "all theme definitions failed translation");
             }
+            tracing::info!(
+                plugin = %name,
+                received = entries.themes.len(),
+                cached = themes.len(),
+                "plugin contributed themes"
+            );
             state.with_plugins(&cap, |p| p.set_themes(name, themes));
 
             // Late-apply: if the persisted theme name is not yet applied

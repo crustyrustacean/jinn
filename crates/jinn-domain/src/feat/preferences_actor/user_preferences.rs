@@ -145,18 +145,11 @@ pub struct UserPreferences {
     pub mcp_server: Vec<crate::feat::mcp::McpServerConfig>,
 
     /// Configured plugins. Each entry declares a `.wasm` component plus
-    /// its capability grants; the plugin coordinator spawns one runner
-    /// child per enabled entry at app start. See
+    /// its capability grants; the plugin coordinator hosts one in-process
+    /// WASM guest per enabled entry at app start. See
     /// [`PluginConfig`](crate::feat::plugin::PluginConfig).
     #[serde(default)]
     pub plugin: Vec<crate::feat::plugin::PluginConfig>,
-
-    /// Disable the built-in first-party themes plugin
-    /// (`jinn-themes`, auto-registered). With it disabled, theme
-    /// discovery falls back to whatever other plugins contribute; with no
-    /// contributors at all only the default theme is available.
-    #[serde(default)]
-    pub disable_builtin_themes_plugin: bool,
 
     /// The local IP address HTTP-mode MCP servers bind to. Used as the `<ip>`
     /// replacement token in a server's `args`, and as the bind address for
@@ -264,7 +257,6 @@ impl Default for UserPreferences {
             projects: vec![],
             mcp_server: vec![],
             plugin: vec![],
-disable_builtin_themes_plugin: false,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -458,6 +450,12 @@ where
             .change_context(UserPreferencesError::Parse)
             .attach("failed to parse existing jinn.toml")?;
 
+        // Legacy serde-alias keys left in user files collide with their
+        // canonical keys once a patch inserts the canonical name (serde
+        // would see both and fail with "duplicate field"). Rewrite known
+        // aliases to canonical before patching.
+        rewrite_legacy_aliases(doc.as_table_mut());
+
         let new_value = toml::Value::try_from(prefs)
             .change_context(UserPreferencesError::Parse)
             .attach("failed to serialize UserPreferences")?;
@@ -488,6 +486,26 @@ where
     std::fs::write(path, content)
         .change_context(UserPreferencesError::Io)
         .attach("failed to write user preferences")
+}
+
+/// Rewrites legacy serde-alias keys to their canonical names in an
+/// existing jinn.toml document before patching.
+///
+/// [`BrokenEditAutoPruneConfig::min_age`] deserializes the legacy
+/// `min_tail_entries` alias; a file carrying the alias would collide
+/// with a patch-inserted canonical key ("duplicate field" on the next
+/// load). Renaming in place keeps the user's value and comments while
+/// making the document round-trip-safe.
+fn rewrite_legacy_aliases(root: &mut toml_edit::Table) {
+    if let Some(table) = root
+        .get_mut("auto_prune")
+        .and_then(|item| item.as_table_mut())
+        .and_then(|t| t.get_mut("broken_edit"))
+        .and_then(|item| item.as_table_mut())
+        && let Some(item) = table.remove("min_tail_entries")
+    {
+        table.insert("min_age", item);
+    }
 }
 
 #[cfg(test)]
@@ -665,7 +683,6 @@ mod tests {
             projects: vec![],
             mcp_server: vec![],
             plugin: vec![],
-            disable_builtin_themes_plugin: false,
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -754,7 +771,6 @@ mod tests {
             projects: vec![],
             mcp_server: vec![],
             plugin: vec![],
-            disable_builtin_themes_plugin: false,
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -794,7 +810,6 @@ mod tests {
             projects: vec![],
             mcp_server: vec![],
             plugin: vec![],
-            disable_builtin_themes_plugin: false,
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1105,7 +1120,6 @@ mod tests {
             projects: vec![],
             mcp_server: vec![],
             plugin: vec![],
-            disable_builtin_themes_plugin: false,
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1302,5 +1316,39 @@ args = ["@excalimate/mcp-server", "--stdio"]
 
         // Then no MCP servers are configured by default.
         assert!(prefs.mcp_server.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn save_rewrites_legacy_alias_so_patched_file_still_parses() {
+        // Given a legacy jinn.toml using the `min_tail_entries` alias and
+        // a plugin entry (the shape `plugin install` produces when it
+        // patches a file that predates the canonical key).
+        let original = r#"[auto_prune.broken_edit]
+enabled = true
+min_tail_entries = 10
+
+[[plugin]]
+name = "p"
+wasm = "p.wasm"
+enabled = true
+http = false
+"#;
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When saving preferences back (the patch inserts the canonical
+        // `min_age` key alongside the preserved alias key).
+        let prefs = load_preferences_from(&path).expect("load");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the file no longer carries both keys, so it still parses.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            !written.contains("min_tail_entries"),
+            "alias survived: {written}"
+        );
+        let reparsed = load_preferences_from(&path).expect("reparse");
+        assert_eq!(reparsed.auto_prune.broken_edit.min_age, 10);
     }
 }
