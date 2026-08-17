@@ -43,7 +43,7 @@ pub fn build(dir: &Path) -> Result<PathBuf, Report<PluginBuildError>> {
     }
 
     let crate_name = read_crate_name(&manifest)?;
-    let output = std::process::Command::new("cargo")
+    let mut child = std::process::Command::new("cargo")
         .args([
             "build",
             "--release",
@@ -52,24 +52,31 @@ pub fn build(dir: &Path) -> Result<PathBuf, Report<PluginBuildError>> {
             "--message-format=json",
         ])
         .current_dir(dir)
-        .output()
+        // stderr inherits: cargo's progress (Compiling/Finished) streams
+        // live. stdout is piped: it is the JSON message stream we parse.
+        .stdout(std::process::Stdio::piped())
+        .spawn()
         .map_err(|err| {
             Report::new(PluginBuildError::CargoSpawn)
                 .attach(err.to_string())
                 .attach("is cargo installed and on PATH?")
         })?;
 
-    // Cargo writes compile errors to stderr; pass them through unchanged.
-    passthrough_stderr(&output.stderr);
-    if !output.status.success() {
-        return Err(Report::new(PluginBuildError::BuildFailed)
-            .attach(format!("exit status {}", output.status)));
-    }
-
     // The artifact path comes from cargo itself: in-workspace crates build
     // to the workspace root's target dir, standalone crates to their own.
-    // Guessing the layout is wrong for one of the two.
-    let Some(artifact) = last_executable_artifact(&output.stdout) else {
+    // Guessing the layout is wrong for one of the two. Diagnostics ride the
+    // same stream and are printed as they arrive — live, never buffered.
+    let artifact = stream_messages(child.stdout.take());
+    let status = child
+        .wait()
+        .map_err(|e| Report::new(PluginBuildError::CargoSpawn).attach(e.to_string()))?;
+    if !status.success() {
+        return Err(
+            Report::new(PluginBuildError::BuildFailed).attach(format!("exit status {status}"))
+        );
+    }
+
+    let Some(artifact) = artifact else {
         return Err(Report::new(PluginBuildError::ArtifactMissing)
             .attach(format!("crate {crate_name} produced no wasm artifact")));
     };
@@ -80,31 +87,48 @@ pub fn build(dir: &Path) -> Result<PathBuf, Report<PluginBuildError>> {
     Ok(artifact)
 }
 
-/// Forwards cargo's stderr (compile diagnostics) to the CLI user.
-#[expect(
-    clippy::print_stderr,
-    reason = "cargo stderr is passed through to the CLI user"
-)]
-fn passthrough_stderr(stderr: &[u8]) {
-    eprint!("{}", String::from_utf8_lossy(stderr));
-}
-
-/// Extracts the last compiler-artifact executable path from cargo's JSON
-/// message stream (rendered diagnostics and non-link artifacts are skipped).
-fn last_executable_artifact(stdout: &[u8]) -> Option<PathBuf> {
-    let text = String::from_utf8_lossy(stdout);
+/// Reads cargo's JSON message stream line-by-line as it is produced:
+/// prints each diagnostic's rendered text immediately (the user sees
+/// compile errors the moment cargo emits them) and remembers the last
+/// compiler artifact as the build result.
+fn stream_messages(stdout: Option<std::process::ChildStdout>) -> Option<PathBuf> {
+    use std::io::BufRead;
     let mut last = None;
-    for line in text.lines() {
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+    let Some(stdout) = stdout else {
+        return last;
+    };
+    for line in std::io::BufReader::new(stdout).lines() {
+        let Ok(line) = line else {
+            break;
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
             continue;
         };
-        if value.get("reason").and_then(|r| r.as_str()) == Some("compiler-artifact")
-            && let Some(exe) = value.get("executable").and_then(|e| e.as_str())
-        {
-            last = Some(PathBuf::from(exe));
+        match value.get("reason").and_then(|r| r.as_str()) {
+            Some("compiler-artifact") => {
+                if let Some(exe) = value.get("executable").and_then(|e| e.as_str()) {
+                    last = Some(PathBuf::from(exe));
+                }
+            }
+            Some("compiler-message") => print_rendered(&value),
+            _ => {}
         }
     }
     last
+}
+
+/// Prints one compiler diagnostic's rendered text (already formatted by
+/// rustc, colors included).
+#[expect(
+    clippy::print_stderr,
+    reason = "rustc diagnostics are passed through to the CLI user"
+)]
+fn print_rendered(value: &serde_json::Value) {
+    if let Some(rendered) = value.get("message").and_then(|m| m.get("rendered"))
+        && let Some(text) = rendered.as_str()
+    {
+        eprint!("{text}");
+    }
 }
 
 /// Reads `package.name` from a `Cargo.toml`.
