@@ -102,9 +102,9 @@ Entries are added or amended **only with human approval**.
 - (plugins) A plugin coordinator actor validates and authorizes all inbound plugin messages and caches contributions into `AppState`; synchronous consumers (pickers, renderer, assembly) read only the cache, never the plugin.
 - (plugins) Plugins declare the filesystem paths and http access they need in their own `[package.metadata.jinn]` manifest (Cargo.toml); the manifest is embedded into the built `.wasm` as a custom section and auto-applied at install, where `--grant`/`--http` flags override it. Install fails hard on an artifact with no embedded manifest. Nothing is granted implicitly — persistence is declared as `"<plugin_data_dir>:w"`.
 - (plugins) The plugin wire contract is a hand-maintained JSON Schema kept in sync with the `jinn-plugin-api` types by a drift test; plugin SDKs are consumed as a git dependency on the jinn repo, not crates.io.
-- (plugins) `jinn plugin add <dir>` builds and installs a plugin in one command (build → manifest embed → install with declared grants).
-- (plugins) First-party plugin names carry no jinn-/plugin padding: the themes plugin is `theme-loader`.
-- (persona) Personas are markdown templates loaded via the prompt-template system; the persona picker (`<leader>se`) switches the active session persona.
+- (plugins) First-party plugin names carry no jinn-/plugin padding: the themes plugin is `theme-loader` and the personas plugin is `persona-loader`.
+- (persona) Personas are markdown templates with TOML frontmatter; the persona picker (`<leader>se`) switches the active session persona.
+- (persona) Persona discovery flows through a user-installed `persona-loader` plugin (source-built, `jinn plugin add plugins/persona-loader`): it scans `~/.config/jinn/personas/*.md` and contributes definitions over the plugin wire; the coordinator publishes them as `PersonasLoaded`. A default install ships no plugins, so the persona list is empty and no persona body enters the system prompt.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
 - (providers) The provider crate supports three backends: Anthropic, Google, and OpenAI-compatible.
 - (providers) Model output is text-only: the `StreamEvent` pipeline and assistant chat entries carry no image variant.

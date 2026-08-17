@@ -242,7 +242,6 @@ impl AppPaths {
         self.system_data_dir.join("themes")
     }
 
-
     /// System prompts directory (`/usr/share/jinn/prompts`).
     #[must_use]
     pub fn system_prompts_dir(&self) -> PathBuf {
@@ -286,7 +285,6 @@ impl AppPaths {
     pub fn resolve_theme_paths(&self) -> Vec<(String, PathBuf)> {
         resolve_resource_paths(&self.system_themes_dir(), &self.themes_dir(), "toml")
     }
-
 
     /// Returns merged prompt template file paths from system and user directories.
     ///
@@ -445,7 +443,6 @@ mod tests {
         assert_eq!(result[0].0, "forest");
         assert_eq!(result[1].0, "ocean");
     }
-
 
     #[rstest::rstest]
     fn resolve_prompt_paths_uses_md_extension() {

@@ -93,7 +93,7 @@ fn merge_dir(defs: &mut BTreeMap<String, PersonaDef>, dir: &Path) {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.extension().is_some_and(|ext| ext == "md") {
+        if path.extension().is_none_or(|ext| ext != "md") {
             continue;
         }
         match parse_persona_file(&path) {
@@ -116,7 +116,9 @@ fn merge_dir(defs: &mut BTreeMap<String, PersonaDef>, dir: &Path) {
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or the frontmatter is malformed.
-pub fn parse_persona_file(path: &Path) -> Result<PersonaDef, error_stack::Report<PersonaParseError>> {
+pub fn parse_persona_file(
+    path: &Path,
+) -> Result<PersonaDef, error_stack::Report<PersonaParseError>> {
     let content = std::fs::read_to_string(path)
         .change_context(PersonaParseError::Io)
         .attach(format!("failed to read {}", path.display()))?;
@@ -128,7 +130,9 @@ pub fn parse_persona_file(path: &Path) -> Result<PersonaDef, error_stack::Report
 /// # Errors
 ///
 /// Returns an error if the content has no `+++` frontmatter or malformed TOML.
-pub fn parse_persona_content(content: &str) -> Result<PersonaDef, error_stack::Report<PersonaParseError>> {
+pub fn parse_persona_content(
+    content: &str,
+) -> Result<PersonaDef, error_stack::Report<PersonaParseError>> {
     let trimmed = content.trim_start();
 
     let Some(after_open) = trimmed.strip_prefix("+++") else {
@@ -172,8 +176,7 @@ mod tests {
     #[rstest::rstest]
     fn parse_persona_content_with_valid_frontmatter() {
         // Given a valid persona file content.
-        let content =
-            "+++\nname = \"coding-assistant\"\ndescription = \"Expert coder\"\n+++\n\nYou are an expert coding assistant.\n";
+        let content = "+++\nname = \"coding-assistant\"\ndescription = \"Expert coder\"\n+++\n\nYou are an expert coding assistant.\n";
 
         // When parsing.
         let persona = parse_persona_content(content).expect("parse");
@@ -267,10 +270,12 @@ mod tests {
 
         // Then it keeps its shipped name and an evidence-grounded description.
         assert_eq!(persona.name, "learning-tutor");
-        assert!(persona
-            .description
-            .as_deref()
-            .is_some_and(|d| d.contains("intelligent-tutoring")));
+        assert!(
+            persona
+                .description
+                .as_deref()
+                .is_some_and(|d| d.contains("intelligent-tutoring"))
+        );
     }
 
     #[rstest::rstest]
