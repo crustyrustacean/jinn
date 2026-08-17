@@ -1,4 +1,4 @@
-## (development) v0.107.1
+## 2026-08-17 v0.107.1
 
 - `jinn` will immediately exit on startup if `jinn.toml` or `providers.toml` is malformed.
 - Yanking from chat history tool results will now return a complete JSON object instead of the displayed text. This is to enable piping into `jq` for processing.
