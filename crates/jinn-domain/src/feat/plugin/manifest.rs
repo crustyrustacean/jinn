@@ -80,7 +80,7 @@ pub fn read_manifest(cargo_toml: &str) -> Result<CrateManifest, Report<PluginMan
             )),
         );
     };
-    let manifest = parse_manifest_table(metadata.clone())?;
+    let manifest = parse_manifest_table(metadata);
     Ok(CrateManifest {
         crate_name,
         manifest,
@@ -101,24 +101,27 @@ fn crate_name(value: &toml::Value) -> Result<String, Report<PluginManifestError>
 }
 
 /// Parses a `[package.metadata.jinn]` value table into a [`PluginManifest`].
-fn parse_manifest_table(table: toml::Value) -> Result<PluginManifest, Report<PluginManifestError>> {
+fn parse_manifest_table(table: &toml::Value) -> PluginManifest {
     let name = table
         .get("name")
         .and_then(|n| n.as_str())
         .map(str::to_owned);
     let grants = table
         .get("grants")
-        .and_then(|g| g.as_array())
+        .and_then(toml::Value::as_array)
         .map(|items| {
             items
                 .iter()
-                .filter_map(|item| item.as_str())
+                .filter_map(toml::Value::as_str)
                 .map(parse_grant_str)
                 .collect()
         })
         .unwrap_or_default();
-    let http = table.get("http").and_then(|h| h.as_bool()).unwrap_or(false);
-    Ok(PluginManifest { name, grants, http })
+    let http = table
+        .get("http")
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(false);
+    PluginManifest { name, grants, http }
 }
 
 /// Parses one grant string (`path` read-only, `path:w` writable) — the same
@@ -208,7 +211,7 @@ fn find_manifest_section(
         {
             // wasmparser's section ranges cover contents only; the header
             // (section id byte + LEB128 size) sits immediately before.
-            let header = section_header_start(&wasm_bytes[..contents.start]);
+            let header = section_header_start(wasm_bytes.get(..contents.start).unwrap_or(&[]));
             return Ok(Some(header..contents.end));
         }
     }
@@ -222,11 +225,12 @@ fn section_header_start(prefix: &[u8]) -> usize {
     // bit set, so the loop stops with `i` one past the FINAL size byte. The
     // header therefore starts two further back: the final size byte and the
     // section id byte.
-    let mut i = prefix.len();
-    while i > 0 && prefix[i - 1] & 0x80 != 0 {
-        i -= 1;
-    }
-    i.saturating_sub(2)
+    let size_len = prefix
+        .iter()
+        .rev()
+        .take_while(|byte| **byte & 0x80 != 0)
+        .count();
+    prefix.len().saturating_sub(size_len + 2)
 }
 
 /// Encodes a wasm custom section: id byte 0, LEB128 size, name-length +
@@ -272,15 +276,15 @@ fn payload_is_custom(payload: &wasmparser::Payload<'_>, name: &str) -> bool {
 pub fn extract_manifest(wasm_bytes: &[u8]) -> Result<PluginManifest, Report<PluginManifestError>> {
     for payload in wasmparser::Parser::new(0).parse_all(wasm_bytes) {
         let payload = payload.change_context(PluginManifestError::InvalidWasm)?;
-        if let wasmparser::Payload::CustomSection(c) = &payload {
-            if c.name() == MANIFEST_SECTION {
-                let table: toml::Value = std::str::from_utf8(c.data())
-                    .change_context(PluginManifestError::InvalidManifest)?
-                    .parse()
-                    .change_context(PluginManifestError::InvalidManifest)
-                    .attach("parsing embedded jinn_manifest payload")?;
-                return parse_manifest_table(table);
-            }
+        if let wasmparser::Payload::CustomSection(c) = &payload
+            && c.name() == MANIFEST_SECTION
+        {
+            let table: toml::Value = std::str::from_utf8(c.data())
+                .change_context(PluginManifestError::InvalidManifest)?
+                .parse()
+                .change_context(PluginManifestError::InvalidManifest)
+                .attach("parsing embedded jinn_manifest payload")?;
+            return Ok(parse_manifest_table(&table));
         }
     }
     Err(Report::new(PluginManifestError::ManifestMissing).attach(
@@ -341,10 +345,13 @@ http = true
         assert_eq!(cm.crate_name, "theme-loader");
         assert_eq!(cm.manifest.name.as_deref(), Some("themes"));
         assert_eq!(cm.manifest.grants.len(), 2);
-        assert_eq!(cm.manifest.grants[0].path, "<config_dir>/themes");
-        assert!(!cm.manifest.grants[0].writable);
-        assert_eq!(cm.manifest.grants[1].path, "<data_dir>/notes");
-        assert!(cm.manifest.grants[1].writable);
+        let [first, second] = &cm.manifest.grants[..] else {
+            panic!("expected two grants");
+        };
+        assert_eq!(first.path, "<config_dir>/themes");
+        assert!(!first.writable);
+        assert_eq!(second.path, "<data_dir>/notes");
+        assert!(second.writable);
         assert!(cm.manifest.http);
     }
 
@@ -426,10 +433,10 @@ http = false
         // Then exactly one manifest section exists, carrying the update.
         let mut sections = 0;
         for payload in wasmparser::Parser::new(0).parse_all(&second) {
-            if let Ok(wasmparser::Payload::CustomSection(c)) = payload {
-                if c.name() == MANIFEST_SECTION {
-                    sections += 1;
-                }
+            if let Ok(wasmparser::Payload::CustomSection(c)) = payload
+                && c.name() == MANIFEST_SECTION
+            {
+                sections += 1;
             }
         }
         assert_eq!(sections, 1);

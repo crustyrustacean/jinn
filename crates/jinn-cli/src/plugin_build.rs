@@ -88,7 +88,7 @@ pub fn build(dir: &Path) -> Result<PathBuf, Report<PluginBuildError>> {
         return Err(Report::new(PluginBuildError::ArtifactMissing)
             .attach(artifact.to_string_lossy().to_string()));
     }
-    embed_into_artifact(&artifact, crate_manifest)?;
+    embed_into_artifact(&artifact, &crate_manifest)?;
     Ok(artifact)
 }
 
@@ -105,7 +105,7 @@ fn read_plugin_manifest(dir: &Path) -> Result<CrateManifest, Report<PluginBuildE
 /// Embeds the plugin's manifest into the built artifact in place.
 fn embed_into_artifact(
     artifact: &Path,
-    crate_manifest: CrateManifest,
+    crate_manifest: &CrateManifest,
 ) -> Result<(), Report<PluginBuildError>> {
     let bytes = std::fs::read(artifact)
         .change_context(PluginBuildError::EmbedFailed)
@@ -152,19 +152,19 @@ fn stream_messages(stdout: Option<std::process::ChildStdout>) -> Option<PathBuf>
 /// `executable` is null for cdylib targets — a legitimate guest shape —
 /// so fall back to the first `filenames` entry ending in `.wasm`.
 fn artifact_path(value: &serde_json::Value) -> Option<PathBuf> {
-    if let Some(exe) = value.get("executable").and_then(|e| e.as_str()) {
+    if let Some(exe) = value.get("executable").and_then(serde_json::Value::as_str) {
         return Some(PathBuf::from(exe));
     }
-    value
-        .get("filenames")
-        .and_then(|f| f.as_array())
-        .and_then(|names| {
-            names
-                .iter()
-                .filter_map(|n| n.as_str())
-                .find(|n| n.ends_with(".wasm"))
-                .map(PathBuf::from)
+    let names = value.get("filenames")?.as_array()?;
+    names
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .find(|n| {
+            std::path::Path::new(n)
+                .extension()
+                .is_some_and(|e| e == "wasm")
         })
+        .map(PathBuf::from)
 }
 
 /// Prints one compiler diagnostic's rendered text (already formatted by
@@ -189,6 +189,11 @@ mod tests {
         clippy::panic,
         reason = "test assertions"
     )]
+    #[expect(clippy::print_stderr, reason = "test skip notice")]
+    fn skip_notice(reason: &str) {
+        eprintln!("skipping: {reason}");
+    }
+
     use super::*;
     use jinn_domain::feat::plugin::manifest::extract_manifest;
     use std::path::PathBuf;
@@ -241,7 +246,7 @@ mod tests {
     #[test]
     fn build_embeds_manifest_into_artifact() {
         if !target_installed() {
-            eprintln!("skipping: wasm32-wasip2 target not installed");
+            skip_notice("wasm32-wasip2 target not installed");
             return;
         }
         let dir = tmp_dir("embed");
@@ -280,7 +285,7 @@ mod tests {
     #[test]
     fn add_build_output_matches_two_step_flow() {
         if !target_installed() {
-            eprintln!("skipping: wasm32-wasip2 target not installed");
+            skip_notice("wasm32-wasip2 target not installed");
             return;
         }
         let dir = tmp_dir("parity-a");
