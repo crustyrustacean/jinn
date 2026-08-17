@@ -168,6 +168,12 @@ pub enum PluginCommands {
         name: String,
     },
 
+    /// Build a plugin crate to a jinn-installable `.wasm` payload.
+    Build {
+        /// Path to the plugin crate directory (default: current dir).
+        dir: Option<String>,
+    },
+
     /// Install a built `.wasm` payload as a jinn plugin.
     Install {
         /// Path to the built `.wasm` file.

@@ -206,8 +206,8 @@ impl App {
         // or DB and runs fully offline, so it dispatches before both.
         if let Some(Commands::Plugin { subcommand }) = &cli.command {
             use jinn_cli::cli::PluginCommands;
+            use jinn_cli::plugin_build;
             use jinn_cli::plugin_new;
-
             match subcommand {
                 PluginCommands::New { name } => {
                     let cwd = std::env::current_dir()
@@ -215,6 +215,31 @@ impl App {
                         .attach("resolving current directory")?;
                     match plugin_new::scaffold(&cwd, name) {
                         Ok(dir) => plugin_new::report_success(&dir, name),
+                        Err(report) => {
+                            eprintln!("{report:?}");
+                            return Err(report.change_context(AppError));
+                        }
+                    }
+                }
+                PluginCommands::Build { dir } => {
+                    let target = dir.as_deref().map_or_else(
+                        || {
+                            std::env::current_dir()
+                                .change_context(AppError)
+                                .attach("resolving current directory")
+                        },
+                        |d| {
+                            std::path::PathBuf::from(d)
+                                .canonicalize()
+                                .change_context(AppError)
+                                .attach("resolving plugin directory")
+                        },
+                    )?;
+                    match plugin_build::build(&target) {
+                        Ok(artifact) => {
+                            println!("built {}", artifact.display());
+                            println!("install with: jinn plugin install {}", artifact.display());
+                        }
                         Err(report) => {
                             eprintln!("{report:?}");
                             return Err(report.change_context(AppError));

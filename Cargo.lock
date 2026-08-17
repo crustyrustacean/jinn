@@ -2580,7 +2580,9 @@ dependencies = [
  "clap_complete",
  "error-stack",
  "rstest",
+ "serde_json",
  "tokio",
+ "toml 0.8.23",
  "wherror",
 ]
 

@@ -20,6 +20,7 @@ check:
 # target). Plugins are delivered as source and compiled per machine — then
 # installed like any user plugin:
 #   jinn plugin install target/wasm32-wasip2/release/<crate>.wasm
+# Equivalent to `jinn plugin build plugins/<dir>` per plugin.
 build-plugins:
     cargo build -p jinn-plugin-themes --target wasm32-wasip2 --release
 

@@ -5,6 +5,7 @@
 //! root crate.
 
 pub mod cli;
+pub mod plugin_build;
 pub mod plugin_new;
 
 pub use cli::Cli;
