@@ -29,6 +29,8 @@ ratatui-which-key = { workspace = true }
 uuid = { workspace = true }
 ratatui = { workspace = true }
 async-trait = { workspace = true }
+wasm-encoder = { workspace = true }
+wasmparser = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 dirs = { workspace = true }

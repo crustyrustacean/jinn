@@ -100,6 +100,8 @@ jinn-web-search = { path = "crates/jinn-web-search" }
 jinn-mcp = { path = "crates/jinn-mcp" }
 jinn-plugin-api = { path = "crates/jinn-plugin-api" }
 jinn-plugin = { path = "crates/jinn-plugin" }
+wasm-encoder = "=0.252.0"
+wasmparser = "=0.252.0"
 wasmtime = { version = "47", features = ["component-model-async"] }
 wasmtime-wasi = { version = "47", features = ["p3"] }
 wasmtime-wasi-http = { version = "47", features = ["p3"] }

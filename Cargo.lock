@@ -2687,6 +2687,8 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width",
  "uuid",
+ "wasm-encoder 0.252.0",
+ "wasmparser 0.252.0",
  "wherror",
  "which 7.0.3",
 ]
