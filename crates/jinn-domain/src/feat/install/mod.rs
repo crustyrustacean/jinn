@@ -115,6 +115,11 @@ const BUNDLED: &[Bundled] = &[
     },
     Bundled {
         kind: Kind::Theme,
+        relative: "nord-light.toml",
+        contents: include_str!("../../../../../res/themes/nord-light.toml"),
+    },
+    Bundled {
+        kind: Kind::Theme,
         relative: "gruvbox-dark.toml",
         contents: include_str!("../../../../../res/themes/gruvbox-dark.toml"),
     },
@@ -185,6 +190,11 @@ const BUNDLED: &[Bundled] = &[
         kind: Kind::Skill,
         relative: "simple-task-loop/SKILL.md",
         contents: include_str!("../../../../../res/skills/simple-task-loop/SKILL.md"),
+    },
+    Bundled {
+        kind: Kind::Skill,
+        relative: "jinn-plugin/SKILL.md",
+        contents: include_str!("../../../../../res/skills/jinn-plugin/SKILL.md"),
     },
 ];
 

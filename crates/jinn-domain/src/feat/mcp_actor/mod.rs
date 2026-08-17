@@ -56,8 +56,8 @@ pub struct McpActor {
     deps: ActorDeps,
     /// The session this actor serves.
     session_id: SessionId,
-    /// The configured server this actor connects to.
-    server: McpServerConfig,
+    /// The server's name — the `[mcp_server.<name>]` table key.
+    name: String,
     /// The live MCP client connection, established during `on_start`.
     client: Option<McpClient>,
     /// Cancellation flag for the stderr-debounce republish task. Set in
@@ -86,6 +86,9 @@ pub struct McpActorDeps {
     deps: ActorDeps,
     /// The session this actor serves.
     session_id: SessionId,
+    /// The server's name — the `[mcp_server.<name>]` table key. Carried
+    /// separately because `McpServerConfig` no longer has a `name` field.
+    name: String,
     /// The configured server to connect to.
     server: McpServerConfig,
     /// Optional pre-connected client, used only by integration tests.
@@ -99,10 +102,16 @@ pub struct McpActorDeps {
 impl McpActorDeps {
     /// Production constructor: spawns the server process at `on_start`.
     #[must_use]
-    pub fn new(deps: ActorDeps, session_id: SessionId, server: McpServerConfig) -> Self {
+    pub fn new(
+        deps: ActorDeps,
+        session_id: SessionId,
+        name: String,
+        server: McpServerConfig,
+    ) -> Self {
         Self {
             deps,
             session_id,
+            name,
             server,
             client_override: Arc::new(Mutex::new(None)),
         }
@@ -115,12 +124,14 @@ impl McpActorDeps {
     pub fn with_client(
         deps: ActorDeps,
         session_id: SessionId,
+        name: String,
         server: McpServerConfig,
         client: McpClient,
     ) -> Self {
         Self {
             deps,
             session_id,
+            name,
             server,
             client_override: Arc::new(Mutex::new(Some(client))),
         }
@@ -199,6 +210,7 @@ pub(crate) async fn connect_for_transport(
 /// `Err(None)` when the failure was at connect time (nothing to shut down).
 /// On success returns the client and its mapped tool definitions together.
 async fn acquire_client(
+    name: &str,
     server: &McpServerConfig,
     client_override: Option<McpClient>,
 ) -> Result<(McpClient, Vec<ToolDefinition>), Option<McpClient>> {
@@ -208,7 +220,7 @@ async fn acquire_client(
             Ok(client) => client,
             Err(report) => {
                 tracing::warn!(
-                    server = %server.name,
+                    server = %name,
                     error = %report,
                     "MCP actor: failed to connect to server"
                 );
@@ -222,13 +234,13 @@ async fn acquire_client(
         Ok(tools) => {
             let definitions = tools
                 .iter()
-                .map(|tool| map_tool(&server.name, tool))
+                .map(|tool| map_tool(name, tool))
                 .collect::<Vec<ToolDefinition>>();
             Ok((client, definitions))
         }
         Err(report) => {
             tracing::warn!(
-                server = %server.name,
+                server = %name,
                 error = %report,
                 "MCP actor: failed to list tools"
             );
@@ -270,19 +282,14 @@ impl kameo::Actor for McpActor {
         let McpActorDeps {
             deps,
             session_id,
+            name,
             server,
             client_override,
         } = args;
 
         deps.subscribe(actor_ref.recipient::<ExecuteTool>()).await;
 
-        publish_status(
-            &deps,
-            &session_id,
-            &server.name,
-            McpConnectionStatus::Starting,
-        )
-        .await;
+        publish_status(&deps, &session_id, &name, McpConnectionStatus::Starting).await;
 
         // Drain any test-injected client from the shared slot. Production is
         // always `None` here, so the actor spawns the server process. Tests
@@ -293,17 +300,18 @@ impl kameo::Actor for McpActor {
         // list) is non-fatal to the process: the actor runs idle, the lifecycle
         // actor / dashboard surfaces the dead status, and a later enable/disable
         // cycle can respawn.
-        let (mut client, definitions) = match acquire_client(&server, injected_client).await {
+        let (mut client, definitions) = match acquire_client(&name, &server, injected_client).await
+        {
             Ok(ready) => ready,
             Err(half_open) => {
                 if let Some(mut half_open) = half_open {
                     half_open.shutdown().await;
                 }
-                publish_status(&deps, &session_id, &server.name, McpConnectionStatus::Dead).await;
+                publish_status(&deps, &session_id, &name, McpConnectionStatus::Dead).await;
                 return Ok(Self {
                     deps,
                     session_id,
-                    server,
+                    name,
                     client: None,
                     stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
                     liveness_task_shutdown: Arc::new(AtomicBool::new(false)),
@@ -312,9 +320,9 @@ impl kameo::Actor for McpActor {
             }
         };
 
-        let provider = provider_name(&server.name);
+        let provider = provider_name(&name);
         tracing::info!(
-            server = %server.name,
+            server = %name,
             session_id = %session_id,
             tool_count = definitions.len(),
             "MCP actor: connected, registering tools"
@@ -331,15 +339,9 @@ impl kameo::Actor for McpActor {
             .await;
 
         // Tools registered + connection live: we're Running.
-        publish_status(
-            &deps,
-            &session_id,
-            &server.name,
-            McpConnectionStatus::Running,
-        )
-        .await;
+        publish_status(&deps, &session_id, &name, McpConnectionStatus::Running).await;
         // Surface any stderr emitted during startup (e.g. `npm warn`).
-        publish_log(&deps, &session_id, &server.name, &client.stderr_tail()).await;
+        publish_log(&deps, &session_id, &name, &client.stderr_tail()).await;
 
         // Spawn the live stderr-debounce task. It polls the client's tail every
         // `STDERR_DEBOUNCE` and republishes `McpServerLog` when the tail changed,
@@ -351,7 +353,7 @@ impl kameo::Actor for McpActor {
             client.stderr_buffer(),
             deps.clone(),
             session_id.clone(),
-            server.name.clone(),
+            name.clone(),
         );
 
         // Spawn the liveness-watch task. It polls the client's transport
@@ -368,7 +370,7 @@ impl kameo::Actor for McpActor {
             stderr_task_shutdown.clone(),
             deps.clone(),
             session_id.clone(),
-            server.name.clone(),
+            name.clone(),
         );
 
         // Spawn the HTTP child-exit watcher — only for HTTP-mode connections,
@@ -389,7 +391,7 @@ impl kameo::Actor for McpActor {
         Ok(Self {
             deps,
             session_id,
-            server,
+            name,
             client: Some(client),
             stderr_task_shutdown,
             liveness_task_shutdown,
@@ -424,11 +426,11 @@ impl kameo::Actor for McpActor {
         publish_status(
             &self.deps,
             &self.session_id,
-            &self.server.name,
+            &self.name,
             McpConnectionStatus::Dead,
         )
         .await;
-        publish_log(&self.deps, &self.session_id, &self.server.name, &tail).await;
+        publish_log(&self.deps, &self.session_id, &self.name, &tail).await;
         Ok(())
     }
 }
@@ -608,8 +610,7 @@ impl Message<ExecuteTool> for McpActor {
         if msg.session_id != self.session_id {
             return;
         }
-        let Some(tool_name) =
-            strip_namespace(&self.server.name, &msg.tool_call.name).map(str::to_owned)
+        let Some(tool_name) = strip_namespace(&self.name, &msg.tool_call.name).map(str::to_owned)
         else {
             return;
         };
@@ -819,7 +820,6 @@ mod tests {
     fn server_command_maps_config_fields() {
         // Given a server config.
         let config = McpServerConfig {
-            name: "excalimate".to_owned(),
             command: Some("npx".to_owned()),
             args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
             ..Default::default()

@@ -42,7 +42,6 @@ use kameo::actor::Spawn;
 /// spawned `McpActor` fails to connect and goes Dead.
 fn unrunnable_server() -> McpServerConfig {
     McpServerConfig {
-        name: "unrunnable".to_owned(),
         command: Some("/this/command/does/not/exist".to_owned()),
         args: vec![],
         ..Default::default()
@@ -52,7 +51,7 @@ fn unrunnable_server() -> McpServerConfig {
 /// Spawns a real coordinator seeded with the given configured servers.
 async fn spawn_coordinator(
     harness: &TestHarness,
-    servers: Vec<McpServerConfig>,
+    servers: &[(&str, McpServerConfig)],
 ) -> (
     kameo::actor::ActorRef<McpCoordinatorActor>,
     crate::Services,
@@ -62,7 +61,10 @@ async fn spawn_coordinator(
     services
         .user_preferences_storage
         .save(&UserPreferences {
-            mcp_server: servers,
+            mcp_server: servers
+                .iter()
+                .map(|(name, config)| ((*name).to_owned(), config.clone()))
+                .collect(),
             ..UserPreferences::default()
         })
         .expect("seed prefs");
@@ -96,14 +98,13 @@ fn ctx_with_coordinator(
     session_id: SessionId,
 ) -> ToolContext {
     let config = McpServerConfig {
-        name: "excalimate".to_owned(),
         command: Some(String::new()),
         args: vec![],
         ..Default::default()
     };
     let frontend = FrontendState {
         preferences: UserPreferences {
-            mcp_server: vec![config],
+            mcp_server: [("excalimate".to_owned(), config)].into_iter().collect(),
             ..Default::default()
         },
         ..Default::default()
@@ -139,7 +140,7 @@ async fn restart_one_returns_connect_failed_for_unrunnable_command() {
     // Given a coordinator with an unrunnable server enabled for a session.
     let harness = TestHarness::new().await;
     let (coordinator, _services, _state) =
-        spawn_coordinator(&harness, vec![unrunnable_server()]).await;
+        spawn_coordinator(&harness, &[("unrunnable", unrunnable_server())]).await;
     let session_id = SessionId::new();
 
     // When asking the coordinator to restart that server.
@@ -168,7 +169,7 @@ async fn restart_one_returns_unknown_server_for_unconfigured_server() {
     // Given a coordinator with one configured server.
     let harness = TestHarness::new().await;
     let (coordinator, _services, _state) =
-        spawn_coordinator(&harness, vec![unrunnable_server()]).await;
+        spawn_coordinator(&harness, &[("unrunnable", unrunnable_server())]).await;
     let session_id = SessionId::new();
 
     // When asking to restart a different (unconfigured) server.
@@ -232,7 +233,7 @@ async fn execute_returns_failure_for_unknown_server_via_ask() {
     // Given a coordinator with `excalimate` configured and a context wired to it.
     let harness = TestHarness::new().await;
     let (coordinator, _services, _state) =
-        spawn_coordinator(&harness, vec![unrunnable_server()]).await;
+        spawn_coordinator(&harness, &[("unrunnable", unrunnable_server())]).await;
     let ctx = ctx_with_coordinator(coordinator, SessionId::new());
 
     // When executing with an unconfigured server name.
@@ -253,7 +254,7 @@ async fn execute_returns_failure_for_unknown_server_via_ask() {
 async fn execute_strips_namespace_and_routes_to_ask() {
     // Given a coordinator with no `stub` server configured.
     let harness = TestHarness::new().await;
-    let (coordinator, _services, _state) = spawn_coordinator(&harness, vec![]).await;
+    let (coordinator, _services, _state) = spawn_coordinator(&harness, &[]).await;
     let ctx = ctx_with_coordinator(coordinator, SessionId::new());
 
     // When executing with a namespaced tool name.

@@ -97,6 +97,13 @@ Entries are added or amended **only with human approval**.
 - (paths) Config lives at `~/.config/jinn` (providers, prompts, personas, themes, `jinn.toml`).
 - (paths) Data lives at `~/.local/share/jinn` (`sessions.db`).
 - (paths) State/logs live at `~/.local/state/jinn` (`jinn.log`), falling back to the data dir on platforms without a state dir.
+- (plugins) Plugins are WASM components hosted in-process by jinn itself (wasmtime, one store per plugin, task-supervised), speaking NDJSON over in-memory pipes; the wasm sandbox is the isolation boundary.
+- (plugins) Plugin configuration lives in `jinn.toml` under `[plugin.<name>]`; plugins spawn at app start and activate only after a jinn restart.
+- (plugins) A plugin coordinator actor validates and authorizes all inbound plugin messages and caches contributions into `AppState`; synchronous consumers (pickers, renderer, assembly) read only the cache, never the plugin.
+- (plugins) Plugins declare the filesystem paths and http access they need in their own `[package.metadata.jinn]` manifest (Cargo.toml); the manifest is embedded into the built `.wasm` as a custom section and auto-applied at install, where `--grant`/`--http` flags override it. Install fails hard on an artifact with no embedded manifest. Nothing is granted implicitly — persistence is declared as `"<plugin_data_dir>:w"`.
+- (plugins) The plugin wire contract is a hand-maintained JSON Schema kept in sync with the `jinn-plugin-api` types by a drift test; plugin SDKs are consumed as a git dependency on the jinn repo, not crates.io.
+- (plugins) `jinn plugin add <dir>` builds and installs a plugin in one command (build → manifest embed → install with declared grants).
+- (plugins) First-party plugin names carry no jinn-/plugin padding: the themes plugin is `theme-loader`.
 - (persona) Personas are markdown templates loaded via the prompt-template system; the persona picker (`<leader>se`) switches the active session persona.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
 - (providers) The provider crate supports three backends: Anthropic, Google, and OpenAI-compatible.
@@ -134,7 +141,7 @@ Entries are added or amended **only with human approval**.
 - (storage) Startup fail-fast: a malformed providers.toml or jinn.toml aborts launch before actor wiring with a stderr report naming the path and TOML detail; recovery via jinn config subcommands stays unguarded.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
 - (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.
-- (theme) The TUI supports dynamic themes via TOML files in `~/.config/jinn/themes/*.toml`, supporting ANSI name, ANSI code, hex, and RGB color formats.
+- (theme) Theme discovery flows through a user-installed `theme-loader` plugin (source-built, `jinn plugin add plugins/theme-loader`): it scans `~/.config/jinn/themes/*.toml` (ANSI name, ANSI code, hex, RGB formats) and contributes full theme definitions over the plugin wire; the theme picker reads the contribution cache, not disk. A default install ships no plugins and uses the embedded default theme.
 - (tokens) A token-count actor estimates per-entry token usage; these estimates drive context-assembly sizing and compaction thresholds.
 - (tokens) The session token ledger stores the pre-send local estimate (`tokens_sent`) alongside provider-reported `prompt_tokens` and `cached_tokens` per request; the estimate is never overwritten.
 - (tokens) The status-bar `↑sent` count uses the provider-reported `prompt_tokens` when a turn completed with usage, falling back to the estimate for turns without usage.

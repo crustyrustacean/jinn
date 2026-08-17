@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jinn.dev/plugin-api/v1/plugin-api.schema.json",
+  "title": "jinn plugin wire contract v1",
+  "description": "Every NDJSON line crossing the plugin boundary is an Envelope. Hand-maintained mirror of the jinn-plugin-api crate types; a drift test fails when the two disagree.",
+  "type": "object",
+  "properties": {
+    "v": {
+      "type": "integer",
+      "const": 1,
+      "description": "Wire protocol major version."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Sender-assigned monotonic sequence number (per direction)."
+    },
+    "ts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix epoch milliseconds when the sender produced the message."
+    },
+    "type": {
+      "type": "string",
+      "description": "Message tag (flattened into the envelope by serde)."
+    }
+  },
+  "required": [
+    "v",
+    "seq",
+    "ts",
+    "type"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "hello"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "protocol_version",
+          "name"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "hello"
+          },
+          "protocol_version": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subscriptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "set_theme_entries"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "themes"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "set_theme_entries"
+          },
+          "themes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/themeDef"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "welcome"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "protocol_version",
+          "plugin_id",
+          "http_allowed"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "welcome"
+          },
+          "protocol_version": {
+            "type": "integer"
+          },
+          "plugin_id": {
+            "type": "string"
+          },
+          "read_dirs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "write_dirs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "http_allowed": {
+            "type": "boolean"
+          },
+          "config": {}
+        },
+        "additionalProperties": false
+      }
+    }
+  ],
+  "$defs": {
+    "themeDef": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique theme name. \"default\" is reserved by the host."
+        },
+        "description": {
+          "type": "string"
+        },
+        "colors": {
+          "type": "object",
+          "description": "Slot key to color string. Slot keys are the snake_case core Theme field names; color strings accept ANSI name, ANSI code, hex, or RGB form.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

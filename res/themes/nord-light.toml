@@ -1,0 +1,64 @@
+# Nord Light — a calm light theme for jinn
+# Installed to ~/.config/jinn/themes/nord-light.toml
+
+# Borders & focus
+focus_accent = "#5e81ac"       # Frost blue (Nord10)
+border_unfocused = "#d8dee9"   # Snow storm (Nord4)
+popup_title = "#2e3440"        # Polar night (Nord0)
+
+# Text
+primary_text = "#2e3440"       # Polar night (Nord0)
+muted_text = "#7b88a1"         # Calm gray-blue
+error_text = "#bf616a"         # Aurora red (Nord11)
+
+# Status
+success = "#a3be8c"            # Aurora green (Nord14)
+warning = "#ebcb8b"            # Aurora yellow (Nord13)
+streaming = "#88c0d0"          # Frost (Nord8)
+node_awaiting_input = "#81a1c1" # Frost (Nord9)
+
+# Chat log backgrounds
+gutter_bg = "#eceff4"          # Snow storm (Nord6)
+gutter_context_included = "#e5e9f0"
+user_block_bg = "#e5e9f0"
+tool_fg = "#4c566a"            # Polar night (Nord3)
+tool_success_bg = "#e3ecdf"
+tool_failure_bg = "#f0dfdf"
+tool_pending_bg = "#e4e7eb"
+compaction_block_bg = "#e2e6f0"
+truncation_fg = "#aebac9"
+
+# Picker
+picker_active_marker = "#5e81ac"
+picker_selected_bg = "#dce6f2"
+picker_highlight_bg = "#e7edf5"
+
+# Tab bar
+tab_active_fg = "#eceff4"
+tab_active_bg = "#5e81ac"
+tab_inactive_fg = "#7b88a1"
+
+# Selection highlight
+selection_fg = "#2e3440"
+selection_bg = "#d8dee9"
+
+# Provider picker
+accent_action = "#d08770"      # Aurora orange (Nord12)
+age_fresh = "#a3be8c"
+age_stale = "#bf616a"
+
+# Scroll indicator
+scroll_indicator_bg = "#e5e9f0"
+
+# Input mode badge (queue vs steer)
+input_mode_queue = "#a3be8c"
+input_mode_steer = "#b48ead"   # Aurora purple (Nord15)
+
+# Info popup (audit, debug)
+infopopup_bg = "#e5e9f0"
+infopopup_title = "#5e81ac"
+infopopup_border = "#88c0d0"
+infopopup_fg = "#2e3440"
+
+# Quake bar (global overlay console)
+quake_bar_bg = "#d8dee9"

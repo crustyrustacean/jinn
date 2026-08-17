@@ -137,12 +137,21 @@ pub struct UserPreferences {
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
 
-    /// Configured MCP servers (Model Context Protocol). Each entry declares
-    /// a server jinn connects to (over stdio, local_http, or remote_http — see
-    /// [`TransportKind`](crate::feat::mcp::TransportKind)) when enabled per-session.
-    /// See [`McpServerConfig`].
+    /// Configured MCP servers, keyed by name — `[mcp_server.<name>]` in
+    /// `jinn.toml`. Each entry declares a server jinn connects to (over stdio,
+    /// local_http, or remote_http — see
+    /// [`TransportKind`](crate::feat::mcp::TransportKind)) when enabled
+    /// per-session. See [`McpServerConfig`].
     #[serde(default)]
-    pub mcp_server: Vec<crate::feat::mcp::McpServerConfig>,
+    pub mcp_server: std::collections::BTreeMap<String, crate::feat::mcp::McpServerConfig>,
+
+    /// Configured plugins, keyed by name — `[plugin.<name>]` in `jinn.toml`.
+    /// Each entry declares a `.wasm` component plus its capability grants;
+    /// the plugin coordinator hosts one in-process WASM guest per enabled
+    /// entry at app start. See
+    /// [`PluginConfig`](crate::feat::plugin::PluginConfig).
+    #[serde(default)]
+    pub plugin: std::collections::BTreeMap<String, crate::feat::plugin::PluginConfig>,
 
     /// The local IP address HTTP-mode MCP servers bind to. Used as the `<ip>`
     /// replacement token in a server's `args`, and as the bind address for
@@ -248,7 +257,8 @@ impl Default for UserPreferences {
                 },
             ],
             projects: vec![],
-            mcp_server: vec![],
+            mcp_server: std::collections::BTreeMap::new(),
+            plugin: std::collections::BTreeMap::new(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -442,6 +452,12 @@ where
             .change_context(UserPreferencesError::Parse)
             .attach("failed to parse existing jinn.toml")?;
 
+        // Legacy serde-alias keys left in user files collide with their
+        // canonical keys once a patch inserts the canonical name (serde
+        // would see both and fail with "duplicate field"). Rewrite known
+        // aliases to canonical before patching.
+        rewrite_legacy_aliases(doc.as_table_mut());
+
         let new_value = toml::Value::try_from(prefs)
             .change_context(UserPreferencesError::Parse)
             .attach("failed to serialize UserPreferences")?;
@@ -454,7 +470,9 @@ where
         patcher.register_array_key(["session_lifecycle"], "name");
         patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
         patcher.register_array_key(["project"], "path");
-        patcher.register_array_key(["mcp_server"], "name");
+        // `plugin` and `mcp_server` are map-keyed tables (`[plugin.<name>]`),
+        // not arrays — the table name is the identity, no key registration
+        // needed.
 
         patcher
             .apply(new_table, doc.as_table_mut())
@@ -471,6 +489,26 @@ where
     std::fs::write(path, content)
         .change_context(UserPreferencesError::Io)
         .attach("failed to write user preferences")
+}
+
+/// Rewrites legacy serde-alias keys to their canonical names in an
+/// existing jinn.toml document before patching.
+///
+/// [`BrokenEditAutoPruneConfig::min_age`] deserializes the legacy
+/// `min_tail_entries` alias; a file carrying the alias would collide
+/// with a patch-inserted canonical key ("duplicate field" on the next
+/// load). Renaming in place keeps the user's value and comments while
+/// making the document round-trip-safe.
+fn rewrite_legacy_aliases(root: &mut toml_edit::Table) {
+    if let Some(table) = root
+        .get_mut("auto_prune")
+        .and_then(|item| item.as_table_mut())
+        .and_then(|t| t.get_mut("broken_edit"))
+        .and_then(|item| item.as_table_mut())
+        && let Some(item) = table.remove("min_tail_entries")
+    {
+        table.insert("min_age", item);
+    }
 }
 
 #[cfg(test)]
@@ -646,7 +684,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_server: vec![],
+            mcp_server: std::collections::BTreeMap::new(),
+            plugin: std::collections::BTreeMap::new(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -733,7 +772,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_server: vec![],
+            mcp_server: std::collections::BTreeMap::new(),
+            plugin: std::collections::BTreeMap::new(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -771,7 +811,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_server: vec![],
+            mcp_server: std::collections::BTreeMap::new(),
+            plugin: std::collections::BTreeMap::new(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1080,7 +1121,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_server: vec![],
+            mcp_server: std::collections::BTreeMap::new(),
+            plugin: std::collections::BTreeMap::new(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1184,7 +1226,6 @@ mod tests {
     fn mcp_server_config_round_trips_through_toml() {
         // Given a server config with command + args.
         let server = crate::feat::mcp::McpServerConfig {
-            name: "excalimate".to_owned(),
             command: Some("npx".to_owned()),
             args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
             ..Default::default()
@@ -1195,29 +1236,34 @@ mod tests {
         let back: crate::feat::mcp::McpServerConfig = toml::from_str(&s).expect("deserialize");
 
         // Then the fields are preserved.
-        assert_eq!(back.name, "excalimate");
         assert_eq!(back.command.as_deref(), Some("npx"));
         assert_eq!(back.args, vec!["@excalimate/mcp-server", "--stdio"]);
     }
 
     #[rstest::rstest]
-    fn mcp_server_array_round_trips_through_preferences() {
+    fn mcp_server_map_round_trips_through_preferences() {
         // Given preferences with two configured servers.
         let prefs = UserPreferences {
-            mcp_server: vec![
-                crate::feat::mcp::McpServerConfig {
-                    name: "excalimate".to_owned(),
-                    command: Some("npx".to_owned()),
-                    args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
-                    ..Default::default()
-                },
-                crate::feat::mcp::McpServerConfig {
-                    name: "filesystem".to_owned(),
-                    command: Some("node".to_owned()),
-                    args: vec!["fs-server.js".to_owned()],
-                    ..Default::default()
-                },
-            ],
+            mcp_server: [
+                (
+                    "excalimate".to_owned(),
+                    crate::feat::mcp::McpServerConfig {
+                        command: Some("npx".to_owned()),
+                        args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "filesystem".to_owned(),
+                    crate::feat::mcp::McpServerConfig {
+                        command: Some("node".to_owned()),
+                        args: vec!["fs-server.js".to_owned()],
+                        ..Default::default()
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
             ..UserPreferences::default()
         };
 
@@ -1229,8 +1275,14 @@ mod tests {
 
         // Then both servers survive the round-trip.
         assert_eq!(reloaded.mcp_server.len(), 2);
-        assert_eq!(reloaded.mcp_server[0].name, "excalimate");
-        assert_eq!(reloaded.mcp_server[1].name, "filesystem");
+        assert_eq!(
+            reloaded.mcp_server["excalimate"].command.as_deref(),
+            Some("npx")
+        );
+        assert_eq!(
+            reloaded.mcp_server["filesystem"].command.as_deref(),
+            Some("node")
+        );
     }
 
     #[rstest::rstest]
@@ -1241,9 +1293,8 @@ mod tests {
         std::fs::write(
             &path,
             r#"# top-level comment
-[[mcp_server]]
+[mcp_server.excalimate]
 # this comment must survive
-name = "excalimate"
 command = "npx"
 args = ["@excalimate/mcp-server", "--stdio"]
 "#,
@@ -1252,12 +1303,16 @@ args = ["@excalimate/mcp-server", "--stdio"]
 
         // When saving the same config back.
         let prefs = UserPreferences {
-            mcp_server: vec![crate::feat::mcp::McpServerConfig {
-                name: "excalimate".to_owned(),
-                command: Some("npx".to_owned()),
-                args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
-                ..Default::default()
-            }],
+            mcp_server: [(
+                "excalimate".to_owned(),
+                crate::feat::mcp::McpServerConfig {
+                    command: Some("npx".to_owned()),
+                    args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+                    ..Default::default()
+                },
+            )]
+            .into_iter()
+            .collect(),
             ..UserPreferences::default()
         };
         save_preferences_to(&prefs, &path).expect("save");
@@ -1277,5 +1332,38 @@ args = ["@excalimate/mcp-server", "--stdio"]
 
         // Then no MCP servers are configured by default.
         assert!(prefs.mcp_server.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn save_rewrites_legacy_alias_so_patched_file_still_parses() {
+        // Given a legacy jinn.toml using the `min_tail_entries` alias and
+        // a plugin entry (the shape `plugin install` produces when it
+        // patches a file that predates the canonical key).
+        let original = r#"[auto_prune.broken_edit]
+enabled = true
+min_tail_entries = 10
+
+[plugin.p]
+wasm = "p.wasm"
+enabled = true
+http = false
+"#;
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When saving preferences back (the patch inserts the canonical
+        // `min_age` key alongside the preserved alias key).
+        let prefs = load_preferences_from(&path).expect("load");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the file no longer carries both keys, so it still parses.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            !written.contains("min_tail_entries"),
+            "alias survived: {written}"
+        );
+        let reparsed = load_preferences_from(&path).expect("reparse");
+        assert_eq!(reparsed.auto_prune.broken_edit.min_age, 10);
     }
 }
