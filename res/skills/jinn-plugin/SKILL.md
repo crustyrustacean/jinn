@@ -28,12 +28,12 @@ jinn plugin install target/wasm32-wasip2/release/my_plugin.wasm
 resolves the artifact path from cargo itself (in-workspace crates build to the
 workspace root's `target/`, standalone crates to their own).
 
-jinn's own plugins (e.g. the themes plugin in `plugins/jinn-themes/`)
+jinn's own plugins (e.g. the themes plugin in `plugins/theme-loader/`)
 are built and installed the same way — from source, per machine:
 
 ```
-just build-plugins                 # or: jinn plugin build plugins/jinn-themes
-jinn plugin install target/wasm32-wasip2/release/jinn-plugin-themes.wasm \
+just build-plugins                 # or: jinn plugin build plugins/theme-loader
+jinn plugin install target/wasm32-wasip2/release/theme-loader.wasm \
   --grant '<config_dir>/themes'     # the themes plugin scans granted dirs
 # restart jinn
 ```

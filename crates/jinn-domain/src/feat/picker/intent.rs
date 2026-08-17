@@ -3409,7 +3409,7 @@ mod tests {
         // Given a cache with unsorted contributed themes.
         let mut state = AppState::default();
         state.plugins.set_themes(
-            "jinn-themes",
+            "theme-loader",
             vec![
                 ("zeta".to_owned(), None, crate::feat::theme::default_theme()),
                 ("Beta".to_owned(), None, crate::feat::theme::default_theme()),

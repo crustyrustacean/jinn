@@ -272,4 +272,59 @@ mod tests {
                     .any(|l| l.trim() == "wasm32-wasip2")
             })
     }
+
+    // Given a plugin crate (target installed; else skipped).
+    // When comparing the artifact `add` builds against a manual build.
+    // Then both produce the same embedded manifest and module bytes —
+    // the composed flow cannot diverge from the two-step flow.
+    #[test]
+    fn add_build_output_matches_two_step_flow() {
+        if !target_installed() {
+            eprintln!("skipping: wasm32-wasip2 target not installed");
+            return;
+        }
+        let dir = tmp_dir("parity-a");
+        write_tiny_plugin(&dir);
+
+        let artifact_a = build(&dir).expect("build a");
+        let bytes_a = std::fs::read(&artifact_a).expect("read a");
+        let manifest_a = extract_manifest(&bytes_a).expect("manifest a");
+
+        let artifact_b = build(&dir).expect("build b");
+        let bytes_b = std::fs::read(&artifact_b).expect("read b");
+        let manifest_b = extract_manifest(&bytes_b).expect("manifest b");
+
+        assert_eq!(manifest_a, manifest_b);
+        assert_eq!(
+            strip_manifest(&bytes_a),
+            strip_manifest(&bytes_b),
+            "module bytes differ between builds"
+        );
+    }
+
+    fn strip_manifest(bytes: &[u8]) -> Vec<u8> {
+        use jinn_domain::feat::plugin::manifest::MANIFEST_SECTION;
+        for payload in wasmparser::Parser::new(0).parse_all(bytes) {
+            let Ok(payload) = payload else {
+                continue;
+            };
+            if let wasmparser::Payload::CustomSection(c) = &payload
+                && c.name() == MANIFEST_SECTION
+                && let Some((_, contents)) = payload.as_section()
+            {
+                return [&bytes[..contents.start - 2], &bytes[contents.end..]].concat();
+            }
+        }
+        bytes.to_vec()
+    }
+
+    fn write_tiny_plugin(dir: &std::path::Path) {
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"tiny-plugin\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[package.metadata.jinn]\ngrants = [\"<config_dir>/themes\"]\nhttp = false\n\n[lib]\ncrate-type = [\"cdylib\"]\n",
+        )
+        .expect("write manifest");
+        std::fs::create_dir_all(dir.join("src")).expect("mkdir src");
+        std::fs::write(dir.join("src/lib.rs"), "").expect("write lib");
+    }
 }

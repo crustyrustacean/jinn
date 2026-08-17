@@ -1,7 +1,7 @@
 //! End-to-end host↔guest test against the real wasmtime engine using the
 //! real first-party themes guest.
 //!
-//! Requires the guest artifact `target/wasm32-wasip2/release/jinn-plugin-themes.wasm`
+//! Requires the guest artifact `target/wasm32-wasip2/release/theme-loader.wasm`
 //! (built by `just build-plugins`). When the artifact is absent the tests
 //! are skipped with a note — CI runs `just build-plugins` first.
 
@@ -22,7 +22,7 @@ fn workspace_root() -> PathBuf {
 
 /// Locates the built themes guest, or `None` when not built.
 fn themes_wasm() -> Option<PathBuf> {
-    let path = workspace_root().join("target/wasm32-wasip2/release/jinn-plugin-themes.wasm");
+    let path = workspace_root().join("target/wasm32-wasip2/release/theme-loader.wasm");
     path.exists().then_some(path)
 }
 
@@ -41,14 +41,14 @@ fn themes_grants() -> Grants {
 #[tokio::test]
 async fn themes_guest_handshakes_and_contributes_over_real_engine() {
     let Some(wasm) = themes_wasm() else {
-        eprintln!("skipping: jinn-plugin-themes.wasm not built (run `just build-plugins`)");
+        eprintln!("skipping: theme-loader.wasm not built (run `just build-plugins`)");
         return;
     };
 
     // Given a real host for the themes guest.
     let engine = PluginEngine::new().expect("engine");
     let mut host =
-        PluginHost::start(&engine, "jinn-themes", &wasm, &themes_grants()).expect("guest start");
+        PluginHost::start(&engine, "theme-loader", &wasm, &themes_grants()).expect("guest start");
 
     // When the handshake completes and the guest runs to completion.
     let mut reader = host.split();
@@ -70,7 +70,7 @@ async fn themes_guest_handshakes_and_contributes_over_real_engine() {
     let welcome = jinn_plugin_api::Envelope::for_host(
         HostToPlugin::Welcome(jinn_plugin_api::Welcome {
             protocol_version: PROTOCOL_VERSION,
-            plugin_id: "jinn-themes".to_owned(),
+            plugin_id: "theme-loader".to_owned(),
             read_dirs: themes_grants()
                 .read_dirs
                 .iter()
@@ -123,7 +123,7 @@ async fn themes_guest_handshakes_and_contributes_over_real_engine() {
 #[tokio::test]
 async fn themes_guest_with_empty_grants_contributes_nothing() {
     let Some(wasm) = themes_wasm() else {
-        eprintln!("skipping: jinn-plugin-themes.wasm not built (run `just build-plugins`)");
+        eprintln!("skipping: theme-loader.wasm not built (run `just build-plugins`)");
         return;
     };
 
@@ -131,7 +131,7 @@ async fn themes_guest_with_empty_grants_contributes_nothing() {
     let engine = PluginEngine::new().expect("engine");
     let mut host = PluginHost::start(
         &engine,
-        "jinn-themes",
+        "theme-loader",
         &wasm,
         &Grants {
             read_dirs: vec![],
@@ -149,7 +149,7 @@ async fn themes_guest_with_empty_grants_contributes_nothing() {
     let welcome = jinn_plugin_api::Envelope::for_host(
         HostToPlugin::Welcome(jinn_plugin_api::Welcome {
             protocol_version: PROTOCOL_VERSION,
-            plugin_id: "jinn-themes".to_owned(),
+            plugin_id: "theme-loader".to_owned(),
             read_dirs: vec![],
             write_dirs: vec![],
             http_allowed: false,

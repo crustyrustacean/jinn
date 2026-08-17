@@ -2584,6 +2584,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "toml 0.8.23",
+ "wasmparser 0.252.0",
  "wherror",
 ]
 
@@ -2746,17 +2747,6 @@ name = "jinn-plugin-sdk"
 version = "0.1.0"
 dependencies = [
  "jinn-plugin-api",
- "serde_json",
-]
-
-[[package]]
-name = "jinn-plugin-themes"
-version = "0.1.0"
-dependencies = [
- "error-stack",
- "jinn-plugin-api",
- "jinn-plugin-sdk",
- "jinn-theme",
  "serde_json",
 ]
 
@@ -5725,6 +5715,17 @@ dependencies = [
  "smawk",
  "unicode-linebreak",
  "unicode-width",
+]
+
+[[package]]
+name = "theme-loader"
+version = "0.1.0"
+dependencies = [
+ "error-stack",
+ "jinn-plugin-api",
+ "jinn-plugin-sdk",
+ "jinn-theme",
+ "serde_json",
 ]
 
 [[package]]
