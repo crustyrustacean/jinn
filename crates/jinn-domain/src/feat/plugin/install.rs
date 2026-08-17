@@ -71,6 +71,7 @@ pub fn install(
     wasm_path: &Path,
     name: &str,
     plugins_dir: &Path,
+    grants: Vec<crate::feat::plugin::PluginPathGrant>,
     storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
 ) -> Result<PluginInstallOutcome, Report<PluginInstallError>> {
     if !valid_name(name) {
@@ -101,7 +102,7 @@ pub fn install(
     let entry = PluginConfig {
         name: name.to_owned(),
         wasm: format!("{name}.wasm"),
-        grants: vec![],
+        grants,
         http: false,
         config: None,
         enabled: true,
@@ -162,7 +163,7 @@ mod tests {
         // When installing.
         let storage = InMemoryUserPreferencesStorage::default();
         let outcome =
-            install(&wasm, "my-plugin", &base.join("plugins"), &storage).expect("install");
+            install(&wasm, "my-plugin", &base.join("plugins"), vec![], &storage).expect("install");
 
         // Then the payload was copied and the entry appended.
         assert!(base.join("plugins/my-plugin.wasm").is_file());
@@ -192,11 +193,12 @@ mod tests {
         let wasm = base.join("my-plugin.wasm");
         std::fs::write(&wasm, b"v1").expect("write");
         let storage = InMemoryUserPreferencesStorage::default();
-        install(&wasm, "my-plugin", &base.join("plugins"), &storage).expect("first");
+        install(&wasm, "my-plugin", &base.join("plugins"), vec![], &storage).expect("first");
 
         // When installing v2.
         std::fs::write(&wasm, b"v2 longer payload").expect("write v2");
-        let outcome = install(&wasm, "my-plugin", &base.join("plugins"), &storage).expect("second");
+        let outcome =
+            install(&wasm, "my-plugin", &base.join("plugins"), vec![], &storage).expect("second");
 
         // Then exactly one entry exists and Updated was returned.
         let prefs = storage.reload().expect("reload");
@@ -226,6 +228,7 @@ mod tests {
             &base.join("nope.wasm"),
             "x",
             &base,
+            vec![],
             &InMemoryUserPreferencesStorage::default(),
         );
 
@@ -248,7 +251,13 @@ mod tests {
         std::fs::write(&txt, b"text").expect("write");
 
         // When installing.
-        let result = install(&txt, "x", &base, &InMemoryUserPreferencesStorage::default());
+        let result = install(
+            &txt,
+            "x",
+            &base,
+            vec![],
+            &InMemoryUserPreferencesStorage::default(),
+        );
 
         // Then NotWasm.
         let Err(report) = result else {
@@ -275,6 +284,7 @@ mod tests {
             &wasm,
             "BadName",
             &base,
+            vec![],
             &InMemoryUserPreferencesStorage::default(),
         );
 

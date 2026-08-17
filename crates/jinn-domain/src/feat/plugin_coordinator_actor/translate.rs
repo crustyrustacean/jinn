@@ -16,19 +16,18 @@ use std::fmt::Write as _;
 use jinn_plugin_api::ThemeDef;
 use jinn_theme::theme::ThemeFile;
 
-/// The built-in theme name, reserved: the host always provides it and
-/// plugin contributions with this name are ignored.
-pub const RESERVED_THEME_NAME: &str = "default";
-
 /// Translates a batch of contributed theme definitions into resolved core
 /// themes.
 ///
-/// Empty/malformed definitions are dropped individually; `"default"` is
-/// reserved and skipped. The output preserves input order.
+/// Empty/malformed definitions are dropped individually. The reserved
+/// `"default"` name is allowed: the picker pins the built-in default
+/// first and lets a contributed `"default"` restyle it (matching the
+/// user-overrides-system rule for the seeded `default.toml`). The output
+/// preserves input order.
 #[must_use]
 pub fn themes(defs: &[ThemeDef]) -> Vec<(String, Option<String>, Theme)> {
     defs.iter()
-        .filter(|d| d.name != RESERVED_THEME_NAME && !d.name.trim().is_empty())
+        .filter(|d| !d.name.trim().is_empty())
         .filter_map(translate_one)
         .collect()
 }

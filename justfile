@@ -16,7 +16,10 @@ test:
 check:
     cargo check --workspace
 
-# Build the first-party wasm plugins (needs the wasm32-wasip2 target).
+# Build the in-repo wasm plugins from source (needs the wasm32-wasip2
+# target). Plugins are delivered as source and compiled per machine — then
+# installed like any user plugin:
+#   jinn plugin install target/wasm32-wasip2/release/<crate>.wasm
 build-plugins:
     cargo build -p jinn-plugin-themes --target wasm32-wasip2 --release
 

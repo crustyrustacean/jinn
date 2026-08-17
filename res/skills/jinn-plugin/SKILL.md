@@ -22,6 +22,15 @@ jinn plugin install target/wasm32-wasip2/release/my_plugin.wasm
 # restart jinn — plugins spawn at app start
 ```
 
+jinn's own plugins (e.g. the themes plugin in `crates/jinn-plugin-themes/`)
+are built and installed the same way — from source, per machine:
+
+```
+just build-plugins
+jinn plugin install target/wasm32-wasip2/release/jinn-plugin-themes.wasm
+# restart jinn
+```
+
 ---
 
 ## Wire contract
@@ -67,12 +76,18 @@ grants = [ { path = "<config_dir>/themes" } ]   # read-only preopen
 
 ## SDK
 
-`jinn plugin sdk` downloads the SDK crates to
-`<data_dir>/plugin-sdks/<version>/`. Point the scaffold's `Cargo.toml` at them
-via the printed `path = "..."` lines if not using the registry. The SDK gives
-typed wire types (`Envelope`, `Hello`, `Welcome`, `SetThemeEntries`,
-`ThemeDef`) and helpers for the handshake — always prefer it over hand-rolling
-JSON.
+Guest code depends on two crates, both resolved from the jinn repo via git
+(never crates.io):
+
+```toml
+[dependencies]
+jinn-plugin-api = { git = "https://github.com/jayson-lennon/jinn" }
+jinn-plugin-sdk = { git = "https://github.com/jayson-lennon/jinn" }
+```
+
+`jinn plugin new` scaffolds these for you. The SDK gives typed wire types
+(`Envelope`, `Hello`, `Welcome`, `SetThemeEntries`, `ThemeDef`) and helpers
+for the handshake — always prefer it over hand-rolling JSON.
 
 ## Gotchas
 

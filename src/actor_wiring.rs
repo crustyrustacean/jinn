@@ -487,8 +487,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         // `OnceLock::set` returns Err if already set; ignore (e.g. test re-seed).
         let _ = services.mcp_coordinator.set(_mcp_coordinator.clone());
 
-        // Plugin lifecycle actor: reads `[[plugin]]` entries (+ the
-        // auto-registered first-party themes plugin) and spawns one in-process
+        // Plugin lifecycle actor: reads `[[plugin]]` entries from jinn.toml and spawns one in-process
         // WASM guest per entry. Guests are hosted directly by jinn via the
         // shared wasmtime engine — no child processes. Spawned after MCP so
         // contributions land once the bus is fully populated.
@@ -505,13 +504,12 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     cap: jinn_domain::common::tcaps::mint::mint_plugins_cap(),
                     frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                     dirs: jinn_domain::feat::plugin_coordinator_actor::PluginDirs {
-                        config_dir: services.paths.config_dir().to_owned(),
-                        data_dir: services.paths.data_dir().to_owned(),
+                        config_dir: services.paths.app_config_dir(),
+                        data_dir: services.paths.app_data_dir(),
                         engine: std::sync::Arc::new(
                             jinn_plugin::PluginEngine::new()
                                 .expect("wasmtime engine construction cannot fail"),
                         ),
-                        system_data_dir: services.paths.system_data_dir().to_owned(),
                     },
                 },
             )

@@ -1,9 +1,9 @@
-//! User-declared plugins — WASM components jinn runs as child processes.
+//! User-declared plugins — WASM components jinn hosts in-process.
 //!
 //! Plugins are declared in `jinn.toml` under `[[plugin]]`. Each entry names
 //! a `.wasm` file (path relative to jinn's plugin dir or absolute) plus the
 //! capability grants the plugin receives. The coordinator actor spawns one
-//! runner child per entry at app start; see `feat/plugin_coordinator_actor`.
+//! in-process guest per entry at app start; see `feat/plugin_coordinator_actor`.
 
 pub mod install;
 
@@ -63,8 +63,8 @@ use crate::feat::plugin_coordinator_actor::protocol::PluginPhase;
 /// consumer.
 #[derive(Debug, Default)]
 pub struct PluginContributions {
-    /// Contributed themes, keyed by theme name. The reserved
-    /// `"default"` name never appears here (translation drops it).
+    /// Contributed themes, keyed by theme name. A contributed
+    /// `"default"` restyles the picker's pinned built-in entry.
     themes: BTreeMap<String, ContributedTheme>,
     /// Latest known phase per plugin name.
     phases: BTreeMap<String, PluginPhase>,
