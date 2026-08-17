@@ -2119,6 +2119,7 @@ version = "0.106.0"
 dependencies = [
  "dirs",
  "error-stack",
+ "libc",
  "rstest",
  "tempfile",
  "toml 0.8.23",
