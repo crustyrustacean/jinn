@@ -365,8 +365,7 @@ async fn first_contribution_late_applies_pending_theme_name() {
     loop {
         let focus = {
             let guard = state.read();
-            (guard.plugins.theme("dracula").is_some())
-                .then_some(guard.frontend.theme.focus_accent)
+            (guard.plugins.theme("dracula").is_some()).then_some(guard.frontend.theme.focus_accent)
         };
         if focus.is_some() {
             break;

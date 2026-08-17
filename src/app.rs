@@ -202,6 +202,81 @@ impl App {
             }
         }
 
+        // `plugin new` scaffolds a plugin project. It needs no preferences
+        // or DB and runs fully offline, so it dispatches before both.
+        if let Some(Commands::Plugin { subcommand }) = &cli.command {
+            use jinn_cli::cli::PluginCommands;
+            use jinn_cli::plugin_new;
+
+            match subcommand {
+                PluginCommands::New { name } => {
+                    let cwd = std::env::current_dir()
+                        .change_context(AppError)
+                        .attach("resolving current directory")?;
+                    match plugin_new::scaffold(&cwd, name) {
+                        Ok(dir) => plugin_new::report_success(&dir, name),
+                        Err(report) => {
+                            eprintln!("{report:?}");
+                            return Err(report.change_context(AppError));
+                        }
+                    }
+                }
+                PluginCommands::Sdk { version } => {
+                    use jinn_cli::plugin_sdk::{self, DEFAULT_SDK_VERSION, HttpSdkFetcher};
+
+                    let version = version
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_SDK_VERSION.to_owned());
+                    let paths = jinn_domain::AppPaths::default();
+                    let base = paths.data_dir().join("plugin-sdks");
+                    let fetcher = HttpSdkFetcher::new(self.handle());
+                    match plugin_sdk::acquire(&version, &base, &fetcher) {
+                        Ok(paths) => {
+                            println!("SDK {version} ready:");
+                            println!("  {}", paths.api.display());
+                            println!("  {}", paths.sdk.display());
+                        }
+                        Err(report) => {
+                            eprintln!("{report:?}");
+                            return Err(report.change_context(AppError));
+                        }
+                    }
+                    return Ok(());
+                }
+                PluginCommands::Install { wasm, name } => {
+                    use jinn_domain::AppPaths;
+                    use jinn_domain::feat::plugin::install::{PluginInstallOutcome, install};
+                    use jinn_domain::feat::preferences_actor::FilesystemUserPreferencesStorage;
+
+                    let wasm_path = std::path::PathBuf::from(wasm);
+                    let name = name.clone().unwrap_or_else(|| {
+                        wasm_path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or_default()
+                            .to_owned()
+                    });
+                    let paths = AppPaths::default();
+                    let storage = FilesystemUserPreferencesStorage::default_path();
+                    match install(&wasm_path, &name, &paths.plugins_dir(), &storage) {
+                        Ok(PluginInstallOutcome::Installed { wasm_path, name }) => {
+                            println!("Installed plugin {name}");
+                            println!("  payload: {}", wasm_path.display());
+                        }
+                        Ok(PluginInstallOutcome::Updated { wasm_path, name }) => {
+                            println!("Updated plugin {name}");
+                            println!("  payload: {}", wasm_path.display());
+                        }
+                        Err(report) => {
+                            eprintln!("{report:?}");
+                            return Err(report.change_context(AppError));
+                        }
+                    }
+                    println!("Restart jinn to activate the plugin.");
+                    return Ok(());
+                }
+            }
+        }
         // `install` seeds default resources into user dirs. Like `config`, it
         // must run before any actor wiring — and it needs no preferences/DB,
         // so it dispatches before the session store is opened.
@@ -430,9 +505,10 @@ impl App {
             // Config subcommands are dispatched above, before the early
             // preferences parse. Reaching this match arm is impossible.
             Commands::Config { .. } => {}
-            // `install` is dispatched above, before the early
-            // preferences parse. Reaching this match arm is impossible.
             Commands::Install { .. } => {}
+            // `plugin` subcommands are dispatched above, before the early
+            // preferences parse. Reaching this match arm is impossible.
+            Commands::Plugin { .. } => {}
         }
 
         Ok(())

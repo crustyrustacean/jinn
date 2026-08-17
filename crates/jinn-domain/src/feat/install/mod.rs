@@ -191,6 +191,11 @@ const BUNDLED: &[Bundled] = &[
         relative: "simple-task-loop/SKILL.md",
         contents: include_str!("../../../../../res/skills/simple-task-loop/SKILL.md"),
     },
+    Bundled {
+        kind: Kind::Skill,
+        relative: "jinn-plugin/SKILL.md",
+        contents: include_str!("../../../../../res/skills/jinn-plugin/SKILL.md"),
+    },
 ];
 
 /// Installs every bundled default resource into the given destinations.
