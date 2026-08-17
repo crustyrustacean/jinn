@@ -1,9 +1,11 @@
 //! `jinn plugin install` — register a built `.wasm` with jinn.
 //!
 //! Copies the payload into jinn's plugin directory and writes the
-//! `[[plugin]]` entry into `jinn.toml` via the user-preferences storage
-//! (comment-preserving patch). Installation takes effect on the next jinn
-//! start: plugins spawn at app boot.
+//! `[plugin.<name>]` entry into `jinn.toml` via the user-preferences storage
+//! (comment-preserving patch). Grants and http come from the caller — the CLI
+//! resolves manifest vs flag precedence and passes the effective values in.
+//! Installation takes effect on the next jinn start: plugins spawn at app
+//! boot.
 
 use std::path::{Path, PathBuf};
 
@@ -72,6 +74,7 @@ pub fn install(
     name: &str,
     plugins_dir: &Path,
     grants: Vec<crate::feat::plugin::PluginPathGrant>,
+    http: bool,
     storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
 ) -> Result<PluginInstallOutcome, Report<PluginInstallError>> {
     if !valid_name(name) {
@@ -102,7 +105,7 @@ pub fn install(
     let entry = PluginConfig {
         wasm: format!("{name}.wasm"),
         grants,
-        http: false,
+        http,
         config: None,
         enabled: true,
     };
@@ -158,8 +161,15 @@ mod tests {
 
         // When installing.
         let storage = InMemoryUserPreferencesStorage::default();
-        let outcome =
-            install(&wasm, "my-plugin", &base.join("plugins"), vec![], &storage).expect("install");
+        let outcome = install(
+            &wasm,
+            "my-plugin",
+            &base.join("plugins"),
+            vec![],
+            false,
+            &storage,
+        )
+        .expect("install");
 
         // Then the payload was copied and the entry appended.
         assert!(base.join("plugins/my-plugin.wasm").is_file());
@@ -189,12 +199,27 @@ mod tests {
         let wasm = base.join("my-plugin.wasm");
         std::fs::write(&wasm, b"v1").expect("write");
         let storage = InMemoryUserPreferencesStorage::default();
-        install(&wasm, "my-plugin", &base.join("plugins"), vec![], &storage).expect("first");
+        install(
+            &wasm,
+            "my-plugin",
+            &base.join("plugins"),
+            vec![],
+            false,
+            &storage,
+        )
+        .expect("first");
 
         // When installing v2.
         std::fs::write(&wasm, b"v2 longer payload").expect("write v2");
-        let outcome =
-            install(&wasm, "my-plugin", &base.join("plugins"), vec![], &storage).expect("second");
+        let outcome = install(
+            &wasm,
+            "my-plugin",
+            &base.join("plugins"),
+            vec![],
+            false,
+            &storage,
+        )
+        .expect("second");
 
         // Then exactly one entry exists and Updated was returned.
         let prefs = storage.reload().expect("reload");
@@ -218,6 +243,7 @@ mod tests {
             "x",
             &base,
             vec![],
+            false,
             &InMemoryUserPreferencesStorage::default(),
         );
 
@@ -245,6 +271,7 @@ mod tests {
             "x",
             &base,
             vec![],
+            false,
             &InMemoryUserPreferencesStorage::default(),
         );
 
@@ -274,6 +301,7 @@ mod tests {
             "BadName",
             &base,
             vec![],
+            false,
             &InMemoryUserPreferencesStorage::default(),
         );
 
