@@ -184,13 +184,47 @@ pub enum PluginCommands {
         /// Path to the built `.wasm` file.
         wasm: String,
 
-        /// The plugin name (defaults to the file stem).
+        /// The plugin name (defaults to the embedded manifest's name, then
+        /// the file stem).
         name: Option<String>,
 
         /// Grant a preopened directory path (`<config_dir>`/`<data_dir>`
         /// variables allowed). Repeatable; suffix `:w` for writable.
+        /// Overrides the plugin's embedded manifest grants.
         #[arg(long = "grant", value_name = "PATH[:w]")]
         grants: Vec<String>,
+
+        /// Allow network access (overrides the embedded manifest).
+        #[arg(long = "http", conflicts_with = "no_http")]
+        http: bool,
+
+        /// Deny network access (overrides the embedded manifest).
+        #[arg(long = "no-http")]
+        no_http: bool,
+    },
+
+    /// Build a plugin from source and install it in one command.
+    Add {
+        /// Path to the plugin crate directory (default: current dir).
+        dir: Option<String>,
+
+        /// The plugin name (defaults to the embedded manifest's name, then
+        /// the crate name).
+        name: Option<String>,
+
+        /// Grant a preopened directory path (`<config_dir>`/`<data_dir>`
+        /// variables allowed). Repeatable; suffix `:w` for writable.
+        /// Overrides the plugin's embedded manifest grants.
+        #[arg(long = "grant", value_name = "PATH[:w]")]
+        grants: Vec<String>,
+
+        /// Allow network access (overrides the embedded manifest).
+        #[arg(long = "http", conflicts_with = "no_http")]
+        http: bool,
+
+        /// Deny network access (overrides the embedded manifest).
+        #[arg(long = "no-http")]
+        no_http: bool,
     },
 }
 

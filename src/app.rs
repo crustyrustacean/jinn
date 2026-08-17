@@ -253,59 +253,72 @@ impl App {
                         }
                     }
                 }
-                PluginCommands::Install { wasm, name, grants } => {
-                    use jinn_domain::AppPaths;
-                    use jinn_domain::feat::plugin::install::{PluginInstallOutcome, install};
-                    use jinn_domain::feat::preferences_actor::FilesystemUserPreferencesStorage;
+                PluginCommands::Install {
+                    wasm,
+                    name,
+                    grants,
+                    http,
+                    no_http,
+                } => {
+                    use jinn_domain::feat::plugin::manifest::extract_manifest;
 
                     let wasm_path = std::path::PathBuf::from(wasm);
-                    let name = name.clone().unwrap_or_else(|| {
-                        wasm_path
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or_default()
-                            .to_owned()
-                    });
-                    // A plugin installed with no grants sees no dirs beyond its
-                    // scratch space — almost always an oversight worth naming.
-                    if grants.is_empty() {
-                        eprintln!(
-                            "note: {name} installed with no grants — it cannot read any\ndirectory except its own scratch dir. If it should see files, reinstall\nwith --grant '<config_dir>/…' (repeatable, :w for writable)."
-                        );
-                    }
-                    // `--grant path` (read-only) or `--grant path:w` (writable);
-                    // `<config_dir>`/`<data_dir>` variables pass through for the
-                    // coordinator to expand at spawn.
-                    let grants = grants
-                        .iter()
-                        .map(|g| match g.strip_suffix(":w") {
-                            Some(path) => jinn_domain::feat::plugin::PluginPathGrant {
-                                path: path.to_owned(),
-                                writable: true,
-                            },
-                            None => jinn_domain::feat::plugin::PluginPathGrant {
-                                path: g.clone(),
-                                writable: false,
-                            },
-                        })
-                        .collect();
-                    let paths = AppPaths::default();
-                    let storage = FilesystemUserPreferencesStorage::default_path();
-                    match install(&wasm_path, &name, &paths.plugins_dir(), grants, &storage) {
-                        Ok(PluginInstallOutcome::Installed { wasm_path, name }) => {
-                            println!("Installed plugin {name}");
-                            println!("  payload: {}", wasm_path.display());
-                        }
-                        Ok(PluginInstallOutcome::Updated { wasm_path, name }) => {
-                            println!("Updated plugin {name}");
-                            println!("  payload: {}", wasm_path.display());
-                        }
-                        Err(report) => {
-                            eprintln!("{report:?}");
-                            return Err(report.change_context(AppError));
-                        }
-                    }
-                    println!("Restart jinn to activate the plugin.");
+                    let bytes = std::fs::read(&wasm_path).map_err(|e| {
+                        Report::new(AppError)
+                            .attach(e.to_string())
+                            .attach(wasm_path.to_string_lossy().to_string())
+                    })?;
+                    let manifest = extract_manifest(&bytes).map_err(|report| {
+                        eprintln!("{report:?}");
+                        report.change_context(AppError)
+                    })?;
+                    let resolved = resolve_install(
+                        name.clone(),
+                        grants.clone(),
+                        *http,
+                        *no_http,
+                        &manifest,
+                        &wasm_path,
+                    );
+                    run_install(&resolved, &wasm_path)?;
+                    return Ok(());
+                }
+                PluginCommands::Add {
+                    dir,
+                    name,
+                    grants,
+                    http,
+                    no_http,
+                } => {
+                    use jinn_domain::feat::plugin::manifest::{extract_manifest, read_manifest};
+
+                    let dir = std::path::PathBuf::from(dir.as_deref().unwrap_or("."));
+                    let cargo_toml = dir.join("Cargo.toml");
+                    let _ = std::fs::read_to_string(&cargo_toml)
+                        .change_context(AppError)
+                        .attach(cargo_toml.to_string_lossy().to_string())
+                        .and_then(|content| {
+                            read_manifest(&content).map_err(|r| r.change_context(AppError))
+                        })?;
+                    let artifact = plugin_build::build(&dir).map_err(|report| {
+                        eprintln!("{report:?}");
+                        report.change_context(AppError)
+                    })?;
+                    let manifest =
+                        extract_manifest(&std::fs::read(&artifact).change_context(AppError)?)
+                            .map_err(|report| {
+                                eprintln!("{report:?}");
+                                report.change_context(AppError)
+                            })?;
+                    let resolved = resolve_install(
+                        name.clone(),
+                        grants.clone(),
+                        *http,
+                        *no_http,
+                        &manifest,
+                        &artifact,
+                    );
+                    run_install(&resolved, &artifact)?;
                     return Ok(());
                 }
             }
@@ -653,6 +666,129 @@ async fn fetch_models_from_url(
     Ok(())
 }
 
+/// The effective values an install applies, after manifest-vs-flag
+/// precedence.
+struct ResolvedInstall {
+    name: String,
+    grants: Vec<jinn_domain::feat::plugin::PluginPathGrant>,
+    http: bool,
+    /// True when the grants came from the embedded manifest (not flags) —
+    /// drives the mandatory override hint.
+    grants_from_manifest: bool,
+}
+
+/// Resolves `--name`/`--grant`/`--http` flags against the plugin's embedded
+/// manifest: flags win when present, manifest values otherwise, file/crate
+/// stem as the final name fallback.
+fn resolve_install(
+    name_flag: Option<String>,
+    grant_flags: Vec<String>,
+    http_flag: bool,
+    no_http_flag: bool,
+    manifest: &jinn_domain::feat::plugin::manifest::PluginManifest,
+    artifact: &std::path::Path,
+) -> ResolvedInstall {
+    use jinn_domain::feat::plugin::manifest::parse_grant_str;
+
+    let name = name_flag
+        .or_else(|| manifest.name.clone())
+        .or_else(|| {
+            artifact
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(str::to_owned)
+        })
+        .unwrap_or_default();
+    let (grants, grants_from_manifest) = if grant_flags.is_empty() {
+        (manifest.grants.clone(), true)
+    } else {
+        (
+            grant_flags.iter().map(|g| parse_grant_str(g)).collect(),
+            false,
+        )
+    };
+    let http = if http_flag {
+        true
+    } else if no_http_flag {
+        false
+    } else {
+        manifest.http
+    };
+    ResolvedInstall {
+        name,
+        grants,
+        http,
+        grants_from_manifest,
+    }
+}
+
+/// Runs the install with the resolved values and prints the loud outcome:
+/// payload, each grant (read-only/writable), http, and — when grants were
+/// auto-applied from the manifest — the `--grant` override hint.
+fn run_install(
+    resolved: &ResolvedInstall,
+    wasm_path: &std::path::Path,
+) -> Result<(), Report<AppError>> {
+    use jinn_domain::AppPaths;
+    use jinn_domain::feat::plugin::install::{PluginInstallOutcome, install};
+    use jinn_domain::feat::preferences_actor::FilesystemUserPreferencesStorage;
+
+    let paths = AppPaths::default();
+    let storage = FilesystemUserPreferencesStorage::default_path();
+    let ResolvedInstall {
+        name,
+        grants,
+        http,
+        grants_from_manifest,
+    } = resolved;
+    match install(
+        wasm_path,
+        name,
+        &paths.plugins_dir(),
+        grants.clone(),
+        *http,
+        &storage,
+    ) {
+        Ok(PluginInstallOutcome::Installed { wasm_path, name }) => {
+            println!("Installed plugin {name}");
+            println!("  payload: {}", wasm_path.display());
+        }
+        Ok(PluginInstallOutcome::Updated { wasm_path, name }) => {
+            println!("Updated plugin {name}");
+            println!("  payload: {}", wasm_path.display());
+        }
+        Err(report) => {
+            eprintln!("{report:?}");
+            return Err(report.change_context(AppError));
+        }
+    }
+    // A plugin installed with no grants sees no dirs beyond its scratch
+    // space — almost always an oversight worth naming.
+    if grants.is_empty() {
+        eprintln!(
+            "note: {name} declares no grants — it cannot read any directory\nexcept its own scratch dir. If it should see files, reinstall with\n--grant '<config_dir>/…' (repeatable, :w for writable)."
+        );
+    } else {
+        println!("  grants:");
+        for grant in grants {
+            let mode = if grant.writable {
+                "writable"
+            } else {
+                "read-only"
+            };
+            println!("    {} ({mode})", grant.path);
+        }
+    }
+    println!("  http: {}", if *http { "yes" } else { "no" });
+    if *grants_from_manifest {
+        println!(
+            "To override these grants: jinn plugin install <wasm> --grant '<path>' (repeatable, :w for writable)"
+        );
+    }
+    println!("Restart jinn to activate the plugin.");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use jinn_domain::{AppState, State};
@@ -673,6 +809,96 @@ mod tests {
     //     Bench::Tui (460) exit paths.
     //  2. The checkpoint itself is proven by `shutdown_truncates_wal_file` and
     //     `shutdown_makes_db_self_contained_for_backup` in the session store tests.
+
+    fn sample_manifest() -> jinn_domain::feat::plugin::manifest::PluginManifest {
+        use jinn_domain::feat::plugin::manifest::{PluginManifest, parse_grant_str};
+        PluginManifest {
+            name: Some("embedded-name".to_owned()),
+            grants: vec![parse_grant_str("<config_dir>/themes")],
+            http: true,
+        }
+    }
+
+    // Given a manifest with grants and no --grant flag.
+    // When resolving.
+    // Then the embedded grants apply and carry grants_from_manifest.
+    #[test]
+    fn resolve_install_applies_manifest_grants_by_default() {
+        let resolved = resolve_install(
+            None,
+            vec![],
+            false,
+            false,
+            &sample_manifest(),
+            std::path::Path::new("/tmp/x.wasm"),
+        );
+
+        assert_eq!(resolved.grants.len(), 1);
+        assert_eq!(resolved.grants[0].path, "<config_dir>/themes");
+        assert!(resolved.grants_from_manifest);
+        assert_eq!(resolved.name, "embedded-name");
+        assert!(resolved.http);
+    }
+
+    // Given a --grant flag alongside embedded grants.
+    // When resolving.
+    // Then the flag wins and the manifest grants are discarded.
+    #[test]
+    fn resolve_install_grant_flag_overrides_manifest() {
+        let resolved = resolve_install(
+            None,
+            vec!["<data_dir>/notes:w".to_owned()],
+            false,
+            false,
+            &sample_manifest(),
+            std::path::Path::new("/tmp/x.wasm"),
+        );
+
+        assert_eq!(resolved.grants.len(), 1);
+        assert_eq!(resolved.grants[0].path, "<data_dir>/notes");
+        assert!(resolved.grants[0].writable);
+        assert!(!resolved.grants_from_manifest);
+    }
+
+    // Given an embedded manifest with http = true and a --no-http flag.
+    // When resolving.
+    // Then http is denied.
+    #[test]
+    fn resolve_install_no_http_overrides_manifest() {
+        let resolved = resolve_install(
+            None,
+            vec![],
+            false,
+            true,
+            &sample_manifest(),
+            std::path::Path::new("/tmp/x.wasm"),
+        );
+
+        assert!(!resolved.http);
+    }
+
+    // Given a manifest with no name and no --name flag.
+    // When resolving against an artifact path.
+    // Then the file stem is the name.
+    #[test]
+    fn resolve_install_name_falls_back_to_file_stem() {
+        use jinn_domain::feat::plugin::manifest::PluginManifest;
+        let manifest = PluginManifest {
+            name: None,
+            ..sample_manifest()
+        };
+
+        let resolved = resolve_install(
+            None,
+            vec![],
+            false,
+            false,
+            &manifest,
+            std::path::Path::new("/tmp/theme-loader.wasm"),
+        );
+
+        assert_eq!(resolved.name, "theme-loader");
+    }
 
     #[rstest::rstest]
     fn load_compaction_prompt_populates_state() {
