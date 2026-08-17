@@ -16,6 +16,8 @@ caches in `AppState`. Nothing plugin-side is ever on the sync render path.
 
 ```
 jinn plugin new my-plugin          # scaffold (current dir)
+  # --sdk <path>  → local jinn checkout (plugin develops against uncommitted SDK)
+  # --sdk <git-url[@rev]> → any jinn fork/commit
 cd my-plugin
 jinn plugin build                  # → target/wasm32-wasip2/release/<crate>.wasm
 jinn plugin install target/wasm32-wasip2/release/my_plugin.wasm
