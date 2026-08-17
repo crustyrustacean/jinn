@@ -169,8 +169,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return error_tool_result(call.id, call.name, "pattern is empty".to_owned());
         }
 
-        let mut cmd = tokio::process::Command::new("rg");
-        cmd.arg("--color")
+        let mut std_cmd = std::process::Command::new("rg");
+        std_cmd
+            .arg("--color")
             .arg("never")
             .arg("--no-heading")
             .arg(&args.pattern)
@@ -180,18 +181,23 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             .current_dir(&ctx.cwd);
 
         if let Some(ref path) = args.path {
-            cmd.arg(path);
+            std_cmd.arg(path);
         }
         if let Some(ref glob) = args.glob
             && !glob.is_empty()
         {
-            cmd.arg("--glob").arg(glob);
+            std_cmd.arg("--glob").arg(glob);
         }
         if let Some(ref file_type) = args.file_type
             && !file_type.is_empty()
         {
-            cmd.arg("--type").arg(file_type);
+            std_cmd.arg("--type").arg(file_type);
         }
+
+        // Terminal isolation: detach from jinn's session/console so rg can
+        // never write over the TUI (see jinn_common::process_isolation).
+        jinn_common::process_isolation::isolate(&mut std_cmd);
+        let mut cmd = tokio::process::Command::from(std_cmd);
 
         let output = match cmd.output().await {
             Ok(o) => o,
