@@ -5,8 +5,6 @@
 //! applies all diffs, saves to disk, and emits an [`AppStateUpdated`]
 //! event with the full result.
 
-use std::path::PathBuf;
-
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
@@ -37,8 +35,6 @@ pub struct AppStateActor {
     /// Shared application state — writes frontend.app_state, sidebar_width,
     /// theme, and context.active_persona inline after persist.
     state: State,
-    themes_dir: PathBuf,
-    system_themes_dir: PathBuf,
     frontend_cap: crate::common::tcaps::frontend::FrontendCap,
     context_cap: crate::common::tcaps::context::ContextCap,
 }
@@ -55,8 +51,6 @@ impl Actor for AppStateActor {
         Ok(Self {
             deps: args.deps.clone(),
             state: args.state,
-            themes_dir: args.deps.services.paths.themes_dir(),
-            system_themes_dir: args.deps.services.paths.system_themes_dir(),
             frontend_cap: args.frontend_cap,
             context_cap: args.context_cap,
         })
@@ -83,35 +77,30 @@ impl AppStateActor {
     fn sync_state(&self, updated: &AppStateFile) {
         use crate::common::tcaps::context::PersonaWrite;
 
-        let theme_result = theme::resolve_theme(
-            updated.theme_name.as_deref(),
-            &self.themes_dir,
-            &self.system_themes_dir,
+        // Resolve the persisted theme name against the plugin contribution
+        // cache — core no longer reads theme files from disk (the themes
+        // plugin owns discovery). Names not yet cached fall back to the
+        // embedded default; the coordinator late-applies the resolved theme
+        // once the themes plugin's first contribution lands.
+        let new_theme = resolve_cached_theme(
+            self.state
+                .read()
+                .plugins
+                .theme(updated.theme_name.as_deref().unwrap_or("default")),
         );
-        let new_theme = match theme_result {
-            Ok(t) => Some(t),
-            Err(e) => {
-                tracing::warn!(err = ?e, "failed to reload theme, keeping current");
-                None
-            }
-        };
 
         // Cache the entire state and update sidebar/theme/caches.
         self.state.with_preferences(&self.frontend_cap, |ops| {
             let frontend = ops.frontend();
             frontend.app_state = updated.clone();
             frontend.sidebar_width = updated.sidebar_width.unwrap_or(30);
-            if let Some(ref t) = new_theme {
-                frontend.theme = t.clone();
-            }
+            frontend.theme = new_theme.clone();
         });
 
         // Invalidate theme caches at the frontend level.
-        if new_theme.is_some() {
-            self.state.with_preferences(&self.frontend_cap, |ops| {
-                ops.frontend().caches.invalidate_all();
-            });
-        }
+        self.state.with_preferences(&self.frontend_cap, |ops| {
+            ops.frontend().caches.invalidate_all();
+        });
 
         // Sync active_persona when persona_name changes.
         if let Some(ref persona_name) = updated.persona_name {
@@ -144,6 +133,16 @@ impl BusPublish for AppStateActor {
     fn bus(&self) -> &crate::common::services::bus_service::BusService {
         self.deps.bus()
     }
+}
+
+/// Resolves a theme name against the contribution cache, falling back to
+/// the embedded default when the name is not (yet) contributed — the
+/// startup window before the themes plugin's first contribution, or a
+/// dead themes plugin.
+fn resolve_cached_theme(
+    contributed: Option<&crate::feat::plugin::ContributedTheme>,
+) -> crate::feat::theme::Theme {
+    contributed.map_or_else(theme::default_theme, |c| c.theme.clone())
 }
 
 #[cfg(test)]
@@ -185,8 +184,6 @@ mod tests {
                 services: services.clone(),
             },
             state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
-            themes_dir: std::path::PathBuf::new(),
-            system_themes_dir: std::path::PathBuf::new(),
             frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
             context_cap: crate::common::tcaps::mint::mint_context_cap(),
         };
@@ -354,5 +351,50 @@ mod tests {
         // resolve_theme(None, ...) returns the embedded default theme.
         let _guard = actor.state.read();
         // If we reach here, the handler completed successfully.
+    }
+
+    #[tokio::test]
+    async fn sync_state_applies_contributed_theme_from_cache() {
+        // Given an app-state actor whose cache holds a contributed theme.
+        let (actor, _audit, _services) = create_actor().await;
+        let mut contributed = crate::feat::theme::default_theme();
+        contributed.focus_accent = ratatui::style::Color::Red;
+        let plugins_cap = crate::common::tcaps::mint::mint_plugins_cap();
+        actor.state.with_plugins(&plugins_cap, |p| {
+            p.set_themes(
+                "theme-loader",
+                vec![("dracula".to_owned(), None, contributed.clone())],
+            );
+        });
+
+        // When syncing AppStateFile with theme_name = Some("dracula").
+        let app_state = AppStateFile {
+            theme_name: Some("dracula".to_owned()),
+            ..AppStateFile::default()
+        };
+        actor.sync_state(&app_state);
+
+        // Then the frontend theme is the contributed one.
+        assert_eq!(
+            actor.state.read().frontend.theme.focus_accent,
+            ratatui::style::Color::Red
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_state_unknown_theme_falls_back_to_default() {
+        // Given an app-state actor with an empty contribution cache.
+        let (actor, _audit, _services) = create_actor().await;
+
+        // When syncing AppStateFile with a name the cache lacks.
+        let app_state = AppStateFile {
+            theme_name: Some("no-such-theme".to_owned()),
+            ..AppStateFile::default()
+        };
+        actor.sync_state(&app_state);
+
+        // Then the frontend keeps the embedded default theme.
+        let applied = actor.state.read().frontend.theme.focus_accent;
+        assert_eq!(applied, crate::feat::theme::default_theme().focus_accent);
     }
 }

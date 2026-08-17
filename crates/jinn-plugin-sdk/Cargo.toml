@@ -1,0 +1,14 @@
+[package]
+name = "jinn-plugin-sdk"
+version = "0.1.0"
+edition = "2024"
+description = "Guest-side SDK for authoring jinn plugins (Rust, wasm32-wasip2)."
+license = "MIT"
+publish = false
+
+[dependencies]
+jinn-plugin-api = { path = "../jinn-plugin-api" }
+serde_json = "1"
+
+[lints]
+workspace = true

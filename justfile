@@ -6,7 +6,7 @@ export RSTEST_TIMEOUT := "10"
 fossil-branch NAME:
     fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
 
-# Commit changes: stage all adds/removes (with `--dotfiles`) and commit.
+# Commit changes (ONE LINE ONLY): stage all adds/removes (with `--dotfiles`) and commit.
 commit MSG:
     fossil addremove --dotfiles && fossil commit -m "{{MSG}}"
 
@@ -15,6 +15,15 @@ test:
 
 check:
     cargo check --workspace
+
+# Build the in-repo wasm plugins from source (needs the wasm32-wasip2
+# target). Plugins are delivered as source and compiled per machine — then
+# installed like any user plugin:
+#   jinn plugin install target/wasm32-wasip2/release/<crate>.wasm \
+#     --grant '<config_dir>/themes'   # themes plugin scans granted dirs
+# Equivalent to `jinn plugin build plugins/<dir>` per plugin.
+build-plugins:
+    cargo build -p theme-loader --target wasm32-wasip2 --release
 
 
 clippy:

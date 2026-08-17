@@ -85,3 +85,20 @@ fn serialize_named_round_trip() {
     // Then the color is preserved.
     assert_eq!(original.color.0, restored.color.0);
 }
+
+#[cfg(test)]
+mod nord_light_loads {
+    use crate::theme::ThemeFile;
+
+    #[test]
+    fn bundled_nord_light_theme_parses() {
+        // Given the bundled nord-light theme file.
+        let contents = include_str!("../../../res/themes/nord-light.toml");
+
+        // When parsing it as a theme file.
+        let file: ThemeFile = toml::from_str(contents).expect("parse");
+
+        // Then it resolves without error.
+        let _theme = file.resolve();
+    }
+}

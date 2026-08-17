@@ -101,24 +101,44 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 #                remote host, or as a system service.
 #
 # stdio example (transport omitted — it's the default)
-# [[mcp_server]]
-# name = "excalimate"
+# [mcp_server.excalimate]
 # command = "npx"
 # args = ["@excalimate/mcp-server", "--stdio"]
 #
 # local_http example (jinn allocates the port, <port> is expanded)
-# [[mcp_server]]
-# name = "excalimate"
+# [mcp_server.excalimate]
 # command = "npx"
 # args = ["@excalimate/mcp-server", "--port", "<port>", "--host", "<ip>"]
 # transport = "local_http"
 # url = "http://127.0.0.1:<port>/mcp"
 #
 # remote_http example (no process spawned, connect to url)
-# [[mcp_server]]
-# name = "remote"
+# [mcp_server.remote]
 # transport = "remote_http"
 # url = "http://localhost:3001/mcp"
+
+# ---------------------------------------------------------------------------
+# Plugins — WASM components jinn runs in-process (sandboxed guests). Each
+# entry names a .wasm file plus the directories it may access; jinn grants
+# nothing else. Grants and http normally come from the plugin's own
+# [package.metadata.jinn] manifest, embedded into the artifact at build and
+# auto-applied by `jinn plugin add`/`install` — edit them here only to
+# override that declaration. Nothing is granted implicitly: a plugin that
+# wants its own writable scratch dir declares "<plugin_data_dir>:w".
+# Plugins spawn at app start; installing or changing one requires a jinn restart.
+#
+# Path templates: <config_dir>, <data_dir>, <plugin_data_dir>.
+# ---------------------------------------------------------------------------
+# [plugin.my-plugin]
+# wasm = "my-plugin.wasm"           # relative to <data_dir>/plugins/
+# http = false                      # allow wasi:http network requests
+# grants = [
+#   "<config_dir>/themes",          # read-only
+#   "<data_dir>/notes:w",           # :w marks a grant writable
+# ]
+# config = { any = "toml passed through to the guest" }
+# enabled = true                    # false skips the plugin entirely
+
 
 
 # Compaction command + auto compaction.
@@ -332,7 +352,7 @@ min_age = 50
 [auto_prune.broken_edit]
 enabled = true
 # Only prune a broken-edit pattern when at least this many tail entries exist.
-min_tail_entries = 10
+min_age = 10
 
 
 # ---------------------------------------------------------------------------

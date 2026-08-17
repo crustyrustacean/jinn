@@ -175,52 +175,40 @@ pub fn handle_refresh_endpoints(state: &mut AppState) -> IntentResult {
     )
 }
 
-/// Loads discovered themes into the theme picker.
+/// Loads themes into the theme picker from the plugin contribution cache.
+///
+/// The built-in default always leads; contributed themes follow in name
+/// order. Opening the picker never touches the filesystem — it reads
+/// whatever the themes plugin last pushed (a dead plugin means default only).
 fn load_theme_picker_entries(state: &mut AppState) {
     use crate::feat::theme::ThemeEntry;
 
-    let mut entries = Vec::new();
-
-    // Always include the default (built-in) theme.
-    entries.push(ThemeEntry {
+    let mut entries = vec![ThemeEntry {
         name: "default".to_owned(),
         theme: crate::feat::theme::default_theme(),
-    });
+    }];
 
-    // Add discovered theme files from both user and system directories.
-    let themes_dir = state.frontend.themes_dir.clone();
-    let system_themes_dir = state.frontend.system_themes_dir.clone();
-    if let Ok(discovered) = crate::feat::theme::discover_themes(&themes_dir) {
-        for (name, _path) in discovered {
-            if name == "default" {
-                continue; // skip duplicate
-            }
-            if let Ok(theme) =
-                crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir)
-            {
-                entries.push(ThemeEntry { name, theme });
-            }
-        }
-    }
-    // Also discover themes that only exist in the system directory.
-    if let Ok(system_discovered) = crate::feat::theme::discover_themes(&system_themes_dir) {
-        for (name, _path) in system_discovered {
-            if name == "default" {
-                continue;
-            }
-            // Skip if already loaded from user dir.
-            if entries.iter().any(|e: &ThemeEntry| e.name == name) {
-                continue;
-            }
-            if let Ok(theme) =
-                crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir)
-            {
-                entries.push(ThemeEntry { name, theme });
-            }
-        }
+    // A user-contributed "default" replaces the built-in entry's look
+    // while keeping its reserved slot.
+    if let (Some(entry), Some(contributed)) = (entries.first_mut(), state.plugins.theme("default"))
+    {
+        entry.theme = contributed.theme.clone();
     }
 
-    entries.sort_by_key(|e| e.name.to_lowercase());
+    for (name, contributed) in state.plugins.themes() {
+        if name == "default" {
+            continue;
+        }
+        entries.push(ThemeEntry {
+            name: name.to_owned(),
+            theme: contributed.theme.clone(),
+        });
+    }
+
+    // Default stays pinned first; the rest follow in case-insensitive name order.
+    let mut rest = entries.split_off(1);
+    rest.sort_by_key(|e| e.name.to_lowercase());
+    entries.extend(rest);
 
     state.frontend.theme_picker_mut().set_items(entries);
 }
@@ -3414,5 +3402,49 @@ mod tests {
 
         // Then selection decrements by 5.
         assert_eq!(state.provider.provider_picker.selection(), 5);
+    }
+
+    #[test]
+    fn theme_picker_lists_default_first_then_contributed_sorted() {
+        // Given a cache with unsorted contributed themes.
+        let mut state = AppState::default();
+        state.plugins.set_themes(
+            "theme-loader",
+            vec![
+                ("zeta".to_owned(), None, crate::feat::theme::default_theme()),
+                ("Beta".to_owned(), None, crate::feat::theme::default_theme()),
+                (
+                    "alpha".to_owned(),
+                    None,
+                    crate::feat::theme::default_theme(),
+                ),
+            ],
+        );
+
+        // When opening the theme picker.
+        handle_open_picker(&mut state, PickerKind::Theme);
+
+        // Then default leads and the rest follow case-insensitively sorted.
+        let names: Vec<String> = state
+            .frontend
+            .theme_picker()
+            .items()
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
+        assert_eq!(names, vec!["default", "alpha", "Beta", "zeta"]);
+    }
+
+    #[test]
+    fn theme_picker_empty_cache_shows_default_only() {
+        // Given no plugin contributions (dead or absent themes plugin).
+        let mut state = AppState::default();
+
+        // When opening the theme picker.
+        handle_open_picker(&mut state, PickerKind::Theme);
+
+        // Then the picker offers exactly the built-in default.
+        assert_eq!(state.frontend.theme_picker().items().len(), 1);
+        assert_eq!(state.frontend.theme_picker().items()[0].name, "default");
     }
 }
