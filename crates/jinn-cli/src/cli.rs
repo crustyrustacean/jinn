@@ -107,6 +107,13 @@ pub enum Commands {
         #[command(subcommand)]
         subcommand: ConfigCommands,
     },
+
+    /// Author, install, and manage wasm plugins.
+    Plugin {
+        /// The plugin subcommand to run.
+        #[command(subcommand)]
+        subcommand: PluginCommands,
+    },
 }
 
 /// Headless subcommands.
@@ -149,6 +156,31 @@ pub enum ConfigCommands {
         /// Overwrite the file if it already exists.
         #[arg(long)]
         force: bool,
+    },
+}
+
+/// Plugin subcommands.
+#[derive(Debug, Subcommand)]
+pub enum PluginCommands {
+    /// Scaffold a new plugin cargo project in the current directory.
+    New {
+        /// The plugin name (crate name; also the `[[plugin]]` entry name).
+        name: String,
+    },
+
+    /// Download the SDK crates for local plugin authoring.
+    Sdk {
+        /// The SDK version to fetch (defaults to the wire version).
+        version: Option<String>,
+    },
+
+    /// Install a built `.wasm` payload as a jinn plugin.
+    Install {
+        /// Path to the built `.wasm` file.
+        wasm: String,
+
+        /// The plugin name (defaults to the file stem).
+        name: Option<String>,
     },
 }
 

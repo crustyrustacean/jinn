@@ -42,6 +42,7 @@ path = "src/lib.rs"
 [dependencies]
 jinn-cli = { workspace = true }
 jinn-plugin = { workspace = true }
+jinn-plugin-api = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-discord = { workspace = true }

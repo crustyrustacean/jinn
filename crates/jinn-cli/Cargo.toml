@@ -7,6 +7,16 @@ edition.workspace = true
 clap = { workspace = true }
 clap-verbosity-flag = { workspace = true }
 clap_complete = { workspace = true }
+error-stack = { workspace = true }
+flate2 = "1"
+reqwest = { workspace = true }
+tar = "0.4"
+tokio = { workspace = true }
+wherror = { workspace = true }
+
+[dev-dependencies]
+mockito = { workspace = true }
+rstest = { workspace = true }
 
 [lints]
 workspace = true

@@ -5,6 +5,8 @@
 //! capability grants the plugin receives. The coordinator actor spawns one
 //! runner child per entry at app start; see `feat/plugin_coordinator_actor`.
 
+pub mod install;
+
 use serde::{Deserialize, Serialize};
 
 /// One configured plugin.
