@@ -2,11 +2,10 @@
 //!
 //! Grants are declared in the manifest (`jinn.toml` `[[plugin]]`) as path
 //! templates and expanded against jinn's real directories by the
-//! coordinator before spawn. The resolved [`Grants`] travel to the runner
-//! child via environment variables, and the runner turns them into WASI
-//! preopens / `wasi:http` availability. The default writable scratch dir
-//! (`<plugin_data_dir>`) is always granted, so persistence needs no
-//! manifest entry.
+//! coordinator before the guest spawns. The resolved [`Grants`] build the
+//! guest's WASI context directly (preopens / `wasi:http` availability). The
+//! default writable scratch dir (`<plugin_data_dir>`) is always granted, so
+//! persistence needs no manifest entry.
 
 use std::path::{Path, PathBuf};
 
@@ -76,8 +75,8 @@ pub struct PathGrant {
 
 /// The fully resolved capability set for one plugin.
 ///
-/// Built by the coordinator from the manifest + [`DirContext`]; carried to
-/// the runner child via env; enforced by the runner (preopens, `wasi:http`).
+/// Built by the coordinator from the manifest + [`DirContext`]; enforced
+/// by the host when building the guest's WASI context (preopens, `wasi:http`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grants {
     /// Directories the plugin may read.

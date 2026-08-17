@@ -1,5 +1,5 @@
 //! Plugin status events — published by the plugin coordinator as each
-//! plugin's runner child transitions through its lifecycle.
+//! plugin's guest transitions through its lifecycle.
 //!
 //! No UI subscribes yet; the event exists so plugin health is observable
 //! on the bus (and testable) from day one.
