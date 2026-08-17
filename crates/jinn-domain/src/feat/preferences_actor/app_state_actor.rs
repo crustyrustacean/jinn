@@ -352,4 +352,49 @@ mod tests {
         let _guard = actor.state.read();
         // If we reach here, the handler completed successfully.
     }
+
+    #[tokio::test]
+    async fn sync_state_applies_contributed_theme_from_cache() {
+        // Given an app-state actor whose cache holds a contributed theme.
+        let (actor, _audit, _services) = create_actor().await;
+        let mut contributed = crate::feat::theme::default_theme();
+        contributed.focus_accent = ratatui::style::Color::Red;
+        let plugins_cap = crate::common::tcaps::mint::mint_plugins_cap();
+        actor.state.with_plugins(&plugins_cap, |p| {
+            p.set_themes(
+                "jinn-themes",
+                vec![("dracula".to_owned(), None, contributed.clone())],
+            );
+        });
+
+        // When syncing AppStateFile with theme_name = Some("dracula").
+        let app_state = AppStateFile {
+            theme_name: Some("dracula".to_owned()),
+            ..AppStateFile::default()
+        };
+        actor.sync_state(&app_state);
+
+        // Then the frontend theme is the contributed one.
+        assert_eq!(
+            actor.state.read().frontend.theme.focus_accent,
+            ratatui::style::Color::Red
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_state_unknown_theme_falls_back_to_default() {
+        // Given an app-state actor with an empty contribution cache.
+        let (actor, _audit, _services) = create_actor().await;
+
+        // When syncing AppStateFile with a name the cache lacks.
+        let app_state = AppStateFile {
+            theme_name: Some("no-such-theme".to_owned()),
+            ..AppStateFile::default()
+        };
+        actor.sync_state(&app_state);
+
+        // Then the frontend keeps the embedded default theme.
+        let applied = actor.state.read().frontend.theme.focus_accent;
+        assert_eq!(applied, crate::feat::theme::default_theme().focus_accent);
+    }
 }
