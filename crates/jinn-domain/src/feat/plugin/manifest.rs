@@ -7,8 +7,6 @@
 //! grants unless the user overrides with `--grant`/`--http`. Install fails
 //! hard on an artifact with no embedded manifest.
 
-use std::borrow::Cow;
-
 use error_stack::{Report, ResultExt as _};
 use wherror::Error;
 
@@ -165,54 +163,97 @@ pub fn manifest_to_toml(manifest: &PluginManifest) -> String {
 /// Embeds `manifest` into `wasm_bytes` as a `jinn_manifest` custom section,
 /// replacing any existing one (re-embedding is idempotent).
 ///
-/// Every existing section is copied through untouched — raw, byte-for-byte
-/// — so the artifact stays valid for consumers that only care about the
-/// rest of the module. Custom sections may appear anywhere in a module, so
-/// appending after the final section is spec-legal.
+/// The section is appended as raw bytes: custom sections (id 0) are legal at
+/// the top level of both core modules and components, and `wasm32-wasip2`
+/// artifacts are components — re-emitting a component's sections through a
+/// core-module encoder would reorder them. An existing `jinn_manifest`
+/// section is spliced out first by byte range.
 ///
 /// # Errors
 ///
 /// Returns [`PluginManifestError::InvalidWasm`] when `wasm_bytes` is not a
-/// module wasmparser can walk.
+/// wasm binary wasmparser can walk.
 pub fn embed_manifest(
     wasm_bytes: &[u8],
     manifest: &PluginManifest,
 ) -> Result<Vec<u8>, Report<PluginManifestError>> {
-    let mut module = wasm_encoder::Module::new();
-    copy_sections_excluding(wasm_bytes, MANIFEST_SECTION, &mut module)?;
-    module.section(&wasm_encoder::CustomSection {
-        name: Cow::Borrowed(MANIFEST_SECTION),
-        data: Cow::Borrowed(manifest_to_toml(manifest).as_bytes()),
-    });
-    Ok(module.finish())
+    let mut bytes = strip_manifest_section(wasm_bytes)?;
+    bytes.extend_from_slice(&encode_custom_section(
+        MANIFEST_SECTION,
+        manifest_to_toml(manifest).as_bytes(),
+    ));
+    Ok(bytes)
 }
 
-/// Copies every section of `wasm_bytes` into `module` as raw sections,
-/// skipping custom sections named `skip`.
-///
-/// wasmparser's section ranges cover contents only, so each section's header
-/// (id byte + LEB128 size) is reconstructed ahead of its contents — a
-/// byte-identical re-emission for any section whose size encoding the
-/// original compiler also wrote minimally (all mainstream wasm producers do).
-fn copy_sections_excluding(
+/// Removes any existing `jinn_manifest` custom section by splicing out its
+/// full byte range (header + contents).
+fn strip_manifest_section(wasm_bytes: &[u8]) -> Result<Vec<u8>, Report<PluginManifestError>> {
+    let Some(range) = find_manifest_section(wasm_bytes)? else {
+        return Ok(wasm_bytes.to_vec());
+    };
+    let mut bytes = wasm_bytes.to_vec();
+    bytes.drain(range);
+    Ok(bytes)
+}
+
+/// Locates the full byte range (id + size header + payload) of the
+/// `jinn_manifest` custom section, if present.
+fn find_manifest_section(
     wasm_bytes: &[u8],
-    skip_custom: &str,
-    module: &mut wasm_encoder::Module,
-) -> Result<(), Report<PluginManifestError>> {
+) -> Result<Option<std::ops::Range<usize>>, Report<PluginManifestError>> {
     for payload in wasmparser::Parser::new(0).parse_all(wasm_bytes) {
         let payload = payload.change_context(PluginManifestError::InvalidWasm)?;
-        let Some((id, contents)) = payload.as_section() else {
-            continue;
-        };
-        if payload_is_custom(&payload, skip_custom) {
-            continue;
+        if payload_is_custom(&payload, MANIFEST_SECTION)
+            && let Some((_, contents)) = payload.as_section()
+        {
+            // wasmparser's section ranges cover contents only; the header
+            // (section id byte + LEB128 size) sits immediately before.
+            let header = section_header_start(&wasm_bytes[..contents.start]);
+            return Ok(Some(header..contents.end));
         }
-        module.section(&wasm_encoder::RawSection {
-            id,
-            data: &wasm_bytes[contents],
-        });
     }
-    Ok(())
+    Ok(None)
+}
+
+/// Given the bytes before a section's contents, returns the offset where the
+/// section header (id byte + LEB128 size) begins.
+fn section_header_start(prefix: &[u8]) -> usize {
+    // Walk back over the LEB128 size: every continuation byte has the high
+    // bit set, so the loop stops with `i` one past the FINAL size byte. The
+    // header therefore starts two further back: the final size byte and the
+    // section id byte.
+    let mut i = prefix.len();
+    while i > 0 && prefix[i - 1] & 0x80 != 0 {
+        i -= 1;
+    }
+    i.saturating_sub(2)
+}
+
+/// Encodes a wasm custom section: id byte 0, LEB128 size, name-length +
+/// name + data.
+fn encode_custom_section(name: &str, data: &[u8]) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(name.len() + data.len() + 8);
+    leb_encode(name.len(), &mut payload);
+    payload.extend_from_slice(name.as_bytes());
+    payload.extend_from_slice(data);
+    let mut section = Vec::with_capacity(payload.len() + 8);
+    section.push(0u8); // custom section id
+    leb_encode(payload.len(), &mut section);
+    section.extend_from_slice(&payload);
+    section
+}
+
+/// Unsigned LEB128.
+fn leb_encode(mut value: usize, out: &mut Vec<u8>) {
+    loop {
+        let byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value == 0 {
+            out.push(byte);
+            return;
+        }
+        out.push(byte | 0x80);
+    }
 }
 
 /// True when the payload is a custom section named `name`.

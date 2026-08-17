@@ -29,7 +29,6 @@ ratatui-which-key = { workspace = true }
 uuid = { workspace = true }
 ratatui = { workspace = true }
 async-trait = { workspace = true }
-wasm-encoder = { workspace = true }
 wasmparser = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
@@ -76,6 +75,7 @@ kameo_actors = { workspace = true }
 # JSON surgery that dao's typed DAO layer doesn't cover.
 rusqlite = { workspace = true }
 [dev-dependencies]
+wasm-encoder = { workspace = true }
 indoc = "2"
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
