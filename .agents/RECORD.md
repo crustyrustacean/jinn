@@ -92,6 +92,7 @@ Entries are added or amended **only with human approval**.
 - (mcp) A `remote_http` server (transport = "remote_http") connects to an externally-managed HTTP server at the configured `url` with no process management; `command` is optional (unused for remote_http).
 - (mcp) MCP connections are monitored post-connect: `McpActor` spawns a liveness watcher that polls `is_transport_closed()` and publishes `Dead` when the connection drops, working uniformly across stdio, local_http, and remote_http transports. local_http connections additionally run a child-exit watcher that reaps the child (preventing zombies) and tears down the transport on process death, since a half-open TCP socket does not trip `is_transport_closed()` on its own. No auto-restart — a dead connection surfaces in the sidebar/picker for the user to restart via the inspector.
 - (mcp) The `restart_mcp_server` built-in tool lets the model restart a dead MCP server by name (or by stripping a `mcp__<server>__<tool>` namespace). It awaits the coordinator's restart result — which resolves when the new connection succeeds (`Running`) or fails (`ConnectFailed`), with a 60s `Timeout` if neither — before returning, so the model cannot retry a tool call mid-startup. On any failure (including timeout) the result instructs the model to stop and wait for the user.
+- (mcp) MCP child processes (stdio and local_http) spawn terminal-isolated, like tool children.
 - (tools) Actor-provided tools route by their registration `provider` prefix via the generic `ExecuteTool` command, not a hardcoded per-name match; `web-fetch`/`web-search` remain distinct provider keys.
 - (paths) Config lives at `~/.config/jinn` (providers, prompts, personas, themes, `jinn.toml`).
 - (paths) Data lives at `~/.local/share/jinn` (`sessions.db`).
@@ -115,6 +116,7 @@ Entries are added or amended **only with human approval**.
 - (session) Model selection supports alloy (multi-provider) configs that round-trip through serde; `as_single` returns `None` for an alloy and the string for a single model.
 - (session) A session can pin one OpenRouter endpoint on its profile; when pinned and the model is served via the OpenRouter backend, dispatch forces that endpoint with `provider.order=[tag]` and `allow_fallbacks:false` for prefix-cache affinity.
 - (session) An endpoint pin applies only to a Single (non-alloy) model served via the OpenRouter backend; it is ignored for alloys and all other backends.
+- (session) Lifecycle setup/teardown commands spawn terminal-isolated, like tool children.
 - (skills) A project skill overrides a global skill with the same name; the discovery walk collects ancestors least-local-first so most-local-wins is a later-overwrites-earlier pass.
 - (skills) Agent skills are discovered from `~/.agents/skills/*/SKILL.md` and `.agents/skills/*/SKILL.md`; project skills override global skills (most-local-wins).
 - (skills) Prompt templates are markdown files with `+++` TOML frontmatter; `#name` tokens in user text expand to a template body.
@@ -155,6 +157,7 @@ Entries are added or amended **only with human approval**.
 - (tools) The agent's built-in file tools are `read`, `write`, `edit`, `bash`, `grep`, `save_plan`, `get_time`, `session_query`, `restart_mcp_server`, and `skill`.
 - (tools) Programmatic image files a tool writes (`.png`, `.svg`, charts) are artifacts of the existing file-tool pipeline, not a model image-output capability.
 - (tools) When the `bash` tool or a built-in tool panics mid-execution, it publishes a failed-execution event rather than crashing the actor.
+- (tools) The bash and grep tools spawn children terminal-isolated: Unix children run in a new session (setsid), Windows children with CREATE_NO_WINDOW, so child output can never write over the TUI.
 - (ui) A section is shown only when non-empty (Pins requires pinned ids, TaskList requires tasks); empty sections are hidden.
 - (ui) Mouse drag creates a dragging selection state, `finalize` transitions dragging to active, and `cancel` returns to idle.
 - (ui) Paste events are coalesced: empty chunks are harmless, multiple paste chunks within a window merge into one (preserving order), and coalescing stops at the first non-paste event.
