@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 /// plugin's identity (contribution namespace + default scratch-dir
 /// selector); there is no `name` field to drift out of sync with the key.
 /// Grants are path templates with an optional `:w` suffix (`<config_dir>/themes:w`);
-/// every plugin additionally receives its own writable scratch dir without
-/// listing it.
+/// nothing is granted implicitly — a plugin wanting its own scratch dir
+/// declares `"<plugin_data_dir>:w"`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PluginConfig {
     /// Path to the plugin's `.wasm` component. Relative paths resolve

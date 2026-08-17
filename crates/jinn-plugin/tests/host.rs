@@ -151,14 +151,15 @@ fn expand_template_rejects_undefined_variables() {
 }
 
 #[test]
-fn resolve_grants_always_includes_scratch_dir() {
+fn resolve_grants_with_no_grants_grants_nothing() {
     // Given a manifest with no path grants.
     // When resolving.
     let grants =
         resolve_grants(&[], false, serde_json::Value::Null, &dir_context()).expect("resolve");
 
-    // Then the default writable scratch dir is present.
-    assert_eq!(grants.write_dirs, vec![PathBuf::from("/data/plugins/p")]);
+    // Then nothing is granted implicitly — no scratch dir appears.
+    assert!(grants.read_dirs.is_empty());
+    assert!(grants.write_dirs.is_empty());
 }
 
 #[test]
@@ -179,18 +180,9 @@ fn resolve_grants_sorts_read_and_write_intents() {
     let resolved =
         resolve_grants(&grants, true, serde_json::Value::Null, &dir_context()).expect("resolve");
 
-    // Then each lands in its list with the scratch dir.
+    // Then each lands in its list, nothing more.
     assert_eq!(resolved.read_dirs, vec![PathBuf::from("/cfg/themes")]);
-    assert!(
-        resolved
-            .write_dirs
-            .contains(&PathBuf::from("/data/scratch"))
-    );
-    assert!(
-        resolved
-            .write_dirs
-            .contains(&PathBuf::from("/data/plugins/p"))
-    );
+    assert_eq!(resolved.write_dirs, vec![PathBuf::from("/data/scratch")]);
     // And the http flag carries through.
     assert!(resolved.http);
 }

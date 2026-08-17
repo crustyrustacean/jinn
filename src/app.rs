@@ -762,11 +762,11 @@ fn run_install(
             return Err(report.change_context(AppError));
         }
     }
-    // A plugin installed with no grants sees no dirs beyond its scratch
-    // space — almost always an oversight worth naming.
+    // A plugin installed with no grants sees no directories at all —
+    // almost always an oversight worth naming.
     if grants.is_empty() {
         eprintln!(
-            "note: {name} declares no grants — it cannot read any directory\nexcept its own scratch dir. If it should see files, reinstall with\n--grant '<config_dir>/…' (repeatable, :w for writable)."
+            "note: {name} declares no grants — it cannot read any directory.\nIf it should see files, reinstall with --grant '<config_dir>/…'\n(repeatable, :w for writable; '<plugin_data_dir>:w' for a scratch dir)."
         );
     } else {
         println!("  grants:");
