@@ -21,7 +21,7 @@ type ThemeReport = error_stack::Report<ThemeError>;
 
 fn main() {
     let mut out = PluginOutput::stdout();
-    if hello(&mut out, "jinn-themes").is_err() {
+    if hello(&mut out, "theme-loader").is_err() {
         return note_exit("handshake write failed");
     }
     let Ok(grants) = welcome() else {
@@ -41,7 +41,7 @@ fn main() {
 
 /// Writes a diagnostic to stderr (host-side diagnostics) and returns.
 fn note_exit(message: &str) {
-    eprintln!("jinn-themes: {message}");
+    eprintln!("theme-loader: {message}");
 }
 
 /// Scans the granted read dirs (earlier dirs shadow same-name later ones,
@@ -79,14 +79,14 @@ fn merge_dir(
 /// Notes one theme's load failure on stderr (host-side diagnostics).
 fn note_theme_failure(dir: &Path, name: &str, report: &ThemeReport) {
     eprintln!(
-        "jinn-themes: skipping theme {name} in {}: {report}",
+        "theme-loader: skipping theme {name} in {}: {report}",
         dir.display()
     );
 }
 
 /// Notes one directory's scan failure on stderr.
 fn note_scan_failure(dir: &Path, report: &ThemeReport) {
-    eprintln!("jinn-themes: cannot scan {}: {report}", dir.display());
+    eprintln!("theme-loader: cannot scan {}: {report}", dir.display());
 }
 
 /// Converts one resolved core theme to its wire shape.

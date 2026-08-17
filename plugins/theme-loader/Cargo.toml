@@ -1,10 +1,17 @@
 [package]
-name = "jinn-plugin-themes"
+name = "theme-loader"
 version = "0.1.0"
 edition = "2024"
 description = "First-party jinn plugin: discovers and contributes TOML themes."
 license = "MIT"
 publish = false
+
+# Plugin payload manifest: build embeds this into the artifact and install
+# applies it. Grants use `<config_dir>`/`<data_dir>` variables; `:w` marks
+# a grant writable.
+[package.metadata.jinn]
+grants = ["<config_dir>/themes"]
+http = false
 
 [dependencies]
 jinn-plugin-api = { path = "../../crates/jinn-plugin-api" }

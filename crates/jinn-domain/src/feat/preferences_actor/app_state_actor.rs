@@ -362,7 +362,7 @@ mod tests {
         let plugins_cap = crate::common::tcaps::mint::mint_plugins_cap();
         actor.state.with_plugins(&plugins_cap, |p| {
             p.set_themes(
-                "jinn-themes",
+                "theme-loader",
                 vec![("dracula".to_owned(), None, contributed.clone())],
             );
         });
