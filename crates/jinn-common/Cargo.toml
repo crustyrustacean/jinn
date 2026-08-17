@@ -9,6 +9,8 @@ toml_edit = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 dirs = { workspace = true }
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
 
 [features]
 default = []

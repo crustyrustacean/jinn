@@ -144,30 +144,42 @@ impl BusPublish for PluginCoordinatorActor {
 }
 
 impl PluginCoordinatorActor {
-    /// Spawns a plugin actor for every enabled `[[plugin]]` entry.
+    /// Spawns a plugin actor for every enabled `[plugin.<name>]` entry.
     async fn spawn_all(&self) {
         let configs = enabled_plugins(&self.deps.services);
-        for config in configs {
-            self.spawn_one(&config).await;
+        match configs.len() {
+            0 => tracing::info!("plugin coordinator: no plugins configured"),
+            n => tracing::info!(
+                count = n,
+                names = %configs
+                    .iter()
+                    .map(|(name, _)| name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                "plugin coordinator: loading plugins"
+            ),
+        }
+        for (name, config) in configs {
+            self.spawn_one(&name, &config).await;
         }
     }
 
     /// Spawns one plugin actor (idempotent per name) with its inbound
     /// channel and grant set resolved from the manifest entry.
-    async fn spawn_one(&self, config: &PluginConfig) {
-        if self.spawned.lock().contains_key(&config.name) {
+    async fn spawn_one(&self, name: &str, config: &PluginConfig) {
+        if self.spawned.lock().contains_key(name) {
             return;
         }
 
         let (inbound_tx, mut inbound_rx) = mpsc::channel::<PluginInbound>(INBOUND_CAPACITY);
 
-        let grants = match self.resolve_grants(config) {
+        let grants = match self.resolve_grants(name, config) {
             Ok(grants) => grants,
             Err(report) => {
-                tracing::warn!(plugin = %config.name, "{report:#}");
+                tracing::warn!(plugin = %name, "{report:#}");
                 self.deps
                     .publish(PluginStatus {
-                        name: config.name.clone(),
+                        name: name.to_owned(),
                         phase: PluginPhase::Dead,
                     })
                     .await;
@@ -176,10 +188,15 @@ impl PluginCoordinatorActor {
         };
 
         let wasm_path = self.wasm_path(config);
+        // Snapshot grant facts for logging; `grants` itself moves into the
+        // actor deps below.
+        let (read_dirs, write_dirs, http) =
+            (grants.read_dirs.len(), grants.write_dirs.len(), grants.http);
         let actor_ref = PluginActor::supervise(
             &self.root,
             PluginActorDeps {
                 deps: self.deps.clone(),
+                name: name.to_owned(),
                 config: config.clone(),
                 grants,
                 wasm_path,
@@ -192,8 +209,14 @@ impl PluginCoordinatorActor {
         .restart_policy(RestartPolicy::Never)
         .spawn()
         .await;
-        self.spawned.lock().insert(config.name.clone(), actor_ref);
-        tracing::info!(plugin = %config.name, "plugin coordinator: spawned PluginActor");
+        self.spawned.lock().insert(name.to_owned(), actor_ref);
+        tracing::info!(
+            plugin = %name,
+            read_grants = read_dirs,
+            write_grants = write_dirs,
+            http,
+            "plugin coordinator: spawned PluginActor"
+        );
 
         // The coordinator's inbound pump: every message from this plugin is
         // validated here before it may touch state.
@@ -201,7 +224,7 @@ impl PluginCoordinatorActor {
         let cap = self.cap;
         let frontend_cap = self.frontend_cap;
         let last_theme_payload = self.last_theme_payload.clone();
-        let name = config.name.clone();
+        let pump_name = name.to_owned();
         tokio::spawn(async move {
             while let Some(inbound) = inbound_rx.recv().await {
                 handle_inbound(
@@ -209,7 +232,7 @@ impl PluginCoordinatorActor {
                     cap,
                     frontend_cap,
                     &last_theme_payload,
-                    &name,
+                    &pump_name,
                     inbound,
                 );
             }
@@ -219,12 +242,13 @@ impl PluginCoordinatorActor {
     /// Resolves manifest grants into runner grants against the dir context.
     fn resolve_grants(
         &self,
+        name: &str,
         config: &PluginConfig,
     ) -> Result<jinn_plugin::Grants, error_stack::Report<jinn_plugin::GrantsError>> {
         let ctx = jinn_plugin::DirContext {
             config_dir: self.dirs.config_dir.clone(),
             data_dir: self.dirs.data_dir.clone(),
-            plugin_name: config.name.clone(),
+            plugin_name: name.to_owned(),
         };
         let path_grants: Vec<jinn_plugin::PathGrant> = config
             .grants
@@ -252,15 +276,15 @@ impl PluginCoordinatorActor {
     }
 }
 
-/// Reads the enabled plugin entries from user preferences.
-fn enabled_plugins(services: &crate::Services) -> Vec<PluginConfig> {
+/// Reads the enabled plugin entries from user preferences, keyed by name.
+fn enabled_plugins(services: &crate::Services) -> Vec<(String, PluginConfig)> {
     services
         .user_preferences_storage
         .read()
         .plugin
         .iter()
-        .filter(|p| p.enabled)
-        .cloned()
+        .filter(|(_, config)| config.enabled)
+        .map(|(name, config)| (name.clone(), config.clone()))
         .collect()
 }
 

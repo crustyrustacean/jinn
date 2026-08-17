@@ -41,7 +41,6 @@ const SERVER_NAME: &str = "stub";
 /// pre-connected client, so `on_start` never spawns a process.
 fn stub_config() -> McpServerConfig {
     McpServerConfig {
-        name: SERVER_NAME.to_owned(),
         command: Some(String::new()),
         args: vec![],
         ..Default::default()
@@ -64,6 +63,7 @@ async fn execute_tool_for_namespaced_echo_returns_server_response() {
             services: harness.services().await,
         },
         session_id.clone(),
+        SERVER_NAME.to_owned(),
         stub_config(),
         client,
     ));
@@ -125,6 +125,7 @@ async fn execute_tool_when_client_disconnected_yields_failed_result() {
             services: harness.services().await,
         },
         session_id.clone(),
+        SERVER_NAME.to_owned(),
         stub_config(),
         client,
     ));
@@ -171,6 +172,7 @@ async fn execute_tool_truncates_large_response_to_orchestrator_limits() {
             services: harness.services().await,
         },
         session_id.clone(),
+        SERVER_NAME.to_owned(),
         stub_config(),
         client,
     ));
@@ -232,6 +234,7 @@ async fn transport_close_publishes_dead_status() {
             services: harness.services().await,
         },
         session_id.clone(),
+        SERVER_NAME.to_owned(),
         stub_config(),
         client,
     ));
@@ -290,6 +293,7 @@ async fn normal_teardown_publishes_exactly_one_dead() {
             services: harness.services().await,
         },
         session_id.clone(),
+        SERVER_NAME.to_owned(),
         stub_config(),
         client,
     ));
@@ -339,6 +343,7 @@ async fn restarted_actor_has_no_zombie_watcher_from_the_previous_one() {
             services: harness.services().await,
         },
         session_id.clone(),
+        SERVER_NAME.to_owned(),
         stub_config(),
         client,
     ));
@@ -356,6 +361,7 @@ async fn restarted_actor_has_no_zombie_watcher_from_the_previous_one() {
             services: harness.services().await,
         },
         session_id.clone(),
+        SERVER_NAME.to_owned(),
         stub_config(),
         client2,
     ));

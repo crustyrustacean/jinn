@@ -33,7 +33,8 @@ are built and installed the same way — from source, per machine:
 
 ```
 just build-plugins                 # or: jinn plugin build plugins/jinn-themes
-jinn plugin install target/wasm32-wasip2/release/jinn-plugin-themes.wasm
+jinn plugin install target/wasm32-wasip2/release/jinn-plugin-themes.wasm \
+  --grant '<config_dir>/themes'     # the themes plugin scans granted dirs
 # restart jinn
 ```
 
@@ -68,11 +69,10 @@ or repurpose existing ones.
 Declared per-plugin in `jinn.toml`:
 
 ```toml
-[[plugin]]
-name = "my-plugin"
+[plugin.my-plugin]
 wasm = "my-plugin.wasm"   # relative to <data_dir>/plugins/
 http = false              # wasi:http network access
-grants = [ { path = "<config_dir>/themes" } ]   # read-only preopen
+grants = ["<config_dir>/themes"]   # read-only preopen; append :w for writable
 ```
 
 - `grants` = filesystem preopens; no grant means no filesystem access at all

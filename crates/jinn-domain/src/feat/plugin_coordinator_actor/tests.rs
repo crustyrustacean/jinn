@@ -34,7 +34,7 @@ fn theme_line(name: &str, color: &str) -> String {
 /// Spawns the coordinator with the given plugin entries and fake script.
 async fn spawn_coordinator(
     harness: &TestHarness,
-    plugins: Vec<PluginConfig>,
+    plugins: std::collections::BTreeMap<String, PluginConfig>,
     script: jinn_plugin::FakeGuestScript,
 ) -> State {
     spawn_coordinator_prepared(harness, plugins, script, |_| {}).await
@@ -45,7 +45,7 @@ async fn spawn_coordinator(
 /// conditions the contribution path must observe.
 async fn spawn_coordinator_prepared(
     harness: &TestHarness,
-    plugins: Vec<PluginConfig>,
+    plugins: std::collections::BTreeMap<String, PluginConfig>,
     script: jinn_plugin::FakeGuestScript,
     prepare: impl FnOnce(&State),
 ) -> State {
@@ -90,13 +90,17 @@ async fn spawn_coordinator_prepared(
 /// A manifest entry the coordinator will spawn.
 fn entry() -> PluginConfig {
     PluginConfig {
-        name: "test-plugin".to_owned(),
         wasm: "test.wasm".to_owned(),
         grants: vec![],
         http: false,
         config: None,
         enabled: true,
     }
+}
+
+/// A one-entry plugin map keyed by the standard test plugin name.
+fn plugins() -> std::collections::BTreeMap<String, PluginConfig> {
+    [("test-plugin".to_owned(), entry())].into_iter().collect()
 }
 
 /// A healthy guest ends up Running on the bus.
@@ -107,7 +111,7 @@ async fn healthy_guest_reaches_running_phase() {
     let recorder = harness.spawn_recorder::<PluginStatus>().await;
     let state = spawn_coordinator(
         &harness,
-        vec![entry()],
+        plugins(),
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
             lines: vec![],
@@ -135,7 +139,7 @@ async fn set_theme_entries_populates_contribution_cache() {
     let harness = TestHarness::new().await;
     let state = spawn_coordinator(
         &harness,
-        vec![entry()],
+        plugins(),
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
             lines: vec![theme_line("ocean", "#00aabb")],
@@ -172,7 +176,7 @@ async fn malformed_lines_are_dropped_not_fatal() {
     let harness = TestHarness::new().await;
     let state = spawn_coordinator(
         &harness,
-        vec![entry()],
+        plugins(),
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
             lines: vec![
@@ -206,7 +210,7 @@ async fn guest_end_keeps_contributions_and_marks_dead() {
     let recorder = harness.spawn_recorder::<PluginStatus>().await;
     let state = spawn_coordinator(
         &harness,
-        vec![entry()],
+        plugins(),
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
             lines: vec![theme_line("persisted", "#abcdef")],
@@ -233,12 +237,7 @@ async fn silent_guest_dies_at_handshake() {
     // Given a coordinator with a guest that says nothing.
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<PluginStatus>().await;
-    let state = spawn_coordinator(
-        &harness,
-        vec![entry()],
-        jinn_plugin::FakeGuestScript::Silent,
-    )
-    .await;
+    let state = spawn_coordinator(&harness, plugins(), jinn_plugin::FakeGuestScript::Silent).await;
 
     // When the handshake timeout lapses.
     let messages = await_recorded(&recorder, 1, WAIT).await;
@@ -261,7 +260,7 @@ async fn non_hello_first_message_fails_handshake() {
     let recorder = harness.spawn_recorder::<PluginStatus>().await;
     let state = spawn_coordinator(
         &harness,
-        vec![entry()],
+        plugins(),
         jinn_plugin::FakeGuestScript::FirstLine(theme_line("too-eager", "#000001")),
     )
     .await;
@@ -287,7 +286,7 @@ async fn version_mismatch_fails_handshake() {
     let recorder = harness.spawn_recorder::<PluginStatus>().await;
     let state = spawn_coordinator(
         &harness,
-        vec![entry()],
+        plugins(),
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION + 1,
             lines: vec![theme_line("future", "#000002")],
@@ -317,7 +316,7 @@ async fn first_contribution_late_applies_pending_theme_name() {
     let harness = TestHarness::new().await;
     let state = spawn_coordinator_prepared(
         &harness,
-        vec![entry()],
+        plugins(),
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
             lines: vec![theme_line("dracula", "#ff00ff")],
@@ -370,7 +369,7 @@ async fn flooding_guest_is_marked_unresponsive_then_recovers() {
     let recorder = harness.spawn_recorder::<PluginStatus>().await;
     let state = spawn_coordinator(
         &harness,
-        vec![entry()],
+        plugins(),
         jinn_plugin::FakeGuestScript::Flood {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
             lines: vec![theme_line("flood", "#123456")],
@@ -418,7 +417,7 @@ async fn identical_consecutive_theme_batch_is_debounced() {
     let harness = TestHarness::new().await;
     let state = spawn_coordinator(
         &harness,
-        vec![entry()],
+        plugins(),
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
             lines: vec![theme_line("dupe", "#aabbcc"), theme_line("dupe", "#aabbcc")],
@@ -454,7 +453,7 @@ async fn all_invalid_theme_batch_is_dropped_entirely() {
     let harness = TestHarness::new().await;
     let state = spawn_coordinator(
         &harness,
-        vec![entry()],
+        plugins(),
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
             lines: vec![bad_line],
@@ -484,7 +483,12 @@ async fn no_plugins_configured_is_quiescent() {
     // Given a coordinator with zero plugin entries and a recorder.
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<PluginStatus>().await;
-    let state = spawn_coordinator(&harness, vec![], jinn_plugin::FakeGuestScript::Silent).await;
+    let state = spawn_coordinator(
+        &harness,
+        std::collections::BTreeMap::new(),
+        jinn_plugin::FakeGuestScript::Silent,
+    )
+    .await;
 
     // When the coordinator has settled (spawn_all ran at startup).
     tokio::time::sleep(Duration::from_millis(200)).await;

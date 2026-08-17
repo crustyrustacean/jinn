@@ -36,7 +36,6 @@ async fn remote_http_to_unreachable_url_loops_instead_of_failing() {
     // Given a RemoteHttp config pointing at a port nothing is listening on.
     // Use a port in the dynamic range that's very likely free.
     let config = crate::feat::mcp::McpServerConfig {
-        name: "test".to_owned(),
         command: None,
         args: vec![],
         transport: TransportKind::RemoteHttp,

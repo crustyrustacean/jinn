@@ -45,14 +45,13 @@ pub enum TransportKind {
 
 /// One configured MCP server.
 ///
-/// Defined in `jinn.toml` under `[[mcp_server]]`. The `name` field is the
-/// array key the `DocumentPatcher` matches entries by, and it doubles as the
-/// per-session enablement identifier stored in `SessionCore::enabled_mcp_servers`
-/// and the tool-namespace segment (`mcp__<name>__<tool>`).
+/// Declared in `jinn.toml` under `[mcp_server.<name>]` — the table name IS
+/// the server's identity (the per-session enablement identifier stored in
+/// `SessionCore::enabled_mcp_servers` and the tool-namespace segment
+/// `mcp__<name>__<tool>`); there is no `name` field to drift out of sync
+/// with the key.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpServerConfig {
-    /// Unique name for this server. Used in the tool namespace
-    pub name: String,
     /// Executable command to launch the server (e.g. `"npx"`).
     ///
     /// Optional: `None` is valid for [`RemoteHttp`](TransportKind::RemoteHttp)
@@ -111,7 +110,6 @@ mod tests {
     fn absent_transport_defaults_to_stdio() {
         // Given a config TOML with no transport field.
         let toml = r#"
-            name = "excalimate"
             command = "npx"
             args = ["@excalimate/mcp-server", "--stdio"]
         "#;
@@ -127,7 +125,6 @@ mod tests {
     fn local_http_transport_round_trips_through_toml() {
         // Given a LocalHttp-mode config.
         let config = McpServerConfig {
-            name: "excalimate".to_owned(),
             command: Some("node".to_owned()),
             args: vec!["server.js", "--port", "<port>"]
                 .into_iter()
@@ -149,7 +146,6 @@ mod tests {
     fn remote_http_transport_round_trips_through_toml() {
         // Given a RemoteHttp config with a URL.
         let config = McpServerConfig {
-            name: "remote".to_owned(),
             command: None,
             args: vec![],
             transport: TransportKind::RemoteHttp,
@@ -169,7 +165,6 @@ mod tests {
     fn stdio_transport_round_trips_through_toml() {
         // Given an explicit Stdio config.
         let config = McpServerConfig {
-            name: "excalimate".to_owned(),
             command: Some("npx".to_owned()),
             args: vec!["--stdio"].into_iter().map(String::from).collect(),
             transport: TransportKind::Stdio,
@@ -188,7 +183,6 @@ mod tests {
     fn command_is_optional_deserializes_when_absent() {
         // Given a config TOML with no command field.
         let toml = r#"
-            name = "remote"
             transport = "remote_http"
             url = "http://localhost:3001/mcp"
         "#;
@@ -204,7 +198,6 @@ mod tests {
     fn remote_http_config_needs_no_command() {
         // Given a RemoteHttp config with command set to None.
         let config = McpServerConfig {
-            name: "remote".to_owned(),
             command: None,
             args: vec![],
             transport: TransportKind::RemoteHttp,

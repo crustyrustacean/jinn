@@ -167,13 +167,13 @@ impl McpCoordinatorActor {
         };
 
         for server in to_spawn {
-            if let Some(config) = configs.iter().find(|c| c.name == server) {
-                let _ = self.spawn_one(session_id, config).await;
+            if let Some((name, config)) = configs.iter().find(|(n, _)| n == &server) {
+                let _ = self.spawn_one(session_id, name, config).await;
             } else {
                 tracing::warn!(
                     server = %server,
                     %session_id,
-                    "MCP lifecycle: enabled server not found in jinn.toml [[mcp_server]], skipping spawn"
+                    "MCP lifecycle: enabled server not found in jinn.toml [mcp_server.<name>], skipping spawn"
                 );
             }
         }
@@ -192,9 +192,10 @@ impl McpCoordinatorActor {
     async fn spawn_one(
         &self,
         session_id: &SessionId,
+        name: &str,
         config: &McpServerConfig,
     ) -> Option<ActorRef<McpActor>> {
-        let key = (session_id.clone(), config.name.clone());
+        let key = (session_id.clone(), name.to_owned());
         // Duplicate-spawn guard: another in-flight reconcile may have inserted
         // this key between the snapshot and now.
         if self.spawned.lock().contains_key(&key) {
@@ -203,7 +204,12 @@ impl McpCoordinatorActor {
 
         let actor_ref = McpActor::supervise(
             &self.root,
-            McpActorDeps::new(self.deps.clone(), session_id.clone(), config.clone()),
+            McpActorDeps::new(
+                self.deps.clone(),
+                session_id.clone(),
+                name.to_owned(),
+                config.clone(),
+            ),
         )
         .restart_policy(RestartPolicy::Never)
         .spawn()
@@ -211,7 +217,7 @@ impl McpCoordinatorActor {
 
         self.spawned.lock().insert(key, actor_ref.clone());
         tracing::info!(
-            server = %config.name,
+            server = %name,
             %session_id,
             "MCP lifecycle: spawned McpActor"
         );
@@ -274,10 +280,11 @@ impl McpCoordinatorActor {
 
         let config = configured_servers(&self.deps.services)
             .into_iter()
-            .find(|c| c.name == server)
+            .find(|(n, _)| n == server)
             .ok_or(RestartError::UnknownServer)?;
 
-        let actor_ref = self.spawn_one(session_id, &config).await;
+        let actor_ref = self.spawn_one(session_id, &config.0, &config.1).await;
+
         let actor_ref = actor_ref.ok_or(RestartError::UnknownServer)?;
 
         // `on_start` blocks on acquire_client (connect + tools/list); we wait
@@ -305,10 +312,14 @@ impl McpCoordinatorActor {
     }
 }
 
-/// Reads the configured `[[mcp_server]]` from user preferences.
-fn configured_servers(services: &Services) -> Vec<McpServerConfig> {
+/// Reads the configured `[mcp_server.<name>]` entries from user preferences.
+fn configured_servers(services: &Services) -> Vec<(String, McpServerConfig)> {
     let prefs = services.user_preferences_storage.read();
-    prefs.mcp_server.clone()
+    prefs
+        .mcp_server
+        .iter()
+        .map(|(n, c)| (n.clone(), c.clone()))
+        .collect()
 }
 
 // ── Message handlers ─────────────────────────────────────────────────────
@@ -475,7 +486,6 @@ mod lifecycle_tests {
     /// so the spawned `McpActor` publishes Starting then Dead (never Running).
     fn unrunnable_server() -> McpServerConfig {
         McpServerConfig {
-            name: "unrunnable".to_owned(),
             command: Some("/this/command/does/not/exist".to_owned()),
             args: vec![],
             ..Default::default()
@@ -487,7 +497,6 @@ mod lifecycle_tests {
     /// Used to exercise the `Err(Timeout)` path deterministically.
     fn hanging_server() -> McpServerConfig {
         McpServerConfig {
-            name: "hanging".to_owned(),
             command: Some("sleep".to_owned()),
             args: vec!["60".to_owned()],
             ..Default::default()
@@ -496,17 +505,21 @@ mod lifecycle_tests {
 
     async fn spawn_lifecycle(
         harness: &TestHarness,
-        servers: Vec<McpServerConfig>,
+        servers: &[(&str, McpServerConfig)],
     ) -> (
         kameo::actor::ActorRef<McpCoordinatorActor>,
         crate::Services,
         crate::common::state::State,
     ) {
         let services = harness.services().await;
+        let mcp_server = servers
+            .iter()
+            .map(|(name, config)| ((*name).to_owned(), config.clone()))
+            .collect();
         services
             .user_preferences_storage
             .save(&UserPreferences {
-                mcp_server: servers,
+                mcp_server,
                 ..UserPreferences::default()
             })
             .expect("seed prefs");
@@ -536,7 +549,7 @@ mod lifecycle_tests {
         let harness = TestHarness::new().await;
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
         let (_actor, _services, _state) =
-            spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
         let session_id = SessionId::new();
 
         // When enabling that server for the session.
@@ -563,7 +576,7 @@ mod lifecycle_tests {
         // Given a lifecycle actor with no configured servers.
         let harness = TestHarness::new().await;
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services, _state) = spawn_lifecycle(&harness, vec![]).await;
+        let (_actor, _services, _state) = spawn_lifecycle(&harness, &[]).await;
         let session_id = SessionId::new();
 
         // When enabling a server that is not configured.
@@ -588,7 +601,7 @@ mod lifecycle_tests {
         let harness = TestHarness::new().await;
         let _recorder = harness.spawn_recorder::<McpServerStatus>().await;
         let (_actor, _services, _state) =
-            spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
         let session_id = SessionId::new();
         harness
             .publish(McpEnablementChanged {
@@ -621,7 +634,7 @@ mod lifecycle_tests {
         let harness = TestHarness::new().await;
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
         let (_actor, _services, _state) =
-            spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
         let session_id = SessionId::new();
 
         // When enabling the server (spawn #1: Starting + Dead on failed connect).
@@ -675,7 +688,8 @@ mod lifecycle_tests {
     async fn restart_one_times_out_when_startup_exceeds_the_timeout() {
         // Given a coordinator with a server that hangs forever on the MCP handshake.
         let harness = TestHarness::new().await;
-        let (actor, _services, _state) = spawn_lifecycle(&harness, vec![hanging_server()]).await;
+        let (actor, _services, _state) =
+            spawn_lifecycle(&harness, &[("hanging", hanging_server())]).await;
         let session_id = SessionId::new();
 
         // When restarting with a 1ms timeout.
