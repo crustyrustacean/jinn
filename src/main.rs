@@ -19,8 +19,11 @@ fn main() {
         | Some(jinn_cli::cli::Commands::Completions { .. }) => TracingMode::Tui { log_path },
         Some(jinn_cli::cli::Commands::Fetch { .. })
         | Some(jinn_cli::cli::Commands::Config { .. })
-        | Some(jinn_cli::cli::Commands::Install { .. })
-        | Some(jinn_cli::cli::Commands::Plugin { .. }) => TracingMode::Headless { log_path },
+        | Some(jinn_cli::cli::Commands::Install { .. }) => TracingMode::Headless { log_path },
+        // Plugin tooling is out-of-band: its terminal output belongs to the
+        // subcommand (cargo passthrough, scaffold, install result), so
+        // tracing goes to the file only.
+        Some(jinn_cli::cli::Commands::Plugin { .. }) => TracingMode::Quiet { log_path },
         #[cfg(debug_assertions)]
         Some(jinn_cli::cli::Commands::Headless { .. }) => TracingMode::Headless { log_path },
     };
