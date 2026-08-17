@@ -403,7 +403,8 @@ async fn read_child_output_and_wait(
     child.wait().await
 }
 
-/// Spawns a shell command with stdout/stderr piped and isolated process group.
+/// Spawns a shell command with stdout/stderr piped, terminal-isolated, in its
+/// own session/process group.
 ///
 /// Disconnects stdin from the controlling TTY so child processes
 /// (and their entire process tree) are removed from the kernel's
@@ -413,26 +414,31 @@ async fn read_child_output_and_wait(
 /// input buffer overflows before the event thread can drain it,
 /// causing dropped keystrokes.
 ///
-/// Places the child in its own process group so that the
-/// kill-on-drop guard can terminate the entire group
-/// (child + all descendants) on cancel.
+/// Terminal isolation (see `jinn_common::process_isolation`) detaches the
+/// child from jinn's session entirely: it has **no controlling terminal**,
+/// so tty-writers (ssh/git host-key prompts, `CONOUT$` console writes on
+/// Windows) cannot print over the TUI.
+///
+/// `setsid` makes the child a session and group leader (pid == pgid), the
+/// same invariant the kill-on-drop guard relies on to terminate the whole
+/// group (child + all descendants) on cancel.
 fn spawn_shell_command(command: &str, cwd: &std::path::Path) -> std::io::Result<KillOnDrop> {
-    let mut cmd = tokio::process::Command::new("bash");
-    cmd.arg("-c")
+    let mut std_cmd = std::process::Command::new("bash");
+    std_cmd
+        .arg("-c")
         .arg(command)
         .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    // Place the child in its own process group on Unix so that
-    // `kill_process_tree` can atomically signal the whole group with
-    // `kill(-pgid)`. Windows has no process-group signalling analogue
-    // (`Command::process_group` is Unix-only); its tree kill is enumerative
-    // via `kill_tree`.
-    #[cfg(unix)]
-    cmd.process_group(0);
+    // Detach from jinn's session on Unix (setsid; no controlling tty, pid ==
+    // pgid for the group kill) and from jinn's console on Windows
+    // (CREATE_NO_WINDOW). Replaces the former `process_group(0)` — combining
+    // both would fail setsid with EPERM.
+    jinn_common::process_isolation::isolate(&mut std_cmd);
 
+    let mut cmd = tokio::process::Command::from(std_cmd);
     cmd.spawn().map(KillOnDrop::new)
 }
 
@@ -716,6 +722,72 @@ mod tests {
         // Then the result indicates failure.
         assert!(!result.success);
         assert!(result.content.contains("failed to parse arguments"));
+    }
+
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_child_has_no_controlling_tty() {
+        // Given a bash tool call that tries to open the controlling tty.
+        let call = ToolCall {
+            id: "call_tty".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({
+                "command": "exec 3>/dev/tty"
+            })
+            .to_string(),
+        };
+
+        // When executing the bash tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the child failed to open /dev/tty: it has no controlling
+        // terminal, so tty-writers cannot print over the TUI.
+        assert!(
+            !result.success,
+            "expected /dev/tty open to fail in an isolated bash child"
+        );
+    }
+
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_child_runs_in_new_session() {
+        // Given a bash tool call reporting its session id.
+        let call = ToolCall {
+            id: "call_sid".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({
+                "command": "ps -o sid= -p $$"
+            })
+            .to_string(),
+        };
+
+        // When executing the bash tool and reading the child's reported sid.
+        let result = execute(call, test_ctx()).await;
+        let child_sid: i64 = result
+            .content
+            .trim()
+            .parse()
+            .expect("ps should print a numeric sid");
+
+        // When reading the test process's session id via the same tool.
+        let own_sid: i64 = {
+            let out = std::process::Command::new("ps")
+                .args(["-o", "sid=", "-p", &std::process::id().to_string()])
+                .output()
+                .expect("ps should run");
+            String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .parse()
+                .expect("ps should print a numeric sid for the test process")
+        };
+
+        // Then the bash child runs in a different session from jinn.
+        assert_ne!(
+            child_sid, own_sid,
+            "bash-tool child must not share jinn's session"
+        );
     }
 
     #[rstest::rstest]

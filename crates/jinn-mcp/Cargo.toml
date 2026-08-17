@@ -13,6 +13,7 @@ wherror = { workspace = true }
 error-stack = { workspace = true }
 tracing = { workspace = true }
 jinn-provider = { workspace = true }
+jinn-common = { workspace = true }
 
 [features]
 default = []
