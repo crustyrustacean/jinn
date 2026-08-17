@@ -118,11 +118,14 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # url = "http://localhost:3001/mcp"
 
 # ---------------------------------------------------------------------------
-# Plugins — WASM components jinn runs as child processes. Each entry names
-# a .wasm file plus the directories it may access; jinn grants nothing else.
-# Every plugin automatically gets a writable scratch dir at
-# <data_dir>/plugins/<name>/ — no need to list it. Plugins spawn at app
-# start; installing or changing one requires a jinn restart.
+# Plugins — WASM components jinn runs in-process (sandboxed guests). Each
+# entry names a .wasm file plus the directories it may access; jinn grants
+# nothing else. Grants and http normally come from the plugin's own
+# [package.metadata.jinn] manifest, embedded into the artifact at build and
+# auto-applied by `jinn plugin add`/`install` — edit them here only to
+# override that declaration. Every plugin automatically gets a writable
+# scratch dir at <data_dir>/plugins/<name>/ — no need to list it. Plugins
+# spawn at app start; installing or changing one requires a jinn restart.
 #
 # Path templates: <config_dir>, <data_dir>, <plugin_data_dir>.
 # ---------------------------------------------------------------------------
