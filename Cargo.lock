@@ -2222,6 +2222,7 @@ version = "0.106.0"
 dependencies = [
  "axum",
  "error-stack",
+ "jinn-common",
  "jinn-provider",
  "reqwest 0.13.3",
  "rmcp",

@@ -144,8 +144,12 @@ impl McpClient {
     ///
     /// Returns an error if the process cannot be spawned or the handshake fails.
     pub async fn connect(cmd: &ServerCommand) -> Result<Self, Report<McpClientError>> {
-        let mut command = Command::new(&cmd.program);
-        command.args(&cmd.args);
+        let mut std_cmd = std::process::Command::new(&cmd.program);
+        std_cmd.args(&cmd.args);
+        // Terminal isolation: setsid on Unix / CREATE_NO_WINDOW on Windows —
+        // the server process must never write over jinn's terminal.
+        jinn_common::process_isolation::isolate(&mut std_cmd);
+        let mut command = tokio::process::Command::from(std_cmd);
         command.kill_on_drop(true);
 
         let (transport, stderr) = TokioChildProcess::builder(command)
@@ -243,13 +247,16 @@ impl McpClient {
             .next()
             .expect("url_template is a single-element vec");
 
-        let mut command = Command::new(program);
-        command
+        let mut std_cmd = std::process::Command::new(program);
+        std_cmd
             .args(&expanded)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
+            .stderr(Stdio::piped());
+        // Terminal isolation, same as the stdio transport above.
+        jinn_common::process_isolation::isolate(&mut std_cmd);
+        let mut command = tokio::process::Command::from(std_cmd);
+        command.kill_on_drop(true);
 
         let mut child = command
             .spawn()
