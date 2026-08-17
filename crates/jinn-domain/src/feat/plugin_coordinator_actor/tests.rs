@@ -14,6 +14,7 @@ use crate::common::bus::test_harness::{TestHarness, await_recorded};
 use crate::common::root_supervisor::RootSupervisor;
 use crate::common::state::State;
 use crate::common::tcaps::mint::mint_plugins_cap;
+use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::plugin::PluginConfig;
 use crate::feat::plugin_coordinator_actor::PluginCoordinatorActor;
 use crate::feat::plugin_coordinator_actor::PluginCoordinatorActorDeps;
@@ -497,4 +498,73 @@ async fn no_plugins_configured_is_quiescent() {
     let messages = await_recorded(&recorder, 1, Duration::from_millis(200)).await;
     assert!(messages.is_empty(), "unexpected status events");
     assert_eq!(state.read().plugins.themes().count(), 0);
+}
+
+/// One valid wire `SetPersonaEntries` line (hand-encoded JSON to prove the raw
+/// wire shape survives decode).
+fn persona_line(name: &str, description: Option<&str>) -> String {
+    let description = match description {
+        Some(d) => format!("\"{d}\""),
+        None => "null".to_owned(),
+    };
+    format!(
+        r#"{{"v":1,"seq":2,"ts":0,"type":"set_persona_entries","personas":[{{"name":"{name}","description":{description},"body":"You are {name}."}}]}}"#
+    )
+}
+
+/// A persona contribution is translated and published as `PersonasLoaded`.
+#[tokio::test]
+async fn set_persona_entries_publishes_personas_loaded() {
+    // Given a coordinator with a guest contributing one persona and a recorder.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PersonasLoaded>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![persona_line("coder", Some("Expert coder"))],
+        },
+    )
+    .await;
+
+    // When the contribution arrives (await the recorded event).
+    let events = await_recorded(&recorder, 1, WAIT).await;
+
+    // Then the event carries the translated persona with no error.
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].personas.len(), 1);
+    assert_eq!(events[0].personas[0].name, "coder");
+    assert_eq!(events[0].personas[0].description, "Expert coder");
+    assert_eq!(events[0].personas[0].body, "You are coder.");
+    assert!(events[0].error.is_none());
+}
+
+/// An identical consecutive persona batch is debounced to a single publish.
+#[tokio::test]
+async fn duplicate_persona_batch_is_debounced() {
+    // Given a coordinator with a guest pushing the same persona batch twice.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PersonasLoaded>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![
+                persona_line("coder", None),
+                persona_line("coder", None),
+            ],
+        },
+    )
+    .await;
+
+    // When both lines arrive and the pipeline settles (GetRecorded drains,
+    // so read once after settling).
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let events = await_recorded(&recorder, 1, Duration::from_millis(200)).await;
+
+    // Then exactly one PersonasLoaded event was published — the duplicate
+    // batch was debounced.
+    assert_eq!(events.len(), 1, "duplicate batch must not re-publish");
 }

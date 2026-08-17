@@ -1099,7 +1099,6 @@ mod tests {
     use crate::feat::todo_list::picker_entry::RowStatus;
     use crate::protocol::ChatEntryKind;
     use jinn_selection_widget::TreeItem;
-    use std::path::PathBuf;
 
     #[rstest::rstest]
     fn confirm_provider_rejects_unavailable() {
@@ -1692,13 +1691,11 @@ mod tests {
                 name: "coder".to_owned(),
                 description: String::new(),
                 body: "You are a coder.".to_owned(),
-                file_path: PathBuf::new(),
             },
             crate::feat::persona::Persona {
                 name: "writer".to_owned(),
                 description: String::new(),
                 body: "You are a writer.".to_owned(),
-                file_path: PathBuf::new(),
             },
         ]);
 
@@ -2131,7 +2128,6 @@ mod tests {
                 name: "coder".to_owned(),
                 description: String::new(),
                 body: "You are a coder.".to_owned(),
-                file_path: PathBuf::new(),
             }]);
         let entry = PersonaEntry {
             name: "coder".to_owned(),

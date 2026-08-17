@@ -35,10 +35,6 @@ pub struct UnpinChatEntry {
 
 impl BusMessage for UnpinChatEntry {}
 
-/// Rescan the personas directory and reload persona files.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RescanPersonas;
-
 /// Load entries for the persona picker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadPersonaPickerEntries;

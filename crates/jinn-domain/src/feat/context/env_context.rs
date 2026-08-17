@@ -199,7 +199,6 @@ mod tests {
             name: "test".to_owned(),
             description: "Test persona".to_owned(),
             body: body.to_owned(),
-            file_path: PathBuf::from("/test/persona.md"),
         }
     }
 

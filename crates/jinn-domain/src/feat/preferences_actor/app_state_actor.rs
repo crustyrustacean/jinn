@@ -308,13 +308,11 @@ mod tests {
                     name: "coder".to_owned(),
                     description: String::new(),
                     body: String::new(),
-                    file_path: std::path::PathBuf::new(),
                 },
                 Persona {
                     name: "writer".to_owned(),
                     description: String::new(),
                     body: String::new(),
-                    file_path: std::path::PathBuf::new(),
                 },
             ]);
         }

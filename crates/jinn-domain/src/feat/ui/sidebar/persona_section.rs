@@ -170,7 +170,6 @@ mod tests {
             name: "coding-assistant".to_owned(),
             description: "Expert coder".to_owned(),
             body: String::new(),
-            file_path: std::path::PathBuf::from("test.md"),
         }));
 
         // When asking for content height.
