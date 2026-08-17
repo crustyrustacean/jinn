@@ -421,10 +421,7 @@ async fn identical_consecutive_theme_batch_is_debounced() {
         vec![entry()],
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
-            lines: vec![
-                theme_line("dupe", "#aabbcc"),
-                theme_line("dupe", "#aabbcc"),
-            ],
+            lines: vec![theme_line("dupe", "#aabbcc"), theme_line("dupe", "#aabbcc")],
         },
     )
     .await;
@@ -472,10 +469,7 @@ async fn all_invalid_theme_batch_is_dropped_entirely() {
         if phase == Some(PluginPhase::Dead) {
             break;
         }
-        assert!(
-            deadline > tokio::time::Instant::now(),
-            "guest never ended"
-        );
+        assert!(deadline > tokio::time::Instant::now(), "guest never ended");
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
 
@@ -490,12 +484,7 @@ async fn no_plugins_configured_is_quiescent() {
     // Given a coordinator with zero plugin entries and a recorder.
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<PluginStatus>().await;
-    let state = spawn_coordinator(
-        &harness,
-        vec![],
-        jinn_plugin::FakeGuestScript::Silent,
-    )
-    .await;
+    let state = spawn_coordinator(&harness, vec![], jinn_plugin::FakeGuestScript::Silent).await;
 
     // When the coordinator has settled (spawn_all ran at startup).
     tokio::time::sleep(Duration::from_millis(200)).await;

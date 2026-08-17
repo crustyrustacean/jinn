@@ -204,7 +204,14 @@ impl PluginCoordinatorActor {
         let name = config.name.clone();
         tokio::spawn(async move {
             while let Some(inbound) = inbound_rx.recv().await {
-                handle_inbound(&state, cap, frontend_cap, &last_theme_payload, &name, inbound);
+                handle_inbound(
+                    &state,
+                    cap,
+                    frontend_cap,
+                    &last_theme_payload,
+                    &name,
+                    inbound,
+                );
             }
         });
     }
