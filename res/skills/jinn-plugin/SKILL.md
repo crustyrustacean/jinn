@@ -17,16 +17,20 @@ caches in `AppState`. Nothing plugin-side is ever on the sync render path.
 ```
 jinn plugin new my-plugin          # scaffold (current dir)
 cd my-plugin
-cargo build --target wasm32-wasip2 --release
+jinn plugin build                  # → target/wasm32-wasip2/release/<crate>.wasm
 jinn plugin install target/wasm32-wasip2/release/my_plugin.wasm
 # restart jinn — plugins spawn at app start
 ```
 
-jinn's own plugins (e.g. the themes plugin in `crates/jinn-plugin-themes/`)
+`jinn plugin build` wraps `cargo build --release --target wasm32-wasip2` and
+resolves the artifact path from cargo itself (in-workspace crates build to the
+workspace root's `target/`, standalone crates to their own).
+
+jinn's own plugins (e.g. the themes plugin in `plugins/jinn-themes/`)
 are built and installed the same way — from source, per machine:
 
 ```
-just build-plugins
+just build-plugins                 # or: jinn plugin build plugins/jinn-themes
 jinn plugin install target/wasm32-wasip2/release/jinn-plugin-themes.wasm
 # restart jinn
 ```

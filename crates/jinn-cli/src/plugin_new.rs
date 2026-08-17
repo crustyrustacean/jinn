@@ -93,8 +93,8 @@ const INSTRUCTIONS: &str = r#"Next steps:
 
   cd {name}
   rustup target add wasm32-wasip2        # once per toolchain
-  cargo build --target wasm32-wasip2 --release
-  jinn plugin install target/wasm32-wasip2/release/{name}.wasm
+  jinn plugin build                      # builds + prints the artifact path
+  jinn plugin install <printed-path>
   # restart jinn — plugins activate at startup
 
 Dependencies resolve from the jinn git repo (first build clones it).

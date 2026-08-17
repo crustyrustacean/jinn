@@ -7,9 +7,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
-jinn-plugin-api = { path = "../jinn-plugin-api" }
-jinn-plugin-sdk = { path = "../jinn-plugin-sdk" }
-jinn-theme = { path = "../jinn-theme", default-features = false }
+jinn-plugin-api = { path = "../../crates/jinn-plugin-api" }
+jinn-plugin-sdk = { path = "../../crates/jinn-plugin-sdk" }
+jinn-theme = { path = "../../crates/jinn-theme", default-features = false }
 serde_json = "1"
 error-stack = { workspace = true }
 
