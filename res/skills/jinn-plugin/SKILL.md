@@ -97,8 +97,8 @@ grants = ["<config_dir>/themes"]   # read-only preopen; append :w for writable
 ```
 
 - `grants` = filesystem preopens; no grant means no filesystem access at all
-- Every plugin automatically gets `<data_dir>/plugins/<name>/` as writable scratch
-- `<config_dir>` / `<data_dir>` variables are substituted at spawn
+- Nothing is granted implicitly — persistence needs `"<plugin_data_dir>:w"`
+- `<config_dir>` / `<data_dir>` / `<plugin_data_dir>` variables are substituted at spawn
 - Guests cannot spawn processes; env access is host-controlled
 
 ## SDK

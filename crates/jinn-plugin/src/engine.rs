@@ -226,7 +226,8 @@ where
 }
 
 /// Preopens the granted directories: read grants as read-only, write
-/// grants (including the default scratch dir) as read-write.
+/// grants as read-write. Writable preopens are created on demand: a
+/// preopen requires the path to exist.
 fn preopen_dirs(builder: &mut WasiCtxBuilder, grants: &Grants) -> Result<(), Report<EngineError>> {
     for dir in &grants.read_dirs {
         builder

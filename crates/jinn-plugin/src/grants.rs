@@ -1,11 +1,12 @@
 //! Capability grants — what a plugin is allowed to touch.
 //!
-//! Grants are declared in the manifest (`jinn.toml` `[[plugin]]`) as path
-//! templates and expanded against jinn's real directories by the
-//! coordinator before the guest spawns. The resolved [`Grants`] build the
-//! guest's WASI context directly (preopens / `wasi:http` availability). The
-//! default writable scratch dir (`<plugin_data_dir>`) is always granted, so
-//! persistence needs no manifest entry.
+//! Grants are declared in the manifest (`jinn.toml` `[plugin.<name>]` or
+//! the plugin's own `[package.metadata.jinn]`) as path templates and
+//! expanded against jinn's real directories by the coordinator before the
+//! guest spawns. The resolved [`Grants`] build the guest's WASI context
+//! directly (preopens / `wasi:http` availability). Nothing is granted
+//! implicitly: a plugin that wants a writable scratch dir declares
+//! `"<plugin_data_dir>:w"` in its grant list.
 
 use std::path::{Path, PathBuf};
 
@@ -135,8 +136,8 @@ pub fn expand_template(template: &str, ctx: &DirContext) -> Result<PathBuf, Repo
     Ok(Path::new(&out).to_path_buf())
 }
 
-/// Resolves a manifest grant list into grants, always including the default
-/// writable scratch dir.
+/// Resolves a manifest grant list into grants. Nothing is added implicitly
+/// — persistence is declared like any other grant.
 ///
 /// # Errors
 ///
@@ -148,7 +149,7 @@ pub fn resolve_grants(
     ctx: &DirContext,
 ) -> Result<Grants, Report<GrantsError>> {
     let mut read_dirs = Vec::new();
-    let mut write_dirs = vec![ctx.plugin_data_dir()];
+    let mut write_dirs = Vec::new();
     for grant in grants {
         let path = expand_template(&grant.path, ctx)?;
         if grant.writable {

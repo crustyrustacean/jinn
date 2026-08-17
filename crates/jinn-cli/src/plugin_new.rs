@@ -152,7 +152,8 @@ fn main() {{
         return;
     }};
     // `grants.read_dirs` are the directories the manifest granted you;
-    // `grants.write_dirs` your scratch space; `grants.http` the network flag.
+    // `grants.write_dirs` the writable ones ("<plugin_data_dir>:w" if
+    // you declared it); `grants.http` the network flag.
 
     // TODO: replace this placeholder contribution with your plugin's data.
     let _ = &grants;
