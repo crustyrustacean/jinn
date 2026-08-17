@@ -1,7 +1,5 @@
 //! Persona data model.
 
-use std::path::PathBuf;
-
 /// A parsed persona ready for use in the system prompt.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Persona {
@@ -11,6 +9,4 @@ pub struct Persona {
     pub description: String,
     /// The persona body - the actual system prompt text.
     pub body: String,
-    /// File path this persona was loaded from.
-    pub file_path: PathBuf,
 }

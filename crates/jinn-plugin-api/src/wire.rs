@@ -16,6 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::persona_def::PersonaDef;
 use crate::theme_def::ThemeDef;
 
 /// Handshake: the first message a plugin sends after boot.
@@ -61,6 +62,17 @@ pub struct SetThemeEntries {
     pub themes: Vec<ThemeDef>,
 }
 
+/// Contribution: the full set of persona definitions the plugin knows about.
+///
+/// Push, never pull — the plugin sends this on start and again whenever its
+/// view changes. The host translates and publishes them as loaded personas;
+/// opening the persona picker never queries the plugin.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetPersonaEntries {
+    /// Complete set of personas (a full replacement, not a delta).
+    pub personas: Vec<PersonaDef>,
+}
+
 /// Plugin→host message union (transport only).
 ///
 /// Unknown tags are handled one level up, in
@@ -73,6 +85,8 @@ pub enum PluginToHost {
     Hello(Hello),
     /// Theme contribution (full set).
     SetThemeEntries(SetThemeEntries),
+    /// Persona contribution (full set).
+    SetPersonaEntries(SetPersonaEntries),
 }
 
 /// Host→plugin message union (transport only).
