@@ -37,6 +37,18 @@ async fn spawn_coordinator(
     plugins: Vec<PluginConfig>,
     script: jinn_plugin::FakeGuestScript,
 ) -> State {
+    spawn_coordinator_prepared(harness, plugins, script, |_| {}).await
+}
+
+/// Like [`spawn_coordinator`], with a preparer that mutates shared state
+/// before the coordinator (and its plugins) spawn — for arming startup
+/// conditions the contribution path must observe.
+async fn spawn_coordinator_prepared(
+    harness: &TestHarness,
+    plugins: Vec<PluginConfig>,
+    script: jinn_plugin::FakeGuestScript,
+    prepare: impl FnOnce(&State),
+) -> State {
     let services = harness.services().await;
     {
         let mut prefs = services.user_preferences_storage.read().clone();
@@ -48,6 +60,7 @@ async fn spawn_coordinator(
             .expect("save prefs");
     }
     let state = State::new(crate::common::app_state::AppState::default());
+    prepare(&state);
     let root = RootSupervisor::spawn_root().await;
     let dirs = PluginDirs {
         config_dir: std::path::PathBuf::from("/nonexistent"),
@@ -322,4 +335,56 @@ async fn user_entry_cannot_shadow_first_party_name() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert!(state.read().plugins.theme("usurped").is_none());
     let _ = recorder;
+}
+
+/// A persisted theme name pending on startup is late-applied when the
+/// plugin's first contribution lands.
+#[tokio::test]
+async fn first_contribution_late_applies_pending_theme_name() {
+    // Given a coordinator whose frontend holds a persisted theme name that
+    // the default state has not yet applied, and a guest contributing it.
+    let harness = TestHarness::new().await;
+    let state = spawn_coordinator_prepared(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![theme_line("dracula", "#ff00ff")],
+        },
+        |state| {
+            let frontend_cap = crate::common::tcaps::mint::mint_frontend_cap();
+            state.with_preferences(&frontend_cap, |ops| {
+                ops.frontend().app_state.theme_name = Some("dracula".to_owned());
+            });
+        },
+    )
+    .await;
+
+    // When the contribution arrives and the coordinator late-applies.
+    let deadline = tokio::time::Instant::now() + WAIT;
+    loop {
+        let focus = {
+            let guard = state.read();
+            (guard.plugins.theme("dracula").is_some())
+                .then_some(guard.frontend.theme.focus_accent)
+        };
+        if focus.is_some() {
+            break;
+        }
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "late-apply never happened"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+
+    // Then the frontend theme is the contributed one.
+    let guard = state.read();
+    assert!(
+        matches!(
+            guard.frontend.theme.focus_accent,
+            ratatui::style::Color::Rgb(255, 0, 255)
+        ),
+        "expected contributed focus_accent #ff00ff"
+    );
 }

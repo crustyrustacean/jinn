@@ -3403,4 +3403,48 @@ mod tests {
         // Then selection decrements by 5.
         assert_eq!(state.provider.provider_picker.selection(), 5);
     }
+
+    #[test]
+    fn theme_picker_lists_default_first_then_contributed_sorted() {
+        // Given a cache with unsorted contributed themes.
+        let mut state = AppState::default();
+        state.plugins.set_themes(
+            "jinn-themes",
+            vec![
+                ("zeta".to_owned(), None, crate::feat::theme::default_theme()),
+                ("Beta".to_owned(), None, crate::feat::theme::default_theme()),
+                (
+                    "alpha".to_owned(),
+                    None,
+                    crate::feat::theme::default_theme(),
+                ),
+            ],
+        );
+
+        // When opening the theme picker.
+        handle_open_picker(&mut state, PickerKind::Theme);
+
+        // Then default leads and the rest follow case-insensitively sorted.
+        let names: Vec<String> = state
+            .frontend
+            .theme_picker()
+            .items()
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
+        assert_eq!(names, vec!["default", "alpha", "Beta", "zeta"]);
+    }
+
+    #[test]
+    fn theme_picker_empty_cache_shows_default_only() {
+        // Given no plugin contributions (dead or absent themes plugin).
+        let mut state = AppState::default();
+
+        // When opening the theme picker.
+        handle_open_picker(&mut state, PickerKind::Theme);
+
+        // Then the picker offers exactly the built-in default.
+        assert_eq!(state.frontend.theme_picker().items().len(), 1);
+        assert_eq!(state.frontend.theme_picker().items()[0].name, "default");
+    }
 }

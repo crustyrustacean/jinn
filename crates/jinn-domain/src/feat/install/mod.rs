@@ -115,6 +115,11 @@ const BUNDLED: &[Bundled] = &[
     },
     Bundled {
         kind: Kind::Theme,
+        relative: "nord-light.toml",
+        contents: include_str!("../../../../../res/themes/nord-light.toml"),
+    },
+    Bundled {
+        kind: Kind::Theme,
         relative: "gruvbox-dark.toml",
         contents: include_str!("../../../../../res/themes/gruvbox-dark.toml"),
     },

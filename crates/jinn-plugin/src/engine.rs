@@ -24,10 +24,10 @@ use tokio::sync::Mutex;
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::cli::{AsyncStdinStream, AsyncStdoutStream};
-use wasmtime_wasi::p3::bindings::Command;
+use wasmtime_wasi::p2::bindings::Command;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::WasiHttpCtx;
-use wasmtime_wasi_http::p3::WasiHttpView;
+use wasmtime_wasi_http::p2::{WasiHttpCtxView, WasiHttpView};
 
 use crate::grants::Grants;
 use crate::stderr_ring::StderrRing;
@@ -64,8 +64,8 @@ impl WasiView for PluginState {
 }
 
 impl WasiHttpView for PluginState {
-    fn http(&mut self) -> wasmtime_wasi_http::p3::WasiHttpCtxView<'_> {
-        wasmtime_wasi_http::p3::WasiHttpCtxView {
+    fn http(&mut self) -> WasiHttpCtxView<'_> {
+        WasiHttpCtxView {
             hooks: &mut [],
             table: &mut self.table,
             ctx: &mut self.http,
@@ -144,10 +144,10 @@ impl PluginEngine {
         let store = build_store(&self.engine, grants, stdin, stdout, stderr_ring)?;
 
         let mut linker: Linker<PluginState> = Linker::new(&self.engine);
-        wasmtime_wasi::p3::add_to_linker(&mut linker)
+        wasmtime_wasi::p2::add_to_linker_async(&mut linker)
             .map_err(|e| Report::new(EngineError::Instantiate).attach(format!("wasi link: {e}")))?;
         if grants.http {
-            wasmtime_wasi_http::p3::add_to_linker(&mut linker).map_err(|e| {
+            wasmtime_wasi_http::p2::add_to_linker_async(&mut linker).map_err(|e| {
                 Report::new(EngineError::Instantiate).attach(format!("wasi:http link: {e}"))
             })?;
         }
@@ -175,10 +175,10 @@ async fn drive_guest(
         .await
         .map_err(|e| Report::new(EngineError::Instantiate).attach(format!("instantiate: {e}")))?;
 
-    let run = store
-        .run_concurrent(async move |store| command.wasi_cli_run().call_run(store).await)
+    let run = command
+        .wasi_cli_run()
+        .call_run(&mut store)
         .await
-        .map_err(|e| Report::new(EngineError::Run).attach(format!("guest trap: {e}")))?
         .map_err(|e| Report::new(EngineError::Run).attach(format!("guest trap: {e}")))?;
     match run {
         Ok(()) => Ok(()),
@@ -217,7 +217,11 @@ where
     };
     let mut store = Store::new(engine, state);
     store.limiter(|state| &mut state.limits);
-    store.set_epoch_deadline(1);
+    // Async execution + epoch interruption: the deadline callback yields
+    // to the tokio runtime and refreshes the deadline instead of trapping,
+    // so a long-lived guest is preempted cooperatively rather than killed
+    // on the first epoch tick. `shutdown` still aborts hard.
+    store.epoch_deadline_async_yield_and_update(1);
     Ok(store)
 }
 

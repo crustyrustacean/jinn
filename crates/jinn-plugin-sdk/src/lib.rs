@@ -20,7 +20,7 @@
 //! }
 //! ```
 
-use std::io::{Read, Write};
+use std::io::{BufRead as _, Write};
 
 use jinn_plugin_api::{
     Envelope, HostToPlugin, PROTOCOL_VERSION, PluginToHost, PluginToHostOrHostToPlugin,
@@ -56,23 +56,24 @@ pub fn hello<W: Write>(out: &mut W, name: &str) -> std::io::Result<()> {
 pub fn welcome() -> Result<jinn_plugin_api::Welcome, std::io::Error> {
     let stdin = std::io::stdin();
     let mut lock = stdin.lock();
-    let mut line = String::new();
+    let mut bytes = Vec::new();
     loop {
-        line.clear();
-        lock.read_to_string(&mut line)?;
-        if line.is_empty() {
+        bytes.clear();
+        let n = lock.read_until(b'\n', &mut bytes)?;
+        if n == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "host closed stdin before Welcome",
             ));
         }
-        for candidate in line.lines() {
-            let Ok(envelope) = from_str::<Envelope>(candidate) else {
-                continue;
-            };
-            if let PluginToHostOrHostToPlugin::Host(HostToPlugin::Welcome(w)) = envelope.msg {
-                return Ok(w);
-            }
+        let Ok(line) = std::str::from_utf8(bytes.trim_ascii_end()) else {
+            continue;
+        };
+        let Ok(envelope) = from_str::<Envelope>(line) else {
+            continue;
+        };
+        if let PluginToHostOrHostToPlugin::Host(HostToPlugin::Welcome(w)) = envelope.msg {
+            return Ok(w);
         }
     }
 }
