@@ -174,6 +174,14 @@ name = "{name}"
 version = "0.1.0"
 edition = "2024"
 
+# Plugin manifest: `jinn plugin build` embeds it into the artifact and
+# `plugin add`/`install` applies it. Grants use <config_dir>/<data_dir>
+# variables; `:w` marks a grant writable.
+[package.metadata.jinn]
+grants = []
+# grants = ["<config_dir>/themes"]
+http = false
+
 [dependencies]
 {sdk_deps}
 serde_json = "1"
@@ -191,11 +199,12 @@ const INSTRUCTIONS: &str = r#"Next steps:
 
   cd {name}
   rustup target add wasm32-wasip2        # once per toolchain
-  jinn plugin build                      # builds + prints the artifact path
-  jinn plugin install <printed-path>
+  jinn plugin add .                     # build + install in one command
   # restart jinn — plugins activate at startup
 
 {sdk_note}
+Declare grants in [package.metadata.jinn] — they are embedded into the
+artifact and applied at install (--grant overrides them per install).
 Edit src/main.rs to push real data over the wire. See the jinn-plugin
 SKILL.md (installed to your skills dir) for the full authoring loop.
 "#;
@@ -319,6 +328,8 @@ mod tests {
         assert!(dir.join(".gitignore").is_file());
         let manifest = std::fs::read_to_string(dir.join("Cargo.toml")).expect("read");
         assert!(manifest.contains("name = \"probe\""));
+        // And the jinn manifest section is present (build gates on it).
+        assert!(manifest.contains("[package.metadata.jinn]"));
         // And dependencies resolve from the jinn git repo, not crates.io.
         assert!(manifest.contains("git = \"https://github.com/jayson-lennon/jinn\""));
         let main = std::fs::read_to_string(dir.join("src/main.rs")).expect("read");

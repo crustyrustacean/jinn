@@ -32,11 +32,32 @@ jinn's own plugins (e.g. the themes plugin in `plugins/theme-loader/`)
 are built and installed the same way — from source, per machine:
 
 ```
-just build-plugins                 # or: jinn plugin build plugins/theme-loader
-jinn plugin install target/wasm32-wasip2/release/theme-loader.wasm \
-  --grant '<config_dir>/themes'     # the themes plugin scans granted dirs
+jinn plugin add plugins/theme-loader   # build + install in one command
 # restart jinn
 ```
+
+`plugin add` = read manifest → build (embeds manifest) → install with the
+declared grants. `plugin build` + `plugin install` remain as the separate
+primitives.
+
+## Plugin manifest
+
+A plugin declares its needs in its `Cargo.toml`:
+
+```toml
+[package.metadata.jinn]
+name = "optional-name-override"    # defaults to the crate name
+grants = ["<config_dir>/themes", "<data_dir>/notes:w"]
+http = false                        # true enables wasi:http
+```
+
+`plugin build` hard-errors without the section (a plain Rust crate is not a
+plugin) and embeds it into the artifact as a `jinn_manifest` custom section —
+artifacts are self-contained. `plugin add`/`install` extract it and auto-apply
+the declared grants, printing each one. Flags override per install:
+`--grant '<path>'` replaces the grant list; `--http`/`--no-http` replace the
+http setting; `--name` replaces the name. Install fails hard on a `.wasm`
+with no embedded manifest (rebuild it with a current jinn).
 
 ---
 
