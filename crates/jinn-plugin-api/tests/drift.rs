@@ -13,8 +13,8 @@
 use std::collections::BTreeMap;
 
 use jinn_plugin_api::{
-    Envelope, HostToPlugin, PluginToHost, PluginToHostOrHostToPlugin, THEME_COLOR_SLOTS, ThemeDef,
-    Welcome,
+    Envelope, HostToPlugin, PersonaDef, PluginToHost, PluginToHostOrHostToPlugin,
+    THEME_COLOR_SLOTS, ThemeDef, Welcome,
 };
 
 /// Compiles the committed schema file for validation.
@@ -46,6 +46,15 @@ fn sample_theme() -> ThemeDef {
     }
 }
 
+/// Builds a fully-populated persona for fixtures.
+fn sample_persona() -> PersonaDef {
+    PersonaDef {
+        name: "coding-assistant".to_owned(),
+        description: Some("Expert coding assistant".to_owned()),
+        body: "You are an expert coding assistant.".to_owned(),
+    }
+}
+
 #[test]
 fn hello_envelope_validates_against_schema() {
     // Given a Hello envelope.
@@ -69,6 +78,40 @@ fn set_theme_entries_envelope_validates_against_schema() {
     let envelope = Envelope::for_plugin(
         PluginToHost::SetThemeEntries(jinn_plugin_api::SetThemeEntries {
             themes: vec![sample_theme()],
+        }),
+        1,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[test]
+fn set_persona_entries_envelope_validates_against_schema() {
+    // Given a SetPersonaEntries envelope with a populated persona.
+    let envelope = Envelope::for_plugin(
+        PluginToHost::SetPersonaEntries(jinn_plugin_api::SetPersonaEntries {
+            personas: vec![sample_persona()],
+        }),
+        1,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[test]
+fn set_persona_entries_without_description_validates_against_schema() {
+    // Given a SetPersonaEntries envelope whose persona has no description.
+    let envelope = Envelope::for_plugin(
+        PluginToHost::SetPersonaEntries(jinn_plugin_api::SetPersonaEntries {
+            personas: vec![PersonaDef {
+                name: "minimal".to_owned(),
+                description: None,
+                body: "Body text.".to_owned(),
+            }],
         }),
         1,
         0,

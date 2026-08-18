@@ -833,22 +833,6 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .await
         );
 
-        // Persona scan actor.
-        let _persona_scan = spawn_tracked!(
-            &services.bus,
-            "persona-scan",
-            "PersonaScanActor",
-            jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor::supervise(
-                &root,
-                jinn_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
-                    deps: actor_deps.clone(),
-                },
-            )
-            .restart_policy(kameo::supervision::RestartPolicy::Never)
-            .spawn()
-            .await
-        );
-
         // Provider actor.
         let _provider = spawn_tracked!(
             &services.bus,
