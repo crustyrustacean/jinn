@@ -40,10 +40,11 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::root_supervisor::RootSupervisorRef;
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
+use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::plugin::PluginConfig;
 use crate::feat::plugin_actor::{PluginActor, PluginActorDeps, PluginInbound};
 use crate::feat::plugin_coordinator_actor::protocol::{PluginPhase, PluginStatus};
-use jinn_plugin_api::SetThemeEntries;
+use jinn_plugin_api::{SetPersonaEntries, SetThemeEntries};
 
 /// Channel capacity for plugin→coordinator inbound events. Small: events are
 /// rare (handshake + contributions); a full channel means a flooding plugin,
@@ -66,6 +67,10 @@ pub struct PluginCoordinatorActor {
     /// an identical consecutive contribution is skipped — no cache write,
     /// no late-apply re-run).
     last_theme_payload: std::sync::Arc<Mutex<HashMap<String, SetThemeEntries>>>,
+    /// Last `SetPersonaEntries` payload seen per plugin (flooding debounce:
+    /// an identical consecutive contribution is skipped — no translation,
+    /// no bus publish).
+    last_persona_payload: std::sync::Arc<Mutex<HashMap<String, SetPersonaEntries>>>,
     /// Test seam: when set, spawned plugin actors use a scripted fake
     /// guest instead of a real wasm module (see
     /// [`jinn_plugin::FakeGuestScript`]). Shared through deps so tests
@@ -126,6 +131,7 @@ impl kameo::Actor for PluginCoordinatorActor {
             dirs: args.dirs,
             spawned: Mutex::new(HashMap::new()),
             last_theme_payload: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            last_persona_payload: std::sync::Arc::new(Mutex::new(HashMap::new())),
             #[cfg(test)]
             fake_guest: args.fake_guest.clone(),
         };
@@ -224,6 +230,8 @@ impl PluginCoordinatorActor {
         let cap = self.cap;
         let frontend_cap = self.frontend_cap;
         let last_theme_payload = self.last_theme_payload.clone();
+        let last_persona_payload = self.last_persona_payload.clone();
+        let bus = self.deps.services.bus.clone();
         let pump_name = name.to_owned();
         tokio::spawn(async move {
             while let Some(inbound) = inbound_rx.recv().await {
@@ -231,10 +239,13 @@ impl PluginCoordinatorActor {
                     &state,
                     cap,
                     frontend_cap,
+                    &bus,
                     &last_theme_payload,
+                    &last_persona_payload,
                     &pump_name,
                     inbound,
-                );
+                )
+                .await;
             }
         });
     }
@@ -293,12 +304,16 @@ fn enabled_plugins(services: &crate::Services) -> Vec<(String, PluginConfig)> {
 /// The trust boundary: nothing from a plugin reaches `AppState` except
 /// through this function's match. Unknown variants are silently dropped
 /// (forward compatibility); malformed theme payloads are dropped with a
-/// warn. `Hello` outside the handshake is ignored.
-fn handle_inbound(
+/// warn. `Hello` outside the handshake is ignored. Persona contributions
+/// are translated and published on the bus as [`PersonasLoaded`] — the
+/// session actor's existing consumer owns active-persona resolution.
+async fn handle_inbound(
     state: &State,
     cap: crate::common::tcaps::PluginsCap,
     frontend_cap: crate::common::tcaps::FrontendCap,
+    bus: &BusService,
     last_theme_payload: &std::sync::Arc<Mutex<HashMap<String, SetThemeEntries>>>,
+    last_persona_payload: &std::sync::Arc<Mutex<HashMap<String, SetPersonaEntries>>>,
     name: &str,
     inbound: PluginInbound,
 ) {
@@ -334,6 +349,34 @@ fn handle_inbound(
             // (app-state sync ran before this first contribution), resolve
             // it against the now-populated cache and apply it.
             apply_pending_theme(state, frontend_cap);
+        }
+        jinn_plugin_api::PluginToHost::SetPersonaEntries(entries) => {
+            // Flooding debounce: an identical consecutive payload is
+            // dropped before translation or any bus publish.
+            {
+                let mut last = last_persona_payload.lock();
+                if last.get(name) == Some(&entries) {
+                    tracing::debug!(plugin = %name, "duplicate persona batch debounced");
+                    return;
+                }
+                last.insert(name.to_owned(), entries.clone());
+            }
+            let personas =
+                crate::feat::plugin_coordinator_actor::translate::personas(&entries.personas);
+            if personas.is_empty() && !entries.personas.is_empty() {
+                tracing::warn!(plugin = %name, "all persona definitions failed translation");
+            }
+            tracing::info!(
+                plugin = %name,
+                received = entries.personas.len(),
+                published = personas.len(),
+                "plugin contributed personas"
+            );
+            bus.publish(PersonasLoaded {
+                personas,
+                error: None,
+            })
+            .await;
         }
     }
 }

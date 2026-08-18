@@ -256,7 +256,6 @@ mod tests {
             name: name.to_owned(),
             description: String::new(),
             body: String::new(),
-            file_path: std::path::PathBuf::from(format!("/personas/{name}.md")),
         }
     }
 

@@ -107,7 +107,7 @@ impl<'de> Deserialize<'de> for PluginToHostOrHostToPlugin {
                 .map(Self::Host)
                 .map_err(serde::de::Error::custom);
         }
-        if matches!(tag, "hello" | "set_theme_entries") {
+        if matches!(tag, "hello" | "set_theme_entries" | "set_persona_entries") {
             return PluginToHost::deserialize(value)
                 .map(Self::Plugin)
                 .map_err(serde::de::Error::custom);

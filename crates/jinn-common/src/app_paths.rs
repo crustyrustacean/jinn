@@ -242,12 +242,6 @@ impl AppPaths {
         self.system_data_dir.join("themes")
     }
 
-    /// System personas directory (`/usr/share/jinn/personas`).
-    #[must_use]
-    pub fn system_personas_dir(&self) -> PathBuf {
-        self.system_data_dir.join("personas")
-    }
-
     /// System prompts directory (`/usr/share/jinn/prompts`).
     #[must_use]
     pub fn system_prompts_dir(&self) -> PathBuf {
@@ -290,14 +284,6 @@ impl AppPaths {
     #[must_use]
     pub fn resolve_theme_paths(&self) -> Vec<(String, PathBuf)> {
         resolve_resource_paths(&self.system_themes_dir(), &self.themes_dir(), "toml")
-    }
-
-    /// Returns merged persona file paths from system and user directories.
-    ///
-    /// Same merge semantics as [`resolve_theme_paths`].
-    #[must_use]
-    pub fn resolve_persona_paths(&self) -> Vec<(String, PathBuf)> {
-        resolve_resource_paths(&self.system_personas_dir(), &self.personas_dir(), "md")
     }
 
     /// Returns merged prompt template file paths from system and user directories.
@@ -456,25 +442,6 @@ mod tests {
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].0, "forest");
         assert_eq!(result[1].0, "ocean");
-    }
-
-    #[rstest::rstest]
-    fn resolve_persona_paths_uses_md_extension() {
-        // Given a system personas dir with a .md file and a .txt file.
-        let root = tempfile::TempDir::new().expect("temp dir");
-        let system_dir = root.path().join("share/personas");
-        std::fs::create_dir_all(&system_dir).expect("create dir");
-        std::fs::write(system_dir.join("coder.md"), "content").expect("write");
-        std::fs::write(system_dir.join("notes.txt"), "content").expect("write");
-
-        let paths = AppPaths::new_in(root.path());
-
-        // When resolving persona paths.
-        let result = paths.resolve_persona_paths();
-
-        // Then only .md files are found.
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, "coder");
     }
 
     #[rstest::rstest]

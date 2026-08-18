@@ -22,9 +22,11 @@
 //! ignored — an older host tolerates a newer plugin and vice versa.
 
 mod envelope;
+mod persona_def;
 mod theme_def;
 mod wire;
 
 pub use envelope::{Envelope, PROTOCOL_VERSION, PluginToHostOrHostToPlugin};
+pub use persona_def::PersonaDef;
 pub use theme_def::{THEME_COLOR_SLOTS, ThemeColorSlot, ThemeDef};
-pub use wire::{Hello, HostToPlugin, PluginToHost, SetThemeEntries, Welcome};
+pub use wire::{Hello, HostToPlugin, PluginToHost, SetPersonaEntries, SetThemeEntries, Welcome};
