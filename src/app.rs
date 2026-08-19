@@ -327,8 +327,8 @@ impl App {
         // must run before any actor wiring — and it needs no preferences/DB,
         // so it dispatches before the session store is opened.
         if let Some(Commands::Install { force }) = &cli.command {
-            use jinn_domain::{AppPaths, Destinations, InstallOutcome, install_defaults_to};
             use jinn_domain::feat::preferences_actor::FilesystemUserPreferencesStorage;
+            use jinn_domain::{AppPaths, Destinations, InstallOutcome, install_defaults_to};
 
             let app_paths = AppPaths::default();
             let storage = FilesystemUserPreferencesStorage::default_path();
