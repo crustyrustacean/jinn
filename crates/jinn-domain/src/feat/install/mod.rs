@@ -349,8 +349,11 @@ mod tests {
         reason = "test code"
     )]
 
+
     use super::*;
-    use crate::feat::preferences_actor::user_preferences_storage::InMemoryUserPreferencesStorage;
+    use crate::feat::preferences_actor::user_preferences_storage::{
+        InMemoryUserPreferencesStorage, UserPreferencesStorage as _,
+    };
     use tempfile::TempDir;
 
     /// Builds a [`Destinations`] rooted at five distinct temp dirs and returns
@@ -496,6 +499,128 @@ mod tests {
         );
         // And the file exists at the nested path.
         assert!(outcome.path().is_file());
+    }
+
+    #[test]
+    fn install_creates_plugin_payload_when_absent() {
+        // Given destinations with no existing plugins.
+        let (destinations, _temps) = fresh_destinations();
+
+        // When installing defaults.
+        let outcomes =
+            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
+                .expect("install");
+
+        // Then the theme-loader payload was created under the plugins root.
+        let outcome = outcome_for(&outcomes, "theme-loader.wasm");
+        assert!(
+            outcome.path().starts_with(&destinations.plugins),
+            "plugin payload should be under the plugins root"
+        );
+        assert!(
+            matches!(outcome, InstallOutcome::Created(_)),
+            "plugin payload should be Created"
+        );
+        // And the payload is a non-empty wasm file.
+        assert!(outcome.path().is_file());
+        assert!(!std::fs::read(outcome.path()).expect("read").is_empty());
+    }
+
+    #[test]
+    fn install_registers_plugin_entry_with_manifest_grants() {
+        // Given fresh destinations and in-memory preferences storage.
+        let (destinations, _temps) = fresh_destinations();
+        let storage = InMemoryUserPreferencesStorage::new();
+
+        // When installing defaults.
+        install_defaults_to(&destinations, false, &storage).expect("install");
+
+        // Then the theme-loader entry carries the manifest-declared grant.
+        let prefs = storage.reload().expect("reload");
+        let entry = prefs
+            .plugin
+            .get("theme-loader")
+            .expect("theme-loader entry registered");
+        assert_eq!(entry.wasm, "theme-loader.wasm");
+        assert_eq!(entry.grants.len(), 1);
+        assert_eq!(entry.grants[0].path, "<config_dir>/themes");
+        assert!(!entry.grants[0].writable);
+        assert!(!entry.http);
+        assert!(entry.enabled);
+        // And the persona-loader entry is registered too.
+        assert!(prefs.plugin.contains_key("persona-loader"));
+    }
+
+    #[test]
+    fn install_skips_existing_plugin_without_force() {
+        // Given a plugins dir where theme-loader.wasm already exists.
+        let (destinations, _temps) = fresh_destinations();
+        let storage = InMemoryUserPreferencesStorage::new();
+        let existing = destinations.plugins.join("theme-loader.wasm");
+        std::fs::create_dir_all(destinations.plugins.clone()).unwrap();
+        std::fs::write(&existing, "PRE-EXISTING").unwrap();
+
+        // When installing defaults without force.
+        let outcomes = install_defaults_to(&destinations, false, &storage).expect("install");
+
+        // Then the theme-loader payload is reported Skipped.
+        let outcome = outcome_for(&outcomes, "theme-loader.wasm");
+        assert!(
+            matches!(outcome, InstallOutcome::Skipped(_)),
+            "existing plugin payload should be Skipped"
+        );
+        // And no [plugin.theme-loader] entry was written (skip covers config too).
+        let prefs = storage.reload().expect("reload");
+        assert!(!prefs.plugin.contains_key("theme-loader"));
+    }
+
+    #[test]
+    fn install_force_overwrites_existing_plugin_payload_and_entry() {
+        // Given a plugins dir where theme-loader.wasm already exists.
+        let (destinations, _temps) = fresh_destinations();
+        let storage = InMemoryUserPreferencesStorage::new();
+        let existing = destinations.plugins.join("theme-loader.wasm");
+        std::fs::create_dir_all(destinations.plugins.clone()).unwrap();
+        std::fs::write(&existing, "PRE-EXISTING").unwrap();
+
+        // When installing defaults with force.
+        let outcomes = install_defaults_to(&destinations, true, &storage).expect("install");
+
+        // Then the theme-loader payload is reported Overwritten.
+        let outcome = outcome_for(&outcomes, "theme-loader.wasm");
+        assert!(
+            matches!(outcome, InstallOutcome::Overwritten(_)),
+            "existing plugin payload should be Overwritten"
+        );
+        // And the entry was written with the manifest-declared grant.
+        let prefs = storage.reload().expect("reload");
+        assert!(prefs
+            .plugin
+            .get("theme-loader")
+            .is_some_and(|e| e.grants.first().is_some_and(|g| g.path == "<config_dir>/themes")));
+    }
+
+    #[test]
+    fn install_plugin_fails_when_wasm_bytes_lack_manifest() {
+        // Given fresh destinations and a payload with no embedded manifest.
+        // (A bare, invalid-wasm byte sequence — not a jinn-built artifact.)
+        let (destinations, _temps) = fresh_destinations();
+
+        // When installing a non-manifest payload through the plugin path.
+        let result = install_plugin(
+            &Bundled {
+                kind: Kind::Plugin,
+                relative: "broken.wasm",
+                contents: BundleContents::Wasm(b"\0asm-bogus-payload"),
+            },
+            b"\0asm-bogus-payload",
+            &destinations,
+            false,
+            &InMemoryUserPreferencesStorage::new(),
+        );
+
+        // Then the install fails loudly (nothing written, nothing registered).
+        assert!(result.is_err(), "payload without manifest must fail");
     }
 
     #[test]
