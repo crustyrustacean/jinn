@@ -16,14 +16,70 @@ test:
 check:
     cargo check --workspace
 
-# Build the in-repo wasm plugins from source (needs the wasm32-wasip2
-# target). Plugins are delivered as source and compiled per machine — then
-# installed like any user plugin:
-#   jinn plugin install target/wasm32-wasip2/release/<crate>.wasm \
-#     --grant '<config_dir>/themes'   # themes plugin scans granted dirs
-# Equivalent to `jinn plugin build plugins/<dir>` per plugin.
+# Build every in-tree wasm plugin (needs the wasm32-wasip2 target and
+# the jinn binary — built first if missing). Discovers plugins by globbing
+# plugins/*/Cargo.toml, so new plugin dirs need no justfile edit. Each
+# invocation goes through `jinn plugin build` so the [package.metadata.jinn]
+# manifest is embedded into the artifact.
 build-plugins:
-    cargo build -p theme-loader -p persona-loader --target wasm32-wasip2 --release
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo "Error: cargo is not installed." >&2; exit 1
+    fi
+    if ! rustup target list --installed 2>/dev/null | grep -q 'wasm32-wasip2'; then
+        echo "Error: wasm32-wasip2 target not installed." >&2
+        echo "  Run: rustup target add wasm32-wasip2" >&2
+        exit 1
+    fi
+
+    echo '==> Ensuring jinn binary'
+    [ -x target/release/jinn ] || cargo build --release -p jinn
+
+    shopt -s nullglob
+    manifests=(plugins/*/Cargo.toml)
+    if [ ${#manifests[@]} -eq 0 ]; then
+        echo "No plugins found under plugins/" >&2; exit 1
+    fi
+    for manifest in "${manifests[@]}"; do
+        dir="$(dirname "$manifest")"
+        echo "==> Building $dir"
+        target/release/jinn plugin build "$dir"
+    done
+
+# Build every in-tree plugin and install it as a jinn plugin (build +
+# `jinn plugin add` per plugin). Grants/http come from each plugin's
+# embedded manifest — no flags needed. Plugins activate on next jinn start.
+install-plugins: build-plugins
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    shopt -s nullglob
+    manifests=(plugins/*/Cargo.toml)
+    for manifest in "${manifests[@]}"; do
+        dir="$(dirname "$manifest")"
+        echo "==> Installing $dir"
+        target/release/jinn plugin add "$dir"
+    done
+
+# Rebuild all in-tree plugins and copy the artifacts into res/plugins/ —
+# the payloads that get embedded into the jinn binary (see
+# crates/jinn-domain/src/feat/install/). Run before `just release` so
+# released binaries never embed stale payloads; commit the results.
+refresh-plugins: build-plugins
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    mkdir -p res/plugins
+    shopt -s nullglob
+    manifests=(plugins/*/Cargo.toml)
+    for manifest in "${manifests[@]}"; do
+        name="$(basename "$(dirname "$manifest")")"
+        artifact="target/wasm32-wasip2/release/${name}.wasm"
+        echo "==> Refreshing res/plugins/${name}.wasm"
+        cp "$artifact" "res/plugins/${name}.wasm"
+    done
 
 
 clippy:
@@ -546,9 +602,10 @@ build-release-tarball:
 #
 # Orchestrates the full publish flow after `just bump` has been run:
 #   1. Mirror trunk (and tags) to GitHub
-#   2. Build the cargo-binstall tarball
-#   3. Create (or update) the GitHub release and attach the tarball
-#   4. Smoke-test: `cargo binstall` into a temp dir, confirm `jinn --version`
+#   2. Refresh the bundled plugin payloads in res/plugins/
+#   3. Build the cargo-binstall tarball
+#   4. Create (or update) the GitHub release and attach the tarball
+#   5. Smoke-test: `cargo binstall` into a temp dir, confirm `jinn --version`
 #
 # Usage: just release v0.98.0
 # Prerequisites: gh CLI installed + authenticated, cargo-binstall installed.
@@ -591,12 +648,15 @@ release TAG:
     echo '==> Mirroring trunk to GitHub...'
     just sync-github
 
-    # --- 2. Build the cargo-binstall tarball ---
+    # --- 2. Refresh bundled plugin payloads (embedded into the binary) ---
+    just refresh-plugins
+
+    # --- 3. Build the cargo-binstall tarball ---
     just build-release-tarball
 
     TARBALL="jinn-x86_64-unknown-linux-gnu-v${VERSION}.tgz"
 
-    # --- 3. Create the release if it doesn't exist, else upload ---
+    # --- 4. Create the release if it doesn't exist, else upload ---
     if gh release view "{{TAG}}" --repo "${REPO}" >/dev/null 2>&1; then
         echo "==> Uploading ${TARBALL} to existing release {{TAG}}"
         gh release upload "{{TAG}}" "${TARBALL}" --repo "${REPO}" --clobber
@@ -605,7 +665,7 @@ release TAG:
         gh release create "{{TAG}}" "${TARBALL}" --repo "${REPO}" --generate-notes
     fi
 
-    # --- 4. Smoke-test: cargo-binstall into an isolated cargo home ---
+    # --- 5. Smoke-test: cargo-binstall into an isolated cargo home ---
     echo '==> Smoke-testing cargo-binstall...'
     SMOKE_HOME="$(mktemp -d)"
     trap 'rm -rf "${SMOKE_HOME}"' EXIT
