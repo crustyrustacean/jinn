@@ -1,6 +1,6 @@
 [package]
 name = "persona-loader"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 description = "First-party jinn plugin: discovers and contributes markdown personas."
 license = "MIT"
