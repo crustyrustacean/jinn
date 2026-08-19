@@ -230,6 +230,16 @@ const BUNDLED: &[Bundled] = &[
         )),
     },
     // --- plugins (prebuilt wasm payloads, manifest-embedded) ---
+    //
+    // Adding a new first-party plugin is three steps, and the catalogue
+    // entry below is the only code change:
+    //   1. Create the crate under plugins/ (see `jinn plugin new`).
+    //   2. `just refresh-plugins` — builds every plugins/*/ crate and copies
+    //      the artifacts into res/plugins/ (commit the .wasm).
+    //   3. Add a Bundled entry here with `relative: "<crate>.wasm"` and
+    //      `BundleContents::Wasm(include_bytes!(...))`.
+    // Grants/http never appear in this file — `jinn install` extracts them
+    // from the artifact's embedded [package.metadata.jinn] manifest.
     Bundled {
         kind: Kind::Plugin,
         relative: "persona-loader.wasm",
