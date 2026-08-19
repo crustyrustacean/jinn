@@ -102,6 +102,46 @@ pub fn install(
             dest.display()
         ))?;
 
+    let existed = register_entry(name, grants, http, storage)?;
+
+    Ok(if existed {
+        PluginInstallOutcome::Updated {
+            wasm_path: dest,
+            name: name.to_owned(),
+        }
+    } else {
+        PluginInstallOutcome::Installed {
+            wasm_path: dest,
+            name: name.to_owned(),
+        }
+    })
+}
+
+/// Writes the `[plugin.<name>]` entry into preferences storage, returning
+/// whether an entry with this name already existed.
+///
+/// Shared by `jinn plugin install` (flag/manifest-resolved values) and the
+/// bundled first-party plugin seeding (`jinn install`, manifest-resolved
+/// values). The entry is always left `enabled`.
+///
+/// # Errors
+///
+/// Returns [`Report<PluginInstallError::WriteConfig>`] if preferences
+/// cannot be reloaded or saved.
+pub fn register_plugin(
+    name: &str,
+    manifest: &crate::feat::plugin::manifest::PluginManifest,
+    storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
+) -> Result<bool, Report<PluginInstallError>> {
+    register_entry(name, manifest.grants.clone(), manifest.http, storage)
+}
+
+fn register_entry(
+    name: &str,
+    grants: Vec<crate::feat::plugin::PluginPathGrant>,
+    http: bool,
+    storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
+) -> Result<bool, Report<PluginInstallError>> {
     let entry = PluginConfig {
         wasm: format!("{name}.wasm"),
         grants,
@@ -118,18 +158,7 @@ pub fn install(
     storage
         .save(&prefs)
         .change_context(PluginInstallError::WriteConfig)?;
-
-    Ok(if existed {
-        PluginInstallOutcome::Updated {
-            wasm_path: dest,
-            name: name.to_owned(),
-        }
-    } else {
-        PluginInstallOutcome::Installed {
-            wasm_path: dest,
-            name: name.to_owned(),
-        }
-    })
+    Ok(existed)
 }
 
 #[cfg(test)]
