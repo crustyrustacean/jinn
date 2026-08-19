@@ -1,6 +1,6 @@
 [package]
 name = "theme-loader"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 description = "First-party jinn plugin: discovers and contributes TOML themes."
 license = "MIT"
