@@ -191,7 +191,7 @@ cargo binstall --git https://github.com/jayson-lennon/jinn --locked jinn
 jinn install --overwrite
 ```
 
-The `jinn install --overwrite` step writes skills, prompts, personas, and themes to your XDG directories (except for agent skills at `~/.agents/skills`). Note that `jinn` works fine without the `jinn install` step, but it's recommended to run so that you can easily edit the pre-existing prompts and also use the premade skills.
+The `jinn install --overwrite` step writes skills, prompts, personas, and themes to your XDG directories (except for agent skills at `~/.agents/skills`). It also installs the first-party plugins (`theme-loader`, `persona-loader`) — their prebuilt wasm payloads are embedded in the jinn binary, so no Rust toolchain is needed; they activate on the next jinn start. Note that `jinn` works fine without the `jinn install` step, but it's recommended to run so that you can easily edit the pre-existing prompts, use the premade skills, and get theme/persona pickers populated.
 
 ### Arch Linux
 
