@@ -5,7 +5,7 @@
 //! tools, history) from [`AppState`] in one pass, splits pinned entries,
 //! builds the system prompt, converts history to messages, and counts tokens.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::common::app_state::AppState;
 use crate::feat::context::env_context::build_env_context;
@@ -128,12 +128,12 @@ pub fn assemble_prompt(
             .tool_definitions
             .as_ref()
             .expect("checked");
-        let map: HashMap<String, ToolDefinition> =
+        let map: BTreeMap<String, ToolDefinition> =
             defs.iter().map(|d| (d.name.clone(), d.clone())).collect();
         build_tool_context_block(&map)
     } else {
         // Filter disabled tools from the tool context block.
-        let filtered_map: HashMap<String, ToolDefinition> = state
+        let filtered_map: BTreeMap<String, ToolDefinition> = state
             .context
             .tools_for_session(session_id)
             .into_iter()

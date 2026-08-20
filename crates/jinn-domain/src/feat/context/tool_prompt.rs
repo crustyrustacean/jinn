@@ -6,7 +6,7 @@
 //! (behavioral bullet points). This module collects them from all registered tools
 //! and formats them into a single string for injection into the system prompt.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::protocol::ToolDefinition;
 
@@ -19,7 +19,7 @@ use crate::protocol::ToolDefinition;
 /// Returns `None` if no tools have snippets or guidelines.
 #[expect(clippy::implicit_hasher, reason = "caller chooses hasher")]
 #[must_use]
-pub fn build_tool_context_block(tools: &HashMap<String, ToolDefinition>) -> Option<String> {
+pub fn build_tool_context_block(tools: &BTreeMap<String, ToolDefinition>) -> Option<String> {
     let mut snippets: Vec<(&str, &str)> = tools
         .values()
         .filter_map(|td| {
@@ -70,6 +70,8 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use std::collections::BTreeMap;
+
     use super::*;
 
     fn test_tool(name: &str, snippet: Option<&str>, guidelines: Vec<&str>) -> ToolDefinition {
@@ -86,7 +88,7 @@ mod tests {
     #[rstest::rstest]
     fn tools_with_snippets_produce_available_tools_section() {
         // Given tools with snippets.
-        let tools = HashMap::from([
+        let tools = BTreeMap::from([
             (
                 "bash".to_owned(),
                 test_tool("bash", Some("Execute commands"), vec![]),
@@ -110,7 +112,7 @@ mod tests {
     #[rstest::rstest]
     fn tools_with_guidelines_produce_tool_guidelines_section() {
         // Given a tool with guidelines but no snippet.
-        let tools = HashMap::from([(
+        let tools = BTreeMap::from([(
             "bash".to_owned(),
             test_tool("bash", None, vec!["Use bash for ls"]),
         )]);
@@ -128,7 +130,7 @@ mod tests {
     #[rstest::rstest]
     fn tools_without_metadata_are_skipped() {
         // Given tools without snippets or guidelines.
-        let tools = HashMap::from([("echo".to_owned(), test_tool("echo", None, vec![]))]);
+        let tools = BTreeMap::from([("echo".to_owned(), test_tool("echo", None, vec![]))]);
 
         // When building the tool context block.
         let block = build_tool_context_block(&tools);
@@ -140,7 +142,7 @@ mod tests {
     #[rstest::rstest]
     fn empty_tools_produces_no_output() {
         // Given no tools.
-        let tools = HashMap::new();
+        let tools = BTreeMap::new();
 
         // When building the tool context block.
         let block = build_tool_context_block(&tools);
@@ -152,7 +154,7 @@ mod tests {
     #[rstest::rstest]
     fn both_snippets_and_guidelines_produce_both_sections() {
         // Given a tool with both snippet and guidelines.
-        let tools = HashMap::from([(
+        let tools = BTreeMap::from([(
             "edit".to_owned(),
             test_tool("edit", Some("Edit files"), vec!["Use edit for changes"]),
         )]);
@@ -171,7 +173,7 @@ mod tests {
     #[rstest::rstest]
     fn both_snippets_and_guidelines_have_separator() {
         // Given a tool with both snippet and guidelines.
-        let tools = HashMap::from([(
+        let tools = BTreeMap::from([(
             "edit".to_owned(),
             test_tool("edit", Some("Edit files"), vec!["Use edit for changes"]),
         )]);
