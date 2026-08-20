@@ -1,4 +1,8 @@
-## 2026-08-19 v0.108.3
+## 2026-08-20 v0.108.4
+
+- Add filters to prevent invalid message sequencing being sent to providers.
+
+## 2026-08-20 v0.108.3
 
 - Switched tools + skills backing data to a `BTreeMap` to prevent future cache issues.
 
