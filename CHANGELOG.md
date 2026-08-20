@@ -1,10 +1,8 @@
-## Unreleased
+## 2026-08-18 v0.108.1
 
-- **Breaking (tool schema):** `edit` now uses the Claude Code interface — `{file_path, old_string, new_string, replace_all?}` exact string replacement. The `LINE#HASH` anchor schema (`edits[]` with `op`/`pos`/`end`/`lines`) is removed; calls using it fail with an error naming the new parameters. `path`, `oldText`/`newText` are accepted as aliases.
-- **Breaking (tool output):** `read` returns cat -n format (`spaces + line number + tab + content`) instead of `LINE#HASH|` prefixes. Truncation notice, offset/limit paging, and the 2000-line/50KB cap are unchanged.
-- `edit` successes return a cat -n snippet of the changed region (±2 context lines) so edits can be chained without re-reading.
-- `write` description refreshed to the Claude Code surface; `file_path` documented with `path` alias.
-- `read`/`write`/`edit` schemas document `file_path` (Claude convention) and accept `path` as an alias.
+- `jinn install` now installs builtin plugins
+- Removed hashline implementation.
+- Updated read/write/edit tools to use more common harness schemas and tool descriptions.
 
 ## 2026-08-17 v0.107.1
 
