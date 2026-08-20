@@ -1,3 +1,7 @@
+## 2026-08-19 v0.108.3
+
+- Switched tools + skills backing data to a `BTreeMap` to prevent future cache issues.
+
 ## 2026-08-19 v0.108.2
 
 - Skill construction no longer busts cache.
