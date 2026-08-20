@@ -1,3 +1,7 @@
+## 2026-08-19 v0.108.2
+
+- Skill construction no longer busts cache.
+
 ## 2026-08-18 v0.108.1
 
 - Tool construction no longer busts cache.
