@@ -18,9 +18,8 @@ const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/53
     (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 /// Phrases that appear in DDG's anti-bot / unusual-traffic challenge page.
-/// When the response body contains any of these, [`SearchError::Blocked`] is
-/// returned rather than parsing zero results from a non-results page.
-pub(crate) const BLOCK_MARKERS: [&str; 2] = ["anomaly.js", "If this error persists"];
+/// [`DdgSearcher::is_blocked`] delegates to the shared marker table in
+/// `jinn_web_fetch::challenge` so both backends detect the same page.
 
 /// DuckDuckGo HTML searcher.
 ///
@@ -107,7 +106,7 @@ impl DdgSearcher {
 
     /// Returns `true` if the response body looks like an anti-bot challenge.
     pub(crate) fn is_blocked(body: &str) -> bool {
-        BLOCK_MARKERS.iter().any(|marker| body.contains(marker))
+        jinn_web_fetch::challenge::is_ddg_blocked(body)
     }
 }
 

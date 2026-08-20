@@ -225,6 +225,12 @@ where
 /// activity for the stall watchdog.
 const HUMAN_TICK_INTERVAL: Duration = Duration::from_secs(10);
 
+/// Shared observer type for render progress notifications.
+///
+/// An `Arc`-shared closure so it can be cloned into blocking browser
+/// tasks; `()` (a no-op) is used when no observer is needed.
+pub type ProgressFn = std::sync::Arc<dyn Fn(RenderProgress) + Send + Sync>;
+
 /// Tiered wait configuration, resolved from `[browser]` settings.
 #[derive(Debug, Clone, Copy)]
 pub struct WaitConfig {

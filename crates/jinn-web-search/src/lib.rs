@@ -62,8 +62,11 @@ pub enum SearchError {
         /// The URL that was requested.
         url: String,
     },
-    /// DuckDuckGo returned an anti-bot / unusual-traffic challenge page.
-    #[error("DuckDuckGo blocked the request (anti-bot challenge)")]
+    /// DuckDuckGo returned an anti-bot / unusual-traffic challenge page that
+    /// did not clear. In headless mode (or after the human-solve window
+    /// expired), switching the browser-backed backends to `headed-chrome`
+    /// lets a human pass the challenge in the visible tab.
+    #[error("DuckDuckGo blocked the request (anti-bot challenge) — switch [web_search]/[web_fetch] browser backends to headed-chrome to solve it manually")]
     Blocked,
 }
 
@@ -84,4 +87,23 @@ pub trait WebSearcher: Send + Sync {
         query: &str,
         options: &SearchOptions,
     ) -> Result<Vec<SearchResult>, SearchError>;
+
+    /// Runs a search with a progress observer for long waits (challenge
+    /// solving). The default ignores the observer and delegates to
+    /// [`Self::search`] — only browser-backed implementations that can wait
+    /// on a human need to override it.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::search`].
+    async fn search_observed(
+        &self,
+        query: &str,
+        options: &SearchOptions,
+        on_event: jinn_web_fetch::ProgressFn,
+    ) -> Result<Vec<SearchResult>, SearchError> {
+        let _ = on_event;
+        self.search(query, options).await
+    }
 }
+
