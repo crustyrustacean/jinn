@@ -62,6 +62,8 @@ enum RenderOutcome {
     Crash,
     /// An unrelated per-tab failure (stays `Render`).
     RenderError(String),
+    /// A challenge that did not clear (the tiered wait's final verdict).
+    Challenge(crate::challenge::ChallengeKind),
     /// The closure panics when invoked (simulates a chrome-internal unwind).
     Panic(String),
 }
@@ -84,7 +86,11 @@ struct FakeBrowser {
 }
 
 impl HeadlessBrowser for FakeBrowser {
-    fn render(&self, _url: &str) -> Result<RenderedPage, FetchError> {
+    fn render(
+        &self,
+        _url: &str,
+        _on_progress: &dyn Fn(crate::challenge::RenderProgress),
+    ) -> Result<RenderedPage, FetchError> {
         // Pop under the lock, then drop the guard before matching so a
         // `Panic` outcome cannot poison the mutex.
         let outcome = {
@@ -96,6 +102,7 @@ impl HeadlessBrowser for FakeBrowser {
         match outcome {
             RenderOutcome::Ok(page) => Ok(page),
             RenderOutcome::Crash => Err(FetchError::BrowserCrash),
+            RenderOutcome::Challenge(kind) => Err(FetchError::Challenge { kind }),
             RenderOutcome::RenderError(msg) => Err(FetchError::Render(msg)),
             RenderOutcome::Panic(msg) => panic!("{msg}"),
         }
@@ -675,4 +682,87 @@ fn next_render_relaunches_after_probe_eviction() {
     // Then the render succeeded against browser #2 (launch_count -> 2).
     assert_eq!(out.html, "<p>two</p>");
     assert_eq!(factory.launch_count(), 2);
+}
+
+#[test]
+fn render_page_surfaces_challenge_error_from_browser() {
+    // Given a shared browser whose render hits an uncleared DDG challenge.
+    let (shared, _factory) = shared_and_factory(vec![vec![RenderOutcome::Challenge(
+        crate::challenge::ChallengeKind::DdgAnomaly,
+    )]]);
+
+    // When rendering.
+    let result = shared.render_page("https://example.com/");
+
+    // Then the challenge verdict surfaces as FetchError::Challenge.
+    assert!(
+        matches!(
+            result,
+            Err(FetchError::Challenge {
+                kind: crate::challenge::ChallengeKind::DdgAnomaly
+            })
+        ),
+        "expected Challenge, got error: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn render_page_observed_relays_progress_events() {
+    // Given a shared browser whose render reports progress (detection + tick).
+    struct NotifyingBrowser {
+        events: std::sync::atomic::AtomicUsize,
+    }
+    use crate::challenge::RenderProgress;
+    impl HeadlessBrowser for NotifyingBrowser {
+        fn render(
+            &self,
+            _url: &str,
+            on_progress: &dyn Fn(RenderProgress),
+        ) -> Result<RenderedPage, FetchError> {
+            on_progress(RenderProgress::ChallengeDetected {
+                kind: crate::challenge::ChallengeKind::DdgAnomaly,
+                url: "https://example.com/".to_owned(),
+            });
+            self.events.fetch_add(1, Ordering::SeqCst);
+            Ok(ok_page("<p>hi</p>", "https://example.com/"))
+        }
+        fn liveness(&self) -> Result<(), FetchError> {
+            Ok(())
+        }
+        fn name(&self) -> &'static str {
+            "notifying"
+        }
+    }
+    struct NotifyingFactory(NotifyingBrowser);
+    impl HeadlessBrowserFactory for NotifyingFactory {
+        fn launch(&self) -> Result<Arc<dyn HeadlessBrowser>, FetchError> {
+            Ok(Arc::new(NotifyingBrowser {
+                events: std::sync::atomic::AtomicUsize::new(
+                    self.0.events.load(Ordering::SeqCst),
+                ),
+            }))
+        }
+        fn name(&self) -> &'static str {
+            "notifying-factory"
+        }
+    }
+    let browser = NotifyingBrowser {
+        events: std::sync::atomic::AtomicUsize::new(0),
+    };
+    let shared = Arc::new(SharedBrowser::with_factory(Arc::new(NotifyingFactory(browser))));
+
+    let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = Arc::clone(&seen);
+    let on_progress: crate::challenge::ProgressFn = Arc::new(move |_p| {
+        counter.fetch_add(1, Ordering::SeqCst);
+    });
+
+    // When rendering with the observer attached.
+    shared
+        .render_page_observed("https://example.com/", on_progress)
+        .expect("render ok");
+
+    // Then the observer saw the progress event.
+    assert_eq!(seen.load(Ordering::SeqCst), 1);
 }
