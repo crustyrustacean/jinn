@@ -7,7 +7,7 @@ use std::path::PathBuf;
 ///
 /// Used to badge entries in the skill picker (global vs project-scoped)
 /// and to resolve provenance when a project skill overrides a global one.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum SkillSource {
     /// Discovered from the user-global skills dir (`~/.agents/skills`).
     #[default]
@@ -25,7 +25,7 @@ pub enum SkillSource {
 /// Parsed from `SKILL.md` files in `~/.agents/skills/<name>/`.
 /// The name comes from the YAML frontmatter (must match the parent directory name).
 /// The description comes from the YAML frontmatter.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Skill {
     /// The skill name (from frontmatter, must match parent directory).
     pub name: String,
