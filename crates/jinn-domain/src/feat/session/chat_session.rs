@@ -1519,6 +1519,9 @@ impl ChatSessionState {
         } = self.core.history[history_index].kind
         {
             content.push_str(output);
+            // Streaming output IS history activity — bump the watchdog
+            // baseline so a long human-solve wait is not misread as a stall.
+            self.core.last_history_activity_at = jiff::Timestamp::now();
         }
     }
 
