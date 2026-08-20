@@ -20,7 +20,7 @@ use crate::protocol::ToolDefinition;
 #[expect(clippy::implicit_hasher, reason = "caller chooses hasher")]
 #[must_use]
 pub fn build_tool_context_block(tools: &HashMap<String, ToolDefinition>) -> Option<String> {
-    let snippets: Vec<(&str, &str)> = tools
+    let mut snippets: Vec<(&str, &str)> = tools
         .values()
         .filter_map(|td| {
             td.prompt_snippet
@@ -28,6 +28,7 @@ pub fn build_tool_context_block(tools: &HashMap<String, ToolDefinition>) -> Opti
                 .map(|s| (td.name.as_str(), s.as_str()))
         })
         .collect();
+    snippets.sort_unstable();
 
     let guidelines: Vec<&str> = tools
         .values()
@@ -186,5 +187,63 @@ mod tests {
             block.contains("\n\nTool guidelines:"),
             "should have blank line between sections, got: {block:?}"
         );
+    }
+
+    #[rstest::rstest]
+    fn tool_block_always_renders_the_same_so_we_get_cache_hits() {
+        #[rustfmt::skip]
+        const TOOL_CATALOG: [(&str, &str, &[&str]); 8] = [
+            ("bash", "Execute shell commands", &["Prefer bash for pipelines"]),
+            ("read", "Read file contents", &["Use read for file contents"]),
+            ("write", "Write file contents", &["Use write for modifications"]),
+            ("edit", "Edit file contents", &["Use edit for surgical changes"]),
+            ("search", "Search the codebase", &["Use search before reading"]),
+            ("list", "List directory entries", &["Use list to explore"]),
+            ("grep", "Find text in files", &["Use grep for one-off matches"]),
+            ("cd", "Change directory", &["Use cd to move between dirs"]),
+        ];
+
+        // Given a tool catalog.
+        let tools = TOOL_CATALOG
+            .iter()
+            .map(|(name, snippet, guidelines)| {
+                (
+                    name.to_string(),
+                    test_tool(name, Some(snippet), guidelines.to_vec()),
+                )
+            })
+            .collect();
+
+        let initial_block = build_tool_context_block(&tools).expect("should produce a block");
+
+        for _ in 0..100 {
+            // When building the tool context block.
+            let block = build_tool_context_block(&tools).expect("missing block");
+
+            // Then it's the same as the initial block
+            assert_eq!(block, initial_block);
+        }
+
+        // Given a tool catalog.
+        let tools = TOOL_CATALOG
+            .iter()
+            .rev()
+            .map(|(name, snippet, guidelines)| {
+                (
+                    name.to_string(),
+                    test_tool(name, Some(snippet), guidelines.to_vec()),
+                )
+            })
+            .collect();
+
+        let initial_block = build_tool_context_block(&tools).expect("should produce a block");
+
+        for _ in 0..100 {
+            // When building the tool context block.
+            let block = build_tool_context_block(&tools).expect("missing block");
+
+            // Then it's the same as the initial block
+            assert_eq!(block, initial_block);
+        }
     }
 }
