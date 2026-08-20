@@ -94,21 +94,20 @@ fn entries_to_messages_empty_input() {
 }
 
 #[rstest::rstest]
-fn orphaned_tool_call_produces_assistant_message() {
-    // Given a tool call entry (orphaned - no preceding assistant).
+fn entries_to_messages_drops_orphan_tool_call() {
+    // Given a tool call without an actual assistant parent.
     let entries = vec![ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#)];
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then an empty assistant message with tool_calls is produced.
-    assert_eq!(messages.len(), 1);
-    assert!(matches!(&messages[0], LlmMessage::Assistant { .. }));
+    // Then no synthetic assistant is emitted.
+    assert!(messages.is_empty());
 }
 
 #[rstest::rstest]
-fn entries_to_messages_attaches_tool_calls_to_assistant() {
-    // Given an assistant entry followed by a tool call entry.
+fn entries_to_messages_drops_assistant_tool_call_without_result() {
+    // Given an assistant entry followed by an incomplete tool call.
     let entries = vec![
         ChatEntry::assistant("let me check"),
         ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#),
@@ -117,24 +116,13 @@ fn entries_to_messages_attaches_tool_calls_to_assistant() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then one assistant message with tool_calls is produced.
-    assert_eq!(messages.len(), 1);
-    match &messages[0] {
-        LlmMessage::Assistant {
-            content,
-            tool_calls,
-        } => {
-            assert_eq!(content, "let me check");
-            let calls = tool_calls.as_ref().expect("should have tool_calls");
-            assert_eq!(calls.len(), 1);
-        }
-        other => panic!("expected Assistant, got {other:?}"),
-    }
+    // Then the incomplete tool batch is omitted.
+    assert!(messages.is_empty());
 }
 
 #[rstest::rstest]
-fn entries_to_messages_converts_tool_result_entries() {
-    // Given a tool result entry.
+fn entries_to_messages_drops_orphan_tool_result() {
+    // Given a tool result without an assistant tool call.
     let entries = vec![ChatEntry::tool_result(
         "call_1",
         "echo",
@@ -145,16 +133,95 @@ fn entries_to_messages_converts_tool_result_entries() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then a Tool message is produced.
-    assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        LlmMessage::Tool {
-            tool_call_id: "call_1".into(),
-            name: "echo".into(),
-            content: "hi".into(),
-        }
-    );
+    // Then the orphan result is omitted.
+    assert!(messages.is_empty());
+}
+
+#[rstest::rstest]
+fn entries_to_messages_drops_pending_tool_result() {
+    // Given an assistant tool call followed by a still-pending result.
+    let entries = vec![
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("call_pending", "echo", "{}"),
+        ChatEntry::tool_result(
+            "call_pending",
+            "echo",
+            "still running",
+            ToolResultStatus::Pending,
+        ),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the incomplete tool batch is omitted.
+    assert!(messages.is_empty());
+}
+
+#[rstest::rstest]
+fn entries_to_messages_drops_duplicate_tool_call_ids() {
+    // Given an assistant with duplicate tool-call IDs.
+    let entries = vec![
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("duplicate", "echo", "{}"),
+        ChatEntry::tool_call("duplicate", "echo", "{}"),
+        ChatEntry::tool_result("duplicate", "echo", "ok", ToolResultStatus::Success),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the malformed batch is omitted.
+    assert!(messages.is_empty());
+}
+
+#[rstest::rstest]
+fn entries_to_messages_drops_duplicate_tool_results() {
+    // Given an assistant tool call followed by duplicate results.
+    let entries = vec![
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("call_1", "echo", "{}"),
+        ChatEntry::tool_result("call_1", "echo", "first", ToolResultStatus::Success),
+        ChatEntry::tool_result("call_1", "echo", "second", ToolResultStatus::Success),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the malformed batch is omitted.
+    assert!(messages.is_empty());
+}
+
+#[rstest::rstest]
+fn entries_to_messages_drops_unknown_tool_result_id() {
+    // Given an assistant tool call followed by a result for another call ID.
+    let entries = vec![
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("call_1", "echo", "{}"),
+        ChatEntry::tool_result("unknown", "echo", "ok", ToolResultStatus::Success),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the malformed batch is omitted.
+    assert!(messages.is_empty());
+}
+
+#[rstest::rstest]
+fn entries_to_messages_drops_mismatched_tool_name() {
+    // Given an assistant tool call followed by a result with a different name.
+    let entries = vec![
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("call_1", "echo", "{}"),
+        ChatEntry::tool_result("call_1", "other", "ok", ToolResultStatus::Success),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the malformed batch is omitted.
+    assert!(messages.is_empty());
 }
 
 #[rstest::rstest]
@@ -176,8 +243,8 @@ fn tool_loop_produces_four_messages() {
 }
 
 #[rstest::rstest]
-fn multiple_tool_calls_produce_one_assistant_message() {
-    // Given an assistant entry followed by multiple tool call entries.
+fn multiple_tool_calls_without_results_are_dropped() {
+    // Given an assistant entry followed by multiple incomplete tool calls.
     let entries = vec![
         ChatEntry::assistant("checking both"),
         ChatEntry::tool_call("call_1", "echo", r#"{"input":"a"}"#),
@@ -187,9 +254,8 @@ fn multiple_tool_calls_produce_one_assistant_message() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then one assistant message is produced.
-    assert_eq!(messages.len(), 1);
-    assert!(matches!(&messages[0], LlmMessage::Assistant { .. }));
+    // Then the incomplete batch is omitted.
+    assert!(messages.is_empty());
 }
 
 #[rstest::rstest]
@@ -986,10 +1052,17 @@ fn complete_tool_batch_produces_valid_messages() {
 }
 
 #[rstest::rstest]
-fn orphan_tool_call_after_excluded_empty_assistant_creates_synthetic() {
-    // Given an empty assistant (excluded by default) followed by a tool call
-    // and a tool result - simulating the user having excluded entries.
+fn orphan_tool_call_after_excluded_empty_assistant_is_dropped() {
+    // Given an empty assistant excluded from context followed by a tool call/result.
+    let mut assistant = ChatEntry::assistant("");
+    assistant.apply_context_override(
+        crate::protocol::ContextOverride::ForcedExclude,
+        ChangeSource::Internal {
+            label: "test".to_owned(),
+        },
+    );
     let entries = vec![
+        assistant,
         ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#),
         ChatEntry::tool_result("tc-1", "bash", "file.txt", ToolResultStatus::Success),
     ];
@@ -997,44 +1070,22 @@ fn orphan_tool_call_after_excluded_empty_assistant_creates_synthetic() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then a synthetic empty assistant message is created for the orphan tool call.
-    assert_eq!(messages.len(), 2);
-    match &messages[0] {
-        LlmMessage::Assistant {
-            content,
-            tool_calls,
-        } => {
-            assert!(content.is_empty());
-            assert!(tool_calls.is_some());
-            assert_eq!(tool_calls.as_ref().expect("some").len(), 1);
-            assert_eq!(tool_calls.as_ref().expect("some")[0].id, "tc-1");
-        }
-        other => panic!("expected Assistant, got {other:?}"),
-    }
-    match &messages[1] {
-        LlmMessage::Tool {
-            tool_call_id,
-            name,
-            content,
-        } => {
-            assert_eq!(tool_call_id, "tc-1");
-            assert_eq!(name, "bash");
-            assert_eq!(content, "file.txt");
-        }
-        other => panic!("expected Tool, got {other:?}"),
-    }
+    // Then no synthetic assistant or orphan tool result is emitted.
+    assert!(messages.is_empty(), "unexpected messages: {messages:?}");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Compaction boundary: excluding the summary must never break message sequencing.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Helper: every Assistant tool_call id has a following Tool message, no tool
-/// message precedes its assistant, and the first message is a valid opener
-/// (User or System).
+/// Assert that an emitted sequence is valid for the provider-neutral tool
+/// message contract.
+///
+/// Tool results must be contiguous responses to the immediately preceding
+/// assistant tool-call batch. Every declared call must have exactly one result,
+/// and every result must resolve a declared call.
 fn assert_message_sequence_is_valid(messages: &[LlmMessage]) {
-    // The first message must be a standalone opener, never a Tool or an
-    // Assistant that is empty / has tool_calls (those need a preceding turn).
+    // A standalone conversation must begin with a user or system turn.
     assert!(
         matches!(
             messages.first(),
@@ -1044,38 +1095,128 @@ fn assert_message_sequence_is_valid(messages: &[LlmMessage]) {
         messages.first()
     );
 
-    let mut tool_call_ids: Vec<String> = Vec::new();
-    let mut tool_result_ids: Vec<String> = Vec::new();
-    for msg in messages {
-        match msg {
+    let mut pending_calls: Vec<(String, String)> = Vec::new();
+    for message in messages {
+        match message {
             LlmMessage::Assistant {
                 tool_calls: Some(calls),
                 ..
             } => {
-                for tc in calls {
-                    tool_call_ids.push(tc.id.clone());
-                }
+                assert!(
+                    pending_calls.is_empty(),
+                    "assistant tool-call batch was interrupted: {pending_calls:?}"
+                );
+                pending_calls = calls
+                    .iter()
+                    .map(|call| (call.id.clone(), call.name.clone()))
+                    .collect();
+                assert!(
+                    pending_calls.iter().all(|(id, _)| pending_calls
+                        .iter()
+                        .filter(|(other, _)| other == id)
+                        .count()
+                        == 1),
+                    "assistant tool-call IDs must be unique: {pending_calls:?}"
+                );
             }
-            LlmMessage::Tool { tool_call_id, .. } => {
-                tool_result_ids.push(tool_call_id.clone());
+            LlmMessage::Tool {
+                tool_call_id, name, ..
+            } => {
+                let Some(index) = pending_calls
+                    .iter()
+                    .position(|(id, expected_name)| id == tool_call_id && expected_name == name)
+                else {
+                    panic!(
+                        "tool result {tool_call_id}/{name} has no matching preceding call: {pending_calls:?}"
+                    );
+                };
+                pending_calls.remove(index);
             }
-            _ => {}
+            LlmMessage::System { .. } | LlmMessage::User { .. } => {
+                assert!(
+                    pending_calls.is_empty(),
+                    "tool-call batch was not completed before the next turn: {pending_calls:?}"
+                );
+            }
+            LlmMessage::Assistant {
+                tool_calls: None, ..
+            } => {
+                assert!(
+                    pending_calls.is_empty(),
+                    "tool-call batch was not completed before the next assistant: {pending_calls:?}"
+                );
+            }
         }
     }
 
-    // Every emitted tool_call must have a matching tool result.
-    for tc_id in &tool_call_ids {
-        assert!(
-            tool_result_ids.iter().any(|r| r == tc_id),
-            "dangling tool_call {tc_id} found - no matching Tool result"
-        );
-    }
-    // And no orphan tool result whose call was dropped.
-    for tr_id in &tool_result_ids {
-        assert!(
-            tool_call_ids.iter().any(|r| r == tr_id),
-            "orphan tool result {tr_id} found - no preceding tool_call"
-        );
+    assert!(
+        pending_calls.is_empty(),
+        "assistant tool calls have no matching results: {pending_calls:?}"
+    );
+}
+
+#[test]
+fn message_sequence_validator_accepts_complete_multi_call_batch_in_order() {
+    // Given a user turn followed by one assistant batch and two matching results.
+    let entries = vec![
+        ChatEntry::user("inspect both files"),
+        ChatEntry::assistant("I will inspect them."),
+        ChatEntry::tool_call("call-1", "read", r#"{"path":"a.rs"}"#),
+        ChatEntry::tool_call("call-2", "read", r#"{"path":"b.rs"}"#),
+        ChatEntry::tool_result("call-1", "read", "a", ToolResultStatus::Success),
+        ChatEntry::tool_result("call-2", "read", "b", ToolResultStatus::Success),
+    ];
+
+    // When converting the complete batch to provider-neutral messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the exact assistant-call/result ordering satisfies the invariant.
+    assert_message_sequence_is_valid(&messages);
+    assert!(matches!(
+        messages.as_slice(),
+        [
+            LlmMessage::User { .. },
+            LlmMessage::Assistant {
+                tool_calls: Some(calls),
+                ..
+            },
+            LlmMessage::Tool {
+                tool_call_id,
+                ..
+            },
+            LlmMessage::Tool {
+                tool_call_id: second_id,
+                ..
+            }
+        ] if calls.len() == 2 && tool_call_id == "call-1" && second_id == "call-2"
+    ));
+}
+
+#[test]
+fn message_sequence_validator_accepts_real_empty_assistant_tool_parent() {
+    // Given a real empty assistant entry created by the streaming lifecycle.
+    let entries = vec![
+        ChatEntry::user("run the command"),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("call-1", "bash", r#"{"command":"pwd"}"#),
+        ChatEntry::tool_result("call-1", "bash", "/tmp", ToolResultStatus::Success),
+    ];
+
+    // When converting the complete tool loop to provider-neutral messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the actual empty assistant remains the tool-call parent and the sequence is valid.
+    assert_message_sequence_is_valid(&messages);
+    match &messages[1] {
+        LlmMessage::Assistant {
+            content,
+            tool_calls: Some(calls),
+        } => {
+            assert!(content.is_empty());
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].id, "call-1");
+        }
+        other => panic!("expected empty Assistant tool parent, got {other:?}"),
     }
 }
 
