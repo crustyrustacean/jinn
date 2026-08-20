@@ -6,10 +6,10 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::feat::tools_actor::edit::hash;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
 use super::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, format_size, truncate_head};
+use super::visible_lines;
 
 use super::BoxedToolFuture;
 
@@ -17,27 +17,19 @@ use super::BoxedToolFuture;
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: "read".to_owned(),
-        description: "Read a UTF-8 text file. Each returned line has the format\n\
-            `LINE#HASH|content`:\n\n\
-              1#HH|yo!\n\
-              2#VR|fn main() {\n\
-              3#SK|}\n\n\
-            Copy `LINE#HASH` anchors into `edit` calls. You may pass the full\n\
-            display line or just the anchor — `edit` accepts both.\n\n\
-            Output is truncated to 2000 lines or 50KB (whichever hits first).\n\
-            Use offset/limit for large files. When truncated, a notice shows\n\
-            which lines were kept and the next offset to use.".to_owned(),
-        prompt_snippet: Some("Read a text file with LINE#HASH anchors for edit".to_owned()),
+        description: "Reads a file from the local filesystem. Results are returned in cat -n format \n            with line numbers starting at 1: the prefix is spaces + line number + tab; \n            everything after the tab is the actual file content.\n\n\n            By default reads up to 2000 lines or 50KB. Use `offset`/`limit` for long files; \n            when output is truncated a notice shows the kept lines and the next offset \n            to continue from.".to_owned(),
+        prompt_snippet: Some("Read a file from the local filesystem".to_owned()),
         prompt_guidelines: vec![
-            "Use `read` before `edit` when you don't have current anchors for the file.".to_owned(),
+            "Read files before editing them so you can match content exactly.".to_owned(),
+            "Batch-read multiple potentially relevant files in a single response.".to_owned(),
             "If `read` is truncated, continue with the `offset` it suggests — do not guess unseen lines.".to_owned(),
         ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
-                "path": {
+                "file_path": {
                     "type": "string",
-                    "description": "Path to the file to read (relative or absolute)"
+                    "description": "The absolute path to the file to read"
                 },
                 "offset": {
                     "type": "number",
@@ -48,7 +40,8 @@ pub fn definition() -> ToolDefinition {
                     "description": "Maximum number of lines to read"
                 }
             },
-            "required": ["path"]
+            "required": ["file_path"],
+            "additionalProperties": false
         }),
         server_tool_type: None,
     }
@@ -101,7 +94,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let sliced = apply_offset_limit(&content, offset, limit);
 
-        // Annotate with LINE#HASH prefixes for the edit tool
+        // Number lines in cat -n format for the edit tool
         let start_line = offset.map_or(1, |o| o.max(1));
         let annotated = annotate_lines(&sliced, start_line);
 
@@ -162,7 +155,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     })
 }
 
-/// Annotates each line of `content` with `LINE#HASH|` prefixes.
+/// Numbers each line of `content` in cat -n format: right-aligned line
+/// number, a tab, then the content.
 ///
 /// `start_line` is the 1-indexed line number of the first line in `content`
 /// (respects the offset parameter from the read call).
@@ -172,20 +166,18 @@ fn annotate_lines(content: &str, start_line: usize) -> String {
         return String::new();
     }
 
-    let lines = hash::get_visible_lines(content);
+    let lines = visible_lines::get_visible_lines(content);
     if lines.is_empty() {
         return String::new();
     }
 
     let max_line = start_line + lines.len() - 1;
     let width = format!("{max_line}").len();
-    let mut out = String::with_capacity(content.len() + lines.len() * (width + 4));
+    let mut out = String::with_capacity(content.len() + lines.len() * (width + 2));
 
     for (i, line) in lines.iter().enumerate() {
         let line_num = start_line + i;
-        let h = hash::compute_line_hash(line_num, line);
-
-        let _ = writeln!(out, "{line_num:>width$}#{h}|{line}");
+        let _ = writeln!(out, "{line_num:>width$}\t{line}");
     }
 
     out
@@ -194,7 +186,8 @@ fn annotate_lines(content: &str, start_line: usize) -> String {
 fn parse_args(raw: &str) -> Result<(String, Option<usize>, Option<usize>), serde_json::Error> {
     let v: serde_json::Value = serde_json::from_str(raw)?;
     let path = v
-        .get("path")
+        .get("file_path")
+        .or_else(|| v.get("path"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_owned();
@@ -377,8 +370,8 @@ mod tests {
         assert!(result.success);
         assert!(result.content.contains("file contents here"));
         assert!(
-            result.content.starts_with('1'),
-            "expected LINE#HASH prefix: {}",
+            result.content.starts_with("1\t"),
+            "expected cat -n line prefix: {}",
             result.content
         );
     }
@@ -462,8 +455,8 @@ mod tests {
         assert!(result.success);
         assert!(result.content.contains("relative content"));
         assert!(
-            result.content.contains('#'),
-            "expected LINE#HASH prefix: {}",
+            result.content.contains('\t'),
+            "expected cat -n tab-separated prefix: {}",
             result.content
         );
     }
@@ -492,7 +485,7 @@ mod tests {
 
         // Then only lines 2-3 are returned.
         assert!(result.success);
-        // Lines 2-3 with LINE#HASH prefixes
+        // Lines 2-3 with cat -n prefixes
         assert!(result.content.contains('b'));
         assert!(result.content.contains('c'));
         // First line should be line 2 (from offset=2)
