@@ -18,7 +18,7 @@ The planner consults this file before proposing a plan. If a feature **contradic
 | ----------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | State       | `[Scope] currently [does X / is Y].`                             | "The TUI's first screen at startup is the chat screen."                                 |
 | Persistence | `[Scope] persists [what] to [where].`                            | "Sessions persist to SQLite."                                                           |
-| Flow        | `[Input/event] is handled by [actor/subsystem], which [action].` | "File edits route through the `edit` tool, which validates `LINE#HASH` anchors."        |
+| Flow        | `[Input/event] is handled by [actor/subsystem], which [action].` | "File edits route through the `edit` tool, which requires a unique match or `replace_all`."        |
 | Boundary    | `[Scope] is bounded by [constraint].`                            | "Project discovery walks ancestors until a VCS root or `$HOME`, whichever comes first." |
 
 ## Absence
@@ -146,14 +146,15 @@ Entries are added or amended **only with human approval**.
 - (tokens) The session token ledger stores the pre-send local estimate (`tokens_sent`) alongside provider-reported `prompt_tokens` and `cached_tokens` per request; the estimate is never overwritten.
 - (tokens) The status-bar `↑sent` count uses the provider-reported `prompt_tokens` when a turn completed with usage, falling back to the estimate for turns without usage.
 - (tokens) The status bar shows a cache-hit percentage (`⬢` glyph, leftmost) for OpenAI-compatible providers when cached prompt tokens are reported, computed over turns that reported usage.
-- (tools) After a successful edit, fresh anchors are returned for the changed region so the agent can chain edits without re-reading.
+- (tools) After a successful edit, a numbered snippet of the changed region is returned so the agent can chain edits without re-reading.
 - (tools) File edits, reads, and other built-in tool calls all funnel through a single `tools_actor` chokepoint.
 - (tools) The `bash` tool accepts an optional `max_duration_secs` argument that overrides the default timeout; the schema exposes `max_duration_secs`, not a raw `timeout`.
 - (tools) The `bash` tool has a streaming output threshold that truncates accumulated output to prevent unbounded memory growth between timer ticks.
 - (tools) The `bash` tool runs commands through `bash` (not `sh`, `fish`, or `dash`).
-- (tools) The `edit` engine rejects edits whose `LINE#HASH` anchor no longer matches the file's current content ("stale anchor" rejection).
-- (tools) The `edit` tool patches files using `LINE#HASH` anchors; the agent copies anchors from a prior `read` rather than reproducing old text verbatim.
+- (tools) The `edit` tool fails when old_string is not found or not unique (without replace_all); errors instruct the model to re-read or widen context.
+- (tools) The `edit` tool performs exact string replacement (old_string/new_string, optional replace_all), matching the Claude Code Edit interface.
 - (tools) The `grep` tool wraps ripgrep; it supports `--glob`, `--file-type`, and `--path`, and reports errors on invalid patterns.
+- (tools) The `read` tool returns cat -n format output: line number, a tab, then content; everything after the tab is file content.
 - (tools) The `read` tool accepts `offset`/`limit` to page through files larger than its output cap.
 - (tools) The `read` tool returns path-not-content for directories and matching line data for files.
 - (tools) The `read` tool truncates large files and reports the correct line numbers and the next offset to resume from in its notice.
