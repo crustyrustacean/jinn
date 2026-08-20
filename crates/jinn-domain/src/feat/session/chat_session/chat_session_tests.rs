@@ -2157,6 +2157,25 @@ line 2
 }
 
 #[test]
+fn append_tool_result_output_bumps_history_activity_timestamp() {
+    // Given a session whose last activity is in the past.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.core.last_history_activity_at =
+        jiff::Timestamp::now().checked_sub(jiff::Span::new().hours(1)).expect("past");
+
+    // When appending streaming output.
+    let before = session.core.last_history_activity_at;
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    session.append_tool_result_output("call_1", "tick");
+
+    // Then the activity timestamp advanced past its pre-append value.
+    assert!(session.core.last_history_activity_at > before);
+}
+
+#[test]
 fn append_tool_result_output_ignores_unknown_call_id() {
     // Given a session with no pending tool result.
     let mut session = ChatSessionState::new();

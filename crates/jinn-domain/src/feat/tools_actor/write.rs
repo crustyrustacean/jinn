@@ -15,24 +15,25 @@ use super::input_bounds;
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: "write".to_owned(),
-        description: "Write content to a file. Creates the file if it doesn't exist, \
-            overwrites if it does. Automatically creates parent directories."
-            .to_owned(),
-        prompt_snippet: Some("Create or overwrite files".to_owned()),
-        prompt_guidelines: vec!["Use write only for new files or complete rewrites.".to_owned()],
+        description: "Writes a file to the local filesystem, overwriting the existing file \n            if one exists at the provided path. Parent directories are created automatically.\n\n\n            Prefer editing existing files; never create new files unless required, and never \n            create documentation files (*.md, README) unless the user explicitly asks.".to_owned(),
+        prompt_snippet: Some("Create or overwrite a file".to_owned()),
+        prompt_guidelines: vec![
+            "Only use `write` for new files or complete rewrites — use `edit` for changes.".to_owned(),
+        ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
-                "path": {
+                "file_path": {
                     "type": "string",
-                    "description": "Path to the file to write (relative or absolute)"
+                    "description": "The absolute path to the file to write"
                 },
                 "content": {
                     "type": "string",
-                    "description": "Content to write to the file"
+                    "description": "The content to write to the file"
                 }
             },
-            "required": ["path", "content"]
+            "required": ["file_path", "content"],
+            "additionalProperties": false
         }),
         server_tool_type: None,
     }
@@ -134,7 +135,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 fn parse_args(raw: &str) -> Result<(String, String), serde_json::Error> {
     let v: serde_json::Value = serde_json::from_str(raw)?;
     let path = v
-        .get("path")
+        .get("file_path")
+        .or_else(|| v.get("path"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_owned();

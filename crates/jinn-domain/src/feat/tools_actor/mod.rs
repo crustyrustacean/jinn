@@ -78,6 +78,7 @@ pub mod skill;
 pub mod tool_entry;
 pub mod tool_types;
 pub(crate) mod truncation;
+pub(crate) mod visible_lines;
 pub mod write;
 
 use std::collections::HashMap;
@@ -640,6 +641,7 @@ impl ToolOrchestratorActor {
                 self.publish(ExecuteWebFetch {
                     session_id,
                     tool_call,
+                    dispatched_at,
                 })
                 .await;
             }
@@ -647,6 +649,7 @@ impl ToolOrchestratorActor {
                 self.publish(ExecuteWebSearch {
                     session_id,
                     tool_call,
+                    dispatched_at,
                 })
                 .await;
             }
