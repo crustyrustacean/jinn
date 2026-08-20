@@ -616,6 +616,9 @@ backend = "headless-chrome"
                 binary: crate::feat::browser::BrowserBinary::Chrome,
                 user_agent: Some("Custom/1.0".to_owned()),
                 anubis_timeout_secs: 45,
+                challenge_wait_secs: 120,
+                settle_secs: 5,
+                keep_tabs_open: false,
             },
             ..UserPreferences::default()
         };
