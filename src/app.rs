@@ -327,19 +327,23 @@ impl App {
         // must run before any actor wiring — and it needs no preferences/DB,
         // so it dispatches before the session store is opened.
         if let Some(Commands::Install { force }) = &cli.command {
+            use jinn_domain::feat::preferences_actor::FilesystemUserPreferencesStorage;
             use jinn_domain::{AppPaths, Destinations, InstallOutcome, install_defaults_to};
 
             let app_paths = AppPaths::default();
+            let storage = FilesystemUserPreferencesStorage::default_path();
             let destinations = Destinations::new(
                 app_paths.themes_dir(),
                 app_paths.personas_dir(),
                 app_paths.prompts_dir(),
                 app_paths.skills_dir(),
+                app_paths.plugins_dir(),
             );
-            match install_defaults_to(&destinations, *force) {
+            match install_defaults_to(&destinations, *force, &storage) {
                 Ok(outcomes) => {
+                    let mut plugins_touched = false;
                     for outcome in outcomes {
-                        match outcome {
+                        match &outcome {
                             InstallOutcome::Created(path) => {
                                 println!("Installed {}", path.display());
                             }
@@ -350,6 +354,14 @@ impl App {
                                 println!("Overwrote {}", path.display());
                             }
                         }
+                        if !matches!(outcome, InstallOutcome::Skipped(_))
+                            && outcome.path().extension().is_some_and(|e| e == "wasm")
+                        {
+                            plugins_touched = true;
+                        }
+                    }
+                    if plugins_touched {
+                        println!("Restart jinn to activate plugins.");
                     }
                     return Ok(());
                 }

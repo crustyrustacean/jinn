@@ -6,7 +6,7 @@
 //! (behavioral bullet points). This module collects them from all registered tools
 //! and formats them into a single string for injection into the system prompt.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::protocol::ToolDefinition;
 
@@ -19,8 +19,8 @@ use crate::protocol::ToolDefinition;
 /// Returns `None` if no tools have snippets or guidelines.
 #[expect(clippy::implicit_hasher, reason = "caller chooses hasher")]
 #[must_use]
-pub fn build_tool_context_block(tools: &HashMap<String, ToolDefinition>) -> Option<String> {
-    let snippets: Vec<(&str, &str)> = tools
+pub fn build_tool_context_block(tools: &BTreeMap<String, ToolDefinition>) -> Option<String> {
+    let mut snippets: Vec<(&str, &str)> = tools
         .values()
         .filter_map(|td| {
             td.prompt_snippet
@@ -28,6 +28,7 @@ pub fn build_tool_context_block(tools: &HashMap<String, ToolDefinition>) -> Opti
                 .map(|s| (td.name.as_str(), s.as_str()))
         })
         .collect();
+    snippets.sort_unstable();
 
     let guidelines: Vec<&str> = tools
         .values()
@@ -69,6 +70,8 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use std::collections::BTreeMap;
+
     use super::*;
 
     fn test_tool(name: &str, snippet: Option<&str>, guidelines: Vec<&str>) -> ToolDefinition {
@@ -85,7 +88,7 @@ mod tests {
     #[rstest::rstest]
     fn tools_with_snippets_produce_available_tools_section() {
         // Given tools with snippets.
-        let tools = HashMap::from([
+        let tools = BTreeMap::from([
             (
                 "bash".to_owned(),
                 test_tool("bash", Some("Execute commands"), vec![]),
@@ -109,7 +112,7 @@ mod tests {
     #[rstest::rstest]
     fn tools_with_guidelines_produce_tool_guidelines_section() {
         // Given a tool with guidelines but no snippet.
-        let tools = HashMap::from([(
+        let tools = BTreeMap::from([(
             "bash".to_owned(),
             test_tool("bash", None, vec!["Use bash for ls"]),
         )]);
@@ -127,7 +130,7 @@ mod tests {
     #[rstest::rstest]
     fn tools_without_metadata_are_skipped() {
         // Given tools without snippets or guidelines.
-        let tools = HashMap::from([("echo".to_owned(), test_tool("echo", None, vec![]))]);
+        let tools = BTreeMap::from([("echo".to_owned(), test_tool("echo", None, vec![]))]);
 
         // When building the tool context block.
         let block = build_tool_context_block(&tools);
@@ -139,7 +142,7 @@ mod tests {
     #[rstest::rstest]
     fn empty_tools_produces_no_output() {
         // Given no tools.
-        let tools = HashMap::new();
+        let tools = BTreeMap::new();
 
         // When building the tool context block.
         let block = build_tool_context_block(&tools);
@@ -151,7 +154,7 @@ mod tests {
     #[rstest::rstest]
     fn both_snippets_and_guidelines_produce_both_sections() {
         // Given a tool with both snippet and guidelines.
-        let tools = HashMap::from([(
+        let tools = BTreeMap::from([(
             "edit".to_owned(),
             test_tool("edit", Some("Edit files"), vec!["Use edit for changes"]),
         )]);
@@ -170,7 +173,7 @@ mod tests {
     #[rstest::rstest]
     fn both_snippets_and_guidelines_have_separator() {
         // Given a tool with both snippet and guidelines.
-        let tools = HashMap::from([(
+        let tools = BTreeMap::from([(
             "edit".to_owned(),
             test_tool("edit", Some("Edit files"), vec!["Use edit for changes"]),
         )]);
@@ -186,5 +189,63 @@ mod tests {
             block.contains("\n\nTool guidelines:"),
             "should have blank line between sections, got: {block:?}"
         );
+    }
+
+    #[rstest::rstest]
+    fn tool_block_always_renders_the_same_so_we_get_cache_hits() {
+        #[rustfmt::skip]
+        const TOOL_CATALOG: [(&str, &str, &[&str]); 8] = [
+            ("bash", "Execute shell commands", &["Prefer bash for pipelines"]),
+            ("read", "Read file contents", &["Use read for file contents"]),
+            ("write", "Write file contents", &["Use write for modifications"]),
+            ("edit", "Edit file contents", &["Use edit for surgical changes"]),
+            ("search", "Search the codebase", &["Use search before reading"]),
+            ("list", "List directory entries", &["Use list to explore"]),
+            ("grep", "Find text in files", &["Use grep for one-off matches"]),
+            ("cd", "Change directory", &["Use cd to move between dirs"]),
+        ];
+
+        // Given a tool catalog.
+        let tools = TOOL_CATALOG
+            .iter()
+            .map(|(name, snippet, guidelines)| {
+                (
+                    name.to_string(),
+                    test_tool(name, Some(snippet), guidelines.to_vec()),
+                )
+            })
+            .collect();
+
+        let initial_block = build_tool_context_block(&tools).expect("should produce a block");
+
+        for _ in 0..100 {
+            // When building the tool context block.
+            let block = build_tool_context_block(&tools).expect("missing block");
+
+            // Then it's the same as the initial block
+            assert_eq!(block, initial_block);
+        }
+
+        // Given a tool catalog.
+        let tools = TOOL_CATALOG
+            .iter()
+            .rev()
+            .map(|(name, snippet, guidelines)| {
+                (
+                    name.to_string(),
+                    test_tool(name, Some(snippet), guidelines.to_vec()),
+                )
+            })
+            .collect();
+
+        let initial_block = build_tool_context_block(&tools).expect("should produce a block");
+
+        for _ in 0..100 {
+            // When building the tool context block.
+            let block = build_tool_context_block(&tools).expect("missing block");
+
+            // Then it's the same as the initial block
+            assert_eq!(block, initial_block);
+        }
     }
 }

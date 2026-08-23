@@ -18,7 +18,7 @@ The planner consults this file before proposing a plan. If a feature **contradic
 | ----------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | State       | `[Scope] currently [does X / is Y].`                             | "The TUI's first screen at startup is the chat screen."                                 |
 | Persistence | `[Scope] persists [what] to [where].`                            | "Sessions persist to SQLite."                                                           |
-| Flow        | `[Input/event] is handled by [actor/subsystem], which [action].` | "File edits route through the `edit` tool, which validates `LINE#HASH` anchors."        |
+| Flow        | `[Input/event] is handled by [actor/subsystem], which [action].` | "File edits route through the `edit` tool, which requires a unique match or `replace_all`."        |
 | Boundary    | `[Scope] is bounded by [constraint].`                            | "Project discovery walks ancestors until a VCS root or `$HOME`, whichever comes first." |
 
 ## Absence
@@ -31,7 +31,7 @@ Entries are added or amended **only with human approval**.
 
 ---
 
-<!-- Add entries below. Keep them scoped, factual, and high-level. -->
+- (context) Outgoing LLM context assembly preserves tool-call/result groups atomically and drops malformed tool-message fragments with a tracing warning instead of sending invalid sequencing or synthesizing missing messages.
 
 - (arch) A component/actor system built on `kameo` runs domain logic asynchronously, communicating via command routing and event broadcast.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
@@ -46,7 +46,7 @@ Entries are added or amended **only with human approval**.
 - (compaction) When working history exceeds the session token budget, entries are trimmed newest-to-oldest (pinned entries preserved) and a compaction prompt is injected.
 - (context) A forced system-prompt override replaces all generated system parts but still includes pinned system entries from history.
 - (context) Context assembly builds the system prompt in priority order: skills block, pinned system entries, environment context, tool context.
-- (context) Pin splitting separates entries into TOP pins, BOTTOM pins, and working history based on pin position.
+- (context) Context assembly partitions history into top, bottom, and working outgoing groups while preserving assistant tool-call/tool-result loops as atomic units.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
 - (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (token stays literal, turn dispatches); only a recognizable image failing conversion hard-blocks. A user entry carrying attachments is blocked unless the active model is confirmed image-capable via models.dev — unknown models are blocked, not allowed.
 - (attachments) `@path` tokens in user entries are colored by resolution outcome in the chat render: green when attached as an image, red when degraded (missing file or not an image).
@@ -66,7 +66,6 @@ Entries are added or amended **only with human approval**.
 - (identity) **This repository** uses Fossil for version control (the app supports git/hg/jj/fossil via marker detection).
 - (identity) **jinn** is a terminal-based agent harness written in Rust (edition 2024).
 - (identity) Jinn's multimodal scope is bounded to image input (vision) and text output; it has no image-generation pipeline and no art/editing tooling.
-- (identity) Four personas ship by default: `coding-assistant`, `general`, `brainstorm`, and `learning-tutor`.
 - (identity) The TUI is the default entrypoint; the Discord and headless frontends are alternative invocation modes.
 - (identity) The application ships three frontends: a TUI (default), a Discord gateway, and a debug-only headless mode.
 - (keybinds) Bare letters in pickers route to the filter input rather than triggering actions: `a` in the project picker types into the filter, and `d` removes the highlighted entry (not a filter character).
@@ -102,9 +101,10 @@ Entries are added or amended **only with human approval**.
 - (plugins) A plugin coordinator actor validates and authorizes all inbound plugin messages and caches contributions into `AppState`; synchronous consumers (pickers, renderer, assembly) read only the cache, never the plugin.
 - (plugins) Plugins declare the filesystem paths and http access they need in their own `[package.metadata.jinn]` manifest (Cargo.toml); the manifest is embedded into the built `.wasm` as a custom section and auto-applied at install, where `--grant`/`--http` flags override it. Install fails hard on an artifact with no embedded manifest. Nothing is granted implicitly — persistence is declared as `"<plugin_data_dir>:w"`.
 - (plugins) The plugin wire contract is a hand-maintained JSON Schema kept in sync with the `jinn-plugin-api` types by a drift test; plugin SDKs are consumed as a git dependency on the jinn repo, not crates.io.
-- (plugins) `jinn plugin add <dir>` builds and installs a plugin in one command (build → manifest embed → install with declared grants).
-- (plugins) First-party plugin names carry no jinn-/plugin padding: the themes plugin is `theme-loader`.
-- (persona) Personas are markdown templates loaded via the prompt-template system; the persona picker (`<leader>se`) switches the active session persona.
+- (plugins) First-party plugin names carry no jinn-/plugin padding: the themes plugin is `theme-loader` and the personas plugin is `persona-loader`.
+- (plugins) First-party plugins ship as prebuilt wasm embedded in the jinn binary; `jinn install` copies them into the plugins dir and registers them in `jinn.toml` with their manifest-declared grants. Artifacts are refreshed into `res/plugins/` by `just refresh-plugins` (run by `just release`).
+- (persona) Personas are markdown templates with TOML frontmatter; the persona picker (`<leader>se`) switches the active session persona.
+- (persona) Persona discovery flows through a `persona-loader` plugin (prebuilt, shipped by `jinn install`): it scans `~/.config/jinn/personas/*.md` and contributes definitions over the plugin wire; the coordinator publishes them as `PersonasLoaded`.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
 - (providers) The provider crate supports three backends: Anthropic, Google, and OpenAI-compatible.
 - (providers) Model output is text-only: the `StreamEvent` pipeline and assistant chat entries carry no image variant.
@@ -141,19 +141,20 @@ Entries are added or amended **only with human approval**.
 - (storage) Startup fail-fast: a malformed providers.toml or jinn.toml aborts launch before actor wiring with a stderr report naming the path and TOML detail; recovery via jinn config subcommands stays unguarded.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
 - (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.
-- (theme) Theme discovery flows through a user-installed `theme-loader` plugin (source-built, `jinn plugin add plugins/theme-loader`): it scans `~/.config/jinn/themes/*.toml` (ANSI name, ANSI code, hex, RGB formats) and contributes full theme definitions over the plugin wire; the theme picker reads the contribution cache, not disk. A default install ships no plugins and uses the embedded default theme.
+- (theme) Theme discovery flows through a `theme-loader` plugin (prebuilt, shipped by `jinn install`): it scans `~/.config/jinn/themes/*.toml` (ANSI name, ANSI code, hex, RGB formats) and contributes full theme definitions over the plugin wire; the theme picker reads the contribution cache, not disk.
 - (tokens) A token-count actor estimates per-entry token usage; these estimates drive context-assembly sizing and compaction thresholds.
 - (tokens) The session token ledger stores the pre-send local estimate (`tokens_sent`) alongside provider-reported `prompt_tokens` and `cached_tokens` per request; the estimate is never overwritten.
 - (tokens) The status-bar `↑sent` count uses the provider-reported `prompt_tokens` when a turn completed with usage, falling back to the estimate for turns without usage.
 - (tokens) The status bar shows a cache-hit percentage (`⬢` glyph, leftmost) for OpenAI-compatible providers when cached prompt tokens are reported, computed over turns that reported usage.
-- (tools) After a successful edit, fresh anchors are returned for the changed region so the agent can chain edits without re-reading.
+- (tools) After a successful edit, a numbered snippet of the changed region is returned so the agent can chain edits without re-reading.
 - (tools) File edits, reads, and other built-in tool calls all funnel through a single `tools_actor` chokepoint.
 - (tools) The `bash` tool accepts an optional `max_duration_secs` argument that overrides the default timeout; the schema exposes `max_duration_secs`, not a raw `timeout`.
 - (tools) The `bash` tool has a streaming output threshold that truncates accumulated output to prevent unbounded memory growth between timer ticks.
 - (tools) The `bash` tool runs commands through `bash` (not `sh`, `fish`, or `dash`).
-- (tools) The `edit` engine rejects edits whose `LINE#HASH` anchor no longer matches the file's current content ("stale anchor" rejection).
-- (tools) The `edit` tool patches files using `LINE#HASH` anchors; the agent copies anchors from a prior `read` rather than reproducing old text verbatim.
+- (tools) The `edit` tool fails when old_string is not found or not unique (without replace_all); errors instruct the model to re-read or widen context.
+- (tools) The `edit` tool performs exact string replacement (old_string/new_string, optional replace_all), matching the Claude Code Edit interface.
 - (tools) The `grep` tool wraps ripgrep; it supports `--glob`, `--file-type`, and `--path`, and reports errors on invalid patterns.
+- (tools) The `read` tool returns cat -n format output: line number, a tab, then content; everything after the tab is file content.
 - (tools) The `read` tool accepts `offset`/`limit` to page through files larger than its output cap.
 - (tools) The `read` tool returns path-not-content for directories and matching line data for files.
 - (tools) The `read` tool truncates large files and reports the correct line numbers and the next offset to resume from in its notice.

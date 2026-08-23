@@ -86,8 +86,9 @@ pub enum Commands {
         shell: clap_complete::Shell,
     },
 
-    /// Install default themes, personas, prompts, and skills to user directories.
-    /// Skips any resource that already exists unless --force is given.
+    /// Install default themes, personas, prompts, skills, and prebuilt
+    /// plugins to user directories. Skips any resource that already exists
+    /// unless --force is given. Plugins activate on the next jinn start.
     Install {
         /// Overwrite existing resources if they already exist.
         #[arg(long)]

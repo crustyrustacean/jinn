@@ -1,6 +1,6 @@
 //! Context assembly state - owned by the context-actor.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::feat::persona::Persona;
 use crate::protocol::ToolDefinition;
@@ -29,12 +29,12 @@ pub struct ContextAssemblyState {
     active_persona: Option<Persona>,
     /// Global tool definitions available to all sessions.
     /// OWNER: tools-actor (populated on ToolsRegistered event), read by context-actor and llm-actor.
-    pub global_tool_definitions: HashMap<String, ToolDefinition>,
+    pub global_tool_definitions: BTreeMap<String, ToolDefinition>,
 
     /// Per-session tool definition overrides, keyed by session id.
     /// OWNER: tools-actor (populated on ToolsRegistered event with session_id).
     pub session_tool_definitions:
-        HashMap<crate::protocol::SessionId, HashMap<String, ToolDefinition>>,
+        BTreeMap<crate::protocol::SessionId, BTreeMap<String, ToolDefinition>>,
 
     /// Loaded compaction system prompt from `~/.config/jinn/prompts/_compaction.md`.
     /// OWNER: populated once at startup by the app init code.

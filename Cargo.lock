@@ -2535,7 +2535,7 @@ dependencies = [
 
 [[package]]
 name = "jinn"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "async-trait",
  "clap",
@@ -2573,7 +2573,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-cli"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -2590,7 +2590,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-common"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "dirs",
  "error-stack",
@@ -2604,7 +2604,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-core-types"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "rstest",
  "serde",
@@ -2614,7 +2614,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-discord"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "derive_more",
  "error-stack",
@@ -2629,7 +2629,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-domain"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2685,7 +2685,6 @@ dependencies = [
  "toml_edit 0.22.27",
  "tracing",
  "trybuild",
- "twox-hash",
  "unicode-segmentation",
  "unicode-width",
  "uuid",
@@ -2697,7 +2696,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-mcp"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "axum",
  "error-stack",
@@ -2716,7 +2715,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-plugin"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "error-stack",
  "jinn-plugin-api",
@@ -2734,7 +2733,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-plugin-api"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "jsonschema",
  "rstest",
@@ -2752,7 +2751,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-provider"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "async-trait",
  "base64",
@@ -2774,7 +2773,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-provider-config"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "dirs",
  "error-stack",
@@ -2794,7 +2793,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-selection-widget"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "fuzzy-matcher",
  "jinn-testutil",
@@ -2818,14 +2817,14 @@ dependencies = [
 
 [[package]]
 name = "jinn-testutil"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "ratatui",
 ]
 
 [[package]]
 name = "jinn-theme"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2841,7 +2840,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-tui"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "arboard",
  "crossterm",
@@ -2870,7 +2869,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-web-fetch"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2890,7 +2889,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-web-search"
-version = "0.107.0"
+version = "0.108.4"
 dependencies = [
  "async-trait",
  "jinn-web-fetch",
@@ -3763,6 +3762,21 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "persona-loader"
+version = "0.108.4"
+dependencies = [
+ "error-stack",
+ "jinn-plugin-api",
+ "jinn-plugin-sdk",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml 0.8.23",
+ "wherror",
+]
 
 [[package]]
 name = "pest"
@@ -5606,7 +5620,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
@@ -5719,7 +5733,7 @@ dependencies = [
 
 [[package]]
 name = "theme-loader"
-version = "0.1.0"
+version = "0.108.4"
 dependencies = [
  "error-stack",
  "jinn-plugin-api",
@@ -6623,9 +6637,6 @@ name = "twox-hash"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8464ec13c3691491391d9fce00f6416c9a48e46972f72d7865688be2080192c9"
-dependencies = [
- "rand 0.9.5",
-]
 
 [[package]]
 name = "typemap_rev"
