@@ -9,10 +9,7 @@ use std::io::{self, Stdout};
 use std::time::{Duration, Instant};
 
 use crossterm::{
-    event::{
-        DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
-    },
+    event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -60,15 +57,13 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
             .attach("failed to enable mouse capture")?;
     }
 
-    // Enable Kitty keyboard protocol so crossterm can distinguish
-    // modified special keys (e.g. Shift+Enter, Ctrl+Enter).
-    // Terminals that don't support it silently ignore the sequence.
-    execute!(
-        stdout,
-        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
-    )
-    .change_context(TuiRunError)
-    .attach("failed to push keyboard enhancement flags")?;
+    // Enable the Kitty keyboard protocol so crossterm can distinguish
+    // modified special keys (e.g. Shift+Enter, Ctrl+Enter). Terminals that
+    // don't support it silently ignore the sequence; Windows is a no-op
+    // because its console input carries modifier state natively.
+    crate::terminal::enable_keyboard_enhancement(&mut stdout)
+        .change_context(TuiRunError)
+        .attach("failed to push keyboard enhancement flags")?;
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)
@@ -101,7 +96,7 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
     }
 
     // Restore terminal.
-    if let Err(e) = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags) {
+    if let Err(e) = crate::terminal::disable_keyboard_enhancement(terminal.backend_mut()) {
         tracing::error!(err = ?e, "failed to pop keyboard enhancement flags");
     }
     if let Err(e) = execute!(terminal.backend_mut(), DisableBracketedPaste) {

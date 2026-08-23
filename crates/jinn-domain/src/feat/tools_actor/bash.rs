@@ -423,7 +423,22 @@ async fn read_child_output_and_wait(
 /// same invariant the kill-on-drop guard relies on to terminate the whole
 /// group (child + all descendants) on cancel.
 fn spawn_shell_command(command: &str, cwd: &std::path::Path) -> std::io::Result<KillOnDrop> {
-    let mut std_cmd = std::process::Command::new("bash");
+    // On Windows, bare "bash" resolves to C:\Windows\System32\bash.exe which
+    // is the WSL launcher — it routes commands into a Linux VM. This breaks
+    // native Windows tooling (cargo produces Linux binaries, process trees
+    // become invisible to the Windows kill path, etc.). Prefer Git Bash when
+    // available, falling back to the SHELL env var or bare "bash".
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| {
+        #[cfg(target_os = "windows")]
+        {
+            "C:\\Program Files\\Git\\bin\\bash.exe".to_owned()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            "/bin/sh".to_owned()
+        }
+    });
+    let mut std_cmd = std::process::Command::new(&shell);
     std_cmd
         .arg("-c")
         .arg(command)
