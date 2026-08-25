@@ -1,3 +1,8 @@
+## 2026-08-25 v0.108.5 (unreleased)
+
+- History editor API: all chat-history writes route through a single editor that treats assistant tool-call/result loops as atomic chunks; context toggles and pins apply to whole loops with pin > user > worker precedence, preventing invalid message sequences from ever reaching providers.
+- A tripwire validator at the converter output strips any residual invalid tool sequence (legacy persisted sessions, future bugs) instead of sending it.
+
 ## 2026-08-20 v0.108.4
 
 - Add filters to prevent invalid message sequencing being sent to providers.
