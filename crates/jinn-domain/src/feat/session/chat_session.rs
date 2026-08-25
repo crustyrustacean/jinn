@@ -1504,7 +1504,12 @@ impl ChatSessionState {
         clippy::indexing_slicing,
         reason = "index comes from begin_tool_result which always returns a valid index"
     )]
-    pub fn append_tool_result_output(&mut self, tool_call_id: &str, output: &str) {
+    pub fn append_tool_result_output(
+        &mut self,
+        tool_call_id: &str,
+        output: &str,
+        kind: crate::feat::tools_actor::protocol::event::ToolOutputKind,
+    ) {
         let Some(&history_index) = self
             .core
             .ephemeral
@@ -1515,10 +1520,18 @@ impl ChatSessionState {
             return;
         };
         if let ChatEntryKind::ToolResult {
-            ref mut content, ..
+            ref mut content,
+            ref mut is_alert,
+            ..
         } = self.core.history[history_index].kind
         {
             content.push_str(output);
+            if kind == crate::feat::tools_actor::protocol::event::ToolOutputKind::Alert {
+                *is_alert = true;
+            }
+            // Streaming output IS history activity — bump the watchdog
+            // baseline so a long human-solve wait is not misread as a stall.
+            self.core.last_history_activity_at = jiff::Timestamp::now();
         }
     }
 
@@ -1571,6 +1584,7 @@ impl ChatSessionState {
                     full_content: entry_full_content,
                     truncation: entry_truncation,
                     pin_position: entry_kind_pin,
+                    is_alert,
                     ..
                 } => {
                     content.clone_into(entry_content);
@@ -1578,6 +1592,9 @@ impl ChatSessionState {
                     *entry_full_content = full_content;
                     *entry_truncation = truncation;
                     *entry_kind_pin = pin_position;
+                    // The alert styling is pending-state only — a finished
+                    // result renders with its normal success/failure look.
+                    *is_alert = false;
                     // Entry-level pin mirrors the kind-level pin so assembly,
                     // compaction, and UI consumers read a single field.
                     entry.pin_position = pin_position;
@@ -1600,6 +1617,7 @@ impl ChatSessionState {
                         full_content: entry_full_content,
                         truncation: entry_truncation,
                         pin_position: entry_kind_pin,
+                        is_alert,
                         ..
                     } if entry_id == tool_call_id => {
                         content.clone_into(entry_content);
@@ -1607,6 +1625,8 @@ impl ChatSessionState {
                         *entry_full_content = full_content.take();
                         *entry_truncation = truncation.take();
                         *entry_kind_pin = pin_position;
+                        // The alert styling is pending-state only.
+                        *is_alert = false;
                         entry.pin_position = pin_position;
                         entry.timing.finish();
                         existing_found = true;

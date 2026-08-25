@@ -90,32 +90,43 @@ impl WebSearcher for BrowserDdgSearcher {
         query: &str,
         options: &SearchOptions,
     ) -> Result<Vec<SearchResult>, SearchError> {
+        self.search_observed(query, options, std::sync::Arc::new(|_| {}))
+            .await
+    }
+
+    async fn search_observed(
+        &self,
+        query: &str,
+        options: &SearchOptions,
+        on_event: jinn_web_fetch::ProgressFn,
+    ) -> Result<Vec<SearchResult>, SearchError> {
         if query.trim().is_empty() {
             return Err(SearchError::InvalidQuery);
         }
 
         let url = Self::build_url(query, options, &self.base_url);
-        let page = self.render(&url).await?;
+        let page = self.render_observed(&url, on_event).await?;
 
-        // Reuse the HTTP searcher's block detection so both backends agree.
-        if ddg_searcher::DdgSearcher::is_blocked(&page.html) {
-            return Err(SearchError::Blocked);
-        }
-
+        // Block detection lives in the render's tiered wait now — a
+        // challenge page never reaches this point as `Ok`.
         Ok(html_parser::parse_results(&page.html, options.max_results))
     }
 }
 
 impl BrowserDdgSearcher {
-    /// Renders `url` through the shared browser, mapping [`FetchError`] to
-    /// [`SearchError`].
+    /// Renders `url` through the shared browser with progress relayed to
+    /// `on_event`, mapping [`FetchError`] to [`SearchError`].
     ///
-    /// `SharedBrowser::render_page` is blocking; this wraps it in
+    /// `SharedBrowser::render_page_observed` is blocking; this wraps it in
     /// `spawn_blocking` so it never runs on a tokio worker thread.
-    async fn render(&self, url: &str) -> Result<RenderedPage, SearchError> {
+    async fn render_observed(
+        &self,
+        url: &str,
+        on_event: jinn_web_fetch::ProgressFn,
+    ) -> Result<RenderedPage, SearchError> {
         let browser = Arc::clone(&self.browser);
         let url = url.to_owned();
-        tokio::task::spawn_blocking(move || browser.render_page(&url))
+        tokio::task::spawn_blocking(move || browser.render_page_observed(&url, &on_event))
             .await
             .map_err(|join_err| {
                 tracing::error!(error = %join_err, "browser render task panicked");
@@ -142,6 +153,10 @@ fn map_fetch_error(err: FetchError) -> SearchError {
         FetchError::Network | FetchError::BrowserLaunch | FetchError::BrowserCrash => {
             SearchError::Network
         }
+        // The render already waited (auto + human windows as configured);
+        // surface the block with the headed-solve suggestion from the error
+        // display.
+        FetchError::Challenge { .. } => SearchError::Blocked,
         FetchError::Render(msg) => {
             tracing::warn!(error = %msg, "browser search: render failed");
             SearchError::Network
@@ -167,7 +182,7 @@ mod tests {
     use super::*;
 
     const FIXTURE: &str = include_str!("../tests/fixtures/ddg_search_results.html");
-    const BLOCKED_FIXTURE: &str = include_str!("../tests/fixtures/ddg_blocked.html");
+    use jinn_web_fetch::challenge::ChallengeKind;
 
     fn opts() -> SearchOptions {
         SearchOptions {
@@ -188,7 +203,11 @@ mod tests {
             html: String,
         }
         impl HeadlessBrowser for StubBrowser {
-            fn render(&self, _url: &str) -> Result<RenderedPage, FetchError> {
+            fn render(
+                &self,
+                _url: &str,
+                _on_progress: &dyn Fn(jinn_web_fetch::RenderProgress),
+            ) -> Result<RenderedPage, FetchError> {
                 Ok(RenderedPage {
                     html: self.html.clone(),
                     final_url: String::from("https://html.duckduckgo.com/html"),
@@ -218,6 +237,45 @@ mod tests {
         Arc::new(SharedBrowser::with_factory(Arc::new(StubFactory {
             html: Arc::new(Mutex::new(html.to_owned())),
         })))
+    }
+
+    /// A fake [`SharedBrowser`] whose render always fails with a challenge
+    /// error — the verdict the tiered wait produces for an unsolved page.
+    fn challenge_browser(kind: jinn_web_fetch::challenge::ChallengeKind) -> Arc<SharedBrowser> {
+        use jinn_web_fetch::{HeadlessBrowser, HeadlessBrowserFactory};
+
+        struct ChallengeStub {
+            kind: jinn_web_fetch::challenge::ChallengeKind,
+        }
+        impl HeadlessBrowser for ChallengeStub {
+            fn render(
+                &self,
+                _url: &str,
+                _on_progress: &dyn Fn(jinn_web_fetch::RenderProgress),
+            ) -> Result<jinn_web_fetch::RenderedPage, FetchError> {
+                Err(FetchError::Challenge { kind: self.kind })
+            }
+            fn name(&self) -> &'static str {
+                "challenge-stub"
+            }
+            fn liveness(&self) -> Result<(), FetchError> {
+                Ok(())
+            }
+        }
+
+        struct ChallengeFactory(jinn_web_fetch::challenge::ChallengeKind);
+        impl HeadlessBrowserFactory for ChallengeFactory {
+            fn launch(&self) -> Result<Arc<dyn HeadlessBrowser>, FetchError> {
+                Ok(Arc::new(ChallengeStub { kind: self.0 }))
+            }
+            fn name(&self) -> &'static str {
+                "challenge-factory"
+            }
+        }
+
+        Arc::new(SharedBrowser::with_factory(Arc::new(ChallengeFactory(
+            kind,
+        ))))
     }
 
     #[test]
@@ -257,14 +315,15 @@ mod tests {
 
     #[tokio::test]
     async fn search_returns_blocked_when_browser_renders_challenge_page() {
-        // Given a browser-backed searcher whose browser renders the blocked page.
-        let browser = fake_browser(BLOCKED_FIXTURE);
+        // Given a browser-backed searcher whose browser render fails with a
+        // challenge error (detection now lives in the render's tiered wait).
+        let browser = challenge_browser(ChallengeKind::DdgAnomaly);
         let searcher = BrowserDdgSearcher::new(browser);
 
         // When searching.
         let result = searcher.search("rust", &opts()).await;
 
-        // Then Blocked is returned (not zero results parsed from a challenge page).
+        // Then Blocked is returned (the challenge verdict surfaced as an error).
         assert!(
             matches!(result, Err(SearchError::Blocked)),
             "expected Blocked, got {result:?}"
@@ -316,5 +375,74 @@ mod tests {
 
         // Then exactly 2 results are returned.
         assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn search_observed_relays_progress_events_to_caller() {
+        // Given a searcher backed by a browser that reports one progress event.
+        use jinn_web_fetch::RenderProgress;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct ProgressStub {
+            seen: Arc<AtomicUsize>,
+        }
+        impl jinn_web_fetch::HeadlessBrowser for ProgressStub {
+            fn render(
+                &self,
+                _url: &str,
+                on_progress: &dyn Fn(RenderProgress),
+            ) -> Result<jinn_web_fetch::RenderedPage, FetchError> {
+                on_progress(RenderProgress::ChallengeDetected {
+                    kind: ChallengeKind::DdgAnomaly,
+                    url: "https://html.duckduckgo.com/html".to_owned(),
+                });
+                self.seen.fetch_add(1, Ordering::SeqCst);
+                Ok(jinn_web_fetch::RenderedPage {
+                    html: FIXTURE.to_owned(),
+                    final_url: "https://html.duckduckgo.com/html".to_owned(),
+                })
+            }
+            fn liveness(&self) -> Result<(), FetchError> {
+                Ok(())
+            }
+            fn name(&self) -> &'static str {
+                "progress-stub"
+            }
+        }
+        struct ProgressFactory {
+            seen: Arc<AtomicUsize>,
+        }
+        impl jinn_web_fetch::HeadlessBrowserFactory for ProgressFactory {
+            fn launch(&self) -> Result<Arc<dyn jinn_web_fetch::HeadlessBrowser>, FetchError> {
+                Ok(Arc::new(ProgressStub {
+                    seen: Arc::clone(&self.seen),
+                }))
+            }
+            fn name(&self) -> &'static str {
+                "progress-factory"
+            }
+        }
+        let seen = Arc::new(AtomicUsize::new(0));
+        let browser = Arc::new(SharedBrowser::with_factory(Arc::new(ProgressFactory {
+            seen: Arc::clone(&seen),
+        })));
+        let searcher = BrowserDdgSearcher::new(browser);
+
+        let relayed = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&relayed);
+        let on_event: jinn_web_fetch::ProgressFn = Arc::new(move |_p| {
+            counter.fetch_add(1, Ordering::SeqCst);
+        });
+
+        // When searching with the observer attached.
+        let results = searcher
+            .search_observed("rust", &opts(), on_event)
+            .await
+            .expect("ok");
+
+        // Then the browser fired once, the observer relayed once, and results parsed.
+        assert_eq!(seen.load(Ordering::SeqCst), 1);
+        assert_eq!(relayed.load(Ordering::SeqCst), 1);
+        assert_eq!(results.len(), 5);
     }
 }

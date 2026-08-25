@@ -13,7 +13,9 @@ use std::time::Duration;
 
 use crate::common::process_kill::kill_process_tree;
 use crate::common::services::bus_service::BusService;
-use crate::feat::tools_actor::protocol::event::{ToolExecutionOutput, ToolExecutionStarted};
+use crate::feat::tools_actor::protocol::event::{
+    ToolExecutionOutput, ToolExecutionStarted, ToolOutputKind,
+};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::SessionId;
 
@@ -145,6 +147,7 @@ async fn flush_buffer(
         bus,
         session_id,
         ToolExecutionOutput {
+            kind: ToolOutputKind::default(),
             session_id: session_id.cloned().unwrap_or_default(),
             tool_call_id: tool_call_id.to_owned(),
             output: buffer.to_owned(),

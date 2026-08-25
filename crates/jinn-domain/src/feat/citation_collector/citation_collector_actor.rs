@@ -346,6 +346,7 @@ mod actor_tests {
                 name: "web-fetch".to_owned(),
                 arguments: format!("{{\"url\":\"{url}\"}}"),
             },
+            dispatched_at: jiff::Timestamp::now(),
         }
     }
 
@@ -357,6 +358,7 @@ mod actor_tests {
                 name: "web-search".to_owned(),
                 arguments: format!("{{\"query\":\"{query}\"}}"),
             },
+            dispatched_at: jiff::Timestamp::now(),
         }
     }
 
