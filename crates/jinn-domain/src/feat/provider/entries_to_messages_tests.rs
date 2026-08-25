@@ -1494,3 +1494,188 @@ fn entries_to_messages_passes_user_attachments_through() {
     assert_eq!(attachments.len(), 1);
     assert!(attachments[0].is_image());
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tripwire: the last-resort validator at the converter's output. These tests
+// cover legacy persisted states and malformed batches the write-time history
+// editor cannot produce.
+// ═══════════════════════════════════════════════════════════════════════════
+
+use crate::feat::provider::entries_to_messages::enforce_valid_tool_sequences;
+use crate::feat::tools_actor::tool_types::ToolCall;
+
+fn call(id: &str) -> ToolCall {
+    ToolCall {
+        id: id.to_owned(),
+        name: "echo".to_owned(),
+        arguments: "{}".to_owned(),
+    }
+}
+
+fn tool_msg(id: &str, content: &str) -> LlmMessage {
+    LlmMessage::Tool {
+        tool_call_id: id.to_owned(),
+        name: "echo".to_owned(),
+        content: content.to_owned(),
+    }
+}
+
+#[test]
+fn tripwire_accepts_valid_multi_call_batch() {
+    // Given a valid assistant batch with both results in order.
+    let mut messages = vec![
+        LlmMessage::User { content: "go".into(), attachments: Vec::new() },
+        LlmMessage::Assistant { content: String::new(), tool_calls: Some(vec![call("a"), call("b")]) },
+        tool_msg("a", "out-a"),
+        tool_msg("b", "out-b"),
+    ];
+
+    // When enforcing.
+    enforce_valid_tool_sequences(&mut messages);
+
+    // Then nothing changes.
+    assert_eq!(messages.len(), 4);
+}
+
+#[test]
+fn tripwire_accepts_unordered_results() {
+    // Given a valid batch whose results arrive in completion order.
+    let mut messages = vec![
+        LlmMessage::Assistant { content: String::new(), tool_calls: Some(vec![call("a"), call("b")]) },
+        tool_msg("b", "out-b"),
+        tool_msg("a", "out-a"),
+    ];
+
+    // When enforcing.
+    enforce_valid_tool_sequences(&mut messages);
+
+    // Then nothing changes (ids match as a set).
+    assert_eq!(messages.len(), 3);
+}
+
+#[test]
+fn tripwire_strips_unresolved_calls_and_keeps_text() {
+    // Given an assistant declaring two calls with only one result.
+    let mut messages = vec![
+        LlmMessage::Assistant { content: "working".into(), tool_calls: Some(vec![call("a"), call("b")]) },
+        tool_msg("a", "out-a"),
+        LlmMessage::User { content: "next turn".into(), attachments: Vec::new() },
+    ];
+
+    // When enforcing.
+    enforce_valid_tool_sequences(&mut messages);
+
+    // Then the assistant keeps its text with no tool_calls, the resolved
+    // result is dropped (its declaring batch failed), and the user turn
+    // survives.
+    assert_eq!(
+        messages,
+        vec![
+            LlmMessage::Assistant { content: "working".into(), tool_calls: None },
+            LlmMessage::User { content: "next turn".into(), attachments: Vec::new() },
+        ]
+    );
+}
+
+#[test]
+fn tripwire_removes_empty_assistant_after_stripping() {
+    // Given an empty assistant whose single call has no result.
+    let mut messages = vec![
+        LlmMessage::User { content: "go".into(), attachments: Vec::new() },
+        LlmMessage::Assistant { content: String::new(), tool_calls: Some(vec![call("a")]) },
+        LlmMessage::User { content: "next".into(), attachments: Vec::new() },
+    ];
+
+    // When enforcing.
+    enforce_valid_tool_sequences(&mut messages);
+
+    // Then the emptied assistant is removed entirely.
+    assert_eq!(
+        messages,
+        vec![
+            LlmMessage::User { content: "go".into(), attachments: Vec::new() },
+            LlmMessage::User { content: "next".into(), attachments: Vec::new() },
+        ]
+    );
+}
+
+#[test]
+fn tripwire_drops_orphan_tool_message() {
+    // Given an orphan tool message with no preceding batch (the legacy
+    // split-pair corruption class).
+    let mut messages = vec![
+        LlmMessage::User { content: "before".into(), attachments: Vec::new() },
+        tool_msg("orphan", "stray"),
+        LlmMessage::User { content: "after".into(), attachments: Vec::new() },
+    ];
+
+    // When enforcing.
+    enforce_valid_tool_sequences(&mut messages);
+
+    // Then the orphan is dropped and neighbors survive.
+    assert_eq!(
+        messages,
+        vec![
+            LlmMessage::User { content: "before".into(), attachments: Vec::new() },
+            LlmMessage::User { content: "after".into(), attachments: Vec::new() },
+        ]
+    );
+}
+
+#[test]
+fn tripwire_drops_unknown_and_duplicate_result_ids() {
+    // Given a batch declared {a} followed by an unknown-id result and a
+    // duplicate of the resolving result.
+    let mut messages = vec![
+        LlmMessage::Assistant { content: String::new(), tool_calls: Some(vec![call("a")]) },
+        tool_msg("unknown", "x"),
+        tool_msg("a", "first"),
+        tool_msg("a", "second"),
+    ];
+
+    // When enforcing.
+    enforce_valid_tool_sequences(&mut messages);
+
+    // Then only the first resolving result survives.
+    assert_eq!(
+        messages,
+        vec![
+            LlmMessage::Assistant { content: String::new(), tool_calls: Some(vec![call("a")]) },
+            tool_msg("a", "first"),
+        ]
+    );
+}
+
+#[test]
+fn tripwire_strips_duplicate_declared_call_ids() {
+    // Given an assistant declaring the same call id twice with two results.
+    let mut messages = vec![
+        LlmMessage::Assistant { content: "checking".into(), tool_calls: Some(vec![call("dup"), call("dup")]) },
+        tool_msg("dup", "first"),
+        tool_msg("dup", "second"),
+    ];
+
+    // When enforcing.
+    enforce_valid_tool_sequences(&mut messages);
+
+    // Then the calls are stripped (duplicate declarations are ambiguous);
+    // the text survives.
+    assert_eq!(
+        messages,
+        vec![LlmMessage::Assistant { content: "checking".into(), tool_calls: None }]
+    );
+}
+
+#[test]
+fn tripwire_end_of_list_closes_open_batch() {
+    // Given an assistant declaring calls with no results at the very end.
+    let mut messages = vec![
+        LlmMessage::Assistant { content: String::new(), tool_calls: Some(vec![call("a")]) },
+    ];
+
+    // When enforcing.
+    enforce_valid_tool_sequences(&mut messages);
+
+    // Then the empty assistant is removed.
+    assert!(messages.is_empty());
+}
