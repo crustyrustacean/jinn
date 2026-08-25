@@ -288,7 +288,9 @@ async fn execute_search(
 fn describe_progress(progress: &jinn_web_fetch::RenderProgress) -> String {
     match progress {
         jinn_web_fetch::RenderProgress::ChallengeDetected { kind, url } => {
-            format!("⚠ bot challenge detected ({kind:?}) at {url} — solve it in the browser window; waiting for you…")
+            format!(
+                "⚠ bot challenge detected ({kind:?}) at {url} — solve it in the browser window; waiting for you…"
+            )
         }
         jinn_web_fetch::RenderProgress::WaitingForHuman { elapsed_secs } => {
             format!("still waiting for the challenge to clear ({elapsed_secs}s elapsed)")

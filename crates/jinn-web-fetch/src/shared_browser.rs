@@ -479,7 +479,7 @@ impl SharedBrowser {
     /// attempt also dies; [`FetchError::Render`] for per-tab failures;
     /// [`FetchError::BrowserLaunch`] if the process cannot be started.
     pub fn render_page(&self, url: &str) -> Result<RenderedPage, FetchError> {
-        self.render_page_observed(url, Arc::new(|_| {}))
+        self.render_page_observed(url, &(Arc::new(|_| {}) as crate::challenge::ProgressFn))
     }
 
     /// Renders `url` with wait progress relayed to `on_progress`.
@@ -496,14 +496,14 @@ impl SharedBrowser {
     pub fn render_page_observed(
         &self,
         url: &str,
-        on_progress: crate::challenge::ProgressFn,
+        on_progress: &crate::challenge::ProgressFn,
     ) -> Result<RenderedPage, FetchError> {
-        match self.render_once(url, &*on_progress) {
+        match self.render_once(url, &**on_progress) {
             // Connection-level death: render_once already evicted the handle;
             // relaunch and retry exactly once.
             Err(FetchError::BrowserCrash) => {
                 tracing::info!("SharedBrowser: retrying after connection death");
-                self.render_once(url, &*on_progress)
+                self.render_once(url, &**on_progress)
             }
             other => other,
         }

@@ -40,6 +40,9 @@ where
         "<available_skills>".to_owned(),
     ];
 
+    let mut skills = skills.to_vec();
+    skills.sort_unstable();
+
     for skill in skills {
         let loaded_attr = if loaded.contains(&skill.name) {
             " loaded=\"true\""
@@ -212,6 +215,30 @@ mod tests {
         assert!(result.contains("<name>skill-a</name>"));
         assert!(result.contains("<name>skill-b</name>"));
         assert!(result.contains("<name>skill-c</name>"));
+    }
+
+    #[rstest::rstest]
+    fn format_returns_stable_skill_list() {
+        // Given three skills.
+        let skills = vec![
+            test_skill("skill-a", "First skill"),
+            test_skill("skill-d", "4"),
+            test_skill("skill-e", "5"),
+            test_skill("skill-f", "6"),
+            test_skill("skill-g", "7"),
+            test_skill("skill-b", "Second skill"),
+            test_skill("skill-c", "Third skill"),
+        ];
+
+        // When formatting.
+        let initial_block = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
+
+        for _ in 0..100 {
+            let block = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
+
+            // Then it's the same as the initial block
+            assert_eq!(block, initial_block);
+        }
     }
 
     #[rstest::rstest]

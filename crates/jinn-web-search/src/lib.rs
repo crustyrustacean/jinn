@@ -66,7 +66,9 @@ pub enum SearchError {
     /// did not clear. In headless mode (or after the human-solve window
     /// expired), switching the browser-backed backends to `headed-chrome`
     /// lets a human pass the challenge in the visible tab.
-    #[error("DuckDuckGo blocked the request (anti-bot challenge) — switch [web_search]/[web_fetch] browser backends to headed-chrome to solve it manually")]
+    #[error(
+        "DuckDuckGo blocked the request (anti-bot challenge) — switch [web_search]/[web_fetch] browser backends to headed-chrome to solve it manually"
+    )]
     Blocked,
 }
 
@@ -106,4 +108,3 @@ pub trait WebSearcher: Send + Sync {
         self.search(query, options).await
     }
 }
-

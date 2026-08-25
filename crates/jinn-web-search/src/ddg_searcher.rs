@@ -20,7 +20,6 @@ const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/53
 /// Phrases that appear in DDG's anti-bot / unusual-traffic challenge page.
 /// [`DdgSearcher::is_blocked`] delegates to the shared marker table in
 /// `jinn_web_fetch::challenge` so both backends detect the same page.
-
 /// DuckDuckGo HTML searcher.
 ///
 /// Owns a `reqwest::Client` (connection-pooled) and the endpoint base URL. The

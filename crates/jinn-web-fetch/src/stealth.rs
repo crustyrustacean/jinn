@@ -95,7 +95,7 @@ const DEFAULT_ANUBIS_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Default human-solve window for headed mode (matches the `[browser]`
 /// `challenge_wait_secs` default).
-const DEFAULT_CHALLENGE_WAIT: Duration = Duration::from_secs(120);
+const DEFAULT_CHALLENGE_WAIT: Duration = Duration::from_mins(2);
 
 /// Default settle window for the behavioral challenge fallback (matches the
 /// `[browser]` `settle_secs` default).

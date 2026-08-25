@@ -99,7 +99,7 @@ impl WebFetcher for HeadlessChromeFetcher {
         let extractors = self.extractors.clone();
         let url_owned = url.to_owned();
         let join = tokio::task::spawn_blocking(move || {
-            let page = browser.render_page_observed(&url_owned, on_progress)?;
+            let page = browser.render_page_observed(&url_owned, &on_progress)?;
             let content = extract_content(&page.html, &options, &extractors);
             tracing::debug!(
                 content_len = content.len(),

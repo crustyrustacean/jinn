@@ -8,7 +8,7 @@
 //! the compaction prompt. Extension traits partition the write surface by
 //! concern so each owner opts into exactly what it writes.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::common::state::State;
 use crate::feat::context::assembly_state::ContextAssemblyState;
@@ -55,14 +55,14 @@ pub trait PersonaWrite {
 
 /// Write access to global tool definitions.
 pub trait GlobalToolDefinitionsWrite {
-    fn global_tool_definitions_mut(&mut self) -> &mut HashMap<String, ToolDefinition>;
+    fn global_tool_definitions_mut(&mut self) -> &mut BTreeMap<String, ToolDefinition>;
 }
 
 /// Write access to per-session tool definitions.
 pub trait SessionToolDefinitionsWrite {
     fn session_tool_definitions_mut(
         &mut self,
-    ) -> &mut HashMap<SessionId, HashMap<String, ToolDefinition>>;
+    ) -> &mut BTreeMap<SessionId, BTreeMap<String, ToolDefinition>>;
 }
 
 impl PersonaWrite for ContextOps<'_> {
@@ -78,7 +78,7 @@ impl PersonaWrite for ContextOps<'_> {
 }
 
 impl GlobalToolDefinitionsWrite for ContextOps<'_> {
-    fn global_tool_definitions_mut(&mut self) -> &mut HashMap<String, ToolDefinition> {
+    fn global_tool_definitions_mut(&mut self) -> &mut BTreeMap<String, ToolDefinition> {
         &mut self.0.global_tool_definitions
     }
 }
@@ -86,7 +86,7 @@ impl GlobalToolDefinitionsWrite for ContextOps<'_> {
 impl SessionToolDefinitionsWrite for ContextOps<'_> {
     fn session_tool_definitions_mut(
         &mut self,
-    ) -> &mut HashMap<SessionId, HashMap<String, ToolDefinition>> {
+    ) -> &mut BTreeMap<SessionId, BTreeMap<String, ToolDefinition>> {
         &mut self.0.session_tool_definitions
     }
 }

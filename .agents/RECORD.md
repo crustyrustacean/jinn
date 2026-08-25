@@ -31,7 +31,7 @@ Entries are added or amended **only with human approval**.
 
 ---
 
-<!-- Add entries below. Keep them scoped, factual, and high-level. -->
+- (context) Outgoing LLM context assembly preserves tool-call/result groups atomically and drops malformed tool-message fragments with a tracing warning instead of sending invalid sequencing or synthesizing missing messages.
 
 - (arch) A component/actor system built on `kameo` runs domain logic asynchronously, communicating via command routing and event broadcast.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
@@ -46,7 +46,7 @@ Entries are added or amended **only with human approval**.
 - (compaction) When working history exceeds the session token budget, entries are trimmed newest-to-oldest (pinned entries preserved) and a compaction prompt is injected.
 - (context) A forced system-prompt override replaces all generated system parts but still includes pinned system entries from history.
 - (context) Context assembly builds the system prompt in priority order: skills block, pinned system entries, environment context, tool context.
-- (context) Pin splitting separates entries into TOP pins, BOTTOM pins, and working history based on pin position.
+- (context) Context assembly partitions history into top, bottom, and working outgoing groups while preserving assistant tool-call/tool-result loops as atomic units.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
 - (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (token stays literal, turn dispatches); only a recognizable image failing conversion hard-blocks. A user entry carrying attachments is blocked unless the active model is confirmed image-capable via models.dev — unknown models are blocked, not allowed.
 - (attachments) `@path` tokens in user entries are colored by resolution outcome in the chat render: green when attached as an image, red when degraded (missing file or not an image).
