@@ -17,7 +17,6 @@ use crate::protocol::ToolDefinition;
 /// - `prompt_guidelines` → listed as bullet points in the "Tool guidelines" section
 ///
 /// Returns `None` if no tools have snippets or guidelines.
-#[expect(clippy::implicit_hasher, reason = "caller chooses hasher")]
 #[must_use]
 pub fn build_tool_context_block(tools: &BTreeMap<String, ToolDefinition>) -> Option<String> {
     let mut snippets: Vec<(&str, &str)> = tools

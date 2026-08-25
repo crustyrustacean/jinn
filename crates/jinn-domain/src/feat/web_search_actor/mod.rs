@@ -22,8 +22,11 @@ use kameo::prelude::{Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::tools_actor::protocol::command::{ExecuteWebSearch, RegisterTools};
-use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
+use crate::feat::tools_actor::protocol::event::{
+    ToolExecutionCompleted, ToolExecutionOutput, ToolExecutionStarted, ToolOutputKind,
+};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use crate::protocol::SessionId;
 
 use serde::{Deserialize, Serialize};
 
@@ -170,8 +173,17 @@ impl Message<ExecuteWebSearch> for WebSearchActor {
         let config = self.config.clone();
         let tool_call = msg.tool_call;
         let session_id = msg.session_id;
+        let dispatched_at = msg.dispatched_at;
         tokio::spawn(async move {
-            let result = execute_search(&web_searcher, &config, &tool_call).await;
+            let result = execute_search(
+                &web_searcher,
+                &config,
+                &tool_call,
+                &session_id,
+                dispatched_at,
+                &bus,
+            )
+            .await;
             tracing::info!(
                 tool_call_id = %result.tool_call_id,
                 success = result.success,
@@ -190,6 +202,9 @@ async fn execute_search(
     web_searcher: &Arc<dyn WebSearcher>,
     config: &WebSearchConfig,
     tool_call: &ToolCall,
+    session_id: &SessionId,
+    dispatched_at: jiff::Timestamp,
+    bus: &crate::common::services::bus_service::BusService,
 ) -> ToolResult {
     tracing::debug!(arguments = %tool_call.arguments, "web-search: parsing arguments");
     let args = match serde_json::from_str::<WebSearchArgs>(&tool_call.arguments) {
@@ -216,7 +231,40 @@ async fn execute_search(
     };
 
     tracing::info!(query = %args.query, max_results, "web-search: calling searcher");
-    match web_searcher.search(&args.query, &options).await {
+    // Lazy streaming: the pending ToolResult entry is only created when the
+    // searcher actually reports a wait (challenge detection/human-wait ticks).
+    // Clean searches emit nothing and complete exactly as before.
+    let started = std::sync::atomic::AtomicBool::new(false);
+    let on_event: jinn_web_fetch::ProgressFn = std::sync::Arc::new({
+        let bus = bus.clone();
+        let session_id = session_id.clone();
+        let tool_call_id = tool_call.id.clone();
+        let name = tool_call.name.clone();
+        move |progress: jinn_web_fetch::RenderProgress| {
+            let text = describe_progress(&progress);
+            // The observer runs inside a `spawn_blocking` render; re-enter the
+            // async runtime to publish onto the bus.
+            let handle = tokio::runtime::Handle::current();
+            if !started.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                handle.block_on(bus.publish(ToolExecutionStarted {
+                    session_id: session_id.clone(),
+                    tool_call_id: tool_call_id.clone(),
+                    name: name.clone(),
+                    dispatched_at,
+                }));
+            }
+            handle.block_on(bus.publish(ToolExecutionOutput {
+                session_id: session_id.clone(),
+                tool_call_id: tool_call_id.clone(),
+                output: text,
+                kind: ToolOutputKind::Alert,
+            }));
+        }
+    });
+    match web_searcher
+        .search_observed(&args.query, &options, on_event)
+        .await
+    {
         Ok(results) => {
             let content = format_results(&results);
             ToolResult {
@@ -232,6 +280,20 @@ async fn execute_search(
         Err(e) => {
             tracing::warn!(err = %e, "web-search: search failed");
             failure_result(tool_call, format!("search failed: {e}"))
+        }
+    }
+}
+
+/// Renders a [`RenderProgress`] event as user-facing streaming text.
+fn describe_progress(progress: &jinn_web_fetch::RenderProgress) -> String {
+    match progress {
+        jinn_web_fetch::RenderProgress::ChallengeDetected { kind, url } => {
+            format!(
+                "⚠ bot challenge detected ({kind:?}) at {url} — solve it in the browser window; waiting for you…"
+            )
+        }
+        jinn_web_fetch::RenderProgress::WaitingForHuman { elapsed_secs } => {
+            format!("still waiting for the challenge to clear ({elapsed_secs}s elapsed)")
         }
     }
 }
@@ -428,7 +490,9 @@ mod actor_tests {
     use super::{WebSearchActor, WebSearchActorDeps, WebSearchConfig};
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::feat::tools_actor::protocol::command::{ExecuteWebSearch, RegisterTools};
-    use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
+    use crate::feat::tools_actor::protocol::event::{
+        ToolExecutionCompleted, ToolExecutionOutput, ToolExecutionStarted,
+    };
     use crate::feat::tools_actor::tool_types::ToolCall;
     use crate::protocol::SessionId;
     use async_trait::async_trait;
@@ -441,6 +505,8 @@ mod actor_tests {
         results: Vec<SearchResult>,
         fail: bool,
         captured_query: Arc<Mutex<Option<String>>>,
+        /// When set, `search_observed` fires this progress event before resolving.
+        progress_event: Option<jinn_web_fetch::RenderProgress>,
     }
 
     #[async_trait]
@@ -448,9 +514,28 @@ mod actor_tests {
         async fn search(
             &self,
             query: &str,
+            options: &SearchOptions,
+        ) -> Result<Vec<SearchResult>, SearchError> {
+            let noop: jinn_web_fetch::ProgressFn = Arc::new(|_| {});
+            self.search_observed(query, options, noop).await
+        }
+
+        async fn search_observed(
+            &self,
+            query: &str,
             _options: &SearchOptions,
+            on_event: jinn_web_fetch::ProgressFn,
         ) -> Result<Vec<SearchResult>, SearchError> {
             *self.captured_query.lock().expect("lock") = Some(query.to_owned());
+            if let Some(progress) = &self.progress_event {
+                // Faithful to production: the observer runs inside the
+                // searcher's spawn_blocking render, never on the async worker.
+                let progress = progress.clone();
+                let on_event = on_event.clone();
+                tokio::task::spawn_blocking(move || on_event(progress))
+                    .await
+                    .expect("observer task");
+            }
             if self.fail {
                 Err(SearchError::Network)
             } else {
@@ -489,6 +574,7 @@ mod actor_tests {
                 results: mock_results(),
                 fail: false,
                 captured_query: Arc::new(Mutex::new(None)),
+                progress_event: None,
             }),
             config: default_config(),
         });
@@ -512,6 +598,7 @@ mod actor_tests {
                 results: mock_results(),
                 fail: false,
                 captured_query: Arc::new(Mutex::new(None)),
+                progress_event: None,
             }),
             config: default_config(),
         });
@@ -528,6 +615,7 @@ mod actor_tests {
             .publish(ExecuteWebSearch {
                 session_id: session_id.clone(),
                 tool_call,
+                dispatched_at: jiff::Timestamp::now(),
             })
             .await;
 
@@ -549,6 +637,7 @@ mod actor_tests {
                 results: mock_results(),
                 fail: false,
                 captured_query: Arc::new(Mutex::new(None)),
+                progress_event: None,
             }),
             config: default_config(),
         });
@@ -565,6 +654,7 @@ mod actor_tests {
             .publish(ExecuteWebSearch {
                 session_id,
                 tool_call,
+                dispatched_at: jiff::Timestamp::now(),
             })
             .await;
 
@@ -586,6 +676,7 @@ mod actor_tests {
                 results: mock_results(),
                 fail: false,
                 captured_query: Arc::new(Mutex::new(None)),
+                progress_event: None,
             }),
             config: default_config(),
         });
@@ -602,6 +693,7 @@ mod actor_tests {
             .publish(ExecuteWebSearch {
                 session_id,
                 tool_call,
+                dispatched_at: jiff::Timestamp::now(),
             })
             .await;
 
@@ -623,6 +715,7 @@ mod actor_tests {
                 results: mock_results(),
                 fail: false,
                 captured_query: Arc::new(Mutex::new(None)),
+                progress_event: None,
             }),
             config: default_config(),
         });
@@ -639,6 +732,7 @@ mod actor_tests {
             .publish(ExecuteWebSearch {
                 session_id,
                 tool_call,
+                dispatched_at: jiff::Timestamp::now(),
             })
             .await;
 
@@ -657,6 +751,96 @@ mod actor_tests {
                 .result
                 .content
                 .contains("2. Learn Rust — https://doc.rust-lang.org")
+        );
+    }
+
+    #[tokio::test]
+    async fn challenge_progress_emits_started_then_output_then_completed() {
+        // Given a searcher that reports a challenge detection then succeeds.
+        let harness = TestHarness::new().await;
+        let started_rec = harness.spawn_recorder::<ToolExecutionStarted>().await;
+        let output_rec = harness.spawn_recorder::<ToolExecutionOutput>().await;
+        let completed_rec = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+        let actor = WebSearchActor::spawn(WebSearchActorDeps {
+            deps: harness.actor_deps().await,
+            web_searcher: Arc::new(MockSearcher {
+                results: mock_results(),
+                fail: false,
+                captured_query: Arc::new(Mutex::new(None)),
+                progress_event: Some(jinn_web_fetch::RenderProgress::ChallengeDetected {
+                    kind: jinn_web_fetch::challenge::ChallengeKind::DdgAnomaly,
+                    url: "https://html.duckduckgo.com/html".to_owned(),
+                }),
+            }),
+            config: default_config(),
+        });
+        actor.wait_for_startup().await;
+
+        // When sending a search whose render reports a challenge.
+        let session_id = SessionId::new();
+        let tool_call = ToolCall {
+            id: "tc_alert".to_owned(),
+            name: "web-search".to_owned(),
+            arguments: r#"{"query": "rust"}"#.to_owned(),
+        };
+        harness
+            .publish(ExecuteWebSearch {
+                session_id: session_id.clone(),
+                tool_call,
+                dispatched_at: jiff::Timestamp::now(),
+            })
+            .await;
+
+        // Then exactly one Started, one Output, and one Completed were emitted.
+        let started = await_recorded(&started_rec, 1, std::time::Duration::from_secs(2)).await;
+        let output = await_recorded(&output_rec, 1, std::time::Duration::from_secs(2)).await;
+        let completed = await_recorded(&completed_rec, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(started.len(), 1);
+        assert_eq!(started[0].tool_call_id, "tc_alert");
+        assert_eq!(output.len(), 1);
+        assert!(output[0].output.contains("bot challenge detected"));
+        assert_eq!(completed.len(), 1);
+        assert!(completed[0].result.success);
+    }
+
+    #[tokio::test]
+    async fn clean_search_emits_no_tool_execution_started() {
+        // Given a searcher that reports no progress events.
+        let harness = TestHarness::new().await;
+        let started_rec = harness.spawn_recorder::<ToolExecutionStarted>().await;
+        let completed_rec = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+        let actor = WebSearchActor::spawn(WebSearchActorDeps {
+            deps: harness.actor_deps().await,
+            web_searcher: Arc::new(MockSearcher {
+                results: mock_results(),
+                fail: false,
+                captured_query: Arc::new(Mutex::new(None)),
+                progress_event: None,
+            }),
+            config: default_config(),
+        });
+        actor.wait_for_startup().await;
+
+        // When sending a clean search.
+        harness
+            .publish(ExecuteWebSearch {
+                session_id: SessionId::new(),
+                tool_call: ToolCall {
+                    id: "tc_clean".to_owned(),
+                    name: "web-search".to_owned(),
+                    arguments: r#"{"query": "rust"}"#.to_owned(),
+                },
+                dispatched_at: jiff::Timestamp::now(),
+            })
+            .await;
+
+        // Then it completes but never emits ToolExecutionStarted.
+        let completed = await_recorded(&completed_rec, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(completed.len(), 1);
+        assert!(
+            await_recorded(&started_rec, 0, std::time::Duration::from_millis(300))
+                .await
+                .is_empty()
         );
     }
 }

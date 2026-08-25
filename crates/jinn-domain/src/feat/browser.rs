@@ -76,10 +76,30 @@ pub struct BrowserConfig {
     /// to clear before failing. Default: `30`.
     #[serde(default = "default_anubis_timeout_secs")]
     pub anubis_timeout_secs: u64,
+    /// Seconds to wait for a human to solve a detected bot challenge in the
+    /// headed browser before failing. Default: `120`.
+    #[serde(default = "default_challenge_wait_secs")]
+    pub challenge_wait_secs: u64,
+    /// Seconds to let an empty-looking page settle (slow SPA fill) before the
+    /// behavioral challenge fallback renders a verdict. Default: `5`.
+    #[serde(default = "default_settle_secs")]
+    pub settle_secs: u64,
+    /// Keep browser tabs open after a successful read instead of closing
+    /// them. Default: `false` (close after read).
+    #[serde(default)]
+    pub keep_tabs_open: bool,
 }
 
 fn default_anubis_timeout_secs() -> u64 {
     30
+}
+
+fn default_challenge_wait_secs() -> u64 {
+    120
+}
+
+fn default_settle_secs() -> u64 {
+    5
 }
 
 impl Default for BrowserConfig {
@@ -88,6 +108,9 @@ impl Default for BrowserConfig {
             binary: BrowserBinary::Auto,
             user_agent: None,
             anubis_timeout_secs: default_anubis_timeout_secs(),
+            challenge_wait_secs: default_challenge_wait_secs(),
+            settle_secs: default_settle_secs(),
+            keep_tabs_open: false,
         }
     }
 }
@@ -100,9 +123,78 @@ impl From<&BrowserConfig> for StealthSettings {
         // path wants the anti-detection flags applied.
         settings.enabled = true;
         settings.anubis_timeout = Duration::from_secs(config.anubis_timeout_secs);
+        settings.challenge_wait = Duration::from_secs(config.challenge_wait_secs);
+        settings.settle = Duration::from_secs(config.settle_secs);
+        settings.keep_tabs_open = config.keep_tabs_open;
         // binary_path is resolved later by the BrowserBinaryScanActor and
         // injected into the settings the browser is constructed with; this
         // config-to-settings conversion does not touch the filesystem.
         settings
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "test assertions")]
+
+    use super::*;
+
+    #[test]
+    fn default_config_uses_documented_challenge_defaults() {
+        // Given no input.
+        // When constructing the default config.
+        let config = BrowserConfig::default();
+
+        // Then the challenge defaults are set.
+        assert_eq!(config.challenge_wait_secs, 120);
+        assert_eq!(config.settle_secs, 5);
+        assert!(!config.keep_tabs_open);
+    }
+
+    #[test]
+    fn config_round_trips_challenge_fields_through_toml() {
+        // Given a custom config.
+        let config = BrowserConfig {
+            challenge_wait_secs: 60,
+            settle_secs: 2,
+            keep_tabs_open: true,
+            ..BrowserConfig::default()
+        };
+
+        // When serializing then deserializing.
+        let toml = toml::to_string(&config).expect("serialize");
+        let back: BrowserConfig = toml::from_str(&toml).expect("deserialize");
+
+        // Then the custom values survive.
+        assert_eq!(back, config);
+    }
+
+    #[test]
+    fn config_fills_challenge_defaults_when_empty() {
+        // Given an empty TOML table.
+        // When deserializing.
+        let config: BrowserConfig = toml::from_str("").expect("deserialize");
+
+        // Then defaults are filled in.
+        assert_eq!(config, BrowserConfig::default());
+    }
+
+    #[test]
+    fn from_config_populates_challenge_settings() {
+        // Given a config with non-default challenge values.
+        let config = BrowserConfig {
+            challenge_wait_secs: 90,
+            settle_secs: 7,
+            keep_tabs_open: true,
+            ..BrowserConfig::default()
+        };
+
+        // When converting to stealth settings.
+        let settings = StealthSettings::from(&config);
+
+        // Then the challenge fields carry over.
+        assert_eq!(settings.challenge_wait, Duration::from_secs(90));
+        assert_eq!(settings.settle, Duration::from_secs(7));
+        assert!(settings.keep_tabs_open);
     }
 }
