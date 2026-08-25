@@ -777,34 +777,27 @@ impl ChatSessionState {
     /// Returns `Some(entry_id)` if the override was changed, `None` if no-op
     /// (entry was already in the toggled state) or no entry is selected.
     pub fn toggle_entry_ignored(&mut self) -> Option<crate::protocol::ChatEntryId> {
-        if let Some(idx) = self.selected_entry_index() {
-            let items = self.visual_items().clone();
-            let hist_idx = if items.is_empty() {
-                idx
-            } else {
-                match items.get(idx) {
-                    Some(VisualItem::Entry(h)) => *h,
-                    _ => return None, // collapsed block or invalid
-                }
-            };
-            if let Some(entry) = self.core.history.get_mut(hist_idx) {
-                let new_value = match entry.context_override() {
-                    ContextOverride::ForcedInclude => ContextOverride::ForcedExclude,
-                    ContextOverride::ForcedExclude => ContextOverride::ForcedInclude,
-                    ContextOverride::Default => {
-                        if entry.is_in_context() {
-                            ContextOverride::ForcedExclude
-                        } else {
-                            ContextOverride::ForcedInclude
-                        }
-                    }
-                };
-                if entry.apply_context_override(new_value, ChangeSource::User) {
-                    return Some(entry.id.clone());
+        let hist_idx = self.selected_history_index()?;
+        let Some(entry) = self.core.history.get(hist_idx) else {
+            return None;
+        };
+        let pressed_id = entry.id.clone();
+        let new_value = match entry.context_override() {
+            ContextOverride::ForcedInclude => ContextOverride::ForcedExclude,
+            ContextOverride::ForcedExclude => ContextOverride::ForcedInclude,
+            ContextOverride::Default => {
+                if entry.is_in_context() {
+                    ContextOverride::ForcedExclude
+                } else {
+                    ContextOverride::ForcedInclude
                 }
             }
-        }
-        None
+        };
+        // Chunk semantics: the toggle applies to the whole tool loop.
+        let changed = self
+            .edit_history()
+            .set_context(&pressed_id, new_value, ChangeSource::User);
+        (!changed.is_empty()).then_some(pressed_id)
     }
 
     /// Set the context override on the currently selected entry to a specific
@@ -817,23 +810,16 @@ impl ChatSessionState {
         &mut self,
         override_state: ContextOverride,
     ) -> Option<crate::protocol::ChatEntryId> {
-        if let Some(idx) = self.selected_entry_index() {
-            let items = self.visual_items().clone();
-            let hist_idx = if items.is_empty() {
-                idx
-            } else {
-                match items.get(idx) {
-                    Some(VisualItem::Entry(h)) => *h,
-                    _ => return None,
-                }
-            };
-            if let Some(entry) = self.core.history.get_mut(hist_idx)
-                && entry.apply_context_override(override_state, ChangeSource::User)
-            {
-                return Some(entry.id.clone());
-            }
-        }
-        None
+        let hist_idx = self.selected_history_index()?;
+        let Some(entry) = self.core.history.get(hist_idx) else {
+            return None;
+        };
+        let pressed_id = entry.id.clone();
+        // Chunk semantics: the sweep applies to the whole tool loop.
+        let changed = self
+            .edit_history()
+            .set_context(&pressed_id, override_state, ChangeSource::User);
+        (!changed.is_empty()).then_some(pressed_id)
     }
 
     /// After a sweep changes an entry from excluded to in-context, propagate
@@ -2350,20 +2336,24 @@ impl ChatSessionState {
     /// This propagates `shown_ignored_blocks` to any new forward sub-block
     /// created by the split, keeping all entries visible.
     pub fn pin_entry(&mut self, id: &ChatEntryId, position: PinPosition) {
-        let Some(entry) = self.core.history.iter_mut().find(|e| e.id == *id) else {
+        let Some(index) = self.core.history.iter().position(|e| e.id == *id) else {
             return;
         };
-        let is_ignored = !entry.is_in_context();
-        entry.pin_position = Some(position);
+        // Captured before pinning: a pin makes the entry in-context, but the
+        // propagation below only applies when the entry was ignored.
+        let was_ignored = !self.core.history[index].is_in_context();
+        // Chunk semantics: pinning a member pins the whole tool loop.
+        self.edit_history().pin(id, position);
+        self.propagate_shown_after_pin(index, was_ignored);
+    }
 
-        // Propagation: only for non-context entries inside shown blocks.
-        if !is_ignored {
+    /// Propagate `shown_ignored_blocks` when pinning an ignored entry inside a
+    /// shown (expanded) block split it.
+    fn propagate_shown_after_pin(&mut self, idx: usize, was_ignored: bool) {
+        // Propagation: only for entries that were ignored before the pin.
+        if !was_ignored {
             return;
         }
-
-        let Some(idx) = self.core.history.iter().position(|e| e.id == *id) else {
-            return;
-        };
 
         // Scan backward to find the containing block's start.
         // Same boundary rules as `build_visual_items` and `toggle_ignored_block_visibility`.
@@ -2412,11 +2402,10 @@ impl ChatSessionState {
 
     /// Unpin an entry by ID, clearing its pin position.
     ///
+    /// Chunk semantics: unpinning a member unpins the whole tool loop.
     /// If no entry with the given ID exists, this is a no-op.
     pub fn unpin_entry(&mut self, id: &ChatEntryId) {
-        if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == *id) {
-            entry.pin_position = None;
-        }
+        self.edit_history().unpin(id);
     }
 
     /// Returns all pinned entries in history order.
@@ -3177,58 +3166,7 @@ impl ChatSessionState {
         &mut self,
         batch: Vec<crate::feat::session::history_mutation::HistoryMutation>,
     ) -> Vec<ChatEntryId> {
-        use crate::feat::session::history_mutation::HistoryMutation;
-        let mut changed = Vec::new();
-
-        for mutation in batch {
-            match mutation {
-                HistoryMutation::SetContextOverride {
-                    entry_id,
-                    value,
-                    source,
-                } => {
-                    if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == entry_id) {
-                        if entry.context_override() == ContextOverride::ForcedInclude
-                            && value == ContextOverride::ForcedExclude
-                        {
-                            continue;
-                        }
-                        // Don't allow workers to re-include entries the user
-                        // explicitly excluded.
-                        if value == ContextOverride::ForcedInclude
-                            && matches!(source, ChangeSource::Worker { .. })
-                            && entry.is_user_force_excluded()
-                        {
-                            continue;
-                        }
-                        let was_changed = entry.apply_context_override(value, source);
-                        if was_changed {
-                            changed.push(entry_id);
-                        }
-                    }
-                }
-                HistoryMutation::InsertEntry {
-                    after_entry_id,
-                    entry,
-                } => {
-                    let insert_at = match after_entry_id {
-                        Some(id) => match self.find_entry_index_by_id(&id) {
-                            Some(idx) => idx + 1,
-                            None => continue,
-                        },
-                        None => 0,
-                    };
-                    self.insert_entry_at(insert_at, entry);
-                }
-                HistoryMutation::PinEntry { entry_id, position } => {
-                    self.pin_entry(&entry_id, position);
-                }
-                HistoryMutation::UnpinEntry { entry_id } => {
-                    self.unpin_entry(&entry_id);
-                }
-            }
-        }
-        changed
+        self.edit_history().apply(batch)
     }
 
     /// Drain all pending mutation batches and apply them.

@@ -103,15 +103,16 @@ impl<'a> HistoryEditor<'a> {
     ///
     /// The insertion point must be a chunk boundary: never strictly inside a
     /// loop, between its assistant and last result. A mid-loop request is
-    /// warned about and advanced past the loop's last result. Returns the
-    /// inserted index.
+    /// warned about and advanced past the loop's last result. An unknown
+    /// `after` id skips the insert. Returns the inserted index, or `None`
+    /// when skipped.
     pub fn insert_standalone_after(
         &mut self,
         after: Option<&ChatEntryId>,
         entry: ChatEntry,
-    ) -> usize {
-        let boundary = self.resolve_boundary(after);
-        self.session.insert_entry_at(boundary, entry)
+    ) -> Option<usize> {
+        let boundary = self.resolve_boundary(after)?;
+        Some(self.session.insert_entry_at(boundary, entry))
     }
 
     /// Sets the context override for the chunk containing `id`, expanding to
@@ -339,9 +340,8 @@ impl<'a> HistoryEditor<'a> {
         source: ChangeSource,
     ) -> MutationOutcome {
         let chunk = self.chunk_for(id);
-        if let Err(reason) =
-            evaluate_exclusion_guard(self.session.history(), &chunk, &value, &source)
-        {
+        let guard = evaluate_exclusion_guard(self.session.history(), &chunk, &value, &source);
+        if let Err(reason) = guard {
             return MutationOutcome::Refused(reason);
         }
         let members: Vec<ChatEntryId> = self.session.history()[chunk.range.clone()]
@@ -352,6 +352,9 @@ impl<'a> HistoryEditor<'a> {
     }
 
     /// Applies one override value to a fixed list of member ids.
+    ///
+    /// A `ForcedInclude` member is never overwritten by `ForcedExclude` — the
+    /// include sticks (the legacy executor's guard, preserved chunk-wide).
     fn apply_override_members(
         &mut self,
         members: &[ChatEntryId],
@@ -360,17 +363,26 @@ impl<'a> HistoryEditor<'a> {
     ) -> MutationOutcome {
         let mut changed = Vec::new();
         for member in members {
-            if self
+            let applied = self
                 .session
                 .with_history_entry_mut(member, |entry| {
+                    // A worker/internal ForcedInclude sticks against a later
+                    // ForcedExclude; the user's `x` key may always flip it.
+                    let protected_include = entry.context_override()
+                        == ContextOverride::ForcedInclude
+                        && value == ContextOverride::ForcedExclude
+                        && !matches!(source, ChangeSource::User);
+                    if protected_include {
+                        return false;
+                    }
                     let was = entry.context_override() != value;
                     if was {
                         entry.apply_context_override(value, source.clone());
                     }
                     was
                 })
-                .unwrap_or(false)
-            {
+                .unwrap_or(false);
+            if applied {
                 changed.push(member.clone());
             }
         }
@@ -419,22 +431,22 @@ impl<'a> HistoryEditor<'a> {
     }
 
     /// Resolves the insertion index for `after` at a chunk boundary.
-    fn resolve_boundary(&self, after: Option<&ChatEntryId>) -> usize {
+    ///
+    /// `None` when `after` names an entry that does not exist (the insert is
+    /// skipped, matching the legacy executor's behavior).
+    fn resolve_boundary(&self, after: Option<&ChatEntryId>) -> Option<usize> {
         let Some(id) = after else {
-            return 0;
+            return Some(0);
         };
         let history = self.session.history();
-        let Some(index) = history.iter().position(|entry| &entry.id == id) else {
-            tracing::warn!("insert_standalone_after: unknown entry id; inserting at head");
-            return 0;
-        };
+        let index = history.iter().position(|entry| &entry.id == id)?;
         match tool_group_end(history, index) {
             // `id` opened a loop that continues past itself: the boundary is
             // the loop's end, not right after `id`.
-            Some(end) if end > index + 1 => end,
+            Some(end) if end > index + 1 => Some(end),
             // `id` is standalone, a plain assistant, or a loop member whose
             // loop ended at `id` itself: insert directly after it.
-            _ => index + 1,
+            _ => Some(index + 1),
         }
     }
 

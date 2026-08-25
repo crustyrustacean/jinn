@@ -122,7 +122,9 @@ impl SessionPersistenceActor {
     /// Drains pending history mutations and steering buffer entries, emitting
     /// ContextOverrideChanged events for any modified entries.
     async fn apply_pending_mutations_and_steering(&self, session_id: &crate::protocol::SessionId) {
-        // Drain and apply pending history mutations.
+        // Drain and apply pending history mutations, then normalize loop
+        // layout so committed loops never contain interstitials before
+        // assembly (the read-side converter stays simple).
         let changed = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
@@ -134,6 +136,7 @@ impl SessionPersistenceActor {
                         "applied pending history mutations"
                     );
                 }
+                session.edit_history().normalize_loop_layout();
                 changed
             })
         };
