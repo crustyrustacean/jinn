@@ -67,6 +67,38 @@ impl<'a> HistoryEditor<'a> {
         self.session.push_entry_raw(&mut entry)
     }
 
+    /// Runs `f` on the entry at `index` in place. Returns `None` when out of
+    /// bounds.
+    ///
+    /// For streaming lifecycle writes (token appends, timing finalizers,
+    /// result finalization) that mutate entries in place. In-place writes can
+    /// never reorder entries or split a tool loop, so no chunk logic applies.
+    pub fn with_entry_at_mut<R>(
+        &mut self,
+        index: usize,
+        f: impl FnOnce(&mut ChatEntry) -> R,
+    ) -> Option<R> {
+        self.session.history_get_mut(index).map(f)
+    }
+
+    /// Runs `f` on the last entry matching `predicate`, in place. Returns
+    /// `f`'s output when one matched, `None` otherwise.
+    ///
+    /// For streaming-lifecycle finalizers that resolve an entry by scanning
+    /// recent history (e.g. finalize a tool call by id).
+    pub fn with_last_matching_mut<P, R>(
+        &mut self,
+        predicate: P,
+        f: impl FnOnce(&mut ChatEntry) -> R,
+    ) -> Option<R>
+    where
+        P: Fn(&ChatEntry) -> bool,
+    {
+        let history = self.session.history();
+        let index = history.iter().rposition(predicate)?;
+        self.with_entry_at_mut(index, f)
+    }
+
     /// Inserts a standalone entry after `after` (or at the head when `None`).
     ///
     /// The insertion point must be a chunk boundary: never strictly inside a
