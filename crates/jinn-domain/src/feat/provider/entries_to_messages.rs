@@ -196,8 +196,9 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
 /// editor-produced histories never trip it.
 pub(crate) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
     let mut out: Vec<LlmMessage> = Vec::with_capacity(messages.len());
-    // (index of the declaring assistant in `out`, unresolved call ids)
-    let mut open_batch: Option<(usize, std::collections::HashSet<String>)> = None;
+    // Open batch: (declaring assistant's index in `out`, unresolved call ids,
+    // resolved tool messages held until the batch validates).
+    let mut open_batch: Option<(usize, std::collections::HashSet<String>, Vec<LlmMessage>)> = None;
 
     let source: Vec<LlmMessage> = std::mem::take(messages);
     for message in source {
@@ -207,16 +208,19 @@ pub(crate) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
                 name,
                 content,
             } => match &mut open_batch {
-                Some((_, remaining)) => {
+                Some((_, remaining, resolved)) => {
                     if remaining.remove(&tool_call_id) {
-                        if remaining.is_empty() {
-                            open_batch = None;
-                        }
-                        out.push(LlmMessage::Tool {
+                        resolved.push(LlmMessage::Tool {
                             tool_call_id,
                             name,
                             content,
                         });
+                        if remaining.is_empty() {
+                            // Batch fully resolved: commit the held results.
+                            if let Some((_, _, mut resolved)) = open_batch.take() {
+                                out.append(&mut resolved);
+                            }
+                        }
                     } else {
                         tracing::warn!(
                             tool_call_id = %tool_call_id,
@@ -250,7 +254,7 @@ pub(crate) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
                         content,
                         tool_calls: Some(calls),
                     });
-                    open_batch = Some((index, ids));
+                    open_batch = Some((index, ids, Vec::new()));
                 }
             }
             LlmMessage::Assistant {
@@ -273,20 +277,24 @@ pub(crate) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
     *messages = out;
 }
 
-/// Closes an open batch, stripping the declaring assistant's `tool_calls`
-/// when calls remain unresolved.
+/// Closes an open batch. A fully resolved batch commits its held results;
+/// an unresolved one is stripped: the declaring assistant loses
+/// `tool_calls` (removed entirely when its text was empty) and the held
+/// results are discarded.
 fn close_batch(
     out: &mut Vec<LlmMessage>,
-    open_batch: &mut Option<(usize, std::collections::HashSet<String>)>,
+    open_batch: &mut Option<(usize, std::collections::HashSet<String>, Vec<LlmMessage>)>,
 ) {
-    if let Some((index, remaining)) = open_batch.take()
-        && !remaining.is_empty()
-    {
-        tracing::warn!(
-            unresolved = ?remaining.iter().cloned().collect::<Vec<_>>(),
-            "stripping assistant tool_calls without matching results"
-        );
-        strip_assistant_calls(out, index);
+    if let Some((index, remaining, resolved)) = open_batch.take() {
+        if remaining.is_empty() {
+            out.extend(resolved);
+        } else {
+            tracing::warn!(
+                unresolved = ?remaining.iter().cloned().collect::<Vec<_>>(),
+                "stripping assistant tool_calls without matching results"
+            );
+            strip_assistant_calls(out, index);
+        }
     }
 }
 
