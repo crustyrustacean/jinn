@@ -28,6 +28,7 @@ use serde_json::Value as JsonValue;
 use crate::feat::chat_input::ChatInputBoxState;
 
 use crate::feat::session::chat_history::ChatHistory;
+use crate::feat::session::history_editor::HistoryEditor;
 use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
@@ -253,8 +254,12 @@ pub struct SessionCore {
     /// When this session was created. Set once at construction, never mutated.
     pub created_at: Timestamp,
     /// All messages in this conversation.
-    /// OWNER: session-actor (creates/removes entries, restores history)
-    pub history: ChatHistory,
+    ///
+    /// OWNER: history-editor (the sole write path; reads via
+    /// [`ChatSessionState::history`]). Restoring from persistence is the one
+    /// exception, performed by [`ChatSessionState::restore_history`] before
+    /// the session becomes live.
+    pub(in crate::feat::session) history: ChatHistory,
     /// Per-session model and strategy selection.
     /// OWNER: provider-actor (model), context-actor (strategy via SwitchPromptStrategy command)
     pub profile: SessionProfile,
@@ -569,6 +574,78 @@ impl ChatSessionState {
         }
     }
 
+    /// Opens the sole write path to this session's history.
+    ///
+    /// All history mutations go through the returned [`HistoryEditor`]; reads
+    /// stay on the session itself.
+    pub fn edit_history(&mut self) -> HistoryEditor<'_> {
+        HistoryEditor::new(self)
+    }
+
+    /// Raw tail push used by the history editor. Applies user-entry token
+    /// expansion and cursor/scroll bookkeeping. Do not call directly.
+    pub(in crate::feat::session) fn push_entry_raw(&mut self, entry: &mut ChatEntry) -> usize {
+        self.core.last_history_activity_at = Timestamp::now();
+        let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
+        expand_user_entry(
+            entry,
+            &self.core.ephemeral.discovered_prompt_templates,
+            &ctx,
+        );
+        let was_at_last = self
+            .ui
+            .selected_cursor_id
+            .as_ref()
+            .is_none_or(|id| self.core.history.last().is_some_and(|e| &e.id == id));
+        let index = self.core.history.len();
+        self.core.history.push(entry.clone());
+        if was_at_last {
+            self.reset_scroll();
+            if let Some(entry) = self.core.history.last() {
+                self.ui.selected_cursor_id = Some(entry.id.clone());
+            }
+        }
+        index
+    }
+
+    /// Removes the history entry at `index`. Returns whether it existed.
+    ///
+    /// Editor-only. Callers must remove in descending index order.
+    pub(in crate::feat::session) fn remove_history_entry_at(&mut self, index: usize) -> bool {
+        if index < self.core.history.len() {
+            self.core.history.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Mutable access to the history entry at `index` for the editor.
+    ///
+    /// In-place writes (streaming lifecycle) can never reorder entries or
+    /// split a tool loop, so the editor exposes them without chunk logic.
+    pub(in crate::feat::session) fn history_get_mut(
+        &mut self,
+        index: usize,
+    ) -> Option<&mut ChatEntry> {
+        self.core.history.get_mut(index)
+    }
+
+    /// Runs `f` on the entry with `id`, if it exists. Returns `f`'s output.
+    ///
+    /// Editor-only in-primitive for id-keyed in-place mutation.
+    pub(in crate::feat::session) fn with_history_entry_mut<R>(
+        &mut self,
+        id: &ChatEntryId,
+        f: impl FnOnce(&mut ChatEntry) -> R,
+    ) -> Option<R> {
+        self.core
+            .history
+            .iter_mut()
+            .find(|entry| &entry.id == id)
+            .map(f)
+    }
+
     /// Create a new session with a specific profile (model + strategy).
     #[must_use]
     pub fn new_with_profile(profile: SessionProfile) -> Self {
@@ -704,34 +781,25 @@ impl ChatSessionState {
     /// Returns `Some(entry_id)` if the override was changed, `None` if no-op
     /// (entry was already in the toggled state) or no entry is selected.
     pub fn toggle_entry_ignored(&mut self) -> Option<crate::protocol::ChatEntryId> {
-        if let Some(idx) = self.selected_entry_index() {
-            let items = self.visual_items().clone();
-            let hist_idx = if items.is_empty() {
-                idx
-            } else {
-                match items.get(idx) {
-                    Some(VisualItem::Entry(h)) => *h,
-                    _ => return None, // collapsed block or invalid
-                }
-            };
-            if let Some(entry) = self.core.history.get_mut(hist_idx) {
-                let new_value = match entry.context_override() {
-                    ContextOverride::ForcedInclude => ContextOverride::ForcedExclude,
-                    ContextOverride::ForcedExclude => ContextOverride::ForcedInclude,
-                    ContextOverride::Default => {
-                        if entry.is_in_context() {
-                            ContextOverride::ForcedExclude
-                        } else {
-                            ContextOverride::ForcedInclude
-                        }
-                    }
-                };
-                if entry.apply_context_override(new_value, ChangeSource::User) {
-                    return Some(entry.id.clone());
+        let hist_idx = self.selected_history_index()?;
+        let entry = self.core.history.get(hist_idx)?;
+        let pressed_id = entry.id.clone();
+        let new_value = match entry.context_override() {
+            ContextOverride::ForcedInclude => ContextOverride::ForcedExclude,
+            ContextOverride::ForcedExclude => ContextOverride::ForcedInclude,
+            ContextOverride::Default => {
+                if entry.is_in_context() {
+                    ContextOverride::ForcedExclude
+                } else {
+                    ContextOverride::ForcedInclude
                 }
             }
-        }
-        None
+        };
+        // Chunk semantics: the toggle applies to the whole tool loop.
+        let changed = self
+            .edit_history()
+            .set_context(&pressed_id, new_value, &ChangeSource::User);
+        (!changed.is_empty()).then_some(pressed_id)
     }
 
     /// Set the context override on the currently selected entry to a specific
@@ -744,23 +812,14 @@ impl ChatSessionState {
         &mut self,
         override_state: ContextOverride,
     ) -> Option<crate::protocol::ChatEntryId> {
-        if let Some(idx) = self.selected_entry_index() {
-            let items = self.visual_items().clone();
-            let hist_idx = if items.is_empty() {
-                idx
-            } else {
-                match items.get(idx) {
-                    Some(VisualItem::Entry(h)) => *h,
-                    _ => return None,
-                }
-            };
-            if let Some(entry) = self.core.history.get_mut(hist_idx)
-                && entry.apply_context_override(override_state, ChangeSource::User)
-            {
-                return Some(entry.id.clone());
-            }
-        }
-        None
+        let hist_idx = self.selected_history_index()?;
+        let entry = self.core.history.get(hist_idx)?;
+        let pressed_id = entry.id.clone();
+        // Chunk semantics: the sweep applies to the whole tool loop.
+        let changed =
+            self.edit_history()
+                .set_context(&pressed_id, override_state, &ChangeSource::User);
+        (!changed.is_empty()).then_some(pressed_id)
     }
 
     /// After a sweep changes an entry from excluded to in-context, propagate
@@ -920,32 +979,11 @@ impl ChatSessionState {
     /// to the new entry if the cursor was on the previous last entry (or history
     /// was empty). Otherwise, appends silently - preserving the user's scroll
     /// position and selection.
-    /// Push a chat entry onto the history.
     ///
-    /// Future work: restrict to the session feature module and require external
-    /// code to use the `PushChatEntry` command (which also triggers persistence).
-    pub fn push_entry(&mut self, mut entry: ChatEntry) -> usize {
-        self.core.last_history_activity_at = Timestamp::now();
-        let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
-        expand_user_entry(
-            &mut entry,
-            &self.core.ephemeral.discovered_prompt_templates,
-            &ctx,
-        );
-        let was_at_last = self
-            .ui
-            .selected_cursor_id
-            .as_ref()
-            .is_none_or(|id| self.core.history.last().is_some_and(|e| &e.id == id));
-        let index = self.core.history.len();
-        self.core.history.push(entry);
-        if was_at_last {
-            self.reset_scroll();
-            if let Some(entry) = self.core.history.last() {
-                self.ui.selected_cursor_id = Some(entry.id.clone());
-            }
-        }
-        index
+    /// Delegates to the history editor ([`HistoryEditor::append`]); all
+    /// history writes route through the editor.
+    pub fn push_entry(&mut self, entry: ChatEntry) -> usize {
+        self.edit_history().append(entry)
     }
 
     /// Expands `#token` templates and `@/abs/path` image references in a user
@@ -1010,12 +1048,9 @@ impl ChatSessionState {
         self.core.ephemeral.machine.set_streaming_entry_index(index);
     }
 
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from streaming_entry_index which is always valid"
-    )]
     fn finish_streaming_entry(&mut self, idx: usize) {
-        self.core.history[idx].timing.finish();
+        self.edit_history()
+            .with_entry_at_mut(idx, |entry| entry.timing.finish());
     }
 
     /// Finalize the streaming thinking entry's timing, if it hasn't already been.
@@ -1023,14 +1058,12 @@ impl ChatSessionState {
     /// Guarded to be a no-op if `finished_at` is already set, so safety-net
     /// calls from `finish_streaming`/`cancel_streaming` don't move an
     /// already-recorded timestamp.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from streaming_thinking_entry_index which is always valid"
-    )]
     pub fn finish_thinking_entry(&mut self, idx: usize) {
-        if self.core.history[idx].timing.finished_at().is_none() {
-            self.core.history[idx].timing.finish();
-        }
+        self.edit_history().with_entry_at_mut(idx, |entry| {
+            if entry.timing.finished_at().is_none() {
+                entry.timing.finish();
+            }
+        });
     }
 
     /// Begin a new streaming response.
@@ -1076,10 +1109,6 @@ impl ChatSessionState {
     /// # Errors
     ///
     /// Returns `Err(StreamingError::NoStreamingEntry)` if the session is not in Streaming phase.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from push_entry which always returns a valid index"
-    )]
     pub fn append_stream_token<S>(
         &mut self,
         token: S,
@@ -1104,12 +1133,15 @@ impl ChatSessionState {
             .machine
             .streaming_entry_index()
             .ok_or(StreamingError::NoStreamingEntry)?;
-        if let ChatEntry {
-            kind: ChatEntryKind::Assistant(ref mut text),
-            ..
-        } = self.core.history[index]
+        if let Some(entry) = self.edit_history().with_entry_at_mut(index, |entry| {
+            if let ChatEntryKind::Assistant(text) = &mut entry.kind {
+                text.push_str(token.as_ref());
+                true
+            } else {
+                false
+            }
+        }) && entry
         {
-            text.push_str(token.as_ref());
             Ok(())
         } else {
             Err(StreamingError::NotAssistantEntry)
@@ -1170,7 +1202,6 @@ impl ChatSessionState {
     /// # Errors
     ///
     /// Returns a [`StreamingError`] if the session is not in a valid streaming state.
-    #[expect(clippy::indexing_slicing, reason = "index set by begin_thinking")]
     pub fn append_thinking_token<S>(&mut self, token: S) -> Result<(), StreamingError>
     where
         S: AsRef<str>,
@@ -1183,13 +1214,17 @@ impl ChatSessionState {
             .ok_or(StreamingError::NoThinkingEntry)?;
         self.core.last_history_activity_at = Timestamp::now();
         self.core.last_provider_activity_at = Timestamp::now();
-        if let ChatEntry {
-            kind: ChatEntryKind::Thinking(ref mut text),
-            ..
-        } = self.core.history[index]
-        {
-            text.push_str(token.as_ref());
+        if let Some(true) = self.edit_history().with_entry_at_mut(index, |entry| {
+            if let ChatEntryKind::Thinking(text) = &mut entry.kind {
+                text.push_str(token.as_ref());
+                true
+            } else {
+                false
+            }
+        }) {
+            return Ok(());
         }
+        // Original behavior: a non-thinking entry at the index is ignored.
         Ok(())
     }
 
@@ -1280,18 +1315,11 @@ impl ChatSessionState {
     /// creates fresh entries. Committed history (completed user/assistant entries)
     /// is untouched.
     pub fn reset_streaming_entries_for_retry(&mut self) -> usize {
-        // Collect every history index we own, then remove in descending order so
-        // earlier indices stay valid as later ones are removed.
+        // Remove every history index we own, then clear the machine indices.
         let mut indices = self.collect_streaming_history_indices();
         indices.sort_unstable_by(|a, b| b.cmp(a));
         indices.dedup();
-        let mut removed = 0;
-        for idx in indices {
-            if idx < self.core.history.len() {
-                self.core.history.remove(idx);
-                removed += 1;
-            }
-        }
+        let removed = self.edit_history().remove_trailing(&indices);
         self.core.ephemeral.machine.clear_streaming_indices();
         removed
     }
@@ -1397,10 +1425,6 @@ impl ChatSessionState {
     /// # Errors
     ///
     /// Returns a [`StreamingError`] if the streaming state is invalid or the index is out of bounds.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from push_entry which always returns a valid index"
-    )]
     pub fn append_tool_call_delta(
         &mut self,
         index: usize,
@@ -1414,13 +1438,19 @@ impl ChatSessionState {
             .get(&index)
             .copied()
             .ok_or(StreamingError::NoToolCallIndex { index })?;
-        if let ChatEntryKind::ToolCall {
-            ref mut arguments, ..
-        } = self.core.history[history_index].kind
+        if let Some(()) = self
+            .edit_history()
+            .with_entry_at_mut(history_index, |entry| {
+                if let ChatEntryKind::ToolCall {
+                    ref mut arguments, ..
+                } = entry.kind
+                {
+                    arguments.push_str(partial_json);
+                }
+            })
         {
-            arguments.push_str(partial_json);
+            self.core.last_provider_activity_at = Timestamp::now();
         }
-        self.core.last_provider_activity_at = Timestamp::now();
         Ok(())
     }
 
@@ -1429,23 +1459,26 @@ impl ChatSessionState {
     /// Searches recent history for a `ToolCall` entry matching the given ID.
     /// If not found (shouldn't happen in normal flow), pushes a new entry.
     pub fn finalize_tool_call(&mut self, id: &str, name: &str, arguments: &str) {
-        for entry in self.core.history.iter_mut().rev() {
-            if let ChatEntryKind::ToolCall {
-                id: ref _entry_id, ..
-            } = entry.kind
-            {
-                entry.kind = ChatEntryKind::ToolCall {
-                    id: id.to_owned(),
-                    name: name.to_owned(),
-                    arguments: arguments.to_owned(),
-                };
-                entry.timing.finish();
-                self.core.last_provider_activity_at = Timestamp::now();
-                return;
-            }
+        let finalized = self
+            .edit_history()
+            .with_last_matching_mut(
+                |entry| matches!(&entry.kind, ChatEntryKind::ToolCall { .. }),
+                |entry| {
+                    entry.kind = ChatEntryKind::ToolCall {
+                        id: id.to_owned(),
+                        name: name.to_owned(),
+                        arguments: arguments.to_owned(),
+                    };
+                    entry.timing.finish();
+                },
+            )
+            .is_some();
+        if finalized {
+            self.core.last_provider_activity_at = Timestamp::now();
+        } else {
+            // If not found (shouldn't happen), push a new entry.
+            self.push_entry(ChatEntry::tool_call(id, name, arguments));
         }
-        // If not found (shouldn't happen), push a new entry.
-        self.push_entry(ChatEntry::tool_call(id, name, arguments));
     }
 
     /// Create a pending ToolResult entry when a streaming tool starts executing.
@@ -1500,10 +1533,6 @@ impl ChatSessionState {
     /// # Panics
     ///
     /// Panics if no pending entry exists for the given `tool_call_id`.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from begin_tool_result which always returns a valid index"
-    )]
     pub fn append_tool_result_output(
         &mut self,
         tool_call_id: &str,
@@ -1519,20 +1548,21 @@ impl ChatSessionState {
         else {
             return;
         };
-        if let ChatEntryKind::ToolResult {
-            ref mut content,
-            ref mut is_alert,
-            ..
-        } = self.core.history[history_index].kind
-        {
-            content.push_str(output);
-            if kind == crate::feat::tools_actor::protocol::event::ToolOutputKind::Alert {
-                *is_alert = true;
-            }
-            // Streaming output IS history activity — bump the watchdog
-            // baseline so a long human-solve wait is not misread as a stall.
-            self.core.last_history_activity_at = jiff::Timestamp::now();
-        }
+        self.core.last_history_activity_at = jiff::Timestamp::now();
+        self.edit_history()
+            .with_entry_at_mut(history_index, |entry| {
+                if let ChatEntryKind::ToolResult {
+                    ref mut content,
+                    ref mut is_alert,
+                    ..
+                } = entry.kind
+                {
+                    content.push_str(output);
+                    if kind == crate::feat::tools_actor::protocol::event::ToolOutputKind::Alert {
+                        *is_alert = true;
+                    }
+                }
+            });
     }
 
     /// Finalize a pending ToolResult entry with the final content and status.
@@ -1544,13 +1574,69 @@ impl ChatSessionState {
     /// Accepts optional truncation metadata and full content from the tool
     /// execution result. When truncation is present, stores both the truncated
     /// content and the original untruncated output.
+    /// Finalizes an existing pending ToolResult entry (streaming index first,
+    /// then a history scan), returning whether one was found.
+    ///
+    /// In-place finalization: never reorders entries or splits a tool loop.
+    fn finalize_existing_tool_result(
+        &mut self,
+        tool_call_id: &str,
+        content: &str,
+        status: crate::feat::session::tool_result_status::ToolResultStatus,
+        full_content: Option<String>,
+        truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+        pin_position: Option<PinPosition>,
+    ) -> bool {
+        let streaming_index = self
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_result_indices_mut()
+            .and_then(|map| map.remove(tool_call_id));
+
+        let apply = |entry: &mut ChatEntry| {
+            if let ChatEntryKind::ToolResult {
+                content: entry_content,
+                status: entry_status,
+                full_content: entry_full_content,
+                truncation: entry_truncation,
+                pin_position: entry_kind_pin,
+                is_alert,
+                ..
+            } = &mut entry.kind
+            {
+                content.clone_into(entry_content);
+                *entry_status = status;
+                *entry_full_content = full_content;
+                *entry_truncation = truncation;
+                *entry_kind_pin = pin_position;
+                // The alert styling is pending-state only — a finished result
+                // renders with its normal success/failure look.
+                *is_alert = false;
+                // Entry-level pin mirrors the kind-level pin so assembly,
+                // compaction, and UI consumers read a single field.
+                entry.pin_position = pin_position;
+                entry.timing.finish();
+            }
+        };
+
+        match streaming_index {
+            Some(index) => self.edit_history().with_entry_at_mut(index, apply).is_some(),
+            None => self
+                .edit_history()
+                .with_last_matching_mut(
+                    |entry| {
+                        matches!(&entry.kind, ChatEntryKind::ToolResult { id, .. } if id == tool_call_id)
+                    },
+                    apply,
+                )
+                .is_some(),
+        }
+    }
+
     #[expect(
         clippy::too_many_arguments,
-        reason = "mirrors begin_tool_result + new pin_position; refactor would require struct-builder pattern"
-    )]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from begin_tool_result which always returns a valid index"
+        reason = "mirrors begin_tool_result + pin_position; struct-builder would ripple to all tool actors"
     )]
     pub fn finalize_tool_result(
         &mut self,
@@ -1558,8 +1644,8 @@ impl ChatSessionState {
         name: &str,
         content: &str,
         success: bool,
-        mut full_content: Option<String>,
-        mut truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+        full_content: Option<String>,
+        truncation: Option<jinn_provider::tool_types::TruncationMeta>,
         pin_position: Option<PinPosition>,
     ) {
         let status = if success {
@@ -1567,102 +1653,60 @@ impl ChatSessionState {
         } else {
             crate::feat::session::tool_result_status::ToolResultStatus::Failure
         };
+        let pin_position_result = pin_position;
 
-        if let Some(history_index) = self
-            .core
-            .ephemeral
-            .machine
-            .streaming_tool_result_indices_mut()
-            .and_then(|map| map.remove(tool_call_id))
-        {
-            // Finalize existing pending entry.
-            let entry = &mut self.core.history[history_index];
-            match &mut entry.kind {
-                ChatEntryKind::ToolResult {
-                    content: entry_content,
-                    status: entry_status,
-                    full_content: entry_full_content,
-                    truncation: entry_truncation,
-                    pin_position: entry_kind_pin,
-                    is_alert,
-                    ..
-                } => {
-                    content.clone_into(entry_content);
-                    *entry_status = status;
-                    *entry_full_content = full_content;
-                    *entry_truncation = truncation;
-                    *entry_kind_pin = pin_position;
-                    // The alert styling is pending-state only — a finished
-                    // result renders with its normal success/failure look.
-                    *is_alert = false;
-                    // Entry-level pin mirrors the kind-level pin so assembly,
-                    // compaction, and UI consumers read a single field.
-                    entry.pin_position = pin_position;
-                    entry.timing.finish();
-                }
+        let finalized = self.finalize_existing_tool_result(
+            tool_call_id,
+            content,
+            status,
+            full_content.clone(),
+            truncation.clone(),
+            pin_position,
+        );
 
-                _ => {}
+        if !finalized {
+            // No existing entry found - push a new one.
+            let mut entry = if let Some(meta) = truncation {
+                let full = full_content.unwrap_or_default();
+                ChatEntry::tool_result_truncated(
+                    tool_call_id,
+                    name,
+                    content.to_owned(),
+                    full,
+                    status,
+                    meta,
+                )
+            } else {
+                ChatEntry::tool_result(tool_call_id, name, content, status)
+            };
+            // Propagate tool-requested pin onto both the kind variant and
+            // the entry-level field so assembly/compaction read a single source.
+            if let ChatEntryKind::ToolResult {
+                pin_position: ref mut kp,
+                ..
+            } = entry.kind
+            {
+                *kp = pin_position;
             }
-        } else {
-            // Streaming index not available. Search history for an existing
-            // ToolResult with matching kind.id (e.g., a pending entry created
-            // by begin_tool_result before the streaming phase was dropped).
-            let mut existing_found = false;
-            for entry in self.core.history.iter_mut().rev() {
-                match &mut entry.kind {
-                    ChatEntryKind::ToolResult {
-                        id: entry_id,
-                        content: entry_content,
-                        status: entry_status,
-                        full_content: entry_full_content,
-                        truncation: entry_truncation,
-                        pin_position: entry_kind_pin,
-                        is_alert,
-                        ..
-                    } if entry_id == tool_call_id => {
-                        content.clone_into(entry_content);
-                        *entry_status = status;
-                        *entry_full_content = full_content.take();
-                        *entry_truncation = truncation.take();
-                        *entry_kind_pin = pin_position;
-                        // The alert styling is pending-state only.
-                        *is_alert = false;
-                        entry.pin_position = pin_position;
-                        entry.timing.finish();
-                        existing_found = true;
-                        break;
-                    }
+            entry.pin_position = pin_position;
+            self.push_entry(entry);
+        }
 
-                    _ => {}
-                }
-            }
-
-            if !existing_found {
-                // No existing entry found - push a new one.
-                let mut entry = if let Some(meta) = truncation {
-                    let full = full_content.unwrap_or_default();
-                    ChatEntry::tool_result_truncated(
-                        tool_call_id,
-                        name,
-                        content.to_owned(),
-                        full,
-                        status,
-                        meta,
-                    )
-                } else {
-                    ChatEntry::tool_result(tool_call_id, name, content, status)
-                };
-                // Propagate tool-requested pin onto both the kind variant and
-                // the entry-level field so assembly/compaction read a single source.
-                if let ChatEntryKind::ToolResult {
-                    pin_position: ref mut kp,
-                    ..
-                } = entry.kind
-                {
-                    *kp = pin_position;
-                }
-                entry.pin_position = pin_position;
-                self.push_entry(entry);
+        // A tool-requested pin (skill/save_plan bodies) expands to the whole
+        // tool loop via the editor, so the pinned result can never be
+        // separated from its call by pruning or compaction.
+        if let Some(position) = pin_position_result {
+            let result_id = self
+                .core
+                .history
+                .iter()
+                .rev()
+                .find(|entry| {
+                    matches!(&entry.kind, ChatEntryKind::ToolResult { id, .. } if id == tool_call_id)
+                })
+                .map(|entry| entry.id.clone());
+            if let Some(id) = result_id {
+                self.edit_history().pin(&id, position);
             }
         }
     }
@@ -2311,20 +2355,30 @@ impl ChatSessionState {
     /// This propagates `shown_ignored_blocks` to any new forward sub-block
     /// created by the split, keeping all entries visible.
     pub fn pin_entry(&mut self, id: &ChatEntryId, position: PinPosition) {
-        let Some(entry) = self.core.history.iter_mut().find(|e| e.id == *id) else {
+        let Some(entry) = self.core.history.iter().find(|e| e.id == *id) else {
             return;
         };
-        let is_ignored = !entry.is_in_context();
-        entry.pin_position = Some(position);
+        // Captured before pinning: a pin makes the entry in-context, but the
+        // propagation below only applies when the entry was ignored.
+        let was_ignored = !entry.is_in_context();
+        let index = self
+            .core
+            .history
+            .iter()
+            .position(|e| e.id == *id)
+            .unwrap_or_default();
+        // Chunk semantics: pinning a member pins the whole tool loop.
+        self.edit_history().pin(id, position);
+        self.propagate_shown_after_pin(index, was_ignored);
+    }
 
-        // Propagation: only for non-context entries inside shown blocks.
-        if !is_ignored {
+    /// Propagate `shown_ignored_blocks` when pinning an ignored entry inside a
+    /// shown (expanded) block split it.
+    fn propagate_shown_after_pin(&mut self, idx: usize, was_ignored: bool) {
+        // Propagation: only for entries that were ignored before the pin.
+        if !was_ignored {
             return;
         }
-
-        let Some(idx) = self.core.history.iter().position(|e| e.id == *id) else {
-            return;
-        };
 
         // Scan backward to find the containing block's start.
         // Same boundary rules as `build_visual_items` and `toggle_ignored_block_visibility`.
@@ -2373,11 +2427,10 @@ impl ChatSessionState {
 
     /// Unpin an entry by ID, clearing its pin position.
     ///
+    /// Chunk semantics: unpinning a member unpins the whole tool loop.
     /// If no entry with the given ID exists, this is a no-op.
     pub fn unpin_entry(&mut self, id: &ChatEntryId) {
-        if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == *id) {
-            entry.pin_position = None;
-        }
+        self.edit_history().unpin(id);
     }
 
     /// Returns all pinned entries in history order.
@@ -3079,53 +3132,7 @@ impl ChatSessionState {
     /// Uses `ContextOverride::ForcedExclude` rather than removing entries,
     /// preserving them for display in the UI.
     pub fn force_exclude_dangling_tool_calls(&mut self) -> Vec<ChatEntryId> {
-        // Collect tool_call_ids that have matching ToolResult entries.
-        let result_ids: Vec<String> = self
-            .core
-            .history
-            .iter()
-            .filter_map(|entry| match &entry.kind {
-                ChatEntryKind::ToolResult { id, .. } => Some(id.clone()),
-                _ => None,
-            })
-            .collect();
-
-        // Find indices of dangling ToolCalls and their empty parent Assistants.
-        let mut indices_to_exclude: Vec<usize> = Vec::new();
-        for (i, entry) in self.core.history.iter().enumerate() {
-            if let ChatEntryKind::ToolCall { id, .. } = &entry.kind
-                && !result_ids.iter().any(|rid| rid == id)
-            {
-                indices_to_exclude.push(i);
-                // Check if preceding entry is an empty Assistant.
-                if i > 0
-                    && let Some(prev) = self.core.history.get(i - 1)
-                    && let ChatEntryKind::Assistant(text) = &prev.kind
-                    && text.is_empty()
-                {
-                    indices_to_exclude.push(i - 1);
-                }
-            }
-        }
-
-        // Mark entries as ForcedExclude and collect the ids of those that actually changed.
-        let mut changed = Vec::new();
-        for idx in indices_to_exclude {
-            let Some(entry) = self.core.history.get_mut(idx) else {
-                continue;
-            };
-            let prev = entry.context_override();
-            if prev != ContextOverride::ForcedExclude {
-                entry.apply_context_override(
-                    ContextOverride::ForcedExclude,
-                    ChangeSource::Internal {
-                        label: "dangling_tool_call_sweep".into(),
-                    },
-                );
-                changed.push(entry.id.clone());
-            }
-        }
-        changed
+        self.edit_history().exclude_incomplete_trailing_loops()
     }
 
     /// Disable the tool loop for this session's current turn.
@@ -3184,58 +3191,7 @@ impl ChatSessionState {
         &mut self,
         batch: Vec<crate::feat::session::history_mutation::HistoryMutation>,
     ) -> Vec<ChatEntryId> {
-        use crate::feat::session::history_mutation::HistoryMutation;
-        let mut changed = Vec::new();
-
-        for mutation in batch {
-            match mutation {
-                HistoryMutation::SetContextOverride {
-                    entry_id,
-                    value,
-                    source,
-                } => {
-                    if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == entry_id) {
-                        if entry.context_override() == ContextOverride::ForcedInclude
-                            && value == ContextOverride::ForcedExclude
-                        {
-                            continue;
-                        }
-                        // Don't allow workers to re-include entries the user
-                        // explicitly excluded.
-                        if value == ContextOverride::ForcedInclude
-                            && matches!(source, ChangeSource::Worker { .. })
-                            && entry.is_user_force_excluded()
-                        {
-                            continue;
-                        }
-                        let was_changed = entry.apply_context_override(value, source);
-                        if was_changed {
-                            changed.push(entry_id);
-                        }
-                    }
-                }
-                HistoryMutation::InsertEntry {
-                    after_entry_id,
-                    entry,
-                } => {
-                    let insert_at = match after_entry_id {
-                        Some(id) => match self.find_entry_index_by_id(&id) {
-                            Some(idx) => idx + 1,
-                            None => continue,
-                        },
-                        None => 0,
-                    };
-                    self.insert_entry_at(insert_at, entry);
-                }
-                HistoryMutation::PinEntry { entry_id, position } => {
-                    self.pin_entry(&entry_id, position);
-                }
-                HistoryMutation::UnpinEntry { entry_id } => {
-                    self.unpin_entry(&entry_id);
-                }
-            }
-        }
-        changed
+        self.edit_history().apply(batch)
     }
 
     /// Drain all pending mutation batches and apply them.

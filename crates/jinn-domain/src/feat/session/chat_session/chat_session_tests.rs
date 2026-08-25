@@ -3511,7 +3511,7 @@ fn force_exclude_preserves_complete_tool_loop() {
 }
 
 #[test]
-fn force_exclude_preserves_non_empty_assistant() {
+fn force_exclude_excludes_non_empty_assistant_with_its_dangling_call() {
     // Given a history with a non-empty Assistant and a dangling ToolCall.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("run it"));
@@ -3521,10 +3521,15 @@ fn force_exclude_preserves_non_empty_assistant() {
     // When force-excluding dangling tool calls.
     session.force_exclude_dangling_tool_calls();
 
-    // Then the ToolCall is ForcedExclude but the non-empty Assistant is not.
+    // Then the whole loop chunk is excluded; the user entry is not.
+    // The assistant text is excluded with its call: half-chunk exclusion is
+    // the bug class the history editor exists to prevent.
     let history = session.history();
     assert_eq!(history[0].context_override(), ContextOverride::Default);
-    assert_eq!(history[1].context_override(), ContextOverride::Default);
+    assert_eq!(
+        history[1].context_override(),
+        ContextOverride::ForcedExclude
+    );
     assert_eq!(
         history[2].context_override(),
         ContextOverride::ForcedExclude

@@ -31,7 +31,7 @@ Entries are added or amended **only with human approval**.
 
 ---
 
-- (context) Outgoing LLM context assembly preserves tool-call/result groups atomically and drops malformed tool-message fragments with a tracing warning instead of sending invalid sequencing or synthesizing missing messages.
+- (context) Outgoing context assembly converts history entries to messages directly; a final tripwire validator drops any invalid tool loop with a tracing warning instead of sending invalid sequencing.
 
 - (arch) A component/actor system built on `kameo` runs domain logic asynchronously, communicating via command routing and event broadcast.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
@@ -63,6 +63,8 @@ Entries are added or amended **only with human approval**.
 - (history) Auto-steer is keyed per-session, so a pending steer in one session does not suppress another session, and it clears once the pending id appears in history.
 - (history) History workers implement a `HistoryWorker` trait and are spawned via `actor_wiring.rs`; adding a new strategy means adding a worker file and wiring it.
 - (history) There is a per-session steering buffer for mid-turn message injection; drained steering entries become normal User entries with the default context override and are never pinned.
+- (history) Chat history is written only through the history editor API, which treats assistant tool-call/result loops as atomic chunks; entry-keyed operations expand to whole chunks with pin > user > worker precedence.
+- (history) The `x` context toggle and pinning apply to a tool loop as a unit — a pinned or toggled member carries its whole loop.
 - (identity) **This repository** uses Fossil for version control (the app supports git/hg/jj/fossil via marker detection).
 - (identity) **jinn** is a terminal-based agent harness written in Rust (edition 2024).
 - (identity) Jinn's multimodal scope is bounded to image input (vision) and text output; it has no image-generation pipeline and no art/editing tooling.
