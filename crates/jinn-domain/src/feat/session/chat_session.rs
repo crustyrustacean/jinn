@@ -587,7 +587,11 @@ impl ChatSessionState {
     pub(in crate::feat::session) fn push_entry_raw(&mut self, entry: &mut ChatEntry) -> usize {
         self.core.last_history_activity_at = Timestamp::now();
         let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
-        expand_user_entry(entry, &self.core.ephemeral.discovered_prompt_templates, &ctx);
+        expand_user_entry(
+            entry,
+            &self.core.ephemeral.discovered_prompt_templates,
+            &ctx,
+        );
         let was_at_last = self
             .ui
             .selected_cursor_id
@@ -778,9 +782,7 @@ impl ChatSessionState {
     /// (entry was already in the toggled state) or no entry is selected.
     pub fn toggle_entry_ignored(&mut self) -> Option<crate::protocol::ChatEntryId> {
         let hist_idx = self.selected_history_index()?;
-        let Some(entry) = self.core.history.get(hist_idx) else {
-            return None;
-        };
+        let entry = self.core.history.get(hist_idx)?;
         let pressed_id = entry.id.clone();
         let new_value = match entry.context_override() {
             ContextOverride::ForcedInclude => ContextOverride::ForcedExclude,
@@ -796,7 +798,7 @@ impl ChatSessionState {
         // Chunk semantics: the toggle applies to the whole tool loop.
         let changed = self
             .edit_history()
-            .set_context(&pressed_id, new_value, ChangeSource::User);
+            .set_context(&pressed_id, new_value, &ChangeSource::User);
         (!changed.is_empty()).then_some(pressed_id)
     }
 
@@ -811,14 +813,12 @@ impl ChatSessionState {
         override_state: ContextOverride,
     ) -> Option<crate::protocol::ChatEntryId> {
         let hist_idx = self.selected_history_index()?;
-        let Some(entry) = self.core.history.get(hist_idx) else {
-            return None;
-        };
+        let entry = self.core.history.get(hist_idx)?;
         let pressed_id = entry.id.clone();
         // Chunk semantics: the sweep applies to the whole tool loop.
-        let changed = self
-            .edit_history()
-            .set_context(&pressed_id, override_state, ChangeSource::User);
+        let changed =
+            self.edit_history()
+                .set_context(&pressed_id, override_state, &ChangeSource::User);
         (!changed.is_empty()).then_some(pressed_id)
     }
 
@@ -1109,10 +1109,6 @@ impl ChatSessionState {
     /// # Errors
     ///
     /// Returns `Err(StreamingError::NoStreamingEntry)` if the session is not in Streaming phase.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from push_entry which always returns a valid index"
-    )]
     pub fn append_stream_token<S>(
         &mut self,
         token: S,
@@ -1206,7 +1202,6 @@ impl ChatSessionState {
     /// # Errors
     ///
     /// Returns a [`StreamingError`] if the session is not in a valid streaming state.
-    #[expect(clippy::indexing_slicing, reason = "index set by begin_thinking")]
     pub fn append_thinking_token<S>(&mut self, token: S) -> Result<(), StreamingError>
     where
         S: AsRef<str>,
@@ -1430,10 +1425,6 @@ impl ChatSessionState {
     /// # Errors
     ///
     /// Returns a [`StreamingError`] if the streaming state is invalid or the index is out of bounds.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from push_entry which always returns a valid index"
-    )]
     pub fn append_tool_call_delta(
         &mut self,
         index: usize,
@@ -1542,10 +1533,6 @@ impl ChatSessionState {
     /// # Panics
     ///
     /// Panics if no pending entry exists for the given `tool_call_id`.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from begin_tool_result which always returns a valid index"
-    )]
     pub fn append_tool_result_output(&mut self, tool_call_id: &str, output: &str) {
         let Some(&history_index) = self
             .core
@@ -1580,10 +1567,6 @@ impl ChatSessionState {
         clippy::too_many_arguments,
         reason = "mirrors begin_tool_result + new pin_position; refactor would require struct-builder pattern"
     )]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from begin_tool_result which always returns a valid index"
-    )]
     pub fn finalize_tool_result(
         &mut self,
         tool_call_id: &str,
@@ -1599,6 +1582,7 @@ impl ChatSessionState {
         } else {
             crate::feat::session::tool_result_status::ToolResultStatus::Failure
         };
+        let pin_position_result = pin_position;
 
         if let Some(history_index) = self
             .core
@@ -1688,6 +1672,24 @@ impl ChatSessionState {
                 }
                 entry.pin_position = pin_position;
                 self.push_entry(entry);
+            }
+        }
+
+        // A tool-requested pin (skill/save_plan bodies) expands to the whole
+        // tool loop via the editor, so the pinned result can never be
+        // separated from its call by pruning or compaction.
+        if let Some(position) = pin_position_result {
+            let result_id = self
+                .core
+                .history
+                .iter()
+                .rev()
+                .find(|entry| {
+                    matches!(&entry.kind, ChatEntryKind::ToolResult { id, .. } if id == tool_call_id)
+                })
+                .map(|entry| entry.id.clone());
+            if let Some(id) = result_id {
+                self.edit_history().pin(&id, position);
             }
         }
     }
@@ -2336,12 +2338,18 @@ impl ChatSessionState {
     /// This propagates `shown_ignored_blocks` to any new forward sub-block
     /// created by the split, keeping all entries visible.
     pub fn pin_entry(&mut self, id: &ChatEntryId, position: PinPosition) {
-        let Some(index) = self.core.history.iter().position(|e| e.id == *id) else {
+        let Some(entry) = self.core.history.iter().find(|e| e.id == *id) else {
             return;
         };
         // Captured before pinning: a pin makes the entry in-context, but the
         // propagation below only applies when the entry was ignored.
-        let was_ignored = !self.core.history[index].is_in_context();
+        let was_ignored = !entry.is_in_context();
+        let index = self
+            .core
+            .history
+            .iter()
+            .position(|e| e.id == *id)
+            .unwrap_or_default();
         // Chunk semantics: pinning a member pins the whole tool loop.
         self.edit_history().pin(id, position);
         self.propagate_shown_after_pin(index, was_ignored);

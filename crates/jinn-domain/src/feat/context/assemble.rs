@@ -285,6 +285,10 @@ fn split_history(history: &[ChatEntry]) -> (Vec<ChatEntry>, Vec<ChatEntry>, Vec<
 /// back over a trailing tool run (the results of one assistant batch) so the
 /// pins land before the loop's declaring assistant, never between it and its
 /// results.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "index is bounded by the non-empty check above"
+)]
 fn insert_bottom_pins(final_messages: &mut Vec<LlmMessage>, bottom_messages: Vec<LlmMessage>) {
     if bottom_messages.is_empty() || final_messages.is_empty() {
         final_messages.extend(bottom_messages);
@@ -394,9 +398,7 @@ mod tests {
                     session.push_entry(entry);
                 }
                 let result_id = session.history()[3].id.clone();
-                session
-                    .edit_history()
-                    .pin(&result_id, PinPosition::Bottom);
+                session.edit_history().pin(&result_id, PinPosition::Bottom);
                 guard.session.active_session_id().clone()
             };
             (state, session_id)
@@ -594,12 +596,9 @@ mod tests {
             })
             .collect();
         assert_eq!(contents, vec!["before", "after"]);
-        assert!(
-            !result
-                .messages
-                .iter()
-                .any(|m| matches!(m, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "orphan"))
-        );
+        assert!(!result.messages.iter().any(
+            |m| matches!(m, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "orphan")
+        ));
     }
 
     #[test]
