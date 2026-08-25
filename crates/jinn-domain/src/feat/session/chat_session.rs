@@ -28,6 +28,7 @@ use serde_json::Value as JsonValue;
 use crate::feat::chat_input::ChatInputBoxState;
 
 use crate::feat::session::chat_history::ChatHistory;
+use crate::feat::session::history_editor::HistoryEditor;
 use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
@@ -567,6 +568,63 @@ impl ChatSessionState {
             core: SessionCore::default(),
             ui: SessionUi::default(),
         }
+    }
+
+    /// Opens the sole write path to this session's history.
+    ///
+    /// All history mutations go through the returned [`HistoryEditor`]; reads
+    /// stay on the session itself.
+    pub fn edit_history(&mut self) -> HistoryEditor<'_> {
+        HistoryEditor::new(self)
+    }
+
+    /// Raw tail push used by the history editor. Applies user-entry token
+    /// expansion and cursor/scroll bookkeeping. Do not call directly.
+    pub(in crate::feat::session) fn push_entry_raw(&mut self, entry: &mut ChatEntry) -> usize {
+        self.core.last_history_activity_at = Timestamp::now();
+        let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
+        expand_user_entry(entry, &self.core.ephemeral.discovered_prompt_templates, &ctx);
+        let was_at_last = self
+            .ui
+            .selected_cursor_id
+            .as_ref()
+            .is_none_or(|id| self.core.history.last().is_some_and(|e| &e.id == id));
+        let index = self.core.history.len();
+        self.core.history.push(entry.clone());
+        if was_at_last {
+            self.reset_scroll();
+            if let Some(entry) = self.core.history.last() {
+                self.ui.selected_cursor_id = Some(entry.id.clone());
+            }
+        }
+        index
+    }
+
+    /// Removes the history entry at `index`. Returns whether it existed.
+    ///
+    /// Editor-only. Callers must remove in descending index order.
+    pub(in crate::feat::session) fn remove_history_entry_at(&mut self, index: usize) -> bool {
+        if index < self.core.history.len() {
+            self.core.history.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Runs `f` on the entry with `id`, if it exists. Returns `f`'s output.
+    ///
+    /// Editor-only in-primitive for id-keyed in-place mutation.
+    pub(in crate::feat::session) fn with_history_entry_mut<R>(
+        &mut self,
+        id: &ChatEntryId,
+        f: impl FnOnce(&mut ChatEntry) -> R,
+    ) -> Option<R> {
+        self.core
+            .history
+            .iter_mut()
+            .find(|entry| &entry.id == id)
+            .map(f)
     }
 
     /// Create a new session with a specific profile (model + strategy).
