@@ -73,11 +73,10 @@ impl<'a> HistoryEditor<'a> {
     /// For streaming lifecycle writes (token appends, timing finalizers,
     /// result finalization) that mutate entries in place. In-place writes can
     /// never reorder entries or split a tool loop, so no chunk logic applies.
-    pub fn with_entry_at_mut<R>(
-        &mut self,
-        index: usize,
-        f: impl FnOnce(&mut ChatEntry) -> R,
-    ) -> Option<R> {
+    pub fn with_entry_at_mut<R, F>(&mut self, index: usize, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ChatEntry) -> R,
+    {
         self.session.history_get_mut(index).map(f)
     }
 
@@ -86,13 +85,10 @@ impl<'a> HistoryEditor<'a> {
     ///
     /// For streaming-lifecycle finalizers that resolve an entry by scanning
     /// recent history (e.g. finalize a tool call by id).
-    pub fn with_last_matching_mut<P, R>(
-        &mut self,
-        predicate: P,
-        f: impl FnOnce(&mut ChatEntry) -> R,
-    ) -> Option<R>
+    pub fn with_last_matching_mut<P, R, F>(&mut self, predicate: P, f: F) -> Option<R>
     where
         P: Fn(&ChatEntry) -> bool,
+        F: FnOnce(&mut ChatEntry) -> R,
     {
         let history = self.session.history();
         let index = history.iter().rposition(predicate)?;
@@ -123,7 +119,7 @@ impl<'a> HistoryEditor<'a> {
         &mut self,
         id: &ChatEntryId,
         value: ContextOverride,
-        source: ChangeSource,
+        source: &ChangeSource,
     ) -> Vec<ChatEntryId> {
         match self.mutate_chunk(id, value, source) {
             MutationOutcome::Changed(ids) => ids,
@@ -165,17 +161,16 @@ impl<'a> HistoryEditor<'a> {
                     entry_id,
                     value,
                     source,
-                } => changed.extend(self.set_context(&entry_id, value, source)),
+                } => changed.extend(self.set_context(&entry_id, value, &source)),
                 HistoryMutation::InsertEntry {
                     after_entry_id,
                     entry,
                 } => {
                     self.insert_standalone_after(after_entry_id.as_ref(), entry);
                 }
-                HistoryMutation::PinEntry {
-                    entry_id,
-                    position,
-                } => changed.extend(self.pin(&entry_id, position)),
+                HistoryMutation::PinEntry { entry_id, position } => {
+                    changed.extend(self.pin(&entry_id, position));
+                }
                 HistoryMutation::UnpinEntry { entry_id } => {
                     changed.extend(self.unpin(&entry_id));
                 }
@@ -227,9 +222,14 @@ impl<'a> HistoryEditor<'a> {
         }
         // Collect in ascending source order so re-insertion preserves
         // relative order; removal runs descending so indices stay valid.
+        // Indices are valid by construction (same history as the scan).
         let moved: Vec<ChatEntry> = {
             let history = self.session.history();
-            interstitials.iter().rev().map(|&i| history[i].clone()).collect()
+            interstitials
+                .iter()
+                .rev()
+                .filter_map(|&i| history.get(i).cloned())
+                .collect()
         };
         self.remove_entries_at(&interstitials);
         // Removing `count` interior entries pulls the loop's end down to
@@ -245,6 +245,10 @@ impl<'a> HistoryEditor<'a> {
     ///
     /// `None` when the entry at `index` does not open a loop. Interior means
     /// strictly between the loop's last tool call and the loop end.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "group bounds come from tool_group_end over the same history"
+    )]
     fn interior_interstitials(&self, index: usize) -> Option<(usize, Vec<usize>)> {
         let history = self.session.history();
         let group_end = tool_group_end(history, index)?;
@@ -291,12 +295,12 @@ impl<'a> HistoryEditor<'a> {
             while index < history.len() {
                 match tool_group_end(history, index) {
                     Some(end) => {
-                        if !loop_is_complete(&history[index..end]) {
-                            ids.extend(
-                                history[index..end]
-                                    .iter()
-                                    .map(|entry| entry.id.clone()),
-                            );
+                        // Loop bounds come from tool_group_end over this same
+                        // history, so the slice is in-bounds by construction.
+                        if let Some(group) = history.get(index..end)
+                            && !loop_is_complete(group)
+                        {
+                            ids.extend(group.iter().map(|entry| entry.id.clone()));
                         }
                         index = end;
                     }
@@ -337,17 +341,23 @@ impl<'a> HistoryEditor<'a> {
         &mut self,
         id: &ChatEntryId,
         value: ContextOverride,
-        source: ChangeSource,
+        source: &ChangeSource,
     ) -> MutationOutcome {
         let chunk = self.chunk_for(id);
-        let guard = evaluate_exclusion_guard(self.session.history(), &chunk, &value, &source);
+        let guard = evaluate_exclusion_guard(self.session.history(), &chunk, value, source);
         if let Err(reason) = guard {
             return MutationOutcome::Refused(reason);
         }
-        let members: Vec<ChatEntryId> = self.session.history()[chunk.range.clone()]
-            .iter()
-            .map(|entry| entry.id.clone())
-            .collect();
+        let members: Vec<ChatEntryId> = {
+            // The chunk range comes from chunking this same history.
+            self.session
+                .history()
+                .get(chunk.range.clone())
+                .into_iter()
+                .flatten()
+                .map(|entry| entry.id.clone())
+                .collect()
+        };
         self.apply_override_members(&members, value, source)
     }
 
@@ -359,7 +369,7 @@ impl<'a> HistoryEditor<'a> {
         &mut self,
         members: &[ChatEntryId],
         value: ContextOverride,
-        source: ChangeSource,
+        source: &ChangeSource,
     ) -> MutationOutcome {
         let mut changed = Vec::new();
         for member in members {
@@ -400,8 +410,13 @@ impl<'a> HistoryEditor<'a> {
         position: Option<PinPosition>,
     ) -> Vec<ChatEntryId> {
         let chunk = self.chunk_for(id);
-        let members: Vec<ChatEntryId> = self.session.history()[chunk.range.clone()]
-            .iter()
+        // The chunk range comes from chunking this same history.
+        let members: Vec<ChatEntryId> = self
+            .session
+            .history()
+            .get(chunk.range.clone())
+            .into_iter()
+            .flatten()
             .map(|entry| entry.id.clone())
             .collect();
         let mut changed = Vec::new();
@@ -474,23 +489,25 @@ type ExclusionGuard = Result<(), &'static str>;
 fn evaluate_exclusion_guard(
     history: &[ChatEntry],
     chunk: &Chunk,
-    value: &ContextOverride,
+    value: ContextOverride,
     source: &ChangeSource,
 ) -> ExclusionGuard {
-    let members = &history[chunk.range.clone()];
+    let Some(members) = history.get(chunk.range.clone()) else {
+        return Ok(());
+    };
     let pinned = members.iter().any(ChatEntry::is_pinned);
     let user_included = members.iter().any(is_user_forced_include);
-    match (value, source) {
+    match (&value, source) {
         // Worker exclusion cannot remove a pinned or user-included chunk.
-        (
-            ContextOverride::ForcedExclude,
-            ChangeSource::Worker { .. },
-        ) if pinned || user_included => Err("worker exclude refused: pin or user include wins"),
+        (ContextOverride::ForcedExclude, ChangeSource::Worker { .. })
+            if pinned || user_included =>
+        {
+            Err("worker exclude refused: pin or user include wins")
+        }
         // Worker inclusion cannot re-include a user-excluded chunk.
-        (
-            ContextOverride::ForcedInclude,
-            ChangeSource::Worker { .. },
-        ) if members.iter().any(ChatEntry::is_user_force_excluded) => {
+        (ContextOverride::ForcedInclude, ChangeSource::Worker { .. })
+            if members.iter().any(ChatEntry::is_user_force_excluded) =>
+        {
             Err("worker include refused: user exclude wins")
         }
         // User exclusion cannot remove a pinned chunk.
@@ -499,8 +516,8 @@ fn evaluate_exclusion_guard(
         {
             Err("user exclude refused: pin wins")
         }
-        // Internal sweeps bypass guards (last resort before the tripwire).
-        (ContextOverride::ForcedExclude, ChangeSource::Internal { .. }) => Ok(()),
+        // Everything else — including internal sweeps, which bypass guards
+        // as the last resort before the tripwire.
         _ => Ok(()),
     }
 }
@@ -585,9 +602,7 @@ pub(crate) fn chunking(history: &[ChatEntry]) -> Vec<Chunk> {
     let mut index = 0;
     while index < history.len() {
         let end = tool_group_end(history, index).unwrap_or(index + 1);
-        chunks.push(Chunk {
-            range: index..end,
-        });
+        chunks.push(Chunk { range: index..end });
         index = end;
     }
     chunks
@@ -611,6 +626,8 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use crate::feat::provider::llm_message::LlmMessage;
+    use crate::feat::session::chat_entry::PinPosition;
     use crate::feat::session::tool_result_status::ToolResultStatus;
 
     /// A complete loop: empty assistant, one call, one result.
@@ -621,6 +638,12 @@ mod tests {
             ChatEntry::tool_call("call-1", "bash", "{}"),
             ChatEntry::tool_result("call-1", "bash", "ok", ToolResultStatus::Success),
         ]
+    }
+
+    fn worker_source() -> ChangeSource {
+        ChangeSource::Worker {
+            name: "test-worker".to_owned(),
+        }
     }
 
     fn session_with(entries: Vec<ChatEntry>) -> ChatSessionState {
@@ -646,12 +669,18 @@ mod tests {
         let changed = session.edit_history().set_context(
             &call_id,
             ContextOverride::ForcedExclude,
-            ChangeSource::Worker { name: "test".into() },
+            &ChangeSource::Worker {
+                name: "test".into(),
+            },
         );
 
         // Then every loop member (assistant, call, result) changed; the user
         // entry did not.
-        assert_eq!(changed.len(), 3, "assistant+call+result excluded: {changed:?}");
+        assert_eq!(
+            changed.len(),
+            3,
+            "assistant+call+result excluded: {changed:?}"
+        );
         assert!(!changed.contains(&ids[0]));
         assert!(
             session.history()[1..4]
@@ -671,7 +700,9 @@ mod tests {
         let changed = session.edit_history().set_context(
             &ids[2],
             ContextOverride::ForcedExclude,
-            ChangeSource::Worker { name: "test".into() },
+            &ChangeSource::Worker {
+                name: "test".into(),
+            },
         );
 
         // Then nothing changed (pin wins).
@@ -691,22 +722,21 @@ mod tests {
         session.edit_history().set_context(
             &ids[2],
             ContextOverride::ForcedExclude,
-            ChangeSource::User,
+            &ChangeSource::User,
         );
 
         // When a worker tries to re-include it.
         let changed = session.edit_history().set_context(
             &ids[2],
             ContextOverride::ForcedInclude,
-            ChangeSource::Worker { name: "test".into() },
+            &ChangeSource::Worker {
+                name: "test".into(),
+            },
         );
 
         // Then nothing changed (user exclude wins).
         assert!(changed.is_empty());
-        assert!(
-            session.history()[1]
-                .context_override() == ContextOverride::ForcedExclude
-        );
+        assert!(session.history()[1].context_override() == ContextOverride::ForcedExclude);
     }
 
     #[test]
@@ -720,7 +750,7 @@ mod tests {
         let changed = session.edit_history().set_context(
             &ids[2],
             ContextOverride::ForcedExclude,
-            ChangeSource::User,
+            &ChangeSource::User,
         );
 
         // Then nothing changed (pin beats user exclude).
@@ -747,14 +777,8 @@ mod tests {
 
         // Then the incomplete loop is excluded despite the pin.
         assert_eq!(changed.len(), 2, "assistant+call excluded: {changed:?}");
-        assert!(
-            session.history()[1]
-                .context_override() == ContextOverride::ForcedExclude
-        );
-        assert!(
-            session.history()[2]
-                .context_override() == ContextOverride::ForcedExclude
-        );
+        assert!(session.history()[1].context_override() == ContextOverride::ForcedExclude);
+        assert!(session.history()[2].context_override() == ContextOverride::ForcedExclude);
     }
 
     #[test]
@@ -764,9 +788,7 @@ mod tests {
         let ids = entry_ids(&session);
 
         // When pinning the result.
-        let changed = session
-            .edit_history()
-            .pin(&ids[3], PinPosition::Relative);
+        let changed = session.edit_history().pin(&ids[3], PinPosition::Relative);
 
         // Then all three loop members are pinned.
         assert_eq!(changed.len(), 3);
@@ -788,7 +810,11 @@ mod tests {
         session.edit_history().unpin(&ids[3]);
 
         // Then both the entry-level and kind-level pins are cleared.
-        assert!(session.history()[1..4].iter().all(|e| e.pin_position.is_none()));
+        assert!(
+            session.history()[1..4]
+                .iter()
+                .all(|e| e.pin_position.is_none())
+        );
         assert!(matches!(
             &session.history()[3].kind,
             ChatEntryKind::ToolResult { pin_position, .. } if pin_position.is_none()
@@ -826,7 +852,10 @@ mod tests {
                 _ => "other",
             })
             .collect();
-        assert_eq!(kinds, vec!["user", "assistant", "call", "result", "user", "user"]);
+        assert_eq!(
+            kinds,
+            vec!["user", "assistant", "call", "result", "user", "user"]
+        );
     }
 
     #[test]
@@ -951,18 +980,9 @@ mod tests {
 
         // Then only the incomplete loop's members changed.
         assert_eq!(changed.len(), 2);
-        assert!(
-            session.history()[2]
-                .context_override() == ContextOverride::Default
-        );
-        assert!(
-            session.history()[4]
-                .context_override() == ContextOverride::ForcedExclude
-        );
-        assert!(
-            session.history()[5]
-                .context_override() == ContextOverride::ForcedExclude
-        );
+        assert!(session.history()[2].context_override() == ContextOverride::Default);
+        assert!(session.history()[4].context_override() == ContextOverride::ForcedExclude);
+        assert!(session.history()[5].context_override() == ContextOverride::ForcedExclude);
     }
 
     #[test]
@@ -972,11 +992,13 @@ mod tests {
         let ids = entry_ids(&session);
 
         // When applying a batch: worker exclude on the call.
-        let changed = session.edit_history().apply(vec![HistoryMutation::SetContextOverride {
-            entry_id: ids[2].clone(),
-            value: ContextOverride::ForcedExclude,
-            source: ChangeSource::Worker { name: "w".into() },
-        }]);
+        let changed = session
+            .edit_history()
+            .apply(vec![HistoryMutation::SetContextOverride {
+                entry_id: ids[2].clone(),
+                value: ContextOverride::ForcedExclude,
+                source: ChangeSource::Worker { name: "w".into() },
+            }]);
 
         // Then the whole loop changed.
         assert_eq!(changed.len(), 3);
@@ -1068,5 +1090,166 @@ mod tests {
             vec!["user", "assistant", "call", "result", "system"],
             "scan must not stop at the leading user entry"
         );
+    }
+
+    #[test]
+    fn pinned_skill_result_keeps_whole_loop_through_worker_exclude() {
+        // Given a complete loop whose result carries a tool-requested pin
+        // (the skill/save_plan shape, as finalize_tool_result now pins it).
+        let mut session = session_with(simple_loop());
+        let result_id = session.history()[3].id.clone();
+        session
+            .edit_history()
+            .pin(&result_id, PinPosition::Relative);
+
+        // When a prune worker tries to exclude the call half.
+        let call_id = session.history()[2].id.clone();
+        let changed = session.edit_history().set_context(
+            &call_id,
+            ContextOverride::ForcedExclude,
+            &worker_source(),
+        );
+
+        // Then the exclusion is refused and every loop member stays in context.
+        assert!(changed.is_empty(), "pin must win: {changed:?}");
+        assert!(
+            session.history()[1..=3]
+                .iter()
+                .all(ChatEntry::is_in_context),
+            "whole loop remains in context"
+        );
+    }
+
+    /// Whether a converted message list satisfies the provider-neutral tool
+    /// sequence contract (mirrors the tripwire's invariant).
+    fn sequence_is_valid(messages: &[LlmMessage]) -> bool {
+        use std::collections::HashSet;
+        let mut open: Option<HashSet<String>> = None;
+        for message in messages {
+            match message {
+                LlmMessage::Assistant {
+                    tool_calls: Some(calls),
+                    ..
+                } => {
+                    if open.is_some() {
+                        return false;
+                    }
+                    let ids: HashSet<String> = calls.iter().map(|c| c.id.clone()).collect();
+                    if ids.len() != calls.len() {
+                        return false;
+                    }
+                    open = Some(ids);
+                }
+                LlmMessage::Tool { tool_call_id, .. } => match open.as_mut() {
+                    Some(remaining) => {
+                        if !remaining.remove(tool_call_id) {
+                            return false;
+                        }
+                        if remaining.is_empty() {
+                            open = None;
+                        }
+                    }
+                    None => return false,
+                },
+                LlmMessage::Assistant {
+                    tool_calls: None, ..
+                }
+                | LlmMessage::System { .. }
+                | LlmMessage::User { .. } => {
+                    if open.is_some_and(|remaining| !remaining.is_empty()) {
+                        return false;
+                    }
+                    open = None;
+                }
+            }
+        }
+        open.is_none_or(|remaining| remaining.is_empty())
+    }
+
+    #[test]
+    fn randomized_editor_ops_always_assemble_valid_sequences() {
+        use rand::Rng;
+        use std::collections::HashSet;
+
+        // Given a seeded generator and a session built from editor ops only.
+        let mut rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(0x5EED);
+        let mut session = ChatSessionState::new();
+        let mut call_counter = 0usize;
+        let mut pinned: HashSet<ChatEntryId> = HashSet::new();
+
+        for step in 0..2000 {
+            let history_len = session.history().len();
+            if history_len == 0 {
+                session.edit_history().append(ChatEntry::user("start"));
+                continue;
+            }
+            let pick = rng.random_range(0..8);
+            let random_index = rng.random_range(0..history_len);
+            let id = session.history()[random_index].id.clone();
+            match pick {
+                0 | 1 => {
+                    session
+                        .edit_history()
+                        .append(ChatEntry::user(format!("u{step}")));
+                }
+                2 => {
+                    session
+                        .edit_history()
+                        .append(ChatEntry::assistant(format!("a{step}")));
+                }
+                3 => {
+                    call_counter += 1;
+                    session.edit_history().append(ChatEntry::tool_call(
+                        format!("c{call_counter}"),
+                        "bash",
+                        "{}",
+                    ));
+                }
+                4 => {
+                    let call_id = format!("c{}", rng.random_range(1..=(call_counter.max(1))));
+                    session.edit_history().append(ChatEntry::tool_result(
+                        call_id,
+                        "bash",
+                        "ok",
+                        ToolResultStatus::Success,
+                    ));
+                }
+                5 => {
+                    let changed = session.edit_history().set_context(
+                        &id,
+                        ContextOverride::ForcedExclude,
+                        &ChangeSource::Worker {
+                            name: "rand".to_owned(),
+                        },
+                    );
+                    let _ = changed;
+                }
+                6 => {
+                    if !pinned.contains(&id) {
+                        session.edit_history().pin(&id, PinPosition::Relative);
+                        pinned.clear();
+                        // After chunk pinning, re-derive which ids are pinned.
+                        pinned.extend(
+                            session
+                                .history()
+                                .iter()
+                                .filter(|e| e.is_pinned())
+                                .map(|e| e.id.clone()),
+                        );
+                    }
+                }
+                _ => {
+                    session.edit_history().normalize_loop_layout();
+                }
+            }
+
+            // Then the assembled message list is always sequence-valid.
+            let messages =
+                crate::feat::provider::entries_to_messages::entries_to_messages(session.history());
+            assert!(
+                sequence_is_valid(&messages),
+                "step {step} produced an invalid sequence: {messages:?}"
+            );
+        }
     }
 }

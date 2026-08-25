@@ -302,7 +302,9 @@ fn close_batch(
 /// when its text was empty.
 fn strip_assistant_calls(out: &mut Vec<LlmMessage>, index: usize) {
     if let Some(LlmMessage::Assistant {
-        content, tool_calls, ..
+        content,
+        tool_calls,
+        ..
     }) = out.get_mut(index)
     {
         *tool_calls = None;
