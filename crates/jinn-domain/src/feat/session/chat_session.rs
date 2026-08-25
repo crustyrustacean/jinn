@@ -1533,7 +1533,12 @@ impl ChatSessionState {
     /// # Panics
     ///
     /// Panics if no pending entry exists for the given `tool_call_id`.
-    pub fn append_tool_result_output(&mut self, tool_call_id: &str, output: &str) {
+    pub fn append_tool_result_output(
+        &mut self,
+        tool_call_id: &str,
+        output: &str,
+        kind: crate::feat::tools_actor::protocol::event::ToolOutputKind,
+    ) {
         let Some(&history_index) = self
             .core
             .ephemeral
@@ -1543,13 +1548,19 @@ impl ChatSessionState {
         else {
             return;
         };
+        self.core.last_history_activity_at = jiff::Timestamp::now();
         self.edit_history()
             .with_entry_at_mut(history_index, |entry| {
                 if let ChatEntryKind::ToolResult {
-                    ref mut content, ..
+                    ref mut content,
+                    ref mut is_alert,
+                    ..
                 } = entry.kind
                 {
                     content.push_str(output);
+                    if kind == crate::feat::tools_actor::protocol::event::ToolOutputKind::Alert {
+                        *is_alert = true;
+                    }
                 }
             });
     }
@@ -1563,9 +1574,69 @@ impl ChatSessionState {
     /// Accepts optional truncation metadata and full content from the tool
     /// execution result. When truncation is present, stores both the truncated
     /// content and the original untruncated output.
+    /// Finalizes an existing pending ToolResult entry (streaming index first,
+    /// then a history scan), returning whether one was found.
+    ///
+    /// In-place finalization: never reorders entries or splits a tool loop.
+    fn finalize_existing_tool_result(
+        &mut self,
+        tool_call_id: &str,
+        content: &str,
+        status: crate::feat::session::tool_result_status::ToolResultStatus,
+        full_content: Option<String>,
+        truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+        pin_position: Option<PinPosition>,
+    ) -> bool {
+        let streaming_index = self
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_result_indices_mut()
+            .and_then(|map| map.remove(tool_call_id));
+
+        let apply = |entry: &mut ChatEntry| {
+            if let ChatEntryKind::ToolResult {
+                content: entry_content,
+                status: entry_status,
+                full_content: entry_full_content,
+                truncation: entry_truncation,
+                pin_position: entry_kind_pin,
+                is_alert,
+                ..
+            } = &mut entry.kind
+            {
+                content.clone_into(entry_content);
+                *entry_status = status;
+                *entry_full_content = full_content;
+                *entry_truncation = truncation;
+                *entry_kind_pin = pin_position;
+                // The alert styling is pending-state only — a finished result
+                // renders with its normal success/failure look.
+                *is_alert = false;
+                // Entry-level pin mirrors the kind-level pin so assembly,
+                // compaction, and UI consumers read a single field.
+                entry.pin_position = pin_position;
+                entry.timing.finish();
+            }
+        };
+
+        match streaming_index {
+            Some(index) => self.edit_history().with_entry_at_mut(index, apply).is_some(),
+            None => self
+                .edit_history()
+                .with_last_matching_mut(
+                    |entry| {
+                        matches!(&entry.kind, ChatEntryKind::ToolResult { id, .. } if id == tool_call_id)
+                    },
+                    apply,
+                )
+                .is_some(),
+        }
+    }
+
     #[expect(
         clippy::too_many_arguments,
-        reason = "mirrors begin_tool_result + new pin_position; refactor would require struct-builder pattern"
+        reason = "mirrors begin_tool_result + pin_position; struct-builder would ripple to all tool actors"
     )]
     pub fn finalize_tool_result(
         &mut self,
@@ -1573,8 +1644,8 @@ impl ChatSessionState {
         name: &str,
         content: &str,
         success: bool,
-        mut full_content: Option<String>,
-        mut truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+        full_content: Option<String>,
+        truncation: Option<jinn_provider::tool_types::TruncationMeta>,
         pin_position: Option<PinPosition>,
     ) {
         let status = if success {
@@ -1584,95 +1655,41 @@ impl ChatSessionState {
         };
         let pin_position_result = pin_position;
 
-        if let Some(history_index) = self
-            .core
-            .ephemeral
-            .machine
-            .streaming_tool_result_indices_mut()
-            .and_then(|map| map.remove(tool_call_id))
-        {
-            // Finalize existing pending entry.
-            self.edit_history()
-                .with_entry_at_mut(history_index, |entry| {
-                    if let ChatEntryKind::ToolResult {
-                        content: entry_content,
-                        status: entry_status,
-                        full_content: entry_full_content,
-                        truncation: entry_truncation,
-                        pin_position: entry_kind_pin,
-                        ..
-                    } = &mut entry.kind
-                    {
-                        content.clone_into(entry_content);
-                        *entry_status = status;
-                        *entry_full_content = full_content;
-                        *entry_truncation = truncation;
-                        *entry_kind_pin = pin_position;
-                        // Entry-level pin mirrors the kind-level pin so assembly,
-                        // compaction, and UI consumers read a single field.
-                        entry.pin_position = pin_position;
-                        entry.timing.finish();
-                    }
-                });
-        } else {
-            // Streaming index not available. Search history for an existing
-            // ToolResult with matching kind.id (e.g., a pending entry created
-            // by begin_tool_result before the streaming phase was dropped).
-            let existing_found = self
-                .edit_history()
-                .with_last_matching_mut(
-                    |entry| {
-                        matches!(&entry.kind, ChatEntryKind::ToolResult { id, .. } if id == tool_call_id)
-                    },
-                    |entry| {
-                        if let ChatEntryKind::ToolResult {
-                            content: entry_content,
-                            status: entry_status,
-                            full_content: entry_full_content,
-                            truncation: entry_truncation,
-                            pin_position: entry_kind_pin,
-                            ..
-                        } = &mut entry.kind
-                        {
-                            content.clone_into(entry_content);
-                            *entry_status = status;
-                            *entry_full_content = full_content.take();
-                            *entry_truncation = truncation.take();
-                            *entry_kind_pin = pin_position;
-                            entry.pin_position = pin_position;
-                            entry.timing.finish();
-                        }
-                    },
-                )
-                .is_some();
+        let finalized = self.finalize_existing_tool_result(
+            tool_call_id,
+            content,
+            status,
+            full_content.clone(),
+            truncation.clone(),
+            pin_position,
+        );
 
-            if !existing_found {
-                // No existing entry found - push a new one.
-                let mut entry = if let Some(meta) = truncation {
-                    let full = full_content.unwrap_or_default();
-                    ChatEntry::tool_result_truncated(
-                        tool_call_id,
-                        name,
-                        content.to_owned(),
-                        full,
-                        status,
-                        meta,
-                    )
-                } else {
-                    ChatEntry::tool_result(tool_call_id, name, content, status)
-                };
-                // Propagate tool-requested pin onto both the kind variant and
-                // the entry-level field so assembly/compaction read a single source.
-                if let ChatEntryKind::ToolResult {
-                    pin_position: ref mut kp,
-                    ..
-                } = entry.kind
-                {
-                    *kp = pin_position;
-                }
-                entry.pin_position = pin_position;
-                self.push_entry(entry);
+        if !finalized {
+            // No existing entry found - push a new one.
+            let mut entry = if let Some(meta) = truncation {
+                let full = full_content.unwrap_or_default();
+                ChatEntry::tool_result_truncated(
+                    tool_call_id,
+                    name,
+                    content.to_owned(),
+                    full,
+                    status,
+                    meta,
+                )
+            } else {
+                ChatEntry::tool_result(tool_call_id, name, content, status)
+            };
+            // Propagate tool-requested pin onto both the kind variant and
+            // the entry-level field so assembly/compaction read a single source.
+            if let ChatEntryKind::ToolResult {
+                pin_position: ref mut kp,
+                ..
+            } = entry.kind
+            {
+                *kp = pin_position;
             }
+            entry.pin_position = pin_position;
+            self.push_entry(entry);
         }
 
         // A tool-requested pin (skill/save_plan bodies) expands to the whole

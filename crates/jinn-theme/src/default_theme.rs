@@ -55,6 +55,8 @@ mod tests {
             ("tool_success_bg", theme.tool_success_bg),
             ("tool_failure_bg", theme.tool_failure_bg),
             ("tool_pending_bg", theme.tool_pending_bg),
+            ("challenge_alert_bg", theme.challenge_alert_bg),
+            ("challenge_alert_fg", theme.challenge_alert_fg),
             ("compaction_block_bg", theme.compaction_block_bg),
             ("truncation_fg", theme.truncation_fg),
             ("picker_active_marker", theme.picker_active_marker),

@@ -712,6 +712,9 @@ mod tests {
                 binary: BrowserBinary::Chromium,
                 user_agent: Some("test-agent/1.0".to_owned()),
                 anubis_timeout_secs: 60,
+                challenge_wait_secs: 120,
+                settle_secs: 5,
+                keep_tabs_open: false,
             },
             ..UserPreferences::default()
         };
