@@ -740,7 +740,6 @@ mod tests {
             ChatEntry::assistant(""),
             ChatEntry::tool_call("dangling", "bash", "{}"),
         ]);
-        let ids = entry_ids(&session);
         session.core.history[1].pin_position = Some(PinPosition::Relative);
 
         // When the internal dangling sweep runs.
