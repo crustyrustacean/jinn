@@ -106,8 +106,8 @@ fn entries_to_messages_drops_orphan_tool_call() {
 }
 
 #[rstest::rstest]
-fn entries_to_messages_drops_assistant_tool_call_without_result() {
-    // Given an assistant entry followed by an incomplete tool call.
+fn entries_to_messages_strips_calls_but_keeps_assistant_text_when_result_missing() {
+    // Given an assistant entry followed by a tool call with no result.
     let entries = vec![
         ChatEntry::assistant("let me check"),
         ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#),
@@ -116,8 +116,14 @@ fn entries_to_messages_drops_assistant_tool_call_without_result() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then the incomplete tool batch is omitted.
-    assert!(messages.is_empty());
+    // Then the assistant text survives with tool_calls stripped.
+    assert_eq!(
+        messages,
+        vec![LlmMessage::Assistant {
+            content: "let me check".into(),
+            tool_calls: None,
+        }]
+    );
 }
 
 #[rstest::rstest]
@@ -138,8 +144,9 @@ fn entries_to_messages_drops_orphan_tool_result() {
 }
 
 #[rstest::rstest]
-fn entries_to_messages_drops_pending_tool_result() {
-    // Given an assistant tool call followed by a still-pending result.
+fn entries_to_messages_strips_calls_when_result_still_pending() {
+    // Given an assistant tool call followed by a still-pending result
+    // (pending results are default-out of context).
     let entries = vec![
         ChatEntry::assistant("checking"),
         ChatEntry::tool_call("call_pending", "echo", "{}"),
@@ -154,12 +161,18 @@ fn entries_to_messages_drops_pending_tool_result() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then the incomplete tool batch is omitted.
-    assert!(messages.is_empty());
+    // Then the assistant text survives with tool_calls stripped.
+    assert_eq!(
+        messages,
+        vec![LlmMessage::Assistant {
+            content: "checking".into(),
+            tool_calls: None,
+        }]
+    );
 }
 
 #[rstest::rstest]
-fn entries_to_messages_drops_duplicate_tool_call_ids() {
+fn entries_to_messages_strips_duplicate_call_ids_and_drops_orphan_result() {
     // Given an assistant with duplicate tool-call IDs.
     let entries = vec![
         ChatEntry::assistant("checking"),
@@ -171,12 +184,19 @@ fn entries_to_messages_drops_duplicate_tool_call_ids() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then the malformed batch is omitted.
-    assert!(messages.is_empty());
+    // Then the text survives, the duplicate calls are stripped, and the
+    // now-orphan result is dropped.
+    assert_eq!(
+        messages,
+        vec![LlmMessage::Assistant {
+            content: "checking".into(),
+            tool_calls: None,
+        }]
+    );
 }
 
 #[rstest::rstest]
-fn entries_to_messages_drops_duplicate_tool_results() {
+fn entries_to_messages_keeps_first_result_and_drops_duplicate() {
     // Given an assistant tool call followed by duplicate results.
     let entries = vec![
         ChatEntry::assistant("checking"),
@@ -188,12 +208,21 @@ fn entries_to_messages_drops_duplicate_tool_results() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then the malformed batch is omitted.
-    assert!(messages.is_empty());
+    // Then the first result resolves the call; the duplicate is dropped.
+    let resolved: Vec<String> = messages
+        .iter()
+        .filter_map(|m: &LlmMessage| match m {
+            LlmMessage::Tool { tool_call_id, content, .. } => {
+                Some(format!("{tool_call_id}:{content}"))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(resolved, vec!["call_1:first"]);
 }
 
 #[rstest::rstest]
-fn entries_to_messages_drops_unknown_tool_result_id() {
+fn entries_to_messages_drops_result_with_unknown_id_and_strips_calls() {
     // Given an assistant tool call followed by a result for another call ID.
     let entries = vec![
         ChatEntry::assistant("checking"),
@@ -204,13 +233,21 @@ fn entries_to_messages_drops_unknown_tool_result_id() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then the malformed batch is omitted.
-    assert!(messages.is_empty());
+    // Then the unknown result is dropped and the unresolved call is stripped;
+    // the assistant text survives.
+    assert_eq!(
+        messages,
+        vec![LlmMessage::Assistant {
+            content: "checking".into(),
+            tool_calls: None,
+        }]
+    );
 }
 
 #[rstest::rstest]
-fn entries_to_messages_drops_mismatched_tool_name() {
+fn entries_to_messages_resolves_results_by_id_not_name() {
     // Given an assistant tool call followed by a result with a different name.
+    // Providers match tool messages to calls by id; the name is informational.
     let entries = vec![
         ChatEntry::assistant("checking"),
         ChatEntry::tool_call("call_1", "echo", "{}"),
@@ -220,8 +257,14 @@ fn entries_to_messages_drops_mismatched_tool_name() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then the malformed batch is omitted.
-    assert!(messages.is_empty());
+    // Then the batch is emitted intact — a valid sequence.
+    assert!(matches!(
+        messages.as_slice(),
+        [
+            LlmMessage::Assistant { tool_calls: Some(calls), .. },
+            LlmMessage::Tool { tool_call_id, .. },
+        ] if calls.len() == 1 && tool_call_id == "call_1"
+    ));
 }
 
 #[rstest::rstest]
@@ -243,7 +286,7 @@ fn tool_loop_produces_four_messages() {
 }
 
 #[rstest::rstest]
-fn multiple_tool_calls_without_results_are_dropped() {
+fn multiple_tool_calls_without_results_keep_assistant_text() {
     // Given an assistant entry followed by multiple incomplete tool calls.
     let entries = vec![
         ChatEntry::assistant("checking both"),
@@ -254,8 +297,14 @@ fn multiple_tool_calls_without_results_are_dropped() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then the incomplete batch is omitted.
-    assert!(messages.is_empty());
+    // Then the assistant text survives with the unresolved calls stripped.
+    assert_eq!(
+        messages,
+        vec![LlmMessage::Assistant {
+            content: "checking both".into(),
+            tool_calls: None,
+        }]
+    );
 }
 
 #[rstest::rstest]
@@ -1052,8 +1101,10 @@ fn complete_tool_batch_produces_valid_messages() {
 }
 
 #[rstest::rstest]
-fn orphan_tool_call_after_excluded_empty_assistant_is_dropped() {
-    // Given an empty assistant excluded from context followed by a tool call/result.
+fn excluded_empty_assistant_synthesizes_valid_parent_for_complete_loop() {
+    // Given an empty assistant excluded from context followed by a tool call/result
+    // (the trailing-streaming state during tool execution: the parent assistant
+    // is default-out while its calls and results are in-context).
     let mut assistant = ChatEntry::assistant("");
     assistant.apply_context_override(
         crate::protocol::ContextOverride::ForcedExclude,
@@ -1070,8 +1121,18 @@ fn orphan_tool_call_after_excluded_empty_assistant_is_dropped() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then no synthetic assistant or orphan tool result is emitted.
-    assert!(messages.is_empty(), "unexpected messages: {messages:?}");
+    // Then a synthetic empty parent carries the call and the result resolves
+    // it — a valid sequence.
+    assert!(
+        matches!(
+            messages.as_slice(),
+            [
+                LlmMessage::Assistant { content, tool_calls: Some(calls) },
+                LlmMessage::Tool { tool_call_id, .. },
+            ] if content.is_empty() && calls.len() == 1 && tool_call_id == "tc-1"
+        ),
+        "unexpected messages: {messages:?}"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
