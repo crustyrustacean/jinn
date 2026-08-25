@@ -19,6 +19,7 @@ pub mod chat_session;
 pub mod entries;
 #[cfg(test)]
 mod entries_tests;
+pub mod history_editor;
 pub mod history_mutation;
 #[cfg(test)]
 mod history_mutation_tests;

@@ -212,6 +212,9 @@ impl QueueActor {
                         "drained steering entry into history at queue_actor::dispatch_user_message"
                     );
                 }
+                // Normalize loop layout so committed loops never contain
+                // interstitials before assembly.
+                session.edit_history().normalize_loop_layout();
                 let old_phase = session.phase();
                 session.begin_sending();
                 (old_phase, session.phase())
@@ -312,7 +315,9 @@ impl QueueActor {
     /// Shared dispatch body for tool-continuation and manual-resume paths:
     /// re-assemble prompt from current history and emit `SendToLlmProvider`.
     async fn dispatch_resume(&self, session_id: &SessionId, label: &str) {
-        // Drain any pending steering fragments into history before assembly.
+        // Drain any pending steering fragments into history before assembly,
+        // then normalize loop layout so committed loops never contain
+        // interstitials before assembly.
         {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
@@ -326,6 +331,7 @@ impl QueueActor {
                         "drained steering entry into history at queue_actor::dispatch_resume"
                     );
                 }
+                session.edit_history().normalize_loop_layout();
             });
         }
         let assembled = {
