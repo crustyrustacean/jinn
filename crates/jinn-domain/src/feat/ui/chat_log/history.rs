@@ -570,14 +570,7 @@ pub fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'stati
             truncation,
             is_alert,
             ..
-        } => tool_result::to_lines(
-            name,
-            content,
-            *status,
-            truncation.as_ref(),
-            *is_alert,
-            ctx,
-        ),
+        } => tool_result::to_lines(name, content, *status, truncation.as_ref(), *is_alert, ctx),
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
         ChatEntryKind::Annotation { citations } => annotation::to_lines(citations, ctx),
 

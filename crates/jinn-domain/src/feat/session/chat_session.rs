@@ -1500,6 +1500,10 @@ impl ChatSessionState {
     /// # Panics
     ///
     /// Panics if no pending entry exists for the given `tool_call_id`.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "index comes from begin_tool_result which always returns a valid index"
+    )]
     pub fn append_tool_result_output(
         &mut self,
         tool_call_id: &str,

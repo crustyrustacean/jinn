@@ -126,7 +126,7 @@ impl BrowserDdgSearcher {
     ) -> Result<RenderedPage, SearchError> {
         let browser = Arc::clone(&self.browser);
         let url = url.to_owned();
-        tokio::task::spawn_blocking(move || browser.render_page_observed(&url, on_event))
+        tokio::task::spawn_blocking(move || browser.render_page_observed(&url, &on_event))
             .await
             .map_err(|join_err| {
                 tracing::error!(error = %join_err, "browser render task panicked");
@@ -135,7 +135,6 @@ impl BrowserDdgSearcher {
             .map_err(map_fetch_error)
     }
 }
-
 
 /// Maps a [`FetchError`] to a [`SearchError`].
 ///
@@ -245,7 +244,9 @@ mod tests {
     fn challenge_browser(kind: jinn_web_fetch::challenge::ChallengeKind) -> Arc<SharedBrowser> {
         use jinn_web_fetch::{HeadlessBrowser, HeadlessBrowserFactory};
 
-        struct ChallengeStub { kind: jinn_web_fetch::challenge::ChallengeKind }
+        struct ChallengeStub {
+            kind: jinn_web_fetch::challenge::ChallengeKind,
+        }
         impl HeadlessBrowser for ChallengeStub {
             fn render(
                 &self,
@@ -272,7 +273,9 @@ mod tests {
             }
         }
 
-        Arc::new(SharedBrowser::with_factory(Arc::new(ChallengeFactory(kind))))
+        Arc::new(SharedBrowser::with_factory(Arc::new(ChallengeFactory(
+            kind,
+        ))))
     }
 
     #[test]

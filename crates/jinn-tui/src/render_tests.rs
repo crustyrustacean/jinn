@@ -466,7 +466,7 @@ async fn mcp_inspector_tools_pane_renders_tool_names() {
         let mut w = app.core.state.write_test_no_cap();
         // Seed a tool definition so the per-frame refresh surfaces it in tools mode.
         let session_id = w.active_session().session_id().clone();
-        let mut defs = std::collections::HashMap::new();
+        let mut defs = std::collections::BTreeMap::new();
         defs.insert(
             "mcp__excalimate__create_scene".to_owned(),
             jinn_domain::ToolDefinition {

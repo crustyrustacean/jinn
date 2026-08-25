@@ -768,7 +768,10 @@ mod tests {
 
         // Then the verdict is an unknown challenge, after roughly the settle window.
         assert_eq!(outcome, WaitOutcome::Challenge(ChallengeKind::None));
-        assert!(elapsed >= Duration::from_millis(50), "settle window must elapse");
+        assert!(
+            elapsed >= Duration::from_millis(50),
+            "settle window must elapse"
+        );
     }
 
     #[test]
@@ -794,7 +797,10 @@ mod tests {
     #[test]
     fn headed_escalation_emits_detection_and_ticks_then_verdict() {
         // Given a closure always serving the DDG anomaly page, headed mode.
-        let cfg = WaitConfig { headed: true, ..fast_cfg() };
+        let cfg = WaitConfig {
+            headed: true,
+            ..fast_cfg()
+        };
         let get_html = || Ok(String::from(r#"<script src="/anomaly.js"></script>"#));
         let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let sink = {
@@ -810,9 +816,13 @@ mod tests {
         assert_eq!(outcome, WaitOutcome::Challenge(ChallengeKind::DdgAnomaly));
         let events = events.lock().expect("lock");
         assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, RenderProgress::ChallengeDetected { kind: ChallengeKind::DdgAnomaly, .. })),
+            events.iter().any(|e| matches!(
+                e,
+                RenderProgress::ChallengeDetected {
+                    kind: ChallengeKind::DdgAnomaly,
+                    ..
+                }
+            )),
             "ChallengeDetected must be emitted, got {events:?}"
         );
     }

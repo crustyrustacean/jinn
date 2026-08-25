@@ -8,7 +8,7 @@ use uuid::Uuid;
 /// Generated using UUID v7, stored as a bare `Uuid`. The serialized/displayed
 /// form is the bare UUID string (no prefix). Derives equality and hashing so
 /// it can be used as a `HashMap` key.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct SessionId(Uuid);
 
 impl SessionId {

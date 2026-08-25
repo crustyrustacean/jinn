@@ -79,7 +79,7 @@ fn alert_lines(content: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
 
     // Always pad: the whole block is the alert, background must span the row.
     let bg_style = Style::default().bg(ctx.theme.challenge_alert_bg);
-    for line in lines.iter_mut() {
+    for line in &mut lines {
         pad_line_to_width(line, ctx.content_width, bg_style);
     }
 
@@ -299,7 +299,14 @@ mod tests {
             .join("\n");
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            &content,
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
         let has_indicator = lines.iter().any(|line| {
             line.spans
                 .iter()
@@ -321,7 +328,14 @@ mod tests {
             .join("\n");
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            &content,
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then some line contains "line 10".
         let has_last_line = lines
@@ -351,7 +365,14 @@ mod tests {
         let content = "line 1\nline 2\nline 3".to_owned();
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            &content,
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then no line contains the truncation indicator.
         let has_indicator = lines.iter().any(|line| {
@@ -368,7 +389,14 @@ mod tests {
         let ctx = render_context(5, false);
 
         // When converting to lines.
-        let lines = to_lines("bash", "output", ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then line 0 contains "output" (no name line).
         let first_content: String = lines[0].spans.iter().map(|s| s.content.clone()).collect();
@@ -425,7 +453,14 @@ mod tests {
         let ctx = render_context_with_status(None);
 
         // When converting to lines.
-        let lines = to_lines("bash", "output", ToolResultStatus::Pending, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Pending,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then no line has a background color.
         assert!(
@@ -595,7 +630,14 @@ mod tests {
             .join("\n");
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            &content,
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then the last 5 lines (6-10) are visible.
         let all_text: String = lines
@@ -620,7 +662,14 @@ mod tests {
             .join("\n");
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            &content,
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then the first 5 lines (1-5) are not visible.
         let all_text: String = lines
@@ -642,7 +691,14 @@ mod tests {
         let ctx = render_context(5, false);
 
         // When converting to lines.
-        let lines = to_lines("bash", "output", ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then no line contains the content truncation indicator.
         let has_indicator = lines.iter().any(|line| {
@@ -663,7 +719,14 @@ mod tests {
         let long_line = "a".repeat(100);
 
         // When converting to lines.
-        let lines = to_lines("bash", &long_line, ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            &long_line,
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then the content line is truncated to content_width (80 graphemes).
         let content_line: String = lines[0].spans.iter().map(|s| s.content.clone()).collect();
@@ -685,7 +748,14 @@ mod tests {
             .join("\n");
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            &content,
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then the last line is the truncation indicator.
         let last_text: String = lines
@@ -708,7 +778,14 @@ mod tests {
         let theme = crate::feat::theme::default_theme();
 
         // When converting to lines.
-        let lines = to_lines("bash", "output", ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then the content line has the success background color.
         let has_bg = lines[0]
@@ -728,7 +805,14 @@ mod tests {
         let theme = crate::feat::theme::default_theme();
 
         // When converting to lines.
-        let lines = to_lines("bash", "output", ToolResultStatus::Failure, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Failure,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then the content line has the failure background color.
         let has_bg = lines[0]
@@ -744,7 +828,14 @@ mod tests {
         let ctx = render_context(5, true);
 
         // When converting to lines.
-        let lines = to_lines("bash", "output", ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then there are no padding lines (just content = 1 line).
         assert_eq!(
@@ -767,7 +858,14 @@ mod tests {
         let content = "<skill name=\"phased-task-loop\" location=\"/x\">body</skill>";
 
         // When converting to lines.
-        let lines = to_lines("skill", content, ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "skill",
+            content,
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then there is exactly one line.
         assert_eq!(
@@ -832,7 +930,14 @@ mod tests {
         let content = "<skill name=\"phased-task-loop\" location=\"/x\">body</skill>";
 
         // When converting to lines.
-        let lines = to_lines("skill", content, ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "skill",
+            content,
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then the skill branch short-circuits before the expanded/collapsed split,
         // so the summary is still a single line.
@@ -877,7 +982,14 @@ mod tests {
         let content = "<skill name=\"phased-task-loop\" location=\"/x\">body</skill>";
 
         // When converting to lines.
-        let lines = to_lines("skill", content, ToolResultStatus::Success, None, false, &ctx);
+        let lines = to_lines(
+            "skill",
+            content,
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
 
         // Then pad_lines() filled the row to content_width with a green background,
         // so the success row visually spans the full width.
@@ -936,6 +1048,10 @@ mod tests {
         // Then each line is padded so the background spans the full row.
         assert_eq!(lines.len(), 1);
         let width = lines[0].width();
-        assert!(width >= ctx.content_width as usize, "line width {width} should be at least {}", ctx.content_width);
+        assert!(
+            width >= ctx.content_width as usize,
+            "line width {width} should be at least {}",
+            ctx.content_width
+        );
     }
 }

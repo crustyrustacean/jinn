@@ -738,9 +738,7 @@ fn render_page_observed_relays_progress_events() {
     impl HeadlessBrowserFactory for NotifyingFactory {
         fn launch(&self) -> Result<Arc<dyn HeadlessBrowser>, FetchError> {
             Ok(Arc::new(NotifyingBrowser {
-                events: std::sync::atomic::AtomicUsize::new(
-                    self.0.events.load(Ordering::SeqCst),
-                ),
+                events: std::sync::atomic::AtomicUsize::new(self.0.events.load(Ordering::SeqCst)),
             }))
         }
         fn name(&self) -> &'static str {
@@ -750,7 +748,9 @@ fn render_page_observed_relays_progress_events() {
     let browser = NotifyingBrowser {
         events: std::sync::atomic::AtomicUsize::new(0),
     };
-    let shared = Arc::new(SharedBrowser::with_factory(Arc::new(NotifyingFactory(browser))));
+    let shared = Arc::new(SharedBrowser::with_factory(Arc::new(NotifyingFactory(
+        browser,
+    ))));
 
     let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = Arc::clone(&seen);
@@ -760,7 +760,7 @@ fn render_page_observed_relays_progress_events() {
 
     // When rendering with the observer attached.
     shared
-        .render_page_observed("https://example.com/", on_progress)
+        .render_page_observed("https://example.com/", &on_progress)
         .expect("render ok");
 
     // Then the observer saw the progress event.

@@ -150,14 +150,14 @@ impl Theme {
         m.insert("tool_success_bg", Style::default().fg(self.tool_success_bg));
         m.insert("tool_failure_bg", Style::default().fg(self.tool_failure_bg));
         m.insert("tool_pending_bg", Style::default().fg(self.tool_pending_bg));
-    m.insert(
-        "challenge_alert_bg",
-        Style::default().fg(self.challenge_alert_bg),
-    );
-    m.insert(
-        "challenge_alert_fg",
-        Style::default().fg(self.challenge_alert_fg),
-    );
+        m.insert(
+            "challenge_alert_bg",
+            Style::default().fg(self.challenge_alert_bg),
+        );
+        m.insert(
+            "challenge_alert_fg",
+            Style::default().fg(self.challenge_alert_fg),
+        );
         m.insert(
             "compaction_block_bg",
             Style::default().fg(self.compaction_block_bg),

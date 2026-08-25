@@ -376,7 +376,7 @@ mod tests {
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::tools_actor::protocol::event::{
         ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionOutput,
-        ToolExecutionStarted, ToolUseStarted,
+        ToolExecutionStarted, ToolOutputKind, ToolUseStarted,
     };
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
@@ -1161,13 +1161,13 @@ mod tests {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
             output: "file1.txt\n".to_owned(),
-            kind: Default::default(),
+            kind: ToolOutputKind::default(),
         });
         actor.on_tool_execution_output(&ToolExecutionOutput {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
             output: "file2.txt\n".to_owned(),
-            kind: Default::default(),
+            kind: ToolOutputKind::default(),
         });
 
         let state = actor.state.read();

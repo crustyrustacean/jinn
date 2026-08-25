@@ -160,14 +160,8 @@ impl Message<ExecuteWebFetch> for WebFetchActor {
         let session_id = msg.session_id;
         let dispatched_at = msg.dispatched_at;
         tokio::spawn(async move {
-            let result = execute_fetch(
-                &web_fetcher,
-                &tool_call,
-                &session_id,
-                dispatched_at,
-                &bus,
-            )
-            .await;
+            let result =
+                execute_fetch(&web_fetcher, &tool_call, &session_id, dispatched_at, &bus).await;
             tracing::info!(
                 tool_call_id = %result.tool_call_id,
                 success = result.success,
@@ -285,7 +279,9 @@ async fn execute_fetch(
 fn describe_progress(progress: &jinn_web_fetch::RenderProgress) -> String {
     match progress {
         jinn_web_fetch::RenderProgress::ChallengeDetected { kind, url } => {
-            format!("⚠ bot challenge detected ({kind:?}) at {url} — solve it in the browser window; waiting for you…")
+            format!(
+                "⚠ bot challenge detected ({kind:?}) at {url} — solve it in the browser window; waiting for you…"
+            )
         }
         jinn_web_fetch::RenderProgress::WaitingForHuman { elapsed_secs } => {
             format!("still waiting for the challenge to clear ({elapsed_secs}s elapsed)")

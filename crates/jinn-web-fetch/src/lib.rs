@@ -109,7 +109,9 @@ pub enum FetchError {
     Render(String),
     /// A bot-protection challenge blocked the page and did not clear
     /// (headless mode, or the headed human-solve window expired).
-    #[error("bot-protection challenge ({kind:?}) blocked the page — switch [browser]-backed tools to the headed-chrome backend to solve it manually")]
+    #[error(
+        "bot-protection challenge ({kind:?}) blocked the page — switch [browser]-backed tools to the headed-chrome backend to solve it manually"
+    )]
     Challenge {
         /// Which challenge was detected.
         kind: crate::challenge::ChallengeKind,

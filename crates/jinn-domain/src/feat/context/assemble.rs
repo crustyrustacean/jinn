@@ -5,7 +5,7 @@
 //! tools, history) from [`AppState`] in one pass, splits pinned entries,
 //! builds the system prompt, converts history to messages, and counts tokens.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::common::app_state::AppState;
 use crate::feat::context::env_context::build_env_context;
@@ -14,7 +14,8 @@ use crate::feat::context::tool_prompt::build_tool_context_block;
 use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
 use crate::feat::skills::format::format_skills_for_prompt;
 use crate::protocol::{
-    ChatEntry, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
+    ChatEntry, ChatEntryKind, ContextOverride, LlmMessage, PinPosition, SessionId, ToolDefinition,
+    entries_to_messages,
 };
 
 /// Overrides for [`assemble_prompt`]. When provided, these replace the default
@@ -128,12 +129,12 @@ pub fn assemble_prompt(
             .tool_definitions
             .as_ref()
             .expect("checked");
-        let map: HashMap<String, ToolDefinition> =
+        let map: BTreeMap<String, ToolDefinition> =
             defs.iter().map(|d| (d.name.clone(), d.clone())).collect();
         build_tool_context_block(&map)
     } else {
         // Filter disabled tools from the tool context block.
-        let filtered_map: HashMap<String, ToolDefinition> = state
+        let filtered_map: BTreeMap<String, ToolDefinition> = state
             .context
             .tools_for_session(session_id)
             .into_iter()
@@ -172,7 +173,8 @@ pub fn assemble_prompt(
     // Check for system prompt override.
     let forced_system = overrides.and_then(|o| o.system_prompt.clone());
 
-    // Split history into TOP/BOTTOM pins and working history.
+    // Split and normalize history before converting any partition. Tool loops
+    // are selected as units so a pinned result cannot be separated from its call.
     let (top_pins, bottom_pins, working_history) = split_history(history);
 
     // Convert pin entries to messages.
@@ -216,8 +218,12 @@ pub fn assemble_prompt(
         }
     };
 
-    // Convert working history to messages.
-    let messages = entries_to_messages(&working_history);
+    // Convert working history in logical units. Bottom pins are inserted before
+    // the final logical unit, not before the final raw message (which could be a
+    // tool result belonging to a preceding assistant).
+    let (working_prefix, working_tail) = split_last_logical_unit(&working_history);
+    let prefix_messages = entries_to_messages(&working_prefix);
+    let tail_messages = entries_to_messages(&working_tail);
 
     // Build final message list.
     let mut final_messages = Vec::new();
@@ -226,16 +232,9 @@ pub fn assemble_prompt(
         final_messages.push(LlmMessage::System { content });
     }
     final_messages.extend(top_non_system);
-    final_messages.extend(messages);
-
-    // Insert BOTTOM pins just before the last message.
-    if final_messages.last().is_some() && !bottom_messages.is_empty() {
-        let last = final_messages.pop().expect("just checked non-empty");
-        final_messages.extend(bottom_messages);
-        final_messages.push(last);
-    } else {
-        final_messages.extend(bottom_messages);
-    }
+    final_messages.extend(prefix_messages);
+    final_messages.extend(bottom_messages);
+    final_messages.extend(tail_messages);
 
     // Count tokens.
     let estimated_tokens = count_messages(&final_messages, counter);
@@ -248,33 +247,153 @@ pub fn assemble_prompt(
     }
 }
 
-/// Splits history entries into TOP pins, BOTTOM pins, and working history.
+/// Builds outgoing history groups before converting any partition. A tool loop
+/// is a contiguous assistant, tool-call batch, and result batch; all other
+/// entries remain individual groups.
+fn history_groups(history: &[ChatEntry]) -> Vec<&[ChatEntry]> {
+    let mut groups = Vec::new();
+    let mut index = 0;
+    while index < history.len() {
+        let end = tool_group_end(history, index).unwrap_or(index + 1);
+        if let Some(group) = history.get(index..end) {
+            groups.push(group);
+        } else {
+            tracing::warn!(
+                index,
+                end,
+                "skipping invalid tool-group bounds during context assembly"
+            );
+            break;
+        }
+        index = end;
+    }
+    groups
+}
+
+/// assistant/tool-call/tool-result groups.
 ///
-/// Filters out entries not in context (per `is_in_context()`).
-/// Pinned entries are always in context regardless of kind.
+/// A tool loop is a contiguous assistant entry, one or more tool calls, and
+/// their completed results. Group-level inclusion is pin > forced-include >
+/// forced-exclude > default. A malformed group is omitted by the shared
+/// converter, which also emits the diagnostic warning.
 fn split_history(history: &[ChatEntry]) -> (Vec<ChatEntry>, Vec<ChatEntry>, Vec<ChatEntry>) {
-    let top_pins: Vec<ChatEntry> = history
-        .iter()
-        .filter(|e| e.pin_position() == Some(PinPosition::Top))
-        .cloned()
-        .collect();
+    let mut top_pins = Vec::new();
+    let mut bottom_pins = Vec::new();
+    let mut working_history = Vec::new();
 
-    let bottom_pins: Vec<ChatEntry> = history
-        .iter()
-        .filter(|e| e.pin_position() == Some(PinPosition::Bottom))
-        .cloned()
-        .collect();
+    for group in history_groups(history) {
+        let has_tool_group = group.len() > 1;
+        let placement = has_tool_group
+            .then(|| group_placement(group))
+            .flatten()
+            .or_else(|| group.first().and_then(ChatEntry::pin_position));
 
-    let working_history: Vec<ChatEntry> = history
-        .iter()
-        .filter(|e| {
-            (e.pin_position().is_none() || e.pin_position() == Some(PinPosition::Relative))
-                && e.is_in_context()
-        })
-        .cloned()
-        .collect();
+        match placement {
+            Some(PinPosition::Top) => top_pins.extend(group.iter().cloned()),
+            Some(PinPosition::Bottom) => bottom_pins.extend(group.iter().cloned()),
+            Some(PinPosition::Relative) | None => {
+                let include = if has_tool_group {
+                    group
+                        .iter()
+                        .any(|entry| entry.context_override() == ContextOverride::ForcedInclude)
+                        || group.iter().all(|entry| {
+                            entry.is_in_context()
+                                || (entry.is_empty_assistant()
+                                    && entry.context_override() != ContextOverride::ForcedExclude)
+                        })
+                } else {
+                    group.first().is_some_and(ChatEntry::is_in_context)
+                };
+                if include {
+                    working_history.extend(group.iter().cloned());
+                }
+            }
+        }
+    }
 
     (top_pins, bottom_pins, working_history)
+}
+
+/// Returns the end of a contiguous tool loop beginning at `index`.
+fn tool_group_end(history: &[ChatEntry], index: usize) -> Option<usize> {
+    if !matches!(history.get(index)?.kind, ChatEntryKind::Assistant(_)) {
+        return None;
+    }
+    let mut end = index + 1;
+    let call_start = end;
+    while matches!(
+        history.get(end).map(|entry| &entry.kind),
+        Some(ChatEntryKind::ToolCall { .. })
+    ) {
+        end += 1;
+    }
+    if end == call_start {
+        return None;
+    }
+
+    // Display-only/interstitial entries can occur while a tool batch is being
+    // persisted. They do not break the provider-level tool relationship.
+    while history.get(end).is_some_and(is_tool_loop_interstitial) {
+        end += 1;
+    }
+    while matches!(
+        history.get(end).map(|entry| &entry.kind),
+        Some(ChatEntryKind::ToolResult { .. })
+    ) {
+        end += 1;
+    }
+    Some(end)
+}
+
+fn is_tool_loop_interstitial(entry: &ChatEntry) -> bool {
+    matches!(
+        entry.kind,
+        ChatEntryKind::System(_)
+            | ChatEntryKind::Actor { .. }
+            | ChatEntryKind::Thinking(_)
+            | ChatEntryKind::Transient(_)
+            | ChatEntryKind::Annotation { .. }
+    )
+}
+
+/// Resolves placement for a logical group. Top wins over bottom so the outgoing
+/// request remains deterministic if malformed persisted state has both pins.
+fn group_placement(group: &[ChatEntry]) -> Option<PinPosition> {
+    let has_top = group
+        .iter()
+        .any(|entry| entry.pin_position() == Some(PinPosition::Top));
+    let has_bottom = group
+        .iter()
+        .any(|entry| entry.pin_position() == Some(PinPosition::Bottom));
+    if has_top && has_bottom {
+        tracing::warn!("tool loop has conflicting top and bottom pins; using top placement");
+    }
+    if has_top {
+        Some(PinPosition::Top)
+    } else if has_bottom {
+        Some(PinPosition::Bottom)
+    } else if group
+        .iter()
+        .any(|entry| entry.pin_position() == Some(PinPosition::Relative))
+    {
+        Some(PinPosition::Relative)
+    } else {
+        None
+    }
+}
+
+/// Splits a working sequence before its final logical unit. A tool loop is kept
+/// together; ordinary history keeps the existing bottom-pin placement behavior.
+fn split_last_logical_unit(history: &[ChatEntry]) -> (Vec<ChatEntry>, Vec<ChatEntry>) {
+    if history.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let start = (0..history.len())
+        .rev()
+        .find_map(|index| tool_group_end(history, index).filter(|&end| end == history.len()))
+        .unwrap_or(history.len() - 1);
+    let (prefix, tail) = history.split_at(start);
+    (prefix.to_vec(), tail.to_vec())
 }
 
 /// Counts tokens across all messages.
@@ -305,6 +424,7 @@ mod tests {
     use crate::feat::context::env_context::ContextFile;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
     use crate::feat::session::model_selection::ModelSelection;
+    use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::skills::Skill;
     use crate::feat::tools_actor::tool_types::ToolDefinition;
     use crate::protocol::{ChatEntry, SessionId};
@@ -347,6 +467,168 @@ mod tests {
             guard.session.active_session_id().clone()
         };
         (state, session_id)
+    }
+
+    #[test]
+    fn assemble_prompt_keeps_pinned_tool_result_with_its_call() {
+        // Given a tool loop whose result is bottom-pinned and a later user turn.
+        let entries = vec![
+            ChatEntry::user("run it"),
+            ChatEntry::assistant(""),
+            ChatEntry::tool_call("call-1", "bash", "{}"),
+            ChatEntry::tool_result(
+                "call-1",
+                "bash",
+                "ok",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            )
+            .with_pin(PinPosition::Bottom),
+            ChatEntry::user("continue"),
+        ];
+        let (state, session_id) = state_with_history(entries);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the assistant call and tool result remain adjacent in valid order.
+        let tool_index = result
+            .messages
+            .iter()
+            .position(|message| matches!(message, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "call-1"))
+            .expect("tool result should be present");
+        assert!(matches!(
+            result.messages.get(tool_index.wrapping_sub(1)),
+            Some(LlmMessage::Assistant { tool_calls: Some(calls), .. }) if calls.iter().any(|call| call.id == "call-1")
+        ));
+    }
+
+    #[test]
+    fn assemble_prompt_drops_malformed_persisted_tool_history() {
+        // Given persisted history containing an orphan result beside valid user history.
+        let (state, session_id) = state_with_history(vec![
+            ChatEntry::user("before"),
+            ChatEntry::tool_result(
+                "orphan",
+                "bash",
+                "bad",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ),
+            ChatEntry::user("after"),
+        ]);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the malformed result is absent while neighboring user messages remain.
+        let contents: Vec<&str> = result
+            .messages
+            .iter()
+            .filter_map(|message| match message {
+                LlmMessage::User { content, .. } => Some(content.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(contents.contains(&"before"));
+        assert!(contents.contains(&"after"));
+        assert!(!result.messages.iter().any(|message| matches!(message, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "orphan")));
+    }
+
+    #[test]
+    fn assemble_prompt_top_pin_keeps_tool_loop_atomic() {
+        // Given a tool loop with its call pinned to the top and a later user turn.
+        let entries = vec![
+            ChatEntry::user("before"),
+            ChatEntry::assistant(""),
+            ChatEntry::tool_call("top-call", "echo", "{}").with_pin(PinPosition::Top),
+            ChatEntry::tool_result("top-call", "echo", "ok", ToolResultStatus::Success),
+            ChatEntry::user("after"),
+        ];
+        let (state, session_id) = state_with_history(entries);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the complete tool loop is emitted in valid order.
+        let assistant_index = result.messages.iter().position(|message| {
+            matches!(message, LlmMessage::Assistant { tool_calls: Some(calls), .. } if calls.iter().any(|call| call.id == "top-call"))
+        }).expect("tool assistant should be present");
+        assert!(
+            matches!(result.messages.get(assistant_index + 1), Some(LlmMessage::Tool { tool_call_id, .. }) if tool_call_id == "top-call")
+        );
+    }
+
+    #[test]
+    fn assemble_prompt_relative_pin_keeps_tool_loop_in_working_order() {
+        // Given a relative-pinned tool result in a complete loop.
+        let entries = vec![
+            ChatEntry::user("before"),
+            ChatEntry::assistant(""),
+            ChatEntry::tool_call("relative-call", "echo", "{}"),
+            ChatEntry::tool_result("relative-call", "echo", "ok", ToolResultStatus::Success)
+                .with_pin(PinPosition::Relative),
+            ChatEntry::user("after"),
+        ];
+        let (state, session_id) = state_with_history(entries);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the user, tool loop, and later user remain in original order.
+        let contents: Vec<&str> = result
+            .messages
+            .iter()
+            .filter_map(|message| match message {
+                LlmMessage::User { content, .. } => Some(content.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(contents, vec!["before", "after"]);
+        assert!(result.messages.windows(2).any(|window| matches!((&window[0], &window[1]), (LlmMessage::Assistant { tool_calls: Some(calls), .. }, LlmMessage::Tool { tool_call_id, .. }) if calls.iter().any(|call| call.id == "relative-call") && tool_call_id == "relative-call")));
+    }
+
+    #[test]
+    fn assemble_prompt_forced_include_tool_member_includes_complete_loop() {
+        // Given a tool result forced into context while its call is otherwise excluded.
+        let entries = vec![
+            ChatEntry::assistant(""),
+            ChatEntry::tool_call("include-call", "echo", "{}")
+                .with_context_override(ContextOverride::ForcedExclude),
+            ChatEntry::tool_result("include-call", "echo", "ok", ToolResultStatus::Success)
+                .with_context_override(ContextOverride::ForcedInclude),
+        ];
+        let (state, session_id) = state_with_history(entries);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the explicit include preserves the complete loop.
+        assert!(result.messages.iter().any(|message| matches!(message, LlmMessage::Assistant { tool_calls: Some(calls), .. } if calls.iter().any(|call| call.id == "include-call"))));
+        assert!(result.messages.iter().any(|message| matches!(message, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "include-call")));
+    }
+
+    #[test]
+    fn assemble_prompt_forced_exclude_tool_member_excludes_complete_loop() {
+        // Given a complete loop with one member forced out of context.
+        let entries = vec![
+            ChatEntry::assistant(""),
+            ChatEntry::tool_call("exclude-call", "echo", "{}"),
+            ChatEntry::tool_result("exclude-call", "echo", "ok", ToolResultStatus::Success)
+                .with_context_override(ContextOverride::ForcedExclude),
+        ];
+        let (state, session_id) = state_with_history(entries);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then no partial tool loop is emitted.
+        assert!(!result.messages.iter().any(|message| matches!(message, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "exclude-call")));
+        assert!(!result.messages.iter().any(|message| matches!(message, LlmMessage::Assistant { tool_calls: Some(calls), .. } if calls.iter().any(|call| call.id == "exclude-call"))));
     }
 
     #[test]

@@ -1,17 +1,33 @@
+## 2026-08-20 v0.108.4
+
+- Add filters to prevent invalid message sequencing being sent to providers.
+
+## 2026-08-20 v0.108.3
+
+- Switched tools + skills backing data to a `BTreeMap` to prevent future cache issues.
+
+## 2026-08-19 v0.108.2
+
+- Skill construction no longer busts cache.
+
 ## 2026-08-18 v0.108.1
+
+- Tool construction no longer busts cache.
+
+## 2026-08-18 v0.108.0
 
 - `jinn install` now installs builtin plugins
 - Removed hashline implementation.
 - Updated read/write/edit tools to use more common harness schemas and tool descriptions.
 
-## 2026-08-17 v0.107.1
+## 2026-08-17 v0.107.0
 
 - `jinn` will immediately exit on startup if `jinn.toml` or `providers.toml` is malformed.
 - Yanking from chat history tool results will now return a complete JSON object instead of the displayed text. This is to enable piping into `jq` for processing.
 - Bugfix: Tool output should no longer leak and overwrite the TUI.
 - Experimental plugin system added. Plugins are written in Rust and compiled to WASM. See the jinn-plugin skill for more information.
 
-## 2026-08-15 v0.106.1
+## 2026-08-15 v0.106.0
 
 - Add `[[providers.model_info]]` tables to `providers.toml`: per-model `context_length`, `input_modalities`, and `extra_body` overrides. Hand-authored values take precedence over API-discovered data and models.dev. Models that are only listed in `providers.toml` (never discovered) now appear in the model cache, so the status bar, compaction gate, and attachment gate resolve them; `input_modalities = ["text", "image"]` marks a local model vision-capable.
 - Update learning-tutor persona.
@@ -41,7 +57,7 @@ input_modalities = ["text", "image"]
 # the `bar.gguf` model is not listed, so it gets application defaults (unknown context + text-only modality)
 ```
 
-## 2026-08-07 v0.105.1
+## 2026-08-07 v0.105.0
 
 - Add `F` keybind in Normal mode to create a _new_ session from an existing User or Assistant message _without_ existing history. Only the selected message will be present in the new session. The new session is not counted as a fork of the previous session since no history is preserved.
 - Add `--dump-requests` debugging flag to get raw output of everything sent to a provider.
