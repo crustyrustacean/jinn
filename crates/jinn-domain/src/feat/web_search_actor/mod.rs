@@ -23,7 +23,7 @@ use kameo::prelude::{Context, Message};
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::tools_actor::protocol::command::{ExecuteWebSearch, RegisterTools};
 use crate::feat::tools_actor::protocol::event::{
-    ToolExecutionCompleted, ToolExecutionOutput, ToolExecutionStarted,
+    ToolExecutionCompleted, ToolExecutionOutput, ToolExecutionStarted, ToolOutputKind,
 };
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::protocol::SessionId;
@@ -257,6 +257,7 @@ async fn execute_search(
                 session_id: session_id.clone(),
                 tool_call_id: tool_call_id.clone(),
                 output: text,
+                kind: ToolOutputKind::Alert,
             }));
         }
     });

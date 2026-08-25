@@ -116,7 +116,7 @@ impl SessionPersistenceActor {
     ) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&event.session_id);
-            session.append_tool_result_output(&event.tool_call_id, &event.output);
+            session.append_tool_result_output(&event.tool_call_id, &event.output, event.kind);
         });
     }
     /// Drains pending history mutations and steering buffer entries, emitting
@@ -1161,11 +1161,13 @@ mod tests {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
             output: "file1.txt\n".to_owned(),
+            kind: Default::default(),
         });
         actor.on_tool_execution_output(&ToolExecutionOutput {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
             output: "file2.txt\n".to_owned(),
+            kind: Default::default(),
         });
 
         let state = actor.state.read();

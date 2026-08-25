@@ -280,6 +280,11 @@ pub enum ChatEntryKind {
         /// Where this entry should appear in the assembled prompt. `None` (default)
         /// means the entry participates in normal history compaction/trimming.
         pin_position: Option<PinPosition>,
+        /// Render-time hint: the pending output was an alert (e.g. a bot
+        /// challenge awaiting a human solve). Cleared on finalize. The
+        /// custom serde impls write it as `"is_alert"` and default it to
+        /// `false` for old persisted sessions.
+        is_alert: bool,
     },
 
     /// A transient UI-only message (not sent to the LLM).
@@ -523,6 +528,7 @@ impl ChatEntry {
                 status,
                 full_content: None,
                 truncation: None,
+                is_alert: false,
                 pin_position: None,
             },
             pin_position: None,
@@ -571,6 +577,7 @@ impl ChatEntry {
                 status,
                 full_content: Some(full_content),
                 truncation: Some(truncation),
+                is_alert: false,
                 pin_position: None,
             },
             pin_position: None,
@@ -1082,6 +1089,7 @@ impl Serialize for ChatEntryKind {
                 full_content,
                 truncation,
                 pin_position,
+                is_alert,
             } => {
                 #[derive(Serialize)]
                 struct ToolResultData {
@@ -1095,6 +1103,8 @@ impl Serialize for ChatEntryKind {
                     truncation: Option<jinn_provider::tool_types::TruncationMeta>,
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pin_position: Option<PinPosition>,
+                    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+                    is_alert: bool,
                 }
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry(
@@ -1107,6 +1117,7 @@ impl Serialize for ChatEntryKind {
                         full_content: full_content.clone(),
                         truncation: truncation.clone(),
                         pin_position: *pin_position,
+                        is_alert: *is_alert,
                     },
                 )?;
                 map.end()
@@ -1276,6 +1287,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                                 full_content: data.full_content,
                                 truncation: data.truncation,
                                 pin_position: data.pin_position,
+                                is_alert: false,
                             })
                             .or_else(|_| {
                                 serde_json::from_value::<ToolResultDataOld>(value).map(|data| {
@@ -1283,6 +1295,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                                         id: data.id,
                                         name: data.name,
                                         content: data.content,
+                                        is_alert: false,
                                         status: if data.success {
                                             ToolResultStatus::Success
                                         } else {

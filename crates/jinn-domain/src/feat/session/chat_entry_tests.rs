@@ -148,6 +148,7 @@ fn tool_result_entry_has_tool_result_kind() {
             full_content: None,
             truncation: None,
             pin_position: None,
+            is_alert: false,
         }
     );
 }
@@ -472,6 +473,7 @@ fn tool_result_deserializes_old_success_true_format() {
             full_content: None,
             truncation: None,
             pin_position: None,
+            is_alert: false,
         }
     );
 }
@@ -495,6 +497,7 @@ fn tool_result_deserializes_old_success_false_format() {
             full_content: None,
             truncation: None,
             pin_position: None,
+            is_alert: false,
         }
     );
 }

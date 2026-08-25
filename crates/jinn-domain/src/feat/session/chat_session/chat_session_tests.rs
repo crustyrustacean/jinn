@@ -2133,14 +2133,8 @@ fn append_tool_result_output_appends_to_pending_entry() {
     session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
 
     // When appending output.
-    session.append_tool_result_output(
-        "call_1", "line 1
-",
-    );
-    session.append_tool_result_output(
-        "call_1", "line 2
-",
-    );
+    session.append_tool_result_output("call_1", "line 1\n", crate::feat::tools_actor::protocol::event::ToolOutputKind::Normal);
+    session.append_tool_result_output("call_1", "line 2\n", crate::feat::tools_actor::protocol::event::ToolOutputKind::Normal);
 
     // Then the entry content has both outputs.
     match &session.history()[0].kind {
@@ -2169,7 +2163,7 @@ fn append_tool_result_output_bumps_history_activity_timestamp() {
     // When appending streaming output.
     let before = session.core.last_history_activity_at;
     std::thread::sleep(std::time::Duration::from_millis(10));
-    session.append_tool_result_output("call_1", "tick");
+    session.append_tool_result_output("call_1", "tick", crate::feat::tools_actor::protocol::event::ToolOutputKind::Normal);
 
     // Then the activity timestamp advanced past its pre-append value.
     assert!(session.core.last_history_activity_at > before);
@@ -2182,7 +2176,7 @@ fn append_tool_result_output_ignores_unknown_call_id() {
 
     // When appending output for an unknown call ID.
     // Then it does not panic (defensive).
-    session.append_tool_result_output("unknown", "output");
+    session.append_tool_result_output("unknown", "output", crate::feat::tools_actor::protocol::event::ToolOutputKind::Normal);
     assert!(session.history().is_empty());
 }
 
@@ -2195,8 +2189,8 @@ fn finalize_tool_result_completes_pending_entry() {
     session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
     session.append_tool_result_output(
         "call_1",
-        "building...
-",
+        "building...\n",
+        crate::feat::tools_actor::protocol::event::ToolOutputKind::Normal,
     );
 
     // When finalizing with success.

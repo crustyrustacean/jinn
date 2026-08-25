@@ -145,6 +145,7 @@ async fn flush_buffer(
         bus,
         session_id,
         ToolExecutionOutput {
+            kind: Default::default(),
             session_id: session_id.cloned().unwrap_or_default(),
             tool_call_id: tool_call_id.to_owned(),
             output: buffer.to_owned(),
