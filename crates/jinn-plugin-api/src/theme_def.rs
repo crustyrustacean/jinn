@@ -28,6 +28,8 @@ pub const THEME_COLOR_SLOTS: &[ThemeColorSlot] = &[
     ThemeColorSlot::ToolSuccessBg,
     ThemeColorSlot::ToolFailureBg,
     ThemeColorSlot::ToolPendingBg,
+    ThemeColorSlot::ChallengeAlertBg,
+    ThemeColorSlot::ChallengeAlertFg,
     ThemeColorSlot::CompactionBlockBg,
     ThemeColorSlot::TruncationFg,
     ThemeColorSlot::PickerActiveMarker,
@@ -88,6 +90,10 @@ pub enum ThemeColorSlot {
     ToolFailureBg,
     /// Tool pending background.
     ToolPendingBg,
+    /// Challenge alert block background (bright).
+    ChallengeAlertBg,
+    /// Challenge alert block foreground (dark text on bright bg).
+    ChallengeAlertFg,
     /// Compaction block background.
     CompactionBlockBg,
     /// Truncation indicator foreground.
@@ -156,6 +162,8 @@ impl ThemeColorSlot {
             Self::ToolSuccessBg => "tool_success_bg",
             Self::ToolFailureBg => "tool_failure_bg",
             Self::ToolPendingBg => "tool_pending_bg",
+            Self::ChallengeAlertBg => "challenge_alert_bg",
+            Self::ChallengeAlertFg => "challenge_alert_fg",
             Self::CompactionBlockBg => "compaction_block_bg",
             Self::TruncationFg => "truncation_fg",
             Self::PickerActiveMarker => "picker_active_marker",

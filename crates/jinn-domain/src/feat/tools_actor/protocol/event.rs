@@ -109,6 +109,19 @@ pub struct ToolExecutionStarted {
     pub dispatched_at: Timestamp,
 }
 
+/// How a streamed tool output should be surfaced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ToolOutputKind {
+    /// Ordinary streamed output.
+    #[default]
+    #[serde(rename = "normal")]
+    Normal,
+    /// Attention-grabbing output — e.g. a detected bot challenge the user
+    /// must solve in the browser window. Rendered with alert styling.
+    #[serde(rename = "alert")]
+    Alert,
+}
+
 /// Incremental output from a running tool.
 ///
 /// Emitted by streaming tools as they produce output. Each event carries
@@ -122,6 +135,10 @@ pub struct ToolExecutionOutput {
     pub tool_call_id: String,
     /// New output text (delta, not accumulated).
     pub output: String,
+    /// How the output should be surfaced. Old persisted events default to
+    /// [`ToolOutputKind::Normal`].
+    #[serde(default)]
+    pub kind: ToolOutputKind,
 }
 
 impl crate::common::bus::BusMessage for ToolBatchCompleted {}

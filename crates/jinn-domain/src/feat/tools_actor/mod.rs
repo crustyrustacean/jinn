@@ -641,6 +641,7 @@ impl ToolOrchestratorActor {
                 self.publish(ExecuteWebFetch {
                     session_id,
                     tool_call,
+                    dispatched_at,
                 })
                 .await;
             }
@@ -648,6 +649,7 @@ impl ToolOrchestratorActor {
                 self.publish(ExecuteWebSearch {
                     session_id,
                     tool_call,
+                    dispatched_at,
                 })
                 .await;
             }

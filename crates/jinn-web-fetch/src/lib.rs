@@ -18,6 +18,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
+pub use challenge::{ProgressFn, RenderProgress, WaitConfig, WaitOutcome};
 pub use extractor::{CleanMarkdownExtractor, Extractor, MarkdownExtractor};
 pub use http_fetcher::HttpFetcher;
 
@@ -106,6 +107,15 @@ pub enum FetchError {
     /// An error occurred while rendering or extracting page content.
     #[error("render error: {0}")]
     Render(String),
+    /// A bot-protection challenge blocked the page and did not clear
+    /// (headless mode, or the headed human-solve window expired).
+    #[error(
+        "bot-protection challenge ({kind:?}) blocked the page — switch [browser]-backed tools to the headed-chrome backend to solve it manually"
+    )]
+    Challenge {
+        /// Which challenge was detected.
+        kind: crate::challenge::ChallengeKind,
+    },
 }
 
 /// Trait for fetching web page content.
@@ -122,6 +132,26 @@ pub trait WebFetcher: Send + Sync {
     /// Returns [`FetchError`] if the URL is invalid, the network request
     /// fails, or content extraction fails.
     async fn fetch(&self, url: &str, options: FetchOptions) -> Result<FetchOutput, FetchError>;
+
+    /// Fetches with a progress observer for long waits (challenge solving).
+    ///
+    /// The default ignores the observer and delegates to [`Self::fetch`] —
+    /// only browser-backed implementations that can wait on a human
+    /// (challenge solving) need to override it.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::fetch`], plus [`FetchError::Challenge`] when a
+    /// detected challenge did not clear.
+    async fn fetch_observed(
+        &self,
+        url: &str,
+        options: FetchOptions,
+        on_progress: crate::challenge::ProgressFn,
+    ) -> Result<FetchOutput, FetchError> {
+        let _ = on_progress;
+        self.fetch(url, options).await
+    }
 
     /// Shuts down the fetcher and releases any held resources.
     ///

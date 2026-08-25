@@ -93,6 +93,14 @@ const PLATFORM: &str = "Linux";
 /// a few seconds on a modern CPU, so 30s is generous.
 const DEFAULT_ANUBIS_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Default human-solve window for headed mode (matches the `[browser]`
+/// `challenge_wait_secs` default).
+const DEFAULT_CHALLENGE_WAIT: Duration = Duration::from_mins(2);
+
+/// Default settle window for the behavioral challenge fallback (matches the
+/// `[browser]` `settle_secs` default).
+const DEFAULT_SETTLE: Duration = Duration::from_secs(5);
+
 /// Resolved stealth configuration for one browser session.
 ///
 /// Built once from user preferences (and an optional explicit UA override) and
@@ -125,6 +133,17 @@ pub struct StealthSettings {
     pub accept_language: String,
     /// How long to wait for an interstitial challenge (e.g. Anubis) to clear.
     pub anubis_timeout: Duration,
+    /// How long a human has to solve a detected challenge in headed mode
+    /// before the render fails. Headless mode never waits this long — it
+    /// fails fast with a challenge error.
+    pub challenge_wait: Duration,
+    /// Settle window for the behavioral challenge fallback: an empty-looking
+    /// page gets this long to fill (slow SPA) before being treated as a
+    /// challenge.
+    pub settle: Duration,
+    /// Keep browser tabs open after a successful read instead of closing
+    /// them.
+    pub keep_tabs_open: bool,
     /// Optional explicit path to the Chrome/Chromium binary to launch.
     ///
     /// When `None`, the `headless_chrome` crate's own discovery is used.
@@ -141,6 +160,9 @@ impl Default for StealthSettings {
             platform: derive_platform().to_owned(),
             accept_language: ACCEPT_LANGUAGE.to_owned(),
             anubis_timeout: DEFAULT_ANUBIS_TIMEOUT,
+            challenge_wait: DEFAULT_CHALLENGE_WAIT,
+            settle: DEFAULT_SETTLE,
+            keep_tabs_open: false,
             binary_path: None,
         }
     }

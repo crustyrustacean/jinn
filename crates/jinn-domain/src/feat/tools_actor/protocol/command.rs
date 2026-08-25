@@ -81,7 +81,16 @@ pub struct ExecuteWebSearch {
     pub session_id: SessionId,
     /// The tool call containing the search query.
     pub tool_call: ToolCall,
+    /// When the dispatch actor forwarded the call — the baseline for
+    /// elapsed-time progress reports while a challenge wait runs.
+    #[serde(default = "default_dispatched_at")]
+    pub dispatched_at: jiff::Timestamp,
 }
+
+fn default_dispatched_at() -> jiff::Timestamp {
+    jiff::Timestamp::now()
+}
+
 /// Execute a web-fetch tool call.
 ///
 /// Sent by the tool orchestrator to the `WebFetchActor`.
@@ -93,6 +102,10 @@ pub struct ExecuteWebFetch {
     pub session_id: SessionId,
     /// The tool call containing URL and options.
     pub tool_call: ToolCall,
+    /// When the dispatch actor forwarded the call — the baseline for
+    /// elapsed-time progress reports while a challenge wait runs.
+    #[serde(default = "default_dispatched_at")]
+    pub dispatched_at: jiff::Timestamp,
 }
 
 impl crate::common::bus::BusMessage for RegisterTools {}

@@ -189,5 +189,9 @@ Entries are added or amended **only with human approval**.
 - (watchdog) The watchdog resets its stall counter at turn boundaries (not on activity jitter) and resets the budget when provider activity resumes; retries are suppressed within a backoff window.
 - (web) Web search runs via DuckDuckGo and web fetch supports concurrent requests; consulted sources are deduped and flushed as a Sources footer when the turn reaches a final assistant answer.
 - (web) Browser-backed web tools (fetch + search) keep their Chromium process warm via a periodic heartbeat; a missed liveness probe force-evicts the handle so the next request lazily launches a fresh browser rather than hanging on a dead WebSocket.
+- (web) Browser-backed renders detect bot challenges via a shared vendor-signature list (Cloudflare, Anubis, DuckDuckGo anomaly, DataDome, PerimeterX, Kasada, Imperva) plus a conservative behavioral fallback (near-zero text after a settle window).
+- (web) In headed mode a detected challenge keeps its tab open and waits up to [browser] challenge_wait_secs for a human solve; headless mode fails fast with an error suggesting the headed-chrome backend.
+- (web) Challenge waits surface as alert-styled streaming tool output (bright background theme colors) that reverts to normal styling on completion.
+- (web) [browser] keep_tabs_open controls whether render tabs close after a read (default: close).
 - (workflow) Commits use `just commit '<message>'`, which runs `fossil addremove --dotfiles` so dot-directories like `.agents/` are included.
 - (workflow) The workspace is checked with `just check` (compile), `just test` (tests), and `just lint` (lints); all tests must pass before committing.

@@ -58,7 +58,9 @@ use kameo::prelude::{Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::tools_actor::protocol::command::{ExecuteWebFetch, RegisterTools};
-use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
+use crate::feat::tools_actor::protocol::event::{
+    ToolExecutionCompleted, ToolExecutionOutput, ToolExecutionStarted, ToolOutputKind,
+};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_web_fetch::{FetchOptions, OutputFormat, WebFetcher};
 
@@ -156,8 +158,10 @@ impl Message<ExecuteWebFetch> for WebFetchActor {
         let bus = self.deps.services.bus.clone();
         let tool_call = msg.tool_call;
         let session_id = msg.session_id;
+        let dispatched_at = msg.dispatched_at;
         tokio::spawn(async move {
-            let result = execute_fetch(&web_fetcher, &tool_call).await;
+            let result =
+                execute_fetch(&web_fetcher, &tool_call, &session_id, dispatched_at, &bus).await;
             tracing::info!(
                 tool_call_id = %result.tool_call_id,
                 success = result.success,
@@ -172,7 +176,13 @@ impl Message<ExecuteWebFetch> for WebFetchActor {
 }
 
 /// Parses arguments and executes the fetch.
-async fn execute_fetch(web_fetcher: &Arc<dyn WebFetcher>, tool_call: &ToolCall) -> ToolResult {
+async fn execute_fetch(
+    web_fetcher: &Arc<dyn WebFetcher>,
+    tool_call: &ToolCall,
+    session_id: &crate::protocol::SessionId,
+    dispatched_at: jiff::Timestamp,
+    bus: &crate::common::services::bus_service::BusService,
+) -> ToolResult {
     tracing::debug!(arguments = %tool_call.arguments, "web-fetch: parsing arguments");
     let args = match serde_json::from_str::<WebFetchArgs>(&tool_call.arguments) {
         Ok(a) => a,
@@ -198,11 +208,43 @@ async fn execute_fetch(web_fetcher: &Arc<dyn WebFetcher>, tool_call: &ToolCall) 
         "web-fetch: calling fetcher"
     );
 
-    match web_fetcher.fetch(&args.url, options).await {
+    // Lazy streaming: same pattern as web-search — the pending ToolResult
+    // entry only appears when the fetcher reports a wait.
+    let started = std::sync::atomic::AtomicBool::new(false);
+    let on_progress: jinn_web_fetch::ProgressFn = std::sync::Arc::new({
+        let bus = bus.clone();
+        let session_id = session_id.clone();
+        let tool_call_id = tool_call.id.clone();
+        let name = tool_call.name.clone();
+        move |progress: jinn_web_fetch::RenderProgress| {
+            let text = describe_progress(&progress);
+            // The observer runs inside a `spawn_blocking` render; re-enter the
+            // async runtime to publish onto the bus.
+            let handle = tokio::runtime::Handle::current();
+            if !started.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                handle.block_on(bus.publish(ToolExecutionStarted {
+                    session_id: session_id.clone(),
+                    tool_call_id: tool_call_id.clone(),
+                    name: name.clone(),
+                    dispatched_at,
+                }));
+            }
+            handle.block_on(bus.publish(ToolExecutionOutput {
+                session_id: session_id.clone(),
+                tool_call_id: tool_call_id.clone(),
+                output: text,
+                kind: ToolOutputKind::Alert,
+            }));
+        }
+    });
+
+    match web_fetcher
+        .fetch_observed(&args.url, options, on_progress)
+        .await
+    {
         Ok(output) => {
             tracing::debug!(
                 status = output.status,
-                content_type = %output.content_type,
                 final_url = %output.url,
                 content_len = output.content.len(),
                 "web-fetch: fetch succeeded"
@@ -233,6 +275,20 @@ async fn execute_fetch(web_fetcher: &Arc<dyn WebFetcher>, tool_call: &ToolCall) 
 }
 
 /// Returns the tool definition for `web-fetch`.
+/// Renders a [`RenderProgress`] event as user-facing streaming text.
+fn describe_progress(progress: &jinn_web_fetch::RenderProgress) -> String {
+    match progress {
+        jinn_web_fetch::RenderProgress::ChallengeDetected { kind, url } => {
+            format!(
+                "⚠ bot challenge detected ({kind:?}) at {url} — solve it in the browser window; waiting for you…"
+            )
+        }
+        jinn_web_fetch::RenderProgress::WaitingForHuman { elapsed_secs } => {
+            format!("still waiting for the challenge to clear ({elapsed_secs}s elapsed)")
+        }
+    }
+}
+
 fn web_fetch_tool_definition() -> ToolDefinition {
     ToolDefinition {
         name: "web-fetch".to_owned(),
@@ -401,6 +457,7 @@ mod tests {
             .publish(ExecuteWebFetch {
                 session_id: session_id.clone(),
                 tool_call,
+                dispatched_at: jiff::Timestamp::now(),
             })
             .await;
 
@@ -434,6 +491,7 @@ mod tests {
             .publish(ExecuteWebFetch {
                 session_id: session_id.clone(),
                 tool_call,
+                dispatched_at: jiff::Timestamp::now(),
             })
             .await;
 
@@ -466,6 +524,7 @@ mod tests {
             .publish(ExecuteWebFetch {
                 session_id: session_id.clone(),
                 tool_call,
+                dispatched_at: jiff::Timestamp::now(),
             })
             .await;
 
@@ -502,6 +561,7 @@ mod tests {
                         name: "web-fetch".to_owned(),
                         arguments: r#"{"url": "https://example.com/"}"#.to_owned(),
                     },
+                    dispatched_at: jiff::Timestamp::now(),
                 })
                 .await;
         }
@@ -616,6 +676,9 @@ backend = "headless-chrome"
                 binary: crate::feat::browser::BrowserBinary::Chrome,
                 user_agent: Some("Custom/1.0".to_owned()),
                 anubis_timeout_secs: 45,
+                challenge_wait_secs: 120,
+                settle_secs: 5,
+                keep_tabs_open: false,
             },
             ..UserPreferences::default()
         };
