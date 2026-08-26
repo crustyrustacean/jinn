@@ -260,10 +260,17 @@ fn info_line_cache_cell(terminal: &ratatui::backend::TestBackend) -> ratatui::bu
 }
 
 #[rstest::rstest]
-fn render_info_line_cache_segment_is_error_below_90_percent() {
-    // Given a measured turn reporting 400 of 1000 prompt tokens cached (40%).
+#[case(400, "\u{2B22} 40%")]
+// 894/1000 = 89.4% raw — rounds DOWN to a displayed 89%, staying in the error
+// band one tick below the warning boundary.
+#[case(894, "\u{2B22} 89%")]
+fn render_info_line_cache_segment_is_error_below_90_percent(
+    #[case] cached_tokens: u32,
+    #[case] expected_text: &str,
+) {
+    // Given a measured turn displaying below 90%.
     let mut element = StatusBarElement;
-    let state = state_with_measured_cache(1000, 400);
+    let state = state_with_measured_cache(1000, cached_tokens);
     let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
@@ -274,9 +281,9 @@ fn render_info_line_cache_segment_is_error_below_90_percent() {
         })
         .unwrap();
 
-    // Then the cache segment reads "⬢ 40%" and carries the error color.
+    // Then the cache segment reads its percentage and carries the error color.
     let row = buffer_row(terminal.backend().buffer(), 1, 80);
-    assert!(row.contains("\u{2B22} 40%"), "got: {row}");
+    assert!(row.contains(expected_text), "got: {row}");
     let cell = info_line_cache_cell(terminal.backend());
     assert_eq!(
         cell.style().fg,
@@ -286,10 +293,17 @@ fn render_info_line_cache_segment_is_error_below_90_percent() {
 }
 
 #[rstest::rstest]
-fn render_info_line_cache_segment_is_success_at_or_above_95_percent() {
-    // Given a measured turn reporting 960 of 1000 prompt tokens cached (96%).
+#[case(960, "\u{2B22} 96%")]
+// 946/1000 = 94.6% raw — must DISPLAY as 95% and therefore band as success
+// (bands apply to the rounded display value, not the raw ratio).
+#[case(946, "\u{2B22} 95%")]
+fn render_info_line_cache_segment_is_success_at_or_above_95_percent(
+    #[case] cached_tokens: u32,
+    #[case] expected_text: &str,
+) {
+    // Given a measured turn reporting cache hits at or above 95% after rounding.
     let mut element = StatusBarElement;
-    let state = state_with_measured_cache(1000, 960);
+    let state = state_with_measured_cache(1000, cached_tokens);
     let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
@@ -300,22 +314,29 @@ fn render_info_line_cache_segment_is_success_at_or_above_95_percent() {
         })
         .unwrap();
 
-    // Then the cache segment reads "⬢ 96%" and carries the success color.
+    // Then the segment shows the ROUNDED percentage and carries the success color.
     let row = buffer_row(terminal.backend().buffer(), 1, 80);
-    assert!(row.contains("\u{2B22} 96%"), "got: {row}");
+    assert!(row.contains(expected_text), "got: {row}");
     let cell = info_line_cache_cell(terminal.backend());
     assert_eq!(
         cell.style().fg,
         Some(state.frontend.theme.success),
-        "cache segment at or above 95% should use success"
+        "cache segment displaying 95%+ should use success"
     );
 }
 
 #[rstest::rstest]
-fn render_info_line_cache_segment_is_warning_between_90_and_94_percent() {
-    // Given a measured turn reporting exactly 900 of 1000 prompt tokens cached (90%).
+#[case(900, "\u{2B22} 90%")]
+// 895/1000 = 89.5% raw — f64 round is half-away-from-zero, so it DISPLAYS as
+// 90% and therefore bands as warning.
+#[case(895, "\u{2B22} 90%")]
+fn render_info_line_cache_segment_is_warning_between_90_and_94_percent(
+    #[case] cached_tokens: u32,
+    #[case] expected_text: &str,
+) {
+    // Given a measured turn displaying between 90% and 94% inclusive.
     let mut element = StatusBarElement;
-    let state = state_with_measured_cache(1000, 900);
+    let state = state_with_measured_cache(1000, cached_tokens);
     let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
@@ -326,14 +347,14 @@ fn render_info_line_cache_segment_is_warning_between_90_and_94_percent() {
         })
         .unwrap();
 
-    // Then the cache segment reads "⬢ 90%" and carries the warning color.
+    // Then the cache segment reads its percentage and carries the warning color.
     let row = buffer_row(terminal.backend().buffer(), 1, 80);
-    assert!(row.contains("\u{2B22} 90%"), "got: {row}");
+    assert!(row.contains(expected_text), "got: {row}");
     let cell = info_line_cache_cell(terminal.backend());
     assert_eq!(
         cell.style().fg,
         Some(state.frontend.theme.warning),
-        "cache segment between 90 and 94% should use warning"
+        "cache segment displaying 90-94% should use warning"
     );
 }
 

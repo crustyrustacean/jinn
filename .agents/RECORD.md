@@ -155,6 +155,8 @@ Entries are added or amended **only with human approval**.
 - (tokens) The session token ledger stores the pre-send local estimate (`tokens_sent`) alongside provider-reported `prompt_tokens` and `cached_tokens` per request; the estimate is never overwritten.
 - (tokens) The status-bar `↑sent` count uses the provider-reported `prompt_tokens` when a turn completed with usage, falling back to the estimate for turns without usage.
 - (tokens) The status bar shows a cache-hit percentage (`⬢` glyph, leftmost) for OpenAI-compatible providers when cached prompt tokens are reported, computed over turns that reported usage.
+- (tokens) The status-bar cache-hit percentage is color-banded on its displayed value: >=95% uses theme.success, 90-94% uses theme.warning, below 90% uses theme.error_text.
+- (tokens) The session-tree aggregate applies the same cache-hit color bands, shown only when more than one session exists.
 - (tools) After a successful edit, a numbered snippet of the changed region is returned so the agent can chain edits without re-reading.
 - (tools) File edits, reads, and other built-in tool calls all funnel through a single `tools_actor` chokepoint.
 - (tools) The `bash` tool accepts an optional `max_duration_secs` argument that overrides the default timeout; the schema exposes `max_duration_secs`, not a raw `timeout`.
