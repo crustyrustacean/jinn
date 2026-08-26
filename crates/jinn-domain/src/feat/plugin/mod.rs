@@ -170,6 +170,8 @@ impl PickerItem for PluginPickerEntry {
         let phase_color = match self.phase {
             PluginPhase::Starting | PluginPhase::Running => self.theme.focus_accent,
             PluginPhase::Dead | PluginPhase::Unresponsive => self.theme.error_text,
+            // A clean, run-to-completion exit: neutral, not an alarm color.
+            PluginPhase::Done => self.theme.muted_text,
         };
         let phase_style = if is_selected {
             ratatui::style::Style::default().bg(self.theme.picker_selected_bg)
@@ -214,6 +216,7 @@ mod tests {
     #[case::running(PluginPhase::Running, "Running")]
     #[case::dead(PluginPhase::Dead, "Dead")]
     #[case::unresponsive(PluginPhase::Unresponsive, "Unresponsive")]
+    #[case::done(PluginPhase::Done, "Done")]
     fn render_row_shows_name_and_phase_label(#[case] phase: PluginPhase, #[case] label: &str) {
         // Given a plugin entry with this phase.
         let entry = PluginPickerEntry::new(

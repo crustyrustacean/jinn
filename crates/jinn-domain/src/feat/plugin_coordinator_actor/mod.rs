@@ -510,10 +510,11 @@ impl Message<PluginStatus> for PluginCoordinatorActor {
         let PluginStatus { name, phase } = msg;
         self.state
             .with_plugins(&self.cap, |p| p.set_phase(name.clone(), phase));
-        // A dead plugin stays dead until the next app start
-        // (RestartPolicy::Never); drop the actor ref so a future
-        // reconciliation could respawn (v1: nothing reconciles).
-        if phase == PluginPhase::Dead {
+        // A terminal phase (dead or cleanly done) drops the spawned map
+        // entry — the actor is stopping either way. The phase itself stays
+        // in the cache: `Done` keeps the plugin's contributions readable,
+        // `Dead` records the failure until the next app start.
+        if matches!(phase, PluginPhase::Dead | PluginPhase::Done) {
             self.spawned.lock().remove(&name);
             self.subscriptions.lock().remove(&name);
         }
