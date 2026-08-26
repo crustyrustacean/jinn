@@ -19,6 +19,14 @@ use serde::{Deserialize, Serialize};
 use crate::persona_def::PersonaDef;
 use crate::theme_def::ThemeDef;
 
+/// Subscription kinds a plugin may declare in [`Hello::subscriptions`].
+///
+/// Each tag names one host→guest event kind; the host forwards matching
+/// events to subscribed guests. Unknown tags are warned about and ignored
+/// (forward compatibility — a newer guest's new tags must not break an
+/// older host).
+pub const SUBSCRIPTION_KINDS: &[&str] = &["tool_call", "tool_result", "turn_end"];
+
 /// Handshake: the first message a plugin sends after boot.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Hello {
