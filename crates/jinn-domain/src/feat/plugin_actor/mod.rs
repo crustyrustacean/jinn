@@ -509,7 +509,11 @@ impl Message<ShutdownPlugin> for PluginActor {
 impl Message<MarkCleanExit> for PluginActor {
     type Reply = ();
 
-    async fn handle(&mut self, _msg: MarkCleanExit, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
+    async fn handle(
+        &mut self,
+        _msg: MarkCleanExit,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
         self.clean_exit = true;
     }
 }

@@ -1021,9 +1021,10 @@ async fn clean_exit_guest_reaches_done_phase() {
         if done == Some(PluginPhase::Done) {
             break;
         }
-        if tokio::time::Instant::now() >= deadline {
-            panic!("guest never reached Done; phase = {done:?}");
-        }
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "guest never reached Done; phase = {done:?}"
+        );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
@@ -1043,8 +1044,7 @@ async fn clean_exit_guest_reaches_done_phase() {
 async fn silent_guest_reaches_dead_phase() {
     // Given a coordinator whose guest closes stdout before Hello.
     let harness = TestHarness::new().await;
-    let state = spawn_coordinator(&harness, plugins(), jinn_plugin::FakeGuestScript::Silent)
-        .await;
+    let state = spawn_coordinator(&harness, plugins(), jinn_plugin::FakeGuestScript::Silent).await;
 
     // When the failed startup path settles.
     let deadline = tokio::time::Instant::now() + WAIT;
@@ -1053,9 +1053,10 @@ async fn silent_guest_reaches_dead_phase() {
         if phase == Some(PluginPhase::Dead) {
             break;
         }
-        if tokio::time::Instant::now() >= deadline {
-            panic!("guest never reached Dead; phase = {phase:?}");
-        }
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "guest never reached Dead; phase = {phase:?}"
+        );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
