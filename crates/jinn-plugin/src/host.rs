@@ -175,6 +175,36 @@ impl PluginHost {
         Ok(())
     }
 
+    /// Writes one pre-encoded NDJSON line to the guest's stdin.
+    ///
+    /// For payloads the typed [`Envelope`] cannot represent (e.g. a wire
+    /// tag this build doesn't know) and for tests exercising raw-line
+    /// handling. The newline is appended if absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`PluginHostError::Write`] report if the stdin pipe fails
+    /// to write or flush (guest gone, pipe closed).
+    pub async fn write_raw_line(&mut self, line: &str) -> Result<(), Report<PluginHostError>> {
+        let mut bytes = line.as_bytes().to_vec();
+        if !bytes.ends_with(b"\n") {
+            bytes.push(b'\n');
+        }
+        self.write
+            .stdin
+            .write_all(&bytes)
+            .await
+            .change_context(PluginHostError::Write)
+            .attach("plugin stdin write failed")?;
+        self.write
+            .stdin
+            .flush()
+            .await
+            .change_context(PluginHostError::Write)
+            .attach("plugin stdin flush failed")?;
+        Ok(())
+    }
+
     /// Reads the next envelope from the guest's stdout.
     ///
     /// Returns `Ok(None)` on EOF (guest ended). Malformed lines are

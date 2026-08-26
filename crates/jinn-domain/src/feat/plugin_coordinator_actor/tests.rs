@@ -844,3 +844,73 @@ async fn identical_citation_batches_both_publish() {
     // identical-payload debounce).
     assert_eq!(events.len(), 2, "turn-scoped citations must not debounce");
 }
+
+/// `final_answer` computation: an assistant last entry yields true, an
+/// error last entry yields false (the flush gate).
+#[tokio::test]
+async fn final_answer_reflects_last_history_entry_kind() {
+    // Given a session whose last entry is an error.
+    let state = State::new(crate::common::app_state::AppState::default());
+    let session_id = SessionId::new();
+    seed_entry(&state, &session_id, false);
+
+    // When checking the final-answer signal.
+    // Then it is false for the error entry.
+    assert!(!super::last_entry_is_assistant(&state, &session_id));
+
+    // Given the session's history now ends with an assistant message.
+    seed_entry(&state, &session_id, true);
+
+    // When re-checking.
+    // Then it is true.
+    assert!(super::last_entry_is_assistant(&state, &session_id));
+
+    // Given an unknown session.
+    // When checking.
+    // Then it is false (never claims a final answer for a vanished session).
+    assert!(!super::last_entry_is_assistant(&state, &SessionId::new()));
+}
+
+/// With no plugins configured, forwarded bus events are harmless no-ops and
+/// the coordinator stays alive — no footer, no startup failure.
+#[tokio::test]
+async fn no_plugins_forwarded_events_are_harmless() {
+    // Given a coordinator with zero plugins configured and a recorder.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        std::collections::BTreeMap::new(),
+        jinn_plugin::FakeGuestScript::Silent,
+    )
+    .await;
+
+    // When tool and phase events fire anyway.
+    harness
+        .publish(ToolCallReceived {
+            session_id: SessionId::new(),
+            tool_call: ToolCall {
+                id: "c1".to_owned(),
+                name: "web-fetch".to_owned(),
+                arguments: r#"{"url":"https://example.com"}"#.to_owned(),
+            },
+            dispatched_at: jiff::Timestamp::now(),
+        })
+        .await;
+    harness
+        .publish(SessionPhaseChanged {
+            session_id: SessionId::new(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        })
+        .await;
+
+    // Then nothing was published and the coordinator did not crash.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        await_recorded(&recorder, 0, Duration::from_millis(100))
+            .await
+            .is_empty(),
+        "no plugin means no citations"
+    );
+}
