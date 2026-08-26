@@ -42,6 +42,30 @@ pub enum PickerKind {
     Endpoint,
 }
 
+impl PickerKind {
+    /// Every variant, in declaration order.
+    ///
+    /// Lets exhaustive drift tests (e.g. scope-binding coverage) iterate
+    /// all kinds without a strum dependency.
+    pub const ALL: [Self; 14] = [
+        Self::Provider,
+        Self::Session,
+        Self::Persona,
+        Self::Theme,
+        Self::SessionLifecycle,
+        Self::CompactionModel,
+        Self::ReasoningEffort,
+        Self::Tool,
+        Self::Skill,
+        Self::TaskList,
+        Self::Project,
+        Self::McpServer,
+        Self::Plugin,
+        // Update this count when adding a variant; `Endpoint` is last.
+        Self::Endpoint,
+    ];
+}
+
 impl std::fmt::Display for PickerKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

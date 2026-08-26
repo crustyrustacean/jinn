@@ -373,6 +373,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             b.bind("<Tab>", Intent::McpToggleSelected, KeyCategory::General)
                 .bind("<c-r>", Intent::McpRestartSelected, KeyCategory::General)
                 .bind("<c-t>", Intent::McpTogglePreview, KeyCategory::General);
+        })
+        .scope(Scope::PickerPlugin, |b| {
+            add_picker_base(b);
         });
 
     // Dashboard scope - service status overview.
@@ -536,6 +539,48 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
+
+    /// Drift guard: every `PickerKind` must map to a keymap scope that has
+    /// at least one binding. A kind whose scope is missing from the keymap
+    /// opens a picker that ignores all input (perceived freeze) — this
+    /// catches a forgotten `.scope(Scope::Picker..., ...)` registration the
+    /// moment a variant is added or a scope is dropped.
+    #[rstest::rstest]
+    fn every_picker_kind_maps_to_a_scope_with_bindings(
+        #[values(
+            PickerKind::Provider,
+            PickerKind::Session,
+            PickerKind::Persona,
+            PickerKind::Theme,
+            PickerKind::SessionLifecycle,
+            PickerKind::CompactionModel,
+            PickerKind::ReasoningEffort,
+            PickerKind::Tool,
+            PickerKind::Skill,
+            PickerKind::TaskList,
+            PickerKind::Project,
+            PickerKind::McpServer,
+            PickerKind::Plugin,
+            PickerKind::Endpoint,
+        )]
+        kind: PickerKind,
+    ) {
+        use crate::app::scope_for_focus;
+
+        // Given the default keymap.
+        let keymap = init();
+
+        // When mapping the picker's focus scope to a keymap scope.
+        let scope = scope_for_focus(&jinn_domain::FocusScope::Picker { kind });
+
+        // Then that scope has at least one binding group with a binding.
+        let groups = keymap.bindings_for_scope(scope);
+        let binding_count: usize = groups.iter().map(|g| g.bindings.len()).sum();
+        assert!(
+            binding_count > 0,
+            "scope {scope:?} for picker {kind} has no bindings — the picker would ignore all input"
+        );
+    }
 
     /// Regression test for ratatui-which-key v0.12.1: when a key is bound as a
     /// leaf in one scope (Normal) and used as a describe_group prefix in
