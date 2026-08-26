@@ -240,9 +240,244 @@
         },
         "additionalProperties": false
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "tool_call_event"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "session_id",
+          "tool_call_id",
+          "name",
+          "arguments"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "tool_call_event"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "tool_call_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "arguments": {
+            "type": "string",
+            "description": "The tool call's arguments as a JSON string."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "tool_result_event"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "session_id",
+          "tool_call_id",
+          "name",
+          "content",
+          "success"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "tool_result_event"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "tool_call_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "Execution output; the untruncated full_content when truncation occurred."
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "turn_end_event"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "session_id",
+          "final_answer"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "turn_end_event"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "final_answer": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "push_citations"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "session_id",
+          "citations"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "push_citations"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/pluginCitation"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
     }
   ],
   "$defs": {
+    "pluginCitation": {
+      "type": "object",
+      "required": [
+        "url",
+        "title"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The source URL (http/https only; anything else is dropped by the host)."
+        },
+        "title": {
+          "type": "string",
+          "description": "Human-readable title for the source."
+        },
+        "content": {
+          "type": "string",
+          "description": "Optional snippet text."
+        }
+      },
+      "additionalProperties": false
+    },
     "themeDef": {
       "type": "object",
       "required": [
