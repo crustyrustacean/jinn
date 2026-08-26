@@ -19,6 +19,10 @@ pub enum PluginPhase {
     /// messages were dropped. Cleared back to `Running` when the channel
     /// drains.
     Unresponsive,
+    /// The guest completed its work and exited cleanly after the
+    /// handshake (run-to-completion plugins like the loaders). The host
+    /// keeps the plugin's contributions cached after the guest ends.
+    Done,
 }
 
 /// A lifecycle transition for one configured plugin.
