@@ -226,6 +226,119 @@ fn render_shows_cache_percent_when_cached_tokens_present() {
     assert!(row.contains("\u{2B22} 40%"));
 }
 
+/// Build an `AppState` whose active session has one measured turn reporting
+/// the given provider prompt and cached token counts.
+fn state_with_measured_cache(prompt_tokens: u32, cached_tokens: u32) -> AppState {
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: prompt_tokens,
+        tokens_received: 50,
+        cost: None,
+        prompt_tokens: Some(prompt_tokens),
+        cached_tokens: Some(cached_tokens),
+    });
+    state
+}
+
+/// Render the status bar and return the cell carrying the cache glyph.
+///
+/// Tests using this helper run with a single session, so the tree aggregate
+/// is hidden and the info line holds the only glyph in the buffer.
+fn info_line_cache_cell(
+    terminal: &ratatui::backend::TestBackend,
+) -> ratatui::buffer::Cell {
+    terminal
+        .buffer()
+        .content()
+        .iter()
+        .find(|cell| cell.symbol().starts_with('\u{2B22}'))
+        .cloned()
+        .expect("cache glyph should be rendered")
+}
+
+#[rstest::rstest]
+fn render_info_line_cache_segment_is_error_below_90_percent() {
+    // Given a measured turn reporting 400 of 1000 prompt tokens cached (40%).
+    let mut element = StatusBarElement;
+    let state = state_with_measured_cache(1000, 400);
+    let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the cache segment reads "⬢ 40%" and carries the error color.
+    let row = buffer_row(terminal.backend().buffer(), 1, 80);
+    assert!(row.contains("\u{2B22} 40%"), "got: {row}");
+    let cell = info_line_cache_cell(terminal.backend());
+    assert_eq!(
+        cell.style().fg,
+        Some(state.frontend.theme.error_text),
+        "cache segment below 90% should use error_text"
+    );
+}
+
+#[rstest::rstest]
+fn render_info_line_cache_segment_is_success_at_or_above_95_percent() {
+    // Given a measured turn reporting 960 of 1000 prompt tokens cached (96%).
+    let mut element = StatusBarElement;
+    let state = state_with_measured_cache(1000, 960);
+    let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the cache segment reads "⬢ 96%" and carries the success color.
+    let row = buffer_row(terminal.backend().buffer(), 1, 80);
+    assert!(row.contains("\u{2B22} 96%"), "got: {row}");
+    let cell = info_line_cache_cell(terminal.backend());
+    assert_eq!(
+        cell.style().fg,
+        Some(state.frontend.theme.success),
+        "cache segment at or above 95% should use success"
+    );
+}
+
+#[rstest::rstest]
+fn render_info_line_cache_segment_is_warning_between_90_and_94_percent() {
+    // Given a measured turn reporting exactly 900 of 1000 prompt tokens cached (90%).
+    let mut element = StatusBarElement;
+    let state = state_with_measured_cache(1000, 900);
+    let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the cache segment reads "⬢ 90%" and carries the warning color.
+    let row = buffer_row(terminal.backend().buffer(), 1, 80);
+    assert!(row.contains("\u{2B22} 90%"), "got: {row}");
+    let cell = info_line_cache_cell(terminal.backend());
+    assert_eq!(
+        cell.style().fg,
+        Some(state.frontend.theme.warning),
+        "cache segment between 90 and 94% should use warning"
+    );
+}
+
 #[rstest::rstest]
 fn render_hides_cache_glyph_when_no_cached_tokens() {
     // Given a session with no cache hits (cached_tokens = None).

@@ -197,7 +197,10 @@ fn render_token_info_line(
         // Cache-hit percentage — leftmost, shown only when there are cache hits.
         if let Some(pct) = cache_hit_percent(&token_stats) {
             let cache_glyph = '\u{2B22}'; // ⬢
-            left_spans.push(Span::styled(format!("{cache_glyph} {pct}% "), style));
+            left_spans.push(Span::styled(
+                format!("{cache_glyph} {pct}% "),
+                cache_hit_style(&state.frontend.theme, pct),
+            ));
         }
         left_spans.push(Span::styled(token_info, style));
         left_spans.push(Span::styled(format!(" ${:.5}", total_cost.abs()), style));
