@@ -473,7 +473,7 @@ async fn errored_turn_retains_citations_until_next_success() {
 /// url-only JSON object, and even an unknown wire tag all pass through,
 /// and a subsequent valid turn still flushes.
 #[tokio::test]
-#[allow(clippy::too_many_lines, reason = "one scripted barrage, one setup")]
+#[expect(clippy::too_many_lines, reason = "one scripted barrage, one setup")]
 async fn unknown_shapes_are_ignored_never_fatal() {
     // Given the real url-citations guest, handshaken.
     let engine = PluginEngine::new().expect("engine");

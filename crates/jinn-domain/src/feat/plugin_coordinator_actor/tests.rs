@@ -942,7 +942,7 @@ async fn truncated_result_forwards_full_content_to_guest() {
                 result: crate::feat::tools_actor::tool_types::ToolResult {
                     tool_call_id: "call_trunc".to_owned(),
                     name: "mcp__parallel__web_search".to_owned(),
-                    content: clipped.to_owned(),
+                    content: clipped.clone(),
                     success: true,
                     full_content: Some(full_json.to_owned()),
                     truncation: None,

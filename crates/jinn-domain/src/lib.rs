@@ -130,7 +130,7 @@ pub use feat::tools_actor::BoxedToolFuture;
 pub use feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
 pub use feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered,
+    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered, ToolsUnregistered,
 };
 pub use feat::tools_actor::registry::{BuiltinToolEntry, builtin_tools};
 pub use feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
