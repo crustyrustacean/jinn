@@ -809,6 +809,130 @@ fn render_shows_cost_with_non_zero_value() {
 }
 
 #[rstest::rstest]
+fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
+    use crate::feat::session::token_stats::TokenRecord;
+    use ratatui::style::Color;
+
+    // Given a parent and child session whose aggregated ledgers report 96% cache hits.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1200,
+        tokens_received: 600,
+        cost: Some(0.01),
+        prompt_tokens: Some(1000),
+        cached_tokens: Some(960),
+    });
+    let child_id = crate::protocol::SessionId::new();
+    let active_id = state.session.active_session_id().clone();
+    {
+        let child = state.session_mut_or_create(&child_id);
+        child.push_token_record(TokenRecord {
+            model_used: None,
+            timestamp: jiff::Timestamp::now(),
+            tokens_sent: 500,
+            tokens_received: 250,
+            cost: Some(0.005),
+            prompt_tokens: Some(200),
+            cached_tokens: Some(192),
+        });
+        child.set_parent_session(active_id);
+    }
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(120, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row0 = buffer_row(&buffer, 0, 120);
+
+    // Then the tree aggregate shows the cache segment with a 96% figure...
+    assert!(
+        row0.contains("\u{2B22} 96%"),
+        "tree aggregate should show \u{2B22} 96%, got: {row0}"
+    );
+    // And the cell carrying the cache glyph is styled with the success color.
+    let expected_fg = state.frontend.theme.success;
+    let cache_cell = (0..120)
+        .filter_map(|x| buffer.cell((x, 0)))
+        .find(|cell| cell.symbol().starts_with('\u{2B22}'))
+        .expect("cache glyph should be rendered on the tree line");
+    assert_eq!(
+        cache_cell.style().fg,
+        Some(Color::Reset).filter(|_| false).or(Some(expected_fg)),
+        "cache segment should carry theme success color"
+    );
+}
+
+#[rstest::rstest]
+fn render_tree_cache_segment_keeps_muted_neighbors() {
+    // Given a parent and child session showing a tree aggregate at 96% cache hits.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1200,
+        tokens_received: 600,
+        cost: Some(0.01),
+        prompt_tokens: Some(1000),
+        cached_tokens: Some(960),
+    });
+    let child_id = crate::protocol::SessionId::new();
+    let active_id = state.session.active_session_id().clone();
+    {
+        let child = state.session_mut_or_create(&child_id);
+        child.push_token_record(TokenRecord {
+            model_used: None,
+            timestamp: jiff::Timestamp::now(),
+            tokens_sent: 500,
+            tokens_received: 250,
+            cost: Some(0.005),
+            prompt_tokens: Some(200),
+            cached_tokens: Some(192),
+        });
+        child.set_parent_session(active_id);
+    }
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(120, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+
+    // Then the token arrow right after the colored cache segment keeps the
+    // muted color — only the cache segment itself is banded.
+    let expected_muted = state.frontend.theme.muted_text;
+    let after_cache = (0..120)
+        .filter_map(|x| buffer.cell((x, 0)).map(|cell| (x, cell)))
+        .skip_while(|(_, cell)| !cell.symbol().starts_with('\u{2B22}'))
+        .find(|(_, cell)| cell.symbol().starts_with('\u{2191}'))
+        .map(|(_, cell)| cell)
+        .expect("up-arrow should follow the cache segment on the tree line");
+    assert_eq!(
+        after_cache.style().fg,
+        Some(expected_muted),
+        "non-cache segments should keep muted color"
+    );
+}
+
+#[rstest::rstest]
 fn render_shows_cost_before_turns_indicator() {
     // Given a state with history entries producing turns and a token record with cost.
     use crate::feat::session::token_stats::TokenRecord;

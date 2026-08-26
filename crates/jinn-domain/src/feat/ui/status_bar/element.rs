@@ -141,20 +141,35 @@ fn render_tree_aggregate(
     let turn_symbol = '\u{21BB}';
     let session_symbol = '\u{29C9}';
     let tree_prefix = '\u{1F333}';
-    let cache_segment = match cache_hit_percent_from(tree.cached_total, tree.measured_sent) {
-        Some(pct) => format!("\u{2B22} {pct}% "),
-        None => String::new(),
-    };
-    let tree_display = format!(
-        "{tree_prefix} {cache_segment}{up_arrow}{} {down_arrow}{} ${:.5} {turn_symbol}{turns} {session_symbol}{count}",
-        format_tokens(tree.effective_sent),
-        format_tokens(tree.total_received),
-        tree.total_cost,
-        turns = tree.total_turns,
-        count = tree.session_count,
-    );
+    let turns = tree.total_turns;
+    let count = tree.session_count;
+    let mut tree_spans: Vec<Span> = vec![Span::styled(format!("{tree_prefix} "), style)];
+    match cache_hit_percent_from(tree.cached_total, tree.measured_sent) {
+        Some(pct) => {
+            let cache_glyph = '\u{2B22}'; // ⬢
+            tree_spans.push(Span::styled(
+                format!("{cache_glyph} {pct}% "),
+                cache_hit_style(&state.frontend.theme, pct),
+            ));
+        }
+        None => {}
+    }
+    tree_spans.push(Span::styled(
+        format!("{up_arrow}{} ", format_tokens(tree.effective_sent)),
+        style,
+    ));
+    tree_spans.push(Span::styled(
+        format!("{down_arrow}{} ", format_tokens(tree.total_received)),
+        style,
+    ));
+    tree_spans.push(Span::styled(format!("${:.5} ", tree.total_cost), style));
+    tree_spans.push(Span::styled(format!("{turn_symbol}{turns} "), style));
+    tree_spans.push(Span::styled(
+        format!("{session_symbol}{count}"),
+        style,
+    ));
     let tree_widget =
-        Paragraph::new(Line::from(Span::styled(tree_display, style))).alignment(Alignment::Right);
+        Paragraph::new(Line::from(tree_spans)).alignment(Alignment::Right);
     frame.render_widget(tree_widget, area);
 }
 
