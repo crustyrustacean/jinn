@@ -6,8 +6,9 @@
 //!
 //! - [`SessionLoadCompleted`] — a session restored from disk; spawn actors for
 //!   its persisted `enabled_mcp_servers`.
-//! - [`SessionCreated`] — a freshly created session (defaults to no MCP, but
-//!   the handler re-reads enablement defensively).
+//! - [`SessionCreated`] — a freshly created session; reconcile against its
+//!   actual `enabled_mcp_servers` (empty for legacy sessions, possibly
+//!   config-seeded via `auto_enable`).
 //! - [`McpEnablementChanged`] — the picker committed a new desired set; diff
 //!   against the spawned map and spawn/kill the delta.
 //! - [`SessionClosed`] / [`SessionArchived`] / [`SessionTeardownFinished`] —
@@ -341,13 +342,21 @@ impl Message<SessionCreated> for McpCoordinatorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionCreated, _ctx: &mut Context<Self, Self::Reply>) {
-        // New sessions are created with an empty `enabled_mcp_servers` set,
-        // so there is nothing to spawn here. Restored sessions arrive via
-        // `SessionLoadCompleted`; live toggles arrive via `McpEnablementChanged`.
-        // Reconciling against an empty desired set is a no-op when nothing has
-        // been spawned for this session yet.
-        let empty = BTreeSet::new();
-        self.reconcile(&msg.session_id, &empty).await;
+        // Given a freshly created session.
+        // Sessions may carry config-seeded enablement (`auto_enable` in
+        // jinn.toml); reconcile against the session's actual set rather than
+        // assuming empty. Mirrors the `SessionLoadCompleted` sibling: for
+        // legacy sessions the set is empty and this is a no-op; when
+        // `McpEnablementChanged` also arrives with the same desired set,
+        // reconciliation is diff-based so the duplicate converges harmlessly.
+        let enabled = self
+            .state
+            .read()
+            .session
+            .get(&msg.session_id)
+            .map(|s| s.enabled_mcp_servers().clone())
+            .unwrap_or_default();
+        self.reconcile(&msg.session_id, &enabled).await;
     }
 }
 
@@ -708,6 +717,146 @@ mod lifecycle_tests {
                 Err(kameo::error::SendError::HandlerError(RestartError::Timeout))
             ),
             "startup exceeding the timeout should yield Timeout; got: {result:?}"
+        );
+    }
+
+    /// Inserts a fresh session carrying `enabled` into the harness's shared
+    /// state and returns its id. Bypasses capability checks via
+    /// `write_test_no_cap` (coordinator tests only hold their own cap).
+    async fn insert_session_with_enablement(
+        state: &crate::common::state::State,
+        enabled: &BTreeSet<String>,
+    ) -> SessionId {
+        let mut session = crate::feat::session::chat_session::ChatSessionState::new();
+        session.set_enabled_mcp_servers(enabled.clone());
+        let session_id = session.session_id().clone();
+        let mut app_state = state.write_test_no_cap();
+        app_state.session.insert(session);
+        drop(app_state);
+        session_id
+    }
+
+    #[tokio::test]
+    async fn session_created_spawns_actors_for_prepopulated_enablement() {
+        // Given a coordinator with one configured server and a session whose
+        // enabled set already contains it (config-seeded via auto_enable).
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id =
+            insert_session_with_enablement(&state, &single_enabled("unrunnable")).await;
+
+        // When publishing SessionCreated for that session.
+        harness
+            .publish(crate::feat::session_lifecycle::protocol::event::SessionCreated {
+                session_id,
+            })
+            .await;
+
+        // Then an McpActor was spawned for the seeded server (a Starting
+        // status arrives; Dead follows from the unrunnable command).
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(3)).await;
+        assert!(
+            !events.is_empty(),
+            "SessionCreated must reconcile against the session's actual set"
+        );
+        assert_eq!(events[0].server, "unrunnable");
+    }
+
+    #[tokio::test]
+    async fn duplicate_created_and_enablement_messages_spawn_only_once() {
+        // Given a coordinator, a server, and a pre-populated session.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id =
+            insert_session_with_enablement(&state, &single_enabled("unrunnable")).await;
+
+        // When both SessionCreated and McpEnablementChanged carry the same
+        // desired set (the common seeding flow emits both).
+        harness
+            .publish(crate::feat::session_lifecycle::protocol::event::SessionCreated {
+                session_id: session_id.clone(),
+            })
+            .await;
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
+        // Then exactly one spawn happened (a single Starting status): the
+        // second reconciliation saw its slot already filled and was a no-op.
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        let starting_count = events
+            .iter()
+            .filter(|e| e.status == McpConnectionStatus::Starting)
+            .count();
+        assert_eq!(
+            starting_count, 1,
+            "duplicate notifications must converge to one spawn; got {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn created_reconcile_against_shrunk_set_kills_leftover_actor() {
+        // Given a coordinator with an already-spawned actor for a session.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id = {
+            let sid = insert_session_with_enablement(&state, &single_enabled("unrunnable")).await;
+            harness
+                .publish(McpEnablementChanged {
+                    session_id: sid.clone(),
+                    enabled: single_enabled("unrunnable"),
+                })
+                .await;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            sid
+        };
+
+        // When the session's enablement shrinks to empty and SessionCreated
+        // reconciles against the shrunken set.
+        {
+            let mut app_state = state.write_test_no_cap();
+            if let Some(s) = app_state.session.get_mut(&session_id) {
+                s.set_enabled_mcp_servers(BTreeSet::new());
+            }
+        }
+        harness
+            .publish(crate::feat::session_lifecycle::protocol::event::SessionCreated {
+                session_id: session_id.clone(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // And the server is enabled again.
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
+        // Then two distinct spawns happened (two Starting statuses) — the
+        // second only exists because the shrink-to-empty reconcile killed the
+        // first actor and freed its slot.
+        let events = await_recorded(&recorder, 3, std::time::Duration::from_secs(2)).await;
+        let starting_count = events
+            .iter()
+            .filter(|e| e.status == McpConnectionStatus::Starting)
+            .count();
+        assert!(
+            starting_count >= 2,
+            "shrink-to-empty must kill the leftover actor so re-enable respawns; \
+             expected >=2 Starting events, got {starting_count}: {events:?}"
         );
     }
 }
