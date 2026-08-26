@@ -723,7 +723,7 @@ mod lifecycle_tests {
     /// Inserts a fresh session carrying `enabled` into the harness's shared
     /// state and returns its id. Bypasses capability checks via
     /// `write_test_no_cap` (coordinator tests only hold their own cap).
-    async fn insert_session_with_enablement(
+    fn insert_session_with_enablement(
         state: &crate::common::state::State,
         enabled: &BTreeSet<String>,
     ) -> SessionId {
@@ -744,14 +744,11 @@ mod lifecycle_tests {
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
         let (_actor, _services, state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
-        let session_id =
-            insert_session_with_enablement(&state, &single_enabled("unrunnable")).await;
+        let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
 
         // When publishing SessionCreated for that session.
         harness
-            .publish(crate::feat::session_lifecycle::protocol::event::SessionCreated {
-                session_id,
-            })
+            .publish(crate::feat::session_lifecycle::protocol::event::SessionCreated { session_id })
             .await;
 
         // Then an McpActor was spawned for the seeded server (a Starting
@@ -771,15 +768,16 @@ mod lifecycle_tests {
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
         let (_actor, _services, state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
-        let session_id =
-            insert_session_with_enablement(&state, &single_enabled("unrunnable")).await;
+        let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
 
         // When both SessionCreated and McpEnablementChanged carry the same
         // desired set (the common seeding flow emits both).
         harness
-            .publish(crate::feat::session_lifecycle::protocol::event::SessionCreated {
-                session_id: session_id.clone(),
-            })
+            .publish(
+                crate::feat::session_lifecycle::protocol::event::SessionCreated {
+                    session_id: session_id.clone(),
+                },
+            )
             .await;
         harness
             .publish(McpEnablementChanged {
@@ -810,7 +808,7 @@ mod lifecycle_tests {
         let (_actor, _services, state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
         let session_id = {
-            let sid = insert_session_with_enablement(&state, &single_enabled("unrunnable")).await;
+            let sid = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
             harness
                 .publish(McpEnablementChanged {
                     session_id: sid.clone(),
@@ -830,9 +828,11 @@ mod lifecycle_tests {
             }
         }
         harness
-            .publish(crate::feat::session_lifecycle::protocol::event::SessionCreated {
-                session_id: session_id.clone(),
-            })
+            .publish(
+                crate::feat::session_lifecycle::protocol::event::SessionCreated {
+                    session_id: session_id.clone(),
+                },
+            )
             .await;
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
