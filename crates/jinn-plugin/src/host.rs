@@ -260,10 +260,10 @@ pub enum FakeGuestScript {
     },
     /// Like [`FakeGuestScript::HelloThenLines`], but the `Hello` declares
     /// event subscriptions (exercising the host→guest forwarder) and the
-    /// script stays alive, echoing every line the host writes to its stdin
-    /// back with a `push_citations`-style prefix stripped. Intended for
-    /// forwarder tests: the guest never exits, so the host's event writes
-    /// can be observed.
+    /// script stays alive: every line the host writes to its stdin is
+    /// pushed back as a `push_citations` whose citation title carries the
+    /// raw line. Intended for forwarder tests — the guest never exits, and
+    /// what the host forwarded becomes observable on the plugin→host side.
     SubscribedEcho {
         /// Protocol version the fake claims.
         protocol_version: u32,
@@ -322,6 +322,27 @@ async fn write_hello_then<W>(
     let _ = guest_tx.write_all(out.as_bytes()).await;
 }
 
+/// Reads one newline-terminated line from the fake guest's stdin.
+///
+/// Returns the raw bytes (newline stripped) or `None` on EOF/pipe error —
+/// the echo script treats both as "host closed stdin".
+async fn guest_rx_read_line<R>(reader: &mut R, buf: &mut Vec<u8>) -> Option<Vec<u8>>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    use tokio::io::AsyncReadExt;
+
+    buf.clear();
+    loop {
+        let mut byte = [0u8; 1];
+        match reader.read(&mut byte).await {
+            Ok(0) | Err(_) => return None,
+            Ok(_) if byte[0] == b'\n' => return Some(buf.clone()),
+            Ok(_) => buf.push(byte[0]),
+        }
+    }
+}
+
 impl PluginHost {
     /// Test-only constructor: a host whose guest is an in-process scripted
     /// fake speaking the same NDJSON wire over the same duplex pipes. No
@@ -340,7 +361,6 @@ impl PluginHost {
             let mut guest_rx = guest_rx;
             let mut guest_tx = guest_tx;
             let mut discard = [0u8; 1024];
-            let script_before = script.clone();
             let script_task = async {
                 match script {
                     FakeGuestScript::HelloThenLines {
@@ -353,11 +373,48 @@ impl PluginHost {
                         protocol_version,
                         subscriptions,
                     } => {
-                        // Handshake only — the guest then stays alive in the
-                        // drain loop below, consuming forwarded events.
+                        // Handshake, then stay alive: read each host→guest
+                        // line and push it back inside a citation title so
+                        // forwarder tests can assert on what crossed the
+                        // wire.
                         write_hello_then(&mut guest_tx, protocol_version, &subscriptions, &[])
                             .await;
-                        // Don't shut stdout down; signal we're not done.
+                        // Skip the Welcome the handshake writes — the echo
+                        // replies to *events* only.
+                        let mut line = Vec::new();
+                        let _ = guest_rx_read_line(&mut guest_rx, &mut line).await;
+                        loop {
+                            let mut line = Vec::new();
+                            match guest_rx_read_line(&mut guest_rx, &mut line).await {
+                                Some(raw) => {
+                                    let title = String::from_utf8_lossy(&raw).into_owned();
+                                    let reply = jinn_plugin_api::Envelope::for_plugin(
+                                        jinn_plugin_api::PluginToHost::PushCitations(
+                                            jinn_plugin_api::PushCitations {
+                                                // A parseable session id so host-side
+                                                // validation publishes the echo rather
+                                                // than dropping it.
+                                                session_id: "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e"
+                                                    .to_owned(),
+                                                citations: vec![jinn_plugin_api::PluginCitation {
+                                                    url: "https://echo.invalid/".to_owned(),
+                                                    title,
+                                                    content: None,
+                                                }],
+                                            },
+                                        ),
+                                        0,
+                                        0,
+                                    );
+                                    let mut out = serde_json::to_string(&reply).unwrap_or_default();
+                                    out.push('\n');
+                                    if guest_tx.write_all(out.as_bytes()).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                None => break,
+                            }
+                        }
                     }
                     FakeGuestScript::Silent => {}
                     FakeGuestScript::FirstLine(line) => {
@@ -381,19 +438,12 @@ impl PluginHost {
                         let _ = guest_tx.write_all(out.as_bytes()).await;
                     }
                 }
-                // Closing stdout signals guest end — except SubscribedEcho,
-                // which stays alive to keep consuming forwarded events.
-                if !matches!(script_before, FakeGuestScript::SubscribedEcho { .. }) {
-                    let _ = guest_tx.shutdown().await;
-                }
+                // Closing stdout signals guest end. (SubscribedEcho's
+                // script only returns at stdin EOF, so it stays alive as
+                // long as the host keeps the pipe open.)
+                let _ = guest_tx.shutdown().await;
             };
-            tokio::select! {
-                () = script_task => {}
-                read = guest_rx.read(&mut discard) => {
-                    // Host closed stdin before the script finished.
-                    let _ = read;
-                }
-            }
+            script_task.await;
             // Drain stdin so the host writer never blocks on a full pipe.
             loop {
                 match guest_rx.read(&mut discard).await {

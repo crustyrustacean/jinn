@@ -655,7 +655,9 @@ async fn unsubscribed_kind_is_not_forwarded() {
         })
         .await;
 
-    // Then the coordinator stays healthy (no crash, no dead plugin).
+    // Then the coordinator stays healthy (no crash, no dead plugin) and —
+    // proven directly — the unsubscribed kind produced no forward: the
+    // echo guest (subscribed to turn_end only) published no echo reply.
     tokio::time::sleep(Duration::from_millis(200)).await;
     let statuses = await_recorded(
         &statuses_recorder(&harness).await,
@@ -705,27 +707,19 @@ async fn turn_end_final_answer_reflects_last_entry() {
         })
         .await;
 
-    // Then the forwarded event reached the guest without killing it (the
-    // observable proxy: the plugin stays Running, and a non-crash proves
-    // delivery — the echo guest consumes the event).
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    let statuses = await_recorded(
-        &statuses_recorder(&harness).await,
-        0,
-        Duration::from_millis(100),
-    )
-    .await;
+    // Then the forwarded turn_end event carried final_answer=true: the
+    // echo returns the forwarded line, which must contain the flag and the
+    // session id.
+    let events = await_recorded(&recorder, 1, WAIT).await;
+    assert_eq!(events.len(), 1, "echo reply published");
+    let echoed = &events[0].citations[0].title;
     assert!(
-        !statuses
-            .iter()
-            .any(|s| s.name == "test-plugin" && s.phase == PluginPhase::Dead),
-        "turn_end delivery must not kill the guest"
+        echoed.contains(r#""final_answer":true"#),
+        "final_answer must be true for an assistant last entry, got: {echoed}"
     );
-    // And no citations were published (nothing contributed).
     assert!(
-        await_recorded(&recorder, 0, Duration::from_millis(100))
-            .await
-            .is_empty()
+        echoed.contains(&session_id.to_string()),
+        "the event must carry the session id"
     );
 }
 
@@ -912,5 +906,92 @@ async fn no_plugins_forwarded_events_are_harmless() {
             .await
             .is_empty(),
         "no plugin means no citations"
+    );
+}
+
+/// A truncated tool result forwards the untruncated `full_content` to
+/// subscribed guests — plugins see the complete output; truncation is an
+/// LLM-context limit only. The echo guest returns each forwarded line
+/// inside a citation title, so the recorder asserts exactly what crossed
+/// the wire.
+#[tokio::test]
+async fn truncated_result_forwards_full_content_to_guest() {
+    // Given a coordinator with an echo guest subscribed to tool results.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec!["tool_result".to_owned()],
+        },
+    )
+    .await;
+
+    // When a truncated MCP result completes: `content` is clipped
+    // mid-JSON (unparseable), `full_content` holds the original.
+    let full_json = r#"{"search_id":"s","results":[{"url":"https://full.example/page","title":"Full Content Page","publish_date":null,"excerpts":["entire original"]}]}"#;
+    // Mid-object cut — cannot parse. Take chars (not bytes) so the slice
+    // can never split a UTF-8 boundary.
+    let clipped: String = full_json.chars().take(40).collect();
+    harness
+        .publish(
+            crate::feat::tools_actor::protocol::event::ToolExecutionCompleted {
+                session_id: SessionId::new(),
+                result: crate::feat::tools_actor::tool_types::ToolResult {
+                    tool_call_id: "call_trunc".to_owned(),
+                    name: "mcp__parallel__web_search".to_owned(),
+                    content: clipped.to_owned(),
+                    success: true,
+                    full_content: Some(full_json.to_owned()),
+                    truncation: None,
+                    pin_position: None,
+                },
+            },
+        )
+        .await;
+
+    // Then the guest received the complete JSON, not the clip: the echo
+    // reply's citation title contains the forwarded line, which must carry
+    // the full payload's URL and never the clipped fragment's cut point.
+    let events = await_recorded(&recorder, 1, WAIT).await;
+    assert_eq!(events.len(), 1, "echo reply published");
+    let echoed = &events[0].citations[0].title;
+    assert!(
+        echoed.contains("https://full.example/page"),
+        "forwarded line must carry the untruncated payload, got: {echoed}"
+    );
+    assert!(
+        echoed.contains("entire original"),
+        "the tail of the full payload must have crossed the wire, got: {echoed}"
+    );
+}
+
+/// An empty citations list publishes nothing.
+#[tokio::test]
+async fn push_citations_with_empty_list_publishes_nothing() {
+    // Given a coordinator with a guest pushing an empty citations batch.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![r#"{"v":1,"seq":2,"ts":0,"type":"push_citations","session_id":"01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e","citations":[]}"#.to_owned()],
+        },
+    )
+    .await;
+
+    // When the line is processed and the pipeline settles.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Then no CitationsReceived was published.
+    assert!(
+        await_recorded(&recorder, 0, Duration::from_millis(100))
+            .await
+            .is_empty(),
+        "empty batch must not publish"
     );
 }

@@ -473,6 +473,7 @@ async fn errored_turn_retains_citations_until_next_success() {
 /// url-only JSON object, and even an unknown wire tag all pass through,
 /// and a subsequent valid turn still flushes.
 #[tokio::test]
+#[allow(clippy::too_many_lines, reason = "one scripted barrage, one setup")]
 async fn unknown_shapes_are_ignored_never_fatal() {
     // Given the real url-citations guest, handshaken.
     let engine = PluginEngine::new().expect("engine");
@@ -604,4 +605,85 @@ fn host_line_owned(msg: HostToPlugin) -> String {
     // to the guest's parsing.
     let envelope = Envelope::for_host(msg, 99, 0);
     serde_json::to_string(&envelope).expect("encode")
+}
+
+/// A truncated tool result still yields citations: the forwarder must send
+/// the untruncated `full_content`, never the clipped `content`.
+///
+/// The two payloads are distinguishable by URL — the citation produced
+/// proves which content the guest received.
+#[tokio::test]
+async fn truncated_result_forwards_full_content() {
+    // Given the real url-citations guest, handshaken.
+    let engine = PluginEngine::new().expect("engine");
+    let grants = Grants {
+        read_dirs: vec![],
+        write_dirs: vec![],
+        http: false,
+        config: serde_json::Value::Null,
+    };
+    let mut host = PluginHost::start(
+        &engine,
+        "url-citations",
+        std::path::Path::new(WASM),
+        &grants,
+    )
+    .expect("guest started");
+    let _ = next_message(&mut host).await; // Hello
+    send(
+        &mut host,
+        HostToPlugin::Welcome(jinn_plugin_api::Welcome {
+            protocol_version: PROTOCOL_VERSION,
+            plugin_id: "url-citations".to_owned(),
+            read_dirs: vec![],
+            write_dirs: vec![],
+            http_allowed: false,
+            config: serde_json::Value::Null,
+        }),
+        0,
+    )
+    .await;
+
+    // When a tool result arrives whose `content` is clipped mid-JSON (the
+    // truncated, LLM-facing copy) and whose `full_content` holds the
+    // complete payload. The forwarded event is built by the coordinator's
+    // `full_output_for_plugin` in production; this test drives the guest
+    // side of that contract — the guest must see ONLY the complete JSON,
+    // which parses and yields the citation.
+    let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
+    send(
+        &mut host,
+        HostToPlugin::ToolResultEvent(ToolResultEvent {
+            session_id: session.clone(),
+            tool_call_id: "call_trunc".to_owned(),
+            name: "mcp__parallel__web_search".to_owned(),
+            // Complete JSON — what full_output_for_plugin selects.
+            content: r#"{"search_id":"s","results":[{"url":"https://full.example/page","title":"Full Content Page","excerpts":["the entire original output"]}]}"#.to_owned(),
+            success: true,
+        }),
+        1,
+    )
+    .await;
+    send(
+        &mut host,
+        HostToPlugin::TurnEndEvent(TurnEndEvent {
+            session_id: session.clone(),
+            final_answer: true,
+        }),
+        2,
+    )
+    .await;
+
+    // Then the citation from the complete payload flushed.
+    let pushed = next_message(&mut host).await;
+    let PluginToHost::PushCitations(msg) = pushed else {
+        panic!("expected PushCitations, got {pushed:?}");
+    };
+    assert_eq!(msg.citations.len(), 1);
+    assert_eq!(msg.citations[0].url, "https://full.example/page");
+    assert_eq!(msg.citations[0].title, "Full Content Page");
+
+    tokio::time::timeout(WAIT, host.shutdown())
+        .await
+        .expect("shutdown timed out");
 }

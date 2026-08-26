@@ -568,14 +568,10 @@ impl Message<ToolExecutionCompleted> for PluginCoordinatorActor {
         msg: ToolExecutionCompleted,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        // Prefer the untruncated output: a truncated MCP result may clip the
-        // JSON payload mid-object, which would defeat shape detection in
-        // the guest.
+        // Plugins always receive the complete tool output — truncation is
+        // an LLM-context protection, never a plugin-facing limit.
         let result = msg.result;
-        let content = result
-            .full_content
-            .clone()
-            .unwrap_or_else(|| result.content.clone());
+        let content = full_output_for_plugin(&result);
         let event = jinn_plugin_api::ToolResultEvent {
             session_id: msg.session_id.to_string(),
             tool_call_id: result.tool_call_id.clone(),
@@ -628,6 +624,21 @@ fn last_entry_is_assistant(state: &State, session_id: &crate::protocol::SessionI
                 crate::feat::session::chat_entry::ChatEntryKind::Assistant(_)
             )
         })
+}
+
+/// The tool output a plugin must see: always the complete original.
+///
+/// `ToolResult::content` may be truncated to protect the LLM context
+/// window; every truncating producer preserves the uncut output in
+/// `full_content` when that happens. Plugins need full access to operate
+/// correctly (a clipped JSON payload cannot be parsed by shape detection),
+/// so the untruncated original wins whenever it exists and `content`
+/// stands only for results that were never truncated.
+fn full_output_for_plugin(result: &crate::feat::tools_actor::tool_types::ToolResult) -> String {
+    result
+        .full_content
+        .clone()
+        .unwrap_or_else(|| result.content.clone())
 }
 
 impl PluginCoordinatorActor {
