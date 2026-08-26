@@ -1,6 +1,8 @@
 ## 2026-08-25 v0.109.0
 
 - Group tool calls atomically to prevent malformed chat history construction.
+  - A side-effect of this change is that pins and context exclusion now operate on multiple entries as a group.
+- Move citation tracking into plugin.
 
 ## 2026-08-20 v0.108.4
 
