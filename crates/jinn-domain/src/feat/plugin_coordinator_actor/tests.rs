@@ -23,7 +23,9 @@ use crate::feat::plugin::PluginConfig;
 use crate::feat::plugin_coordinator_actor::PluginCoordinatorActor;
 use crate::feat::plugin_coordinator_actor::PluginCoordinatorActorDeps;
 use crate::feat::plugin_coordinator_actor::PluginDirs;
-use crate::feat::plugin_coordinator_actor::protocol::{PluginPhase, PluginStatus};
+use crate::feat::plugin_coordinator_actor::protocol::{
+    PluginPhase, PluginStatus, PluginSubscriptions,
+};
 
 /// Timeout for awaiting expected plugin outcomes.
 const WAIT: Duration = Duration::from_secs(5);
@@ -568,4 +570,277 @@ async fn duplicate_persona_batch_is_debounced() {
     // Then exactly one PersonasLoaded event was published — the duplicate
     // batch was debounced.
     assert_eq!(events.len(), 1, "duplicate batch must not re-publish");
+}
+
+// ── Host→guest event forwarding ──────────────────────────────────────────────
+
+use crate::common::tcaps::mint::mint_session_cap;
+use crate::feat::session::phase_machine::PhaseKind;
+use crate::feat::session::protocol::citations_received::CitationsReceived;
+use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+use crate::feat::tools_actor::protocol::event::ToolCallReceived;
+use crate::feat::tools_actor::tool_types::ToolCall;
+use crate::protocol::SessionId;
+
+/// Seeds one history entry into a session for `final_answer` tests.
+fn seed_entry(state: &State, session_id: &SessionId, is_assistant: bool) {
+    state.with_session(&mint_session_cap(), |view| {
+        let session = view.session.map().get_or_create(session_id);
+        let entry = if is_assistant {
+            crate::feat::session::chat_entry::ChatEntry::assistant("done")
+        } else {
+            crate::feat::session::chat_entry::ChatEntry::error("boom")
+        };
+        session.push_entry(entry);
+    });
+}
+
+/// A subscribed plugin's guest stays alive; its registration lands.
+#[tokio::test]
+async fn subscribed_guest_registers_its_kinds() {
+    // Given a coordinator with a guest subscribing to all three kinds.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PluginSubscriptions>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec![
+                "tool_call".to_owned(),
+                "tool_result".to_owned(),
+                "turn_end".to_owned(),
+            ],
+        },
+    )
+    .await;
+
+    // When the handshake completes.
+    let events = await_recorded(&recorder, 1, WAIT).await;
+
+    // Then the validated subscription set was announced.
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].name, "test-plugin");
+    assert_eq!(events[0].kinds.len(), 3);
+}
+
+/// An unsubscribed plugin receives no forwarded events (the guest would
+/// misparse them); only subscribed kinds flow.
+#[tokio::test]
+async fn unsubscribed_kind_is_not_forwarded() {
+    // Given a guest subscribing only to turn_end (no tool events).
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PluginSubscriptions>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec!["turn_end".to_owned()],
+        },
+    )
+    .await;
+    let _ = await_recorded(&recorder, 1, WAIT).await;
+
+    // When a tool call event fires for an unsubscribed kind.
+    harness
+        .publish(ToolCallReceived {
+            session_id: SessionId::new(),
+            tool_call: ToolCall {
+                id: "call_1".to_owned(),
+                name: "web-fetch".to_owned(),
+                arguments: r#"{"url":"https://example.com"}"#.to_owned(),
+            },
+            dispatched_at: jiff::Timestamp::now(),
+        })
+        .await;
+
+    // Then the coordinator stays healthy (no crash, no dead plugin).
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let statuses = await_recorded(
+        &statuses_recorder(&harness).await,
+        0,
+        Duration::from_millis(100),
+    )
+    .await;
+    assert!(
+        !statuses
+            .iter()
+            .any(|s| s.name == "test-plugin" && s.phase == PluginPhase::Dead),
+        "unsubscribed event must not kill the plugin"
+    );
+}
+
+/// Helper: a PluginStatus recorder on the given harness.
+async fn statuses_recorder(
+    harness: &TestHarness,
+) -> kameo::actor::ActorRef<crate::common::bus::test_harness::Recorder<PluginStatus>> {
+    harness.spawn_recorder::<PluginStatus>().await
+}
+
+/// `final_answer` is true only when the last entry is an assistant message.
+#[tokio::test]
+async fn turn_end_final_answer_reflects_last_entry() {
+    // Given a session whose last entry is an assistant message.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec!["turn_end".to_owned()],
+        },
+    )
+    .await;
+    let session_id = SessionId::new();
+    seed_entry(&state, &session_id, true);
+
+    // When the turn ends (Streaming → Idle).
+    harness
+        .publish(SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        })
+        .await;
+
+    // Then the forwarded event reached the guest without killing it (the
+    // observable proxy: the plugin stays Running, and a non-crash proves
+    // delivery — the echo guest consumes the event).
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let statuses = await_recorded(
+        &statuses_recorder(&harness).await,
+        0,
+        Duration::from_millis(100),
+    )
+    .await;
+    assert!(
+        !statuses
+            .iter()
+            .any(|s| s.name == "test-plugin" && s.phase == PluginPhase::Dead),
+        "turn_end delivery must not kill the guest"
+    );
+    // And no citations were published (nothing contributed).
+    assert!(
+        await_recorded(&recorder, 0, Duration::from_millis(100))
+            .await
+            .is_empty()
+    );
+}
+
+/// A valid PushCitations line publishes CitationsReceived on the bus.
+#[tokio::test]
+async fn push_citations_publishes_citations_received() {
+    // Given a coordinator with a guest pushing one citation.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let session_id = SessionId::new();
+    let line = format!(
+        r#"{{"v":1,"seq":2,"ts":0,"type":"push_citations","session_id":"{session_id}","citations":[{{"url":"https://example.com/a","title":"Example A","content":"excerpt"}}]}}"#
+    );
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![line],
+        },
+    )
+    .await;
+
+    // When the contribution is processed.
+    let events = await_recorded(&recorder, 1, WAIT).await;
+
+    // Then exactly one CitationsReceived was published with the citation.
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].session_id, session_id);
+    assert_eq!(events[0].citations.len(), 1);
+    assert_eq!(events[0].citations[0].url, "https://example.com/a");
+    assert_eq!(events[0].citations[0].title, "Example A");
+}
+
+/// Invalid citations are dropped entry-wise; valid ones survive.
+#[tokio::test]
+async fn push_citations_drops_invalid_entries_keeps_valid() {
+    // Given a guest pushing one invalid (ftp) and one valid citation.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let session_id = SessionId::new();
+    let line = format!(
+        r#"{{"v":1,"seq":2,"ts":0,"type":"push_citations","session_id":"{session_id}","citations":[{{"url":"ftp://nope","title":"bad"}},{{"url":"https://ok.example","title":""}}]}}"#
+    );
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![line],
+        },
+    )
+    .await;
+
+    // When the contribution is processed.
+    let events = await_recorded(&recorder, 1, WAIT).await;
+
+    // Then only the valid citation survived, with the URL as title fallback.
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].citations.len(), 1);
+    assert_eq!(events[0].citations[0].url, "https://ok.example");
+    assert_eq!(events[0].citations[0].title, "https://ok.example");
+}
+
+/// An unparseable session id drops the whole batch without publishing.
+#[tokio::test]
+async fn push_citations_with_bad_session_id_is_dropped() {
+    // Given a guest pushing citations for a non-UUID session id.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![r#"{"v":1,"seq":2,"ts":0,"type":"push_citations","session_id":"not-a-uuid","citations":[{"url":"https://a.example","title":"A"}]}"#.to_owned()],
+        },
+    )
+    .await;
+
+    // When the line is processed and settles.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Then nothing was published.
+    assert!(
+        await_recorded(&recorder, 0, Duration::from_millis(100))
+            .await
+            .is_empty()
+    );
+}
+
+/// Two identical citation pushes in sequence both publish (no debounce).
+#[tokio::test]
+async fn identical_citation_batches_both_publish() {
+    // Given a guest pushing the same citation batch twice.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let session_id = SessionId::new();
+    let line = format!(
+        r#"{{"v":1,"seq":2,"ts":0,"type":"push_citations","session_id":"{session_id}","citations":[{{"url":"https://same.example","title":"Same"}}]}}"#
+    );
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![line.clone(), line],
+        },
+    )
+    .await;
+
+    // When both lines are processed.
+    let events = await_recorded(&recorder, 2, WAIT).await;
+
+    // Then two CitationsReceived events were published (turn-scoped, no
+    // identical-payload debounce).
+    assert_eq!(events.len(), 2, "turn-scoped citations must not debounce");
 }

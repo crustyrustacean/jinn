@@ -260,7 +260,7 @@ fn push_citations_without_content_validates_against_schema() {
 
     // Then the citation deserialized with content absent.
     let PluginToHostOrHostToPlugin::Plugin(PluginToHost::PushCitations(msg)) = envelope.msg else {
-        panic!("expected PushCitations");
+        unreachable!("expected PushCitations");
     };
     assert_eq!(msg.citations.len(), 1);
     assert_eq!(msg.citations[0].content, None);

@@ -17,6 +17,16 @@ impl SessionId {
     pub fn new() -> Self {
         Self(Uuid::now_v7())
     }
+
+    /// Parses a session ID from its string form without panicking.
+    ///
+    /// For untrusted input (e.g. plugin wire payloads): an unparseable
+    /// string yields `None` rather than the panic [`From::from`] would
+    /// produce.
+    #[must_use]
+    pub fn try_from_string(id: &str) -> Option<Self> {
+        Uuid::parse_str(id).ok().map(Self)
+    }
 }
 
 impl Default for SessionId {

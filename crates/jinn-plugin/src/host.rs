@@ -228,6 +228,18 @@ pub enum FakeGuestScript {
         /// Raw wire lines to send after `Hello`.
         lines: Vec<String>,
     },
+    /// Like [`FakeGuestScript::HelloThenLines`], but the `Hello` declares
+    /// event subscriptions (exercising the host→guest forwarder) and the
+    /// script stays alive, echoing every line the host writes to its stdin
+    /// back with a `push_citations`-style prefix stripped. Intended for
+    /// forwarder tests: the guest never exits, so the host's event writes
+    /// can be observed.
+    SubscribedEcho {
+        /// Protocol version the fake claims.
+        protocol_version: u32,
+        /// Subscription kinds to declare in the `Hello`.
+        subscriptions: Vec<String>,
+    },
     /// Sends nothing and closes stdout immediately (a guest that dies
     /// before handshaking).
     Silent,
@@ -249,6 +261,37 @@ pub enum FakeGuestScript {
     },
 }
 
+/// Writes a `Hello` (with optional subscriptions) followed by raw lines.
+///
+/// Shared by the fake-guest script variants that open with a handshake.
+async fn write_hello_then<W>(
+    guest_tx: &mut W,
+    protocol_version: u32,
+    subscriptions: &[String],
+    lines: &[String],
+) where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    use tokio::io::AsyncWriteExt;
+
+    let hello = Envelope::for_plugin(
+        jinn_plugin_api::PluginToHost::Hello(jinn_plugin_api::Hello {
+            protocol_version,
+            name: String::new(),
+            subscriptions: subscriptions.to_vec(),
+        }),
+        0,
+        0,
+    );
+    let mut out = serde_json::to_string(&hello).unwrap_or_default();
+    out.push('\n');
+    for line in lines {
+        out.push_str(line);
+        out.push('\n');
+    }
+    let _ = guest_tx.write_all(out.as_bytes()).await;
+}
+
 impl PluginHost {
     /// Test-only constructor: a host whose guest is an in-process scripted
     /// fake speaking the same NDJSON wire over the same duplex pipes. No
@@ -262,34 +305,29 @@ impl PluginHost {
         let (host_to_guest, guest_rx) = tokio::io::duplex(PIPE_CAPACITY_BYTES);
         let (guest_tx, host_rx) = tokio::io::duplex(PIPE_CAPACITY_BYTES);
         let stderr_ring = Arc::new(Mutex::new(StderrRing::new()));
-        let name_owned = name.to_owned();
 
         let guest_task = tokio::spawn(async move {
             let mut guest_rx = guest_rx;
             let mut guest_tx = guest_tx;
             let mut discard = [0u8; 1024];
+            let script_before = script.clone();
             let script_task = async {
                 match script {
                     FakeGuestScript::HelloThenLines {
                         protocol_version,
                         lines,
                     } => {
-                        let hello = Envelope::for_plugin(
-                            jinn_plugin_api::PluginToHost::Hello(jinn_plugin_api::Hello {
-                                protocol_version,
-                                name: name_owned.clone(),
-                                subscriptions: vec![],
-                            }),
-                            0,
-                            0,
-                        );
-                        let mut out = serde_json::to_string(&hello).unwrap_or_default();
-                        out.push('\n');
-                        for line in lines {
-                            out.push_str(&line);
-                            out.push('\n');
-                        }
-                        let _ = guest_tx.write_all(out.as_bytes()).await;
+                        write_hello_then(&mut guest_tx, protocol_version, &[], &lines).await;
+                    }
+                    FakeGuestScript::SubscribedEcho {
+                        protocol_version,
+                        subscriptions,
+                    } => {
+                        // Handshake only — the guest then stays alive in the
+                        // drain loop below, consuming forwarded events.
+                        write_hello_then(&mut guest_tx, protocol_version, &subscriptions, &[])
+                            .await;
+                        // Don't shut stdout down; signal we're not done.
                     }
                     FakeGuestScript::Silent => {}
                     FakeGuestScript::FirstLine(line) => {
@@ -302,17 +340,8 @@ impl PluginHost {
                         lines,
                         repeat,
                     } => {
-                        let hello = Envelope::for_plugin(
-                            jinn_plugin_api::PluginToHost::Hello(jinn_plugin_api::Hello {
-                                protocol_version,
-                                name: name_owned.clone(),
-                                subscriptions: vec![],
-                            }),
-                            0,
-                            0,
-                        );
-                        let mut out = serde_json::to_string(&hello).unwrap_or_default();
-                        out.push('\n');
+                        write_hello_then(&mut guest_tx, protocol_version, &[], &[]).await;
+                        let mut out = String::new();
                         for _ in 0..repeat {
                             for line in &lines {
                                 out.push_str(line);
@@ -322,8 +351,11 @@ impl PluginHost {
                         let _ = guest_tx.write_all(out.as_bytes()).await;
                     }
                 }
-                // Closing stdout signals guest end.
-                let _ = guest_tx.shutdown().await;
+                // Closing stdout signals guest end — except SubscribedEcho,
+                // which stays alive to keep consuming forwarded events.
+                if !matches!(script_before, FakeGuestScript::SubscribedEcho { .. }) {
+                    let _ = guest_tx.shutdown().await;
+                }
             };
             tokio::select! {
                 () = script_task => {}

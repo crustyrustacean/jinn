@@ -42,8 +42,13 @@ use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::plugin::PluginConfig;
-use crate::feat::plugin_actor::{PluginActor, PluginActorDeps, PluginInbound};
-use crate::feat::plugin_coordinator_actor::protocol::{PluginPhase, PluginStatus};
+use crate::feat::plugin_actor::{DeliverHostEvent, PluginActor, PluginActorDeps, PluginInbound};
+use crate::feat::plugin_coordinator_actor::protocol::{
+    PluginPhase, PluginStatus, PluginSubscriptions,
+};
+use crate::feat::session::phase_machine::PhaseKind;
+use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+use crate::feat::tools_actor::protocol::event::{ToolCallReceived, ToolExecutionCompleted};
 use jinn_plugin_api::{SetPersonaEntries, SetThemeEntries};
 
 /// Channel capacity for plugin→coordinator inbound events. Small: events are
@@ -63,6 +68,9 @@ pub struct PluginCoordinatorActor {
     dirs: PluginDirs,
     /// Live plugin actors by name.
     spawned: Mutex<HashMap<String, ActorRef<PluginActor>>>,
+    /// Validated event-subscription kinds per running plugin (from each
+    /// guest's `Hello`). Drives the host→guest event forwarder.
+    subscriptions: Mutex<HashMap<String, Vec<String>>>,
     /// Last `SetThemeEntries` payload seen per plugin (flooding debounce:
     /// an identical consecutive contribution is skipped — no cache write,
     /// no late-apply re-run).
@@ -119,7 +127,29 @@ impl kameo::Actor for PluginCoordinatorActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<PluginStatus>())
+            .services
+            .bus
+            .subscribe::<PluginStatus, _>(&actor_ref)
+            .await;
+        args.deps
+            .services
+            .bus
+            .subscribe::<PluginSubscriptions, _>(&actor_ref)
+            .await;
+        args.deps
+            .services
+            .bus
+            .subscribe::<ToolCallReceived, _>(&actor_ref)
+            .await;
+        args.deps
+            .services
+            .bus
+            .subscribe::<ToolExecutionCompleted, _>(&actor_ref)
+            .await;
+        args.deps
+            .services
+            .bus
+            .subscribe::<SessionPhaseChanged, _>(&actor_ref)
             .await;
 
         let actor = Self {
@@ -130,6 +160,7 @@ impl kameo::Actor for PluginCoordinatorActor {
             frontend_cap: args.frontend_cap,
             dirs: args.dirs,
             spawned: Mutex::new(HashMap::new()),
+            subscriptions: Mutex::new(HashMap::new()),
             last_theme_payload: std::sync::Arc::new(Mutex::new(HashMap::new())),
             last_persona_payload: std::sync::Arc::new(Mutex::new(HashMap::new())),
             #[cfg(test)]
@@ -378,12 +409,68 @@ async fn handle_inbound(
             })
             .await;
         }
-        jinn_plugin_api::PluginToHost::PushCitations(_) => {
-            // Not handled yet — the citation-validation arm arrives with the
-            // host→guest event forwarding work. Dropping is the conservative
-            // behavior (the same treatment unknown variants get).
+        jinn_plugin_api::PluginToHost::PushCitations(entries) => {
+            // Turn-scoped contribution — no identical-payload debounce: two
+            // identical search turns are different turns and both must land.
+            let Some(session_id) = crate::protocol::SessionId::try_from_string(&entries.session_id)
+            else {
+                tracing::warn!(
+                    plugin = %name,
+                    session_id = %entries.session_id,
+                    "plugin citations dropped: unparseable session id"
+                );
+                return;
+            };
+            let citations: Vec<jinn_provider::UrlCitation> = entries
+                .citations
+                .iter()
+                .filter_map(|citation| validate_citation(citation, name))
+                .collect();
+            if citations.is_empty() {
+                return;
+            }
+            tracing::info!(
+                plugin = %name,
+                session_id = %session_id,
+                count = citations.len(),
+                "plugin contributed citations"
+            );
+            bus.publish(
+                crate::feat::session::protocol::citations_received::CitationsReceived {
+                    session_id,
+                    citations,
+                },
+            )
+            .await;
         }
     }
+}
+
+/// Validates one plugin citation, applying the title fallback.
+///
+/// Invalid entries (non-http(s) URL, empty everything) are dropped with a
+/// warn — a malformed guest payload never blocks the valid remainder.
+fn validate_citation(
+    citation: &jinn_plugin_api::PluginCitation,
+    plugin: &str,
+) -> Option<jinn_provider::UrlCitation> {
+    let is_http = citation.url.starts_with("http://") || citation.url.starts_with("https://");
+    if !is_http || citation.url.is_empty() {
+        tracing::warn!(plugin = %plugin, url = %citation.url, "citation dropped: not an http(s) URL");
+        return None;
+    }
+    let title = if citation.title.trim().is_empty() {
+        citation.url.clone()
+    } else {
+        citation.title.clone()
+    };
+    Some(jinn_provider::UrlCitation {
+        url: citation.url.clone(),
+        title,
+        content: citation.content.clone(),
+        start_index: None,
+        end_index: None,
+    })
 }
 
 /// Applies the persisted theme name against the contribution cache when
@@ -428,6 +515,142 @@ impl Message<PluginStatus> for PluginCoordinatorActor {
         // reconciliation could respawn (v1: nothing reconciles).
         if phase == PluginPhase::Dead {
             self.spawned.lock().remove(&name);
+            self.subscriptions.lock().remove(&name);
+        }
+    }
+}
+
+impl Message<PluginSubscriptions> for PluginCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: PluginSubscriptions,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let PluginSubscriptions { name, kinds } = msg;
+        tracing::info!(
+            plugin = %name,
+            kinds = %kinds.join(", "),
+            "plugin coordinator: subscriptions registered"
+        );
+        self.subscriptions.lock().insert(name, kinds);
+    }
+}
+
+impl Message<ToolCallReceived> for PluginCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ToolCallReceived,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let tool_call = msg.tool_call;
+        let event = jinn_plugin_api::ToolCallEvent {
+            session_id: msg.session_id.to_string(),
+            tool_call_id: tool_call.id.clone(),
+            name: tool_call.name.clone(),
+            arguments: tool_call.arguments.clone(),
+        };
+        self.forward_event("tool_call", || {
+            jinn_plugin_api::HostToPlugin::ToolCallEvent(event.clone())
+        })
+        .await;
+    }
+}
+
+impl Message<ToolExecutionCompleted> for PluginCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ToolExecutionCompleted,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        // Prefer the untruncated output: a truncated MCP result may clip the
+        // JSON payload mid-object, which would defeat shape detection in
+        // the guest.
+        let result = msg.result;
+        let content = result
+            .full_content
+            .clone()
+            .unwrap_or_else(|| result.content.clone());
+        let event = jinn_plugin_api::ToolResultEvent {
+            session_id: msg.session_id.to_string(),
+            tool_call_id: result.tool_call_id.clone(),
+            name: result.name.clone(),
+            content,
+            success: result.success,
+        };
+        self.forward_event("tool_result", || {
+            jinn_plugin_api::HostToPlugin::ToolResultEvent(event.clone())
+        })
+        .await;
+    }
+}
+
+impl Message<SessionPhaseChanged> for PluginCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: SessionPhaseChanged,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        if !(msg.old_phase == PhaseKind::Streaming && msg.new_phase == PhaseKind::Idle) {
+            return;
+        }
+        let event = jinn_plugin_api::TurnEndEvent {
+            session_id: msg.session_id.to_string(),
+            final_answer: last_entry_is_assistant(&self.state, &msg.session_id),
+        };
+        self.forward_event("turn_end", || {
+            jinn_plugin_api::HostToPlugin::TurnEndEvent(event.clone())
+        })
+        .await;
+    }
+}
+
+/// Whether the session's last history entry is an assistant message — the
+/// host-computed "the turn reached a genuine final answer" signal.
+///
+/// Error/cancel mid-turn leaves a non-assistant last entry; guests retain
+/// their turn-scoped state for the next successful turn.
+fn last_entry_is_assistant(state: &State, session_id: &crate::protocol::SessionId) -> bool {
+    state
+        .read()
+        .try_session(session_id)
+        .and_then(|session| session.history().last())
+        .is_some_and(|entry| {
+            matches!(
+                entry.kind,
+                crate::feat::session::chat_entry::ChatEntryKind::Assistant(_)
+            )
+        })
+}
+
+impl PluginCoordinatorActor {
+    /// Delivers a host event to every plugin subscribed to `kind`.
+    ///
+    /// Fire-and-forget: `tell` never blocks the bus on a slow or dead
+    /// plugin actor; a dead plugin's map entry is cleared by its own
+    /// lifecycle events.
+    async fn forward_event<F>(&self, kind: &str, build: F)
+    where
+        F: Fn() -> jinn_plugin_api::HostToPlugin,
+    {
+        let targets: Vec<ActorRef<PluginActor>> = {
+            let subscriptions = self.subscriptions.lock();
+            let spawned = self.spawned.lock();
+            subscriptions
+                .iter()
+                .filter(|(_, kinds)| kinds.iter().any(|k| k == kind))
+                .filter_map(|(name, _)| spawned.get(name).cloned())
+                .collect()
+        };
+        for actor_ref in targets {
+            let _ = actor_ref.tell(DeliverHostEvent(build())).await;
         }
     }
 }
