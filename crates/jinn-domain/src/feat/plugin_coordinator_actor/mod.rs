@@ -378,6 +378,11 @@ async fn handle_inbound(
             })
             .await;
         }
+        jinn_plugin_api::PluginToHost::PushCitations(_) => {
+            // Not handled yet — the citation-validation arm arrives with the
+            // host→guest event forwarding work. Dropping is the conservative
+            // behavior (the same treatment unknown variants get).
+        }
     }
 }
 

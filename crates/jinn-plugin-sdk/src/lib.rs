@@ -33,11 +33,34 @@ use serde_json::from_str;
 ///
 /// Returns the underlying write error if the sink fails.
 pub fn hello<W: Write>(out: &mut W, name: &str) -> std::io::Result<()> {
+    hello_inner(out, name, &[])
+}
+
+/// Writes the handshake opener declaring host→guest event subscriptions.
+///
+/// Each subscription tag names a host event kind the guest wants forwarded
+/// to its stdin (currently `"tool_call"`, `"tool_result"`, `"turn_end"`;
+/// unknown tags are ignored by the host). Plugins that only push
+/// contributions use [`hello`] instead.
+///
+/// # Errors
+///
+/// Returns the underlying write error if the sink fails.
+pub fn hello_with_subscriptions<W: Write>(
+    out: &mut W,
+    name: &str,
+    subscriptions: &[&str],
+) -> std::io::Result<()> {
+    hello_inner(out, name, subscriptions)
+}
+
+/// Shared handshake-opener implementation.
+fn hello_inner<W: Write>(out: &mut W, name: &str, subscriptions: &[&str]) -> std::io::Result<()> {
     let envelope = Envelope::for_plugin(
         PluginToHost::Hello(jinn_plugin_api::Hello {
             protocol_version: PROTOCOL_VERSION,
             name: name.to_owned(),
-            subscriptions: vec![],
+            subscriptions: subscriptions.iter().map(|s| (*s).to_owned()).collect(),
         }),
         0,
         now_ms(),
