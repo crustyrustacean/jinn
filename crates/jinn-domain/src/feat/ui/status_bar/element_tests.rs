@@ -249,9 +249,7 @@ fn state_with_measured_cache(prompt_tokens: u32, cached_tokens: u32) -> AppState
 ///
 /// Tests using this helper run with a single session, so the tree aggregate
 /// is hidden and the info line holds the only glyph in the buffer.
-fn info_line_cache_cell(
-    terminal: &ratatui::backend::TestBackend,
-) -> ratatui::buffer::Cell {
+fn info_line_cache_cell(terminal: &ratatui::backend::TestBackend) -> ratatui::buffer::Cell {
     terminal
         .buffer()
         .content()

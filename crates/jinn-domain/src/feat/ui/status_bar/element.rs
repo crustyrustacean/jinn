@@ -164,12 +164,8 @@ fn render_tree_aggregate(
     ));
     tree_spans.push(Span::styled(format!("${:.5} ", tree.total_cost), style));
     tree_spans.push(Span::styled(format!("{turn_symbol}{turns} "), style));
-    tree_spans.push(Span::styled(
-        format!("{session_symbol}{count}"),
-        style,
-    ));
-    let tree_widget =
-        Paragraph::new(Line::from(tree_spans)).alignment(Alignment::Right);
+    tree_spans.push(Span::styled(format!("{session_symbol}{count}"), style));
+    let tree_widget = Paragraph::new(Line::from(tree_spans)).alignment(Alignment::Right);
     frame.render_widget(tree_widget, area);
 }
 
