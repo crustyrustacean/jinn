@@ -79,6 +79,7 @@ Entries are added or amended **only with human approval**.
 - (keybinds) The `p` prefix group in the sidebar does not drop the normal-scope pin binding (group bindings are scope-local and don't shadow cross-scope bindings).
 - (keybinds) The `y` yank-selected-entry binding copies the entry's raw content to the clipboard: tool results yield untruncated output without the tool-name prefix, tool calls yield the raw JSON arguments, and ANSI escapes are stripped.
 - (keybinds) `Alt+Q` in input scope toggles input mode; `Alt+S` focuses the sidebar sessions section from both input and normal scopes.
+- (keybinds) `<leader>sP` opens the read-only plugin picker in normal scope.
 - (keybinds) `s` in the sidebar task-list section opens the task-list picker.
 - (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over **stdio** (child process, JSON-RPC over stdin/stdout), **local_http** (jinn spawns a managed child process and connects via `StreamableHTTP`), or **remote_http** (jinn connects to an already-running server with no process management).
 - (mcp) MCP tools are namespaced `mcp__<server>__<tool>` and registered per-session via `RegisterTools { session_id: Some(_) }`.
@@ -109,6 +110,8 @@ Entries are added or amended **only with human approval**.
 - (plugins) `url-citations` is a first-party plugin seeded enabled by default; a dead or missing instance means no Sources footer, never a startup failure.
 - (plugins) First-party plugin names carry no jinn-/plugin padding: the themes plugin is `theme-loader` and the personas plugin is `persona-loader`.
 - (plugins) First-party plugins ship as prebuilt wasm embedded in the jinn binary; `jinn install` copies them into the plugins dir and registers them in `jinn.toml` with their manifest-declared grants. Artifacts are refreshed into `res/plugins/` by `just refresh-plugins` (run by `just release`).
+- (plugins) The plugin picker (`<leader>sP`) is a read-only list of loaded plugins (name + phase) snapshot from the contribution cache at open time; plugins are managed outside jinn and cannot be toggled from within.
+- (plugins) A plugin guest that closes stdout cleanly after the handshake ends in phase `Done` (run-to-completion loaders; contributions stay cached); `Dead` is reserved for spawn/handshake failure, traps, and abrupt pipe loss.
 - (persona) Personas are markdown templates with TOML frontmatter; the persona picker (`<leader>se`) switches the active session persona.
 - (persona) Persona discovery flows through a `persona-loader` plugin (prebuilt, shipped by `jinn install`): it scans `~/.config/jinn/personas/*.md` and contributes definitions over the plugin wire; the coordinator publishes them as `PersonasLoaded`.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.

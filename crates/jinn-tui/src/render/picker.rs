@@ -41,6 +41,9 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
         Some(PickerKind::McpServer) => {
             jinn_domain::feat::mcp::render::render_mcp_server_picker(frame, area, ctx);
         }
+        Some(PickerKind::Plugin) => {
+            jinn_domain::feat::picker::render::render_plugin_picker(frame, area, ctx);
+        }
         None => {}
     }
 }
@@ -141,6 +144,7 @@ mod tests {
     #[case::task_list(PickerKind::TaskList)]
     #[case::project(PickerKind::Project)]
     #[case::mcp_server(PickerKind::McpServer)]
+    #[case::plugin(PickerKind::Plugin)]
     fn picker_draws_footer_rows_matching_kind_declaration(#[case] kind: PickerKind) {
         // Given a picker scope of this kind with the default (empty) state.
         let mut state = AppState::default();

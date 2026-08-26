@@ -309,6 +309,7 @@ pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
             PickerKind::TaskList => Scope::PickerTaskList,
             PickerKind::Project => Scope::PickerProject,
             PickerKind::McpServer => Scope::PickerMcpServer,
+            PickerKind::Plugin => Scope::PickerPlugin,
         },
         FocusScope::Input => Scope::Input,
         FocusScope::SidebarPersona => Scope::SidebarPersona,

@@ -69,6 +69,11 @@ pub struct PluginActor {
     name: String,
     /// The hosted guest (writer half; the reader is pumped by a task).
     host: Option<PluginHost>,
+    /// Set when the read pump observed a clean guest EOF (the guest
+    /// finished its work and closed stdout normally). `on_stop` then
+    /// publishes `Done` instead of `Dead` — a run-to-completion plugin
+    /// that exited cleanly is a success, not a failure.
+    clean_exit: bool,
 }
 
 /// Dependencies for [`PluginActor`].
@@ -159,6 +164,7 @@ impl kameo::Actor for PluginActor {
                 deps: args.deps,
                 name: args.name,
                 host: None,
+                clean_exit: false,
             });
         };
 
@@ -184,8 +190,8 @@ impl kameo::Actor for PluginActor {
 
         // Split the reader off and pump it: every decoded envelope goes to
         // the coordinator's channel. The task ends at guest EOF, which
-        // stops this actor (publishing Dead in on_stop) — the coordinator
-        // observes the plugin's death via that status event.
+        // stops this actor (publishing the terminal phase in on_stop) —
+        // the coordinator observes the outcome via that status event.
         let mut host = host;
         spawn_read_pump(
             host.split(),
@@ -198,6 +204,7 @@ impl kameo::Actor for PluginActor {
             deps: args.deps,
             name: args.name,
             host: Some(host),
+            clean_exit: false,
         })
     }
 
@@ -206,14 +213,21 @@ impl kameo::Actor for PluginActor {
         _actor_ref: kameo::actor::WeakActorRef<Self>,
         _reason: kameo::error::ActorStopReason,
     ) -> Result<(), Self::Error> {
-        // Announce death so the coordinator clears its spawned map entry
-        // and the state cache reflects the loss. Dropping the host aborts
-        // the guest task; bounded graceful shutdown already ran (or never
-        // applied).
+        // Announce the terminal phase so the coordinator clears its spawned
+        // map entry and the state cache reflects the outcome. A clean EOF
+        // after a completed handshake is `Done` (contributions stay
+        // cached); anything else — spawn/handshake failure, trap, or an
+        // abrupt pipe loss — is `Dead`. Dropping the host aborts the guest
+        // task; bounded graceful shutdown already ran (or never applied).
+        let phase = if self.clean_exit {
+            PluginPhase::Done
+        } else {
+            PluginPhase::Dead
+        };
         self.deps
             .publish(PluginStatus {
                 name: self.name.clone(),
-                phase: PluginPhase::Dead,
+                phase,
             })
             .await;
         Ok(())
@@ -243,7 +257,24 @@ fn spawn_read_pump(
 ) {
     tokio::spawn(async move {
         let mut unresponsive = false;
-        while let Ok(Some(envelope)) = reader.read_next().await {
+        // Clean EOF (a `None` read, not an error) means the guest finished
+        // its work and closed stdout normally — tell the actor before
+        // stopping it so `on_stop` publishes `Done` instead of `Dead`.
+        let mut clean_eof = false;
+        loop {
+            let read = reader.read_next().await;
+            let envelope = match read {
+                // Clean EOF: break out with the clean flag set.
+                Ok(None) => {
+                    clean_eof = true;
+                    break;
+                }
+                Ok(Some(envelope)) => envelope,
+                Err(report) => {
+                    tracing::warn!(plugin = %name, "{report:#}");
+                    break;
+                }
+            };
             let event = match envelope.msg {
                 jinn_plugin_api::PluginToHostOrHostToPlugin::Plugin(event) => event,
                 jinn_plugin_api::PluginToHostOrHostToPlugin::Host(_)
@@ -271,7 +302,10 @@ fn spawn_read_pump(
                 }
             }
         }
-        tracing::info!(plugin = %name, "plugin read pump ended");
+        tracing::info!(plugin = %name, clean = clean_eof, "plugin read pump ended");
+        if clean_eof {
+            mark_clean_exit(&actor_ref).await;
+        }
         // Guest EOF (or read error): the actor has nothing left to serve.
         if let Some(strong) = actor_ref.upgrade() {
             let _ = strong.stop_gracefully().await;
@@ -291,6 +325,17 @@ async fn request_phase_publish(
         let _ = strong.tell(PublishPhase(phase)).await;
     }
 }
+
+/// Marks the actor so its `on_stop` publishes `Done` rather than `Dead`.
+async fn mark_clean_exit(actor_ref: &kameo::actor::WeakActorRef<PluginActor>) {
+    if let Some(strong) = actor_ref.upgrade() {
+        let _ = strong.tell(MarkCleanExit).await;
+    }
+}
+
+/// Pump → actor request: record that the guest exited cleanly.
+#[derive(Debug)]
+struct MarkCleanExit;
 
 /// Pump → actor request: publish this phase on the bus.
 #[derive(Debug)]
@@ -458,6 +503,18 @@ impl Message<ShutdownPlugin> for PluginActor {
             // Host drop aborts whatever is left; the actor then dies (no
             // guest to serve), publishing Dead in on_stop.
         }
+    }
+}
+
+impl Message<MarkCleanExit> for PluginActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        _msg: MarkCleanExit,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.clean_exit = true;
     }
 }
 
