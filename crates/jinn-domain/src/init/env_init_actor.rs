@@ -108,7 +108,13 @@ impl BusPublish for EnvInitActor {
 }
 
 impl EnvInitActor {
-    /// Loads config, resolves API keys. Returns config on success.
+    /// Loads config, resolves API keys and MCP header variables.
+    ///
+    /// Returns config on success. Providers contribute their configured env
+    /// vars; configured MCP servers contribute every `${VAR}` referenced by
+    /// their `headers` values. Missing or empty variables are skipped
+    /// silently here — a server whose headers cannot expand fails loudly at
+    /// connect time instead, where the user can see which server is dead.
     fn load_config_and_resolve_keys(&self) -> Option<ProvidersConfig> {
         let config = match self.deps.services.config_storage.load() {
             Ok(config) => config,
@@ -128,8 +134,30 @@ impl EnvInitActor {
             }
         }
 
+        // Resolve MCP header variables from environment variables.
+        self.resolve_mcp_header_variables();
+
         tracing::info!("environment loaded, API keys resolved");
         Some(config)
+    }
+
+    /// Scans configured MCP server header values for `${VAR}` references and
+    /// seeds each one found into `ApiKeysService` from the process
+    /// environment (present non-empty values only).
+    fn resolve_mcp_header_variables(&self) {
+        let prefs = self.deps.services.user_preferences_storage.read();
+        let values: Vec<&str> = prefs
+            .mcp_server
+            .values()
+            .flat_map(|server| server.headers.values().map(String::as_str))
+            .collect();
+        for name in crate::feat::mcp::referenced_header_variables(&values) {
+            if let Ok(value) = std::env::var(&name)
+                && !value.is_empty()
+            {
+                self.deps.services.api_keys.insert(name, value);
+            }
+        }
     }
 }
 
@@ -145,9 +173,91 @@ mod tests {
     use std::time::Duration;
 
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
+    use crate::feat::mcp::McpServerConfig;
+    use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::provider_infra::ProvidersConfig;
 
     use super::{EnvInitActor, EnvInitActorDeps, EnvironmentLoaded, GetEnvironmentConfig};
+
+    /// Unique env-var names so parallel test runs never collide.
+    const SET_VAR: &str = "JINN_TEST_MCP_HEADER_RESOLVED";
+    const MISSING_VAR: &str = "JINN_TEST_MCP_HEADER_NEVER_SET";
+
+    /// Builds default preferences declaring one MCP server whose headers
+    /// reference the given env-var names.
+    fn prefs_referencing(vars: &[&str]) -> UserPreferences {
+        let mut prefs = UserPreferences::default();
+        let headers = vars
+            .iter()
+            .map(|v| (format!("X-{v}"), format!("Bearer ${{{v}}}")))
+            .collect();
+        prefs.mcp_server.insert(
+            "header-probe".to_owned(),
+            McpServerConfig {
+                transport: crate::feat::mcp::TransportKind::RemoteHttp,
+                url: Some("http://localhost:3001/mcp".to_owned()),
+                headers,
+                ..McpServerConfig::default()
+            },
+        );
+        prefs
+    }
+
+    #[tokio::test]
+    async fn referenced_header_variables_seed_api_keys_store() {
+        // Given preferences declaring an MCP server header referencing a
+        // variable that IS set in the process environment.
+        // SAFETY: single-threaded test setup; unique var name avoids races.
+        unsafe { std::env::set_var(SET_VAR, "live-value") };
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        let service = deps.services.user_preferences_storage.clone();
+        service.save(&prefs_referencing(&[SET_VAR])).expect("save");
+        let keys = deps.services.api_keys.clone();
+
+        // When the env init actor resolves keys for a config request.
+        let actor = harness
+            .spawn_actor::<EnvInitActor>(EnvInitActorDeps {
+                deps,
+                registry_name: None,
+            })
+            .await;
+        let result: Result<Option<ProvidersConfig>, _> = actor.ask(GetEnvironmentConfig).await;
+        let loaded = result.expect("ask succeeds");
+
+        // Then startup succeeded and the referenced key landed in the store.
+        assert!(loaded.is_some(), "config should load");
+        assert_eq!(keys.get(SET_VAR), Some("live-value".to_owned()));
+        // SAFETY: cleanup of the var set above.
+        unsafe { std::env::remove_var(SET_VAR) };
+    }
+
+    #[tokio::test]
+    async fn unset_header_variable_skips_store_and_startup_still_succeeds() {
+        // Given preferences declaring a header referencing a variable that is
+        // NOT present in the environment.
+        // SAFETY: ensures the name is truly absent despite prior test runs.
+        unsafe { std::env::remove_var(MISSING_VAR) };
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        let service = deps.services.user_preferences_storage.clone();
+        service.save(&prefs_referencing(&[MISSING_VAR])).expect("save");
+        let keys = deps.services.api_keys.clone();
+
+        // When the env init actor resolves keys for a config request.
+        let actor = harness
+            .spawn_actor::<EnvInitActor>(EnvInitActorDeps {
+                deps,
+                registry_name: None,
+            })
+            .await;
+        let result: Result<Option<ProvidersConfig>, _> = actor.ask(GetEnvironmentConfig).await;
+
+        // Then startup still succeeds (silent skip).
+        assert!(result.expect("ask succeeds").is_some(), "config should load");
+        // And nothing was seeded for the missing variable.
+        assert!(keys.get(MISSING_VAR).is_none());
+    }
 
     #[tokio::test]
     async fn get_environment_config_returns_none_without_config_file() {
