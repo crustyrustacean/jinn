@@ -54,6 +54,10 @@ pub struct Theme {
     pub tool_failure_bg: Color,
     /// Tool result pending (still executing) block background.
     pub tool_pending_bg: Color,
+    /// Challenge alert block background (bright, attention-grabbing).
+    pub challenge_alert_bg: Color,
+    /// Challenge alert block foreground (dark text on the bright background).
+    pub challenge_alert_fg: Color,
     /// Compaction summary block background.
     pub compaction_block_bg: Color,
     /// Tool result truncation indicator foreground.
@@ -146,6 +150,14 @@ impl Theme {
         m.insert("tool_success_bg", Style::default().fg(self.tool_success_bg));
         m.insert("tool_failure_bg", Style::default().fg(self.tool_failure_bg));
         m.insert("tool_pending_bg", Style::default().fg(self.tool_pending_bg));
+        m.insert(
+            "challenge_alert_bg",
+            Style::default().fg(self.challenge_alert_bg),
+        );
+        m.insert(
+            "challenge_alert_fg",
+            Style::default().fg(self.challenge_alert_fg),
+        );
         m.insert(
             "compaction_block_bg",
             Style::default().fg(self.compaction_block_bg),
@@ -240,6 +252,10 @@ pub struct ThemeFile {
     pub tool_failure_bg: Option<ThemeColor>,
     #[serde(default)]
     pub tool_pending_bg: Option<ThemeColor>,
+    #[serde(default)]
+    pub challenge_alert_bg: Option<ThemeColor>,
+    #[serde(default)]
+    pub challenge_alert_fg: Option<ThemeColor>,
     #[serde(default)]
     pub compaction_block_bg: Option<ThemeColor>,
     #[serde(default)]
@@ -364,6 +380,12 @@ impl ThemeFile {
             tool_pending_bg: self
                 .tool_pending_bg
                 .map_or(fallback.tool_pending_bg, crate::color::ThemeColor::inner),
+            challenge_alert_bg: self
+                .challenge_alert_bg
+                .map_or(fallback.challenge_alert_bg, crate::color::ThemeColor::inner),
+            challenge_alert_fg: self
+                .challenge_alert_fg
+                .map_or(fallback.challenge_alert_fg, crate::color::ThemeColor::inner),
             compaction_block_bg: self.compaction_block_bg.map_or(
                 fallback.compaction_block_bg,
                 crate::color::ThemeColor::inner,
@@ -469,6 +491,8 @@ impl ThemeFile {
             tool_success_bg: Self::resolve_field(self.tool_success_bg),
             tool_failure_bg: Self::resolve_field(self.tool_failure_bg),
             tool_pending_bg: Self::resolve_field(self.tool_pending_bg),
+            challenge_alert_bg: Self::resolve_field(self.challenge_alert_bg),
+            challenge_alert_fg: Self::resolve_field(self.challenge_alert_fg),
             compaction_block_bg: Self::resolve_field(self.compaction_block_bg),
             truncation_fg: Self::resolve_field(self.truncation_fg),
             picker_active_marker: Self::resolve_field(self.picker_active_marker),
@@ -525,6 +549,8 @@ mod tests {
             tool_success_bg: None,
             tool_failure_bg: None,
             tool_pending_bg: None,
+            challenge_alert_bg: None,
+            challenge_alert_fg: None,
             compaction_block_bg: None,
             truncation_fg: None,
             picker_active_marker: None,
@@ -586,6 +612,8 @@ mod tests {
             tool_success_bg: None,
             tool_failure_bg: None,
             tool_pending_bg: None,
+            challenge_alert_bg: None,
+            challenge_alert_fg: None,
             compaction_block_bg: None,
             truncation_fg: None,
             picker_active_marker: None,
@@ -655,6 +683,8 @@ mod tests {
             tool_success_bg: Some(ThemeColor(Color::Rgb(40, 50, 40))),
             tool_failure_bg: Some(ThemeColor(Color::Rgb(60, 40, 40))),
             tool_pending_bg: Some(ThemeColor(Color::Rgb(45, 45, 50))),
+            challenge_alert_bg: Some(ThemeColor(Color::Rgb(255, 200, 0))),
+            challenge_alert_fg: Some(ThemeColor(Color::Rgb(16, 16, 16))),
             compaction_block_bg: Some(ThemeColor(Color::Rgb(60, 50, 80))),
             truncation_fg: Some(ThemeColor(Color::Rgb(83, 83, 83))),
             picker_active_marker: Some(ThemeColor(Color::Green)),
@@ -722,6 +752,8 @@ mod tests {
             tool_success_bg: None,
             tool_failure_bg: None,
             tool_pending_bg: None,
+            challenge_alert_bg: None,
+            challenge_alert_fg: None,
             compaction_block_bg: None,
             truncation_fg: None,
             picker_active_marker: None,
@@ -761,8 +793,8 @@ fn style_map_returns_entry_for_every_theme_field() {
     let theme = crate::default_theme();
     // When building the style map.
     let map = theme.style_map();
-    // Then it has one entry per Theme field (38 fields).
-    assert_eq!(map.len(), 38, "style_map should cover all Theme fields");
+    // Then it has one entry per Theme field (40 fields).
+    assert_eq!(map.len(), 40, "style_map should cover all Theme fields");
 }
 
 #[test]

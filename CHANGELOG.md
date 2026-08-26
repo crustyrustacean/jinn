@@ -1,3 +1,7 @@
+## 2026-08-25 v0.109.0
+
+- Group tool calls atomically to prevent malformed chat history construction.
+
 ## 2026-08-20 v0.108.4
 
 - Add filters to prevent invalid message sequencing being sent to providers.

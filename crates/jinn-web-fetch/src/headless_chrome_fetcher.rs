@@ -69,6 +69,16 @@ fn extract_content(
 #[async_trait]
 impl WebFetcher for HeadlessChromeFetcher {
     async fn fetch(&self, url: &str, options: FetchOptions) -> Result<FetchOutput, FetchError> {
+        self.fetch_observed(url, options, std::sync::Arc::new(|_| {}))
+            .await
+    }
+
+    async fn fetch_observed(
+        &self,
+        url: &str,
+        options: FetchOptions,
+        on_progress: crate::challenge::ProgressFn,
+    ) -> Result<FetchOutput, FetchError> {
         tracing::debug!(url = %url, format = ?options.format, "HeadlessChromeFetcher: starting fetch");
         // Validate URL.
         let parsed = url::Url::parse(url).map_err(|e| FetchError::InvalidUrl(e.to_string()))?;
@@ -89,7 +99,7 @@ impl WebFetcher for HeadlessChromeFetcher {
         let extractors = self.extractors.clone();
         let url_owned = url.to_owned();
         let join = tokio::task::spawn_blocking(move || {
-            let page = browser.render_page(&url_owned)?;
+            let page = browser.render_page_observed(&url_owned, &on_progress)?;
             let content = extract_content(&page.html, &options, &extractors);
             tracing::debug!(
                 content_len = content.len(),

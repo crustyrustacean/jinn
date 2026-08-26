@@ -113,18 +113,28 @@ pub struct RenderedPage {
 /// Implementations classify their own errors: connection death surfaces as
 /// [`FetchError::BrowserCrash`]; per-tab failures as [`FetchError::Render`].
 pub trait HeadlessBrowser: Send + Sync {
-    /// Renders `url` to a page.
+    /// Renders `url` to a page, reporting wait progress through `on_progress`.
+    ///
+    /// `on_progress` receives [`RenderProgress`] events while the render
+    /// waits on a challenge (detection, human-wait ticks). Implementations
+    /// that never wait simply never call it.
     ///
     /// # Errors
     ///
     /// [`FetchError::BrowserCrash`] when the shared connection is dead;
-    /// [`FetchError::Render`] for per-tab failures.
-    fn render(&self, url: &str) -> Result<RenderedPage, FetchError>;
+    /// [`FetchError::Render`] for per-tab failures; [`FetchError::Challenge`]
+    /// when a detected challenge did not clear.
+    fn render(
+        &self,
+        url: &str,
+        on_progress: &dyn Fn(crate::challenge::RenderProgress),
+    ) -> Result<RenderedPage, FetchError>;
+
     /// Probes whether the browser is still alive.
     ///
     /// The heartbeat ([`SharedBrowser::probe`]) calls this periodically; a
-    /// failure force-evicts the handle so the next request lazily launches a
-    /// fresh browser. This is the proactive health check that defeats a
+    /// failure force-evicts the handle so the next request lazily launches
+    /// a fresh browser. This is the proactive health check that defeats a
     /// dead/wedged WebSocket that the render path would otherwise only notice
     /// passively via the library's idle timer.
     ///
@@ -200,7 +210,11 @@ pub struct ChromeBrowser {
 }
 
 impl HeadlessBrowser for ChromeBrowser {
-    fn render(&self, url: &str) -> Result<RenderedPage, FetchError> {
+    fn render(
+        &self,
+        url: &str,
+        on_progress: &dyn Fn(crate::challenge::RenderProgress),
+    ) -> Result<RenderedPage, FetchError> {
         let tab = self
             .browser
             .new_tab()
@@ -230,15 +244,25 @@ impl HeadlessBrowser for ChromeBrowser {
             .map_err(|e| classify_browser_error(&e))?;
         tracing::trace!("SharedBrowser: navigation complete");
 
-        // Challenge-aware wait: wait_until_navigated returns when the
-        // interstitial loads, not after the proof-of-work solves. Poll for
-        // clearance (redirect to real content) up to the configured timeout.
-        if self.stealth.enabled {
-            let timeout = self.stealth.anubis_timeout;
-            crate::challenge::wait_for_clearance(
-                || tab.get_content().map_err(|e| classify_browser_error(&e)),
-                timeout,
-            )?;
+        // Challenge-aware tiered wait: navigate returns when the interstitial
+        // loads, not when the page is real content. The wait covers vendor
+        // signatures (auto-clear + human windows) and the behavioral fallback.
+        // The tab stays open for the entire wait — a human solving the
+        // challenge needs it on screen.
+        let cfg = crate::challenge::WaitConfig {
+            auto_timeout: self.stealth.anubis_timeout,
+            human_timeout: self.stealth.challenge_wait,
+            settle: self.stealth.settle,
+            headed: self.stealth.headed,
+        };
+        let get_html = || tab.get_content().map_err(|e| classify_browser_error(&e));
+        match crate::challenge::wait_for_content(get_html, &cfg, url, on_progress)? {
+            crate::challenge::WaitOutcome::Cleared => {}
+            crate::challenge::WaitOutcome::Challenge(kind) => {
+                // Nothing more to solve: close the tab and surface the verdict.
+                close_tab_if_configured(&tab, self.stealth.keep_tabs_open);
+                return Err(FetchError::Challenge { kind });
+            }
         }
 
         tracing::trace!("SharedBrowser: getting page HTML");
@@ -249,7 +273,7 @@ impl HeadlessBrowser for ChromeBrowser {
         tracing::debug!(final_url = %final_url, "SharedBrowser: final URL");
 
         tracing::trace!("SharedBrowser: closing tab");
-        let _ = tab.close(true);
+        close_tab_if_configured(&tab, self.stealth.keep_tabs_open);
 
         Ok(RenderedPage { html, final_url })
     }
@@ -257,7 +281,6 @@ impl HeadlessBrowser for ChromeBrowser {
     fn liveness(&self) -> Result<(), FetchError> {
         // get_version is the cheapest CDP round-trip; its success exercises
         // the same call_method -> util::Wait path the render uses, so a
-        // healthy probe also resets the library's idle timer as a side
         // effect. Only Ok/Err matters here — the payload is discarded.
         self.browser
             .get_version()
@@ -267,6 +290,17 @@ impl HeadlessBrowser for ChromeBrowser {
 
     fn name(&self) -> &'static str {
         "headless_chrome::Browser"
+    }
+}
+
+/// Closes `tab` unless the user asked to keep render tabs open.
+///
+/// The `[browser] keep_tabs_open` setting trades tab hygiene for
+/// inspectability: open tabs let a human (or developer) inspect what the
+/// browser actually rendered — useful when hunting new challenge pages.
+fn close_tab_if_configured(tab: &headless_chrome::Tab, keep_open: bool) {
+    if !keep_open {
+        let _ = tab.close(true);
     }
 }
 
@@ -436,7 +470,8 @@ impl SharedBrowser {
     ///
     /// This is the unit of work both the fetcher and the searcher drive: open
     /// a tab, navigate, wait for clearance, return the raw HTML. Extraction
-    /// / parsing is the caller's concern.
+    /// / parsing is the caller's concern. Discards any wait progress — use
+    /// [`Self::render_page_observed`] when the caller surfaces waits.
     ///
     /// # Errors
     ///
@@ -444,12 +479,31 @@ impl SharedBrowser {
     /// attempt also dies; [`FetchError::Render`] for per-tab failures;
     /// [`FetchError::BrowserLaunch`] if the process cannot be started.
     pub fn render_page(&self, url: &str) -> Result<RenderedPage, FetchError> {
-        match self.render_once(url) {
+        self.render_page_observed(url, &(Arc::new(|_| {}) as crate::challenge::ProgressFn))
+    }
+
+    /// Renders `url` with wait progress relayed to `on_progress`.
+    ///
+    /// Same launch/retry semantics as [`Self::render_page`]; the observer
+    /// receives [`RenderProgress`] events while a challenge wait runs
+    /// (detection + human-wait ticks) so callers can surface "solve it in
+    /// the browser window" to the user.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::render_page`], plus [`FetchError::Challenge`] when a
+    /// detected challenge did not clear.
+    pub fn render_page_observed(
+        &self,
+        url: &str,
+        on_progress: &crate::challenge::ProgressFn,
+    ) -> Result<RenderedPage, FetchError> {
+        match self.render_once(url, &**on_progress) {
             // Connection-level death: render_once already evicted the handle;
             // relaunch and retry exactly once.
             Err(FetchError::BrowserCrash) => {
                 tracing::info!("SharedBrowser: retrying after connection death");
-                self.render_once(url)
+                self.render_once(url, &**on_progress)
             }
             other => other,
         }
@@ -461,9 +515,13 @@ impl SharedBrowser {
     /// shared handle so the next attempt relaunches. Per-tab failures
     /// ([`FetchError::Render`]) are returned without eviction — evicting on
     /// them would kill other consumers' in-flight tabs under concurrency.
-    fn render_once(&self, url: &str) -> Result<RenderedPage, FetchError> {
+    fn render_once(
+        &self,
+        url: &str,
+        on_progress: &dyn Fn(crate::challenge::RenderProgress),
+    ) -> Result<RenderedPage, FetchError> {
         let browser = ensure_browser(&self.slot, &self.factory)?;
-        match browser.render(url) {
+        match browser.render(url, on_progress) {
             Ok(page) => Ok(page),
             Err(err) => {
                 tracing::warn!(err = %err, "SharedBrowser: render failed");

@@ -2134,12 +2134,14 @@ fn append_tool_result_output_appends_to_pending_entry() {
 
     // When appending output.
     session.append_tool_result_output(
-        "call_1", "line 1
-",
+        "call_1",
+        "line 1\n",
+        crate::feat::tools_actor::protocol::event::ToolOutputKind::Normal,
     );
     session.append_tool_result_output(
-        "call_1", "line 2
-",
+        "call_1",
+        "line 2\n",
+        crate::feat::tools_actor::protocol::event::ToolOutputKind::Normal,
     );
 
     // Then the entry content has both outputs.
@@ -2157,13 +2159,41 @@ line 2
 }
 
 #[test]
+fn append_tool_result_output_bumps_history_activity_timestamp() {
+    // Given a session whose last activity is in the past.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.core.last_history_activity_at = jiff::Timestamp::now()
+        .checked_sub(jiff::Span::new().hours(1))
+        .expect("past");
+
+    // When appending streaming output.
+    let before = session.core.last_history_activity_at;
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    session.append_tool_result_output(
+        "call_1",
+        "tick",
+        crate::feat::tools_actor::protocol::event::ToolOutputKind::Normal,
+    );
+
+    // Then the activity timestamp advanced past its pre-append value.
+    assert!(session.core.last_history_activity_at > before);
+}
+
+#[test]
 fn append_tool_result_output_ignores_unknown_call_id() {
     // Given a session with no pending tool result.
     let mut session = ChatSessionState::new();
 
     // When appending output for an unknown call ID.
     // Then it does not panic (defensive).
-    session.append_tool_result_output("unknown", "output");
+    session.append_tool_result_output(
+        "unknown",
+        "output",
+        crate::feat::tools_actor::protocol::event::ToolOutputKind::Normal,
+    );
     assert!(session.history().is_empty());
 }
 
@@ -2176,8 +2206,8 @@ fn finalize_tool_result_completes_pending_entry() {
     session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
     session.append_tool_result_output(
         "call_1",
-        "building...
-",
+        "building...\n",
+        crate::feat::tools_actor::protocol::event::ToolOutputKind::Normal,
     );
 
     // When finalizing with success.
@@ -3481,7 +3511,7 @@ fn force_exclude_preserves_complete_tool_loop() {
 }
 
 #[test]
-fn force_exclude_preserves_non_empty_assistant() {
+fn force_exclude_excludes_non_empty_assistant_with_its_dangling_call() {
     // Given a history with a non-empty Assistant and a dangling ToolCall.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("run it"));
@@ -3491,10 +3521,15 @@ fn force_exclude_preserves_non_empty_assistant() {
     // When force-excluding dangling tool calls.
     session.force_exclude_dangling_tool_calls();
 
-    // Then the ToolCall is ForcedExclude but the non-empty Assistant is not.
+    // Then the whole loop chunk is excluded; the user entry is not.
+    // The assistant text is excluded with its call: half-chunk exclusion is
+    // the bug class the history editor exists to prevent.
     let history = session.history();
     assert_eq!(history[0].context_override(), ContextOverride::Default);
-    assert_eq!(history[1].context_override(), ContextOverride::Default);
+    assert_eq!(
+        history[1].context_override(),
+        ContextOverride::ForcedExclude
+    );
     assert_eq!(
         history[2].context_override(),
         ContextOverride::ForcedExclude

@@ -116,13 +116,15 @@ impl SessionPersistenceActor {
     ) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&event.session_id);
-            session.append_tool_result_output(&event.tool_call_id, &event.output);
+            session.append_tool_result_output(&event.tool_call_id, &event.output, event.kind);
         });
     }
     /// Drains pending history mutations and steering buffer entries, emitting
     /// ContextOverrideChanged events for any modified entries.
     async fn apply_pending_mutations_and_steering(&self, session_id: &crate::protocol::SessionId) {
-        // Drain and apply pending history mutations.
+        // Drain and apply pending history mutations, then normalize loop
+        // layout so committed loops never contain interstitials before
+        // assembly (the read-side converter stays simple).
         let changed = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
@@ -134,6 +136,7 @@ impl SessionPersistenceActor {
                         "applied pending history mutations"
                     );
                 }
+                session.edit_history().normalize_loop_layout();
                 changed
             })
         };
@@ -376,7 +379,7 @@ mod tests {
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::tools_actor::protocol::event::{
         ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionOutput,
-        ToolExecutionStarted, ToolUseStarted,
+        ToolExecutionStarted, ToolOutputKind, ToolUseStarted,
     };
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
@@ -1161,11 +1164,13 @@ mod tests {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
             output: "file1.txt\n".to_owned(),
+            kind: ToolOutputKind::default(),
         });
         actor.on_tool_execution_output(&ToolExecutionOutput {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
             output: "file2.txt\n".to_owned(),
+            kind: ToolOutputKind::default(),
         });
 
         let state = actor.state.read();

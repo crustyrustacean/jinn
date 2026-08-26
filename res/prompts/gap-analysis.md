@@ -14,7 +14,7 @@ Identify any gaps in the implementation versus the approved spec/plan and discus
 For all gaps identified:
 
 - Include the acceptance criteria/feature identifier from the table
-- Explain _why_ the gap exists
+- BRIEFLY Explain _why_ the gap exists
 - Propose a fix
 
 ## Record reconciliation
