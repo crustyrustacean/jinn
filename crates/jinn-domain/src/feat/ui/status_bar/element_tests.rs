@@ -226,6 +226,138 @@ fn render_shows_cache_percent_when_cached_tokens_present() {
     assert!(row.contains("\u{2B22} 40%"));
 }
 
+/// Build an `AppState` whose active session has one measured turn reporting
+/// the given provider prompt and cached token counts.
+fn state_with_measured_cache(prompt_tokens: u32, cached_tokens: u32) -> AppState {
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: prompt_tokens,
+        tokens_received: 50,
+        cost: None,
+        prompt_tokens: Some(prompt_tokens),
+        cached_tokens: Some(cached_tokens),
+    });
+    state
+}
+
+/// Render the status bar and return the cell carrying the cache glyph.
+///
+/// Tests using this helper run with a single session, so the tree aggregate
+/// is hidden and the info line holds the only glyph in the buffer.
+fn info_line_cache_cell(terminal: &ratatui::backend::TestBackend) -> ratatui::buffer::Cell {
+    terminal
+        .buffer()
+        .content()
+        .iter()
+        .find(|cell| cell.symbol().starts_with('\u{2B22}'))
+        .cloned()
+        .expect("cache glyph should be rendered")
+}
+
+#[rstest::rstest]
+#[case(400, "\u{2B22} 40%")]
+// 894/1000 = 89.4% raw — rounds DOWN to a displayed 89%, staying in the error
+// band one tick below the warning boundary.
+#[case(894, "\u{2B22} 89%")]
+fn render_info_line_cache_segment_is_error_below_90_percent(
+    #[case] cached_tokens: u32,
+    #[case] expected_text: &str,
+) {
+    // Given a measured turn displaying below 90%.
+    let mut element = StatusBarElement;
+    let state = state_with_measured_cache(1000, cached_tokens);
+    let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the cache segment reads its percentage and carries the error color.
+    let row = buffer_row(terminal.backend().buffer(), 1, 80);
+    assert!(row.contains(expected_text), "got: {row}");
+    let cell = info_line_cache_cell(terminal.backend());
+    assert_eq!(
+        cell.style().fg,
+        Some(state.frontend.theme.error_text),
+        "cache segment below 90% should use error_text"
+    );
+}
+
+#[rstest::rstest]
+#[case(960, "\u{2B22} 96%")]
+// 946/1000 = 94.6% raw — must DISPLAY as 95% and therefore band as success
+// (bands apply to the rounded display value, not the raw ratio).
+#[case(946, "\u{2B22} 95%")]
+fn render_info_line_cache_segment_is_success_at_or_above_95_percent(
+    #[case] cached_tokens: u32,
+    #[case] expected_text: &str,
+) {
+    // Given a measured turn reporting cache hits at or above 95% after rounding.
+    let mut element = StatusBarElement;
+    let state = state_with_measured_cache(1000, cached_tokens);
+    let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the segment shows the ROUNDED percentage and carries the success color.
+    let row = buffer_row(terminal.backend().buffer(), 1, 80);
+    assert!(row.contains(expected_text), "got: {row}");
+    let cell = info_line_cache_cell(terminal.backend());
+    assert_eq!(
+        cell.style().fg,
+        Some(state.frontend.theme.success),
+        "cache segment displaying 95%+ should use success"
+    );
+}
+
+#[rstest::rstest]
+#[case(900, "\u{2B22} 90%")]
+// 895/1000 = 89.5% raw — f64 round is half-away-from-zero, so it DISPLAYS as
+// 90% and therefore bands as warning.
+#[case(895, "\u{2B22} 90%")]
+fn render_info_line_cache_segment_is_warning_between_90_and_94_percent(
+    #[case] cached_tokens: u32,
+    #[case] expected_text: &str,
+) {
+    // Given a measured turn displaying between 90% and 94% inclusive.
+    let mut element = StatusBarElement;
+    let state = state_with_measured_cache(1000, cached_tokens);
+    let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the cache segment reads its percentage and carries the warning color.
+    let row = buffer_row(terminal.backend().buffer(), 1, 80);
+    assert!(row.contains(expected_text), "got: {row}");
+    let cell = info_line_cache_cell(terminal.backend());
+    assert_eq!(
+        cell.style().fg,
+        Some(state.frontend.theme.warning),
+        "cache segment displaying 90-94% should use warning"
+    );
+}
+
 #[rstest::rstest]
 fn render_hides_cache_glyph_when_no_cached_tokens() {
     // Given a session with no cache hits (cached_tokens = None).
@@ -805,6 +937,130 @@ fn render_shows_cost_with_non_zero_value() {
     assert!(
         row.contains("$0.00230"),
         "expected $0.00230 in status bar, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
+    use crate::feat::session::token_stats::TokenRecord;
+    use ratatui::style::Color;
+
+    // Given a parent and child session whose aggregated ledgers report 96% cache hits.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1200,
+        tokens_received: 600,
+        cost: Some(0.01),
+        prompt_tokens: Some(1000),
+        cached_tokens: Some(960),
+    });
+    let child_id = crate::protocol::SessionId::new();
+    let active_id = state.session.active_session_id().clone();
+    {
+        let child = state.session_mut_or_create(&child_id);
+        child.push_token_record(TokenRecord {
+            model_used: None,
+            timestamp: jiff::Timestamp::now(),
+            tokens_sent: 500,
+            tokens_received: 250,
+            cost: Some(0.005),
+            prompt_tokens: Some(200),
+            cached_tokens: Some(192),
+        });
+        child.set_parent_session(active_id);
+    }
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(120, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row0 = buffer_row(&buffer, 0, 120);
+
+    // Then the tree aggregate shows the cache segment with a 96% figure...
+    assert!(
+        row0.contains("\u{2B22} 96%"),
+        "tree aggregate should show \u{2B22} 96%, got: {row0}"
+    );
+    // And the cell carrying the cache glyph is styled with the success color.
+    let expected_fg = state.frontend.theme.success;
+    let cache_cell = (0..120)
+        .filter_map(|x| buffer.cell((x, 0)))
+        .find(|cell| cell.symbol().starts_with('\u{2B22}'))
+        .expect("cache glyph should be rendered on the tree line");
+    assert_eq!(
+        cache_cell.style().fg,
+        Some(Color::Reset).filter(|_| false).or(Some(expected_fg)),
+        "cache segment should carry theme success color"
+    );
+}
+
+#[rstest::rstest]
+fn render_tree_cache_segment_keeps_muted_neighbors() {
+    // Given a parent and child session showing a tree aggregate at 96% cache hits.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1200,
+        tokens_received: 600,
+        cost: Some(0.01),
+        prompt_tokens: Some(1000),
+        cached_tokens: Some(960),
+    });
+    let child_id = crate::protocol::SessionId::new();
+    let active_id = state.session.active_session_id().clone();
+    {
+        let child = state.session_mut_or_create(&child_id);
+        child.push_token_record(TokenRecord {
+            model_used: None,
+            timestamp: jiff::Timestamp::now(),
+            tokens_sent: 500,
+            tokens_received: 250,
+            cost: Some(0.005),
+            prompt_tokens: Some(200),
+            cached_tokens: Some(192),
+        });
+        child.set_parent_session(active_id);
+    }
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(120, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+
+    // Then the token arrow right after the colored cache segment keeps the
+    // muted color — only the cache segment itself is banded.
+    let expected_muted = state.frontend.theme.muted_text;
+    let after_cache = (0..120)
+        .filter_map(|x| buffer.cell((x, 0)).map(|cell| (x, cell)))
+        .skip_while(|(_, cell)| !cell.symbol().starts_with('\u{2B22}'))
+        .find(|(_, cell)| cell.symbol().starts_with('\u{2191}'))
+        .map(|(_, cell)| cell)
+        .expect("up-arrow should follow the cache segment on the tree line");
+    assert_eq!(
+        after_cache.style().fg,
+        Some(expected_muted),
+        "non-cache segments should keep muted color"
     );
 }
 
