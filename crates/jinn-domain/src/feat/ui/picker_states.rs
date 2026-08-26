@@ -10,6 +10,7 @@ use std::collections::HashSet;
 
 use crate::feat::mcp::picker_entry::McpServerEntry;
 use crate::feat::persona::PersonaEntry;
+use crate::feat::plugin::PluginPickerEntry;
 use crate::feat::reasoning::ReasoningEffortEntry;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
@@ -94,6 +95,10 @@ pub struct PickerStates {
     /// MCP server picker state - shows configured servers with toggle state.
     /// OWNER: IntentHandler (populated on MCP picker open).
     pub mcp_server_picker: jinn_selection_widget::SelectionState<McpServerEntry>,
+
+    /// Plugin picker state - read-only list of loaded plugins.
+    /// OWNER: IntentHandler (populated on plugin picker open).
+    pub plugin_picker: jinn_selection_widget::SelectionState<PluginPickerEntry>,
 
     /// Snapshot of enabled MCP servers before picker opens - restored on ESC.
     /// OWNER: IntentHandler (set on MCP picker open, consumed on confirm/cancel).
@@ -216,6 +221,13 @@ pub trait PickerExt {
     fn mcp_server_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<McpServerEntry>;
+
+    /// Read-only access to the plugin picker state.
+    fn plugin_picker(&self) -> &jinn_selection_widget::SelectionState<PluginPickerEntry>;
+    /// Mutable access to the plugin picker state.
+    fn plugin_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<PluginPickerEntry>;
 
     /// Read-only access to the OpenRouter endpoint picker state.
     fn endpoint_picker(&self) -> &jinn_selection_widget::SelectionState<EndpointEntry>;
@@ -378,6 +390,16 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<McpServerEntry> {
         &mut self.pickers.mcp_server_picker
+    }
+
+    fn plugin_picker(&self) -> &jinn_selection_widget::SelectionState<PluginPickerEntry> {
+        &self.pickers.plugin_picker
+    }
+
+    fn plugin_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<PluginPickerEntry> {
+        &mut self.pickers.plugin_picker
     }
 
     fn endpoint_picker(&self) -> &jinn_selection_widget::SelectionState<EndpointEntry> {

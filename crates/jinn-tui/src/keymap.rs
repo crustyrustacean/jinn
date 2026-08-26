@@ -114,6 +114,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
             .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
             .bind("<leader>sM", Intent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
+            .bind("<leader>sP", Intent::OpenPicker { kind: PickerKind::Plugin }, KeyCategory::General)
             .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             .bind("<leader>sr", Intent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
             // OpenRouter routing endpoint pin (Single + OpenRouter models only).
@@ -1053,6 +1054,45 @@ mod tests {
                 "<leader>se must resolve to OpenPicker{{Persona}}; got {action:?}",
             ),
             other => panic!("<leader>se must be a leaf, got branch: {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn leader_sp_capital_resolves_to_plugin_picker() {
+        // Given the default keymap.
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use ratatui_which_key::NodeResult;
+        let keymap = init();
+        let path = [
+            KeyEvent {
+                key: Key::Char(' '),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('s'),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('P'),
+                modifiers: Modifiers::none(),
+            },
+        ];
+
+        // When navigating the <leader>sP sequence.
+        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
+
+        // Then it resolves to OpenPicker{Plugin}.
+        match result {
+            NodeResult::Leaf { action } => assert!(
+                matches!(
+                    action,
+                    Intent::OpenPicker {
+                        kind: PickerKind::Plugin
+                    }
+                ),
+                "<leader>sP must resolve to OpenPicker{{Plugin}}; got {action:?}",
+            ),
+            other => panic!("<leader>sP must be a leaf, got branch: {other:?}"),
         }
     }
 
