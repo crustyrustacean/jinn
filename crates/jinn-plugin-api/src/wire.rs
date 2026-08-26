@@ -19,6 +19,14 @@ use serde::{Deserialize, Serialize};
 use crate::persona_def::PersonaDef;
 use crate::theme_def::ThemeDef;
 
+/// Subscription kinds a plugin may declare in [`Hello::subscriptions`].
+///
+/// Each tag names one host→guest event kind; the host forwards matching
+/// events to subscribed guests. Unknown tags are warned about and ignored
+/// (forward compatibility — a newer guest's new tags must not break an
+/// older host).
+pub const SUBSCRIPTION_KINDS: &[&str] = &["tool_call", "tool_result", "turn_end"];
+
 /// Handshake: the first message a plugin sends after boot.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Hello {
@@ -73,6 +81,81 @@ pub struct SetPersonaEntries {
     pub personas: Vec<PersonaDef>,
 }
 
+/// Event: a complete tool call the model produced (arguments assembled).
+///
+/// Forwarded to plugins subscribed to `"tool_call"`. Carries the raw
+/// argument JSON so guests can run their own shape detection.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolCallEvent {
+    /// The session the tool call belongs to (opaque id string).
+    pub session_id: String,
+    /// Unique identifier for this tool call (assigned by the LLM provider).
+    pub tool_call_id: String,
+    /// The tool's (possibly namespaced) name.
+    pub name: String,
+    /// The arguments as a JSON string, exactly as the model produced them.
+    pub arguments: String,
+}
+
+/// Event: a tool execution finished (builtin or MCP alike).
+///
+/// Forwarded to plugins subscribed to `"tool_result"`. The content is the
+/// untruncated output when truncation occurred (`full_content`), so JSON
+/// payloads always parse on the guest side.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolResultEvent {
+    /// The session the execution belongs to (opaque id string).
+    pub session_id: String,
+    /// The tool call this result answers.
+    pub tool_call_id: String,
+    /// The tool's (possibly namespaced) name.
+    pub name: String,
+    /// The execution output (untruncated when the host had it).
+    pub content: String,
+    /// Whether execution succeeded. Failed executions are not citable.
+    pub success: bool,
+}
+
+/// Event: a session turn ended (streaming → idle).
+///
+/// Forwarded to plugins subscribed to `"turn_end"`. `final_answer` is
+/// host-computed (the session's last history entry is an assistant
+/// message); guests cannot read session state themselves.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnEndEvent {
+    /// The session whose turn ended (opaque id string).
+    pub session_id: String,
+    /// Whether the turn reached a genuine final assistant answer. `false`
+    /// means error/cancel mid-turn — buffered turn-scoped state should be
+    /// retained for a later successful turn.
+    pub final_answer: bool,
+}
+
+/// One citation contributed by a plugin.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginCitation {
+    /// The source URL (must be http/https — anything else is dropped).
+    pub url: String,
+    /// A human-readable title for the source.
+    pub title: String,
+    /// Optional snippet text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+}
+
+/// Contribution: the citations a plugin accumulated over a turn.
+///
+/// Sent in response to [`TurnEndEvent`] when the turn reached a final
+/// answer. The host validates each entry and republishes the survivors as
+/// the session's grouped `Sources` footer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PushCitations {
+    /// The session the citations belong to (opaque id string).
+    pub session_id: String,
+    /// The accumulated citations for the turn.
+    pub citations: Vec<PluginCitation>,
+}
+
 /// Plugin→host message union (transport only).
 ///
 /// Unknown tags are handled one level up, in
@@ -87,6 +170,8 @@ pub enum PluginToHost {
     SetThemeEntries(SetThemeEntries),
     /// Persona contribution (full set).
     SetPersonaEntries(SetPersonaEntries),
+    /// Citation contribution (turn-scoped).
+    PushCitations(PushCitations),
 }
 
 /// Host→plugin message union (transport only).
@@ -98,4 +183,10 @@ pub enum PluginToHost {
 pub enum HostToPlugin {
     /// Handshake reply.
     Welcome(Welcome),
+    /// A complete tool call arrived (subscribed event).
+    ToolCallEvent(ToolCallEvent),
+    /// A tool execution finished (subscribed event).
+    ToolResultEvent(ToolResultEvent),
+    /// A session turn ended (subscribed event).
+    TurnEndEvent(TurnEndEvent),
 }

@@ -102,12 +102,18 @@ impl<'de> Deserialize<'de> for PluginToHostOrHostToPlugin {
         let Some(tag) = tag else {
             return Ok(Self::Unknown);
         };
-        if tag == "welcome" {
+        if matches!(
+            tag,
+            "welcome" | "tool_call_event" | "tool_result_event" | "turn_end_event"
+        ) {
             return HostToPlugin::deserialize(value)
                 .map(Self::Host)
                 .map_err(serde::de::Error::custom);
         }
-        if matches!(tag, "hello" | "set_theme_entries" | "set_persona_entries") {
+        if matches!(
+            tag,
+            "hello" | "set_theme_entries" | "set_persona_entries" | "push_citations"
+        ) {
             return PluginToHost::deserialize(value)
                 .map(Self::Plugin)
                 .map_err(serde::de::Error::custom);

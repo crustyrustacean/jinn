@@ -20,7 +20,9 @@ use error_stack::Report;
 use kameo::prelude::{Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::feat::plugin_coordinator_actor::protocol::{PluginPhase, PluginStatus};
+use crate::feat::plugin_coordinator_actor::protocol::{
+    PluginPhase, PluginStatus, PluginSubscriptions,
+};
 
 use jinn_plugin::{PluginHost, PluginReader};
 
@@ -133,7 +135,7 @@ impl kameo::Actor for PluginActor {
 
             match start {
                 Ok(mut host) => match handshake(&mut host, &args).await {
-                    Ok(()) => Ok(host),
+                    Ok(subscriptions) => Ok((host, subscriptions)),
                     Err(error) => {
                         tracing::warn!(plugin = %args.name, error = ?error, "handshake failed");
                         Err(())
@@ -146,7 +148,7 @@ impl kameo::Actor for PluginActor {
             }
         };
 
-        let Ok(host) = start_result else {
+        let Ok((host, subscriptions)) = start_result else {
             args.deps
                 .publish(PluginStatus {
                     name: args.name.clone(),
@@ -167,6 +169,18 @@ impl kameo::Actor for PluginActor {
             })
             .await;
         tracing::info!(plugin = %args.name, "plugin actor: handshake complete");
+
+        // Announce the validated subscription set so the coordinator's
+        // event forwarder knows what to route to this guest. Published
+        // after `Running` so subscribers see a live plugin first.
+        if !subscriptions.is_empty() {
+            args.deps
+                .publish(PluginSubscriptions {
+                    name: args.name.clone(),
+                    kinds: subscriptions,
+                })
+                .await;
+        }
 
         // Split the reader off and pump it: every decoded envelope goes to
         // the coordinator's channel. The task ends at guest EOF, which
@@ -295,7 +309,14 @@ fn start_real_guest(args: &PluginActorDeps) -> Result<PluginHost, PluginActorErr
 /// Completes the v1 handshake: waits (bounded) for the guest `Hello`,
 /// replies `Welcome`, and fails on timeout, version mismatch, or a
 /// non-`Hello` first message.
-async fn handshake(host: &mut PluginHost, args: &PluginActorDeps) -> Result<(), PluginActorError> {
+///
+/// Returns the guest's validated subscription set (unknown tags warned
+/// about and dropped) so the actor can announce it for the event
+/// forwarder.
+async fn handshake(
+    host: &mut PluginHost,
+    args: &PluginActorDeps,
+) -> Result<Vec<String>, PluginActorError> {
     let envelope = match tokio::time::timeout(HANDSHAKE_TIMEOUT, host.read()).await {
         Ok(Ok(Some(env))) => env,
         Ok(Ok(None)) => {
@@ -332,6 +353,7 @@ async fn handshake(host: &mut PluginHost, args: &PluginActorDeps) -> Result<(), 
         );
         return Err(PluginActorError::Handshake);
     }
+    let subscriptions = validate_subscriptions(&args.name, hello.subscriptions);
 
     let welcome = Envelope::for_host(
         HostToPlugin::Welcome(Welcome {
@@ -359,7 +381,23 @@ async fn handshake(host: &mut PluginHost, args: &PluginActorDeps) -> Result<(), 
         tracing::warn!(plugin = %args.name, "{report:#}");
         PluginActorError::Write
     })?;
-    Ok(())
+    Ok(subscriptions)
+}
+
+/// Filters a guest's declared subscriptions down to the known kinds.
+///
+/// Unknown tags are warned about and dropped — a newer guest's future
+/// subscription kinds must not break an older host.
+fn validate_subscriptions(name: &str, declared: Vec<String>) -> Vec<String> {
+    let mut valid = Vec::new();
+    for tag in declared {
+        if jinn_plugin_api::SUBSCRIPTION_KINDS.contains(&tag.as_str()) {
+            valid.push(tag);
+        } else {
+            tracing::warn!(plugin = %name, tag = %tag, "unknown subscription kind ignored");
+        }
+    }
+    valid
 }
 
 /// Unix epoch milliseconds for envelope timestamps.
@@ -372,6 +410,40 @@ fn now_ms() -> u64 {
 /// Message sent to a plugin actor requesting a bounded graceful shutdown.
 #[derive(Debug, Clone)]
 pub struct ShutdownPlugin;
+
+/// The per-plugin host→guest event sequence counter (envelope `seq`).
+///
+/// Sequence numbers are per direction and per plugin; the host side counts
+/// from 1 (0 was the handshake `Welcome`).
+static HOST_EVENT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Coordinator → plugin actor request: write one host event to this
+/// guest's stdin.
+///
+/// Fire-and-forget by design: a write failure (dead guest, closed pipe)
+/// is absorbed — the guest's death is surfaced through its own lifecycle
+/// events, never by blocking the forwarder.
+#[derive(Debug, Clone)]
+pub struct DeliverHostEvent(pub jinn_plugin_api::HostToPlugin);
+
+impl Message<DeliverHostEvent> for PluginActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: DeliverHostEvent,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let Some(host) = self.host.as_mut() else {
+            return;
+        };
+        let seq = HOST_EVENT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let envelope = Envelope::for_host(msg.0, seq, now_ms());
+        if let Err(report) = host.write(&envelope).await {
+            tracing::warn!(plugin = %self.name, "host event delivery failed: {report:#}");
+        }
+    }
+}
 
 impl Message<ShutdownPlugin> for PluginActor {
     type Reply = ();
