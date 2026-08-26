@@ -426,7 +426,10 @@ mod tests {
         // session (stub's echo + other's tool).
         let (actor, state, _audit) = create_actor().await;
         let session_id = SessionId::new();
-        for (provider, tool_name) in [("mcp__stub__", "mcp__stub__echo"), ("mcp__other__", "mcp__other__tool")] {
+        for (provider, tool_name) in [
+            ("mcp__stub__", "mcp__stub__echo"),
+            ("mcp__other__", "mcp__other__tool"),
+        ] {
             actor.on_tools_registered(&ToolsRegistered {
                 provider: provider.to_owned(),
                 definitions: vec![ToolDefinition {
@@ -492,7 +495,10 @@ mod tests {
         // Then the emptied session map is removed entirely.
         let guard = state.read();
         assert!(
-            !guard.context.session_tool_definitions.contains_key(&session_id),
+            !guard
+                .context
+                .session_tool_definitions
+                .contains_key(&session_id),
             "emptied session map must be dropped"
         );
     }
@@ -566,7 +572,10 @@ mod tests {
         // Then the session's context-cache entry is gone.
         let guard = state.read();
         assert!(
-            !guard.context.session_tool_definitions.contains_key(&session_id),
+            !guard
+                .context
+                .session_tool_definitions
+                .contains_key(&session_id),
             "closed session's context tool cache must be removed"
         );
     }
