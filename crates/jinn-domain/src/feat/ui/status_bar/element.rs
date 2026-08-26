@@ -9,6 +9,7 @@ use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::InputModalities;
 use crate::feat::session::{TokenStats, aggregate_tree_stats};
+use crate::feat::theme::Theme;
 use crate::feat::ui::status_bar::turn_counter;
 use crate::resolve_effort;
 use ratatui::Frame;
@@ -140,20 +141,31 @@ fn render_tree_aggregate(
     let turn_symbol = '\u{21BB}';
     let session_symbol = '\u{29C9}';
     let tree_prefix = '\u{1F333}';
-    let cache_segment = match cache_hit_percent_from(tree.cached_total, tree.measured_sent) {
-        Some(pct) => format!("\u{2B22} {pct}% "),
-        None => String::new(),
-    };
-    let tree_display = format!(
-        "{tree_prefix} {cache_segment}{up_arrow}{} {down_arrow}{} ${:.5} {turn_symbol}{turns} {session_symbol}{count}",
-        format_tokens(tree.effective_sent),
-        format_tokens(tree.total_received),
-        tree.total_cost,
-        turns = tree.total_turns,
-        count = tree.session_count,
-    );
-    let tree_widget =
-        Paragraph::new(Line::from(Span::styled(tree_display, style))).alignment(Alignment::Right);
+    let turns = tree.total_turns;
+    let count = tree.session_count;
+    let mut tree_spans: Vec<Span> = vec![Span::styled(format!("{tree_prefix} "), style)];
+    match cache_hit_percent_from(tree.cached_total, tree.measured_sent) {
+        Some(pct) => {
+            let cache_glyph = '\u{2B22}'; // ⬢
+            tree_spans.push(Span::styled(
+                format!("{cache_glyph} {pct}% "),
+                cache_hit_style(&state.frontend.theme, pct),
+            ));
+        }
+        None => {}
+    }
+    tree_spans.push(Span::styled(
+        format!("{up_arrow}{} ", format_tokens(tree.effective_sent)),
+        style,
+    ));
+    tree_spans.push(Span::styled(
+        format!("{down_arrow}{} ", format_tokens(tree.total_received)),
+        style,
+    ));
+    tree_spans.push(Span::styled(format!("${:.5} ", tree.total_cost), style));
+    tree_spans.push(Span::styled(format!("{turn_symbol}{turns} "), style));
+    tree_spans.push(Span::styled(format!("{session_symbol}{count}"), style));
+    let tree_widget = Paragraph::new(Line::from(tree_spans)).alignment(Alignment::Right);
     frame.render_widget(tree_widget, area);
 }
 
@@ -181,7 +193,10 @@ fn render_token_info_line(
         // Cache-hit percentage — leftmost, shown only when there are cache hits.
         if let Some(pct) = cache_hit_percent(&token_stats) {
             let cache_glyph = '\u{2B22}'; // ⬢
-            left_spans.push(Span::styled(format!("{cache_glyph} {pct}% "), style));
+            left_spans.push(Span::styled(
+                format!("{cache_glyph} {pct}% "),
+                cache_hit_style(&state.frontend.theme, pct),
+            ));
         }
         left_spans.push(Span::styled(token_info, style));
         left_spans.push(Span::styled(format!(" ${:.5}", total_cost.abs()), style));
@@ -254,6 +269,19 @@ fn cache_hit_percent_from(cached_total: u64, measured_sent: u64) -> Option<u32> 
     Some(pct.round() as u32)
 }
 
+/// Foreground style for a displayed cache-hit percentage, banded by health:
+/// 95%+ healthy (`success`), 90–94% degraded (`warning`), below 90% poor
+/// (`error_text`). Bands apply to the rounded display value, so what the
+/// user reads is what gets colored.
+fn cache_hit_style(theme: &Theme, pct: u32) -> Style {
+    let color = match pct {
+        p if p >= 95 => theme.success,
+        p if p >= 90 => theme.warning,
+        _ => theme.error_text,
+    };
+    Style::default().fg(color)
+}
+
 /// Builds the right-side model display string: resolved name + reasoning effort.
 fn build_model_string(
     state: &crate::common::app_state::AppState,
@@ -316,5 +344,60 @@ fn build_model_string(
     match modalities {
         Some(m) => format!("{model} <{}>", m.display()),
         None => model,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        reason = "test code"
+    )]
+    use super::*;
+    use jinn_theme::default_theme;
+
+    #[rstest::rstest]
+    #[case(100)]
+    #[case(97)]
+    #[case(95)]
+    fn cache_hit_style_bands_at_or_above_95_as_success(#[case] pct: u32) {
+        // Given the default theme.
+        let theme = default_theme();
+
+        // When classifying a percentage in the healthy band.
+        let style = cache_hit_style(&theme, pct);
+
+        // Then it uses the success color.
+        assert_eq!(style.fg, Some(theme.success));
+    }
+
+    #[rstest::rstest]
+    #[case(94)]
+    #[case(90)]
+    fn cache_hit_style_bands_90_to_94_as_warning(#[case] pct: u32) {
+        // Given the default theme.
+        let theme = default_theme();
+
+        // When classifying a percentage in the degraded band.
+        let style = cache_hit_style(&theme, pct);
+
+        // Then it uses the warning color.
+        assert_eq!(style.fg, Some(theme.warning));
+    }
+
+    #[rstest::rstest]
+    #[case(89)]
+    #[case(0)]
+    fn cache_hit_style_bands_below_90_as_error(#[case] pct: u32) {
+        // Given the default theme.
+        let theme = default_theme();
+
+        // When classifying a percentage in the poor band.
+        let style = cache_hit_style(&theme, pct);
+
+        // Then it uses the error_text color.
+        assert_eq!(style.fg, Some(theme.error_text));
     }
 }
