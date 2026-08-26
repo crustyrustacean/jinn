@@ -1,4 +1,9 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::unreachable,
+    reason = "test code"
+)]
 
 //! Drift tests — the hand-maintained schema must agree with the wire types.
 //!
