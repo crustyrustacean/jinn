@@ -53,6 +53,8 @@ use jinn_theme::Theme;
 use std::collections::BTreeMap;
 
 use crate::feat::plugin_coordinator_actor::protocol::PluginPhase;
+use jinn_selection_widget::PickerItem;
+use ratatui::text::{Line, Span};
 
 /// The plugin contribution cache — data pushed by plugins, held for
 /// synchronous consumers (pickers, renderer).
@@ -121,6 +123,66 @@ impl PluginContributions {
     pub fn phase(&self, name: &str) -> Option<PluginPhase> {
         self.phases.get(name).copied()
     }
+
+    /// All known plugins with their latest phase, ordered by name
+    /// (BTreeMap iteration order).
+    pub fn phases(&self) -> impl Iterator<Item = (&str, PluginPhase)> {
+        self.phases.iter().map(|(k, v)| (k.as_str(), *v))
+    }
+}
+
+/// One loaded plugin ready for display in the plugin picker.
+///
+/// A read-only row: the plugin's name plus its lifecycle phase,
+/// snapshotted from [`PluginContributions::phases`] at picker-open time.
+#[derive(Debug, Clone)]
+pub struct PluginPickerEntry {
+    /// The configured plugin name (the `jinn.toml` `[plugin.<name>]` key).
+    pub name: String,
+    /// The plugin's latest lifecycle phase.
+    pub phase: PluginPhase,
+    /// Theme for styling.
+    pub theme: Theme,
+}
+
+impl PluginPickerEntry {
+    /// Builds an entry from a plugin name and its phase.
+    #[must_use]
+    pub fn new(name: String, phase: PluginPhase, theme: Theme) -> Self {
+        Self { name, phase, theme }
+    }
+}
+
+impl PickerItem for PluginPickerEntry {
+    fn display_label(&self) -> &str {
+        &self.name
+    }
+
+    fn render_row(&self, is_selected: bool) -> Line<'static> {
+        let name_style = if is_selected {
+            ratatui::style::Style::default()
+                .fg(self.theme.primary_text)
+                .bg(self.theme.picker_selected_bg)
+        } else {
+            ratatui::style::Style::default()
+        };
+
+        let phase_color = match self.phase {
+            PluginPhase::Starting | PluginPhase::Running => self.theme.focus_accent,
+            PluginPhase::Dead | PluginPhase::Unresponsive => self.theme.error_text,
+        };
+        let phase_style = if is_selected {
+            ratatui::style::Style::default().bg(self.theme.picker_selected_bg)
+        } else {
+            ratatui::style::Style::default()
+        };
+
+        Line::from(vec![
+            Span::styled(self.name.clone(), name_style),
+            Span::raw(" \u{b7} ".to_owned()),
+            Span::styled(format!("{:?}", self.phase), phase_style.fg(phase_color)),
+        ])
+    }
 }
 
 /// Manifest path grant: a template string plus write intent.
@@ -135,4 +197,60 @@ pub struct PluginPathGrant {
     /// Grant write access in addition to read.
     #[serde(default)]
     pub writable: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use super::*;
+
+    fn row_text(entry: &PluginPickerEntry) -> String {
+        let line = entry.render_row(false);
+        line.spans.iter().map(|s| s.content.to_string()).collect()
+    }
+
+    #[rstest::rstest]
+    #[case::starting(PluginPhase::Starting, "Starting")]
+    #[case::running(PluginPhase::Running, "Running")]
+    #[case::dead(PluginPhase::Dead, "Dead")]
+    #[case::unresponsive(PluginPhase::Unresponsive, "Unresponsive")]
+    fn render_row_shows_name_and_phase_label(#[case] phase: PluginPhase, #[case] label: &str) {
+        // Given a plugin entry with this phase.
+        let entry = PluginPickerEntry::new(
+            "theme-loader".to_owned(),
+            phase,
+            crate::feat::theme::default_theme(),
+        );
+
+        // When rendering the row.
+        let text = row_text(&entry);
+
+        // Then the name and phase label both appear.
+        assert!(text.contains("theme-loader"), "row shows name: {text}");
+        assert!(text.contains(label), "row shows phase {label}: {text}");
+    }
+
+    #[rstest::rstest]
+    fn phases_iterator_returns_name_sorted_entries() {
+        // Given a cache populated out of name order.
+        let mut cache = PluginContributions::default();
+        cache.set_phase("zeta".to_owned(), PluginPhase::Running);
+        cache.set_phase("alpha".to_owned(), PluginPhase::Dead);
+
+        // When iterating phases.
+        let names: Vec<&str> = cache.phases().map(|(name, _)| name).collect();
+
+        // Then the names are in sorted order.
+        assert_eq!(names, vec!["alpha", "zeta"]);
+    }
+
+    #[rstest::rstest]
+    fn phases_iterator_empty_cache_yields_nothing() {
+        // Given an empty contribution cache.
+        let cache = PluginContributions::default();
+
+        // When iterating phases.
+        // Then nothing is yielded.
+        assert_eq!(cache.phases().count(), 0);
+    }
 }
