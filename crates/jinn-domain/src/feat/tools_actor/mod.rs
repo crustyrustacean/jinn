@@ -89,6 +89,7 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::Services;
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
+use crate::feat::mcp_actor::protocol::McpConnectionStatus;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::SessionClosed;
 use crate::feat::tools_actor::protocol::command::{
@@ -96,7 +97,7 @@ use crate::feat::tools_actor::protocol::command::{
     RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{
-    ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
+    ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered, ToolsUnregistered,
 };
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::SessionId;
@@ -269,6 +270,7 @@ impl Actor for ToolOrchestratorActor {
         bus.subscribe::<CancelToolBatch, _>(&actor_ref).await;
         bus.subscribe::<ToolExecutionCompleted, _>(&actor_ref).await;
         bus.subscribe::<SessionClosed, _>(&actor_ref).await;
+        bus.subscribe::<ToolsUnregistered, _>(&actor_ref).await;
 
         // Read web search config from preferences storage.
         let web_search_config = args
@@ -405,6 +407,27 @@ impl Message<SessionClosed> for ToolOrchestratorActor {
                 "removed session-scoped tool registrations on SessionClosed"
             );
         }
+    }
+}
+
+impl Message<ToolsUnregistered> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ToolsUnregistered, _ctx: &mut Context<Self, Self::Reply>) {
+        // Given a provider tearing down its session-scoped registrations.
+        // When pruning the routing map.
+        let Some(session_map) = self.session_tools.get_mut(&msg.session_id) else {
+            return;
+        };
+        session_map.retain(|_, reg| match reg {
+            ToolRegistration::Actor { provider, .. } => provider != &msg.provider,
+            ToolRegistration::Builtin { .. } => true,
+        });
+        if session_map.is_empty() {
+            self.session_tools.remove(&msg.session_id);
+        }
+
+        // Then the provider's tools are no longer routable for that session.
     }
 }
 
@@ -654,6 +677,18 @@ impl ToolOrchestratorActor {
                 .await;
             }
             p if p.starts_with(MCP_PROVIDER_PREFIX) => {
+                // Fail fast when the owning MCP server cannot take this call:
+                // publishing ExecuteTool with no live McpActor subscriber would
+                // hang the pending batch until the watchdog rescues it.
+                if let Some(reason) = self.mcp_rejection_reason(&session_id, p) {
+                    self.publish(ToolExecutionCompleted {
+                        session_id,
+                        result: rejected_mcp_result(&tool_call, &reason),
+                    })
+                    .await;
+                    return None;
+                }
+
                 // Read the same truncation limits builtins use so MCP results
                 // are bounded identically. `build_tool_context` does the same
                 // read for the builtin path.
@@ -696,6 +731,36 @@ impl ToolOrchestratorActor {
         self.publish(ToolExecutionCompleted { session_id, result })
             .await;
         None
+    }
+
+    /// Returns a legible rejection reason when an MCP tool call cannot be
+    /// routed, or `None` when the owning server is enabled and Running.
+    ///
+    /// The check order is: enablement first (a disabled server's actor is
+    /// gone — publishing `ExecuteTool` would find no subscriber and hang the
+    /// pending batch), then connection status (an enabled-but-not-Running
+    /// server cannot take the call yet).
+    fn mcp_rejection_reason(&self, session_id: &SessionId, provider: &str) -> Option<String> {
+        let server = server_name_of_provider(provider)?;
+        let guard = self.state.read();
+        let session = guard.session.get(session_id)?;
+        if !session.is_mcp_server_enabled(server) {
+            return Some(format!(
+                "MCP server '{server}' is disabled for this session; \
+                 ask the user to re-enable it via the MCP server picker"
+            ));
+        }
+        match session.mcp_server_status().get(server) {
+            Some(McpConnectionStatus::Running) => None,
+            Some(McpConnectionStatus::Dead) => Some(format!(
+                "MCP server '{server}' is enabled but its connection is dead; \
+                 use the restart_mcp_server tool to restart it, then retry"
+            )),
+            Some(McpConnectionStatus::Starting) | None => Some(format!(
+                "MCP server '{server}' is still starting; wait for it to reach \
+                 Running before calling its tools"
+            )),
+        }
     }
 
     /// Aggregates a tool result into the pending batch.
@@ -753,6 +818,34 @@ fn panicked_tool_result(tool_call_id: &str, name: &str) -> ToolResult {
         tool_call_id: tool_call_id.to_owned(),
         name: name.to_owned(),
         content: "tool execution panicked".to_owned(),
+        success: false,
+        full_content: None,
+        truncation: None,
+        pin_position: None,
+    }
+}
+
+/// Extracts the server name from an MCP provider string.
+///
+/// Providers are registered as `mcp__<server>__` (the full namespace prefix,
+/// see `jinn_mcp::tool_mapping::provider_name`), so both the leading `mcp__`
+/// and the trailing `__` separator are stripped. Returns `None` for a
+/// malformed provider (empty server segment) — the caller then treats the
+/// call as unroutable-fail rather than risk a wrong-server gate decision.
+fn server_name_of_provider(provider: &str) -> Option<&str> {
+    let server = provider
+        .strip_prefix(MCP_PROVIDER_PREFIX)?
+        .strip_suffix("__")?;
+    (!server.is_empty()).then_some(server)
+}
+
+/// Constructs a failed [`ToolResult`] for an MCP tool call rejected by the
+/// dispatch gate, so the pending batch always completes instead of hanging.
+fn rejected_mcp_result(tool_call: &ToolCall, reason: &str) -> ToolResult {
+    ToolResult {
+        tool_call_id: tool_call.id.clone(),
+        name: tool_call.name.clone(),
+        content: reason.to_owned(),
         success: false,
         full_content: None,
         truncation: None,
@@ -1336,5 +1429,230 @@ mod routing_lookup_tests {
 
         // Then no registration is found.
         assert!(resolved.is_none());
+    }
+}
+
+#[cfg(test)]
+mod server_name_tests {
+    use super::server_name_of_provider;
+
+    #[rstest::rstest]
+    #[case("mcp__excalimate__", Some("excalimate"))]
+    #[case("mcp__stub__", Some("stub"))]
+    #[case("mcp____", None)]
+    #[case("web-fetch", None)]
+    fn server_name_extraction(#[case] provider: &str, #[case] expected: Option<&str>) {
+        // Given an MCP provider string.
+        // When extracting the server name.
+        let server = server_name_of_provider(provider);
+
+        // Then the leading mcp__ and trailing __ are both stripped.
+        assert_eq!(server, expected);
+    }
+}
+
+#[cfg(test)]
+mod mcp_dispatch_gate_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        reason = "test code"
+    )]
+    use std::time::Duration;
+
+    use kameo::actor::Spawn;
+
+    use crate::common::app_state::AppState;
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
+    use crate::common::state::State;
+    use crate::feat::mcp_actor::protocol::McpConnectionStatus;
+    use crate::feat::tools_actor::protocol::command::{
+        ExecuteTool, ExecuteToolBatch, RegisterTools,
+    };
+    use crate::feat::tools_actor::protocol::event::{ToolExecutionCompleted, ToolsUnregistered};
+    use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition};
+    use crate::protocol::SessionId;
+
+    use super::{ToolOrchestratorActor, ToolOrchestratorActorDeps};
+
+    const PROVIDER: &str = "mcp__stub__";
+
+    async fn spawn_orchestrator(
+        state: &State,
+    ) -> (TestHarness, kameo::actor::ActorRef<ToolOrchestratorActor>) {
+        let harness = TestHarness::new().await;
+        let services = harness.services().await;
+        let actor = ToolOrchestratorActor::spawn(ToolOrchestratorActorDeps {
+            deps: crate::common::actor_deps::ActorDeps {
+                services: services.clone(),
+            },
+            state: state.clone(),
+            services,
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
+            builtin_filter: None,
+        });
+        actor.wait_for_startup().await;
+        (harness, actor)
+    }
+
+    fn mcp_tool_def() -> ToolDefinition {
+        ToolDefinition {
+            name: "mcp__stub__echo".to_owned(),
+            description: "Echo".to_owned(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: None,
+        }
+    }
+
+    fn echo_call() -> ToolCall {
+        ToolCall {
+            id: "tc_1".to_owned(),
+            name: "mcp__stub__echo".to_owned(),
+            arguments: "{}".to_owned(),
+        }
+    }
+
+    async fn register_stub_tools(harness: &TestHarness, session_id: &SessionId) {
+        harness
+            .publish(RegisterTools {
+                provider: PROVIDER.to_owned(),
+                definitions: vec![mcp_tool_def()],
+                session_id: Some(session_id.clone()),
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    async fn publish_batch(harness: &TestHarness, session_id: &SessionId) {
+        harness
+            .publish(ExecuteToolBatch {
+                session_id: session_id.clone(),
+                tool_calls: vec![echo_call()],
+                dispatched_at: jiff::Timestamp::now(),
+            })
+            .await;
+    }
+
+    #[tokio::test]
+    async fn tools_unregistered_removes_the_providers_tools_from_the_routing_map() {
+        // Given a state with a seeded session, the stub tools registered for it.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        state.write_test_no_cap().session.get_or_create(&session_id);
+        let (harness, _actor) = spawn_orchestrator(&state).await;
+        register_stub_tools(&harness, &session_id).await;
+
+        // When the provider unregisters its tools for that session.
+        harness
+            .publish(ToolsUnregistered {
+                provider: PROVIDER.to_owned(),
+                session_id: session_id.clone(),
+            })
+            .await;
+        let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+        publish_batch(&harness, &session_id).await;
+
+        // Then the tool is no longer routable (rejected as unknown, not
+        // dispatched to an MCP provider).
+        let messages = await_recorded(&results, 1, Duration::from_secs(3)).await;
+        assert!(
+            messages[0]
+                .result
+                .content
+                .starts_with("unknown tool: mcp__stub__echo"),
+            "expected unknown-tool rejection after unregister, got: {}",
+            messages[0].result.content
+        );
+    }
+
+    #[tokio::test]
+    async fn gate_fails_fast_when_the_server_is_disabled() {
+        // Given a session where the stub server is NOT enabled, with its
+        // tools still registered (the in-flight-turn race the gate guards).
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        state.write_test_no_cap().session.get_or_create(&session_id);
+        let (harness, _actor) = spawn_orchestrator(&state).await;
+        register_stub_tools(&harness, &session_id).await;
+        let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+
+        // When dispatching a call to the disabled server's tool.
+        publish_batch(&harness, &session_id).await;
+
+        // Then a failed result naming the server arrives promptly.
+        let messages = await_recorded(&results, 1, Duration::from_secs(3)).await;
+        assert!(!messages[0].result.success);
+        assert!(
+            messages[0].result.content.contains("'stub' is disabled"),
+            "expected a disabled-server message, got: {}",
+            messages[0].result.content
+        );
+    }
+
+    #[tokio::test]
+    async fn gate_fails_fast_when_the_enabled_server_is_dead() {
+        // Given a session where the stub server is enabled but its connection
+        // is Dead, with its tools still registered.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        state
+            .write_test_no_cap()
+            .session
+            .get_or_create(&session_id)
+            .enable_mcp_server("stub");
+        state
+            .write_test_no_cap()
+            .session
+            .get_mut(&session_id)
+            .expect("session")
+            .set_mcp_server_status("stub", McpConnectionStatus::Dead);
+        let (harness, _actor) = spawn_orchestrator(&state).await;
+        register_stub_tools(&harness, &session_id).await;
+        let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+
+        // When dispatching a call to the dead server's tool.
+        publish_batch(&harness, &session_id).await;
+
+        // Then a failed result explaining the dead connection arrives.
+        let messages = await_recorded(&results, 1, Duration::from_secs(3)).await;
+        assert!(!messages[0].result.success);
+        assert!(
+            messages[0].result.content.contains("connection is dead"),
+            "expected a dead-connection message, got: {}",
+            messages[0].result.content
+        );
+    }
+
+    #[tokio::test]
+    async fn gate_passes_through_when_the_server_is_enabled_and_running() {
+        // Given a session where the stub server is enabled and Running, with
+        // its tools registered.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        state
+            .write_test_no_cap()
+            .session
+            .get_or_create(&session_id)
+            .enable_mcp_server("stub");
+        state
+            .write_test_no_cap()
+            .session
+            .get_mut(&session_id)
+            .expect("session")
+            .set_mcp_server_status("stub", McpConnectionStatus::Running);
+        let (harness, _actor) = spawn_orchestrator(&state).await;
+        register_stub_tools(&harness, &session_id).await;
+        let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
+
+        // When dispatching a call to the running server's tool.
+        publish_batch(&harness, &session_id).await;
+
+        // Then an ExecuteTool is published on the bus as before (no gate
+        // rejection short-circuits the dispatch).
+        let messages = await_recorded(&dispatched, 1, Duration::from_secs(3)).await;
+        assert_eq!(messages[0].tool_call.name, "mcp__stub__echo");
     }
 }

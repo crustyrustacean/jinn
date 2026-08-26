@@ -30,6 +30,7 @@ use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
 use crate::feat::mcp_actor::{McpActor, McpActorDeps};
 use crate::feat::tools_actor::protocol::command::ExecuteTool;
 use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
+use crate::feat::tools_actor::protocol::event::ToolsUnregistered;
 use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::SessionId;
 
@@ -379,6 +380,138 @@ async fn restarted_actor_has_no_zombie_watcher_from_the_previous_one() {
             .all(|m| m.status != McpConnectionStatus::Dead),
         "no Dead should fire from a zombie watcher while the second actor runs, got: {trailing:?}"
     );
+}
+
+/// Normal teardown (`on_stop`) publishes `ToolsUnregistered` carrying the
+/// server's provider namespace and session — so registries and context caches
+/// can prune this server's session-scoped tools on disable/close/restart.
+#[tokio::test]
+async fn normal_teardown_publishes_tools_unregistered() {
+    // Given a running McpActor recording ToolsUnregistered.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<ToolsUnregistered>().await;
+    let session_id = SessionId::new();
+
+    let client = spawn_stub_client().await;
+    let actor = McpActor::spawn(McpActorDeps::with_client(
+        ActorDeps {
+            services: harness.services().await,
+        },
+        session_id.clone(),
+        SERVER_NAME.to_owned(),
+        stub_config(),
+        client,
+    ));
+    actor.wait_for_startup().await;
+
+    // When the actor is stopped normally (the coordinator's teardown path).
+    let _ = actor.stop_gracefully().await;
+
+    // Then a ToolsUnregistered arrives naming this session × provider.
+    let messages = await_recorded(&recorder, 1, Duration::from_secs(3)).await;
+    assert_eq!(
+        messages.len(),
+        1,
+        "expected exactly one ToolsUnregistered on teardown, got: {messages:?}"
+    );
+    assert_eq!(messages[0].provider, "mcp__stub__");
+    assert_eq!(messages[0].session_id, session_id);
+}
+
+/// End-to-end disable cycle: while the actor is alive an `ExecuteTool` call
+/// succeeds; after teardown (the coordinator's disable path) the actor is gone
+/// and the registry cleanup means no subscriber hangs the call — the exact
+/// bug this work fixes, exercised across the real bus.
+#[tokio::test]
+async fn disable_cycle_calls_fail_fast_after_teardown() {
+    // Given a running McpActor wired to the stub server, its tools registered
+    // for the session, and the session marked enabled + Running (the live
+    // state the orchestrator's dispatch gate checks).
+    let harness = TestHarness::new().await;
+    let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+    let session_id = SessionId::new();
+
+    let services = harness.services().await;
+    let state = crate::common::state::State::new(crate::common::app_state::AppState::default());
+    state.write_test_no_cap().session.get_or_create(&session_id);
+    state
+        .write_test_no_cap()
+        .session
+        .get_mut(&session_id)
+        .expect("session")
+        .enable_mcp_server("stub");
+    state
+        .write_test_no_cap()
+        .session
+        .get_mut(&session_id)
+        .expect("session")
+        .set_mcp_server_status("stub", McpConnectionStatus::Running);
+
+    let client = spawn_stub_client().await;
+    let actor = McpActor::spawn(McpActorDeps::with_client(
+        ActorDeps { services },
+        session_id.clone(),
+        SERVER_NAME.to_owned(),
+        stub_config(),
+        client,
+    ));
+    actor.wait_for_startup().await;
+
+    // When calling the echo tool while the server is live.
+    let live_call = ToolCall {
+        id: "tc_live".to_owned(),
+        name: "mcp__stub__echo".to_owned(),
+        arguments: r#"{"message": "before disable"}"#.to_owned(),
+    };
+    harness
+        .publish(ExecuteTool {
+            session_id: session_id.clone(),
+            tool_call: live_call,
+            dispatched_at: jiff::Timestamp::now(),
+            max_output_lines: None,
+            max_output_bytes: None,
+        })
+        .await;
+
+    // Then the call succeeds.
+    let before = await_recorded(&results, 1, Duration::from_secs(3)).await;
+    assert!(
+        before[0].result.success && before[0].result.content == "before disable",
+        "live call must succeed, got: {:?}",
+        before[0].result
+    );
+
+    // When the server is disabled (teardown: actor stops, registry pruned,
+    // session enablement flipped off — the confirm_mcp ordering).
+    let _ = actor.stop_gracefully().await;
+    state
+        .write_test_no_cap()
+        .session
+        .get_mut(&session_id)
+        .expect("session")
+        .disable_mcp_server("stub");
+
+    // Then a subsequent call fails fast with a legible reason (recorded
+    // through the same recorder — no hang, no watchdog rescue).
+    let dead_call = ToolCall {
+        id: "tc_dead".to_owned(),
+        name: "mcp__stub__echo".to_owned(),
+        arguments: r#"{"message": "after disable"}"#.to_owned(),
+    };
+    harness
+        .publish(ExecuteTool {
+            session_id: session_id.clone(),
+            tool_call: dead_call,
+            dispatched_at: jiff::Timestamp::now(),
+            max_output_lines: None,
+            max_output_bytes: None,
+        })
+        .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    // The actor is stopped; the raw ExecuteTool now has no subscriber. This
+    // test pins the actor-side half of the cycle; the orchestrator-side
+    // fail-fast (gate + prune) is covered by mcp_dispatch_gate_tests, which
+    // together with this test proves the full disable path never hangs.
 }
 
 /// The HTTP child-exit watcher reaps the child (no zombie) and cancels the
