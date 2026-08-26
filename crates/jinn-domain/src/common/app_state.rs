@@ -69,6 +69,7 @@ impl AppState {
             PickerKind::TaskList => Some(self.frontend.task_list_picker_mut()),
             PickerKind::Project => Some(self.frontend.project_picker_mut()),
             PickerKind::McpServer => Some(self.frontend.mcp_server_picker_mut()),
+            PickerKind::Plugin => Some(self.frontend.plugin_picker_mut()),
             PickerKind::Endpoint => Some(self.frontend.endpoint_picker_mut()),
         }
     }
@@ -93,6 +94,7 @@ impl AppState {
             PickerKind::TaskList => Some(self.frontend.task_list_picker()),
             PickerKind::Project => Some(self.frontend.project_picker()),
             PickerKind::McpServer => Some(self.frontend.mcp_server_picker()),
+            PickerKind::Plugin => Some(self.frontend.plugin_picker()),
             PickerKind::Endpoint => Some(self.frontend.endpoint_picker()),
         }
     }

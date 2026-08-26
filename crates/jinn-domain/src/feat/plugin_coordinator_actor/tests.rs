@@ -209,9 +209,10 @@ async fn malformed_lines_are_dropped_not_fatal() {
     }
 }
 
-/// A guest whose stdout closes dies; its cached contributions remain.
+/// A guest whose stdout closes after contributing ended cleanly; its
+/// cached contributions remain and the phase is Done.
 #[tokio::test]
-async fn guest_end_keeps_contributions_and_marks_dead() {
+async fn guest_end_keeps_contributions_and_marks_done() {
     // Given a coordinator with a guest that contributes then ends.
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<PluginStatus>().await;
@@ -226,12 +227,12 @@ async fn guest_end_keeps_contributions_and_marks_dead() {
     .await;
 
     // When the guest ends.
-    let messages = await_recorded(&recorder, 1, WAIT).await;
+    let messages = await_recorded(&recorder, 3, WAIT).await;
     assert!(
         messages
             .iter()
-            .any(|m| m.name == "test-plugin" && m.phase == PluginPhase::Dead),
-        "expected Dead for test-plugin, got {messages:?}"
+            .any(|m| m.name == "test-plugin" && m.phase == PluginPhase::Done),
+        "expected Done for test-plugin, got {messages:?}"
     );
 
     // Then its contribution is still cached (stale is visible, not erased).
@@ -468,11 +469,11 @@ async fn all_invalid_theme_batch_is_dropped_entirely() {
     )
     .await;
 
-    // When the pipeline settles (guest ends: wait for Dead phase).
+    // When the pipeline settles (guest ends: wait for Done phase).
     let deadline = tokio::time::Instant::now() + WAIT;
     loop {
         let phase = state.read().plugins.phase("test-plugin");
-        if phase == Some(PluginPhase::Dead) {
+        if phase == Some(PluginPhase::Done) {
             break;
         }
         assert!(deadline > tokio::time::Instant::now(), "guest never ended");
@@ -994,4 +995,68 @@ async fn push_citations_with_empty_list_publishes_nothing() {
             .is_empty(),
         "empty batch must not publish"
     );
+}
+
+/// A run-to-completion guest (handshake, no further lines, clean stdout
+/// close — the loader shape) ends up Done, not Dead.
+#[tokio::test]
+async fn clean_exit_guest_reaches_done_phase() {
+    // Given a coordinator whose guest handshakes then closes stdout cleanly.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PluginStatus>().await;
+    let state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![],
+        },
+    )
+    .await;
+
+    // When the guest finishes and the terminal phase is published.
+    let deadline = tokio::time::Instant::now() + WAIT;
+    loop {
+        let done = state.read().plugins.phase("test-plugin");
+        if done == Some(PluginPhase::Done) {
+            break;
+        }
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "guest never reached Done; phase = {done:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // Then Done was published on the bus (not Dead).
+    let messages = await_recorded(&recorder, 3, WAIT).await;
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.name == "test-plugin" && m.phase == PluginPhase::Done),
+        "expected Done for test-plugin, got {messages:?}"
+    );
+}
+
+/// A guest that dies before handshaking still ends up Dead (clean-exit
+/// marking must not mask real failures).
+#[tokio::test]
+async fn silent_guest_reaches_dead_phase() {
+    // Given a coordinator whose guest closes stdout before Hello.
+    let harness = TestHarness::new().await;
+    let state = spawn_coordinator(&harness, plugins(), jinn_plugin::FakeGuestScript::Silent).await;
+
+    // When the failed startup path settles.
+    let deadline = tokio::time::Instant::now() + WAIT;
+    loop {
+        let phase = state.read().plugins.phase("test-plugin");
+        if phase == Some(PluginPhase::Dead) {
+            break;
+        }
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "guest never reached Dead; phase = {phase:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }

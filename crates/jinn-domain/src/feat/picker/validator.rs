@@ -79,9 +79,10 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
             .is_some(),
         PickerKind::Tool => state.frontend.tool_picker().selected_item().is_some(),
         PickerKind::Skill => state.frontend.skill_picker().selected_item().is_some(),
-        // TaskList is read-only; Enter is a no-op. Skip the selection gate so the
-        // confirm handler (which itself returns empty) is always reached.
-        PickerKind::TaskList => true,
+        // TaskList and Plugin are read-only; Enter is a no-op. Skip the
+        // selection gate so the confirm handler (which itself returns
+        // empty) is always reached.
+        PickerKind::TaskList | PickerKind::Plugin => true,
         PickerKind::Project => state.frontend.project_picker().selected_item().is_some(),
         PickerKind::McpServer => state.frontend.mcp_server_picker().selected_item().is_some(),
         PickerKind::Endpoint => state.frontend.endpoint_picker().selected_item().is_some(),
