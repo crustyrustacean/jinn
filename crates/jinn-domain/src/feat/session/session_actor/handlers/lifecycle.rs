@@ -817,7 +817,7 @@ impl SessionPersistenceActor {
         }
 
         // Step 3: Remove from memory.
-        self.remove_and_replace(&payload.session_id);
+        let mcp_enablement = self.remove_and_replace(&payload.session_id);
 
         // Step 4: Notify.
         self.publish(SessionArchived {
@@ -829,6 +829,11 @@ impl SessionPersistenceActor {
             session_id: payload.session_id.clone(),
         })
         .await;
+
+        // The replacement session may carry config-seeded MCP enablement.
+        if let Some(enablement) = mcp_enablement {
+            self.publish(enablement).await;
+        }
     }
 
     /// Handle `FinishSessionTeardown` - completion of an async teardown shell command.
@@ -917,7 +922,7 @@ impl SessionPersistenceActor {
                 }
             }
 
-            self.remove_and_replace(&payload.session_id);
+            let mcp_enablement = self.remove_and_replace(&payload.session_id);
 
             // Emit events.
             self.publish(SessionArchived {
@@ -933,6 +938,11 @@ impl SessionPersistenceActor {
                 error: None,
             })
             .await;
+
+            // The replacement session may carry config-seeded MCP enablement.
+            if let Some(enablement) = mcp_enablement {
+                self.publish(enablement).await;
+            }
         } else {
             // Teardown-only: advance lifecycle, persist, push success entry, emit.
             {
@@ -1032,7 +1042,7 @@ impl SessionPersistenceActor {
         }
 
         // Step 3: Remove from memory.
-        self.remove_and_replace(&payload.session_id);
+        let mcp_enablement = self.remove_and_replace(&payload.session_id);
 
         // Step 3: Notify.
         self.publish(SessionArchived {
@@ -1044,11 +1054,27 @@ impl SessionPersistenceActor {
             session_id: payload.session_id.clone(),
         })
         .await;
+
+        // The replacement session may carry config-seeded MCP enablement.
+        if let Some(enablement) = mcp_enablement {
+            self.publish(enablement).await;
+        }
     }
 
     /// Remove session from HashMap, create replacement if empty, reconcile cursor.
     ///
-    /// Pure state mutation helper. Does NOT emit events - callers handle notifications.
+    /// Pure state mutation helper. Does NOT emit events - callers handle
+    /// notifications. Returns the MCP enablement notification (if any) for
+    /// the caller to publish.
+    ///
+    /// Returns `Some(McpEnablementChanged)` when the replacement session was
+    /// seeded with auto-enabled MCP servers (`jinn.toml` `auto_enable`), so
+    /// the caller can publish the notification for the NEW session. The
+    /// replacement gets its own id without stealing any other session's MCP
+    /// spawns (different `SpawnKey`s).
+    ///
+    /// [`McpEnablementChanged`]: crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged
+    ///
     /// Delegates cursor and active-session reconciliation to
     /// [`reconcile_after_session_removal`].
     ///
@@ -1056,16 +1082,36 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) fn remove_and_replace(
         &self,
         session_id: &crate::protocol::SessionId,
-    ) {
-        let fresh_session = {
+    ) -> Option<crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged> {
+        let (fresh_session, enablement) = {
             let app_state = self.services.app_state_storage.read();
+            let prefs = self.services.user_preferences_storage.read();
             let model = app_state.last_model.unwrap_or_default();
             let reasoning_effort = app_state.reasoning_effort;
+
+            // Seed per-session defaults from jinn.toml (disablement sets +
+            // auto-enabled MCP servers), matching every other creation path.
+            let seed = crate::feat::session::profile::SessionSeed::from_preferences(&prefs);
 
             let mut profile =
                 crate::feat::session::profile::SessionProfile::from_model_selection(model);
             profile.reasoning_effort = reasoning_effort;
-            ChatSessionState::new_with_profile(profile)
+            {
+                let p = &mut profile;
+                p.disabled_tools.clone_from(&seed.disabled_tools);
+                p.disabled_skills.clone_from(&seed.disabled_skills);
+            }
+
+            let mut fresh = ChatSessionState::new_with_profile(profile);
+            fresh.set_enabled_mcp_servers(seed.enabled_mcp.clone());
+
+            let enablement = seed.has_auto_enabled_mcp().then(|| {
+                crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged {
+                    session_id: fresh.session_id().clone(),
+                    enabled: seed.enabled_mcp,
+                }
+            });
+            (fresh, enablement)
         };
 
         self.state
@@ -1083,6 +1129,7 @@ impl SessionPersistenceActor {
                     view.frontend,
                 );
             });
+        enablement
     }
 
     /// PersistSession: persist the session immediately.
@@ -1888,6 +1935,139 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn replacement_session_carries_seeded_disablement_sets() {
+        // Given an actor whose preferences disable a tool and a skill, and a
+        // single session (so archiving forces a replacement).
+        let (actor, _audit) =
+            crate::feat::session::session_actor::helpers::test_actor_recording().await;
+        {
+            let mut state = actor.state.write_test_no_cap();
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("msg"));
+        }
+        // Actor-side seeding reads jinn.toml via the storage service.
+        actor
+            .services
+            .user_preferences_storage
+            .save(&crate::feat::preferences_actor::UserPreferences {
+                disabled_tools: ["bash"].iter().map(|s| (*s).to_owned()).collect(),
+                disabled_skills: ["phased-task-loop"]
+                    .iter()
+                    .map(|s| (*s).to_owned())
+                    .collect(),
+                ..Default::default()
+            })
+            .expect("save prefs");
+        let only_id = actor.state.read().session.active_session_id().clone();
+
+        // When archiving the only session.
+        actor
+            .handle_archive_session(
+                &crate::feat::session::protocol::archive_session::ArchiveSession {
+                    session_id: only_id.clone(),
+                },
+            )
+            .await;
+
+        // Then the replacement session carries the seeded sets.
+        let state = actor.state.read();
+        assert!(
+            !state.session.contains(&only_id),
+            "archived session should be replaced"
+        );
+        assert!(
+            state
+                .active_session()
+                .profile()
+                .disabled_tools
+                .contains("bash"),
+            "replacement should inherit disabled_tools from jinn.toml"
+        );
+        assert!(
+            state
+                .active_session()
+                .disabled_skills()
+                .contains("phased-task-loop"),
+            "replacement should inherit disabled_skills from jinn.toml"
+        );
+    }
+
+    #[tokio::test]
+    async fn replacement_with_auto_enable_publishes_enablement_for_new_session() {
+        // Given an actor whose prefs auto-enable one server, and a single busy
+        // session (forcing removal + replacement).
+        let (actor, audit) =
+            crate::feat::session::session_actor::helpers::test_actor_recording().await;
+        // Actor-side seeding reads jinn.toml via the storage service.
+        actor
+            .services
+            .user_preferences_storage
+            .save(&prefs_with_auto_enabled_server("excalimate"))
+            .expect("save prefs");
+        let only_id = {
+            let mut state = actor.state.write_test_no_cap();
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("msg"));
+            state.session.active_session_id().clone()
+        };
+
+        // When archiving the only session.
+        actor
+            .handle_archive_session(
+                &crate::feat::session::protocol::archive_session::ArchiveSession {
+                    session_id: only_id.clone(),
+                },
+            )
+            .await;
+
+        // Then an McpEnablementChanged was published for the NEW session id.
+        assert!(
+            audit.contains_name("McpEnablementChanged"),
+            "replacement must notify coordinator; got {:?}",
+            audit.names()
+        );
+        // And the surviving session is a different one than archived.
+        assert!(!actor.state.read().session.contains(&only_id));
+    }
+
+    #[tokio::test]
+    async fn replacement_without_auto_enable_publishes_no_enablement() {
+        // Given an actor whose configured server has auto_enable off.
+        let (actor, audit) =
+            crate::feat::session::session_actor::helpers::test_actor_recording().await;
+        // Actor-side seeding reads jinn.toml via the storage service.
+        actor
+            .services
+            .user_preferences_storage
+            .save(&prefs_with_auto_enable_off("manual"))
+            .expect("save prefs");
+        let only_id = {
+            let mut state = actor.state.write_test_no_cap();
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("msg"));
+            state.session.active_session_id().clone()
+        };
+
+        // When archiving the only session.
+        actor
+            .handle_archive_session(
+                &crate::feat::session::protocol::archive_session::ArchiveSession {
+                    session_id: only_id,
+                },
+            )
+            .await;
+
+        // Then no McpEnablementChanged was published.
+        assert!(
+            !audit.contains_name("McpEnablementChanged"),
+            "no enablement notification when nothing is auto-enabled"
+        );
+    }
+
+    #[tokio::test]
     async fn close_session_leaves_lifecycle_at_setup_ran_when_teardown_fails() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
         use crate::feat::session::chat_session::LifecycleScriptState;
@@ -2538,5 +2718,41 @@ mod tests {
             "teardown marker file not found at {}",
             marker.display()
         );
+    }
+
+    /// Preferences fixture with one auto-enabled MCP server.
+    fn prefs_with_auto_enabled_server(
+        name: &str,
+    ) -> crate::feat::preferences_actor::UserPreferences {
+        crate::feat::preferences_actor::UserPreferences {
+            mcp_server: [(
+                name.to_owned(),
+                crate::feat::mcp::McpServerConfig {
+                    command: Some("npx".to_owned()),
+                    auto_enable: true,
+                    ..Default::default()
+                },
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        }
+    }
+
+    /// Preferences fixture with one server that has auto_enable off.
+    fn prefs_with_auto_enable_off(name: &str) -> crate::feat::preferences_actor::UserPreferences {
+        crate::feat::preferences_actor::UserPreferences {
+            mcp_server: [(
+                name.to_owned(),
+                crate::feat::mcp::McpServerConfig {
+                    command: Some("npx".to_owned()),
+                    auto_enable: false,
+                    ..Default::default()
+                },
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        }
     }
 }

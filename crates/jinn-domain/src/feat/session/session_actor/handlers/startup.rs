@@ -22,6 +22,17 @@ impl SessionPersistenceActor {
         _config: &crate::feat::provider_infra::ProvidersConfig,
     ) {
         let app_state = self.services.app_state_storage.read();
+        let prefs = self.services.user_preferences_storage.read();
+
+        // When the welcome session seeds enabled MCP servers from
+        // `auto_enable`, the coordinator is notified here. This only works
+        // because actor_wiring spawns and fully awaits the coordinator
+        // (which subscribes to `McpEnablementChanged` on start) BEFORE any
+        // publisher emits `EnvironmentLoaded` — do not reorder that wiring.
+        let mut welcome_mcp_enablement: Option<(
+            crate::protocol::SessionId,
+            std::collections::BTreeSet<String>,
+        )> = None;
 
         {
             // Apply config defaults to the default session.
@@ -40,6 +51,22 @@ impl SessionPersistenceActor {
                     // program-load session shows no thinking-effort bracket
                     // in the status bar until the user creates a new session.
                     session.profile_mut().reasoning_effort = app_state.reasoning_effort;
+
+                    // Seed disablement sets + auto-enabled MCP servers from
+                    // jinn.toml, matching every other session-creation path.
+                    let seed = crate::feat::session::profile::SessionSeed::from_preferences(&prefs);
+                    {
+                        let profile = session.profile_mut();
+                        profile.disabled_tools.clone_from(&seed.disabled_tools);
+                        profile.disabled_skills.clone_from(&seed.disabled_skills);
+                    }
+                    for server in &seed.enabled_mcp {
+                        session.enable_mcp_server(server);
+                    }
+                    if seed.has_auto_enabled_mcp() {
+                        welcome_mcp_enablement =
+                            Some((session.session_id().clone(), seed.enabled_mcp.clone()));
+                    }
                 }
             });
 
@@ -48,6 +75,16 @@ impl SessionPersistenceActor {
             // populated when on_personas_loaded resolves the active persona.
             self.state
                 .with_frontend_app_state(&self.frontend_cap, |ops| ops.set(app_state.clone()));
+        }
+
+        if let Some((session_id, enabled)) = welcome_mcp_enablement {
+            self.publish(
+                crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged {
+                    session_id,
+                    enabled,
+                },
+            )
+            .await;
         }
 
         tracing::info!("DIAG on_environment_loaded model/strategy applied");
@@ -483,5 +520,197 @@ mod tests {
             None,
             "startup should not fabricate a reasoning effort when none is persisted"
         );
+    }
+
+    #[tokio::test]
+    async fn startup_seeds_disabled_tools_and_skills_into_welcome_session() {
+        // Given an actor whose preferences storage disables a tool and a skill.
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![]).await;
+        let prefs_with_disablement = crate::feat::preferences_actor::UserPreferences {
+            disabled_tools: ["bash"].iter().map(|s| (*s).to_owned()).collect(),
+            disabled_skills: ["phased-task-loop"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+            ..Default::default()
+        };
+        actor
+            .services
+            .user_preferences_storage
+            .save(&prefs_with_disablement)
+            .expect("save prefs");
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: std::collections::BTreeMap::new(),
+                aliases: vec![],
+                default_provider: None,
+            })
+            .await;
+
+        // Then the welcome session carries both disablement sets.
+        let state = actor.state.read();
+        assert!(
+            state
+                .active_session()
+                .profile()
+                .disabled_tools
+                .contains("bash"),
+            "welcome session should seed disabled_tools from jinn.toml"
+        );
+        assert!(
+            state
+                .active_session()
+                .profile()
+                .disabled_skills
+                .contains("phased-task-loop"),
+            "welcome session should seed disabled_skills from jinn.toml"
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_seeds_auto_enabled_mcp_and_notifies_coordinator() {
+        // Given an actor whose preferences mark one server auto_enable.
+        let (actor, _store, audit) = test_actor_with_store_recording(vec![]).await;
+        actor
+            .services
+            .user_preferences_storage
+            .save(&prefs_with_auto_enabled_server("excalimate"))
+            .expect("save prefs");
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: std::collections::BTreeMap::new(),
+                aliases: vec![],
+                default_provider: None,
+            })
+            .await;
+
+        // Then the welcome session has the server enabled.
+        {
+            let state = actor.state.read();
+            assert!(
+                state.active_session().is_mcp_server_enabled("excalimate"),
+                "auto_enable should enable the server on the welcome session"
+            );
+        }
+        // And an McpEnablementChanged event was published so the coordinator
+        // spawns the connection.
+        assert!(
+            audit.contains_name("McpEnablementChanged"),
+            "coordinator must be notified of seeded enablement; got {:?}",
+            audit.names()
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_without_auto_enable_publishes_no_enablement_event() {
+        // Given an actor with a configured server that is NOT auto-enabled.
+        let (actor, _store, audit) = test_actor_with_store_recording(vec![]).await;
+        actor
+            .services
+            .user_preferences_storage
+            .save(&prefs_with_auto_enabled_server_off("manual"))
+            .expect("save prefs");
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: std::collections::BTreeMap::new(),
+                aliases: vec![],
+                default_provider: None,
+            })
+            .await;
+
+        // Then no McpEnablementChanged was published.
+        assert!(
+            !audit.contains_name("McpEnablementChanged"),
+            "no enablement notification expected when nothing is auto-enabled"
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_does_not_seed_explicit_model_session() {
+        // Given a session with an explicit model (bench-style) and preferences
+        // that disable a tool.
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![]).await;
+        actor
+            .services
+            .user_preferences_storage
+            .save(&prefs_with_auto_enabled_server("excalimate"))
+            .expect("save prefs");
+        {
+            let mut state = actor.state.write_test_no_cap();
+            state
+                .active_session_mut()
+                .set_model(ModelSelection::Single("bench-model".to_owned()));
+        }
+        actor
+            .services
+            .user_preferences_storage
+            .save(&crate::feat::preferences_actor::UserPreferences {
+                disabled_tools: ["bash"].iter().map(|s| (*s).to_owned()).collect(),
+                ..Default::default()
+            })
+            .expect("save prefs");
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: std::collections::BTreeMap::new(),
+                aliases: vec![],
+                default_provider: None,
+            })
+            .await;
+
+        // Then the explicit-model session is NOT seeded (its profile belongs
+        // to the bench harness, not jinn.toml defaults).
+        let state = actor.state.read();
+        assert!(
+            !state.active_session().disabled_tools().contains("bash"),
+            "explicit-model sessions keep their own disablement sets"
+        );
+        // And nothing got auto-enabled either.
+        assert!(!state.active_session().is_mcp_server_enabled("excalimate"));
+    }
+
+    /// Preferences fixture with one `auto_enable`d MCP server.
+    fn prefs_with_auto_enabled_server(
+        name: &str,
+    ) -> crate::feat::preferences_actor::UserPreferences {
+        crate::feat::preferences_actor::UserPreferences {
+            mcp_server: [(
+                name.to_owned(),
+                crate::feat::mcp::McpServerConfig {
+                    command: Some("npx".to_owned()),
+                    auto_enable: true,
+                    ..Default::default()
+                },
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        }
+    }
+
+    /// Preferences fixture with one server that has `auto_enable` off.
+    fn prefs_with_auto_enabled_server_off(
+        name: &str,
+    ) -> crate::feat::preferences_actor::UserPreferences {
+        crate::feat::preferences_actor::UserPreferences {
+            mcp_server: [(
+                name.to_owned(),
+                crate::feat::mcp::McpServerConfig {
+                    command: Some("npx".to_owned()),
+                    auto_enable: false,
+                    ..Default::default()
+                },
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        }
     }
 }
