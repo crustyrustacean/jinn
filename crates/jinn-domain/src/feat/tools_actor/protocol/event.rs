@@ -46,6 +46,21 @@ pub struct ToolsRegistered {
     pub session_id: Option<SessionId>,
 }
 
+/// Session-scoped tools were removed by their provider.
+///
+/// Emitted when a provider tears down its tool registrations for a session
+/// (e.g. an `McpActor` stops on disable, session close, or restart). Tool
+/// registries and context caches prune the provider's matching entries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolsUnregistered {
+    /// The name of the actor that previously registered the tools
+    /// (e.g. `mcp__excalimate`).
+    pub provider: String,
+    /// The session the tools were registered for. Always `Some`-shaped:
+    /// only session-scoped registrations are unregistered this way.
+    pub session_id: SessionId,
+}
+
 /// A tool call has started in the LLM stream (name and ID known, arguments pending).
 ///
 /// Emitted by the LLM actor when the backend signals tool use start.
@@ -144,6 +159,7 @@ pub struct ToolExecutionOutput {
 impl crate::common::bus::BusMessage for ToolBatchCompleted {}
 impl crate::common::bus::BusMessage for ToolExecutionCompleted {}
 impl crate::common::bus::BusMessage for ToolsRegistered {}
+impl crate::common::bus::BusMessage for ToolsUnregistered {}
 impl crate::common::bus::BusMessage for ToolUseStarted {}
 impl crate::common::bus::BusMessage for ToolCallReceived {}
 impl crate::common::bus::BusMessage for ToolCallStreaming {}

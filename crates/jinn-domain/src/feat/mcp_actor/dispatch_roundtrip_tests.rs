@@ -30,6 +30,7 @@ use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
 use crate::feat::mcp_actor::{McpActor, McpActorDeps};
 use crate::feat::tools_actor::protocol::command::ExecuteTool;
 use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
+use crate::feat::tools_actor::protocol::event::ToolsUnregistered;
 use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::SessionId;
 
@@ -379,6 +380,42 @@ async fn restarted_actor_has_no_zombie_watcher_from_the_previous_one() {
             .all(|m| m.status != McpConnectionStatus::Dead),
         "no Dead should fire from a zombie watcher while the second actor runs, got: {trailing:?}"
     );
+}
+
+/// Normal teardown (`on_stop`) publishes `ToolsUnregistered` carrying the
+/// server's provider namespace and session — so registries and context caches
+/// can prune this server's session-scoped tools on disable/close/restart.
+#[tokio::test]
+async fn normal_teardown_publishes_tools_unregistered() {
+    // Given a running McpActor recording ToolsUnregistered.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<ToolsUnregistered>().await;
+    let session_id = SessionId::new();
+
+    let client = spawn_stub_client().await;
+    let actor = McpActor::spawn(McpActorDeps::with_client(
+        ActorDeps {
+            services: harness.services().await,
+        },
+        session_id.clone(),
+        SERVER_NAME.to_owned(),
+        stub_config(),
+        client,
+    ));
+    actor.wait_for_startup().await;
+
+    // When the actor is stopped normally (the coordinator's teardown path).
+    let _ = actor.stop_gracefully().await;
+
+    // Then a ToolsUnregistered arrives naming this session × provider.
+    let messages = await_recorded(&recorder, 1, Duration::from_secs(3)).await;
+    assert_eq!(
+        messages.len(),
+        1,
+        "expected exactly one ToolsUnregistered on teardown, got: {messages:?}"
+    );
+    assert_eq!(messages[0].provider, "mcp__stub__");
+    assert_eq!(messages[0].session_id, session_id);
 }
 
 /// The HTTP child-exit watcher reaps the child (no zombie) and cancels the
