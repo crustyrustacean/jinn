@@ -83,14 +83,14 @@ fn collect_url_title_objects(value: &serde_json::Value, out: &mut Vec<PluginCita
         serde_json::Value::Object(map) => {
             let url = map.get("url").and_then(serde_json::Value::as_str);
             let title = map.get("title").and_then(serde_json::Value::as_str);
-            if let (Some(url), Some(title)) = (url, title) {
-                if is_http_url(url) {
-                    out.push(PluginCitation {
-                        url: url.to_owned(),
-                        title: title.to_owned(),
-                        content: first_excerpt(map),
-                    });
-                }
+            if let (Some(url), Some(title)) = (url, title)
+                && is_http_url(url)
+            {
+                out.push(PluginCitation {
+                    url: url.to_owned(),
+                    title: title.to_owned(),
+                    content: first_excerpt(map),
+                });
             }
             for item in map.values() {
                 collect_url_title_objects(item, out);
@@ -167,7 +167,9 @@ mod tests {
         // When extracting URLs.
         // Then both URLs are found in order.
         assert_eq!(
-            urls_from_call_args(r#"{"urls":["https://a.example","http://b.example"],"objective":"x"}"#),
+            urls_from_call_args(
+                r#"{"urls":["https://a.example","http://b.example"],"objective":"x"}"#
+            ),
             vec![
                 "https://a.example".to_owned(),
                 "http://b.example".to_owned()
@@ -291,7 +293,10 @@ mod tests {
         // When extracting citations.
         // Then nothing is found.
         assert!(citations_from_result_content(r#"{"url":"https://a.example"}"#).is_empty());
-        assert!(citations_from_result_content(r#"{"results":[{"url":"https://a.example"}]}"#).is_empty());
+        assert!(
+            citations_from_result_content(r#"{"results":[{"url":"https://a.example"}]}"#)
+                .is_empty()
+        );
     }
 
     #[test]
@@ -299,10 +304,12 @@ mod tests {
         // Given a result object with an ftp url.
         // When extracting citations.
         // Then nothing is found.
-        assert!(citations_from_result_content(
-            r#"{"results":[{"url":"ftp://files.example","title":"F"}]}"#
-        )
-        .is_empty());
+        assert!(
+            citations_from_result_content(
+                r#"{"results":[{"url":"ftp://files.example","title":"F"}]}"#
+            )
+            .is_empty()
+        );
     }
 
     // ── web-search carve-out ─────────────────────────────────────────────

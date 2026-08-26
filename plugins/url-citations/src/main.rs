@@ -43,10 +43,10 @@ impl CitationState {
     /// tool call, keyed by its id.
     fn on_tool_call(&mut self, event: &ToolCallEvent) {
         let mut candidates = Vec::new();
-        if event.name == "web-search" {
-            if let Some(citation) = detect::ddg_citation(&event.arguments) {
-                candidates.push(citation);
-            }
+        if event.name == "web-search"
+            && let Some(citation) = detect::ddg_citation(&event.arguments)
+        {
+            candidates.push(citation);
         }
         for url in detect::urls_from_call_args(&event.arguments) {
             candidates.push(PluginCitation {
@@ -199,7 +199,8 @@ mod tests {
         state.on_tool_result(&result("c1", "web-fetch", "# page markdown", true));
 
         // Then the URL is buffered for the session.
-        state.on_turn_end(&turn_end("s-1", true))
+        state
+            .on_turn_end(&turn_end("s-1", true))
             .expect("flush on final answer")
             .iter()
             .find(|c| c.url == "https://example.com")
@@ -251,30 +252,45 @@ mod tests {
         state.on_tool_call(&call("c1", "web-search", r#"{"query":"rust async"}"#));
 
         // When the result succeeds (text the shape rules can't see).
-        state.on_tool_result(&result("c1", "web-search", "1. Title — url\n snippet", true));
+        state.on_tool_result(&result(
+            "c1",
+            "web-search",
+            "1. Title — url\n snippet",
+            true,
+        ));
 
         // Then the flush carries the DDG re-run URL with the encoded query.
         let flushed = state.on_turn_end(&turn_end("s-1", true)).expect("flush");
-        assert!(flushed
-            .iter()
-            .any(|c| c.url == "https://duckduckgo.com/?q=rust+async"));
+        assert!(
+            flushed
+                .iter()
+                .any(|c| c.url == "https://duckduckgo.com/?q=rust+async")
+        );
     }
 
     #[test]
     fn buffer_dedups_by_url_across_rules() {
         // Given a parallel web_search citing a URL, then a web_fetch of it.
         let mut state = CitationState::new();
-        let content = r#"{"results":[{"url":"https://same.example","title":"Titled","excerpts":["e"]}]}"#;
+        let content =
+            r#"{"results":[{"url":"https://same.example","title":"Titled","excerpts":["e"]}]}"#;
         state.on_tool_call(&call("c1", "mcp__parallel__web_search", "{}"));
         state.on_tool_result(&result("c1", "mcp__parallel__web_search", content, true));
-        state.on_tool_call(&call("c2", "mcp__parallel__web_fetch", r#"{"urls":["https://same.example"]}"#));
+        state.on_tool_call(&call(
+            "c2",
+            "mcp__parallel__web_fetch",
+            r#"{"urls":["https://same.example"]}"#,
+        ));
         state.on_tool_result(&result("c2", "mcp__parallel__web_fetch", "{}", true));
 
         // When the turn ends.
         let flushed = state.on_turn_end(&turn_end("s-1", true)).expect("flush");
 
         // Then the URL appears once, keeping the titled entry.
-        let matches: Vec<_> = flushed.iter().filter(|c| c.url == "https://same.example").collect();
+        let matches: Vec<_> = flushed
+            .iter()
+            .filter(|c| c.url == "https://same.example")
+            .collect();
         assert_eq!(matches.len(), 1, "deduped by URL");
         assert_eq!(matches[0].title, "Titled", "titled entry wins");
     }
@@ -290,11 +306,13 @@ mod tests {
         assert!(state.on_turn_end(&turn_end("s-1", false)).is_none());
 
         // Then the next successful turn still flushes the citation.
-        assert!(state
-            .on_turn_end(&turn_end("s-1", true))
-            .expect("retained citation flushes next turn")
-            .iter()
-            .any(|c| c.url == "https://example.com"));
+        assert!(
+            state
+                .on_turn_end(&turn_end("s-1", true))
+                .expect("retained citation flushes next turn")
+                .iter()
+                .any(|c| c.url == "https://example.com")
+        );
     }
 
     #[test]
@@ -357,7 +375,11 @@ mod tests {
         // Given a call-rule URL (empty title) later matched by a titled
         // result-rule citation in the same turn.
         let mut state = CitationState::new();
-        state.on_tool_call(&call("c1", "mcp__parallel__web_fetch", r#"{"urls":["https://x.example"]}"#));
+        state.on_tool_call(&call(
+            "c1",
+            "mcp__parallel__web_fetch",
+            r#"{"urls":["https://x.example"]}"#,
+        ));
         let content = r#"{"results":[{"url":"https://x.example","title":"X Title"}]}"#;
         state.on_tool_result(&result("c1", "mcp__parallel__web_fetch", content, true));
 
@@ -365,7 +387,10 @@ mod tests {
         let flushed = state.on_turn_end(&turn_end("s-1", true)).expect("flush");
 
         // Then the single citation carries the title (merge on dedup).
-        let matches: Vec<_> = flushed.iter().filter(|c| c.url == "https://x.example").collect();
+        let matches: Vec<_> = flushed
+            .iter()
+            .filter(|c| c.url == "https://x.example")
+            .collect();
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].title, "X Title");
     }
