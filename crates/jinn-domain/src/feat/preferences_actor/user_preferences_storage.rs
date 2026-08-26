@@ -11,11 +11,7 @@ use error_stack::{Report, ResultExt as _};
 use parking_lot::RwLock;
 
 #[cfg(test)]
-use super::user_preferences::{
-    BrowserConfig, default_history_stall_timeout_secs, default_stall_retry_base_delay_secs,
-    default_stall_retry_max_delay_secs, default_stall_retry_max_retries,
-    default_tool_default_timeout_secs,
-};
+use super::user_preferences::default_tool_default_timeout_secs;
 use super::user_preferences::{UserPreferences, UserPreferencesError, preferences_path};
 
 /// Trait for user preferences I/O.
@@ -244,11 +240,6 @@ mod tests {
     )]
     use super::*;
     use crate::common::app_info::PREFS_FILE_NAME;
-    use crate::feat::preferences_actor::RequestRetryConfig;
-    use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
-        OpenrouterWebSearchConfig, TodoAutoSteerConfig, WebFetchConfig, WebSearchConfig,
-    };
     use crate::feat::project::ProjectConfig;
 
     #[rstest::rstest]
@@ -269,29 +260,8 @@ mod tests {
         let storage = InMemoryUserPreferencesStorage::new();
         let prefs = UserPreferences {
             tool_entry_max_lines: Some(42),
-            min_collapse_count: None,
             session_lifecycles: vec![],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            web_search: WebSearchConfig::default(),
-            browser: BrowserConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
-            projects: vec![],
-            mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
-            discord: crate::feat::discord::DiscordConfig::default(),
-            tool_default_timeout_secs: default_tool_default_timeout_secs(),
-            history_stall_timeout_secs: default_history_stall_timeout_secs(),
-            stall_retry_max_retries: default_stall_retry_max_retries(),
-            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
-            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
+            ..UserPreferences::default()
         };
 
         // When saving and reloading.
@@ -333,31 +303,11 @@ mod tests {
 
         let prefs = UserPreferences {
             tool_entry_max_lines: Some(42),
-            min_collapse_count: None,
             session_lifecycles: vec![],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            web_search: WebSearchConfig::default(),
-            browser: BrowserConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![ProjectConfig {
                 path: PathBuf::from("/tmp/proj-a"),
             }],
-            mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
-            discord: crate::feat::discord::DiscordConfig::default(),
-            tool_default_timeout_secs: default_tool_default_timeout_secs(),
-            history_stall_timeout_secs: default_history_stall_timeout_secs(),
-            stall_retry_max_retries: default_stall_retry_max_retries(),
-            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
-            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
+            ..UserPreferences::default()
         };
 
         // When saving and reloading.
@@ -381,29 +331,8 @@ mod tests {
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
             tool_entry_max_lines: Some(42),
-            min_collapse_count: None,
             session_lifecycles: vec![],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            web_search: WebSearchConfig::default(),
-            browser: BrowserConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
-            projects: vec![],
-            mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
-            discord: crate::feat::discord::DiscordConfig::default(),
-            tool_default_timeout_secs: default_tool_default_timeout_secs(),
-            history_stall_timeout_secs: default_history_stall_timeout_secs(),
-            stall_retry_max_retries: default_stall_retry_max_retries(),
-            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
-            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
+            ..UserPreferences::default()
         };
         service.save(&prefs).expect("save");
 
@@ -423,58 +352,16 @@ mod tests {
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
             tool_entry_max_lines: Some(10),
-            min_collapse_count: None,
             session_lifecycles: vec![],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            web_search: WebSearchConfig::default(),
-            browser: BrowserConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
-            projects: vec![],
-            mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
-            discord: crate::feat::discord::DiscordConfig::default(),
-            tool_default_timeout_secs: default_tool_default_timeout_secs(),
-            history_stall_timeout_secs: default_history_stall_timeout_secs(),
-            stall_retry_max_retries: default_stall_retry_max_retries(),
-            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
-            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
+            ..UserPreferences::default()
         };
         service.save(&prefs).expect("save");
 
         // When saving new preferences.
         let updated = UserPreferences {
             tool_entry_max_lines: Some(99),
-            min_collapse_count: None,
             session_lifecycles: vec![],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            web_search: WebSearchConfig::default(),
-            browser: BrowserConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
-            projects: vec![],
-            mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
-            discord: crate::feat::discord::DiscordConfig::default(),
-            tool_default_timeout_secs: default_tool_default_timeout_secs(),
-            history_stall_timeout_secs: default_history_stall_timeout_secs(),
-            stall_retry_max_retries: default_stall_retry_max_retries(),
-            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
-            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
+            ..UserPreferences::default()
         };
         service.save(&updated).expect("save updated");
 
@@ -490,29 +377,8 @@ mod tests {
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
             tool_entry_max_lines: Some(55),
-            min_collapse_count: None,
             session_lifecycles: vec![],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            web_search: WebSearchConfig::default(),
-            browser: BrowserConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
-            projects: vec![],
-            mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
-            discord: crate::feat::discord::DiscordConfig::default(),
-            tool_default_timeout_secs: default_tool_default_timeout_secs(),
-            history_stall_timeout_secs: default_history_stall_timeout_secs(),
-            stall_retry_max_retries: default_stall_retry_max_retries(),
-            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
-            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
+            ..UserPreferences::default()
         };
         service.save(&prefs).expect("save");
 
