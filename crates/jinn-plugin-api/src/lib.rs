@@ -29,4 +29,7 @@ mod wire;
 pub use envelope::{Envelope, PROTOCOL_VERSION, PluginToHostOrHostToPlugin};
 pub use persona_def::PersonaDef;
 pub use theme_def::{THEME_COLOR_SLOTS, ThemeColorSlot, ThemeDef};
-pub use wire::{Hello, HostToPlugin, PluginToHost, SetPersonaEntries, SetThemeEntries, Welcome};
+pub use wire::{
+    Hello, HostToPlugin, PluginCitation, PluginToHost, PushCitations, SetPersonaEntries,
+    SetThemeEntries, ToolCallEvent, ToolResultEvent, TurnEndEvent, Welcome,
+};

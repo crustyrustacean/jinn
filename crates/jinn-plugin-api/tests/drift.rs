@@ -13,8 +13,9 @@
 use std::collections::BTreeMap;
 
 use jinn_plugin_api::{
-    Envelope, HostToPlugin, PersonaDef, PluginToHost, PluginToHostOrHostToPlugin,
-    THEME_COLOR_SLOTS, ThemeDef, Welcome,
+    Envelope, HostToPlugin, PersonaDef, PluginCitation, PluginToHost, PluginToHostOrHostToPlugin,
+    PushCitations, THEME_COLOR_SLOTS, ThemeDef, ToolCallEvent, ToolResultEvent, TurnEndEvent,
+    Welcome,
 };
 
 /// Compiles the committed schema file for validation.
@@ -167,6 +168,159 @@ fn unknown_host_tag_deserializes_to_unknown() {
     // Then the message is Unknown (direction is unknowable from an
     // unknown tag; the observable contract is "no message we understand").
     assert_eq!(envelope.msg, PluginToHostOrHostToPlugin::Unknown);
+}
+
+#[test]
+fn tool_call_event_envelope_validates_against_schema() {
+    // Given a ToolCallEvent envelope.
+    let envelope = Envelope::for_host(
+        HostToPlugin::ToolCallEvent(ToolCallEvent {
+            session_id: "s-1".to_owned(),
+            tool_call_id: "call_1".to_owned(),
+            name: "mcp__parallel__web_search".to_owned(),
+            arguments: r#"{"objective":"find rust docs"}"#.to_owned(),
+        }),
+        0,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[test]
+fn tool_result_event_envelope_validates_against_schema() {
+    // Given a ToolResultEvent envelope.
+    let envelope = Envelope::for_host(
+        HostToPlugin::ToolResultEvent(ToolResultEvent {
+            session_id: "s-1".to_owned(),
+            tool_call_id: "call_1".to_owned(),
+            name: "mcp__parallel__web_fetch".to_owned(),
+            content: r#"{"results":[{"url":"https://a","title":"A"}]}"#.to_owned(),
+            success: true,
+        }),
+        1,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[test]
+fn turn_end_event_envelope_validates_against_schema() {
+    // Given a TurnEndEvent envelope.
+    let envelope = Envelope::for_host(
+        HostToPlugin::TurnEndEvent(TurnEndEvent {
+            session_id: "s-1".to_owned(),
+            final_answer: true,
+        }),
+        2,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[test]
+fn push_citations_envelope_validates_against_schema() {
+    // Given a PushCitations envelope with populated citations.
+    let envelope = Envelope::for_plugin(
+        PluginToHost::PushCitations(PushCitations {
+            session_id: "s-1".to_owned(),
+            citations: vec![
+                PluginCitation {
+                    url: "https://example.com/a".to_owned(),
+                    title: "Example A".to_owned(),
+                    content: Some("An excerpt.".to_owned()),
+                },
+                PluginCitation {
+                    url: "https://example.com/b".to_owned(),
+                    title: "https://example.com/b".to_owned(),
+                    content: None,
+                },
+            ],
+        }),
+        1,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[test]
+fn push_citations_without_content_validates_against_schema() {
+    // Given a PushCitations envelope whose citation has no content field.
+    let line = r#"{"v":1,"seq":1,"ts":0,"type":"push_citations","session_id":"s-1","citations":[{"url":"https://example.com","title":"Example"}]}"#;
+
+    // When deserializing.
+    let envelope: Envelope = serde_json::from_str(line).expect("content is optional");
+
+    // Then the citation deserialized with content absent.
+    let PluginToHostOrHostToPlugin::Plugin(PluginToHost::PushCitations(msg)) = envelope.msg else {
+        panic!("expected PushCitations");
+    };
+    assert_eq!(msg.citations.len(), 1);
+    assert_eq!(msg.citations[0].content, None);
+}
+
+#[test]
+fn new_event_and_contribution_envelopes_round_trip() {
+    // Given each new wire message.
+    let envelopes = vec![
+        Envelope::for_host(
+            HostToPlugin::ToolCallEvent(ToolCallEvent {
+                session_id: "s".to_owned(),
+                tool_call_id: "c".to_owned(),
+                name: "n".to_owned(),
+                arguments: "{}".to_owned(),
+            }),
+            1,
+            1,
+        ),
+        Envelope::for_host(
+            HostToPlugin::ToolResultEvent(ToolResultEvent {
+                session_id: "s".to_owned(),
+                tool_call_id: "c".to_owned(),
+                name: "n".to_owned(),
+                content: "out".to_owned(),
+                success: false,
+            }),
+            2,
+            1,
+        ),
+        Envelope::for_host(
+            HostToPlugin::TurnEndEvent(TurnEndEvent {
+                session_id: "s".to_owned(),
+                final_answer: false,
+            }),
+            3,
+            1,
+        ),
+        Envelope::for_plugin(
+            PluginToHost::PushCitations(PushCitations {
+                session_id: "s".to_owned(),
+                citations: vec![PluginCitation {
+                    url: "https://x".to_owned(),
+                    title: "X".to_owned(),
+                    content: None,
+                }],
+            }),
+            4,
+            1,
+        ),
+    ];
+
+    // When round-tripping each through a JSON string.
+    for envelope in envelopes {
+        let json = serde_json::to_string(&envelope).expect("serialize");
+        let back: Envelope = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it is unchanged.
+        assert_eq!(envelope, back);
+    }
 }
 
 #[test]
