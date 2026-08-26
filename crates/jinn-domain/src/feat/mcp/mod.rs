@@ -9,7 +9,7 @@ pub mod picker_entry;
 pub mod render;
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use error_stack::Report;
 use wherror::Error;
@@ -136,6 +136,40 @@ fn is_env_name_start(c: char) -> bool {
 /// True for subsequent characters of a legal environment-variable name.
 fn is_env_name_continue(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
+}
+
+/// Extracts every `${NAME}` variable referenced anywhere in `values`, for
+/// startup resolution into the key store.
+///
+/// Only well-formed tokens (`[A-Za-z_][A-Za-z0-9_]*` between `${` and the
+/// next `}`) are collected; malformed constructs yield nothing. Malformed
+/// values can never expand at connect time either, so ignoring them here is
+/// consistent rather than lossy. Names are deduplicated; an empty `values`
+/// yields an empty set.
+#[must_use]
+pub fn referenced_header_variables(values: &[&str]) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for value in values {
+        let mut rest: &str = value;
+        while let Some(dollar) = rest.find("${") {
+            let scan = &rest[dollar + 2..];
+            match scan.find('}') {
+                Some(close) => {
+                    let candidate = &scan[..close];
+                    let mut chars = candidate.chars();
+                    let head_ok =
+                        chars.next().is_some_and(is_env_name_start);
+                    let tail_ok = chars.all(is_env_name_continue);
+                    if head_ok && tail_ok {
+                        names.insert(candidate.to_owned());
+                    }
+                    rest = &scan[close + 1..]; // resume after the closing brace
+                }
+                None => break, // unterminated: nothing more to find
+            }
+        }
+    }
+    names
 }
 
 /// Scans `raw` left to right, splicing in resolved variables at each
