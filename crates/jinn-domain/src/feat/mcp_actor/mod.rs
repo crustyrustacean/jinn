@@ -43,7 +43,7 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::mcp::{McpServerConfig, TransportKind};
 use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerLog, McpServerStatus};
 use crate::feat::tools_actor::protocol::command::{ExecuteTool, RegisterTools};
-use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
+use crate::feat::tools_actor::protocol::event::{ToolExecutionCompleted, ToolsUnregistered};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::feat::tools_actor::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncate_tail};
 use crate::protocol::SessionId;
@@ -431,6 +431,18 @@ impl kameo::Actor for McpActor {
         )
         .await;
         publish_log(&self.deps, &self.session_id, &self.name, &tail).await;
+        // Teardown removes this server's session-scoped tool registrations
+        // everywhere they were cached. Harmless no-op when startup failed
+        // before any `RegisterTools` fired (subscribers prune by key).
+        let () = self
+            .deps
+            .services
+            .bus
+            .publish(ToolsUnregistered {
+                provider: provider_name(&self.name),
+                session_id: self.session_id.clone(),
+            })
+            .await;
         Ok(())
     }
 }
