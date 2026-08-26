@@ -17,7 +17,7 @@ use crate::feat::context::protocol::event::ChatEntryPinChanged;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
-use crate::feat::tools_actor::protocol::event::ToolsRegistered;
+use crate::feat::tools_actor::protocol::event::{ToolsRegistered, ToolsUnregistered};
 
 use super::super::SessionPersistenceActor;
 
@@ -121,6 +121,47 @@ impl SessionPersistenceActor {
                 });
             }
         }
+    }
+
+    /// ToolsUnregistered: prune a provider's session-scoped tools from the
+    /// context cache so the LLM stops seeing them (e.g. an MCP server was
+    /// disabled, or its actor tore down on close/restart).
+    pub(in crate::feat::session::session_actor) fn on_tools_unregistered(
+        &self,
+        evt: &ToolsUnregistered,
+    ) {
+        use crate::common::tcaps::context::SessionToolDefinitionsWrite;
+
+        // Tool names are "<provider><tool>" — the provider string already
+        // carries its trailing "__" separator (e.g. `mcp__stub__echo`), so a
+        // plain provider-prefix match never over-matches `stub_extended`.
+        let prefix = evt.provider.clone();
+        self.state.with_context(&self.context_cap, |view| {
+            let session_map = view.context.session_tool_definitions_mut();
+            let Some(map) = session_map.get_mut(&evt.session_id) else {
+                return;
+            };
+            map.retain(|name, _| !name.starts_with(&prefix));
+            if map.is_empty() {
+                session_map.remove(&evt.session_id);
+            }
+        });
+    }
+
+    /// SessionClosed cleanup: drop the closed session's entry from the
+    /// context tool cache so it does not leak across the app's lifetime
+    /// (the orchestrator prunes its own routing map separately).
+    pub(in crate::feat::session::session_actor) fn on_session_closed_cleanup(
+        &self,
+        session_id: &crate::protocol::SessionId,
+    ) {
+        use crate::common::tcaps::context::SessionToolDefinitionsWrite;
+
+        self.state.with_context(&self.context_cap, |view| {
+            view.context
+                .session_tool_definitions_mut()
+                .remove(session_id);
+        });
     }
 
     /// No-op receiver for [`PromptTemplatesLoaded`].
@@ -375,6 +416,158 @@ mod tests {
         assert!(
             session_tools.is_some_and(|m| m.contains_key("judgment_passed")),
             "attached tool for own session should be stored in session map"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn on_tools_unregistered_prunes_the_providers_tools_from_the_context_cache() {
+        // Given a session actor with two MCP providers' tools cached for one
+        // session (stub's echo + other's tool).
+        let (actor, state, _audit) = create_actor().await;
+        let session_id = SessionId::new();
+        for (provider, tool_name) in [("mcp__stub__", "mcp__stub__echo"), ("mcp__other__", "mcp__other__tool")] {
+            actor.on_tools_registered(&ToolsRegistered {
+                provider: provider.to_owned(),
+                definitions: vec![ToolDefinition {
+                    name: tool_name.to_owned(),
+                    description: String::new(),
+                    prompt_snippet: None,
+                    prompt_guidelines: vec![],
+                    parameters: serde_json::json!({"type": "object", "properties": {}}),
+                    server_tool_type: None,
+                }],
+                session_id: Some(session_id.clone()),
+            });
+        }
+
+        // When the stub provider unregisters its tools.
+        actor.on_tools_unregistered(&ToolsUnregistered {
+            provider: "mcp__stub__".to_owned(),
+            session_id: session_id.clone(),
+        });
+
+        // Then only the other provider's tool remains cached.
+        let guard = state.read();
+        let session_tools = guard
+            .context
+            .session_tool_definitions
+            .get(&session_id)
+            .expect("session map must survive while another provider's tools remain");
+        assert!(
+            !session_tools.contains_key("mcp__stub__echo"),
+            "stub's tool must be pruned"
+        );
+        assert!(
+            session_tools.contains_key("mcp__other__tool"),
+            "other provider's tool must survive"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn on_tools_unregistered_drops_the_session_map_when_it_empties() {
+        // Given a session actor with one provider's tool cached.
+        let (actor, state, _audit) = create_actor().await;
+        let session_id = SessionId::new();
+        actor.on_tools_registered(&ToolsRegistered {
+            provider: "mcp__stub__".to_owned(),
+            definitions: vec![ToolDefinition {
+                name: "mcp__stub__echo".to_owned(),
+                description: String::new(),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+                server_tool_type: None,
+            }],
+            session_id: Some(session_id.clone()),
+        });
+
+        // When that provider unregisters.
+        actor.on_tools_unregistered(&ToolsUnregistered {
+            provider: "mcp__stub__".to_owned(),
+            session_id: session_id.clone(),
+        });
+
+        // Then the emptied session map is removed entirely.
+        let guard = state.read();
+        assert!(
+            !guard.context.session_tool_definitions.contains_key(&session_id),
+            "emptied session map must be dropped"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn on_tools_unregistered_spares_similarly_named_servers() {
+        // Given a session actor with tools from "stub" and "stub_extended".
+        let (actor, state, _audit) = create_actor().await;
+        let session_id = SessionId::new();
+        for (provider, tool_name) in [
+            ("mcp__stub__", "mcp__stub__echo"),
+            ("mcp__stub_extended__", "mcp__stub_extended__echo"),
+        ] {
+            actor.on_tools_registered(&ToolsRegistered {
+                provider: provider.to_owned(),
+                definitions: vec![ToolDefinition {
+                    name: tool_name.to_owned(),
+                    description: String::new(),
+                    prompt_snippet: None,
+                    prompt_guidelines: vec![],
+                    parameters: serde_json::json!({"type": "object", "properties": {}}),
+                    server_tool_type: None,
+                }],
+                session_id: Some(session_id.clone()),
+            });
+        }
+
+        // When only "stub" unregisters.
+        actor.on_tools_unregistered(&ToolsUnregistered {
+            provider: "mcp__stub__".to_owned(),
+            session_id: session_id.clone(),
+        });
+
+        // Then "stub_extended"'s tool survives (prefix match includes the
+        // trailing "__" separator).
+        let guard = state.read();
+        let session_tools = guard
+            .context
+            .session_tool_definitions
+            .get(&session_id)
+            .expect("session map must survive");
+        assert!(
+            session_tools.contains_key("mcp__stub_extended__echo"),
+            "similarly-named server's tool must survive"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_closed_removes_the_sessions_context_tool_cache() {
+        // Given a session actor with a session-scoped tool cached.
+        let (actor, state, _audit) = create_actor().await;
+        let session_id = SessionId::new();
+        actor.on_tools_registered(&ToolsRegistered {
+            provider: "mcp__stub__".to_owned(),
+            definitions: vec![ToolDefinition {
+                name: "mcp__stub__echo".to_owned(),
+                description: String::new(),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+                server_tool_type: None,
+            }],
+            session_id: Some(session_id.clone()),
+        });
+
+        // When the session closes (the SessionClosed cleanup path).
+        actor.on_session_closed_cleanup(&session_id);
+
+        // Then the session's context-cache entry is gone.
+        let guard = state.read();
+        assert!(
+            !guard.context.session_tool_definitions.contains_key(&session_id),
+            "closed session's context tool cache must be removed"
         );
     }
 

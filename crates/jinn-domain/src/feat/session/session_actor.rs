@@ -48,6 +48,7 @@ use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
+use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
@@ -60,7 +61,7 @@ use crate::feat::session_lifecycle::protocol::command::{
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered,
+    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered, ToolsUnregistered,
 };
 use crate::init::EnvironmentLoaded;
 
@@ -176,6 +177,8 @@ impl Actor for SessionPersistenceActor {
         bus.subscribe::<SkillsLoaded, _>(&actor_ref).await;
         bus.subscribe::<EnvironmentLoaded, _>(&actor_ref).await;
         bus.subscribe::<ToolsRegistered, _>(&actor_ref).await;
+        bus.subscribe::<ToolsUnregistered, _>(&actor_ref).await;
+        bus.subscribe::<SessionClosed, _>(&actor_ref).await;
         bus.subscribe::<PromptTemplatesLoaded, _>(&actor_ref).await;
         bus.subscribe::<PersonasLoaded, _>(&actor_ref).await;
 
@@ -493,6 +496,23 @@ impl Message<ToolsRegistered> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: ToolsRegistered, _ctx: &mut Context<Self, Self::Reply>) {
         self.on_tools_registered(&msg);
+    }
+}
+
+impl Message<ToolsUnregistered> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ToolsUnregistered, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_tools_unregistered(&msg);
+    }
+}
+
+/// Cleans the closed session's entry from the context tool cache — the map
+/// the orchestrator's own cleanup does not reach (it prunes its routing map,
+/// not the LLM-facing definitions cache).
+impl Message<SessionClosed> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SessionClosed, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_session_closed_cleanup(&msg.session_id);
     }
 }
 
