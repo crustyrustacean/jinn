@@ -561,7 +561,7 @@ mod tests {
             PickerKind::Project,
             PickerKind::McpServer,
             PickerKind::Plugin,
-            PickerKind::Endpoint,
+            PickerKind::Endpoint
         )]
         kind: PickerKind,
     ) {
