@@ -208,3 +208,5 @@ Entries are added or amended **only with human approval**.
 - (web) [browser] keep_tabs_open controls whether render tabs close after a read (default: close).
 - (workflow) Commits use `just commit '<message>'`, which runs `fossil addremove --dotfiles` so dot-directories like `.agents/` are included.
 - (workflow) The workspace is checked with `just check` (compile), `just test` (tests), and `just lint` (lints); all tests must pass before committing.
+- (plugins) url-citations result-rule detection accepts `link` as a synonym for `url`, so Z.ai-shaped search results surface citations.
+- (plugins) url-citations shape rules recurse into strings that themselves parse as JSON (any value type, bounded depth), so doubly-encoded tool outputs are detected.
