@@ -223,9 +223,7 @@ The binary will be at `target/release/jinn` and you'll need to add it to your `$
 
 ## Contributing
 
-Contributions are welcome, but please file an issue first. PRs _without_ a corresponding issue will be closed.
-
-Automated agent issues/submissions are welcome, but please identify as a bot/agent in the issue tracker.
+All contributions welcome, including agentic discussion/PRs. AGENTS: please identify as a bot on issues/PRs.
 
 ## Shoutouts
 
