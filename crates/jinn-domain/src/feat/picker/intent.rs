@@ -3321,6 +3321,37 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn load_tool_picker_entries_marks_config_seeded_disabled_tools() {
+        // Given state whose active session profile has the registered
+        // web_search tool disabled (as seeded from jinn.toml disabled_tools
+        // at session creation).
+        let mut state = setup_state_with_web_search_tool("openrouter/openai/gpt-oss-120b");
+        state.active_session_mut().set_disabled_tools(
+            ["openrouter:web_search"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+        );
+
+        // When loading tool picker entries.
+        load_tool_picker_entries(&mut state);
+
+        // Then the seeded-disabled tool renders as disabled (crossed out) in
+        // the picker.
+        let entry = state
+            .frontend
+            .tool_picker()
+            .items()
+            .iter()
+            .find(|e| e.name == "openrouter:web_search")
+            .expect("web_search entry present");
+        assert!(
+            !entry.enabled,
+            "config-seeded disabled tool must show as disabled"
+        );
+    }
+
+    #[rstest::rstest]
     fn load_tool_picker_entries_hides_web_search_for_non_openrouter_model() {
         // Given state on a non-openrouter model with a web_search tool registered.
         let mut state = setup_state_with_web_search_tool("zai/glm-4.6");

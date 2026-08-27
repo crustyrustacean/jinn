@@ -84,6 +84,7 @@ Entries are added or amended **only with human approval**.
 - (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over **stdio** (child process, JSON-RPC over stdin/stdout), **local_http** (jinn spawns a managed child process and connects via `StreamableHTTP`), or **remote_http** (jinn connects to an already-running server with no process management).
 - (mcp) MCP tools are namespaced `mcp__<server>__<tool>` and registered per-session via `RegisterTools { session_id: Some(_) }`.
 - (mcp) MCP server enablement is per-session, persisted in `SessionCore`, off by default; enabling spawns the actor+process, disabling kills both.
+- (mcp) Each `[mcp_server.<name>]` block in `jinn.toml` accepts `auto_enable = true` to start that server already enabled in newly created sessions; the MCP coordinator reconciles `SessionCreated` against the session's actual enabled set.
 - (mcp) MCP servers are configured in `jinn.toml` under `[[mcp_server]]`.
 - (mcp) MCP server child processes have piped stderr captured to a bounded ring buffer owned by each `McpActor`; stderr never reaches jinn's terminal.
 - (mcp) Per-session MCP server status is owned by `McpCoordinatorActor`, driven by `McpServerStatus` events; it is surfaced in the sidebar, not the dashboard.
@@ -99,6 +100,7 @@ Entries are added or amended **only with human approval**.
 - (mcp) MCP child processes (stdio and local_http) spawn terminal-isolated, like tool children.
 - (mcp) Disabling an MCP server (or session close/archive/teardown, or restart-kill) unregisters its session-scoped tools from both the dispatch registry and the context tool cache via a `ToolsUnregistered` event published by `McpActor` teardown.
 - (tools) MCP tool dispatch fails fast with a legible error when the server is disabled for the session or not Running; it never publishes `ExecuteTool` to a bus with no MCP subscriber.
+- (tools) Newly created sessions seed `disabled_tools`/`disabled_skills` from top-level arrays in `jinn.toml`; sessions own the sets thereafter (picker toggles persist per session, forks inherit).
 - (tools) Actor-provided tools route by their registration `provider` prefix via the generic `ExecuteTool` command, not a hardcoded per-name match; `web-fetch`/`web-search` remain distinct provider keys.
 - (paths) Config lives at `~/.config/jinn` (providers, prompts, personas, themes, `jinn.toml`).
 - (paths) Data lives at `~/.local/share/jinn` (`sessions.db`).
