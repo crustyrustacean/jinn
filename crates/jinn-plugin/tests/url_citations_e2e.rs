@@ -64,6 +64,7 @@ async fn send(host: &mut PluginHost, msg: HostToPlugin, seq: u64) {
 
 /// A full parallel-search turn through the real guest yields a grouped
 /// PushCitations payload at turn end.
+#[rstest::rstest]
 #[tokio::test]
 async fn parallel_search_turn_yields_push_citations() {
     // Given the real url-citations guest (no grants, no http).
@@ -168,6 +169,7 @@ async fn parallel_search_turn_yields_push_citations() {
 
 /// A parallel web_fetch turn yields citations from both its `urls`
 /// arguments (call rule) and its result JSON (result rule), deduped by URL.
+#[rstest::rstest]
 #[tokio::test]
 async fn parallel_fetch_turn_yields_push_citations() {
     // Given the real url-citations guest, handshaken.
@@ -259,6 +261,7 @@ async fn parallel_fetch_turn_yields_push_citations() {
 
 /// A builtin web-tools turn yields the fetched page URL (call rule) and
 /// the DDG re-run link (web-search carve-out) in one grouped footer.
+#[rstest::rstest]
 #[tokio::test]
 async fn builtin_web_tools_turn_yields_both_citations() {
     // Given the real url-citations guest, handshaken.
@@ -372,6 +375,7 @@ async fn builtin_web_tools_turn_yields_both_citations() {
 
 /// A Z.ai web_search_prime turn — doubly-encoded `{title, link, content,
 /// refer}` results — yields grouped citations through the real guest.
+#[rstest::rstest]
 #[tokio::test]
 async fn zai_search_turn_yields_push_citations() {
     // Given the real url-citations guest, handshaken.
@@ -477,6 +481,7 @@ async fn zai_search_turn_yields_push_citations() {
 
 /// An errored turn (final_answer=false) retains citations; the next
 /// successful turn flushes them.
+#[rstest::rstest]
 #[tokio::test]
 async fn errored_turn_retains_citations_until_next_success() {
     // Given the real url-citations guest, handshaken.
@@ -577,6 +582,7 @@ async fn errored_turn_retains_citations_until_next_success() {
 /// unrecognized tool, garbage arguments, non-JSON content, an unpaired
 /// url-only JSON object, and even an unknown wire tag all pass through,
 /// and a subsequent valid turn still flushes.
+#[rstest::rstest]
 #[tokio::test]
 #[expect(clippy::too_many_lines, reason = "one scripted barrage, one setup")]
 async fn unknown_shapes_are_ignored_never_fatal() {
@@ -717,6 +723,7 @@ fn host_line_owned(msg: HostToPlugin) -> String {
 ///
 /// The two payloads are distinguishable by URL — the citation produced
 /// proves which content the guest received.
+#[rstest::rstest]
 #[tokio::test]
 async fn truncated_result_forwards_full_content() {
     // Given the real url-citations guest, handshaken.
