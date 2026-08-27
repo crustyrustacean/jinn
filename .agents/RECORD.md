@@ -210,3 +210,6 @@ Entries are added or amended **only with human approval**.
 - (workflow) The workspace is checked with `just check` (compile), `just test` (tests), and `just lint` (lints); all tests must pass before committing.
 - (plugins) url-citations result-rule detection accepts `link` as a synonym for `url`, so Z.ai-shaped search results surface citations.
 - (plugins) url-citations shape rules recurse into strings that themselves parse as JSON (any value type, bounded depth), so doubly-encoded tool outputs are detected.
+- (testing) All workspace Rust tests run under rstest's timeout: RSTEST_TIMEOUT=10s is set via .cargo/config.toml [env] and baked into tests at compile time, independent of the command entrypoint.
+- (testing) Tests exceeding the default rstest timeout carry an explicit #[timeout] override (typically 30s); the trybuild compile-fail suite in jinn-domain is exempt from rstest entirely.
+- (testing) just lint rejects bare #[test]/#[tokio::test] attributes without an accompanying rstest attribute.
