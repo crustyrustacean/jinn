@@ -26,6 +26,8 @@ pub mod protocol;
 #[cfg(test)]
 mod dispatch_roundtrip_tests;
 #[cfg(test)]
+mod header_expansion_tests;
+#[cfg(test)]
 mod transport_routing_tests;
 
 use std::sync::Arc;
@@ -47,7 +49,9 @@ use crate::feat::tools_actor::protocol::event::{ToolExecutionCompleted, ToolsUnr
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::feat::tools_actor::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncate_tail};
 use crate::protocol::SessionId;
-use error_stack::Report;
+use error_stack::{Report, ResultExt as _};
+
+use crate::Services;
 
 /// Debounce interval for live stderr republishing while the actor is Running.
 const STDERR_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(250);
@@ -161,15 +165,23 @@ fn server_command(config: &McpServerConfig) -> ServerCommand {
 /// Connects a fresh [`McpClient`] according to the server's configured transport.
 ///
 /// - [`TransportKind::Stdio`]: spawn the child and handshake over stdin/stdout.
+///   Configured `headers` are ignored entirely.
 /// - [`TransportKind::LocalHttp`]: spawn the child (managed port via `<port>`
 ///   token, bind address parsed from `url`), then poll the HTTP endpoint on a
 ///   backoff until the handshake succeeds or the child exits (no wall-clock timeout).
 /// - [`TransportKind::RemoteHttp`]: connect to the configured `url` with no child.
+///
+/// For both HTTP transports, configured header values are expanded from
+/// [`ApiKeysService`](crate::common::services::api_keys_service::ApiKeysService)
+/// (`${VAR}` tokens resolved against variables seeded at startup) *before* any
+/// connect attempt; an unresolvable variable aborts the connect, which the
+/// caller surfaces as a dead server.
 #[expect(
     clippy::expect_used,
     reason = "invariants: url/command documented per transport kind"
 )]
 pub(crate) async fn connect_for_transport(
+    services: &Services,
     server: &McpServerConfig,
 ) -> Result<McpClient, Report<McpClientError>> {
     match server.transport {
@@ -179,6 +191,7 @@ pub(crate) async fn connect_for_transport(
                 .url
                 .as_ref()
                 .expect("url required for LocalHttp servers");
+            let headers = expand_server_headers(services, server)?;
             let half = McpClient::connect_http(
                 server
                     .command
@@ -186,6 +199,7 @@ pub(crate) async fn connect_for_transport(
                     .expect("command required for LocalHttp servers"),
                 &server.args,
                 url,
+                headers,
             )?;
             McpClient::connect_with_retry(half).await
         }
@@ -194,9 +208,29 @@ pub(crate) async fn connect_for_transport(
                 .url
                 .as_ref()
                 .expect("url required for RemoteHttp servers");
-            McpClient::connect_remote(url).await
+            let headers = expand_server_headers(services, server)?;
+            McpClient::connect_remote(url, headers).await
         }
     }
+}
+
+/// Expands `${VAR}` tokens in one server's configured headers against the
+/// startup-seeded key store.
+///
+/// Header **names** pass through literally; only values expand. Failure means
+/// some referenced variable is missing/empty — propagated as-is so the error
+/// names the variable and nothing else.
+///
+/// # Errors
+///
+/// Returns [`HeaderExpandError::UnresolvedVariable`] (via [`McpClientError`]
+/// context) when expansion fails.
+fn expand_server_headers(
+    services: &Services,
+    server: &McpServerConfig,
+) -> Result<Vec<(String, String)>, Report<McpClientError>> {
+    let resolve = |name: &str| services.api_keys.get(name);
+    crate::feat::mcp::expand_mcp_headers(&server.headers, &resolve).change_context(McpClientError)
 }
 
 /// Acquires a connected [`McpClient`] and the server's tool definitions.
@@ -210,13 +244,14 @@ pub(crate) async fn connect_for_transport(
 /// `Err(None)` when the failure was at connect time (nothing to shut down).
 /// On success returns the client and its mapped tool definitions together.
 async fn acquire_client(
+    services: &Services,
     name: &str,
     server: &McpServerConfig,
     client_override: Option<McpClient>,
 ) -> Result<(McpClient, Vec<ToolDefinition>), Option<McpClient>> {
     let client = match client_override {
         Some(injected) => injected,
-        None => match connect_for_transport(server).await {
+        None => match connect_for_transport(services, server).await {
             Ok(client) => client,
             Err(report) => {
                 tracing::warn!(
@@ -300,25 +335,25 @@ impl kameo::Actor for McpActor {
         // list) is non-fatal to the process: the actor runs idle, the lifecycle
         // actor / dashboard surfaces the dead status, and a later enable/disable
         // cycle can respawn.
-        let (mut client, definitions) = match acquire_client(&name, &server, injected_client).await
-        {
-            Ok(ready) => ready,
-            Err(half_open) => {
-                if let Some(mut half_open) = half_open {
-                    half_open.shutdown().await;
+        let (mut client, definitions) =
+            match acquire_client(&deps.services, &name, &server, injected_client).await {
+                Ok(ready) => ready,
+                Err(half_open) => {
+                    if let Some(mut half_open) = half_open {
+                        half_open.shutdown().await;
+                    }
+                    publish_status(&deps, &session_id, &name, McpConnectionStatus::Dead).await;
+                    return Ok(Self {
+                        deps,
+                        session_id,
+                        name,
+                        client: None,
+                        stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
+                        liveness_task_shutdown: Arc::new(AtomicBool::new(false)),
+                        child_task_shutdown: None,
+                    });
                 }
-                publish_status(&deps, &session_id, &name, McpConnectionStatus::Dead).await;
-                return Ok(Self {
-                    deps,
-                    session_id,
-                    name,
-                    client: None,
-                    stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
-                    liveness_task_shutdown: Arc::new(AtomicBool::new(false)),
-                    child_task_shutdown: None,
-                });
-            }
-        };
+            };
 
         let provider = provider_name(&name);
         tracing::info!(
