@@ -1,9 +1,53 @@
-## (development - unreleased) v0.110.0
+## 2026-08-26 v0.110.0
 
-- MCP server entries accept a `headers` map; values support `${VAR}` env-var token expansion anywhere in the string, applied to both `local_http` and `remote_http` connections and ignored on stdio.
-- MCP header variables are resolved once at startup into the shared key store alongside provider keys; an unset or empty variable prevents connection with an error naming the variable, and header values are never logged or rendered.
 - Move citation tracking into plugin.
+  - Add support for tracking citations via ZAI `web-search-prime` MCP tool
+  - Add support for tracking citations using `web-search` + `web-fetch` tool
+  - Add support for tracking citations using `openrouter:web-search` tool
 - Disabling an MCP server now removes it's associated tool calls from the session tool listing.
+- Add plugin status screen under `<leader>sP`.
+- Cache indicator is now colorized based on cache hit rate.
+  - <90%: red
+  - 90%-94%: yellow
+  - 95%+: green
+- Configuration update for to allow adjustment of default tools + skills + MCP servers for sessions.
+- MCP servers can now use custom headers.
+
+### TOML Config Update
+
+The behavior of tools and skills is "enable everything" by default for every session. Configuration options have been added to disable specific tools and skills. These apply to all new sessions.
+
+All MCP servers are disabled by default. There is now an additional `auto_enable` flag on the MCP server configuration block which will start the MCP server on every new session.
+
+```toml
+# list tools to be disabled by default
+disabled_tools = ["web-search", "web-fetch", "openrouter:web_search"]
+
+# list skills to be disabled by default
+disabled_skills = ["foo", "bar"]
+
+# MCP autostart example
+[mcp_server.parallel-search]
+transport = "remote_http"
+url = "https://search.parallel.ai/mcp"
+# Defaults to false, but when true: MCP server will start up on every session
+auto_enable = true
+```
+
+### MCP Custom Headers
+
+Many remote MCP servers require an API key. `jinn` now supports adding custom headers with environment variable token substitution.
+
+```toml
+[mcp_server.web-search-prime]
+transport = "remote_http"
+url = "https://api.z.ai/api/mcp/web_search_prime/mcp"
+
+# Headers specified in another block
+[mcp_server.web-search-prime.headers]
+# `${FOO}` expands to an environment variable named FOO
+Authorization = "Bearer ${ZAI_API_KEY}"
+```
 
 ## 2026-08-25 v0.109.0
 
