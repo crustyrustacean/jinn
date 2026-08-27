@@ -304,6 +304,7 @@ mod tests {
         (state, session_id)
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn scan_prompts_writes_to_session_and_emits_session_tagged_event() {
         // Given a project prompt in a cwd that is a descendant of home.
@@ -359,6 +360,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn scan_prompts_discovers_ancestor_template_from_nested_cwd() {
         // Given a prompt at home/repo/.agents/prompts but cwd is home/repo/subdir.
@@ -408,6 +410,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_created_event_scans_prompts() {
         // Given an actor whose active session cwd contains a project prompt.
@@ -441,6 +444,7 @@ mod tests {
         assert_eq!(session.discovered_prompt_templates().templates().len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_created_event_skips_scan_when_cwd_is_sentinel() {
         // Given an actor whose active session cwd is the pending "." sentinel.
@@ -475,6 +479,7 @@ mod tests {
         assert!(session.discovered_prompt_templates().templates().is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_setup_completed_event_scans_prompts() {
         // Given an actor whose active session cwd contains a project prompt.
@@ -510,6 +515,7 @@ mod tests {
         assert_eq!(session.discovered_prompt_templates().templates().len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_cwd_changed_event_scans_prompts() {
         // Given an actor whose active session cwd contains a project prompt.
@@ -544,6 +550,7 @@ mod tests {
         assert_eq!(session.discovered_prompt_templates().templates().len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn environment_loaded_event_scans_active_session_prompts() {
         // Given an actor whose active session cwd contains a project prompt.

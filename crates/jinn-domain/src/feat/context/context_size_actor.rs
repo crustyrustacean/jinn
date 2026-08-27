@@ -189,6 +189,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn recalculate_updates_context_size_for_active_session() {
         // Given an actor with a session that has history.
@@ -214,6 +215,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn recalculate_updates_after_entry_added() {
         // Given an actor with empty session.
@@ -260,6 +262,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn recalculate_handles_empty_session_gracefully() {
         // Given an actor with empty session.
@@ -281,6 +284,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn recalculate_only_updates_active_session() {
         // Given an actor with two sessions.
