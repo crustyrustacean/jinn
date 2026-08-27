@@ -1296,6 +1296,7 @@ mod tests {
         assert!(text.contains("Running teardown script"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_failure_does_not_switch_active_session() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -1352,6 +1353,7 @@ mod tests {
         assert!(found, "expected SessionTeardownFinished event");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_failure_does_not_push_input_scope() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -1393,6 +1395,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_failure_pushes_error_entry_to_session() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -1437,6 +1440,7 @@ mod tests {
         assert!(has_error, "expected PushChatEntry command with error entry");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_failure_emits_session_teardown_completed_with_error() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -1482,6 +1486,7 @@ mod tests {
         assert!(found, "expected SessionTeardownFinished with error");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn remove_session_removes_session_from_hashmap() {
         let (mut actor, audit) = test_actor_recording().await;
@@ -1510,6 +1515,7 @@ mod tests {
         assert!(found, "expected SessionClosed event");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn remove_session_creates_new_session_when_last_removed() {
         let (mut actor, audit) = test_actor_recording().await;
@@ -1534,6 +1540,7 @@ mod tests {
         assert!(found, "expected SessionClosed event");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn remove_session_switches_active_when_active_is_removed() {
         let mut actor = test_actor().await;
@@ -1556,6 +1563,7 @@ mod tests {
         assert_eq!(state.session.session_count(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn remove_session_emits_session_removed_event() {
         let (mut actor, audit) = test_actor_recording().await;
@@ -1580,6 +1588,7 @@ mod tests {
         assert_eq!(count, 1, "expected exactly one SessionClosed event");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn remove_session_is_noop_if_session_does_not_exist() {
         let (mut actor, audit) = test_actor_recording().await;
@@ -1604,6 +1613,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_only_success_does_not_remove_session() {
         let mut actor = test_actor().await;
@@ -1623,6 +1633,7 @@ mod tests {
         assert_eq!(state.session.session_count(), original_count);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_only_success_does_not_emit_session_removed() {
         let (mut actor, audit) = test_actor_recording().await;
@@ -1643,6 +1654,7 @@ mod tests {
         assert!(!found, "did not expect SessionClosed for teardown-only");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_only_success_emits_session_teardown_completed() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -1689,6 +1701,7 @@ mod tests {
         assert!(found, "expected SessionTeardownFinished event");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_only_success_emits_push_chat_entry() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -1738,6 +1751,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn close_session_with_nothing_ran_skips_teardown_and_archives() {
         let (mut actor, audit) = test_actor_recording().await;
@@ -1772,6 +1786,7 @@ mod tests {
         assert!(has_archived, "expected SessionArchived");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn archive_session_without_lifecycle_removes_from_memory() {
         let (actor, audit) = test_actor_recording().await;
@@ -1818,6 +1833,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn archive_replacement_session_seeds_reasoning_effort_from_global() {
         // Given a global default effort of High (saved to the preferences store).
@@ -1851,6 +1867,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn archive_empty_session_removes_and_archives() {
         let (actor, audit) = test_actor_recording().await;
@@ -1882,6 +1899,7 @@ mod tests {
         assert!(has_closed, "expected SessionClosed");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn archive_active_session_switches_to_next() {
         let actor = test_actor().await;
@@ -1909,6 +1927,7 @@ mod tests {
         assert_eq!(state.session.session_count(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn archive_last_session_creates_new_one() {
         let actor = test_actor().await;
@@ -1934,6 +1953,7 @@ mod tests {
         assert_ne!(*state.session.active_session_id(), only_id);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn replacement_session_carries_seeded_disablement_sets() {
         // Given an actor whose preferences disable a tool and a skill, and a
@@ -1993,6 +2013,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn replacement_with_auto_enable_publishes_enablement_for_new_session() {
         // Given an actor whose prefs auto-enable one server, and a single busy
@@ -2032,6 +2053,7 @@ mod tests {
         assert!(!actor.state.read().session.contains(&only_id));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn replacement_without_auto_enable_publishes_no_enablement() {
         // Given an actor whose configured server has auto_enable off.
@@ -2067,6 +2089,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn close_session_leaves_lifecycle_at_setup_ran_when_teardown_fails() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -2114,6 +2137,7 @@ mod tests {
         assert!(state.session.contains(&session_id));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn close_session_with_teardown_failure_pushes_error_entry() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -2158,6 +2182,7 @@ mod tests {
         assert!(has_error, "expected PushChatEntry command with error entry");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn close_session_advances_lifecycle_when_teardown_succeeds() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -2206,6 +2231,7 @@ mod tests {
         assert!(found, "expected SessionTeardownFinished with no error");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn archiving_empty_session_does_not_persist_non_interacted() {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
@@ -2225,6 +2251,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn closing_empty_session_does_not_persist_non_interacted() {
         let (mut actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
@@ -2242,6 +2269,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_only_advances_lifecycle_to_teardown_ran() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -2290,6 +2318,7 @@ mod tests {
         assert!(state.session.contains(&session_id));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn close_session_with_setup_ran_persists_teardown_ran() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -2339,6 +2368,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn set_session_cwd_writes_cwd_onto_session() {
         use std::path::PathBuf;
@@ -2359,6 +2389,7 @@ mod tests {
         assert_eq!(session.cwd(), &new_cwd);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn set_session_cwd_emits_session_cwd_changed_event() {
         use std::path::PathBuf;
@@ -2393,6 +2424,7 @@ mod tests {
         assert!(audit.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn finish_handler_owns_cleanup_after_cancel() {
         let (mut actor, audit) = test_actor_recording().await;
@@ -2472,6 +2504,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn setup_with_no_output_advances_to_setup_ran() {
         let (mut actor, audit) = test_actor_recording().await;
@@ -2498,6 +2531,7 @@ mod tests {
         assert_eq!(push_count, 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn no_output_fallback_preserves_inherited_session_cwd() {
         // Given an actor whose active session has a distinct (inherited) CWD
@@ -2536,6 +2570,7 @@ mod tests {
         assert_eq!(cwd_after, inherited_cwd);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn setup_success_overwrites_inherited_cwd_with_script_output() {
         // Given an actor whose active session has an inherited CWD.
@@ -2573,6 +2608,7 @@ mod tests {
         assert_eq!(cwd_after, script_cwd);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn setup_error_preserves_inherited_session_cwd() {
         // Given an actor whose active session has an inherited CWD.
@@ -2609,6 +2645,7 @@ mod tests {
         assert_eq!(cwd_after, inherited_cwd);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn setup_spawn_falls_back_to_default_cwd_for_missing_session() {
         // Given an actor with no session matching the payload's session_id
@@ -2655,6 +2692,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_spawn_runs_shell_script_in_session_cwd() {
         // Given an actor whose active session has an inherited CWD and a

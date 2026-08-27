@@ -226,6 +226,7 @@ mod tests {
             .unwrap_or_default();
         PendingPath { raw, abs }
     }
+    #[rstest::rstest]
     #[test]
     fn native_png_attaches_without_conversion() {
         // Given a native PNG file.
@@ -244,6 +245,7 @@ mod tests {
         assert!(outcome.degraded.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn non_native_image_is_converted_when_converter_available() {
         // Given a recognizable-but-non-native image (HEIC magic bytes).
@@ -267,6 +269,7 @@ mod tests {
         assert!(outcome.degraded.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn non_native_image_errors_when_converter_unavailable() {
         // Given a non-native image and an unavailable converter.
@@ -284,6 +287,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[rstest::rstest]
     #[test]
     fn non_native_image_errors_when_conversion_fails() {
         // Given a non-native image and a failing converter.
@@ -301,6 +305,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[rstest::rstest]
     #[test]
     fn not_an_image_degrades() {
         // Given a non-image file.
@@ -319,6 +324,7 @@ mod tests {
         assert_eq!(outcome.degraded[0].abs, path);
     }
 
+    #[rstest::rstest]
     #[test]
     fn missing_file_degrades() {
         // Given a path to a nonexistent file.
@@ -335,6 +341,7 @@ mod tests {
         assert_eq!(outcome.degraded[0].abs, path);
     }
 
+    #[rstest::rstest]
     #[test]
     fn mixed_native_and_non_native_all_resolve() {
         // Given one native PNG and one non-native HEIC.
@@ -359,6 +366,7 @@ mod tests {
         assert!(outcome.degraded.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn mixed_native_png_and_missing_path_attaches_and_degrades() {
         // Given one native PNG and one nonexistent path in the same batch.

@@ -696,6 +696,7 @@ async fn save_updates_cwd_on_existing_session() {
     assert_eq!(loaded.cwd(), std::path::Path::new("/new/path"));
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn ignored_field_round_trips() {
     // Given a session with ignored entries.

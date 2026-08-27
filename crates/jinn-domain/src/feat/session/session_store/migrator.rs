@@ -116,6 +116,7 @@ mod tests {
         (pool, dir)
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn run_migrations_creates_tracking_table() {
         // Given a fresh database.
@@ -178,6 +179,7 @@ mod tests {
         assert_eq!(rows[21].1, "add_discord_thread_table");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn re_running_migrations_is_noop() {
         // Given a database with migrations already applied.
@@ -211,6 +213,7 @@ mod tests {
     /// current == N. Most migrations would fail (duplicate table/column),
     /// and those that don't fail would produce a duplicate _migrations row,
     /// causing the count assertion to fail.
+    #[rstest::rstest]
     #[tokio::test]
     async fn migration_guards_do_not_reapply_completed_version() {
         for target_version in 0..=23_i32 {
@@ -238,6 +241,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn fresh_database_has_all_tables() {
         // Given a fresh database.
@@ -269,6 +273,7 @@ mod tests {
         assert!(names.contains(&"discord_thread"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v10_consolidates_strategy_state() {
         // Given a database with sessions containing mixed strategy state and profile.
@@ -321,6 +326,7 @@ mod tests {
         assert_eq!(profile["strategy"], "compaction");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v10_inserts_default_when_no_compaction_key() {
         // Given a database with a session having no compaction key in strategy_state.
@@ -365,6 +371,7 @@ mod tests {
         assert!(!state_map.contains_key("passthrough"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v15_drops_strategy_state_column() {
         // Given a database built to v14 (strategy_state column still present) with a session in it.
@@ -415,6 +422,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn v15_rebuild_preserves_session_history_rows() {
         // Given a v14 database with a session linked to an entry via session_history,
@@ -440,6 +448,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn v15_rebuild_preserves_token_ledger_rows() {
         // Given a v14 database with a token_ledger row for a session,
@@ -490,6 +499,7 @@ mod tests {
         .expect("seed ledger");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn run_migrations_preserves_child_rows_and_leaves_fk_clean() {
         // Given a v14 database with FK=ON and a full session (junction + ledger).
@@ -536,6 +546,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v17_rewrites_bare_string_model_to_single() {
         // Given a database at v16 with a session having a bare-string model.
@@ -584,6 +595,7 @@ mod tests {
         assert_eq!(profile["persona_name"], "coding-assistant");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v17_handles_no_provider_id() {
         // Given a database at v16 with a session having <none> as model.
@@ -626,6 +638,7 @@ mod tests {
         assert_eq!(profile["model"], serde_json::json!({"single": "<none>"}));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v17_is_idempotent() {
         // Given a database at v16 with a session.
@@ -677,6 +690,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v17_adds_model_used_column() {
         // Given a database at v16 (no model_used column).
@@ -698,6 +712,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v18_renames_timestamp_and_preserves_value() {
         // Given a database at v16 (timestamp column, before rename).
@@ -791,6 +806,7 @@ mod tests {
         pool
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v19_rewrites_bare_string_model_in_blob() {
         // Given a database at v18 with a 0.65-shape metadata blob (bare-string model).
@@ -827,6 +843,7 @@ mod tests {
         assert_eq!(profile["persona_name"], "coding-assistant");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v19_leaves_already_object_model_unchanged() {
         // Given a database at v18 with a 0.66-shape blob (model already an object).
@@ -867,6 +884,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v19_leaves_blob_without_model_field_unchanged() {
         // Given a blob whose profile has no model field at all.
@@ -900,6 +918,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v19_preserves_alloy_model() {
         // Given a blob with an Alloy model (object form, must not be re-wrapped as Single).
@@ -960,6 +979,7 @@ mod tests {
         pool
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v20_backfills_null_metadata_and_drops_zombies() {
         // Given a v19 database with one NULL-metadata (pre-v8) row.
@@ -1014,6 +1034,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migrate_v20_backfilled_blob_loads_as_persistable_core() {
         // Given a v19 database with one NULL-metadata (pre-v8) row.
@@ -1039,6 +1060,7 @@ mod tests {
         assert_eq!(meta["title"].as_str(), Some("Legacy"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn migration_failure_rolls_back_to_prior_state() {
         // Given a fresh database poisoned so a mid-chain migration collides.

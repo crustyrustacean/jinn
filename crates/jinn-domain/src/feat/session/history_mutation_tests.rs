@@ -13,6 +13,7 @@ use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::ChangeSource;
 
+#[rstest::rstest]
 #[test]
 fn find_entry_index_by_id_returns_index_for_existing_entry() {
     // Given a session with two entries.
@@ -29,6 +30,7 @@ fn find_entry_index_by_id_returns_index_for_existing_entry() {
     assert_eq!(idx, Some(1));
 }
 
+#[rstest::rstest]
 #[test]
 fn find_entry_index_by_id_returns_none_for_nonexistent_id() {
     // Given a session with one entry.
@@ -43,6 +45,7 @@ fn find_entry_index_by_id_returns_none_for_nonexistent_id() {
     assert!(idx.is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn queue_mutations_appends_nonempty_batch() {
     // Given a session.
@@ -65,6 +68,7 @@ fn queue_mutations_appends_nonempty_batch() {
     assert_eq!(session.drain_pending_mutations().len(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn queue_mutations_ignores_empty_batch() {
     // Given a session.
@@ -77,6 +81,7 @@ fn queue_mutations_ignores_empty_batch() {
     assert!(session.drain_pending_mutations().is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn drain_pending_mutations_empties_the_queue() {
     // Given a session with one queued batch.
@@ -102,6 +107,7 @@ fn drain_pending_mutations_empties_the_queue() {
     assert!(session.drain_pending_mutations().is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_sets_context_override_by_id() {
     // Given a session with one entry.
@@ -125,6 +131,7 @@ fn apply_mutations_sets_context_override_by_id() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_skips_set_context_override_for_nonexistent_id() {
     // Given a session with one entry.
@@ -147,6 +154,7 @@ fn apply_mutations_skips_set_context_override_for_nonexistent_id() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_inserts_entry_after_specified_id() {
     // Given a session with two entries.
@@ -169,6 +177,7 @@ fn apply_mutations_inserts_entry_after_specified_id() {
     assert_eq!(session.history()[1].id, inserted_id);
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_inserts_at_beginning_when_after_id_is_none() {
     // Given a session with one entry.
@@ -188,6 +197,7 @@ fn apply_mutations_inserts_at_beginning_when_after_id_is_none() {
     assert_eq!(session.history()[0].id, inserted_id);
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_skips_insert_for_nonexistent_after_id() {
     // Given a session with one entry.
@@ -204,6 +214,7 @@ fn apply_mutations_skips_insert_for_nonexistent_after_id() {
     assert_eq!(session.history().len(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn insert_entry_shifts_streaming_entry_index() {
     // Given a session with streaming state pointing at index 1.
@@ -228,6 +239,7 @@ fn insert_entry_shifts_streaming_entry_index() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn insert_entry_shifts_streaming_thinking_entry_index() {
     // Given a session with thinking entry at index 1.
@@ -260,6 +272,7 @@ fn insert_entry_shifts_streaming_thinking_entry_index() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn insert_entry_shifts_streaming_tool_call_indices() {
     // Given a session with a tool call tracked at index 1.
@@ -290,6 +303,7 @@ fn insert_entry_shifts_streaming_tool_call_indices() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn insert_entry_shifts_streaming_tool_result_indices() {
     // Given a session with a tool result tracked at index 1.
@@ -324,6 +338,7 @@ fn insert_entry_shifts_streaming_tool_result_indices() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn multiple_insert_entries_in_one_batch_produce_correct_ordering() {
     // Given a session with one entry.
@@ -356,6 +371,7 @@ fn multiple_insert_entries_in_one_batch_produce_correct_ordering() {
     assert_eq!(session.history()[2].id, first_insert_id);
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_pins_entry_by_id() {
     // Given a session with one entry.
@@ -373,6 +389,7 @@ fn apply_mutations_pins_entry_by_id() {
     assert_eq!(session.history()[0].pin_position, Some(PinPosition::Top));
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_skips_pin_for_nonexistent_id() {
     // Given a session with one entry.
@@ -389,6 +406,7 @@ fn apply_mutations_skips_pin_for_nonexistent_id() {
     assert!(session.history()[0].pin_position.is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_unpins_entry_by_id() {
     // Given a session with a pinned entry.
@@ -403,6 +421,7 @@ fn apply_mutations_unpins_entry_by_id() {
     assert!(session.history()[0].pin_position.is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_on_empty_history_is_noop() {
     // Given an empty session.
@@ -434,6 +453,7 @@ fn apply_mutations_on_empty_history_is_noop() {
     assert!(session.history().is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn drain_and_apply_applies_all_batches_in_order() {
     // Given a session with two entries and two queued batches.
@@ -479,6 +499,7 @@ fn drain_and_apply_applies_all_batches_in_order() {
     assert!(session.drain_pending_mutations().is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn drain_and_apply_returns_zero_when_queue_empty() {
     // Given a session with no queued mutations.
@@ -491,6 +512,7 @@ fn drain_and_apply_returns_zero_when_queue_empty() {
     assert_eq!(count, 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn pin_entry_top_sets_position() {
     // Given a session with an entry.
@@ -508,6 +530,7 @@ fn pin_entry_top_sets_position() {
     assert_eq!(session.history()[0].pin_position, Some(PinPosition::Top));
 }
 
+#[rstest::rstest]
 #[test]
 fn pin_entry_bottom_sets_position() {
     // Given a session with an entry.
@@ -525,6 +548,7 @@ fn pin_entry_bottom_sets_position() {
     assert_eq!(session.history()[0].pin_position, Some(PinPosition::Bottom));
 }
 
+#[rstest::rstest]
 #[test]
 fn pin_entry_relative_sets_position() {
     // Given a session with an entry.
@@ -545,6 +569,7 @@ fn pin_entry_relative_sets_position() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn pin_entry_can_change_position() {
     // Given a session with a Top-pinned entry.
@@ -567,6 +592,7 @@ fn pin_entry_can_change_position() {
     assert_eq!(session.history()[0].pin_position, Some(PinPosition::Bottom));
 }
 
+#[rstest::rstest]
 #[test]
 fn set_context_override_forced_include() {
     // Given a session with an entry.
@@ -590,6 +616,7 @@ fn set_context_override_forced_include() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn set_context_override_default_resets_to_default() {
     // Given a session with a ForcedExclude entry.
@@ -624,6 +651,7 @@ fn set_context_override_default_resets_to_default() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn forced_include_is_not_overwritten_by_forced_exclude() {
     // Given a session with an entry that the user force-included.
@@ -659,6 +687,7 @@ fn forced_include_is_not_overwritten_by_forced_exclude() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn forced_include_can_be_changed_to_default() {
     // Given a session with an entry that the user force-included.
@@ -694,6 +723,7 @@ fn forced_include_can_be_changed_to_default() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn unpin_entry_removes_pin_from_pinned_entry() {
     // Given a session with a pinned entry.
@@ -713,6 +743,7 @@ fn unpin_entry_removes_pin_from_pinned_entry() {
     assert!(session.history()[0].pin_position.is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn unpin_entry_on_unpinned_entry_is_noop() {
     // Given a session with an unpinned entry.
@@ -735,6 +766,7 @@ fn worker(name: &str) -> ChangeSource {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn subthreshold_override_is_buffered_not_applied() {
     // Given an idle session with one entry and a high threshold.
@@ -761,6 +793,7 @@ fn subthreshold_override_is_buffered_not_applied() {
     assert_eq!(session.accumulated_overrides_total(), 300);
 }
 
+#[rstest::rstest]
 #[test]
 fn threshold_crossing_flushes_accumulated_overrides() {
     // Given a session with one entry buffered at 9_000.
@@ -795,6 +828,7 @@ fn threshold_crossing_flushes_accumulated_overrides() {
     assert_eq!(session.accumulated_overrides_total(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn repeated_override_for_same_entry_does_not_inflate_total() {
     // Given a session.
@@ -820,6 +854,7 @@ fn repeated_override_for_same_entry_does_not_inflate_total() {
     assert_eq!(session.accumulated_overrides_total(), 300);
 }
 
+#[rstest::rstest]
 #[test]
 fn distinct_entries_sum_their_token_costs() {
     // Given a session with two entries.
@@ -847,6 +882,7 @@ fn distinct_entries_sum_their_token_costs() {
     assert_eq!(session.accumulated_overrides_total(), 1_000);
 }
 
+#[rstest::rstest]
 #[test]
 fn shield_include_displaces_buffered_exclude() {
     // Given a session with a buffered exclude for one entry.
@@ -879,6 +915,7 @@ fn shield_include_displaces_buffered_exclude() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn exclude_cannot_displace_buffered_include() {
     // Given a session with a buffered shield include for one entry.
@@ -913,6 +950,7 @@ fn exclude_cannot_displace_buffered_include() {
 
 /// Routing a sub-threshold exclude and then running the full apply path must
 /// leave the entry unchanged: nothing is queued, so nothing applies.
+#[rstest::rstest]
 #[test]
 fn entry_stays_default_while_accumulator_below_threshold() {
     // Given an idle session with one entry and a high threshold.
@@ -942,6 +980,7 @@ fn entry_stays_default_while_accumulator_below_threshold() {
 
 /// An accumulated exclude only changes the entry's override after the threshold
 /// is crossed and the apply path runs: held at Default below, then ForcedExclude above.
+#[rstest::rstest]
 #[test]
 fn accumulated_exclude_applies_to_entry_only_after_threshold() {
     // Given a session with one entry buffered at 4_000.

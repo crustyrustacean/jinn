@@ -531,6 +531,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn setup_returns_none_on_empty_stdout() {
         // Given a setup command that succeeds with no output (side-effect-only).
@@ -815,6 +816,7 @@ mod tests {
         assert!(failed, "cancel must produce a non-success outcome");
     }
 
+    #[rstest::rstest]
     #[test]
     fn cancel_handle_kills_and_aborts_without_panic() {
         // Given a setup command that sleeps, spawned on a multi-thread runtime

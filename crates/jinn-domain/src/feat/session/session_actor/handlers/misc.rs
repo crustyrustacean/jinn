@@ -312,6 +312,7 @@ mod tests {
     use jinn_provider::{InputModalities, ModelInfo};
     use std::collections::HashMap;
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_models_refreshed_pushes_transient_entry() {
         let (actor, _audit) = test_actor_recording().await;
@@ -339,6 +340,7 @@ mod tests {
         assert!(matches!(&entry.kind, ChatEntryKind::Transient(t) if t.contains("ollama")));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_models_refreshed_empty_results_shows_no_providers_message() {
         let (actor, _audit) = test_actor_recording().await;
@@ -361,6 +363,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_models_refreshed_with_errors_shows_table() {
         let (actor, _audit) = test_actor_recording().await;
@@ -384,6 +387,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn build_models_refresh_table_includes_provider_and_model_count() {
         let mut results = HashMap::new();
@@ -415,6 +419,7 @@ mod tests {
         assert!(table.contains("✅"), "expected success indicator");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_load_session_picker_entries_loads_from_store() {
         let session = crate::feat::session::chat_session::ChatSessionState::new();
@@ -431,6 +436,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_buffers_subthreshold_override_when_idle() {
         // Given a default (10_000) accumulation threshold and one user entry.
@@ -478,6 +484,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_with_empty_batch_is_noop() {
         let (actor, _audit) = test_actor_recording().await;
@@ -500,6 +507,7 @@ mod tests {
         assert!(session.core.ephemeral.pending_mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_creates_session_if_missing() {
         let (actor, _audit) = test_actor_recording().await;
@@ -525,6 +533,7 @@ mod tests {
         assert!(session.core.ephemeral.pending_mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_buffers_prune_override_and_applies_shield_immediately()
     {
@@ -601,6 +610,7 @@ mod tests {
             "only the ForcedExclude (prune) should be buffered; the shield applies immediately"
         );
     }
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_emits_context_override_changed_on_change() {
         let (actor, audit) = test_actor_recording().await;
@@ -638,6 +648,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_does_not_emit_on_noop_mutation() {
         let (actor, audit) = test_actor_recording().await;
@@ -689,6 +700,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn shield_forced_include_override_applies_immediately_not_buffered() {
         // Given a session with one assistant entry and the default 10_000 threshold.
@@ -732,6 +744,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn compaction_forced_exclude_override_applies_immediately_not_buffered() {
         // Given a session with one assistant entry.
