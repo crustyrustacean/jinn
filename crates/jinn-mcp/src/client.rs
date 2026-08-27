@@ -32,12 +32,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use error_stack::{Report, ResultExt};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rmcp::model::{CallToolRequestParams, CallToolResult};
 use rmcp::service::{RoleClient, RunningService, ServiceExt};
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::transport::child_process::TokioChildProcess;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use tokio::io::AsyncBufReadExt;
 use wherror::Error;
 
@@ -151,7 +151,9 @@ pub struct HalfOpenHttp {
 /// Returns an error attaching the offending header **name** if any name or
 /// value is not valid per the HTTP spec; resolved values are never included
 /// in error context.
-fn http_client_with(headers: &[(String, String)]) -> Result<reqwest::Client, Report<McpClientError>> {
+fn http_client_with(
+    headers: &[(String, String)],
+) -> Result<reqwest::Client, Report<McpClientError>> {
     if headers.is_empty() {
         return Ok(reqwest::Client::default());
     }
@@ -692,7 +694,8 @@ mod tests {
         ];
 
         let mut half =
-            McpClient::connect_http("sh", &args, "http://127.0.0.1:<port>/mcp", Vec::new()).expect("spawn");
+            McpClient::connect_http("sh", &args, "http://127.0.0.1:<port>/mcp", Vec::new())
+                .expect("spawn");
 
         // Then the URL is a localhost URL on a real port.
         assert!(half.url.starts_with("http://127.0.0.1:"));
@@ -733,17 +736,20 @@ mod tests {
         // Then it fails, and the report names the header — not its value.
         let err = result.expect_err("invalid name must fail");
         let rendered = format!("{err:?}");
-        assert!(rendered.contains("Bad Header"), "name in report: {rendered}");
-        assert!(!rendered.contains("whatever"), "value must not appear: {rendered}");
+        assert!(
+            rendered.contains("Bad Header"),
+            "name in report: {rendered}"
+        );
+        assert!(
+            !rendered.contains("whatever"),
+            "value must not appear: {rendered}"
+        );
     }
 
     #[test]
     fn invalid_header_value_fails_attaching_name_not_value() {
         // Given a header pair whose value contains an illegal control char.
-        let headers = vec![(
-            "X-Ok".to_owned(),
-            "bad\u{0}value".to_owned(),
-        )];
+        let headers = vec![("X-Ok".to_owned(), "bad\u{0}value".to_owned())];
 
         // When building the HTTP client.
         let result = http_client_with(&headers);
@@ -753,16 +759,22 @@ mod tests {
         let err = result.expect_err("invalid value must fail");
         let rendered = format!("{err:?}");
         let lowered = rendered.to_ascii_lowercase();
-        assert!(lowered.contains("x-ok"), "header name in report: {rendered}");
-        assert!(!rendered.contains('\u{0}'), "raw value must not appear: {rendered}");
+        assert!(
+            lowered.contains("x-ok"),
+            "header name in report: {rendered}"
+        );
+        assert!(
+            !rendered.contains('\u{0}'),
+            "raw value must not appear: {rendered}"
+        );
     }
 
     /// Default headers built by `http_client_with` are sent on real requests.
     #[tokio::test]
     async fn default_headers_are_sent_on_the_wire() {
-        tracing::debug!("wire-capture test: binding capture listener");
-        // Given a TCP listener acting as a raw HTTP capture server.
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        // Given a TCP listener acting as a raw HTTP capture server.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind");
@@ -782,10 +794,8 @@ mod tests {
         // And capturing exactly one connection's request head, bounded by a
         // short wall-clock guard and a loop (TCP fragments — a single `read`
         // is not guaranteed to see the whole head).
-        eprintln!("wire-capture: waiting for connection");
         let captured = tokio::time::timeout(Duration::from_secs(2), async {
-            let (mut sock, peer) = listener.accept().await?;
-            eprintln!("wire-capture: accepted from {peer}");
+            let (mut sock, _) = listener.accept().await?;
             let mut head = String::new();
             let mut buf = [0u8; 1024];
             loop {
@@ -793,12 +803,13 @@ mod tests {
                 if n == 0 {
                     break;
                 }
-                head.push_str(&String::from_utf8_lossy(&buf[..n]));
+                if let Some(chunk) = buf.get(..n) {
+                    head.push_str(&String::from_utf8_lossy(chunk));
+                }
                 if head.contains("\r\n\r\n") {
                     break;
                 }
             }
-            eprintln!("wire-capture: captured {} bytes", head.len());
             // Respond so the pending client send completes instead of
             // deadlocking the test against itself.
             let _ = sock
@@ -809,18 +820,17 @@ mod tests {
         })
         .await;
 
-        // Then the configured header appears on the wire.
-        match &captured {
-            Ok(Ok(head)) => {
-                eprintln!("wire-capture: head = {head:?}");
-                assert!(
-                    head.to_ascii_lowercase()
-                        .contains("authorization: bearer captured-value"),
-                    "expected header on wire, got: {head}"
-                );
-            }
-            other => panic!("wire capture failed (timeout/IO): {other:?}"),
-        }
+        // Then the configured header appears on the wire. The captured head is
+        // included in every failure message for diagnosis (no subscriber wired
+        // in unit tests, so tracing output would be invisible here).
+        let head = captured
+            .expect("capture must finish within 2s")
+            .expect("read");
+        assert!(
+            head.to_ascii_lowercase()
+                .contains("authorization: bearer captured-value"),
+            "expected header on wire, got: {head}"
+        );
 
         // The sender completes once the canned response arrives.
         let _ = request_handle.await;

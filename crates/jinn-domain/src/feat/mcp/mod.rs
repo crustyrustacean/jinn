@@ -152,18 +152,22 @@ pub fn referenced_header_variables(values: &[&str]) -> BTreeSet<String> {
     for value in values {
         let mut rest: &str = value;
         while let Some(dollar) = rest.find("${") {
-            let scan = &rest[dollar + 2..];
+            // All offsets come from `find`, which only returns char-boundary
+            // positions, so these `get`s always succeed.
+            let Some(scan) = rest.get(dollar + 2..) else {
+                break;
+            };
             match scan.find('}') {
                 Some(close) => {
-                    let candidate = &scan[..close];
+                    let candidate = scan.get(..close).unwrap_or_default();
                     let mut chars = candidate.chars();
-                    let head_ok =
-                        chars.next().is_some_and(is_env_name_start);
+                    let head_ok = chars.next().is_some_and(is_env_name_start);
                     let tail_ok = chars.all(is_env_name_continue);
                     if head_ok && tail_ok {
                         names.insert(candidate.to_owned());
                     }
-                    rest = &scan[close + 1..]; // resume after the closing brace
+                    // Resume after the closing brace.
+                    rest = scan.get(close + 1..).unwrap_or_default();
                 }
                 None => break, // unterminated: nothing more to find
             }
@@ -198,34 +202,36 @@ pub fn expand_header_value(
     let mut out = String::with_capacity(raw.len());
     let mut rest = raw;
     while let Some(dollar) = rest.find("${") {
-        out.push_str(&rest[..dollar]);
-        // Scope the scan region so `rest` always advances — this is what
-        // guarantees termination even on malformed tokens like "${no-close".
+        if let Some(prefix) = rest.get(..dollar) {
+            out.push_str(prefix);
+        }
+        // All offsets come from `find`, which only returns char-boundary
+        // positions, so these `get`s always succeed. Scoping keeps `rest`
+        // always advancing — this is what guarantees termination even on
+        // malformed tokens like "${no-close".
         let after_token_start = {
-            let scan = &rest[dollar + 2..];
+            let scan = rest.get(dollar + 2..).unwrap_or_default();
             match scan.find('}') {
                 // Well-formed: validate every char between ${ and }.
                 Some(close) => {
-                    let mut chars = scan[..close].chars();
-                    let head_ok =
-                        chars.next().is_some_and(is_env_name_start);
+                    let region = scan.get(..close).unwrap_or_default();
+                    let mut chars = region.chars();
+                    let head_ok = chars.next().is_some_and(is_env_name_start);
                     let tail_ok = chars.all(is_env_name_continue);
                     if head_ok && tail_ok {
-                        let name = &scan[..close];
+                        let name = region;
                         let value = resolve(name).unwrap_or_default();
                         if value.is_empty() {
-                            return Err(Report::new(
-                                HeaderExpandError::UnresolvedVariable {
-                                    variable: name.to_owned(),
-                                },
-                            ));
+                            return Err(Report::new(HeaderExpandError::UnresolvedVariable {
+                                variable: name.to_owned(),
+                            }));
                         }
                         out.push_str(&value);
                         2 + close + 1 // consumed "${NAME}"
                     } else {
                         // Bad name characters: copy the whole "${...}" literally.
                         out.push_str("${");
-                        out.push_str(&scan[..close]);
+                        out.push_str(region);
                         out.push('}');
                         2 + close + 1
                     }
@@ -238,7 +244,7 @@ pub fn expand_header_value(
                 }
             }
         };
-        rest = &rest[dollar + after_token_start..];
+        rest = rest.get(dollar + after_token_start..).unwrap_or_default();
     }
     out.push_str(rest);
     Ok(out)
@@ -270,7 +276,12 @@ pub fn expand_mcp_headers(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, reason = "test assertions")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::items_after_statements,
+        reason = "test assertions"
+    )]
     use super::*;
 
     #[test]
@@ -436,12 +447,10 @@ mod tests {
     fn bearer_prefix_survives_expansion() {
         // Given a header value embedding one token inside a scheme prefix,
         // backed by a resolver supplying the secret.
-        let resolve =
-            |name: &str| (name == "T_KEY").then(|| "secret-value".to_owned());
+        let resolve = |name: &str| (name == "T_KEY").then(|| "secret-value".to_owned());
 
         // When expanding the value.
-        let expanded =
-            expand_header_value("Bearer ${T_KEY}", &resolve).expect("expand");
+        let expanded = expand_header_value("Bearer ${T_KEY}", &resolve).expect("expand");
 
         // Then the prefix and secret are spliced together.
         assert_eq!(expanded, "Bearer secret-value");
@@ -467,8 +476,7 @@ mod tests {
     fn value_without_tokens_is_literal() {
         // Given a plain literal value.
         // When expanding.
-        let expanded =
-            expand_header_value("plaintext", &|_| None).expect("expand");
+        let expanded = expand_header_value("plaintext", &|_| None).expect("expand");
 
         // Then it passes through unchanged even though nothing resolves.
         assert_eq!(expanded, "plaintext");
@@ -526,12 +534,10 @@ mod tests {
     #[test]
     fn malformed_then_valid_token_still_expands_valid() {
         // Given a value mixing a malformed construct with a real variable.
-        let resolve =
-            |name: &str| (name == "GOOD").then(|| "yes".to_owned());
+        let resolve = |name: &str| (name == "GOOD").then(|| "yes".to_owned());
 
         // When expanding.
-        let expanded =
-            expand_header_value("${no-close}${GOOD}", &resolve).expect("expand");
+        let expanded = expand_header_value("${no-close}${GOOD}", &resolve).expect("expand");
 
         // Then the malformed part stays literal and the valid token expands.
         assert_eq!(expanded, "${no-close}yes");
@@ -552,8 +558,7 @@ mod tests {
     #[test]
     fn double_dollar_prefix_expands_inner_token() {
         // Given "$${VAR}" — dollar immediately before an open delimiter.
-        let resolve =
-            |name: &str| (name == "VAR").then(|| "val".to_owned());
+        let resolve = |name: &str| (name == "VAR").then(|| "val".to_owned());
 
         // When expanding.
         let expanded = expand_header_value("$${VAR}", &resolve).expect("expand");

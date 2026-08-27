@@ -120,19 +120,20 @@ async fn spawn_auth_gated_http_server(expected: &'static str) -> (String, Cancel
             StreamableHttpServerConfig::default(),
         );
     let expected_value = axum::http::HeaderValue::from_str(expected).expect("header-safe value");
-    let router = axum::Router::new()
-        .nest_service("/mcp", service)
-        .layer(axum::middleware::from_fn(
-            move |req: axum::http::Request<axum::body::Body>, next: axum::middleware::Next| {
-                let expected = expected_value.clone();
-                async move {
-                    if req.headers().get(axum::http::header::AUTHORIZATION) != Some(&expected) {
-                        return Err(axum::http::StatusCode::UNAUTHORIZED);
+    let router =
+        axum::Router::new()
+            .nest_service("/mcp", service)
+            .layer(axum::middleware::from_fn(
+                move |req: axum::http::Request<axum::body::Body>, next: axum::middleware::Next| {
+                    let expected = expected_value.clone();
+                    async move {
+                        if req.headers().get(axum::http::header::AUTHORIZATION) != Some(&expected) {
+                            return Err(axum::http::StatusCode::UNAUTHORIZED);
+                        }
+                        Ok(next.run(req).await)
                     }
-                    Ok(next.run(req).await)
-                }
-            },
-        ));
+                },
+            ));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("listener binds");
@@ -167,10 +168,13 @@ async fn http_roundtrip_lists_and_calls_tools() {
     let (url, shutdown) = spawn_http_server().await;
 
     // When connecting to it via the remote-HTTP path (no child process).
-    let mut client = tokio::time::timeout(Duration::from_secs(5), McpClient::connect_remote(&url, Vec::new()))
-        .await
-        .expect("connect should complete within 5s")
-        .expect("connect should succeed against a live server");
+    let mut client = tokio::time::timeout(
+        Duration::from_secs(5),
+        McpClient::connect_remote(&url, Vec::new()),
+    )
+    .await
+    .expect("connect should complete within 5s")
+    .expect("connect should succeed against a live server");
 
     // Then tools/list advertises the `echo` tool.
     let tools = client.list_tools().await.expect("tools/list succeeds");
