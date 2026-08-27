@@ -1,5 +1,7 @@
 ## (development - unreleased) v0.110.0
 
+- MCP server entries accept a `headers` map; values support `${VAR}` env-var token expansion anywhere in the string, applied to both `local_http` and `remote_http` connections and ignored on stdio.
+- MCP header variables are resolved once at startup into the shared key store alongside provider keys; an unset or empty variable prevents connection with an error naming the variable, and header values are never logged or rendered.
 - Move citation tracking into plugin.
 - Disabling an MCP server now removes it's associated tool calls from the session tool listing.
 

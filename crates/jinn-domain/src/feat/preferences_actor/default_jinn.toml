@@ -121,6 +121,16 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # [mcp_server.remote]
 # transport = "remote_http"
 # url = "http://localhost:3001/mcp"
+#
+# HTTP headers (local_http and remote_http only; ignored on stdio).
+# Values may embed ${ENV_VAR} tokens — expanded from your environment once
+# at startup. Changing a variable requires a jinn restart to take effect.
+# A variable that is unset or empty keeps the server from connecting and
+# names the variable in the failure; header values are never logged.
+#
+# [mcp_server.remote.headers]
+# Authorization = "Bearer ${MY_API_KEY}"
+# X-Api-Key = "${OTHER_KEY}"
 
 # ---------------------------------------------------------------------------
 # Default-disabled tools and skills
