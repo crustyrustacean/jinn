@@ -162,10 +162,7 @@ impl LlmService for RetryingLlmService {
         messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>> {
         let system = system_prompt.map(std::borrow::ToOwned::to_owned);
-        self.retry_loop(|| {
-            self.inner
-                .chat_stream(system.as_deref(), messages.clone())
-        })
+        self.retry_loop(|| self.inner.chat_stream(system.as_deref(), messages.clone()))
             .await
     }
 
@@ -177,11 +174,8 @@ impl LlmService for RetryingLlmService {
     ) -> Result<ToolStream, Report<LlmServiceError>> {
         let system = system_prompt.map(std::borrow::ToOwned::to_owned);
         self.retry_loop(|| {
-            self.inner.chat_stream_with_tools(
-                system.as_deref(),
-                messages.clone(),
-                tools.clone(),
-            )
+            self.inner
+                .chat_stream_with_tools(system.as_deref(), messages.clone(), tools.clone())
         })
         .await
     }

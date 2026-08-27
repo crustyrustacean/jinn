@@ -39,8 +39,7 @@ pub fn build_request(
     let system_text = system_prompt.map(std::borrow::ToOwned::to_owned);
 
     // All messages go into the messages array.
-    let anthropic_messages: Vec<serde_json::Value> =
-        messages.iter().map(message_to_json).collect();
+    let anthropic_messages: Vec<serde_json::Value> = messages.iter().map(message_to_json).collect();
 
     let anthropic_tools = if tools.is_empty() {
         None

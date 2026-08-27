@@ -31,7 +31,11 @@ impl SystemPrompt {
     /// Wraps prompt content. An empty string becomes [`None`].
     #[must_use]
     pub fn new(content: String) -> Self {
-        Self(if content.is_empty() { None } else { Some(content) })
+        Self(if content.is_empty() {
+            None
+        } else {
+            Some(content)
+        })
     }
 
     /// The prompt content, if any.
@@ -203,10 +207,7 @@ pub fn assemble_prompt(
         } else {
             context_files
         };
-        vec![
-            persona_section(persona),
-            context_files_section(files),
-        ]
+        vec![persona_section(persona), context_files_section(files)]
     };
 
     // Check for system prompt override.
@@ -1449,7 +1450,9 @@ mod tests {
         match (&result.messages[0], &result.messages[1]) {
             (
                 LlmMessage::User { content: first, .. },
-                LlmMessage::User { content: second, .. },
+                LlmMessage::User {
+                    content: second, ..
+                },
             ) => {
                 assert_eq!(first, "[System] System stuff");
                 assert_eq!(second, "pinned user");

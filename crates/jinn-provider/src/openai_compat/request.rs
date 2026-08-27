@@ -333,7 +333,10 @@ mod tests {
         assert_eq!(req.messages[0]["role"], "system");
         assert_eq!(req.messages[0]["content"], "You are helpful.");
         assert_eq!(req.messages[1]["role"], "user");
-        assert_eq!(req.messages[1]["content"].as_str().unwrap(), "first\n\nsecond");
+        assert_eq!(
+            req.messages[1]["content"].as_str().unwrap(),
+            "first\n\nsecond"
+        );
     }
 
     #[rstest::rstest]

@@ -339,10 +339,13 @@ async fn chat_stream_yields_text_tokens_only() {
         .await;
 
     let stream = service
-        .chat_stream(None, vec![LlmMessage::User {
-            content: "hi".into(),
-            attachments: Vec::new(),
-        }])
+        .chat_stream(
+            None,
+            vec![LlmMessage::User {
+                content: "hi".into(),
+                attachments: Vec::new(),
+            }],
+        )
         .await
         .unwrap();
 

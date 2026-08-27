@@ -17,7 +17,10 @@ async fn fake_service_yields_configured_tokens() {
 
     // When creating a service and streaming.
     let service = factory.create().expect("create service");
-    let stream = service.chat_stream(None, vec![]).await.expect("chat_stream");
+    let stream = service
+        .chat_stream(None, vec![])
+        .await
+        .expect("chat_stream");
     let tokens: Vec<String> = StreamExt::map(stream, |r| r.expect("token"))
         .collect()
         .await;
@@ -34,7 +37,10 @@ async fn fake_service_empty_tokens() {
 
     // When creating a service and streaming.
     let service = factory.create().expect("create service");
-    let stream = service.chat_stream(None, vec![]).await.expect("chat_stream");
+    let stream = service
+        .chat_stream(None, vec![])
+        .await
+        .expect("chat_stream");
     let tokens: Vec<String> = stream.map(|r| r.expect("token")).collect().await;
 
     // Then no tokens are produced.
