@@ -968,6 +968,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_stream_completed_error_reason_removes_session() {
         // Given an LLM actor with a streaming session.
@@ -997,6 +998,7 @@ mod tests {
         assert!(actor.sessions.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_stream_completed_finished_reason_removes_session() {
         // Given an LLM actor with a streaming session.
@@ -1029,6 +1031,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_stream_completed_tool_use_keeps_session() {
         // Given an LLM actor with a streaming session.
@@ -1061,6 +1064,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_stream_completed_unknown_session_is_noop() {
         // Given an LLM actor with NO sessions.
@@ -1087,6 +1091,7 @@ mod tests {
         assert!(actor.sessions.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn cancel_stream_removes_session_and_task() {
         // Given an LLM actor with a session and a spawned task.
@@ -1107,6 +1112,7 @@ mod tests {
         assert!(!actor.tasks.contains_key(&session_id));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn cancel_stream_without_session_emits_nothing() {
         // Given a test harness with the LLM actor and a recorder.
@@ -1136,6 +1142,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn start_stream_emits_stream_completed_with_tokens() {
         // Given a test harness with an LLM actor.
@@ -1189,6 +1196,7 @@ mod tests {
         assert_eq!(token_events[1].index, 1, "second token index should be 1");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn start_stream_aborts_existing_stream_for_same_session() {
         // Given an LLM actor with an existing stream for a session.
@@ -1225,6 +1233,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn start_stream_sets_session_to_streaming() {
         // Given an LLM actor.
@@ -1256,6 +1265,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_send_to_llm_via_bus() {
         // Given a test harness with an LLM actor.
@@ -1296,6 +1306,7 @@ mod tests {
         assert!(found, "should emit StreamCompleted(Finished)");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_cancel_stream_with_no_active_stream_is_noop() {
         // Given a test harness with an LLM actor.
@@ -1329,6 +1340,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn cancel_stream_via_bus_emits_completion() {
         // Given a test harness with an LLM actor using a never-completing fake.
@@ -1376,6 +1388,7 @@ mod tests {
         assert!(found, "should emit StreamCompleted(Canceled)");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stream_error_emits_chat_entry_and_completion_via_bus() {
         // Given a test harness with an LLM actor using an immediately-erroring fake.
@@ -1452,6 +1465,7 @@ mod tests {
         Box::pin(futures::stream::iter(events))
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn process_stream_events_completes_on_done_event() {
         // Given a stream that yields a token then Done.
@@ -1485,6 +1499,7 @@ mod tests {
         assert!(found, "Done should complete the stream");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn process_stream_events_publishes_citations_on_done_when_accumulated() {
         // Given a stream carrying url_citation annotations then Done.
@@ -1579,6 +1594,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_done_event_publishes_stream_completed_before_execute_tool_batch() {
         // Given a bus with an OrderLog recording both message types.

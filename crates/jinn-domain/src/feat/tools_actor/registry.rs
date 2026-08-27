@@ -71,6 +71,7 @@ mod tests {
     #![allow(clippy::expect_used, reason = "test assertions")]
     use super::builtin_tools;
 
+    #[rstest::rstest]
     #[test]
     fn restart_mcp_server_is_registered() {
         // Given the builtin tool list.

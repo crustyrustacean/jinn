@@ -37,6 +37,7 @@ fn mint_cap() -> crate::common::tcaps::frontend::FrontendCap {
 
 // ── resolve_list_dir ───────────────────────────────────────────────────────
 
+#[rstest::rstest]
 #[test]
 fn resolve_empty_filter_returns_cwd() {
     // Given a cwd and home.
@@ -50,6 +51,7 @@ fn resolve_empty_filter_returns_cwd() {
     assert_eq!(dir, cwd);
 }
 
+#[rstest::rstest]
 #[test]
 fn resolve_absolute_filter_returns_path_as_is() {
     // Given a cwd, home, and an absolute filter.
@@ -63,6 +65,7 @@ fn resolve_absolute_filter_returns_path_as_is() {
     assert_eq!(dir, PathBuf::from("/etc"));
 }
 
+#[rstest::rstest]
 #[test]
 fn resolve_tilde_filter_returns_home() {
     // Given a cwd and home.
@@ -76,6 +79,7 @@ fn resolve_tilde_filter_returns_home() {
     assert_eq!(dir, home);
 }
 
+#[rstest::rstest]
 #[test]
 fn resolve_tilde_slash_filter_returns_home_subpath() {
     // Given a cwd and home.
@@ -89,6 +93,7 @@ fn resolve_tilde_slash_filter_returns_home_subpath() {
     assert_eq!(dir, PathBuf::from("/home/u/sub"));
 }
 
+#[rstest::rstest]
 #[test]
 fn resolve_relative_filter_joins_cwd() {
     // Given a cwd and home.
@@ -104,6 +109,7 @@ fn resolve_relative_filter_joins_cwd() {
 
 // ── FileEntry / FilePickerState ────────────────────────────────────────────
 
+#[rstest::rstest]
 #[test]
 fn visible_entries_returns_all_when_filter_empty() {
     // Given a picker with two entries.
@@ -127,6 +133,7 @@ fn visible_entries_returns_all_when_filter_empty() {
     assert_eq!(visible[1].name, "b");
 }
 
+#[rstest::rstest]
 #[test]
 fn visible_entries_narrows_by_last_segment() {
     // Given a picker with several entries.
@@ -146,6 +153,7 @@ fn visible_entries_narrows_by_last_segment() {
     assert_eq!(visible[1].name, "srv");
 }
 
+#[rstest::rstest]
 #[test]
 fn visible_entries_is_case_insensitive() {
     // Given a picker with mixed-case entries.
@@ -164,6 +172,7 @@ fn visible_entries_is_case_insensitive() {
     assert_eq!(visible[1].name, "readme.txt");
 }
 
+#[rstest::rstest]
 #[test]
 fn visible_entries_uses_segment_after_last_slash() {
     // Given a picker and a filter that has already descended.
@@ -182,6 +191,7 @@ fn visible_entries_uses_segment_after_last_slash() {
     assert_eq!(visible[1].name, "srv");
 }
 
+#[rstest::rstest]
 #[test]
 fn visible_entries_all_after_trailing_slash() {
     // Given a picker.
@@ -247,6 +257,7 @@ async fn spawn_actor(
     actor
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn actor_reads_directory_entries_into_file_picker() {
     // Given a temp dir with a file and a subdirectory.
@@ -288,6 +299,7 @@ async fn actor_reads_directory_entries_into_file_picker() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn actor_drops_stale_reply_when_request_id_mismatches() {
     // Given a temp dir with one file.
@@ -320,6 +332,7 @@ async fn actor_drops_stale_reply_when_request_id_mismatches() {
     assert!(loading, "stale reply must not clear loading");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn actor_returns_empty_for_nonexistent_directory() {
     // Given an actor and a path that does not exist.
@@ -349,6 +362,7 @@ async fn actor_returns_empty_for_nonexistent_directory() {
     assert!(!loading, "loading should be cleared even on read error");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn actor_lists_hidden_files() {
     // Given a temp dir with a dotfile and a regular file.

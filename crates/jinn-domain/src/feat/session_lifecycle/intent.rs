@@ -1547,6 +1547,7 @@ mod tests {
         state
     }
 
+    #[rstest::rstest]
     #[test]
     fn rerun_setup_noop_when_no_lifecycle() {
         // Given a session with no lifecycle name in NothingRan state.
@@ -1563,6 +1564,7 @@ mod tests {
         assert!(result.message_names.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn rerun_setup_noop_when_no_setup_command() {
         // Given a session with a lifecycle that has no setup command.
@@ -1592,6 +1594,7 @@ mod tests {
         assert!(result.message_names.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn rerun_setup_noop_when_not_nothing_ran() {
         // Given a session that has already run setup (SetupRan state).
@@ -1605,6 +1608,7 @@ mod tests {
         assert!(result.message_names.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn rerun_setup_noop_when_no_selection() {
         // Given a sidebar sessions view with no selected index.
@@ -1621,6 +1625,7 @@ mod tests {
         assert!(result.message_names.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn rerun_setup_emits_commands_when_valid() {
         // Given a session in NothingRan with a setup command.
@@ -1638,6 +1643,7 @@ mod tests {
         assert!(result.message_names[1].contains("RunSessionSetup"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn abandon_via_enter_normal_mode_clears_pending_session_cwd() {
         // Given a state with a pending session CWD override stashed from a

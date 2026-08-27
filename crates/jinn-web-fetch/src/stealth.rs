@@ -190,6 +190,7 @@ mod tests {
 
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn build_user_agent_targets_current_host_os() {
         // Given the host's target_os.
@@ -205,6 +206,7 @@ mod tests {
         assert!(ua.contains("X11; Linux x86_64"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn build_user_agent_templates_the_major_version() {
         // Given a detected major version of 138.
@@ -216,6 +218,7 @@ mod tests {
         assert!(ua.contains("Chrome/138.0.0.0"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn fallback_user_agent_uses_chrome_major_const() {
         // Given the fallback path.
@@ -226,6 +229,7 @@ mod tests {
         assert!(ua.contains(&format!("Chrome/{CHROME_MAJOR}.0.0.0")));
     }
 
+    #[rstest::rstest]
     #[test]
     fn default_settings_use_fallback_ua_and_default_timeout() {
         // Given default stealth settings.
@@ -238,6 +242,7 @@ mod tests {
         assert_eq!(settings.anubis_timeout, Duration::from_secs(30));
     }
 
+    #[rstest::rstest]
     #[test]
     fn override_takes_precedence_over_derived_ua() {
         // Given an explicit UA override.
@@ -250,6 +255,7 @@ mod tests {
         assert_eq!(settings.user_agent, custom);
     }
 
+    #[rstest::rstest]
     #[test]
     fn override_none_falls_back_to_fallback_ua() {
         // Given no override.
@@ -260,6 +266,7 @@ mod tests {
         assert_eq!(settings.user_agent, fallback_user_agent());
     }
 
+    #[rstest::rstest]
     #[test]
     fn accept_language_is_present_in_defaults() {
         // Given default settings.

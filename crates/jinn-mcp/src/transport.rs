@@ -66,6 +66,7 @@ mod tests {
     #![allow(clippy::expect_used, reason = "test assertions")]
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn pick_free_port_returns_a_rebindable_port() {
         // When allocating a port on loopback.
@@ -79,6 +80,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn pick_free_port_returns_distinct_ports_across_calls() {
         // When allocating two ports in quick succession.
@@ -89,6 +91,7 @@ mod tests {
         assert_ne!(a, b);
     }
 
+    #[rstest::rstest]
     #[test]
     fn pick_free_port_rejects_invalid_bind_addr() {
         // When allocating with an invalid address.
@@ -98,6 +101,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[rstest::rstest]
     #[test]
     fn expand_tokens_replaces_ip_and_port() {
         // Given args with both tokens.
@@ -119,6 +123,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn expand_tokens_passes_through_args_without_tokens() {
         // Given args with no tokens.
@@ -131,6 +136,7 @@ mod tests {
         assert_eq!(out, vec!["--stdio", "--verbose"]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_host_extracts_from_url_with_port_token() {
         // Given a url template with <port> token.
@@ -141,6 +147,7 @@ mod tests {
         assert_eq!(host, "127.0.0.1");
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_host_extracts_from_url_without_path() {
         // Given a url template with no path.
@@ -151,6 +158,7 @@ mod tests {
         assert_eq!(host, "0.0.0.0");
     }
 
+    #[rstest::rstest]
     #[test]
     fn expand_tokens_handles_multiple_tokens_per_arg() {
         // Given an arg containing both tokens (e.g. a combined URL-ish arg).
@@ -163,6 +171,7 @@ mod tests {
         assert_eq!(out, vec!["http://0.0.0.0:8080/mcp"]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn expand_tokens_replaces_port_in_url_template() {
         // Given a url template with a <port> token (as used by local_http).

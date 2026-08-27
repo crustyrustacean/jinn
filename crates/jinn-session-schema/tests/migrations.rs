@@ -3,6 +3,7 @@
 use jinn_session_schema::run_migrations;
 
 /// `_migrations` tracking row at v24.
+#[rstest::rstest]
 #[test]
 fn fresh_database_has_all_tables_and_v21() {
     // Given a fresh in-memory database.
@@ -71,6 +72,7 @@ fn fresh_database_has_all_tables_and_v21() {
 
 /// Re-running `run_migrations` on a fully-migrated database is a no-op: the
 /// version guards (`current < N`) prevent re-application.
+#[rstest::rstest]
 #[test]
 fn re_running_migrations_is_noop() {
     let mut conn = rusqlite::Connection::open_in_memory().expect("open in-memory db");
@@ -92,6 +94,7 @@ fn re_running_migrations_is_noop() {
 }
 
 /// The v20 rebuild left `sessions` with exactly the nine authoritative columns.
+#[rstest::rstest]
 #[test]
 fn sessions_has_nine_authoritative_columns() {
     let mut conn = rusqlite::Connection::open_in_memory().expect("open in-memory db");
@@ -125,6 +128,7 @@ fn sessions_has_nine_authoritative_columns() {
 /// v23 strips the legacy `s-` prefix from every persisted session-id
 /// location: the five SQL columns plus the `session_id` and
 /// `parent_session` keys inside the `sessions.metadata` JSON blob.
+#[rstest::rstest]
 #[test]
 #[cfg(feature = "testing")]
 fn v23_strips_s_prefix_from_all_session_id_locations() {

@@ -55,6 +55,7 @@ mod register_tests {
     use super::*;
     use crate::common::AppUiRegistry;
 
+    #[rstest::rstest]
     #[test]
     fn register_adds_element_to_registry() {
         // Given an empty registry.

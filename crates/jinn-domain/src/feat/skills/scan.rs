@@ -407,6 +407,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn scan_skills_merged_system_only() {
         // Given a system dir with one skill, no global, no project dirs.
@@ -429,6 +430,7 @@ mod tests {
         assert_eq!(skills[0].source, SkillSource::Global);
     }
 
+    #[rstest::rstest]
     #[test]
     fn scan_skills_merged_global_overrides_system() {
         // Given a system dir and a global dir with same-named skill.

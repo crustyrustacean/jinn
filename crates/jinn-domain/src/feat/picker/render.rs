@@ -194,6 +194,7 @@ mod tests {
     /// Two skills with the same name but different bodies (the cross-session
     /// project/global shadowing shape) must occupy distinct cache entries — the
     /// body-hash key means neither can ever be served the other's markdown.
+    #[rstest::rstest]
     #[test]
     fn render_skill_picker_same_name_different_bodies_cache_independently() {
         // Given a picker holding two same-named skills with different bodies
@@ -250,6 +251,7 @@ mod tests {
 
     /// Rendering the skill picker with the same selection and width populates the
     /// preview cache exactly once; the second render is a cache hit (no re-render).
+    #[rstest::rstest]
     #[test]
     fn render_skill_picker_caches_preview_per_skill_and_width() {
         // Given a picker populated with two skills and a selection on the first.
@@ -300,6 +302,7 @@ mod tests {
 
     /// Navigating from skill A -> B -> A should not re-render A on return; the
     /// cache should hold exactly {A, B} entries, proving A was a hit on the way back.
+    #[rstest::rstest]
     #[test]
     fn render_skill_picker_switch_and_back_does_not_re_render_cached_skill() {
         // Given a picker with two skills, selection on the first.
@@ -371,6 +374,7 @@ mod tests {
 
     /// Resizing the terminal (width change) re-renders for the new width; the cache
     /// holds two width-keyed entries for the same skill.
+    #[rstest::rstest]
     #[test]
     fn render_skill_picker_width_change_creates_new_cache_entry() {
         // Given a picker with one skill.
@@ -428,6 +432,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn render_project_picker_footer_documents_keybindings() {
         // Given a project picker with one entry.

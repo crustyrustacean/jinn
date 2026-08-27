@@ -384,6 +384,7 @@ mod tests {
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_emits_send_to_llm_provider() {
         let (actor, audit) = test_actor_recording().await;
@@ -419,6 +420,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_batch_completed_via_bus_emits_continuation() {
         // Given a spawned session actor with a tool-call entry in its history.
@@ -487,6 +489,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stream_completed_survives_token_burst_on_unbounded_mailbox() {
         // Regression guard for the unbounded-mailbox fix. Production log
@@ -599,6 +602,7 @@ mod tests {
         drop(actor_ref);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_transitions_session_to_sending() {
         let (actor, _audit) = test_actor_recording().await;
@@ -622,6 +626,7 @@ mod tests {
         assert!(matches!(session.phase(), PhaseKind::Streaming));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_batch_completed_buffers_when_session_is_streaming() {
         // Given a session in Streaming phase (StreamCompleted(ToolUse) not yet processed).
@@ -661,6 +666,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stream_completed_tool_use_drains_buffered_tool_batch() {
         // Given a Streaming session with a buffered ToolBatchCompleted.
@@ -710,6 +716,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
         let (actor, _audit) = test_actor_recording().await;
@@ -759,6 +766,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_execution_completed_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
@@ -795,6 +803,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_execution_completed_dropped_when_not_sending() {
         // Given a session driven to Idle via the cancel path.
@@ -848,6 +857,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_dropped_when_not_sending() {
         // Given a session driven to Idle via the cancel path.
@@ -900,6 +910,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_skips_send_when_tool_loop_disabled() {
         let (actor, audit) = test_actor_recording().await;
@@ -949,6 +960,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_unaffected_without_tool_loop_disabled() {
         let (actor, audit) = test_actor_recording().await;
@@ -985,6 +997,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_use_started_creates_tool_call_entry() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1012,6 +1025,7 @@ mod tests {
         assert!(tc.is_some(), "expected ToolCall entry with id tc-1");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
         // Given a session in streaming state.
@@ -1049,6 +1063,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_call_received_finalizes_arguments() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1087,6 +1102,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_call_streaming_appends_delta() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1121,6 +1137,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_execution_started_creates_pending_result() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1148,6 +1165,7 @@ mod tests {
         assert!(tr.is_some(), "expected ToolResult entry with id tc-1");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_execution_output_appends_to_pending_result() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1185,6 +1203,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_applies_pending_mutations() {
         let (actor, audit) = test_actor_recording().await;
@@ -1245,6 +1264,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_empty_mutation_queue_is_noop() {
         let (actor, audit) = test_actor_recording().await;
@@ -1281,6 +1301,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_drained_steering_entry_lands_after_tool_results() {
         let (actor, _audit) = test_actor_recording().await;

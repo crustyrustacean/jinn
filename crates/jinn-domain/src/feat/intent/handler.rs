@@ -1051,6 +1051,7 @@ mod tests {
         assert!(result.message_names.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn insert_char_routes_to_arg_input_when_scope_is_arg_input() {
         // Given ArgInput scope is active.
@@ -1076,6 +1077,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn insert_char_routes_to_chat_input_when_scope_is_normal() {
         // Given Normal scope (default) with Input overlay.
@@ -1093,6 +1095,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn delete_grapheme_routes_to_arg_input_when_scope_is_arg_input() {
         // Given ArgInput scope with some text.
@@ -1114,6 +1117,7 @@ mod tests {
         assert_eq!(state.frontend.arg_input.text.input, "ab");
     }
 
+    #[rstest::rstest]
     #[test]
     fn move_cursor_left_routes_to_arg_input_when_scope_is_arg_input() {
         // Given ArgInput scope with cursor at end.
@@ -1135,6 +1139,7 @@ mod tests {
         assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
     }
 
+    #[rstest::rstest]
     #[test]
     fn move_cursor_right_routes_to_arg_input_when_scope_is_arg_input() {
         // Given ArgInput scope with cursor at start.
@@ -1156,6 +1161,7 @@ mod tests {
         assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
     }
 
+    #[rstest::rstest]
     #[test]
     fn delete_forward_routes_to_arg_input_when_scope_is_arg_input() {
         // Given ArgInput scope with cursor at start.
@@ -1177,6 +1183,7 @@ mod tests {
         assert_eq!(state.frontend.arg_input.text.input, "ac");
     }
 
+    #[rstest::rstest]
     #[test]
     fn enter_normal_mode_pops_arg_input_scope() {
         // Given ArgInput scope is active.
@@ -1202,6 +1209,7 @@ mod tests {
         assert!(state.frontend.arg_input.text.input.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn paste_text_in_picker_scope_routes_to_picker() {
         // Given Picker scope is active.
@@ -1222,6 +1230,7 @@ mod tests {
         // The picker query filter is updated.
     }
 
+    #[rstest::rstest]
     #[test]
     fn paste_text_in_rename_session_scope_routes_to_rename() {
         // Given RenameSessionInput scope is active.
@@ -1249,6 +1258,7 @@ mod tests {
         assert_eq!(state.frontend.rename_session_input.text.input, "old new");
     }
 
+    #[rstest::rstest]
     #[test]
     fn cancel_stream_prompt_esc_confirms() {
         // Given cancel_stream_prompt is showing.
@@ -1270,6 +1280,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn cancel_stream_prompt_other_intent_dismisses() {
         // Given cancel_stream_prompt is showing.
@@ -1283,6 +1294,7 @@ mod tests {
         assert!(!state.frontend.cancel_stream_prompt);
     }
 
+    #[rstest::rstest]
     #[test]
     fn cancel_stream_prompt_not_showing_returns_none() {
         // Given cancel_stream_prompt is NOT showing.
@@ -1297,6 +1309,7 @@ mod tests {
         assert!(!state.frontend.cancel_stream_prompt);
     }
 
+    #[rstest::rstest]
     #[test]
     fn close_session_prompt_sidebar_close_confirms() {
         // Given close_session_prompt is showing.
@@ -1310,6 +1323,7 @@ mod tests {
         assert!(!state.frontend.close_session_prompt);
     }
 
+    #[rstest::rstest]
     #[test]
     fn close_session_prompt_other_intent_dismisses() {
         // Given close_session_prompt is showing.
@@ -1323,6 +1337,7 @@ mod tests {
         assert!(!state.frontend.close_session_prompt);
     }
 
+    #[rstest::rstest]
     #[test]
     fn cancel_stream_prompt_noop_dismisses() {
         // Given cancel_stream_prompt is showing.
@@ -1344,6 +1359,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn close_session_prompt_noop_dismisses() {
         // Given close_session_prompt is showing.
@@ -1357,6 +1373,7 @@ mod tests {
         assert!(!state.frontend.close_session_prompt);
     }
 
+    #[rstest::rstest]
     #[test]
     fn noop_is_empty_when_no_prompt() {
         // Given default state with no prompts showing.

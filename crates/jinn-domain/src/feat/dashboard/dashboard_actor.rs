@@ -252,6 +252,7 @@ mod tests {
         actor
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn actor_starting_event_creates_entry_with_starting_lifecycle() {
         // Given a DashboardActor.
@@ -273,6 +274,7 @@ mod tests {
         assert_eq!(lifecycle, ActorLifecycle::Starting);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn actor_started_event_transitions_to_running() {
         // Given a DashboardActor.
@@ -294,6 +296,7 @@ mod tests {
         assert_eq!(lifecycle, ActorLifecycle::Running);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn actor_shutdown_event_transitions_to_dead() {
         // Given a DashboardActor with a running actor entry.
@@ -321,6 +324,7 @@ mod tests {
         assert_eq!(lifecycle, ActorLifecycle::Dead);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn discord_connecting_update_sets_status_message_via_bus() {
         // Given a DashboardActor subscribed to DiscordStatusUpdate.
@@ -337,6 +341,7 @@ mod tests {
         assert_eq!(message.as_deref(), Some("Connecting"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn discord_connected_update_marks_running_with_message_via_bus() {
         // Given a DashboardActor subscribed to DiscordStatusUpdate.
@@ -355,6 +360,7 @@ mod tests {
         assert_eq!(message.as_deref(), Some("Connected"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn discord_error_update_marks_dead_with_error_message_via_bus() {
         // Given a DashboardActor subscribed to DiscordStatusUpdate.
@@ -377,6 +383,7 @@ mod tests {
         assert_eq!(message.as_deref(), Some("Error: 401: invalid token"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn discord_error_update_first_still_sets_description() {
         // Given a DashboardActor (simulating missing-token: Error arrives first).
@@ -397,6 +404,7 @@ mod tests {
         assert_eq!(description.as_deref(), Some("Discord gateway bot [Task]"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn browser_binary_verified_writes_chrome_label_to_web_fetch_notes() {
         // Given a DashboardActor.
@@ -423,6 +431,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn browser_binary_verified_writes_bundled_label_to_web_fetch_notes() {
         // Given a DashboardActor.
@@ -451,6 +460,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn browser_binary_verified_shows_fallback_version_when_undetected() {
         // Given a DashboardActor.
@@ -478,6 +488,7 @@ mod tests {
         assert_eq!(message.as_deref(), Some(expected.as_str()));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn browser_binary_verified_does_not_create_phantom_entry() {
         // Given a DashboardActor.

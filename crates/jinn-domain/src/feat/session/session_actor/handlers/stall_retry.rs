@@ -137,6 +137,7 @@ mod tests {
         (actor, audit, RetryStalledSession { session_id })
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handler_discards_partial_entries_and_redispatches() {
         // Given a stalled Streaming session holding a partial assistant entry.
@@ -173,6 +174,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handler_noops_when_timestamp_advanced_since_publish() {
         // Given a session that self-resolved between publish and handle: its
@@ -200,6 +202,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handler_excludes_dangling_partial_tool_call() {
         // Given a stalled Streaming session holding a partial (dangling)

@@ -431,6 +431,7 @@ mod tests {
             .collect()
     }
 
+    #[rstest::rstest]
     #[test]
     fn content_height_is_zero_when_empty() {
         let app = AppState::default();
@@ -438,6 +439,7 @@ mod tests {
         assert_eq!(section.content_height(&{ RenderCtx::new(&app) }), 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn content_height_is_nonzero_when_has_phases() {
         let app = setup_with_tasks();
@@ -446,6 +448,7 @@ mod tests {
         assert!(height > 0, "expected non-zero height, got {height}");
     }
 
+    #[rstest::rstest]
     #[test]
     fn render_ends_with_trailing_gap_line() {
         // Given a non-empty task list.
@@ -468,6 +471,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn content_height_matches_rendered_line_count() {
         // Given a non-empty task list.
@@ -486,6 +490,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn navigate_returns_exhausted_without_selection() {
         let mut app = AppState::default();
@@ -493,6 +498,7 @@ mod tests {
         assert_eq!(result, SectionNavResult::Exhausted);
     }
 
+    #[rstest::rstest]
     #[test]
     fn navigate_moves_down_within_bounds() {
         let mut app = setup_with_tasks();
@@ -502,6 +508,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.selected_phase_index, Some(1));
     }
 
+    #[rstest::rstest]
     #[test]
     fn navigate_moves_up_within_bounds() {
         let mut app = setup_with_tasks();
@@ -511,6 +518,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.selected_phase_index, Some(0));
     }
 
+    #[rstest::rstest]
     #[test]
     fn navigate_exhausted_at_bottom() {
         let mut app = setup_with_tasks();
@@ -519,6 +527,7 @@ mod tests {
         assert_eq!(result, SectionNavResult::Exhausted);
     }
 
+    #[rstest::rstest]
     #[test]
     fn navigate_exhausted_at_top() {
         let mut app = setup_with_tasks();
@@ -527,6 +536,7 @@ mod tests {
         assert_eq!(result, SectionNavResult::Exhausted);
     }
 
+    #[rstest::rstest]
     #[test]
     fn receive_cursor_sets_first_phase_from_top() {
         let mut app = setup_with_tasks();
@@ -534,6 +544,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.selected_phase_index, Some(0));
     }
 
+    #[rstest::rstest]
     #[test]
     fn receive_cursor_sets_last_phase_from_bottom() {
         let mut app = setup_with_tasks();
@@ -541,6 +552,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.selected_phase_index, Some(1));
     }
 
+    #[rstest::rstest]
     #[test]
     fn receive_cursor_no_panic_on_empty_list() {
         let mut app = AppState::default();
@@ -548,12 +560,14 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.selected_phase_index, None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn id_returns_task_list() {
         let section = TaskListSection;
         assert_eq!(section.id(), SidebarSectionId::TaskList);
     }
 
+    #[rstest::rstest]
     #[test]
     fn collapsed_rendering_shows_no_tasks() {
         // When unfocused, task descriptions should NOT appear.
@@ -576,6 +590,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn collapsed_shows_collapse_indicator() {
         let app = setup_with_tasks();
@@ -588,6 +603,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn no_blank_lines_between_phases() {
         let app = setup_with_tasks();
@@ -609,6 +625,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn selected_phase_header_has_reversed_modifier() {
         let mut app = setup_with_tasks();
@@ -633,6 +650,7 @@ mod tests {
     /// The inline section is always collapsed; the focused phase shows a
     /// left-pointing arrow (U+25C2 `◂`) signalling that its preview popup is
     /// drawn to the left of the sidebar. Collapsed phases show U+25B8 `▸`.
+    #[rstest::rstest]
     #[test]
     fn focused_phase_shows_left_arrow_indicator() {
         let mut app = setup_with_tasks();
@@ -655,6 +673,7 @@ mod tests {
     /// `build_render_lines` emit more lines than `compute_height` reserved, and
     /// ratatui's `Paragraph` clipped the overflow — dropping the last phase header
     /// until focus shifted it out of the clipped region.
+    #[rstest::rstest]
     #[test]
     fn collapsed_render_includes_last_phase_header() {
         // Given a sidebar of default width (30) with three phases, the last one's
@@ -696,6 +715,7 @@ mod tests {
             .flatten()
     }
 
+    #[rstest::rstest]
     #[test]
     fn active_phase_header_uses_streaming_color() {
         // Given 3 phases: first has pending tasks (active), second has pending tasks, third all completed.
@@ -730,6 +750,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn completed_phase_header_uses_muted_text_color() {
         // Given a phase with all tasks completed.
@@ -759,6 +780,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn upcoming_phase_header_uses_primary_text_color() {
         // Given 2 phases: first has pending tasks (active), second has pending tasks (upcoming/blocked).
@@ -787,6 +809,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn selected_active_phase_header_has_reversed_and_streaming_color() {
         // Given 2 phases with pending tasks, focused on first (active) phase.
@@ -834,6 +857,7 @@ mod tests {
         app
     }
 
+    #[rstest::rstest]
     #[test]
     fn preview_scroll_up_decreases_by_viewport() {
         // Given viewport 5 and scroll at 10.
@@ -846,6 +870,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.preview_scroll, 5);
     }
 
+    #[rstest::rstest]
     #[test]
     fn preview_scroll_down_increases_by_viewport() {
         // Given viewport 5 and scroll at 0.
@@ -858,6 +883,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.preview_scroll, 5);
     }
 
+    #[rstest::rstest]
     #[test]
     fn preview_scroll_up_clamps_at_zero() {
         // Given viewport 5 with scroll 2 (less than one page).
@@ -870,6 +896,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn preview_scroll_down_clamps_at_max_offset() {
         // Given viewport 5 and content of 8 lines (max offset 3).
@@ -882,6 +909,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.preview_scroll, 3);
     }
 
+    #[rstest::rstest]
     #[test]
     fn preview_scroll_up_noop_when_viewport_unmeasured() {
         // Given an unmeasured viewport (0, before first render).
@@ -894,6 +922,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.preview_scroll, 7);
     }
 
+    #[rstest::rstest]
     #[test]
     fn preview_scroll_down_noop_when_viewport_unmeasured() {
         // Given an unmeasured viewport (0, before first render).
@@ -906,6 +935,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.preview_scroll, 7);
     }
 
+    #[rstest::rstest]
     #[test]
     fn navigate_down_resets_preview_scroll() {
         // Given a task list with scroll at 7 and focus on phase 0.
@@ -921,6 +951,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn navigate_up_resets_preview_scroll() {
         // Given a task list with scroll at 7 and focus on phase 1.
@@ -936,6 +967,7 @@ mod tests {
         assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn receive_cursor_resets_preview_scroll() {
         // Given a task list with scroll at 7.

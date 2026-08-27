@@ -32,6 +32,7 @@ use crate::feat::mcp_actor::connect_for_transport;
 /// endpoint never produces an early `Err`. We verify by racing the connect
 /// against a short timeout — if the connect returned `Err` immediately, the
 /// timeout arm would not fire.
+#[rstest::rstest]
 #[tokio::test]
 async fn remote_http_to_unreachable_url_loops_instead_of_failing() {
     // Given a RemoteHttp config pointing at a port nothing is listening on.

@@ -176,6 +176,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_phase_returns_phase_id_and_updated_list() {
         let app = AppState::default();
@@ -201,6 +202,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_phase_requires_state() {
         let call = ToolCall {
@@ -215,6 +217,7 @@ mod tests {
         assert!(result.content.contains("no application state"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_phase_requires_session_id() {
         let app = AppState::default();
@@ -231,6 +234,7 @@ mod tests {
         assert!(result.content.contains("no session ID"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_phase_requires_description() {
         let app = AppState::default();
@@ -251,6 +255,7 @@ mod tests {
         assert!(result.content.contains("missing 'description'"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_phase_return_has_next_block_at_top() {
         let app = AppState::default();
@@ -277,6 +282,7 @@ mod tests {
         assert!(result.content.contains("Created phase"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_phase_new_trailing_phase_renders_with_blocker_when_active_phase_has_work() {
         // Existing phase has a pending task; the newly added trailing phase

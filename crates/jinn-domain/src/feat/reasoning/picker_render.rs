@@ -57,6 +57,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
+    #[rstest::rstest]
     #[test]
     fn render_reasoning_effort_picker_does_not_panic_with_populated_picker() {
         // Given a state whose reasoning effort picker has a populated entry.

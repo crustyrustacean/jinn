@@ -79,6 +79,7 @@ impl WatchdogHarness {
     }
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn watchdog_detects_session_stuck_in_sending() {
     // Given a session in Sending whose history was last mutated long ago.
@@ -108,6 +109,7 @@ async fn watchdog_detects_session_stuck_in_sending() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn watchdog_detects_streaming_session_with_no_history_change() {
     // Given a session in Streaming whose history is stale (keepalive-only feed).
@@ -135,6 +137,7 @@ async fn watchdog_detects_streaming_session_with_no_history_change() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn watchdog_publishes_cancel_after_budget_exhausted() {
     // Given a stalled session and a budget of one retry.
@@ -176,6 +179,7 @@ async fn watchdog_publishes_cancel_after_budget_exhausted() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn counter_resets_at_turn_boundary_not_on_activity_jitter() {
     // Given a stalled session that already consumed one retry (budget = 1).
@@ -221,6 +225,7 @@ async fn counter_resets_at_turn_boundary_not_on_activity_jitter() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn counter_resets_when_session_completes_a_turn() {
     // Given a session that stalled, was retried, then completed the turn (Idle).
@@ -277,6 +282,7 @@ async fn counter_resets_when_session_completes_a_turn() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn active_streaming_session_is_never_flagged() {
     // Given a Streaming session whose history was just mutated.
@@ -300,6 +306,7 @@ async fn active_streaming_session_is_never_flagged() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn idle_session_is_never_scanned() {
     // Given an idle session with a very stale timestamp.
@@ -329,6 +336,7 @@ async fn idle_session_is_never_scanned() {
 /// indistinguishable from a keepalive-only stall at the history-signal level:
 /// the phase is `Streaming` and `last_history_activity_at` is stale. This test
 /// anchors that the tool-batch gap is covered by the same single signal.
+#[rstest::rstest]
 #[tokio::test]
 async fn watchdog_detects_mid_tool_batch_stall() {
     // Given a session mid tool batch: it entered Streaming, a tool-call entry
@@ -358,6 +366,7 @@ async fn watchdog_detects_mid_tool_batch_stall() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn watchdog_suppresses_second_retry_within_backoff_window() {
     // Given a stalled session and a large backoff window (base=max=60s, so the
@@ -403,6 +412,7 @@ async fn watchdog_suppresses_second_retry_within_backoff_window() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn watchdog_allows_retry_after_backoff_window_elapses() {
     // Given a stalled session that already consumed one retry, with a backoff
@@ -458,6 +468,7 @@ async fn watchdog_allows_retry_after_backoff_window_elapses() {
 /// get a fresh retry budget — the prior attempt must not count against it.
 /// This is the responsive-provider recovery case: intermittent stalls
 /// caused by contention should not accumulate toward a hard cancel.
+#[rstest::rstest]
 #[tokio::test]
 async fn stall_budget_resets_when_provider_activity_resumes() {
     // Given a stalled session that already consumed one retry (budget = 1).
@@ -517,6 +528,7 @@ async fn stall_budget_resets_when_provider_activity_resumes() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn watchdog_detects_stall_when_provider_activity_stale() {
     // Given a session that produced provider output on an earlier tick (so the

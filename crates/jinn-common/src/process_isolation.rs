@@ -79,6 +79,7 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[rstest::rstest]
     #[test]
     fn isolation_child_has_no_controlling_tty() {
         // Given an isolated child that tries to open the controlling tty.
@@ -96,6 +97,7 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[rstest::rstest]
     #[test]
     fn isolation_child_runs_in_new_session() {
         // Given an isolated child that reports its own session id.
@@ -127,6 +129,7 @@ mod tests {
     }
 
     #[cfg(windows)]
+    #[rstest::rstest]
     #[test]
     fn isolation_windows_child_completes_with_piped_output() {
         // Given an isolated cmd child writing to piped stdout.

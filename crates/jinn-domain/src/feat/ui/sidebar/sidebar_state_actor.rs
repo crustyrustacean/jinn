@@ -89,6 +89,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn clamps_selected_index_after_session_removed() {
         // Given a sidebar actor with three sessions and cursor at index 2.
@@ -128,6 +129,7 @@ mod tests {
         assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handles_removal_of_last_session_cursor_at_zero() {
         // Given a sidebar actor with one session and cursor at 0.
@@ -158,6 +160,7 @@ mod tests {
         assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn cursor_stays_when_index_still_valid() {
         // Given a sidebar actor with three sessions and cursor at index 0.

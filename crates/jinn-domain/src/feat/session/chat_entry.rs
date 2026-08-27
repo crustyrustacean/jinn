@@ -1410,6 +1410,7 @@ mod tests {
         ChatEntry::user("hello".to_owned())
     }
 
+    #[rstest::rstest]
     #[test]
     fn apply_context_override_noop_returns_false() {
         let mut entry = fresh_user_entry();
@@ -1419,6 +1420,7 @@ mod tests {
         assert_eq!(entry.context_history.len(), initial_history_len);
     }
 
+    #[rstest::rstest]
     #[test]
     fn apply_context_override_records_event_with_correct_from_to_source() {
         let mut entry = fresh_user_entry();
@@ -1432,6 +1434,7 @@ mod tests {
         assert_eq!(event.source, ChangeSource::User);
     }
 
+    #[rstest::rstest]
     #[test]
     fn apply_context_override_preserves_order_with_monotonic_timestamps() {
         let mut entry = fresh_user_entry();
@@ -1449,6 +1452,7 @@ mod tests {
         assert_eq!(entry.context_history[2].to, ContextOverride::Default);
     }
 
+    #[rstest::rstest]
     #[test]
     fn serde_round_trip_preserves_context_history() {
         let mut entry = fresh_user_entry();
@@ -1475,6 +1479,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn legacy_json_without_context_history_loads_to_empty() {
         // Start from a real entry, then strip context_history to simulate legacy data.
@@ -1488,6 +1493,7 @@ mod tests {
         // The override itself is preserved.
         assert_eq!(loaded.context_override(), ContextOverride::ForcedExclude);
     }
+    #[rstest::rstest]
     #[test]
     fn user_entry_with_attachments_roundtrips() {
         // Given a user entry with an image attachment.

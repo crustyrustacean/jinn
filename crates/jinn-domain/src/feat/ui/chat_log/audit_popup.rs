@@ -303,6 +303,7 @@ mod tests {
             .join("")
     }
 
+    #[rstest::rstest]
     #[test]
     fn centered_title_produces_exact_width_line() {
         // Given label "Metadata" and popup width 60.
@@ -317,6 +318,7 @@ mod tests {
         assert_eq!(text(&line).len(), 58);
     }
 
+    #[rstest::rstest]
     #[test]
     fn centered_title_centers_label_with_dash_padding() {
         // Given label "Metadata" and popup width 60.
@@ -338,6 +340,7 @@ mod tests {
         assert_eq!(dash_count, 48);
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_timestamp_recent_shows_absolute_and_relative() {
         // Given a timestamp 30 seconds ago.
@@ -360,6 +363,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_timestamp_old_shows_absolute_and_days_ago() {
         // Given a timestamp 5 days ago.
@@ -377,6 +381,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_audit_lines_includes_metadata_section_before_audit() {
         // Given a default entry.
@@ -405,6 +410,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_audit_lines_includes_blank_line_between_sections() {
         // Given a default entry.
@@ -417,6 +423,7 @@ mod tests {
         assert_eq!(text(&lines[2]), "");
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_audit_lines_empty_history_returns_header_and_no_events_line() {
         // Given a default entry (no history, Default override).
@@ -435,6 +442,7 @@ mod tests {
         assert_eq!(text(&lines[4]), "(no events recorded)");
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_audit_lines_one_user_event_renders_bracketed_source() {
         // Given a user entry that was excluded by the user.
@@ -454,6 +462,7 @@ mod tests {
         assert_eq!(text(&lines[4]), "[user] Default -> ForcedExclude");
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_audit_lines_worker_event_uses_name_in_brackets() {
         // Given an entry excluded by the compactor worker.
@@ -472,6 +481,7 @@ mod tests {
         assert_eq!(text(&lines[4]), "[compactor] Default -> ForcedExclude");
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_audit_lines_internal_event_uses_label_in_brackets() {
         // Given an entry excluded by an internal sweep.
@@ -493,6 +503,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_audit_lines_multiple_events_preserves_insertion_order() {
         // Given an entry toggled twice (Default -> Exclude -> Default).
@@ -509,6 +520,7 @@ mod tests {
         assert_eq!(text(&lines[5]), "[user] ForcedExclude -> Default");
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_audit_lines_header_uses_current_override_not_last_event() {
         // Given an entry with one event but the override was reset to Default
@@ -541,6 +553,7 @@ mod tests {
             Rect::new(0, 0, 100, 40)
         }
 
+        #[rstest::rstest]
         #[test]
         fn audit_popup_rect_in_viewport_top_aligns_to_entry() {
             // Given entry at row 10, content has 3 lines, area is 40 rows tall.
@@ -559,6 +572,7 @@ mod tests {
             assert_eq!(rect.x + rect.width, chat.x + chat.width);
         }
 
+        #[rstest::rstest]
         #[test]
         fn audit_popup_rect_entry_scrolled_above_viewport_pins_to_chat_top() {
             // Given entry_top_y is above the chat-log top (scrolled off-screen).
@@ -570,6 +584,7 @@ mod tests {
             assert_eq!(rect.y, chat_offset.y);
         }
 
+        #[rstest::rstest]
         #[test]
         fn audit_popup_rect_overflow_bottom_slides_up() {
             // Given entry near the bottom and a tall popup that would overflow.
@@ -584,6 +599,7 @@ mod tests {
             assert_eq!(rect.y, 32);
         }
 
+        #[rstest::rstest]
         #[test]
         fn audit_popup_rect_fits_exactly_does_not_slide() {
             // Given entry at a row where the popup fits exactly to area bottom.
@@ -596,6 +612,7 @@ mod tests {
             assert_eq!(rect.y + rect.height, chat.y + chat.height);
         }
 
+        #[rstest::rstest]
         #[test]
         fn audit_popup_rect_right_edge_aligns_to_chat_log_right_edge() {
             // Given a chat-log area offset from the frame's left edge (sidebar takes 20 cols).
@@ -611,6 +628,7 @@ mod tests {
             assert_eq!(rect.x, 30);
         }
 
+        #[rstest::rstest]
         #[test]
         fn audit_popup_rect_chat_log_narrower_than_70_shrinks_popup_width() {
             // Given a chat-log area only 50 columns wide.
@@ -628,6 +646,7 @@ mod tests {
 
         use super::*;
 
+        #[rstest::rstest]
         #[test]
         fn format_duration_seconds() {
             // Given a 2.1-second duration.
@@ -640,6 +659,7 @@ mod tests {
             assert_eq!(result, "2.1s");
         }
 
+        #[rstest::rstest]
         #[test]
         fn format_duration_sub_second() {
             // Given a 0.5-second duration.
@@ -652,6 +672,7 @@ mod tests {
             assert_eq!(result, "0.5s");
         }
 
+        #[rstest::rstest]
         #[test]
         fn format_duration_minutes() {
             // Given an 83-second duration (1m 23s).
@@ -690,6 +711,7 @@ mod tests {
         lines.iter().position(|l| text(l).contains("TTFT:"))
     }
 
+    #[rstest::rstest]
     #[test]
     fn instant_entry_shows_only_sent_no_timing() {
         // Given an instant entry (default user entry).
@@ -712,6 +734,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn streamed_entry_shows_ttft_and_duration() {
         // Given a streamed entry with both timestamps set.
@@ -738,6 +761,7 @@ mod tests {
         assert!(t.contains("13.0s"), "Stream Duration should be 13.0s: {t}");
     }
 
+    #[rstest::rstest]
     #[test]
     fn streamed_entry_shows_pending_for_missing_first_token() {
         // Given a streamed entry with no first_token_at.
@@ -752,6 +776,7 @@ mod tests {
         assert!(t.contains("(pending)"), "TTFT should show (pending): {t}");
     }
 
+    #[rstest::rstest]
     #[test]
     fn streamed_entry_shows_pending_for_missing_finished() {
         // Given a streamed entry with no finished_at.
@@ -769,6 +794,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn ttft_value_uses_queue_color() {
         // Given a streamed entry.
@@ -792,6 +818,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn duration_value_uses_streaming_color() {
         // Given a streamed entry.

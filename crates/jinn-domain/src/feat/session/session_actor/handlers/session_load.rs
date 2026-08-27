@@ -183,6 +183,7 @@ mod tests {
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::protocol::ChatEntry;
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_load_does_not_set_context_size() {
         // Given a session with chat history.
@@ -206,6 +207,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_session_load_completed_marks_session_as_interacted() {
         // Given a session loaded from disk.
@@ -233,6 +235,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_session_load_completed_emits_no_scan_commands() {
         // Given a session loaded from disk.

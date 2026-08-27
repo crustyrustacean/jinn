@@ -385,6 +385,7 @@ mod tests {
         ids
     }
 
+    #[rstest::rstest]
     #[test]
     fn no_edit_write_produces_no_mutations() {
         let history = vec![
@@ -398,6 +399,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn under_max_produces_no_mutations() {
         let mut history = Vec::new();
@@ -413,6 +415,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn over_max_prunes_oldest() {
         let mut history = Vec::new();
@@ -438,6 +441,7 @@ mod tests {
         assert_eq!(pruned_ids, expected);
     }
 
+    #[rstest::rstest]
     #[test]
     fn mixed_edit_and_write_count_together() {
         let mut history = Vec::new();
@@ -464,6 +468,7 @@ mod tests {
         assert_eq!(pruned_ids, expected);
     }
 
+    #[rstest::rstest]
     #[test]
     fn different_files_independent() {
         let mut history = Vec::new();
@@ -494,6 +499,7 @@ mod tests {
         assert_eq!(pruned_ids, expected);
     }
 
+    #[rstest::rstest]
     #[test]
     fn already_excluded_skipped() {
         // 3 pairs total, max=2 -> prune oldest 1.
@@ -533,6 +539,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn forced_included_skipped() {
         // Same shape as `already_excluded_skipped` but with ForcedInclude on
@@ -567,6 +574,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn tool_call_without_result_ignored() {
         let mut history = Vec::new();
@@ -590,6 +598,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn exact_max_no_prune() {
         let mut history = Vec::new();
@@ -605,6 +614,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn max_zero_means_no_limit() {
         let mut history = Vec::new();
@@ -619,6 +629,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn five_edits_prune_three_oldest() {
         let mut history = Vec::new();
@@ -642,6 +653,7 @@ mod tests {
         assert_eq!(pruned_ids, oldest_ids);
     }
 
+    #[rstest::rstest]
     #[test]
     fn multiple_files_both_overflow() {
         let mut history = Vec::new();
@@ -677,6 +689,7 @@ mod tests {
     // — this matches the "be less aggressive" design intent.
     // ------------------------------------------------------------------
 
+    #[rstest::rstest]
     #[test]
     fn min_age_protects_young_file_with_many_writes() {
         // 3 writes to the same file with max_file_edits=2.
@@ -700,6 +713,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_as_before() {
         // min_age=0 must preserve pre-fix behavior: oldest pair pruned when
@@ -716,6 +730,7 @@ mod tests {
         assert_eq!(mutations.len(), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn mixed_young_and_old_writes() {
         // Oldest write at the start of a long history (age ≫ min_age, prunable);

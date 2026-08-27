@@ -73,6 +73,7 @@ mod tests {
         Tool::new(name.to_owned(), desc.to_owned(), serde_json::Map::new())
     }
 
+    #[rstest::rstest]
     #[test]
     fn provider_prefix_is_namespaced() {
         // Given a server name.
@@ -83,6 +84,7 @@ mod tests {
         assert_eq!(prefix, "mcp__excalimate__");
     }
 
+    #[rstest::rstest]
     #[test]
     fn namespaced_tool_name_joins_server_and_tool() {
         // Given server + tool names.
@@ -93,6 +95,7 @@ mod tests {
         assert_eq!(name, "mcp__excalimate__create_scene");
     }
 
+    #[rstest::rstest]
     #[test]
     fn strip_namespace_recovers_tool_name() {
         // Given a namespaced name for "excalimate".
@@ -103,6 +106,7 @@ mod tests {
         assert_eq!(stripped, Some("create_scene"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn strip_namespace_rejects_other_server() {
         // Given a namespaced name for "excalimate".
@@ -113,6 +117,7 @@ mod tests {
         assert_eq!(stripped, None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn two_servers_get_distinct_namespaces() {
         // Given the same tool name on two different servers.
@@ -126,6 +131,7 @@ mod tests {
         assert_eq!(strip_namespace("beta", &beta), Some("create_scene"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn map_tool_namespaces_name_and_preserves_description() {
         // Given an rmcp tool.

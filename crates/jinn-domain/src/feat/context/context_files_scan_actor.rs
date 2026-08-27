@@ -288,6 +288,7 @@ mod tests {
         (session_id, services)
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn scan_context_files_command_writes_to_session_state() {
         // Given an actor whose session cwd has an AGENTS.md.
@@ -328,6 +329,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn scan_context_files_command_emits_loaded_event() {
         // Given an actor whose session cwd has an AGENTS.md.
@@ -360,6 +362,7 @@ mod tests {
         assert_eq!(messages[0].files.len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn scan_context_files_empty_dir_emits_empty_loaded() {
         // Given an actor whose session cwd has no context files.
@@ -390,6 +393,7 @@ mod tests {
         assert!(messages[0].error.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn scan_context_files_skips_home_ancestor() {
         // Given a session cwd nested under a "home" dir that itself has an AGENTS.md,
@@ -435,6 +439,7 @@ mod tests {
         assert_eq!(messages[0].files[0].content, "project file");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn scan_context_files_discovers_ancestor_file_from_nested_cwd() {
         // Given cwd = home/repo/subdir and an AGENTS.md at home/repo.
@@ -479,6 +484,7 @@ mod tests {
         assert_eq!(messages[0].files[0].content, "ancestor file");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_created_event_scans_context_files() {
         // Given an actor whose session cwd has an AGENTS.md.
@@ -513,6 +519,7 @@ mod tests {
         assert_eq!(session.discovered_context_files().len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_created_event_skips_scan_when_cwd_is_sentinel() {
         // Given an actor whose active session cwd is the pending "." sentinel.
@@ -555,6 +562,7 @@ mod tests {
         assert!(session.discovered_context_files().is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_setup_completed_event_scans_context_files() {
         // Given an actor whose session cwd has an AGENTS.md.
@@ -590,6 +598,7 @@ mod tests {
         assert_eq!(session.discovered_context_files().len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_cwd_changed_event_scans_context_files() {
         // Given an actor whose session cwd has an AGENTS.md.
@@ -624,6 +633,7 @@ mod tests {
         assert_eq!(session.discovered_context_files().len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn environment_loaded_event_scans_active_session_context_files() {
         // Given an actor whose session cwd has an AGENTS.md.

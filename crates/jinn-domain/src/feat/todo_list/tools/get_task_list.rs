@@ -118,6 +118,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_task_list_returns_placeholder_when_empty() {
         let app = AppState::default();
@@ -139,6 +140,7 @@ mod tests {
         assert_eq!(result.content, "No phases defined.");
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_task_list_returns_full_list() {
         let app = AppState::default();
@@ -170,6 +172,7 @@ mod tests {
         assert!(result.content.contains("Write code"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_task_list_return_has_next_block_at_top() {
         let app = AppState::default();
@@ -204,6 +207,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_task_list_requires_state() {
         let call = ToolCall {

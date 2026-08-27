@@ -448,6 +448,7 @@ mod tests {
     use crate::feat::session::token_stats::TokenRecord;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_stops_streaming() {
         let (actor, _audit) = test_actor_recording().await;
@@ -478,6 +479,7 @@ mod tests {
         assert!(!matches!(session.phase(), PhaseKind::Streaming));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_reason_drains_queue_to_input_buffer() {
         let (actor, _audit) = test_actor_recording().await;
@@ -512,6 +514,7 @@ mod tests {
         assert_eq!(session.chat_input().text(), "queued message");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_with_multiple_queued_messages_joins_with_newline() {
         let (actor, _audit) = test_actor_recording().await;
@@ -549,6 +552,7 @@ mod tests {
         assert_eq!(session.chat_input().text(), "first message\nsecond message");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_reason_drains_queue_to_input_buffer() {
         let (actor, _audit) = test_actor_recording().await;
@@ -583,6 +587,7 @@ mod tests {
         assert_eq!(session.chat_input().text(), "queued message");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_finished_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
@@ -615,6 +620,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
@@ -647,6 +653,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
@@ -679,6 +686,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_after_sync_cancel_publishes_phase_change() {
         // The ESC-confirm path transitions the phase `Streaming → Idle` directly
@@ -724,6 +732,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_force_excludes_dangling_tool_calls() {
         let (actor, _audit) = test_actor_recording().await;
@@ -773,6 +782,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_token_appends_text_to_assistant_entry() {
         let (actor, _audit) = test_actor_recording().await;
@@ -811,6 +821,7 @@ mod tests {
         assert_eq!(assistant_text, "Hello world");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_token_keeps_phase_as_streaming() {
         let (actor, _audit) = test_actor_recording().await;
@@ -840,6 +851,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_token_corrects_sending_phase_to_streaming() {
         let (actor, _audit) = test_actor_recording().await;
@@ -868,6 +880,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_finished_persists_session() {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
@@ -902,6 +915,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_persists_session() {
         // Given an interacted session in streaming state.
@@ -938,6 +952,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_persists_session() {
         // Given an interacted session in streaming state.
@@ -974,6 +989,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_does_not_count_tokens_on_error() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1018,6 +1034,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_tool_use_preserves_assistant_entry() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1067,6 +1084,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1116,6 +1134,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_finished_preserves_assistant_entry() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1161,6 +1180,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_with_complete_tool_loop_does_not_exclude() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1207,6 +1227,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_finished_without_auto_compaction_goes_to_idle() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1242,6 +1263,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_finished_applies_pending_mutations() {
         let (actor, audit) = test_actor_recording().await;
@@ -1293,6 +1315,7 @@ mod tests {
         );
         assert!(audit.contains_name("HistoryAppended"));
     }
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_applies_pending_mutations() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1347,6 +1370,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_applies_pending_mutations() {
         // Given a session in streaming state with pending mutations.
@@ -1400,6 +1424,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_tool_use_does_not_apply_mutations() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1456,6 +1481,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_provider_tokens_used_directly() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1495,6 +1521,7 @@ mod tests {
         assert_eq!(session.token_ledger()[0].tokens_received, 5000);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_local_fallback_includes_thinking() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1538,6 +1565,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_local_fallback_without_thinking_backward_compat() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1580,6 +1608,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_provider_tokens_preferred_over_local() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1621,6 +1650,7 @@ mod tests {
         assert_eq!(session.token_ledger()[0].tokens_received, 9999);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_takes_max_when_provider_undercounts() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1668,6 +1698,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_takes_max_when_provider_overcounts() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1707,6 +1738,7 @@ mod tests {
         assert_eq!(session.token_ledger()[0].tokens_received, 50000);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_uses_local_count_when_no_provider_report() {
         use crate::feat::context::strategy::token_estimator::TokenCounter;
@@ -1752,6 +1784,7 @@ mod tests {
         assert_eq!(session.token_ledger()[0].tokens_received, expected);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatched_at_flows_from_stream_token_to_entry_timing() {
         // Given a session actor with a session in streaming state.
@@ -1795,6 +1828,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn thinking_entry_gets_dispatched_at_from_stream_token() {
         // Given a session actor with a session in streaming state.
@@ -1838,6 +1872,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stream_completed_sets_finished_at_on_assistant_entry() {
         // Given a session actor with a session in streaming state and a token.
@@ -1892,6 +1927,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn content_token_after_thinking_finalizes_thinking_entry_finished_at() {
         // Given a session actor streaming with a thinking entry already begun.
@@ -1939,6 +1975,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn second_content_token_does_not_move_thinking_finished_at() {
         // Given a session actor streaming with thinking finalized by a content token.
@@ -2006,6 +2043,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pure_reasoning_stream_finalizes_thinking_on_stream_completion() {
         // Given a session actor streaming with ONLY thinking tokens (no content).
@@ -2060,6 +2098,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn cancel_during_reasoning_finalizes_thinking_and_preserves_text() {
         // Given a session actor streaming with a thinking entry.
@@ -2121,6 +2160,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn cancelled_stream_records_finished_at() {
         // Given a session actor with a session in streaming state and a token.
@@ -2186,6 +2226,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn count_tokens_locally_counts_assistant_content() {
         // Given a char-counting counter and assistant content only.
@@ -2198,6 +2239,7 @@ mod tests {
         assert_eq!(total, 5);
     }
 
+    #[rstest::rstest]
     #[test]
     fn count_tokens_locally_adds_thinking_content() {
         // Given a char-counting counter with content and thinking text.
@@ -2210,6 +2252,7 @@ mod tests {
         assert_eq!(total, 5);
     }
 
+    #[rstest::rstest]
     #[test]
     fn count_tokens_locally_includes_tool_call_arguments_and_names() {
         // Given a char-counting counter, content, and one tool call.
@@ -2227,6 +2270,7 @@ mod tests {
         assert_eq!(total, 8);
     }
 
+    #[rstest::rstest]
     #[test]
     fn drained_queue_to_text_returns_none_for_empty() {
         // Given an empty drained queue.
@@ -2239,6 +2283,7 @@ mod tests {
         assert_eq!(text, None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn drained_queue_to_text_returns_none_when_only_tool_continuation() {
         // Given a queue with only a tool continuation.
@@ -2252,6 +2297,7 @@ mod tests {
         assert_eq!(text, None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn drained_queue_to_text_returns_text_for_single_user_message() {
         // Given a queue with one user message.
@@ -2267,6 +2313,7 @@ mod tests {
         assert_eq!(text.as_deref(), Some("hello world"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn drained_queue_to_text_joins_multiple_user_messages_with_newline() {
         // Given a queue with two user messages.
@@ -2285,6 +2332,7 @@ mod tests {
         assert_eq!(text.as_deref(), Some("first\nsecond"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn drained_queue_to_text_skips_tool_continuation_when_mixed() {
         // Given a queue with a user message and a tool continuation.
@@ -2301,6 +2349,7 @@ mod tests {
         assert_eq!(text.as_deref(), Some("only user"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_citations_received_appends_annotation_entry() {
         // Given a recording session actor.
@@ -2336,6 +2385,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_citations_received_emits_history_appended() {
         // Given a recording session actor.
@@ -2362,6 +2412,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_citations_received_empty_citations_creates_nothing() {
         // Given a recording session actor.
@@ -2393,6 +2444,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stale_generation_stream_completed_is_dropped() {
         // Given a streaming session with a current-generation dispatch timestamp.
@@ -2440,6 +2492,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_tooluse_without_buffered_batch_does_not_dispatch() {
         // Given a session mid-stream with no buffered tool batch.

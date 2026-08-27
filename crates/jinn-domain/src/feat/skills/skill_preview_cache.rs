@@ -118,12 +118,14 @@ mod tests {
         Line::from(s.to_owned())
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_on_empty_cache_returns_none() {
         let cache = SkillPreviewCache::new();
         assert!(cache.get(&body_key("any body"), 80).is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn insert_then_get_returns_stored_lines() {
         let cache = SkillPreviewCache::new();
@@ -136,6 +138,7 @@ mod tests {
         assert_eq!(got[0].spans[0].content, "rendered bash preview");
     }
 
+    #[rstest::rstest]
     #[test]
     fn width_is_part_of_the_key() {
         let cache = SkillPreviewCache::new();
@@ -149,6 +152,7 @@ mod tests {
         assert!(cache.get(&body_key("# rust"), 100).is_some());
     }
 
+    #[rstest::rstest]
     #[test]
     fn different_bodies_are_independent() {
         let cache = SkillPreviewCache::new();
@@ -157,6 +161,7 @@ mod tests {
         assert!(cache.get(&body_key("# beta"), 80).is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn clear_empties_all_entries() {
         let mut cache = SkillPreviewCache::new();
@@ -169,6 +174,7 @@ mod tests {
         assert!(cache.get(&body_key("# b"), 100).is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_returns_an_owned_clone_not_a_reference() {
         // The PreviewCache trait returns owned Vec<Line>, so callers can hold

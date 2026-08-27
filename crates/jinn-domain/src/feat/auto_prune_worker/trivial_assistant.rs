@@ -363,6 +363,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 1. empty_history_produces_no_mutations
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn empty_history_produces_no_mutations() {
         let w = worker(100, 80);
@@ -372,6 +373,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 2. history_under_threshold_produces_no_mutations
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn history_under_threshold_produces_no_mutations() {
         let w = worker(100, 80);
@@ -386,6 +388,7 @@ mod tests {
     // 100 entries total. Trivial assistant at idx 0 is inside the window
     // → not pruned.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn history_exactly_at_threshold_produces_no_mutations() {
         let w = worker(100, 80);
@@ -399,6 +402,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 4. trivial_assistant_outside_window_is_pruned
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn trivial_assistant_outside_window_is_pruned() {
         let w = worker(100, 80);
@@ -423,6 +427,7 @@ mod tests {
     // actually exceeds 80 tiktoken tokens, then verify the worker leaves
     // it alone.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn large_assistant_outside_window_is_not_pruned() {
         let counter = TiktokenCounter::o200k_base();
@@ -459,6 +464,7 @@ mod tests {
     // Place the assistant AFTER 100 user entries so it is inside the
     // window.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn trivial_assistant_inside_window_is_not_pruned() {
         let w = worker(100, 80);
@@ -477,6 +483,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 7. empty_assistant_outside_window_is_not_targeted
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn empty_assistant_outside_window_is_not_targeted() {
         let w = worker(100, 80);
@@ -493,6 +500,7 @@ mod tests {
     // Old user/tool entries plus one trivial assistant. Only the
     // assistant should be pruned.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn non_assistant_entries_in_prune_window_are_not_targeted() {
         let w = worker(100, 80);
@@ -518,6 +526,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 9. already_excluded_assistant_does_not_get_duplicate_mutation
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn already_excluded_assistant_does_not_get_duplicate_mutation() {
         let w = worker(100, 80);
@@ -546,6 +555,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 9b. forced_included_assistant_does_not_get_mutation
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn forced_included_assistant_does_not_get_mutation() {
         let w = worker(100, 80);
@@ -573,6 +583,7 @@ mod tests {
     // Two entries (trivial assistant, user). Trivial assistant at idx 0
     // is NOT protected → pruned.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_old_entries() {
         let w = worker(0, 80);
@@ -593,6 +604,7 @@ mod tests {
     // Trivial assistant at idx 0 in a 2-entry history has age 1.
     // With min_age = 5, age 1 < 5 → protected → not pruned.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_trivial_assistant() {
         let w = worker(5, 80);
@@ -616,6 +628,7 @@ mod tests {
     // history_len = 100, trivial_assistant at idx 95 → age = 4. With
     // min_age = 5: 4 < 5 → protected. With min_age = 4: 4 < 4 → not protected.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn min_age_boundary_strict_less_than() {
         // Protected case: age 4 < min_age 5.
@@ -653,6 +666,7 @@ mod tests {
     // max_tokens = 0 → clamped to 1. "Prune if tokens <= 1". A
     // single-word assistant like "ok" is exactly 1 o200k_base token.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn max_tokens_clamped_to_1() {
         let counter = TiktokenCounter::o200k_base();
@@ -681,6 +695,7 @@ mod tests {
     // 5 trivial assistants scattered in the first 100 positions of a
     // 200-entry history. All 5 should be excluded.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn multiple_trivial_assistants_all_pruned_when_old() {
         let w = worker(100, 80);
@@ -707,6 +722,7 @@ mod tests {
     //
     // First evaluate populates the shared cache; verify by direct read.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn token_cache_populated_after_evaluate() {
         let w = worker(100, 80);
@@ -736,6 +752,7 @@ mod tests {
     // recomputed, it would see 1 token and PRUNE. So a passing test
     // proves the cache was consulted.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn second_evaluate_uses_cached_tokens_not_recomputed() {
         let w = worker(100, 80);
@@ -787,6 +804,7 @@ mod tests {
     // receiving a ForcedExclude mutation, even when the entry is well
     // outside the keep window and would otherwise qualify for pruning.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn pinned_trivial_assistant_outside_window_is_not_pruned() {
         use crate::feat::session::chat_entry::PinPosition;
@@ -819,6 +837,7 @@ mod tests {
     // 999 would be classified as a candidate (then pruned because d_back
     // = 101 > radius 5).
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn anchored_assistant_worker_reads_external_cache_writes() {
         use crate::feat::auto_prune_worker::anchored_assistant::AnchoredAssistantAutoPruneWorker;

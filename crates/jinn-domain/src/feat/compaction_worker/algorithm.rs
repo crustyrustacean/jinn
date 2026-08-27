@@ -254,6 +254,7 @@ mod tests {
         ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride,
     };
 
+    #[rstest::rstest]
     #[test]
     fn is_valid_kept_opener_accepts_only_user_and_system() {
         // Given every kind of entry.
@@ -330,12 +331,14 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn find_start_boundary_returns_zero_when_no_compaction() {
         let entries = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
         assert_eq!(find_start_boundary(&entries), 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn find_start_boundary_returns_after_last_compaction() {
         let entries = vec![
@@ -359,12 +362,14 @@ mod tests {
         assert_eq!(find_start_boundary(&entries), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn compute_cut_index_returns_len_for_compact_all() {
         let entries = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
         assert_eq!(compute_cut_index(&entries, 0, 100, true), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn compute_cut_index_returns_start_when_all_fit() {
         let entries = vec![ChatEntry::user("hi")];
@@ -372,6 +377,7 @@ mod tests {
         assert_eq!(compute_cut_index(&entries, 0, 10000, false), 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn gather_compactable_excludes_system() {
         let entries = vec![ChatEntry::system("ready"), ChatEntry::user("hello")];
@@ -380,6 +386,7 @@ mod tests {
         assert_eq!(indices[0], 1); // Only the user entry
     }
 
+    #[rstest::rstest]
     #[test]
     fn adjust_cut_walks_past_tool_call_group() {
         // Given history: [User, Assistant, ToolCall, ToolResult, Assistant, ToolCall]
@@ -412,6 +419,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn adjust_cut_advances_past_complete_tool_loop_to_valid_opener() {
         // Given history: [User, Assistant, ToolCall, ToolResult, Assistant("done")]
@@ -442,6 +450,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn pass3_advances_past_empty_assistant_opener_complete_tool_loop() {
         // Given history ending: [empty Assistant, ToolCall, ToolResult, User("next")].
@@ -468,6 +477,7 @@ mod tests {
         assert_eq!(adjusted, 5, "should advance to the User opener");
     }
 
+    #[rstest::rstest]
     #[test]
     fn pass3_advances_past_dangling_tool_result_whose_call_is_excluded() {
         // Given history: the cut lands on a ToolResult whose matching ToolCall is
@@ -497,6 +507,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn pass3_advances_past_tool_call_whose_result_is_kept_group_split() {
         // Given history where the cut lands on a ToolCall whose ToolResult is in
@@ -522,6 +533,7 @@ mod tests {
         assert_eq!(adjusted, 4, "should advance past split tool group to User");
     }
 
+    #[rstest::rstest]
     #[test]
     fn pass3_leaves_cut_unchanged_when_opener_is_real_user() {
         // Given history where the cut already lands on a User entry - a valid opener.
@@ -539,6 +551,7 @@ mod tests {
         assert_eq!(adjusted, 2, "valid User opener must not be advanced");
     }
 
+    #[rstest::rstest]
     #[test]
     fn pass3_advances_past_nonempty_standalone_assistant_opener() {
         // Given history where the cut lands on a non-empty standalone Assistant
@@ -561,6 +574,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn pass3_consumes_entire_remaining_history_when_no_valid_opener() {
         // Given history whose entire kept tail is invalid openers (Assistants and
@@ -589,6 +603,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn adjust_cut_walks_past_incomplete_tool_loop() {
         // Given history: [User, Assistant, ToolCall] (no ToolResult yet)
@@ -606,6 +621,7 @@ mod tests {
         assert_eq!(adjusted, 3, "should skip past incomplete tool loop to end");
     }
 
+    #[rstest::rstest]
     #[test]
     fn compute_cut_index_walks_backwards_from_reserve() {
         // Given entries with enough text that they won't all fit in a tiny reserve.

@@ -15,6 +15,7 @@
 use jinn_domain::feat::preferences_actor::user_preferences::RegexAutoPruneConfig;
 use serde::Deserialize;
 
+#[rstest::rstest]
 #[test]
 fn auto_prune_regex_rules_round_trips_as_array_of_tables() {
     // Given a TOML snippet using the [[auto_prune.regex.rules]] form

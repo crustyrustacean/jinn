@@ -295,6 +295,7 @@ mod tests {
 
     // Given a lowercase-dash name.
     // Then it validates.
+    #[rstest::rstest]
     #[test]
     fn valid_name_accepted() {
         assert!(valid_crate_name("my-plugin"));
@@ -314,6 +315,7 @@ mod tests {
     // Given an empty base directory.
     // When scaffolding "probe".
     // Then the full project layout exists with the name substituted.
+    #[rstest::rstest]
     #[test]
     fn scaffold_writes_project_layout() {
         // Given an empty temp base.
@@ -342,6 +344,7 @@ mod tests {
     // Given an existing directory with the plugin's name.
     // When scaffolding.
     // Then it fails with Exists and writes nothing.
+    #[rstest::rstest]
     #[test]
     fn scaffold_refuses_existing_directory() {
         // Given a base with an existing "probe" dir.
@@ -362,6 +365,7 @@ mod tests {
     // Given an invalid name.
     // When scaffolding.
     // Then it fails with InvalidName.
+    #[rstest::rstest]
     #[test]
     fn scaffold_rejects_invalid_name() {
         // Given any base.
@@ -378,6 +382,7 @@ mod tests {
 
     // Given an https URL with an @rev suffix.
     // Then it parses into Git with the rev split off.
+    #[rstest::rstest]
     #[test]
     fn parse_sdk_https_url_with_rev() {
         // Given a pinned URL.
@@ -398,6 +403,7 @@ mod tests {
 
     // Given an ssh URL whose only @ is in the user part.
     // Then the whole string stays the URL with no rev.
+    #[rstest::rstest]
     #[test]
     fn parse_sdk_ssh_url_keeps_user() {
         // Given an ssh URL.
@@ -418,6 +424,7 @@ mod tests {
 
     // Given a path that does not exist.
     // Then parsing fails with InvalidSdkPath.
+    #[rstest::rstest]
     #[test]
     fn parse_sdk_missing_path_rejected() {
         // Given a nonexistent dir.

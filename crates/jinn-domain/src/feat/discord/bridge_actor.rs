@@ -355,6 +355,7 @@ mod tests {
     }
 
     /// `reason_message` for `AlreadyBound` mentions continuing in the existing thread.
+    #[rstest::rstest]
     #[test]
     fn reason_message_already_bound_is_descriptive() {
         let msg = reason_message(&CreateThreadReason::AlreadyBound);
@@ -362,6 +363,7 @@ mod tests {
     }
 
     /// `reason_message` for `ForumChannel(Missing)` explains how to set the field.
+    #[rstest::rstest]
     #[test]
     fn reason_message_forum_channel_missing_explains_how_to_set() {
         let msg = reason_message(&CreateThreadReason::ForumChannel(
@@ -374,6 +376,7 @@ mod tests {
 
     /// `reason_message` for `ForumChannel(Invalid)` shows the bad value and what
     /// a snowflake looks like.
+    #[rstest::rstest]
     #[test]
     fn reason_message_forum_channel_invalid_shows_bad_value() {
         let msg = reason_message(&CreateThreadReason::ForumChannel(
@@ -390,6 +393,7 @@ mod tests {
     }
 
     /// `reason_message` for `CreateFailed` includes the Discord error detail.
+    #[rstest::rstest]
     #[test]
     fn reason_message_create_failed_includes_detail() {
         let msg = reason_message(&CreateThreadReason::CreateFailed("boom".to_owned()));
@@ -397,6 +401,7 @@ mod tests {
     }
 
     /// `reason_message` for `MappingWriteFailed` describes the orphaned-thread state.
+    #[rstest::rstest]
     #[test]
     fn reason_message_mapping_write_failed_describes_orphan() {
         let msg = reason_message(&CreateThreadReason::MappingWriteFailed);
@@ -404,6 +409,7 @@ mod tests {
     }
 
     /// A `Created` event pushes a system entry mentioning the title.
+    #[rstest::rstest]
     #[test]
     fn created_pushes_system_entry_with_title() {
         // Given an actor with one session.
@@ -423,6 +429,7 @@ mod tests {
     }
 
     /// A `Failed(AlreadyBound)` event pushes an error entry.
+    #[rstest::rstest]
     #[test]
     fn failed_already_bound_pushes_error_entry() {
         // Given an actor with one session.
@@ -441,6 +448,7 @@ mod tests {
     }
 
     /// A result for a session that doesn't exist is dropped, not panicked.
+    #[rstest::rstest]
     #[test]
     fn result_for_missing_session_is_dropped() {
         // Given a state with no sessions.

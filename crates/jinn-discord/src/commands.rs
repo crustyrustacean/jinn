@@ -518,6 +518,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     #[expect(clippy::expect_used, reason = "non-empty store is constructed above")]
     fn render_prompts_list_formats_name_and_description() {
@@ -541,6 +542,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn render_prompts_list_empty_store_returns_none() {
         // Given an empty store.
@@ -553,6 +555,7 @@ mod tests {
         assert!(out.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     #[expect(
         clippy::expect_used,
@@ -576,6 +579,7 @@ mod tests {
         assert!(first < second && second < third, "order wrong: {out:?}");
     }
 
+    #[rstest::rstest]
     #[test]
     #[expect(clippy::expect_used, reason = "non-empty store is constructed above")]
     fn render_prompts_list_truncates_when_exceeding_soft_limit() {
@@ -612,6 +616,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_lifecycle_list_renders_blank_first() {
         // Given an empty lifecycle list.
@@ -632,6 +637,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_lifecycle_list_enumerates_explicit_entries() {
         // Given two explicit lifecycles.
@@ -649,6 +655,7 @@ mod tests {
         assert!(out.contains("3. beta"), "beta line wrong: {out:?}");
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_lifecycle_list_appends_description_when_present() {
         // Given a lifecycle that declares a description.
@@ -664,6 +671,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_lifecycle_list_omits_description_when_absent() {
         // Given a lifecycle with no description.

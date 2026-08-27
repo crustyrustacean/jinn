@@ -94,6 +94,7 @@ mod tests {
         (actor, state)
     }
 
+    #[rstest::rstest]
     #[test]
     fn submit_command_appends_text_to_log() {
         // Given a quake bar actor.
