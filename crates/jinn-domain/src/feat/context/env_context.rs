@@ -1,8 +1,9 @@
-//! Environment context builder - assembles the default system prompt for the LLM.
+//! Environment context sections - per-section builders for the system prompt.
 //!
-//! Combines the active persona, project context files (AGENTS.md/CLAUDE.md),
-//! current date, and working directory into a single string that is injected
-//! as a `LlmMessage::System` at the front of every assembled prompt.
+//! Each builder renders exactly one environment section of the assembled
+//! system prompt: the active persona, project context files
+//! (AGENTS.md/CLAUDE.md), current date, and working directory. Sections that
+//! have no content return an empty string so the assembler can omit them.
 
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
@@ -12,52 +13,47 @@ use crate::feat::persona::Persona;
 /// Candidates for project context files, checked in order.
 const CONTEXT_FILE_CANDIDATES: &[&str] = &["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 
-/// Builds the environment context string for the system prompt.
+/// Renders the persona section: the active persona body (identity + guidelines).
 ///
-/// Combines (in order):
-/// 1. Active persona body (agent identity + guidelines)
-/// 2. Project context files from CWD and ancestor directories
-/// 3. Current date (YYYY-MM-DD)
-/// 4. Current working directory
+/// Empty string when no persona is active or the persona body is empty.
 #[must_use]
-pub fn build_env_context(
-    persona: Option<&Persona>,
-    context_files: &[ContextFile],
-    cwd: &Path,
-) -> String {
-    let mut parts = Vec::new();
+pub fn persona_section(persona: Option<&Persona>) -> String {
+    persona
+        .filter(|p| !p.body.is_empty())
+        .map_or(String::new(), |p| p.body.clone())
+}
 
-    // Persona body.
-    if let Some(p) = persona
-        && !p.body.is_empty()
-    {
-        parts.push(p.body.clone());
+/// Renders the project context files section (AGENTS.md/CLAUDE.md contents).
+///
+/// Empty string when there are no context files.
+#[must_use]
+pub fn context_files_section(context_files: &[ContextFile]) -> String {
+    if context_files.is_empty() {
+        return String::new();
     }
-
-    // Project context files.
-    if !context_files.is_empty() {
-        let mut section = String::from("\n\n# Project Context\n\n");
-        section.push_str("Project-specific instructions and guidelines:\n\n");
-        for file in context_files {
-            let _ = write!(
-                section,
-                "## {}\n\n{}\n\n",
-                file.path.display(),
-                file.content
-            );
-        }
-        parts.push(section);
+    let mut section = String::from("# Project Context\n\n");
+    section.push_str("Project-specific instructions and guidelines:\n\n");
+    for file in context_files {
+        let _ = write!(
+            section,
+            "## {}\n\n{}\n\n",
+            file.path.display(),
+            file.content
+        );
     }
+    section
+}
 
-    // Date.
-    let date = format_current_date();
-    parts.push(format!("\nCurrent date: {date}"));
+/// Renders the current date section.
+#[must_use]
+pub fn date_section() -> String {
+    format!("Current date: {}", format_current_date())
+}
 
-    // CWD.
-    let cwd_str = cwd.to_string_lossy();
-    parts.push(format!("Current working directory: {cwd_str}"));
-
-    parts.join("")
+/// Renders the working directory section.
+#[must_use]
+pub fn cwd_section(cwd: &Path) -> String {
+    format!("Current working directory: {}", cwd.to_string_lossy())
 }
 
 /// A loaded project context file (e.g., AGENTS.md).
@@ -203,38 +199,49 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn build_env_context_includes_persona_body() {
+    fn persona_section_includes_persona_body() {
         // Given a persona with body text.
         let persona = test_persona("You are a helpful assistant.");
 
-        // When building env context.
-        let result = build_env_context(Some(&persona), &[], Path::new("/project"));
+        // When building the persona section.
+        let result = persona_section(Some(&persona));
 
         // Then the persona body is included.
-        assert!(result.contains("You are a helpful assistant."));
+        assert_eq!(result, "You are a helpful assistant.");
     }
 
     #[rstest::rstest]
-    fn build_env_context_includes_date_and_cwd() {
+    fn persona_section_is_empty_without_persona() {
         // Given no persona.
-        // When building env context.
-        let result = build_env_context(None, &[], Path::new("/my/project"));
+        // When building the persona section.
+        let result = persona_section(None);
 
-        // Then date and CWD are included.
-        assert!(result.contains("Current date:"));
-        assert!(result.contains("Current working directory: /my/project"));
+        // Then the section is empty.
+        assert_eq!(result, "");
     }
 
     #[rstest::rstest]
-    fn build_env_context_includes_project_context_files() {
+    fn persona_section_is_empty_for_blank_body() {
+        // Given a persona with an empty body.
+        let persona = test_persona("");
+
+        // When building the persona section.
+        let result = persona_section(Some(&persona));
+
+        // Then the section is empty.
+        assert_eq!(result, "");
+    }
+
+    #[rstest::rstest]
+    fn context_files_section_includes_project_context_files() {
         // Given a context file.
         let files = vec![ContextFile {
             path: PathBuf::from("/project/AGENTS.md"),
             content: "# Style Guide\nUse Rust.".to_owned(),
         }];
 
-        // When building env context.
-        let result = build_env_context(None, &files, Path::new("/project"));
+        // When building the context files section.
+        let result = context_files_section(&files);
 
         // Then project context section is included.
         assert!(result.contains("# Project Context"));
@@ -243,14 +250,32 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn build_env_context_without_persona_still_has_date_and_cwd() {
-        // Given no persona and no context files.
-        // When building env context.
-        let result = build_env_context(None, &[], Path::new("/project"));
+    fn context_files_section_is_empty_without_files() {
+        // Given no context files.
+        // When building the context files section.
+        let result = context_files_section(&[]);
 
-        // Then date and CWD are still present.
+        // Then the section is empty.
+        assert_eq!(result, "");
+    }
+
+    #[rstest::rstest]
+    fn date_section_includes_date() {
+        // When building the date section.
+        let result = date_section();
+
+        // Then the date is included.
         assert!(result.contains("Current date:"));
-        assert!(result.contains("Current working directory: /project"));
+    }
+
+    #[rstest::rstest]
+    fn cwd_section_includes_working_directory() {
+        // Given a working directory.
+        // When building the cwd section.
+        let result = cwd_section(Path::new("/my/project"));
+
+        // Then the working directory is included.
+        assert_eq!(result, "Current working directory: /my/project");
     }
 
     #[rstest::rstest]

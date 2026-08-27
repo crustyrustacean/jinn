@@ -7,21 +7,21 @@
 //! 1. **Pin splitting** - entries are separated into TOP pins, BOTTOM pins,
 //!    and working history based on [`PinPosition`](crate::protocol::PinPosition).
 //! 2. **Compaction** - if the working history exceeds the session's token budget,
-//!    entries are trimmed newest-to-oldest (preserving pinned entries) and a
-//!    compaction system prompt is injected.
-//! 3. **System message construction** - a single [`LlmMessage::System`] is built
-//!    by concatenating sections in priority order (lowest to highest):
-//!    - Skills block (`<available_skills>` XML catalog)
-//!    - Pinned System entry contents (from TOP-pinned `ChatEntryKind::System`)
-//!    - Environment context (date, CWD, persona body, project context files)
+//!    entries are trimmed newest-to-oldest (preserving pinned entries); compaction
+//!    summaries ride in the working history as ordinary messages.
+//! 3. **System prompt construction** - the system prompt is composed from
+//!    dedicated per-section builders in fixed order:
+//!    - Persona body
+//!    - Project context files
 //!    - Tool context block
-//!    - Compaction prompt (when trimming occurred)
-//! 4. **Message ordering** - the final array is:
-//!    `[System] → [TOP non-System pins] → [compacted working history] → [BOTTOM pins] → [last message]`
+//!    - Skills block (`<available_skills>` XML catalog)
+//!    - Current date
+//!    - Working directory
 //!
-//! Provider request builders defensively concatenate any remaining `System`
-//! messages (e.g., from BOTTOM or RELATIVE pins) into their provider-specific
-//! system prompt field, so no system-level context is silently dropped.
+//!    Sections with no content are omitted entirely.
+//! 4. **Message ordering** - the final array is pure conversation history:
+//!    `[TOP pins] → [compacted working history] → [BOTTOM pins] → [last message]`.
+//!    The system prompt travels separately from the assembled messages.
 //!
 //! # Contents
 //!

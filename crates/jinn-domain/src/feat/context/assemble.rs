@@ -8,7 +8,9 @@
 use std::collections::BTreeMap;
 
 use crate::common::app_state::AppState;
-use crate::feat::context::env_context::build_env_context;
+use crate::feat::context::env_context::{
+    context_files_section, cwd_section, date_section, persona_section,
+};
 use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::context::tool_prompt::build_tool_context_block;
 use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
@@ -159,14 +161,20 @@ pub fn assemble_prompt(
         format_skills_for_prompt(&filtered, &session.loaded_skills())
     };
 
-    // Apply overrides: env context.
-    let env_context = if overrides.is_some_and(|o| o.system_prompt.is_some()) {
-        // System prompt override replaces everything - skip env context.
-        String::new()
-    } else if overrides.is_some_and(|o| o.skip_context_files) {
-        build_env_context(persona, &[], &cwd)
+    // Apply overrides: environment sections. A system prompt override replaces
+    // every generated section; skip_context_files drops only the files section.
+    let env_sections = if overrides.is_some_and(|o| o.system_prompt.is_some()) {
+        Vec::new()
     } else {
-        build_env_context(persona, context_files, &cwd)
+        let files = if overrides.is_some_and(|o| o.skip_context_files) {
+            &[][..]
+        } else {
+            context_files
+        };
+        vec![
+            persona_section(persona),
+            context_files_section(files),
+        ]
     };
 
     // Check for system prompt override.
@@ -193,22 +201,24 @@ pub fn assemble_prompt(
         .filter(|m| !matches!(m, LlmMessage::System { .. }))
         .collect();
 
-    // Assemble system parts.
+    // Compose the system prompt in fixed section order. Empty sections are
+    // omitted entirely; the rest are joined with a blank line between them.
     let full_system = if let Some(content) = forced_system {
         // Override replaces all generated system parts.
         // Still include pinned system entries from history below.
         Some(content)
     } else {
         let mut system_parts: Vec<String> = Vec::new();
+        system_parts.extend(env_sections);
+        if let Some(block) = tool_block {
+            system_parts.push(block);
+        }
         if !skills_block.is_empty() {
             system_parts.push(skills_block);
         }
-        system_parts.extend(pinned_system_contents);
-        if !env_context.is_empty() {
-            system_parts.push(env_context);
-        }
-        if let Some(block) = tool_block {
-            system_parts.push(block);
+        if !system_parts.is_empty() {
+            system_parts.push(date_section());
+            system_parts.push(cwd_section(&cwd));
         }
         if system_parts.is_empty() {
             None
