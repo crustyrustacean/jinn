@@ -187,6 +187,7 @@ mod tests {
         (state, session_id, tid)
     }
 
+    #[rstest::rstest]
     #[test]
     fn cancel_task_marks_as_cancelled() {
         let (state, session_id, tid) = setup_with_task();
@@ -205,6 +206,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn cancel_task_errors_on_unknown_task() {
         let (state, session_id, _tid) = setup_with_task();
@@ -220,6 +222,7 @@ mod tests {
         assert!(result.content.contains("task not found"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn cancel_task_errors_on_already_cancelled() {
         let (state, session_id, tid) = setup_with_task();
@@ -249,6 +252,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn cancel_task_requires_state() {
         let call = ToolCall {
@@ -262,6 +266,7 @@ mod tests {
         assert!(!result.success);
     }
 
+    #[rstest::rstest]
     #[test]
     fn cancel_task_return_has_next_block_at_top() {
         // Use two tasks so cancelling one still leaves a next task to point at.

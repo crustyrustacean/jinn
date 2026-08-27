@@ -135,6 +135,7 @@ fn ctx_with_coordinator(
 // ---------------------------------------------------------------------------
 
 /// An unrunnable command → the new actor fails to connect → `ConnectFailed`.
+#[rstest::rstest]
 #[tokio::test]
 async fn restart_one_returns_connect_failed_for_unrunnable_command() {
     // Given a coordinator with an unrunnable server enabled for a session.
@@ -164,6 +165,7 @@ async fn restart_one_returns_connect_failed_for_unrunnable_command() {
 }
 
 /// A server that isn't in the config → `UnknownServer`.
+#[rstest::rstest]
 #[tokio::test]
 async fn restart_one_returns_unknown_server_for_unconfigured_server() {
     // Given a coordinator with one configured server.
@@ -197,6 +199,7 @@ async fn restart_one_returns_unknown_server_for_unconfigured_server() {
 // ---------------------------------------------------------------------------
 
 /// No coordinator ref (e.g. test seed without one) → immediate failure.
+#[rstest::rstest]
 #[tokio::test]
 async fn execute_fails_when_coordinator_ref_is_none() {
     // Given a context with no coordinator ref.
@@ -228,6 +231,7 @@ async fn execute_fails_when_coordinator_ref_is_none() {
 }
 
 /// An unknown server routed through the real ask → failure naming the server.
+#[rstest::rstest]
 #[tokio::test]
 async fn execute_returns_failure_for_unknown_server_via_ask() {
     // Given a coordinator with `excalimate` configured and a context wired to it.
@@ -250,6 +254,7 @@ async fn execute_returns_failure_for_unknown_server_via_ask() {
 
 /// A namespaced tool name routes to the real ask (and fails UnknownServer if
 /// the server isn't configured) — proves namespace-stripping reaches the ask.
+#[rstest::rstest]
 #[tokio::test]
 async fn execute_strips_namespace_and_routes_to_ask() {
     // Given a coordinator with no `stub` server configured.
