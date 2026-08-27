@@ -268,7 +268,8 @@ mod tests {
             .await;
 
         let base_url = format!("{}/v1/messages", server.url());
-        let svc = AnthropicService::with_base_url("claude-3".to_owned(), "test-key".to_owned(), base_url);
+        let svc =
+            AnthropicService::with_base_url("claude-3".to_owned(), "test-key".to_owned(), base_url);
 
         // When listing models.
         let result = svc.list_models().await;
@@ -300,7 +301,8 @@ mod tests {
             .await;
 
         let base_url = format!("{}/v1/messages", server.url());
-        let svc = AnthropicService::with_base_url("claude-3".to_owned(), "test-key".to_owned(), base_url);
+        let svc =
+            AnthropicService::with_base_url("claude-3".to_owned(), "test-key".to_owned(), base_url);
 
         // When listing models.
         let result = svc.list_models().await;

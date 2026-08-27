@@ -48,8 +48,11 @@ impl LlmServiceFactory for AnthropicFactory {
             return Err(Report::new(LlmServiceError::ApiKey).attach("Missing Anthropic API key"));
         }
 
-        let service =
-            AnthropicService::with_client(self.client.clone(), self.model.clone(), self.api_key.clone());
+        let service = AnthropicService::with_client(
+            self.client.clone(),
+            self.model.clone(),
+            self.api_key.clone(),
+        );
 
         Ok(Box::new(service))
     }

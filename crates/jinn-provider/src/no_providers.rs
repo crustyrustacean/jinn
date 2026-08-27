@@ -85,7 +85,10 @@ mod tests {
 
         // When creating a service and streaming.
         let service = factory.create().expect("create service");
-        let stream = service.chat_stream(None, vec![]).await.expect("chat_stream");
+        let stream = service
+            .chat_stream(None, vec![])
+            .await
+            .expect("chat_stream");
         let tokens: Vec<String> = StreamExt::map(stream, |r| r.expect("token"))
             .collect()
             .await;
