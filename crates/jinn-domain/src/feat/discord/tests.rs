@@ -96,6 +96,52 @@ fn re_serializing_disabled_default_round_trips() {
     assert!(!reparsed.enabled);
 }
 
+#[rstest::rstest]
+#[test]
+fn missing_authorized_users_deserializes_to_empty_list() {
+    // Given a [discord] table with no `authorized_users` key.
+    #[derive(Deserialize)]
+    struct Wrapper {
+        discord: DiscordConfig,
+    }
+    let toml_str = r#"
+        [discord]
+        enabled = true
+        bot_token = "abc123"
+    "#;
+
+    // When deserializing.
+    let parsed: Wrapper = toml::from_str(toml_str).expect("parse");
+
+    // Then the allow-list is empty (which denies everybody).
+    assert!(parsed.discord.authorized_users.is_empty());
+}
+
+#[rstest::rstest]
+#[test]
+fn authorized_users_round_trip_through_toml() {
+    // Given a [discord] table with a populated `authorized_users` list.
+    #[derive(Deserialize)]
+    struct Wrapper {
+        discord: DiscordConfig,
+    }
+    let toml_str = r#"
+        [discord]
+        enabled = true
+        authorized_users = ["123456789012345678", "  876543210987654321 "]
+    "#;
+
+    // When deserializing.
+    let parsed: Wrapper = toml::from_str(toml_str).expect("parse");
+
+    // Then both entries are preserved verbatim (normalization happens at
+    // check time, not parse time).
+    assert_eq!(
+        parsed.discord.authorized_users,
+        ["123456789012345678", "  876543210987654321 "]
+    );
+}
+
 // ── DiscordThreadMap DAO ──────────────────────────────────────────────
 
 use crate::feat::session::session_store::SqliteSessionStore;
