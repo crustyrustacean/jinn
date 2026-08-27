@@ -383,6 +383,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 1. empty_history_produces_no_mutations
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn empty_history_produces_no_mutations() {
         // Given an empty history.
@@ -398,6 +399,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 2. single_entry_is_anchor_and_shielded
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn single_user_entry_is_anchor_and_shielded() {
         // Given a single user entry (anchor, since it's User kind).
@@ -412,6 +414,7 @@ mod tests {
         let included = included_ids(&mutations);
         assert!(included.contains(&entry_id));
     }
+    #[rstest::rstest]
     #[test]
     fn single_non_user_entry_without_anchors_is_not_shielded() {
         // Given a single assistant entry — no User anchors exist.
@@ -433,6 +436,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 3. assistant_within_radius_is_forced_included
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn assistant_within_radius_is_forced_included() {
         // Given a user entry at idx 0 (anchor) and an assistant at idx 1.
@@ -452,6 +456,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 4. assistant_outside_radius_is_not_shielded
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn assistant_outside_radius_is_not_shielded() {
         // Given a user entry at idx 0 (anchor) and an assistant at idx 6
@@ -485,6 +490,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 5. tool_call_within_radius_shields_result_pair
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn tool_call_within_radius_shields_result_pair() {
         // Given a ToolCall within radius of an anchor, with its ToolResult
@@ -528,6 +534,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 6. tool_result_within_radius_shields_call_pair
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn tool_result_within_radius_shields_call_pair() {
         // Given a ToolResult near a User anchor (distance 0),
@@ -575,6 +582,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 7. user_entry_within_radius_is_shielded
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn user_entry_within_radius_is_shielded() {
         // Given two user entries with a non-user entry between them.
@@ -599,6 +607,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 8. system_entry_is_not_shielded
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn system_entry_is_not_shielded() {
         // Given a system entry next to an anchor.
@@ -622,6 +631,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 9. already_forced_included_entry_is_skipped
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn already_forced_included_entry_is_skipped() {
         // Given an entry that is already ForcedInclude.
@@ -646,6 +656,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 10. already_forced_excluded_entry_is_overridden
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn already_forced_excluded_entry_is_overridden() {
         // Given an entry that is ForcedExclude but within the shield radius.
@@ -675,6 +686,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 11. multiple_anchors_shield_independent_neighborhoods
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn multiple_anchors_shield_independent_neighborhoods() {
         // Given two user anchors with a gap between them.
@@ -714,6 +726,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 12. boundary_at_exact_radius_is_included
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn boundary_at_exact_radius_is_included() {
         // Given an entry at exactly distance = radius from the nearest anchor.
@@ -740,6 +753,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 13. boundary_at_radius_plus_one_is_not_shielded
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn boundary_at_radius_plus_one_is_not_shielded() {
         // Given an entry at distance = radius + 1 from the nearest anchor.
@@ -775,6 +789,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 14. idempotency_second_evaluate_no_new_mutations
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn idempotency_second_evaluate_no_new_mutations() {
         // Given a history with entries near anchors.
@@ -818,6 +833,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 15. pinned_entry_is_not_duplicated
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn pinned_entry_is_not_duplicated() {
         // Given a pinned entry near an anchor.

@@ -418,6 +418,7 @@ mod tests {
         rt.block_on(async { worker.evaluate(&SessionId::new(), history).await })
     }
 
+    #[rstest::rstest]
     #[test]
     fn from_config_clamps_keep_last_to_minimum_1() {
         let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
@@ -443,6 +444,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn from_config_returns_error_for_invalid_regex() {
         let result = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
@@ -457,6 +459,7 @@ mod tests {
         assert!(result.is_err(), "invalid regex should return error");
     }
 
+    #[rstest::rstest]
     #[test]
     fn from_config_disabled_returns_empty_worker() {
         let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
@@ -481,6 +484,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn no_matching_tool_calls_produces_no_mutations() {
         let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
@@ -489,6 +493,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn single_match_with_keep_last_1_produces_no_mutations() {
         let pair = bash_call_result("tc-1", "cargo check 2>&1", "all good");
@@ -498,6 +503,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn three_matches_keep_last_1_prunes_two_oldest() {
         let mut history = Vec::new();
@@ -559,6 +565,7 @@ mod tests {
         assert!(!excluded_ids.contains(&id_5), "tc-3 result should be kept");
     }
 
+    #[rstest::rstest]
     #[test]
     fn three_matches_keep_last_2_prunes_one_oldest() {
         let mut history = Vec::new();
@@ -582,6 +589,7 @@ mod tests {
         assert_eq!(mutations.len(), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn keep_last_3_with_only_2_matches_produces_no_mutations() {
         let mut history = Vec::new();
@@ -599,6 +607,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn already_excluded_entries_are_not_re_pruned() {
         let mut history = Vec::new();
@@ -638,6 +647,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn forced_included_entries_are_not_pruned() {
         let mut history = Vec::new();
@@ -670,6 +680,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn multiple_rules_apply_independently() {
         let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
@@ -717,6 +728,7 @@ mod tests {
         assert_eq!(mutations.len(), 4);
     }
 
+    #[rstest::rstest]
     #[test]
     fn rules_filter_by_tool_name() {
         let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
@@ -744,6 +756,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn regex_matches_against_tool_call_text() {
         let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
@@ -773,6 +786,7 @@ mod tests {
         assert_eq!(mutations.len(), 2, "should prune the older pair");
     }
 
+    #[rstest::rstest]
     #[test]
     fn empty_history_produces_no_mutations() {
         let worker = worker_for_cargo_check(1);
@@ -780,6 +794,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn tool_call_without_matching_result_is_skipped() {
         let history = vec![ChatEntry::tool_call(
@@ -793,6 +808,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn multiple_rules_same_tool_different_patterns() {
         let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
@@ -877,6 +893,7 @@ mod tests {
         (history, p1_call_id, p1_result_id)
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_old_matching_pair_regex() {
         // Given a history with two cargo-check pairs (oldest at idx 0)
@@ -896,6 +913,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_matching_pair_regex() {
         // Given a history with two cargo-check pairs padded to 52 entries,
@@ -923,6 +941,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_boundary_strict_less_than_regex() {
         // history_len = 52, oldest call_idx = 0, age = 51.
