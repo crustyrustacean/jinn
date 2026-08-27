@@ -11,6 +11,7 @@ use toml_edit::DocumentMut;
 
 const FIXTURE: &str = include_str!("../src/default_providers.toml");
 
+#[rstest::rstest]
 #[test]
 fn round_trip_preserves_comments_when_patching_one_field() {
     // Given the shipped default providers.toml (which is comment-rich).
@@ -49,6 +50,7 @@ fn round_trip_preserves_comments_when_patching_one_field() {
     assert!(!openai_block.contains("OPENAI_API_KEY"));
 }
 
+#[rstest::rstest]
 #[test]
 fn map_keyed_provider_table_can_be_removed_by_key() {
     // Given a document with map-keyed [providers.<name>] tables.

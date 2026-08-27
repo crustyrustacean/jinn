@@ -834,6 +834,7 @@ mod tests {
     // Given a manifest with grants and no --grant flag.
     // When resolving.
     // Then the embedded grants apply and carry grants_from_manifest.
+    #[rstest::rstest]
     #[test]
     fn resolve_install_applies_manifest_grants_by_default() {
         let resolved = resolve_install(
@@ -855,6 +856,7 @@ mod tests {
     // Given a --grant flag alongside embedded grants.
     // When resolving.
     // Then the flag wins and the manifest grants are discarded.
+    #[rstest::rstest]
     #[test]
     fn resolve_install_grant_flag_overrides_manifest() {
         let resolved = resolve_install(
@@ -875,6 +877,7 @@ mod tests {
     // Given an embedded manifest with http = true and a --no-http flag.
     // When resolving.
     // Then http is denied.
+    #[rstest::rstest]
     #[test]
     fn resolve_install_no_http_overrides_manifest() {
         let resolved = resolve_install(
@@ -892,6 +895,7 @@ mod tests {
     // Given a manifest with no name and no --name flag.
     // When resolving against an artifact path.
     // Then the file stem is the name.
+    #[rstest::rstest]
     #[test]
     fn resolve_install_name_falls_back_to_file_stem() {
         use jinn_domain::feat::plugin::manifest::PluginManifest;
@@ -997,6 +1001,7 @@ mod tests {
         load_theme(&state, &empty, &empty, &cap);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn fetch_models_writes_file_on_success() {
         // Given a mock server returning valid JSON.
@@ -1040,6 +1045,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn fetch_models_returns_error_on_http_failure() {
         // Given a mock server returning HTTP 500.
@@ -1063,6 +1069,7 @@ mod tests {
         mock.assert_async().await;
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn fetch_models_counts_providers_and_models_correctly() {
         // Given a mock server returning JSON with 2 providers and 3 models total.

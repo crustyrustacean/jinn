@@ -90,6 +90,7 @@ fn serialize_named_round_trip() {
 mod nord_light_loads {
     use crate::theme::ThemeFile;
 
+    #[rstest::rstest]
     #[test]
     fn bundled_nord_light_theme_parses() {
         // Given the bundled nord-light theme file.
@@ -100,5 +101,44 @@ mod nord_light_loads {
 
         // Then it resolves without error.
         let _theme = file.resolve();
+    }
+}
+
+#[cfg(test)]
+mod style_map_integration_tests {
+    #![allow(clippy::expect_used, reason = "test assertions")]
+    use ratatui::style::Style;
+
+    #[rstest::rstest]
+    #[test]
+    fn style_map_returns_entry_for_every_theme_field() {
+        // Given the default theme.
+        let theme = crate::default_theme();
+        // When building the style map.
+        let map = theme.style_map();
+        // Then it has one entry per Theme field (40 fields).
+        assert_eq!(map.len(), 40, "style_map should cover all Theme fields");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn style_map_values_are_fg_only_styles() {
+        // Given the default theme.
+        let theme = crate::default_theme();
+        // When building the style map.
+        let map = theme.style_map();
+        // Then selected entries resolve to Style::default().fg(field).
+        assert_eq!(
+            map.get("streaming"),
+            Some(&Style::default().fg(theme.streaming))
+        );
+        assert_eq!(
+            map.get("accent_action"),
+            Some(&Style::default().fg(theme.accent_action))
+        );
+        assert_eq!(
+            map.get("muted_text"),
+            Some(&Style::default().fg(theme.muted_text))
+        );
     }
 }
