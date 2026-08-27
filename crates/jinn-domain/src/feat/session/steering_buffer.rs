@@ -86,6 +86,7 @@ mod tests {
     use super::*;
     use crate::feat::session::chat_entry::{ChatEntryKind, ContextOverride};
 
+    #[rstest::rstest]
     #[test]
     fn new_buffer_is_empty() {
         let buf = SteeringBuffer::new();
@@ -93,6 +94,7 @@ mod tests {
         assert_eq!(buf.len(), 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn push_increments_len() {
         let mut buf = SteeringBuffer::new();
@@ -103,12 +105,14 @@ mod tests {
         assert_eq!(buf.len(), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_empty_returns_none() {
         let mut buf = SteeringBuffer::new();
         assert!(buf.drain_into_entry().is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_single_fragment_produces_user_entry() {
         let mut buf = SteeringBuffer::new();
@@ -126,6 +130,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_multiple_fragments_joined_by_blank_line_in_order() {
         let mut buf = SteeringBuffer::new();
@@ -145,6 +150,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_clears_buffer() {
         let mut buf = SteeringBuffer::new();
@@ -156,6 +162,7 @@ mod tests {
         assert_eq!(buf.len(), 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_after_drain_returns_none() {
         let mut buf = SteeringBuffer::new();
@@ -164,6 +171,7 @@ mod tests {
         assert!(buf.drain_into_entry().is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn push_after_drain_starts_fresh() {
         let mut buf = SteeringBuffer::new();
@@ -179,6 +187,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn drained_entry_has_no_pin_and_normal_context_fields() {
         // Given a buffer with one fragment.
@@ -206,6 +215,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_fragments_empty_returns_empty_vec() {
         // Given an empty buffer.
@@ -218,6 +228,7 @@ mod tests {
         assert!(fragments.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_fragments_returns_fragments_in_order() {
         // Given a buffer with three fragments.
@@ -233,6 +244,7 @@ mod tests {
         assert_eq!(fragments, vec!["a", "b", "c"]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_fragments_clears_buffer() {
         // Given a buffer with two fragments.
@@ -248,6 +260,7 @@ mod tests {
         assert_eq!(buf.len(), 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_fragments_after_drain_into_entry_starts_fresh() {
         // Given a buffer drained via drain_into_entry then refilled.

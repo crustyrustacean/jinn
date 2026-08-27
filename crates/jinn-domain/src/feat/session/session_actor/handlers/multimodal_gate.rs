@@ -188,6 +188,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn gate_allows_model_confirmed_image_capable_via_cache() {
         // Given an overlaid cache entry with image modalities for the active model.
@@ -202,6 +203,7 @@ mod tests {
         assert!(result.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn gate_blocks_model_marked_text_only_in_cache() {
         // Given an overlaid cache entry that is explicitly text-only.
@@ -217,6 +219,7 @@ mod tests {
         assert!(matches!(blocked.kind, ChatEntryKind::Error(_)));
     }
 
+    #[rstest::rstest]
     #[test]
     fn gate_falls_back_to_models_dev_when_model_not_in_cache() {
         // Given an empty cache and a models.dev vision model.
@@ -231,6 +234,7 @@ mod tests {
         assert!(result.is_some());
     }
 
+    #[rstest::rstest]
     #[test]
     fn gate_blocks_unknown_model_with_no_cache_entry() {
         // Given no cache and no models.dev data.
@@ -245,6 +249,7 @@ mod tests {
         assert!(matches!(blocked.kind, ChatEntryKind::Error(_)));
     }
 
+    #[rstest::rstest]
     #[test]
     fn gate_resolves_path_shaped_model_id_from_cache() {
         // Given a cache entry whose model id is an absolute file path.
@@ -280,6 +285,7 @@ mod tests {
         assert!(result.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn allows_text_only_entry_regardless_of_model() {
         // Given a text-only entry and a non-vision model.
@@ -291,6 +297,7 @@ mod tests {
         assert!(attachment_gate(Some("gpt-3.5-turbo"), &entry, &models_dev, None).is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn blocks_attachment_on_known_text_only_model() {
         // Given an image entry and a model known to lack image support.
@@ -307,6 +314,7 @@ mod tests {
         assert!(blocked.is_some(), "expected a block error entry");
     }
 
+    #[rstest::rstest]
     #[test]
     fn allows_attachment_on_vision_model() {
         // Given an image entry and a vision-capable model.
@@ -319,6 +327,7 @@ mod tests {
         assert!(attachment_gate(Some("gpt-4o"), &entry, &models_dev, None).is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn blocks_attachment_on_unknown_model() {
         // Given an image entry and a model not in the reference data.
@@ -335,6 +344,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn blocked_error_entry_names_model_and_points_at_providers_toml() {
         // Given an unknown model id.
@@ -360,6 +370,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn allows_attachment_when_no_provider_configured() {
         // Given an image entry and no configured model.

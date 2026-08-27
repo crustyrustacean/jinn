@@ -407,6 +407,7 @@ mod tests {
     use crate::feat::session::chat_session::SessionState;
     use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn loading_archived_session_resets_state_to_loaded() {
         // Given an archived session in the store.
@@ -443,6 +444,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn save_active_session_skips_non_persistable_session() {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
@@ -456,6 +458,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn save_active_session_persists_interacted_session() {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
@@ -473,6 +476,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn save_active_session_releases_write_lock_before_clone() {
         // Given an interacted session with a large history.
@@ -521,6 +525,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_mark_session_interacted_sets_flag_emits_event_and_persists() {
         use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
@@ -550,6 +555,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn loading_child_session_creates_frozen_node_for_archived_parent() {
         let mut parent = ChatSessionState::new();
