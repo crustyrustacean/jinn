@@ -462,6 +462,163 @@ sync-github:
        --mainbranch trunk \
        --autopush "$GITHUB_REMOTE"
 
+# ---------------------------------------------------------------------------
+# GitHub PR intake (fossil-primary, patch-based — no git↔fossil import).
+#
+#   just gh-setup              one-time: teach `gh` which repo to talk to
+#   just gh-pr-list [STATE]    browse PRs (default open)
+#   just gh-pr-view N          PR metadata in the terminal
+#   just gh-pr-fetch N         download patch + metadata, extract the author
+#   just gh-pr-apply N         dry-run then apply the patch to the working tree
+#   ...review, `just check`, `just test`...
+#   just gh-pr-land N          commit, attributed to the contributor
+#   just sync-github           mirror the landed commit to GitHub
+#   just gh-pr-close N [MSG]   close the PR on GitHub with a note
+#
+# Per-PR artifacts live in target/gh-pr/N/ (ignored via the `target` glob).
+# ---------------------------------------------------------------------------
+export GH_REPO := "jayson-lennon/jinn"
+GH_PR_STATE_DIR := "target/gh-pr"
+
+# One-time: teach gh which repo to talk to from this fossil-only workspace.
+# `gh repo set-default` refuses to run outside a git repo (verified), so we
+# skip it entirely and rely on the GH_REPO environment variable instead —
+# honored by every gh subcommand with no .git required. The export above
+# makes it ambient for both `just` recipes and your interactive shell (via
+# `just --evaluate`-visible recipes) and nothing is written to gh's config.
+gh-setup:
+    @echo "GH_REPO={{GH_REPO}} (exported by the justfile; no setup needed)"
+    @GH_REPO={{GH_REPO}} gh auth status && echo "gh is ready"
+
+gh-pr-list STATE="open":
+    gh pr list --state {{STATE}} --limit 30 \
+        --json number,title,author,headRefName \
+        --jq '.[] | "#\(.number)  \(.author.login)  [\(.headRefName)]  \(.title)"'
+
+gh-pr-view N:
+    gh pr view {{N}} \
+        --json number,title,url,author,headRefName,headRefOid,additions,deletions,changedFiles \
+        --jq '"#\(.number) \(.title)", "  by \(.author.login)  \(.headRefName)@\(.headRefOid[0:10])", "  +\(.additions) -\(.deletions) across \(.changedFiles) file(s)", "  \(.url)"'
+
+# Fetch the PR's format-patch and auto-extract the contributor identity from
+# the first commit's "From: Name <email>" header — the same email GitHub uses
+# for account linking, so attribution stays exact.
+gh-pr-fetch N:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="{{GH_PR_STATE_DIR}}/{{N}}"
+    mkdir -p "$dir"
+
+    echo '==> Fetching PR metadata'
+    gh pr view {{N}} \
+        --json number,title,url,author,headRefName,headRepositoryOwner,isCrossRepository \
+        > "$dir/meta.json"
+
+    echo '==> Fetching patch'
+    # NOTE: `gh pr diff` can exit 0 while writing an error string into the
+    # file on some failure modes (observed: HTTP 422 → empty file). Guard
+    # with a non-empty check too, not just the exit code.
+    gh pr diff {{N}} --patch > "$dir/pr.patch"
+    if [ ! -s "$dir/pr.patch" ] || ! grep -q '^From ' "$dir/pr.patch"; then
+        echo "ERROR: no patch content for PR {{N}} (diff unavailable?)" >&2
+        exit 1
+    fi
+
+    commits=$(grep -c '^From ' "$dir/pr.patch" || true)
+    ident=$(awk 'NR>1 && /^From: */{ sub(/^From: */,""); print; exit }' "$dir/pr.patch")
+    if [ -z "$ident" ]; then
+        echo 'ERROR: no "From:" header in patch; cannot extract author identity.' >&2
+        exit 1
+    fi
+    printf '%s\n' "$ident" > "$dir/identity"
+
+    echo "    commits : $commits"
+    echo "    author  : $ident"
+    if [ "$commits" -gt 1 ]; then
+        echo '    note    : multi-commit PR; identity taken from the FIRST commit' >&2
+    fi
+    echo "==> Saved: $dir/{meta.json,pr.patch,identity}"
+
+# Apply the fetched patch to the working tree. Refuses a dirty tree, always
+# dry-runs first, and tolerates already-applied hunks (--forward) instead of
+# hanging on an interactive prompt.
+gh-pr-apply N:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="{{GH_PR_STATE_DIR}}/{{N}}"
+    [ -f "$dir/pr.patch" ] || {
+        echo "ERROR: no fetched patch for PR {{N}}; run: just gh-pr-fetch {{N}}" >&2
+        exit 1
+    }
+    if [ -n "$(fossil changes --differ)" ]; then
+        echo 'ERROR: working tree has uncommitted changes; commit or revert first.' >&2
+        exit 1
+    fi
+    branch=$(fossil branch current)
+    if [ "$branch" != "trunk" ]; then
+        echo "Note: applying on branch '$branch', not trunk" >&2
+    fi
+
+    echo '==> Dry run'
+    patch -p1 --dry-run --forward < "$dir/pr.patch"
+    echo '==> Applying'
+    patch -p1 --forward < "$dir/pr.patch"
+    fossil addremove --dotfiles
+    echo "==> Applied. Review, then: just check && just test && just gh-pr-land {{N}}"
+
+# Commit the applied patch, attributed to the contributor: auto-provisions a
+# fossil user carrying the identity extracted at fetch time (that contact info
+# is what `fossil git export` later writes into the git author field, which is
+# what GitHub links back to their profile).
+gh-pr-land N:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="{{GH_PR_STATE_DIR}}/{{N}}"
+    [ -f "$dir/pr.patch" ] || {
+        echo "ERROR: no fetched patch for PR {{N}}; run: just gh-pr-fetch {{N}}" >&2
+        exit 1
+    }
+    if [ -z "$(fossil changes --differ)" ]; then
+        echo 'ERROR: nothing to commit; apply the patch first: just gh-pr-apply {{N}}' >&2
+        exit 1
+    fi
+
+    ident=$(<"$dir/identity")
+    login=$(jq -r '.author.login' "$dir/meta.json")
+    url=$(jq -r '.url' "$dir/meta.json")
+    name=${ident%% <*}
+    email=${ident#*<}; email=${email%>*}
+
+    if fossil user list | awk '{print $1}' | grep -qx "$login"; then
+        echo "==> fossil user '$login' already exists (contact not modified)"
+    else
+        fossil user new "$login" "$ident" >/dev/null
+        echo "==> created fossil user '$login' ($ident)"
+    fi
+
+    msg=$(printf 'Apply PR #{{N}} by %s\n\nPicked from %s\n\nCo-authored-by: %s\n' \
+        "$name" "$url" "$ident")
+    fossil addremove --dotfiles
+    fossil commit -m "$msg" --user-override "$login" --no-verify-comment
+
+    hash=$(fossil info | awk '/^checkout:/{ print substr($2, 1, 12); exit }')
+    echo
+    echo "==> Landed as $hash (user: $login <$email>)"
+    echo '    next: just check && just test   (if not already done)'
+    echo '    then: just sync-github'
+    echo "    then: just gh-pr-close {{N}} 'Landed in Fossil as $hash; mirrored shortly.'"
+
+# Opt-in: close the PR on GitHub, optionally with a note (the `just gh-pr-land`
+# output prints a ready-made message including the fossil hash).
+gh-pr-close N COMMENT="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=()
+    if [ -n "{{COMMENT}}" ]; then
+        args+=(--comment "{{COMMENT}}")
+    fi
+    gh pr close {{N}} "${args[@]}"
+
 # Bump version (major/minor/patch), commit, and tag in Fossil
 bump LEVEL:
     #!/usr/bin/env bash
