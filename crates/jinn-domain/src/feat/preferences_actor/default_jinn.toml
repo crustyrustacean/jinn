@@ -105,6 +105,11 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # command = "npx"
 # args = ["@excalimate/mcp-server", "--stdio"]
 #
+# Start this server already enabled in every NEW session (no picker visit
+# needed). Default is false. Toggle state is remembered per-session; this
+# flag never re-applies to existing sessions.
+# auto_enable = false
+#
 # local_http example (jinn allocates the port, <port> is expanded)
 # [mcp_server.excalimate]
 # command = "npx"
@@ -116,6 +121,22 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # [mcp_server.remote]
 # transport = "remote_http"
 # url = "http://localhost:3001/mcp"
+
+# ---------------------------------------------------------------------------
+# Default-disabled tools and skills
+# ---------------------------------------------------------------------------
+# Tools and skills are enabled by default; list names here to start NEW
+# sessions with them disabled. Bare names for built-ins ("bash", "save_plan")
+# or full namespaces for MCP tools ("mcp__excalimate__draw"). Skills are
+# disabled by their exact name ("phased-task-loop").
+#
+# Entries that match nothing are harmless, so listings stay valid across jinn
+# versions. These defaults apply only at session creation — toggles inside a
+# session override them per-session (and persist with the session) without
+# writing back here.
+#
+# disabled_tools = []
+# disabled_skills = []
 
 # ---------------------------------------------------------------------------
 # Plugins — WASM components jinn runs in-process (sandboxed guests). Each
