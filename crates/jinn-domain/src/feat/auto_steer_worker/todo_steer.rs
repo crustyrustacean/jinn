@@ -385,6 +385,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn empty_history_produces_no_mutations() {
         // Given an empty history with no todo_ calls.
@@ -395,6 +396,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn no_todo_calls_below_threshold_produces_no_mutations() {
         // Given a history with no todo_ calls but fewer than threshold entries.
@@ -407,6 +409,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn no_todo_calls_above_threshold_produces_no_mutations() {
         // Given a history with no todo_ calls but more than threshold entries.
@@ -419,6 +422,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn reminder_without_any_todo_call_is_gated() {
         // Given a history with a prior reminder but NO todo_* ToolCall anywhere.
@@ -432,6 +436,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn todo_call_below_threshold_produces_no_mutations() {
         // Given a history with a todo_ call, elapsed entries below threshold.
@@ -445,6 +450,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn todo_call_at_threshold_produces_one_tail_insert() {
         // Given a history with a todo_ call and exactly threshold entries after.
@@ -474,6 +480,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn todo_call_within_threshold_suppresses_reminder() {
         // Given a history with two todo_ calls, the second within threshold of end.
@@ -489,6 +496,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn existing_reminder_at_threshold_produces_another_insert() {
         // Given a history with a prior reminder and threshold entries after it.
@@ -510,6 +518,7 @@ mod tests {
         assert!(matches!(mutations[0], HistoryMutation::InsertEntry { .. }));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn existing_reminder_below_threshold_produces_no_mutations() {
         // Given a history with a prior reminder and fewer than threshold entries after.
@@ -523,6 +532,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn disabled_produces_no_mutations_regardless_of_history() {
         // Given a history that would trigger a reminder.
@@ -540,6 +550,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn read_only_todo_call_resets_anchor() {
         // Given a history where only a read-only todo_ call exists within threshold.
@@ -553,6 +564,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn produced_entry_is_user_kind_at_tail() {
         // Given a history with a todo_ call and threshold entries after.
@@ -595,6 +607,7 @@ mod tests {
 
     // ── Pending-id guard tests ──
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pending_id_not_in_history_skips_evaluation() {
         // Given a worker with a pending reminder whose ID is not in history,
@@ -619,6 +632,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pending_id_not_in_history_remains_set() {
         // Given a worker with a pending reminder whose ID is not in history.
@@ -650,6 +664,7 @@ mod tests {
         assert_eq!(after, Some(pending_id));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pending_id_found_in_history_clears_and_proceeds() {
         // Given a worker with a pending reminder whose ID IS in history,
@@ -691,6 +706,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn emit_sets_pending_id() {
         // Given a fresh worker (no pending) and a history at threshold.
@@ -724,6 +740,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn emitted_entry_carries_stashed_id() {
         // Given a fresh worker and a history at threshold.
@@ -757,6 +774,7 @@ mod tests {
         assert_eq!(stashed, Some(emitted_id));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn disabled_does_not_touch_guard() {
         // Given a disabled worker with a pending ID set.
@@ -790,6 +808,7 @@ mod tests {
 
     // ── Multi-session isolation tests ──
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn one_session_pending_does_not_suppress_another_session() {
         // Given session A has a pending reminder (in flight, not yet landed)
@@ -822,6 +841,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pending_guard_is_keyed_per_session() {
         // Given a worker where session A has a pending reminder and session B
