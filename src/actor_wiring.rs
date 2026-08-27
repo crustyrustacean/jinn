@@ -1464,6 +1464,14 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             let bus_ref = services.bus.actor_ref();
             let env_init = env_init.clone();
 
+            // INVARIANT: the MCP coordinator was spawned and fully awaited
+            // (`wait_for_startup`) above, so it has already subscribed to
+            // `SessionCreated` and `McpEnablementChanged`. Publishing
+            // `EnvironmentLoaded` here triggers the welcome-session seeding,
+            // which may publish `McpEnablementChanged` immediately — the
+            // subscription must already exist. Do not move this publish ahead
+            // of the coordinator spawn.
+
             // Signal all actors spawned.
             let _ = bus_ref
                 .tell(kameo_actors::message_bus::Publish(

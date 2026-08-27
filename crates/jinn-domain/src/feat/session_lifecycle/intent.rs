@@ -105,14 +105,20 @@ pub fn handle_session_lifecycle_setup(
 
     let reasoning_effort = state.frontend.app_state.reasoning_effort;
 
+    // Seed per-session defaults from jinn.toml (disablement sets +
+    // auto-enabled MCP servers), matching every other session-creation path.
+    let seed =
+        crate::feat::session::profile::SessionSeed::from_preferences(&state.frontend.preferences);
+
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
         model,
         persona_name,
-        std::collections::HashSet::new(),
-        std::collections::HashSet::new(),
+        seed.disabled_tools.clone(),
+        seed.disabled_skills.clone(),
         reasoning_effort,
         None,
     ));
+    new_session.set_enabled_mcp_servers(seed.enabled_mcp.clone());
     let new_id = new_session.session_id().clone();
 
     // Set lifecycle metadata on the session core.
@@ -175,7 +181,7 @@ pub fn handle_session_lifecycle_setup(
             }
         };
 
-        return IntentResult::empty()
+        let mut result = IntentResult::empty()
             .with_message(PersistSession {
                 session_id: new_id.clone(),
             })
@@ -184,17 +190,39 @@ pub fn handle_session_lifecycle_setup(
                 entry: crate::feat::session::session_actor::setup_running_msg(),
             })
             .with_message(RunSessionSetup {
-                session_id: new_id,
+                session_id: new_id.clone(),
                 command: rendered,
                 args: args.to_vec(),
                 lifecycle_command: Some(setup_cmd.clone()),
             })
             .with_message(created_event);
+
+        // Notify the MCP coordinator of any config-seeded enablement so the
+        // new session's servers spawn without a picker visit. When nothing is
+        // auto-enabled, the message is skipped (nothing to reconcile).
+        if seed.has_auto_enabled_mcp() {
+            result = result.with_message(
+                crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged {
+                    session_id: new_id,
+                    enabled: seed.enabled_mcp,
+                },
+            );
+        }
+
+        return result;
     }
 
     // No setup command — the starting CWD was already set on the new session
     // before insert (above), so there's nothing more to do here.
-    IntentResult::new_message(created_event)
+    if !seed.has_auto_enabled_mcp() {
+        return IntentResult::new_message(created_event);
+    }
+    IntentResult::new_message(created_event).with_message(
+        crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged {
+            session_id: new_id,
+            enabled: seed.enabled_mcp,
+        },
+    )
 }
 
 /// Handle `Intent::SessionClose`.
@@ -1199,6 +1227,139 @@ mod tests {
             state.active_session().profile().reasoning_effort,
             None,
             "new session should be seeded as None when global is unset"
+        );
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_setup_seeds_disabled_tools_and_skills_from_preferences() {
+        // Given preferences disabling a tool and a skill.
+        let mut state = AppState::default();
+        state.frontend.preferences.disabled_tools =
+            ["bash"].iter().map(|s| (*s).to_owned()).collect();
+        state.frontend.preferences.disabled_skills = ["phased-task-loop"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+
+        // When creating a new session via lifecycle setup.
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+
+        // Then the new session carries both disablement sets.
+        assert!(state.active_session().disabled_tools().contains("bash"));
+        // And the skill too.
+        assert!(
+            state
+                .active_session()
+                .disabled_skills()
+                .contains("phased-task-loop")
+        );
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_setup_with_auto_enabled_mcp_returns_enablement_message() {
+        // Given preferences with one auto-enabled MCP server.
+        let mut state = AppState::default();
+        state.frontend.preferences.mcp_server = [(
+            "excalimate".to_owned(),
+            crate::feat::mcp::McpServerConfig {
+                command: Some("npx".to_owned()),
+                auto_enable: true,
+                ..Default::default()
+            },
+        )]
+        .into_iter()
+        .collect();
+
+        // When creating a new session (blank lifecycle).
+        let result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+
+        // Then the new session has the server enabled.
+        assert!(state.active_session().is_mcp_server_enabled("excalimate"));
+        // And an McpEnablementChanged message is emitted so the coordinator
+        // spawns the connection.
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("McpEnablementChanged"))
+        );
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_setup_without_auto_enable_emits_no_enablement_message() {
+        // Given preferences with a server that is NOT auto-enabled.
+        let mut state = AppState::default();
+        state.frontend.preferences.mcp_server = [(
+            "manual".to_owned(),
+            crate::feat::mcp::McpServerConfig {
+                command: Some("npx".to_owned()),
+                auto_enable: false,
+                ..Default::default()
+            },
+        )]
+        .into_iter()
+        .collect();
+
+        // When creating a new session.
+        let result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+
+        // Then the server is not enabled on the new session.
+        assert!(!state.active_session().is_mcp_server_enabled("manual"));
+        // And no enablement message is emitted.
+        assert!(
+            !result
+                .message_names
+                .iter()
+                .any(|n| n.contains("McpEnablementChanged"))
+        );
+    }
+
+    #[rstest::rstest]
+    fn scripted_lifecycle_setup_with_auto_enable_attaches_enablement_message() {
+        // Given a scripted lifecycle and one auto-enabled server.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: None,
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "echo /tmp/workdir".to_owned(),
+                    ),
+                ),
+                teardown: None,
+            });
+        state.frontend.preferences.mcp_server = [(
+            "excalimate".to_owned(),
+            crate::feat::mcp::McpServerConfig {
+                command: Some("npx".to_owned()),
+                auto_enable: true,
+                ..Default::default()
+            },
+        )]
+        .into_iter()
+        .collect();
+
+        // When creating a session with the scripted lifecycle.
+        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
+
+        // Then the enablement message follows SessionCreated in the chain.
+        let created_idx = result
+            .message_names
+            .iter()
+            .position(|n| n.contains("SessionCreated"))
+            .expect("SessionCreated emitted");
+        let enablement_idx = result
+            .message_names
+            .iter()
+            .position(|n| n.contains("McpEnablementChanged"))
+            .expect("enablement emitted for scripted path");
+        assert!(
+            enablement_idx > created_idx,
+            "enablement must trail SessionCreated"
         );
     }
 

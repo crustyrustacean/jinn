@@ -736,6 +736,87 @@ fn close_last_session_seeds_new_session_reasoning_effort_from_global() {
 }
 
 #[rstest::rstest]
+fn close_last_session_seeds_disabled_sets_from_preferences() {
+    // Given a single session and preferences disabling a tool and skill.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    state.frontend.preferences.disabled_tools = ["bash"].iter().map(|s| (*s).to_owned()).collect();
+    state.frontend.preferences.disabled_skills = ["phased-task-loop"]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+    state.frontend.sessions_section.selected_index = Some(0);
+
+    // When closing the last session (forces a replacement).
+    handle_session_close(&mut state);
+
+    // Then the replacement session carries both disablement sets.
+    assert!(
+        state.active_session().disabled_tools().contains("bash"),
+        "replacement should seed disabled_tools from jinn.toml"
+    );
+    assert!(
+        state
+            .active_session()
+            .disabled_skills()
+            .contains("phased-task-loop"),
+        "replacement should seed disabled_skills from jinn.toml"
+    );
+}
+
+#[rstest::rstest]
+fn close_last_session_with_auto_enable_returns_enablement_message() {
+    // Given a single session and one auto-enabled server in preferences.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    state.frontend.preferences.mcp_server = [(
+        "excalimate".to_owned(),
+        crate::feat::mcp::McpServerConfig {
+            command: Some("npx".to_owned()),
+            auto_enable: true,
+            ..Default::default()
+        },
+    )]
+    .into_iter()
+    .collect();
+    let original_id = state.session.active_session_id().clone();
+    state.frontend.sessions_section.selected_index = Some(0);
+
+    // When closing the last session (forces a replacement).
+    let result = handle_session_close(&mut state);
+
+    // Then an McpEnablementChanged message is attached for the replacement.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("McpEnablementChanged"))
+    );
+    // And the replacement has the server enabled.
+    assert_ne!(*state.session.active_session_id(), original_id);
+    assert!(state.active_session().is_mcp_server_enabled("excalimate"));
+}
+
+#[rstest::rstest]
+fn close_last_session_without_auto_enable_emits_no_enablement() {
+    // Given a single session with no auto-enabled servers.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    state.frontend.sessions_section.selected_index = Some(0);
+
+    // When closing the last session.
+    let result = handle_session_close(&mut state);
+
+    // Then no enablement message is emitted.
+    assert!(
+        !result
+            .message_names
+            .iter()
+            .any(|n| n.contains("McpEnablementChanged"))
+    );
+}
+
+#[rstest::rstest]
 fn close_session_clamps_index() {
     // Given state with 3 sessions, sessions section focused, cursor at last index.
     let mut state = state_with_sessions(3);
