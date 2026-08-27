@@ -207,6 +207,7 @@ mod tests {
             .collect()
     }
 
+    #[rstest::rstest]
     #[test]
     fn form_fields_contain_query_and_region() {
         // Given a query and options.
@@ -224,6 +225,7 @@ mod tests {
         assert_eq!(form.get("b").map(String::as_str), Some(""));
     }
 
+    #[rstest::rstest]
     #[test]
     fn form_fields_safe_search_off_sets_kp_minus_two() {
         // Given safe search off.
@@ -239,6 +241,7 @@ mod tests {
         assert_eq!(form.get("kp").map(String::as_str), Some("-2"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn is_blocked_detects_antibot_markers() {
         // Given the blocked fixture.
@@ -249,6 +252,7 @@ mod tests {
         assert!(blocked, "blocked fixture must be detected");
     }
 
+    #[rstest::rstest]
     #[test]
     fn is_blocked_returns_false_for_real_results() {
         // Given the results fixture.
@@ -259,6 +263,7 @@ mod tests {
         assert!(!blocked, "results fixture must not be flagged as blocked");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn with_user_agent_sends_injected_ua_header() {
         // Given a mock server that matches on the injected UA header.
@@ -284,6 +289,7 @@ mod tests {
         mock.assert_async().await;
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_returns_error_for_empty_query() {
         // Given a searcher.
@@ -296,6 +302,7 @@ mod tests {
         assert!(matches!(result, Err(SearchError::InvalidQuery)));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_returns_error_on_http_failure() {
         // Given a mock server that returns 503.
@@ -317,6 +324,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_returns_blocked_when_challenge_page_returned() {
         // Given a mock server returning the anti-bot page with 200.
@@ -340,6 +348,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_parses_results_from_successful_response() {
         // Given a mock server returning the results fixture.
@@ -364,6 +373,7 @@ mod tests {
         assert_eq!(results[0].title, "Rust Programming Language");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_truncates_to_max_results() {
         // Given a mock server returning the 5-result fixture.
@@ -388,6 +398,7 @@ mod tests {
         assert_eq!(results.len(), 2);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_returns_empty_for_page_with_no_results() {
         // Given a mock server returning valid HTML with no results.

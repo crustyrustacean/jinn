@@ -190,6 +190,7 @@ mod tests {
         (actor, audit, services)
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn set_last_model_persists_and_emits() {
         // Given an app-state actor.
@@ -214,6 +215,7 @@ mod tests {
         assert_eq!(events.len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn set_theme_persists_and_emits() {
         // Given an app-state actor.
@@ -235,6 +237,7 @@ mod tests {
         assert_eq!(events.len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn multiple_updates_in_one_command() {
         // Given an app-state actor.
@@ -261,6 +264,7 @@ mod tests {
         assert_eq!(loaded.theme_name.as_deref(), Some("nord"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sync_state_sets_sidebar_width_default_30() {
         // Given an app-state actor.
@@ -278,6 +282,7 @@ mod tests {
         assert_eq!(guard.frontend.sidebar_width, 30);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sync_state_updates_sidebar_width() {
         // Given an app-state actor.
@@ -295,6 +300,7 @@ mod tests {
         assert_eq!(guard.frontend.sidebar_width, 50);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sync_state_sets_correct_persona() {
         use crate::feat::persona::Persona;
@@ -333,6 +339,7 @@ mod tests {
         assert_eq!(active.name, "writer");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sync_state_resolves_default_theme_when_none() {
         // Given an app-state actor.
@@ -351,6 +358,7 @@ mod tests {
         // If we reach here, the handler completed successfully.
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sync_state_applies_contributed_theme_from_cache() {
         // Given an app-state actor whose cache holds a contributed theme.
@@ -379,6 +387,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sync_state_unknown_theme_falls_back_to_default() {
         // Given an app-state actor with an empty contribution cache.

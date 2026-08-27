@@ -131,6 +131,7 @@ mod tests {
         (state, id)
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn snapshot_contains_all_entries() {
         // Given a session with 5 entries.
@@ -161,6 +162,7 @@ mod tests {
         assert_eq!(snapshots[0].history.len(), 5);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn nonexistent_session_produces_no_event() {
         // Given an actor with no sessions.
@@ -186,6 +188,7 @@ mod tests {
         assert!(snapshots.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn empty_history_produces_empty_snapshot() {
         // Given a session with no entries.

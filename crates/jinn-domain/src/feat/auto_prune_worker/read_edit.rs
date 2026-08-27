@@ -324,6 +324,7 @@ mod tests {
             .collect()
     }
 
+    #[rstest::rstest]
     #[test]
     fn no_read_edit_pattern_produces_no_mutations() {
         let history = vec![
@@ -336,6 +337,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_edit_does_not_prune_edits() {
         let mut history = Vec::new();
@@ -358,6 +360,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_then_one_edit_no_prune() {
         let mut history = Vec::new();
@@ -372,6 +375,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_then_two_edits_prunes_both_call_and_result() {
         let mut history = Vec::new();
@@ -396,6 +400,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_edit_different_files_no_prune() {
         let mut history = Vec::new();
@@ -413,6 +418,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn already_excluded_call_no_duplicate_mutation() {
         let mut history = Vec::new();
@@ -447,6 +453,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn already_excluded_result_no_duplicate_mutation() {
         let mut history = Vec::new();
@@ -481,6 +488,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn forced_included_call_no_forward_mutation() {
         let mut history = Vec::new();
@@ -510,6 +518,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn both_already_excluded_no_forward_mutations() {
         let mut history = Vec::new();
@@ -544,6 +553,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn multiple_reads_same_file_both_forward_pruned() {
         let mut history = Vec::new();
@@ -578,6 +588,7 @@ mod tests {
         assert!(ids.contains(&read2[1].id));
     }
 
+    #[rstest::rstest]
     #[test]
     fn interleaved_files_tracked_independently() {
         let mut history = Vec::new();
@@ -610,6 +621,7 @@ mod tests {
         assert!(ids.contains(&read_b[1].id));
     }
 
+    #[rstest::rstest]
     #[test]
     fn orphan_read_no_result_no_mutation() {
         let mut history = Vec::new();
@@ -630,6 +642,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn edit_before_read_not_counted_forward() {
         let mut history = Vec::new();
@@ -664,6 +677,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn three_edits_still_prunes() {
         let mut history = Vec::new();
@@ -684,6 +698,7 @@ mod tests {
         assert_eq!(mutations.len(), 2, "should still prune read with 3 edits");
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_then_two_writes_prunes_read() {
         let mut history = Vec::new();
@@ -705,6 +720,7 @@ mod tests {
         assert!(ids.contains(&read[1].id));
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_then_mixed_edit_and_write_prunes_read() {
         let mut history = Vec::new();
@@ -726,6 +742,7 @@ mod tests {
         assert!(ids.contains(&read[1].id));
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_then_one_write_no_prune() {
         let mut history = Vec::new();
@@ -740,6 +757,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn threshold_3_requires_3_edits() {
         let mut history = Vec::new();
@@ -762,6 +780,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn threshold_3_met_with_3_edits() {
         let mut history = Vec::new();
@@ -790,6 +809,7 @@ mod tests {
 
     /// Read near the end of history is protected by `min_age`: no
     /// `ForcedExclude` mutation is emitted, even though 2 edits follow.
+    #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_read() {
         let mut history = Vec::new();
@@ -821,6 +841,7 @@ mod tests {
 
     /// `min_age = 0` reproduces pre-fix behavior: the read from the
     /// `min_age_protects_recent_read` test is now pruned.
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_as_before() {
         let mut history = Vec::new();
@@ -850,6 +871,7 @@ mod tests {
 
     /// A read well past the `min_age` floor is pruned as before — the
     /// protection only applies to entries near the end of history.
+    #[rstest::rstest]
     #[test]
     fn old_read_still_pruned_in_long_history() {
         let mut history = Vec::new();

@@ -128,6 +128,7 @@ mod tests {
             .collect()
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn renders_actor_name_and_lifecycle() {
         // Given a dashboard with one running actor.
@@ -155,6 +156,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn renders_status_message_for_discord() {
         // Given a dashboard with discord in a connected state.
@@ -182,6 +184,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn renders_empty_placeholder_when_no_actors() {
         // Given a dashboard with no actors.
@@ -205,6 +208,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn shows_selection_marker_on_selected_entry() {
         // Given a dashboard with two actors, second selected.
@@ -230,6 +234,7 @@ mod tests {
         assert!(buf_str.contains('▸'), "selected entry should have marker");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn renders_no_em_dash_separator() {
         // Given a dashboard with an actor that has a description.
@@ -256,6 +261,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn clamp_scroll_keeps_selected_visible() {
         // Given a dashboard with 5 actors, selection at index 4, viewport 3.

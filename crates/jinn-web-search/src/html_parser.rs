@@ -140,6 +140,7 @@ mod tests {
 
     const FIXTURE: &str = include_str!("../tests/fixtures/ddg_search_results.html");
 
+    #[rstest::rstest]
     #[test]
     fn parse_results_extracts_all_valid_results() {
         // Given the fixture (5 real results + 1 `/search` nav link + nav-link).
@@ -154,6 +155,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_results_extracts_title_and_url_of_first_result() {
         // Given the fixture.
@@ -166,6 +168,7 @@ mod tests {
         assert_eq!(first.url, "https://www.rust-lang.org/");
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_results_extracts_snippet_of_first_result() {
         // Given the fixture.
@@ -181,6 +184,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_results_decodes_legacy_q_redirect_format() {
         // Given the fixture (result 3 uses ?q=...&sa=... ).
@@ -195,6 +199,7 @@ mod tests {
         assert_eq!(github.url, "https://github.com/rust-lang/rust");
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_results_keeps_plain_url_without_wrapper() {
         // Given the fixture (result 5 is a plain https url, no wrapper).
@@ -209,6 +214,7 @@ mod tests {
         assert_eq!(forum.url, "https://users.rust-lang.org/");
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_results_snippet_empty_when_absent() {
         // Given the fixture (result 4 "Rust Jobs" has no snippet).
@@ -223,6 +229,7 @@ mod tests {
         assert!(jobs.snippet.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_results_truncates_to_max() {
         // Given the fixture (5 valid results).
@@ -233,6 +240,7 @@ mod tests {
         assert_eq!(results.len(), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_results_returns_empty_for_page_with_no_results() {
         // Given an HTML page with no result containers.
@@ -245,6 +253,7 @@ mod tests {
         assert!(results.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn decode_ddg_url_modern_uddg_format() {
         // Given a modern redirect href.
@@ -257,6 +266,7 @@ mod tests {
         assert_eq!(url, "https://example.com/path");
     }
 
+    #[rstest::rstest]
     #[test]
     fn decode_ddg_url_legacy_q_format() {
         // Given a legacy redirect href.
@@ -269,6 +279,7 @@ mod tests {
         assert_eq!(url, "https://example.com/");
     }
 
+    #[rstest::rstest]
     #[test]
     fn decode_ddg_url_protocol_relative_fallback() {
         // Given a protocol-relative href with no recognized query param.
@@ -281,6 +292,7 @@ mod tests {
         assert_eq!(url, "https://some.example.com/path");
     }
 
+    #[rstest::rstest]
     #[test]
     fn decode_ddg_url_plain_url_passthrough() {
         // Given a plain absolute URL with no query string.

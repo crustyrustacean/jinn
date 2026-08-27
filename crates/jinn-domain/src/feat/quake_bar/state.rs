@@ -127,6 +127,7 @@ mod tests {
 
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn push_appends_a_line_to_the_log() {
         // Given an empty command log.
@@ -140,6 +141,7 @@ mod tests {
         assert_eq!(log.visible_lines(5), &["hello".to_owned()]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn push_beyond_cap_drops_oldest_line() {
         // Given a log filled to the cap.
@@ -160,6 +162,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn push_recenters_view_on_newest_line() {
         // Given a log scrolled away from the bottom.
@@ -178,6 +181,7 @@ mod tests {
         assert_eq!(visible[visible.len() - 1], "new");
     }
 
+    #[rstest::rstest]
     #[test]
     fn scroll_up_reveals_an_older_line_immediately() {
         // Given a log larger than the viewport, pinned to the bottom.
@@ -206,6 +210,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn scroll_up_clamps_at_top_of_log() {
         // Given a log scrolled all the way up (viewport smaller than log).
@@ -225,6 +230,7 @@ mod tests {
         assert_eq!(visible[0], "line-0");
     }
 
+    #[rstest::rstest]
     #[test]
     fn scroll_down_returns_toward_newest_line() {
         // Given a log scrolled up a couple of lines from the bottom.
@@ -248,6 +254,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn scroll_down_clamps_at_bottom_of_log() {
         // Given a log pinned to the bottom.
@@ -266,6 +273,7 @@ mod tests {
         assert_eq!(log.visible_lines(3), before.as_slice());
     }
 
+    #[rstest::rstest]
     #[test]
     fn visible_lines_returns_full_log_when_smaller_than_viewport() {
         // Given a 3-line log.
@@ -281,6 +289,7 @@ mod tests {
         assert_eq!(visible, &["a".to_owned(), "b".to_owned(), "c".to_owned()]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn visible_lines_returns_tail_when_larger_than_viewport() {
         // Given a 5-line log scrolled to the bottom.
@@ -296,6 +305,7 @@ mod tests {
         assert_eq!(visible, &["d".to_owned(), "e".to_owned()]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn scroll_up_then_down_returns_to_original_window() {
         // Given a log pinned to the bottom.

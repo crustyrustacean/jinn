@@ -374,6 +374,7 @@ mod tests {
         (state, session_id)
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_keeps_pinned_tool_result_with_its_call() {
         // Given a tool loop bottom-pinned via the editor (which pins the whole
@@ -420,6 +421,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_drops_malformed_persisted_tool_history() {
         // Given persisted history containing an orphan result beside valid user history.
@@ -452,6 +454,7 @@ mod tests {
         assert!(!result.messages.iter().any(|message| matches!(message, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "orphan")));
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_top_pin_keeps_tool_loop_atomic() {
         // Given a tool loop top-pinned via the editor (which pins the whole
@@ -490,6 +493,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_relative_pin_keeps_tool_loop_in_working_order() {
         // Given a relative-pinned tool result in a complete loop.
@@ -520,6 +524,7 @@ mod tests {
         assert!(result.messages.windows(2).any(|window| matches!((&window[0], &window[1]), (LlmMessage::Assistant { tool_calls: Some(calls), .. }, LlmMessage::Tool { tool_call_id, .. }) if calls.iter().any(|call| call.id == "relative-call") && tool_call_id == "relative-call")));
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_parallel_batch_results_in_completion_order_emit_valid_sequence() {
         // Given a two-call batch whose results landed in completion order
@@ -565,6 +570,7 @@ mod tests {
         assert_eq!(resolved, vec!["call-2", "call-1"]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_legacy_split_loop_is_stripped_by_tripwire() {
         // Given a legacy persisted half-loop: an orphan tool result without
@@ -601,6 +607,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_bottom_pins_never_split_tool_loop() {
         // Given a bottom pin and a trailing complete tool loop.
@@ -631,6 +638,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_with_empty_history_produces_only_system() {
         // Given a state with skills but no history.
@@ -659,6 +667,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_with_no_skills_or_tools_still_has_env_context() {
         // Given a state with no skills, persona, tools, or context files, and no history.
@@ -679,6 +688,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_places_bottom_pins_before_last_message() {
         // Given a session with a user message and a bottom-pinned entry.
@@ -710,6 +720,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_drained_steering_sits_at_tail_preserving_tool_pairing() {
         // Given a tool_call/tool_result pair followed by a drained steering entry.
@@ -742,6 +753,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_steering_and_bottom_pin_coexist_at_respective_positions() {
         // Given a user-pinned entry and a tail steering entry.
@@ -777,6 +789,7 @@ mod tests {
         // Steering entry remains at the tail.
         assert_eq!(body.last().copied(), Some("steer msg"));
     }
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_excludes_thinking_entries() {
         // Given a session with a thinking entry and a user message.
@@ -804,6 +817,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_token_count_is_accurate() {
         // Given a session with a user message.
@@ -834,6 +848,7 @@ mod tests {
         assert_eq!(result.estimated_tokens(), manual as u32);
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_includes_tools() {
         // Given a state with tool definitions.
@@ -873,6 +888,7 @@ mod tests {
             .set_model(ModelSelection::Single(model.to_owned()));
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_includes_web_search_for_openrouter_model() {
         // Given a state on an openrouter model with web search registered.
@@ -899,6 +915,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_excludes_web_search_for_non_openrouter_model() {
         // Given a state on a non-openrouter model with web search registered.
@@ -924,6 +941,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_keeps_function_tools_for_non_openrouter_model() {
         // Given a state on a non-openrouter model with a function tool registered.
@@ -946,6 +964,7 @@ mod tests {
         assert_eq!(result.tool_definitions[0].name, "bash");
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_includes_context_files_in_system_message() {
         // Given a state with cached context files.
@@ -975,6 +994,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_with_system_prompt_override_replaces_system_message() {
         // Given a state with skills and context files.
@@ -1011,6 +1031,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_with_tool_definitions_override_replaces_tools() {
         // Given a state with global tools.
@@ -1043,6 +1064,7 @@ mod tests {
         assert_eq!(result.tool_definitions[0].name, "workflow_tool");
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_with_skip_skills_excludes_skills_block() {
         // Given a state with skills.
@@ -1071,6 +1093,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_with_skip_context_files_excludes_files() {
         // Given a state with context files.
@@ -1105,6 +1128,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_with_none_overrides_is_identical_to_no_overrides() {
         // Given a state with skills and tools.
@@ -1136,6 +1160,7 @@ mod tests {
         assert_eq!(result_none.tool_definitions[0].name, "bash");
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_excludes_disabled_tools_from_tool_definitions() {
         // Given a session with tools and some disabled.
@@ -1189,6 +1214,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_excludes_disabled_tools_from_tool_context_block() {
         // Given a session with tools and some disabled.
@@ -1233,6 +1259,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_excludes_disabled_skills_from_skills_block() {
         // Given a session with skills and some disabled.
@@ -1276,6 +1303,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_override_tool_definitions_not_filtered_by_disabled() {
         // Given a session with disabled tools AND an override providing specific tools.
@@ -1316,6 +1344,7 @@ mod tests {
         assert_eq!(result.tool_definitions[0].name, "bash");
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_uses_matching_persona() {
         // Given a session with persona "custom" and a persona list containing "custom".
@@ -1350,6 +1379,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_falls_back_to_coding_assistant_persona() {
         // Given a session with persona name "nonexistent" but "coding-assistant" is available.
@@ -1384,6 +1414,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_includes_pinned_system_entry_in_system_message() {
         // Given a session with a top-pinned System entry.
@@ -1408,6 +1439,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_excludes_pinned_system_from_non_system_messages() {
         // Given a session with a top-pinned System entry and a top-pinned User entry.
@@ -1449,6 +1481,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_bottom_pins_placed_before_last_message() {
         // Given a session with multiple bottom-pinned entries and a user message.
@@ -1490,6 +1523,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn assemble_prompt_top_pin_not_in_working_history() {
         // Given a session with a top-pinned entry that is NOT a system entry.

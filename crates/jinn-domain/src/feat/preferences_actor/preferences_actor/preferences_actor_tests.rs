@@ -13,6 +13,7 @@ use crate::common::bus::test_harness::{TestHarness, await_recorded};
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 
+#[rstest::rstest]
 #[tokio::test]
 async fn set_compaction_model_overwrites_previous() {
     // Given a preferences actor.
@@ -57,6 +58,7 @@ async fn set_compaction_model_overwrites_previous() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn emits_preferences_updated_event() {
     // Given a preferences actor and a recorder.
@@ -90,6 +92,7 @@ async fn emits_preferences_updated_event() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn empty_diffs_does_not_change_storage() {
     // Given a preferences actor.
@@ -126,6 +129,7 @@ async fn empty_diffs_does_not_change_storage() {
     assert!(found, "expected model to be preserved after empty update");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn persist_writes_frontend_preferences() {
     // Given a preferences actor.
@@ -160,6 +164,7 @@ async fn persist_writes_frontend_preferences() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn persist_reloads_open_project_picker_items() {
     use crate::common::focus::FocusScope;

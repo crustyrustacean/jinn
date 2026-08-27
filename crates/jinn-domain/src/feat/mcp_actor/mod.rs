@@ -803,6 +803,7 @@ mod tests {
 
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn format_result_content_joins_text_blocks() {
         // Given a CallToolResult with two text blocks.
@@ -818,6 +819,7 @@ mod tests {
         assert_eq!(out, "line one\nline two");
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_result_content_summarizes_non_text_blocks() {
         // Given a CallToolResult with an image block.
@@ -833,6 +835,7 @@ mod tests {
         assert_eq!(out, "before\n[image content]");
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_arguments_empty_string_is_none() {
         // Given a blank arguments string.
@@ -842,6 +845,7 @@ mod tests {
         assert!(result.is_ok_and(|opt| opt.is_none()));
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_arguments_object_is_some() {
         // Given a JSON object arguments string.
@@ -853,6 +857,7 @@ mod tests {
         assert_eq!(map.get("key").and_then(|v| v.as_str()), Some("value"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_arguments_non_object_is_error() {
         // Given a JSON array arguments string.
@@ -863,6 +868,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[rstest::rstest]
     #[test]
     fn server_command_maps_config_fields() {
         // Given a server config.
@@ -881,6 +887,7 @@ mod tests {
     }
 
     /// Verifies tool-name filtering strips the namespace correctly.
+    #[rstest::rstest]
     #[test]
     fn strip_namespace_roundtrip() {
         // Given a namespaced tool name for "excalimate".
@@ -894,6 +901,7 @@ mod tests {
     }
 
     /// Verifies a different server's prefix does not match.
+    #[rstest::rstest]
     #[test]
     fn strip_namespace_rejects_other_server() {
         // Given a namespaced tool name for "excalimate".
@@ -907,6 +915,7 @@ mod tests {
     }
 
     /// Ensures `provider_name` matches the prefix used for stripping.
+    #[rstest::rstest]
     #[test]
     fn provider_name_matches_prefix() {
         // Given a server name.
@@ -918,6 +927,7 @@ mod tests {
     }
 
     /// Ensures map_tool namespaces the tool name.
+    #[rstest::rstest]
     #[test]
     fn map_tool_namespaces_name() {
         // Given an rmcp Tool.
@@ -940,6 +950,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn build_result_passes_small_content_through_unchanged() {
         // Given content well within limits.
@@ -955,6 +966,7 @@ mod tests {
         assert!(result.truncation.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn build_result_truncates_large_content_by_lines() {
         // Given five lines of content and a three-line limit.
@@ -972,6 +984,7 @@ mod tests {
         assert_eq!(meta.output_lines, 3);
     }
 
+    #[rstest::rstest]
     #[test]
     fn build_result_truncates_large_content_by_bytes() {
         // Given a single large line exceeding the byte limit.
@@ -987,6 +1000,7 @@ mod tests {
         assert_eq!(result.full_content.as_deref(), Some(content.as_str()));
     }
 
+    #[rstest::rstest]
     #[test]
     fn build_result_uses_defaults_when_limits_are_none() {
         // Given content under the default limits.
@@ -1000,6 +1014,7 @@ mod tests {
         assert!(result.truncation.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn next_tail_returns_none_when_unchanged() {
         // Given an unchanged tail.
@@ -1008,6 +1023,7 @@ mod tests {
         assert_eq!(next_tail("hello", "hello"), None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn next_tail_publishes_when_tail_grew() {
         // Given a tail that grew since the last publish.
@@ -1019,6 +1035,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn next_tail_publishes_first_tail_from_empty_start() {
         // Given the first non-empty tail (startup).

@@ -212,6 +212,7 @@ fn html_options() -> FetchOptions {
 // classify_render_error
 // ===========================================================================
 
+#[rstest::rstest]
 #[test]
 fn classify_connection_closed_marker_yields_browser_crash() {
     // Given the exact headless_chrome ConnectionClosed message.
@@ -224,6 +225,7 @@ fn classify_connection_closed_marker_yields_browser_crash() {
     assert!(matches!(err, FetchError::BrowserCrash));
 }
 
+#[rstest::rstest]
 #[test]
 fn classify_unrelated_render_failure_yields_render() {
     // Given an unrelated tab-level failure message.
@@ -240,6 +242,7 @@ fn classify_unrelated_render_failure_yields_render() {
 // classify_browser_error — type-safe downcast (primary detection path)
 // ===========================================================================
 
+#[rstest::rstest]
 #[test]
 fn classify_real_connection_closed_type_yields_browser_crash() {
     // Given a genuine headless_chrome ConnectionClosed error, wrapped the same
@@ -256,6 +259,7 @@ fn classify_real_connection_closed_type_yields_browser_crash() {
     assert!(matches!(err, FetchError::BrowserCrash));
 }
 
+#[rstest::rstest]
 #[test]
 fn classify_arbitrary_anyhow_error_yields_render() {
     // Given an unrelated anyhow error carrying no ConnectionClosed in its
@@ -269,6 +273,7 @@ fn classify_arbitrary_anyhow_error_yields_render() {
     assert!(matches!(err, FetchError::Render(_)));
 }
 
+#[rstest::rstest]
 #[test]
 fn classify_wrapped_connection_closed_in_source_chain_yields_browser_crash() {
     // Given an error that has ConnectionClosed in its anyhow chain, e.g.
@@ -287,6 +292,7 @@ fn classify_wrapped_connection_closed_in_source_chain_yields_browser_crash() {
 // build_launch_options — headless/headed mode flags
 // ===========================================================================
 
+#[rstest::rstest]
 #[test]
 fn launch_options_uses_sixty_second_idle_timeout() {
     // Given the production launch options builder and default stealth settings.
@@ -302,6 +308,7 @@ fn launch_options_uses_sixty_second_idle_timeout() {
     assert_eq!(opts.idle_browser_timeout, expected);
 }
 
+#[rstest::rstest]
 #[test]
 fn launch_options_includes_stealth_args_when_enabled() {
     // Given stealth enabled.
@@ -322,6 +329,7 @@ fn launch_options_includes_stealth_args_when_enabled() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn launch_options_omits_stealth_args_when_disabled() {
     // Given stealth disabled.
@@ -346,6 +354,7 @@ fn launch_options_omits_stealth_args_when_disabled() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn launch_options_uses_configured_binary_path() {
     // Given a configured binary path.
@@ -360,6 +369,7 @@ fn launch_options_uses_configured_binary_path() {
     assert_eq!(opts.path.as_ref(), Some(&custom));
 }
 
+#[rstest::rstest]
 #[test]
 fn launch_options_runs_headless_by_default() {
     // Given default (headless) stealth settings.
@@ -373,6 +383,7 @@ fn launch_options_runs_headless_by_default() {
     assert!(opts.user_data_dir.is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn launch_options_runs_headed_when_headed_set() {
     // Given headed stealth settings.
@@ -388,6 +399,7 @@ fn launch_options_runs_headed_when_headed_set() {
     assert!(!opts.headless);
 }
 
+#[rstest::rstest]
 #[test]
 fn launch_options_sets_user_data_dir_when_profile_given() {
     // Given a persistent profile dir.
@@ -419,6 +431,7 @@ fn fetcher_and_factory(
     (fetcher, factory)
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn first_fetch_succeeds_via_cached_browser() {
     // Given a fetcher with a working browser.
@@ -438,6 +451,7 @@ async fn first_fetch_succeeds_via_cached_browser() {
     assert_eq!(factory.launch_count(), 1);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn fetch_retries_once_and_succeeds_after_connection_death() {
     // Given a fetcher whose first browser dies, then a second launch works
@@ -461,6 +475,7 @@ async fn fetch_retries_once_and_succeeds_after_connection_death() {
     assert_eq!(factory.launch_count(), 2);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn fetch_returns_render_error_without_retry() {
     // Given a fetcher whose browser returns a per-tab render error.
@@ -479,6 +494,7 @@ async fn fetch_returns_render_error_without_retry() {
     assert_eq!(factory.launch_count(), 1);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn fetch_does_not_retry_more_than_once_on_repeated_crash() {
     // Given a fetcher where both the first and second browser die on first render.
@@ -496,6 +512,7 @@ async fn fetch_does_not_retry_more_than_once_on_repeated_crash() {
     assert_eq!(factory.launch_count(), 2);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn fetch_recovers_from_panic_inside_blocking_task() {
     // Given a fetcher whose first browser panics; a second launch would work,
@@ -520,6 +537,7 @@ async fn fetch_recovers_from_panic_inside_blocking_task() {
 // Concurrency: no thundering herd of relaunches
 // ===========================================================================
 
+#[rstest::rstest]
 #[tokio::test]
 async fn concurrent_crashes_trigger_single_relunch() {
     // Given a fetcher whose first browser dies on two renders and a second
@@ -554,6 +572,7 @@ async fn concurrent_crashes_trigger_single_relunch() {
 // Shared sharing: two fetchers on the same SharedBrowser launch once
 // ===========================================================================
 
+#[rstest::rstest]
 #[tokio::test]
 async fn two_fetchers_sharing_one_browser_launch_once() {
     // Given a single SharedBrowser with a factory that can serve two renders,
@@ -598,6 +617,7 @@ fn shared_and_factory<S: Into<FakeBrowserScript>>(
     (shared, factory)
 }
 
+#[rstest::rstest]
 #[test]
 fn probe_is_noop_when_slot_empty() {
     // Given a shared browser with a factory, never warmed (slot empty).
@@ -613,6 +633,7 @@ fn probe_is_noop_when_slot_empty() {
     assert_eq!(factory.launch_count(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn probe_keeps_healthy_browser() {
     // Given a warmed browser whose liveness is Ok (the default).
@@ -636,6 +657,7 @@ fn probe_keeps_healthy_browser() {
     assert_eq!(factory.launch_count(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn force_evict_is_noop_on_empty_slot() {
     // Given a shared browser with an empty slot.
@@ -652,6 +674,7 @@ fn force_evict_is_noop_on_empty_slot() {
     assert_eq!(factory.launch_count(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn next_render_relaunches_after_probe_eviction() {
     // Given browser #1 (liveness Crash) and browser #2 (render Ok) so the
@@ -684,6 +707,7 @@ fn next_render_relaunches_after_probe_eviction() {
     assert_eq!(factory.launch_count(), 2);
 }
 
+#[rstest::rstest]
 #[test]
 fn render_page_surfaces_challenge_error_from_browser() {
     // Given a shared browser whose render hits an uncleared DDG challenge.
@@ -707,6 +731,7 @@ fn render_page_surfaces_challenge_error_from_browser() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn render_page_observed_relays_progress_events() {
     // Given a shared browser whose render reports progress (detection + tick).

@@ -50,6 +50,7 @@ fn item(id: &str, parent_id: Option<&str>, label: &str) -> TestItem {
 // Tests
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn empty_filter_shows_all_items_in_tree_order() {
     // Given a tree: root A → children B, C.
@@ -74,6 +75,7 @@ fn empty_filter_shows_all_items_in_tree_order() {
     assert!(state.visible_entry(2).unwrap().is_last_child);
 }
 
+#[rstest::rstest]
 #[test]
 fn child_match_includes_ancestors() {
     // Given: root A → child B → grandchild C.
@@ -98,6 +100,7 @@ fn child_match_includes_ancestors() {
     assert!(!state.filtered_match_indices(2).unwrap().is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn non_matching_siblings_excluded() {
     // Given: root A → children B, C.
@@ -119,6 +122,7 @@ fn non_matching_siblings_excluded() {
     assert!(state.visible_entry(1).unwrap().is_last_child);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_connectors_recomputed_for_filtered_set() {
     // Given: root A → children B, C, D.
@@ -140,6 +144,7 @@ fn tree_connectors_recomputed_for_filtered_set() {
     assert!(state.visible_entry(1).unwrap().is_last_child);
 }
 
+#[rstest::rstest]
 #[test]
 fn orphaned_item_treated_as_root() {
     // Given: child C references non-existent parent X.
@@ -151,6 +156,7 @@ fn orphaned_item_treated_as_root() {
     assert_eq!(state.visible_entry(1).unwrap().depth, 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn circular_reference_guard() {
     // Given: A → B → A cycle.
@@ -173,6 +179,7 @@ fn circular_reference_guard() {
     assert_eq!(state.filtered_count(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn multiple_matches_in_different_subtrees() {
     // Given: root A → child B, root C → child D.
@@ -193,6 +200,7 @@ fn multiple_matches_in_different_subtrees() {
     assert_eq!(state.filtered_item(1).unwrap().id, "b");
 }
 
+#[rstest::rstest]
 #[test]
 fn root_match_does_not_include_children() {
     // Given: root A → children B, C.
@@ -211,6 +219,7 @@ fn root_match_does_not_include_children() {
     assert_eq!(state.filtered_item(0).unwrap().id, "a");
 }
 
+#[rstest::rstest]
 #[test]
 fn selection_clamped_after_filter() {
     // Given: root A → children B, C.
@@ -228,6 +237,7 @@ fn selection_clamped_after_filter() {
     assert_eq!(state.selection(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn reset_clears_filter_and_restores_full_tree() {
     // Given: state with active filter.
@@ -245,6 +255,7 @@ fn reset_clears_filter_and_restores_full_tree() {
     assert_eq!(state.selection(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn set_items_rebuilds_index() {
     // Given: state with items.
@@ -261,6 +272,7 @@ fn set_items_rebuilds_index() {
     assert_eq!(state.filtered_item(1).unwrap().id, "y");
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_char_appends_to_filter() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -268,6 +280,7 @@ fn tree_insert_char_appends_to_filter() {
     assert_eq!(state.filter(), "x");
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_char_advances_cursor() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -275,6 +288,7 @@ fn tree_insert_char_advances_cursor() {
     assert_eq!(state.cursor_pos(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_char_resets_selection() {
     let items = vec![item("a", None, "Alpha"), item("b", Some("a"), "Bravo")];
@@ -284,6 +298,7 @@ fn tree_insert_char_resets_selection() {
     assert_eq!(state.selection(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_char_resets_scroll_offset() {
     let items = vec![item("a", None, "Alpha")];
@@ -293,6 +308,7 @@ fn tree_insert_char_resets_scroll_offset() {
     assert_eq!(state.scroll_offset(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_char_at_cursor_middle() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -303,6 +319,7 @@ fn tree_insert_char_at_cursor_middle() {
     assert_eq!(state.cursor_pos(), 2);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_text_strips_newlines_and_carriage_returns() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -310,6 +327,7 @@ fn tree_insert_text_strips_newlines_and_carriage_returns() {
     assert_eq!(state.filter(), "hello");
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_text_advances_cursor_by_grapheme_count() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -317,6 +335,7 @@ fn tree_insert_text_advances_cursor_by_grapheme_count() {
     assert_eq!(state.cursor_pos(), 3);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_text_with_only_newlines_is_noop() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -327,6 +346,7 @@ fn tree_insert_text_with_only_newlines_is_noop() {
     assert_eq!(state.cursor_pos(), 3);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_text_resets_selection_and_scroll() {
     let items = vec![item("a", None, "Alpha"), item("b", Some("a"), "Bravo")];
@@ -338,6 +358,7 @@ fn tree_insert_text_resets_selection_and_scroll() {
     assert_eq!(state.scroll_offset(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_text_at_cursor_middle() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -348,6 +369,7 @@ fn tree_insert_text_at_cursor_middle() {
     assert_eq!(state.cursor_pos(), 3);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_backspace_at_start_is_noop() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -358,6 +380,7 @@ fn tree_backspace_at_start_is_noop() {
     assert_eq!(state.cursor_pos(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_backspace_removes_before_cursor() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -368,6 +391,7 @@ fn tree_backspace_removes_before_cursor() {
     assert_eq!(state.cursor_pos(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_backspace_at_end_removes_last() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -378,6 +402,7 @@ fn tree_backspace_at_end_removes_last() {
     assert_eq!(state.cursor_pos(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_backspace_resets_selection_and_scroll() {
     let items = vec![item("a", None, "Alpha"), item("b", Some("a"), "Bravo")];
@@ -391,6 +416,7 @@ fn tree_backspace_resets_selection_and_scroll() {
     assert_eq!(state.scroll_offset(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_cursor_left_decrements() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -399,6 +425,7 @@ fn tree_move_cursor_left_decrements() {
     assert_eq!(state.cursor_pos(), 2);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_cursor_left_clamps_at_zero() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -407,6 +434,7 @@ fn tree_move_cursor_left_clamps_at_zero() {
     assert_eq!(state.cursor_pos(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_cursor_left_multiple_times() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -417,6 +445,7 @@ fn tree_move_cursor_left_multiple_times() {
     assert_eq!(state.cursor_pos(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_cursor_right_increments() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -426,6 +455,7 @@ fn tree_move_cursor_right_increments() {
     assert_eq!(state.cursor_pos(), 2);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_cursor_right_clamps_at_end() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -435,6 +465,7 @@ fn tree_move_cursor_right_clamps_at_end() {
     assert_eq!(state.cursor_pos(), 3);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_up_decrements() {
     let items = vec![
@@ -448,6 +479,7 @@ fn tree_move_up_decrements() {
     assert_eq!(state.selection(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_up_clamps_at_zero() {
     let items = vec![item("a", None, "Alpha")];
@@ -457,6 +489,7 @@ fn tree_move_up_clamps_at_zero() {
     assert_eq!(state.selection(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_up_adjusts_scroll_offset() {
     let items: Vec<TestItem> = (0..10)
@@ -470,6 +503,7 @@ fn tree_move_up_adjusts_scroll_offset() {
     assert_eq!(state.scroll_offset(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_down_increments() {
     let items = vec![
@@ -483,6 +517,7 @@ fn tree_move_down_increments() {
     assert_eq!(state.selection(), 2);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_down_clamps_at_end() {
     let items = vec![item("a", None, "Alpha")];
@@ -492,6 +527,7 @@ fn tree_move_down_clamps_at_end() {
     assert_eq!(state.selection(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_down_clamps_when_empty() {
     let mut state = TreePickerState::<TestItem>::new();
@@ -499,6 +535,7 @@ fn tree_move_down_clamps_when_empty() {
     assert_eq!(state.selection(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_down_adjusts_scroll_offset() {
     let items: Vec<TestItem> = (0..10)
@@ -512,6 +549,7 @@ fn tree_move_down_adjusts_scroll_offset() {
     assert_eq!(state.scroll_offset(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_page_down_advances_selection_by_half_viewport() {
     // Given a tree with 20 root items and selection=0.
@@ -529,6 +567,7 @@ fn tree_page_down_advances_selection_by_half_viewport() {
     assert_eq!(state.selection(), 5);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_page_down_clamps_at_end_of_list() {
     // Given a tree with 20 root items and selection=18.
@@ -546,6 +585,7 @@ fn tree_page_down_clamps_at_end_of_list() {
     assert_eq!(state.selection(), 19);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_page_up_decrements_selection_by_half_viewport() {
     // Given a tree with 20 root items and selection=10.
@@ -563,6 +603,7 @@ fn tree_page_up_decrements_selection_by_half_viewport() {
     assert_eq!(state.selection(), 5);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_page_up_clamps_at_zero() {
     // Given a tree with 20 root items and selection=2.
@@ -580,6 +621,7 @@ fn tree_page_up_clamps_at_zero() {
     assert_eq!(state.selection(), 0);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_page_down_moves_at_least_one_when_viewport_small() {
     // Given a tree with 20 root items and selection=0.
@@ -597,6 +639,7 @@ fn tree_page_down_moves_at_least_one_when_viewport_small() {
     assert_eq!(state.selection(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_ensure_visible_selection_above_view() {
     let mut state = TreePickerState::<TestItem>::new();
@@ -606,6 +649,7 @@ fn tree_ensure_visible_selection_above_view() {
     assert_eq!(state.scroll_offset(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_ensure_visible_selection_below_view() {
     let mut state = TreePickerState::<TestItem>::new();
@@ -615,6 +659,7 @@ fn tree_ensure_visible_selection_below_view() {
     assert_eq!(state.scroll_offset(), 3);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_ensure_visible_selection_within_view() {
     let mut state = TreePickerState::<TestItem>::new();
@@ -624,6 +669,7 @@ fn tree_ensure_visible_selection_within_view() {
     assert_eq!(state.scroll_offset(), 2);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_ensure_visible_selection_equal_to_scroll_offset() {
     let mut state = TreePickerState::<TestItem>::new();
@@ -633,6 +679,7 @@ fn tree_ensure_visible_selection_equal_to_scroll_offset() {
     assert_eq!(state.scroll_offset(), 5);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_ensure_visible_selection_at_view_end() {
     let mut state = TreePickerState::<TestItem>::new();
@@ -642,6 +689,7 @@ fn tree_ensure_visible_selection_at_view_end() {
     assert_eq!(state.scroll_offset(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_ensure_visible_with_zero_max_visible_selection_below() {
     let mut state = TreePickerState::<TestItem>::new();
@@ -652,6 +700,7 @@ fn tree_ensure_visible_with_zero_max_visible_selection_below() {
     assert_eq!(state.scroll_offset(), 2);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_dfs_multiple_roots_correct_last_child_flags() {
     // Given: two roots, each with children.
@@ -673,6 +722,7 @@ fn tree_dfs_multiple_roots_correct_last_child_flags() {
     assert!(state.visible_entry(3).unwrap().is_last_child);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_dfs_filtered_multiple_roots_recomputes_last_child() {
     // Given: two roots A and C, each with children.
@@ -696,6 +746,7 @@ fn tree_dfs_filtered_multiple_roots_recomputes_last_child() {
     assert!(state.visible_entry(1).unwrap().is_last_child);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_dfs_filtered_is_last_child_uses_root_count_minus_one() {
     // Given: three roots, filter keeps only first and third.
@@ -717,6 +768,7 @@ fn tree_dfs_filtered_is_last_child_uses_root_count_minus_one() {
     assert!(last_entry.is_last_child);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_continuations_correct_with_sibling_filtering() {
     // Given: root A → children B, C, D. Filter keeps A and C only.

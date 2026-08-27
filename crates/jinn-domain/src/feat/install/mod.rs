@@ -418,6 +418,7 @@ mod tests {
             .unwrap_or_else(|| panic!("no outcome ending in {relative}"))
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_creates_theme_when_absent() {
         // Given destinations with no existing themes.
@@ -439,6 +440,7 @@ mod tests {
         assert!(!written.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_skips_theme_when_present() {
         // Given a destinations dir where `default.toml` already exists.
@@ -463,6 +465,7 @@ mod tests {
         assert_eq!(contents, "PRE-EXISTING");
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_creates_parent_dirs_when_missing() {
         // Given destinations whose root dirs do not exist at all.
@@ -488,6 +491,7 @@ mod tests {
         assert!(result.is_ok(), "install should create missing parents");
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_creates_persona() {
         // Given destinations with no existing personas.
@@ -510,6 +514,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_creates_prompt() {
         // Given destinations with no existing prompts.
@@ -528,6 +533,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_preserves_skill_subdir() {
         // Given destinations with no existing skills.
@@ -548,6 +554,7 @@ mod tests {
         assert!(outcome.path().is_file());
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_creates_plugin_payload_when_absent() {
         // Given destinations with no existing plugins.
@@ -573,6 +580,7 @@ mod tests {
         assert!(!std::fs::read(outcome.path()).expect("read").is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_registers_plugin_entry_with_manifest_grants() {
         // Given fresh destinations and in-memory preferences storage.
@@ -602,6 +610,7 @@ mod tests {
         assert!(prefs.plugin.contains_key("persona-loader"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_skips_existing_plugin_without_force() {
         // Given a plugins dir where theme-loader.wasm already exists.
@@ -625,6 +634,7 @@ mod tests {
         assert!(!prefs.plugin.contains_key("theme-loader"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_force_overwrites_existing_plugin_payload_and_entry() {
         // Given a plugins dir where theme-loader.wasm already exists.
@@ -652,6 +662,7 @@ mod tests {
         }));
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_plugin_fails_when_wasm_bytes_lack_manifest() {
         // Given fresh destinations and a payload with no embedded manifest.
@@ -675,6 +686,7 @@ mod tests {
         assert!(result.is_err(), "payload without manifest must fail");
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_is_idempotent() {
         // Given a fresh set of destinations.
@@ -696,6 +708,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_outcomes_include_full_paths() {
         // Given a fresh set of destinations.
@@ -715,6 +728,7 @@ mod tests {
         assert_eq!(outcomes.len(), BUNDLED.len());
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_overwrites_theme_when_force() {
         // Given a destinations dir where `default.toml` already exists.
@@ -736,6 +750,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_force_replaces_with_bundled_contents() {
         // Given a destinations dir where `default.toml` holds stale contents,
@@ -759,6 +774,7 @@ mod tests {
         assert_eq!(contents, expected);
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_idempotent_under_force() {
         // Given a fully-installed destinations dir (files already match the bundled bytes).

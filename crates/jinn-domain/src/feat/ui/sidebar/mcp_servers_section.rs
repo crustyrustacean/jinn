@@ -433,6 +433,7 @@ mod tests {
         assert!(combined.contains("starting"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn content_height_is_zero_when_none_enabled() {
         // Given configured servers, none enabled for the active session.
@@ -449,6 +450,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn content_height_counts_only_enabled_servers() {
         // Given three configured servers, two enabled for the active session.
@@ -465,6 +467,7 @@ mod tests {
         assert_eq!(height, 5, "height must count enabled servers only");
     }
 
+    #[rstest::rstest]
     #[test]
     fn navigate_exhausts_at_enabled_subset_boundary() {
         // Given two enabled servers with the cursor on the last one.
@@ -480,6 +483,7 @@ mod tests {
         assert_eq!(result, SectionNavResult::Exhausted);
     }
 
+    #[rstest::rstest]
     #[test]
     fn receive_cursor_enters_enabled_subset_from_top() {
         // Given enabled servers (alpha, gamma) with no cursor.

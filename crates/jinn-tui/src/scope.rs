@@ -176,6 +176,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn dashboard_scope_round_trips() {
         // Given the Dashboard scope variant.
@@ -190,6 +191,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn plugin_picker_scope_round_trips() {
         // Given the PickerPlugin scope variant.

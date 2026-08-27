@@ -314,6 +314,7 @@ mod tests {
         rt.block_on(async { w.evaluate(&SessionId::new(), Arc::from(history)).await })
     }
 
+    #[rstest::rstest]
     #[test]
     fn no_todo_calls_produces_no_mutations() {
         let history = vec![
@@ -326,6 +327,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn single_get_task_list_no_prune() {
         let call_result = get_task_list_call_result("tc-1", "task list here");
@@ -334,6 +336,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn single_complete_task_no_prune() {
         let call_result = complete_task_call_result("tc-1", "task completed");
@@ -342,6 +345,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn multiple_get_task_list_prunes_older() {
         let mut history = Vec::new();
@@ -381,6 +385,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn multiple_complete_task_prunes_older() {
         let mut history = Vec::new();
@@ -417,6 +422,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn interleaved_todo_tools_pruned_as_group() {
         let mut history = Vec::new();
@@ -462,6 +468,7 @@ mod tests {
         assert!(!mutation_ids.contains(&c2[1].id));
     }
 
+    #[rstest::rstest]
     #[test]
     fn already_excluded_no_duplicate_mutation() {
         let mut history = Vec::new();
@@ -496,6 +503,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn forced_included_no_mutation() {
         let mut history = Vec::new();
@@ -533,6 +541,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn tool_call_without_result_still_prunes_call() {
         let mut history = Vec::new();
@@ -562,6 +571,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn three_calls_prunes_first_two() {
         let mut history = Vec::new();
@@ -597,6 +607,7 @@ mod tests {
         assert!(!mutation_ids.contains(&cr3[1].id));
     }
 
+    #[rstest::rstest]
     #[test]
     fn other_tool_calls_not_affected() {
         let mut history = Vec::new();
@@ -622,6 +633,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn different_todo_tools_prunes_older() {
         let mut history = Vec::new();
@@ -664,6 +676,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn mixed_todo_tools_keeps_only_last() {
         let mut history = Vec::new();
@@ -731,6 +744,7 @@ mod tests {
         history
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_older_todo_pair() {
         // Given a history with two get_task_list pairs padded to history_len = 52.
@@ -748,6 +762,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_todo_pair() {
         // Given a history with two get_task_list pairs padded to 52 entries,
@@ -765,6 +780,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_boundary_strict_less_than_todo() {
         // history_len = 52, oldest call_idx = 0, age = 51.

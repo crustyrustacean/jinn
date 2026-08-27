@@ -54,12 +54,14 @@ mod tests {
     //   last entry (idx = history_len - 1): age = 0
     //   50 back in a 100-len history (idx = 50): age = 49
 
+    #[rstest::rstest]
     #[test]
     fn age_zero_protected() {
         // Last entry, min_age = 1 → age 0 < 1 → protected.
         assert!(is_within_min_age(100, 99, 1));
     }
 
+    #[rstest::rstest]
     #[test]
     fn age_at_boundary_protected() {
         // age = min_age - 1 → still protected (strict less-than).
@@ -67,6 +69,7 @@ mod tests {
         assert!(is_within_min_age(100, 50, 50));
     }
 
+    #[rstest::rstest]
     #[test]
     fn age_at_boundary_not_protected() {
         // age == min_age → not protected.
@@ -74,6 +77,7 @@ mod tests {
         assert!(!is_within_min_age(100, 49, 50));
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_never_protects() {
         // min_age = 0 means no entry is protected (back-compat baseline).
@@ -82,6 +86,7 @@ mod tests {
         assert!(!is_within_min_age(1, 0, 0));
     }
 
+    #[rstest::rstest]
     #[test]
     fn out_of_range_index_not_protected() {
         // entry_idx >= history_len → returns false (defensive contract).

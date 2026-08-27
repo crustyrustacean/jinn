@@ -33,6 +33,7 @@ use crate::protocol::SessionId;
 /// A RemoteHttp server whose header references an unknown variable publishes
 /// Dead (never Running) — the failure is surfaced through the standard
 /// lifecycle plumbing with no new status machinery.
+#[rstest::rstest]
 #[tokio::test]
 async fn remote_http_server_with_unresolved_header_variable_lands_dead() {
     // Given an McpActor for a RemoteHttp server whose Authorization header
@@ -90,6 +91,7 @@ async fn remote_http_server_with_unresolved_header_variable_lands_dead() {
 /// Note: `on_start` blocks inside the no-timeout retry loop by design, so this
 /// test never awaits `wait_for_startup()`; it samples published statuses on a
 /// fixed schedule instead.
+#[rstest::rstest]
 #[tokio::test]
 async fn remote_http_server_with_resolvable_headers_enters_retry_loop() {
     // Given an McpActor for a RemoteHttp server whose header variable IS
@@ -149,6 +151,7 @@ async fn remote_http_server_with_resolvable_headers_enters_retry_loop() {
 /// A `Stdio` server's configured `headers` are ignored entirely: the failure
 /// reason for an unspawnable binary is the *spawn* failure — never any
 /// header-expansion error naming an unseeded variable.
+#[rstest::rstest]
 #[tokio::test]
 async fn stdio_arm_ignores_configured_headers_entirely() {
     // Given services WITHOUT the variable that the config's headers reference,
@@ -191,6 +194,7 @@ async fn stdio_arm_ignores_configured_headers_entirely() {
 /// stdio lifecycle never consults headers at all (the injected client skips
 /// `connect_for_transport`; pairing it with bogus headers isolates any leak of
 /// header handling into the stdio path).
+#[rstest::rstest]
 #[tokio::test]
 async fn stdio_server_with_bogus_header_variable_still_connects() {
     // Given an McpActor for a Stdio server whose headers reference an

@@ -231,6 +231,7 @@ mod tests {
 
     use super::{DiscoverActor, DiscoverActorDeps};
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn refresh_models_emits_models_refreshed_event() {
         // Given a discover actor with no configured providers.
@@ -275,6 +276,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn enrich_stamps_image_bit_for_known_image_model() {
         // Given a discovered model that models.dev lists as image-capable.
@@ -290,6 +292,7 @@ mod tests {
         assert!(m.input_modalities.contains(jinn_provider::Modality::Image));
     }
 
+    #[rstest::rstest]
     #[test]
     fn enrich_leaves_text_only_for_known_false_model() {
         // Given a discovered model that models.dev lists as NOT image-capable.
@@ -305,6 +308,7 @@ mod tests {
         assert!(!m.input_modalities.contains(jinn_provider::Modality::Image));
     }
 
+    #[rstest::rstest]
     #[test]
     fn enrich_leaves_text_only_for_unknown_model() {
         // Given a discovered model that models.dev does not know.

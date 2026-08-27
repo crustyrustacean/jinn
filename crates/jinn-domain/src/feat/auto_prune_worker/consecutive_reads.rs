@@ -323,6 +323,7 @@ mod tests {
         rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await })
     }
 
+    #[rstest::rstest]
     #[test]
     fn no_read_calls_produces_no_mutations() {
         let history = vec![
@@ -336,6 +337,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn single_read_produces_no_mutations() {
         let history = history_with_n_reads("/foo.rs", 1);
@@ -344,6 +346,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn exact_keep_last_produces_no_mutations() {
         let history = history_with_n_reads("/foo.rs", 3);
@@ -352,6 +355,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn one_over_keep_last_prunes_oldest_pair() {
         let history = history_with_n_reads("/foo.rs", 4);
@@ -382,6 +386,7 @@ mod tests {
         assert_eq!(pruned_ids, expected);
     }
 
+    #[rstest::rstest]
     #[test]
     fn two_over_keep_last_prunes_two_oldest_pairs() {
         let history = history_with_n_reads("/foo.rs", 5);
@@ -392,6 +397,7 @@ mod tests {
         assert_eq!(mutations.len(), 4);
     }
 
+    #[rstest::rstest]
     #[test]
     fn multiple_files_pruned_independently() {
         let mut history = Vec::new();
@@ -417,6 +423,7 @@ mod tests {
         assert_eq!(mutations.len(), 4);
     }
 
+    #[rstest::rstest]
     #[test]
     fn already_excluded_call_and_result_produces_no_duplicate() {
         let mut history = history_with_n_reads("/foo.rs", 4);
@@ -439,6 +446,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn already_excluded_call_only_prunes_result() {
         let mut history = history_with_n_reads("/foo.rs", 4);
@@ -467,6 +475,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn already_excluded_result_only_prunes_call() {
         let mut history = history_with_n_reads("/foo.rs", 4);
@@ -495,6 +504,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn forced_included_call_only_prunes_result() {
         let mut history = history_with_n_reads("/foo.rs", 4);
@@ -518,6 +528,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn orphaned_call_without_result_is_skipped() {
         let history = vec![ChatEntry::tool_call(
@@ -531,6 +542,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_without_path_argument_is_skipped() {
         let history = vec![
@@ -543,6 +555,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn different_paths_tracked_separately() {
         let mut history = Vec::new();
@@ -565,6 +578,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn keep_last_1_prunes_all_but_last() {
         let history = history_with_n_reads("/foo.rs", 5);
@@ -575,6 +589,7 @@ mod tests {
         assert_eq!(mutations.len(), 8);
     }
 
+    #[rstest::rstest]
     #[test]
     fn empty_history_produces_no_mutations() {
         let worker = worker_with_keep_last(3);
@@ -586,6 +601,7 @@ mod tests {
     // min_age protection tests
     // ------------------------------------------------------------------
 
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_old_read_pair() {
         // With min_age = 0, old read pairs are pruned even when recent.
@@ -596,6 +612,7 @@ mod tests {
         assert_eq!(mutations.len(), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_read_pair() {
         // 4 reads of same file, keep_last = 3 → oldest pair normally pruned.
@@ -610,6 +627,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_boundary_strict_less_than_consecutive_reads() {
         // Build history so oldest pair has age exactly at the floor.

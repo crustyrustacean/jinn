@@ -180,6 +180,7 @@ mod tests {
     // Given a temp wasm file and in-memory storage.
     // When installing.
     // Then the payload is copied, the entry appended, and Installed returned.
+    #[rstest::rstest]
     #[test]
     fn install_copies_payload_and_appends_entry() {
         // Given a temp wasm payload.
@@ -220,6 +221,7 @@ mod tests {
     // Given an existing [[plugin]] entry with the same name.
     // When installing again.
     // Then the entry is replaced (not duplicated) and Updated returned.
+    #[rstest::rstest]
     #[test]
     fn install_replaces_existing_entry() {
         // Given a prior install.
@@ -261,6 +263,7 @@ mod tests {
     // Given a missing wasm path.
     // When installing.
     // Then it fails with MissingWasm.
+    #[rstest::rstest]
     #[test]
     fn install_fails_when_wasm_missing() {
         // Given no file.
@@ -286,6 +289,7 @@ mod tests {
     // Given a non-wasm file.
     // When installing.
     // Then it fails with NotWasm.
+    #[rstest::rstest]
     #[test]
     fn install_fails_for_non_wasm_file() {
         // Given a .txt file.
@@ -316,6 +320,7 @@ mod tests {
     // Given an invalid name.
     // When installing.
     // Then it fails with InvalidName before touching the filesystem.
+    #[rstest::rstest]
     #[test]
     fn install_rejects_invalid_name() {
         // Given a valid wasm but a bad name.

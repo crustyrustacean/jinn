@@ -215,6 +215,7 @@ mod tests {
     use super::*;
     use crate::feat::theme::default_theme;
 
+    #[rstest::rstest]
     #[test]
     fn auto_route_entry_has_empty_tag() {
         // Given building the auto-route sentinel.
@@ -226,6 +227,7 @@ mod tests {
         assert_eq!(entry.provider_name, "Default");
     }
 
+    #[rstest::rstest]
     #[test]
     fn availability_summary_includes_uptime_when_present() {
         // Given an endpoint with uptime reported.

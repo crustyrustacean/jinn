@@ -176,6 +176,7 @@ mod tests {
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::session::model_selection::ModelSelection;
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn loading_unarchived_sessions_does_not_switch_active_session() {
         // Given an actor with a default welcome session and one session in the store.
@@ -199,6 +200,7 @@ mod tests {
         assert_eq!(*state.session.active_session_id(), default_id);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn on_environment_loaded_emits_no_scan_commands() {
         // Given an actor with a default welcome session.
@@ -230,6 +232,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn loading_unarchived_sessions_does_not_remove_default_session() {
         // Given an actor with a default welcome session and one session in the store.
@@ -255,6 +258,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn loading_unarchived_sessions_inserts_them_into_session_map() {
         // Given an actor with a default session and two sessions in the store.
@@ -286,6 +290,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn saved_model_overwrites_no_provider_sentinel() {
         // Given an actor with a default session (NO_PROVIDER_ID model)
@@ -321,6 +326,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn saved_model_does_not_overwrite_explicitly_set_model() {
         // Given an actor with a session that has an explicit model (not NO_PROVIDER_ID)
@@ -363,6 +369,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn startup_seeds_persisted_persona_into_frontend_app_state() {
         // Given an actor and saved app state with a persona_name.
@@ -396,6 +403,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn startup_seeds_none_persona_when_state_absent() {
         // Given an actor with default (empty) app state storage.
@@ -419,6 +427,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn saved_reasoning_effort_seeds_into_welcome_session() {
         // Given an actor with a default welcome session (NO_PROVIDER_ID model)
@@ -454,6 +463,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn saved_reasoning_effort_does_not_seed_into_explicit_model_session() {
         // Given an actor with a session that has an explicit model (not
@@ -499,6 +509,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn startup_seeds_none_reasoning_effort_when_unpersisted() {
         // Given an actor with default (empty) app state storage.
@@ -522,6 +533,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn startup_seeds_disabled_tools_and_skills_into_welcome_session() {
         // Given an actor whose preferences storage disables a tool and a skill.
@@ -569,6 +581,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn startup_seeds_auto_enabled_mcp_and_notifies_coordinator() {
         // Given an actor whose preferences mark one server auto_enable.
@@ -605,6 +618,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn startup_without_auto_enable_publishes_no_enablement_event() {
         // Given an actor with a configured server that is NOT auto-enabled.
@@ -631,6 +645,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn startup_does_not_seed_explicit_model_session() {
         // Given a session with an explicit model (bench-style) and preferences

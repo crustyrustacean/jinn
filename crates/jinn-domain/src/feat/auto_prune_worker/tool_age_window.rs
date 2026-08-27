@@ -362,6 +362,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 1. empty_history_produces_no_mutations
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn empty_history_produces_no_mutations() {
         let w = worker(100);
@@ -371,6 +372,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 2. history_under_threshold_produces_no_mutations
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn history_under_threshold_produces_no_mutations() {
         let w = worker(100);
@@ -383,6 +385,7 @@ mod tests {
     //
     // history.len() == min_age → every entry is protected.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn history_exactly_at_threshold_produces_no_mutations() {
         let w = worker(100);
@@ -397,6 +400,7 @@ mod tests {
     // min_age = 100 → prune_region_start = 102 - 100 = 2. Pair at 0,1 is
     // in prune region → both pruned (pair-atomic).
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn history_one_over_threshold_prunes_oldest_pair() {
         let w = worker(100);
@@ -432,6 +436,7 @@ mod tests {
     // `find_completed_matching_result` forwards from the call and finds
     // the matching result regardless of the protection boundary.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn pair_atomicity_when_result_straddles_cutoff() {
         let w = worker(100);
@@ -477,6 +482,7 @@ mod tests {
     // mutations are emitted. The pair (positions 100, 101) is inside
     // the protection floor and never even examined.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn pair_at_protection_boundary_is_not_pruned() {
         let w = worker(100);
@@ -510,6 +516,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 7. pending_result_pair_is_skipped
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn pending_result_pair_is_skipped() {
         let w = worker(100);
@@ -530,6 +537,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 8. orphaned_call_with_no_result_is_skipped
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn orphaned_call_with_no_result_is_skipped() {
         let w = worker(100);
@@ -550,6 +558,7 @@ mod tests {
     // Old pair where the call is already ForcedExclude but the result is
     // not. Expect exactly 1 mutation (for the result only).
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn already_excluded_call_does_not_get_duplicate_mutation() {
         let w = worker(100);
@@ -584,6 +593,7 @@ mod tests {
     // Same as test 9 but with ForcedInclude. The call is protected,
     // the result is not. Expect exactly 1 mutation (for the result only).
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn forced_included_call_does_not_get_mutation() {
         let w = worker(100);
@@ -615,6 +625,7 @@ mod tests {
     // examines the call. Forward scan finds the result at index 1.
     // Both halves excluded (pair-atomic).
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn min_age_clamped_to_1() {
         let w = worker(0);
@@ -637,6 +648,7 @@ mod tests {
     // 5 tool pairs scattered in the first 100 positions of a 200-entry
     // history. All 5 should be excluded (10 mutations).
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn multiple_tool_pairs_all_pruned_when_old() {
         let w = worker(100);
@@ -668,6 +680,7 @@ mod tests {
     // Only the tool pair should be excluded; user/assistant entries in
     // the prune region must NOT receive SetContextOverride mutations.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn non_tool_entries_in_prune_window_are_not_targeted() {
         let w = worker(100);
@@ -703,6 +716,7 @@ mod tests {
     //
     // With min_age=0 every completed tool pair is eligible for pruning
     // (no protection). This is the back-compat baseline.
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_everything() {
         let w = worker(0);

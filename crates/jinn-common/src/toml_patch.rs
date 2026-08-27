@@ -568,6 +568,7 @@ mod tests {
         p
     }
 
+    #[rstest::rstest]
     #[test]
     fn scalar_value_is_updated_in_place_preserving_comments() {
         let original = "# important comment\nfoo = \"old\"\n";
@@ -584,6 +585,7 @@ mod tests {
         assert!(!out.contains("\"old\""), "old value gone");
     }
 
+    #[rstest::rstest]
     #[test]
     fn new_scalar_key_is_added_at_end() {
         let original = "foo = 1\n";
@@ -599,6 +601,7 @@ mod tests {
         assert!(out.contains("bar = 2"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn sub_table_is_updated_independently() {
         let original = "# parent comment\n[parent]\n# child comment\nchild = \"old\"\n";
@@ -620,6 +623,7 @@ mod tests {
         assert!(!out.contains("\"old\""));
     }
 
+    #[rstest::rstest]
     #[test]
     fn array_of_scalars_is_replaced_wholesale() {
         let original = "# above\nitems = [1, 2, 3]\n";
@@ -640,6 +644,7 @@ mod tests {
         assert!(!out.contains("1,"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn array_of_tables_existing_entry_updated_in_place_by_key() {
         let original = "# alpha comment\n[[items]]\nname = \"alpha\"\nvalue = 1\n\n# beta comment\n[[items]]\nname = \"beta\"\nvalue = 2\n";
@@ -668,6 +673,7 @@ mod tests {
         assert!(out.contains("value = 99"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn array_of_tables_new_entry_appended_at_end() {
         let original = "[[items]]\nname = \"alpha\"\nvalue = 1\n";
@@ -696,6 +702,7 @@ mod tests {
         assert!(alpha_pos < beta_pos, "beta appended after alpha");
     }
 
+    #[rstest::rstest]
     #[test]
     fn array_of_tables_removed_entry_is_deleted() {
         let original = "# alpha\n[[items]]\nname = \"alpha\"\nvalue = 1\n\n# beta\n[[items]]\nname = \"beta\"\nvalue = 2\n";
@@ -721,6 +728,7 @@ mod tests {
         assert!(!out.contains("# beta"), "beta comment removed with it");
     }
 
+    #[rstest::rstest]
     #[test]
     fn unknown_keys_in_document_are_preserved() {
         let original = "# unknown\n[some_future_field]\nx = 1\n\nfoo = \"bar\"\n";
@@ -737,6 +745,7 @@ mod tests {
         assert!(out.contains("[some_future_field]"), "unknown field kept");
     }
 
+    #[rstest::rstest]
     #[test]
     fn nested_path_keying_works_for_auto_prune_regex_rules() {
         let original = "[auto_prune.regex]\nenabled = true\n\n# matches foo\n[[auto_prune.regex.rules]]\npattern = \"foo\"\nkeep_last = 3\n\n# matches bar\n[[auto_prune.regex.rules]]\npattern = \"bar\"\nkeep_last = 5\n";
@@ -773,6 +782,7 @@ mod tests {
         assert!(out.contains("\"baz\""), "baz added");
     }
 
+    #[rstest::rstest]
     #[test]
     fn boolean_and_integer_scalar_replacement_works() {
         let original = "x = 1\ny = false\n";
@@ -790,6 +800,7 @@ mod tests {
         assert!(out.contains("y = true"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn empty_array_in_new_value_clears_registered_array() {
         let original = "[[items]]\nname = \"alpha\"\nvalue = 1\n";
@@ -806,6 +817,7 @@ mod tests {
         assert!(!out.contains("alpha"), "all entries removed");
     }
 
+    #[rstest::rstest]
     #[test]
     fn patch_preserves_user_chosen_field_order() {
         // Given a document where the user has chosen a non-alphabetical field order.
@@ -832,6 +844,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn patch_preserves_comment_between_fields_when_next_field_is_mutated() {
         // Given a document where an interior comment sits between two fields
@@ -862,6 +875,7 @@ mod tests {
         assert!(out.contains("value = 99"), "value updated");
     }
 
+    #[rstest::rstest]
     #[test]
     fn wildcard_path_array_of_tables_updates_entry_in_place_by_key() {
         // Given a provider-keyed document with commented model_info entries.
@@ -898,6 +912,7 @@ mod tests {
         assert!(!out.contains("1_000_000"), "old value gone");
     }
 
+    #[rstest::rstest]
     #[test]
     fn exact_registration_takes_precedence_over_wildcard() {
         // Given one exact and one wildcard registration that both match a path.

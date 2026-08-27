@@ -216,6 +216,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn estimate_entry_tokens_sums_name_and_content_for_tool_call() {
         // Given a ToolCall entry.
@@ -236,6 +237,7 @@ mod tests {
         assert!(tokens > 0, "should have non-zero token estimate");
     }
 
+    #[rstest::rstest]
     #[test]
     fn estimate_entry_tokens_sums_name_and_content_for_tool_result() {
         // Given a ToolResult entry.
@@ -261,6 +263,7 @@ mod tests {
         assert!(tokens > 0, "should have non-zero token estimate");
     }
 
+    #[rstest::rstest]
     #[test]
     fn estimate_entry_tokens_adds_image_cost_per_attachment() {
         use jinn_provider::Attachment;

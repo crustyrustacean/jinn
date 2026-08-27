@@ -166,6 +166,7 @@ mod tests {
         (state, session_id, pid)
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_phase_returns_phase_tasks() {
         let (state, session_id, pid) = setup_with_phase();
@@ -182,6 +183,7 @@ mod tests {
         assert!(result.content.contains("Read docs"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_phase_errors_on_missing_phase() {
         let (state, session_id, _pid) = setup_with_phase();
@@ -197,6 +199,7 @@ mod tests {
         assert!(result.content.contains("phase not found"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_phase_requires_state() {
         let call = ToolCall {
@@ -210,6 +213,7 @@ mod tests {
         assert!(!result.success);
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_phase_return_has_next_block_at_top() {
         let (state, session_id, pid) = setup_with_phase();

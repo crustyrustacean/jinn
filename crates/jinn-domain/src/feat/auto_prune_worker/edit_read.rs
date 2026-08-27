@@ -347,36 +347,42 @@ mod tests {
             .collect()
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_path_from_valid_json() {
         let path = extract_path_from_arguments(r#"{"path": "/foo/bar.rs"}"#);
         assert_eq!(path, Some("/foo/bar.rs".to_owned()));
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_path_from_json_with_extra_fields() {
         let path = extract_path_from_arguments(r#"{"path": "/foo.rs", "offset": 1, "limit": 50}"#);
         assert_eq!(path, Some("/foo.rs".to_owned()));
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_path_returns_none_for_missing_path() {
         let path = extract_path_from_arguments(r#"{"file": "/foo.rs"}"#);
         assert_eq!(path, None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_path_returns_none_for_malformed_json() {
         let path = extract_path_from_arguments("not json");
         assert_eq!(path, None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_path_returns_none_for_non_string_path() {
         let path = extract_path_from_arguments(r#"{"path": 42}"#);
         assert_eq!(path, None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn is_modify_tool_recognizes_edit_and_write() {
         assert!(is_modify_tool("edit"));
@@ -385,6 +391,7 @@ mod tests {
         assert!(!is_modify_tool("bash"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn no_edit_read_pattern_produces_no_mutations() {
         let history = vec![
@@ -397,6 +404,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn backward_prunes_prior_edits_on_same_file() {
         let mut history = Vec::new();
@@ -425,6 +433,7 @@ mod tests {
         assert!(ids.contains(&edit2[1].id));
     }
 
+    #[rstest::rstest]
     #[test]
     fn backward_prunes_prior_writes_on_same_file() {
         let mut history = Vec::new();
@@ -452,6 +461,7 @@ mod tests {
         assert!(ids.contains(&write2[1].id));
     }
 
+    #[rstest::rstest]
     #[test]
     fn backward_prunes_mixed_prior_edits_and_writes() {
         let mut history = Vec::new();
@@ -479,6 +489,7 @@ mod tests {
         assert!(ids.contains(&write1[1].id));
     }
 
+    #[rstest::rstest]
     #[test]
     fn backward_no_mutation_when_no_prior_edits_or_writes() {
         let mut history = Vec::new();
@@ -490,6 +501,7 @@ mod tests {
         assert!(mutations.is_empty(), "nothing to backward-prune");
     }
 
+    #[rstest::rstest]
     #[test]
     fn backward_does_not_prune_different_files() {
         let mut history = Vec::new();
@@ -507,6 +519,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn backward_does_not_prune_reads() {
         // Given a read followed by another read on the same file.
@@ -526,6 +539,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn backward_already_excluded_edit_no_duplicate() {
         let mut history = Vec::new();
@@ -557,6 +571,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn backward_runs_even_when_read_already_excluded() {
         let mut history = Vec::new();
@@ -594,6 +609,7 @@ mod tests {
         assert!(ids.contains(&edit1[1].id));
     }
 
+    #[rstest::rstest]
     #[test]
     fn backward_skips_edit_without_result() {
         let mut history = Vec::new();
@@ -619,6 +635,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn backward_prunes_five_prior_edits() {
         let mut history = Vec::new();
@@ -647,6 +664,7 @@ mod tests {
     /// Write at the end of a short history is protected by `min_age`: no
     /// `ForcedExclude` mutation is emitted for the write's call or result,
     /// even though a same-file read appears later in history.
+    #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_write_from_backward_prune() {
         let mut history = Vec::new();
@@ -679,6 +697,7 @@ mod tests {
     /// `min_age = 0` reproduces pre-fix behavior: the same write from the
     /// `min_age_protects_recent_write_from_backward_prune` test is now
     /// pruned together with its result.
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_backward_prunes_as_before() {
         let mut history = Vec::new();
@@ -707,6 +726,7 @@ mod tests {
 
     /// A write well past the `min_age` floor is pruned as before — the
     /// protection only applies to entries near the end of history.
+    #[rstest::rstest]
     #[test]
     fn old_write_still_pruned_in_long_history() {
         let mut history = Vec::new();

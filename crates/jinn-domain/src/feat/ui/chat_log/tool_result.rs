@@ -1001,6 +1001,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn alert_tool_result_renders_with_alert_colors() {
         // Given a pending alert entry (challenge detected).
@@ -1030,6 +1031,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn alert_tool_result_pads_lines_to_content_width() {
         // Given a pending alert entry.

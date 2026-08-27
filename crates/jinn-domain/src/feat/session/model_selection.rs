@@ -208,6 +208,7 @@ mod tests {
         ]
     }
 
+    #[rstest::rstest]
     #[test]
     fn single_serializes_as_bare_string_key() {
         // Given a Single model selection.
@@ -220,6 +221,7 @@ mod tests {
         assert_eq!(json, r#"{"single":"ollama/llama3"}"#);
     }
 
+    #[rstest::rstest]
     #[test]
     fn single_round_trips_through_serde() {
         // Given a Single model selection.
@@ -233,6 +235,7 @@ mod tests {
         assert_eq!(back, selection);
     }
 
+    #[rstest::rstest]
     #[test]
     fn alloy_with_round_robin_round_trips_through_serde() {
         // Given an Alloy with RoundRobin strategy.
@@ -249,6 +252,7 @@ mod tests {
         assert_eq!(back, selection);
     }
 
+    #[rstest::rstest]
     #[test]
     fn alloy_with_random_round_trips_through_serde() {
         // Given an Alloy with Random strategy.
@@ -265,6 +269,7 @@ mod tests {
         assert_eq!(back, selection);
     }
 
+    #[rstest::rstest]
     #[test]
     fn default_is_single_no_provider() {
         // Given the default model selection.
@@ -274,6 +279,7 @@ mod tests {
         assert_eq!(selection, ModelSelection::Single(NO_PROVIDER_ID.to_owned()));
     }
 
+    #[rstest::rstest]
     #[test]
     fn resolve_model_on_single_returns_the_string() {
         // Given a Single model selection.
@@ -286,6 +292,7 @@ mod tests {
         assert_eq!(model, "ollama/llama3");
     }
 
+    #[rstest::rstest]
     #[test]
     fn resolve_model_on_round_robin_cycles_through_models() {
         // Given an Alloy with RoundRobin starting at index 0.
@@ -305,6 +312,7 @@ mod tests {
         assert_eq!(third, "provider-c/model-3");
     }
 
+    #[rstest::rstest]
     #[test]
     fn resolve_model_on_round_robin_wraps_around() {
         // Given an Alloy with RoundRobin starting at index 2 (last model).
@@ -323,6 +331,7 @@ mod tests {
         assert_eq!(next, "provider-a/model-1");
     }
 
+    #[rstest::rstest]
     #[test]
     fn resolve_model_on_random_returns_a_member() {
         // Given an Alloy with Random strategy.
@@ -341,6 +350,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn is_no_provider_true_for_sentinel() {
         // Given a Single with the no-provider sentinel.
@@ -350,6 +360,7 @@ mod tests {
         assert!(selection.is_no_provider());
     }
 
+    #[rstest::rstest]
     #[test]
     fn is_no_provider_false_for_real_model() {
         // Given a Single with a real model.
@@ -359,6 +370,7 @@ mod tests {
         assert!(!selection.is_no_provider());
     }
 
+    #[rstest::rstest]
     #[test]
     fn is_no_provider_false_for_alloy() {
         // Given an Alloy selection.
@@ -371,6 +383,7 @@ mod tests {
         assert!(!selection.is_no_provider());
     }
 
+    #[rstest::rstest]
     #[test]
     fn as_single_returns_str_for_single() {
         // Given a Single model selection.
@@ -381,6 +394,7 @@ mod tests {
         assert_eq!(selection.as_single(), Some("ollama/llama3"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn as_single_returns_none_for_alloy() {
         // Given an Alloy selection.
@@ -394,6 +408,7 @@ mod tests {
         assert!(selection.as_single().is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn from_single_wraps_string() {
         // Given a model string.
@@ -407,6 +422,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn provider_name_returns_prefix_for_single_model() {
         // Given a Single model with provider/model/sub format.
@@ -416,6 +432,7 @@ mod tests {
         assert_eq!(selection.provider_name(), "openrouter");
     }
 
+    #[rstest::rstest]
     #[test]
     fn provider_name_returns_whole_string_for_no_slash() {
         // Given a Single model with no slash (bare model name).
@@ -426,6 +443,7 @@ mod tests {
         assert_eq!(selection.provider_name(), "llama3");
     }
 
+    #[rstest::rstest]
     #[test]
     fn provider_name_uses_first_model_of_alloy() {
         // Given an Alloy whose first member is on openrouter.
