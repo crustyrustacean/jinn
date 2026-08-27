@@ -25,38 +25,22 @@ pub struct MessagesRequest {
 }
 
 /// Builds a [`MessagesRequest`] from protocol types.
+///
+/// The system prompt comes exclusively from the `system_prompt` parameter;
+/// the message array is pure conversation and is never inspected for
+/// system-level content.
 pub fn build_request(
     model: &str,
     messages: &[LlmMessage],
     tools: &[ToolDefinition],
     system_prompt: Option<&str>,
 ) -> MessagesRequest {
-    // Separate system messages from conversation messages.
     // Anthropic uses a top-level `system` field.
-    // Concatenate all System messages to avoid silently dropping any.
-    let system_contents: Vec<String> = messages
-        .iter()
-        .filter_map(|m| match m {
-            LlmMessage::System { content } => Some(content.clone()),
-            _ => None,
-        })
-        .collect();
-    let system_text = system_prompt
-        .map(std::borrow::ToOwned::to_owned)
-        .or_else(|| {
-            if system_contents.is_empty() {
-                None
-            } else {
-                Some(system_contents.join("\n\n"))
-            }
-        });
+    let system_text = system_prompt.map(std::borrow::ToOwned::to_owned);
 
-    // Non-system messages go into the messages array.
-    let anthropic_messages: Vec<serde_json::Value> = messages
-        .iter()
-        .filter(|m| !matches!(m, LlmMessage::System { .. }))
-        .map(message_to_json)
-        .collect();
+    // All messages go into the messages array.
+    let anthropic_messages: Vec<serde_json::Value> =
+        messages.iter().map(message_to_json).collect();
 
     let anthropic_tools = if tools.is_empty() {
         None
@@ -84,10 +68,6 @@ pub fn build_request(
 /// Convert an [`LlmMessage`] to an Anthropic-format message JSON.
 fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
     match msg {
-        LlmMessage::System { .. } => {
-            // System messages are handled separately - should never reach here.
-            serde_json::json!({"role": "user", "content": []})
-        }
         LlmMessage::User {
             content,
             attachments,
@@ -198,34 +178,36 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn build_request_extracts_system_prompt() {
-        // Given messages with a system prompt.
-        let messages = vec![
-            LlmMessage::System {
-                content: "You are helpful.".into(),
-            },
-            LlmMessage::User {
-                content: "hello".into(),
-                attachments: Vec::new(),
-            },
-        ];
+    fn build_request_uses_explicit_system_prompt() {
+        // Given conversation messages and an explicit system prompt.
+        let messages = vec![LlmMessage::User {
+            content: "hello".into(),
+            attachments: Vec::new(),
+        }];
 
-        // When building request.
-        let req = build_request("claude-3", &messages, &[], None);
+        // When building request with the system prompt parameter.
+        let req = build_request("claude-3", &messages, &[], Some("You are helpful."));
 
-        // Then system is extracted and not in messages.
+        // Then system is set from the parameter and messages are untouched.
         assert_eq!(req.system.as_deref(), Some("You are helpful."));
         assert_eq!(req.messages.len(), 1);
         assert_eq!(req.messages[0]["role"], "user");
     }
 
     #[rstest::rstest]
-    fn build_request_uses_explicit_system_over_message() {
-        let messages = vec![LlmMessage::System {
-            content: "from message".into(),
+    fn build_request_without_system_prompt_leaves_system_absent() {
+        // Given conversation messages and no system prompt.
+        let messages = vec![LlmMessage::User {
+            content: "hello".into(),
+            attachments: Vec::new(),
         }];
-        let req = build_request("claude-3", &messages, &[], Some("from param"));
-        assert_eq!(req.system.as_deref(), Some("from param"));
+
+        // When building request with None.
+        let req = build_request("claude-3", &messages, &[], None);
+
+        // Then the system field is absent.
+        assert_eq!(req.system, None);
+        assert_eq!(req.messages.len(), 1);
     }
 
     #[rstest::rstest]
@@ -255,35 +237,6 @@ mod tests {
         let content = json["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "tool_use");
         assert_eq!(content[0]["name"], "echo");
-    }
-
-    #[rstest::rstest]
-    fn build_request_concats_multiple_system_messages() {
-        // Given messages with two System messages and a User message.
-        let messages = vec![
-            LlmMessage::System {
-                content: "First system.".into(),
-            },
-            LlmMessage::System {
-                content: "Second system.".into(),
-            },
-            LlmMessage::User {
-                content: "hello".into(),
-                attachments: Vec::new(),
-            },
-        ];
-
-        // When building request with no explicit system_prompt.
-        let req = build_request("claude-3", &messages, &[], None);
-
-        // Then system is the concatenation of both system messages.
-        assert_eq!(
-            req.system.as_deref(),
-            Some("First system.\n\nSecond system.")
-        );
-        // And messages has exactly 1 entry (the User message).
-        assert_eq!(req.messages.len(), 1);
-        assert_eq!(req.messages[0]["role"], "user");
     }
 
     #[rstest::rstest]

@@ -135,11 +135,8 @@ impl DiscoverActor {
 
             let result: Result<Vec<ModelInfo>, Report<LlmServiceError>> = match backend {
                 Backend::Anthropic => {
-                    let svc = AnthropicService::new(
-                        placeholder_model.clone(),
-                        api_key_str.to_owned(),
-                        None,
-                    );
+                    let svc =
+                        AnthropicService::new(placeholder_model.clone(), api_key_str.to_owned());
                     svc.list_models().await
                 }
                 Backend::Google => {

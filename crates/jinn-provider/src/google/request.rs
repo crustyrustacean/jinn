@@ -24,31 +24,23 @@ pub struct GeminiRequest {
 }
 
 /// Builds a [`GeminiRequest`] from protocol types.
-pub fn build_request(messages: &[LlmMessage], tools: &[ToolDefinition]) -> GeminiRequest {
-    // Extract system prompt separately.
-    // Concatenate all System messages into one system instruction.
-    // Google uses a top-level `systemInstruction` field.
-    let system_contents: Vec<String> = messages
-        .iter()
-        .filter_map(|m| match m {
-            LlmMessage::System { content } => Some(content.clone()),
-            _ => None,
+///
+/// The system prompt comes exclusively from the `system_prompt` parameter,
+/// filling the top-level `systemInstruction` field; the contents array is
+/// pure conversation and is never inspected for system-level content.
+pub fn build_request(
+    system_prompt: Option<&str>,
+    messages: &[LlmMessage],
+    tools: &[ToolDefinition],
+) -> GeminiRequest {
+    let system_instruction = system_prompt.map(|text| {
+        serde_json::json!({
+            "parts": [{"text": text}]
         })
-        .collect();
-    let system_instruction = if system_contents.is_empty() {
-        None
-    } else {
-        Some(serde_json::json!({
-            "parts": [{"text": system_contents.join("\n\n")}]
-        }))
-    };
+    });
 
-    // Non-system messages → contents array.
-    let contents: Vec<serde_json::Value> = messages
-        .iter()
-        .filter(|m| !matches!(m, LlmMessage::System { .. }))
-        .map(message_to_json)
-        .collect();
+    // All messages → contents array.
+    let contents: Vec<serde_json::Value> = messages.iter().map(message_to_json).collect();
 
     let gemini_tools = if tools.is_empty() {
         None
@@ -68,10 +60,6 @@ pub fn build_request(messages: &[LlmMessage], tools: &[ToolDefinition]) -> Gemin
 /// Convert an [`LlmMessage`] to a Gemini-format content JSON.
 fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
     match msg {
-        LlmMessage::System { .. } => {
-            // System messages handled separately - unreachable.
-            serde_json::json!({"role": "user", "parts": []})
-        }
         LlmMessage::User {
             content,
             attachments,
@@ -196,22 +184,40 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn build_request_extracts_system_instruction() {
-        let messages = vec![
-            LlmMessage::System {
-                content: "Be helpful.".into(),
-            },
-            LlmMessage::User {
-                content: "hello".into(),
-                attachments: Vec::new(),
-            },
-        ];
+    fn build_request_fills_system_instruction_from_param() {
+        // Given conversation messages and an explicit system prompt.
+        let messages = vec![LlmMessage::User {
+            content: "hello".into(),
+            attachments: Vec::new(),
+        }];
 
-        let req = build_request(&messages, &[]);
+        // When building request with the system prompt parameter.
+        let req = build_request(Some("Be helpful."), &messages, &[]);
 
+        // Then systemInstruction is filled and contents are untouched.
         assert!(req.system_instruction.is_some());
+        let parts = req.system_instruction.as_ref().expect("checked")["parts"]
+            .as_array()
+            .expect("array");
+        assert_eq!(parts[0]["text"].as_str().expect("text"), "Be helpful.");
         assert_eq!(req.contents.len(), 1);
         assert_eq!(req.contents[0]["role"], "user");
+    }
+
+    #[rstest::rstest]
+    fn build_request_without_system_prompt_leaves_instruction_absent() {
+        // Given conversation messages and no system prompt.
+        let messages = vec![LlmMessage::User {
+            content: "hello".into(),
+            attachments: Vec::new(),
+        }];
+
+        // When building request with None.
+        let req = build_request(None, &messages, &[]);
+
+        // Then the systemInstruction field is absent.
+        assert!(req.system_instruction.is_none());
+        assert_eq!(req.contents.len(), 1);
     }
 
     #[rstest::rstest]
@@ -261,39 +267,6 @@ mod tests {
         let json = tool_definition_to_json(&def);
         assert_eq!(json["name"], "echo");
         assert!(json.get("parameters").is_some());
-    }
-
-    #[rstest::rstest]
-    fn build_request_concats_multiple_system_messages() {
-        // Given messages with two System messages and a User message.
-        let messages = vec![
-            LlmMessage::System {
-                content: "First system.".into(),
-            },
-            LlmMessage::System {
-                content: "Second system.".into(),
-            },
-            LlmMessage::User {
-                content: "hello".into(),
-                attachments: Vec::new(),
-            },
-        ];
-
-        // When building request.
-        let req = build_request(&messages, &[]);
-
-        // Then system_instruction is Some with concatenated text.
-        assert!(req.system_instruction.is_some());
-        let parts = req.system_instruction.as_ref().unwrap()["parts"]
-            .as_array()
-            .unwrap();
-        assert_eq!(
-            parts[0]["text"].as_str().unwrap(),
-            "First system.\n\nSecond system."
-        );
-        // And contents has exactly 1 entry (the User message).
-        assert_eq!(req.contents.len(), 1);
-        assert_eq!(req.contents[0]["role"], "user");
     }
 
     #[rstest::rstest]

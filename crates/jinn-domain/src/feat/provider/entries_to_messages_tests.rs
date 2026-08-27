@@ -332,19 +332,20 @@ fn system_entries_skipped_between_tools() {
 }
 
 #[rstest::rstest]
-fn pinned_system_entry_produces_system_message() {
+fn system_entry_produces_system_prefixed_user_message() {
     // Given a pinned System entry.
     let entries = vec![ChatEntry::system("important instruction").with_pin(PinPosition::Top)];
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then a System message is produced.
+    // Then a [System]-prefixed User message is produced.
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        LlmMessage::System {
-            content: "important instruction".into(),
+        LlmMessage::User {
+            content: "[System] important instruction".into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -409,8 +410,9 @@ fn mixed_pinned_and_unpinned_entries() {
     assert_eq!(messages.len(), 2);
     assert_eq!(
         messages[0],
-        LlmMessage::System {
-            content: "pinned system".into(),
+        LlmMessage::User {
+            content: "[System] pinned system".into(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
@@ -438,8 +440,9 @@ fn pinned_system_appears_first() {
     assert_eq!(messages.len(), 3);
     assert_eq!(
         messages[0],
-        LlmMessage::System {
-            content: "always include".into(),
+        LlmMessage::User {
+            content: "[System] always include".into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -849,12 +852,13 @@ fn forced_include_system_entry_produces_system_message() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then a System message is produced (forced-include overrides kind default).
+    // Then a [System]-prefixed User message is produced (forced-include overrides kind default).
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        LlmMessage::System {
-            content: "important".into(),
+        LlmMessage::User {
+            content: "[System] important".into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -1152,13 +1156,10 @@ fn excluded_empty_assistant_synthesizes_valid_parent_for_complete_loop() {
 /// assistant tool-call batch. Every declared call must have exactly one result,
 /// and every result must resolve a declared call.
 fn assert_message_sequence_is_valid(messages: &[LlmMessage]) {
-    // A standalone conversation must begin with a user or system turn.
+    // A standalone conversation must begin with a user turn.
     assert!(
-        matches!(
-            messages.first(),
-            Some(LlmMessage::User { .. } | LlmMessage::System { .. })
-        ),
-        "first message must be a User or System opener, got {:?}",
+        matches!(messages.first(), Some(LlmMessage::User { .. })),
+        "first message must be a User opener, got {:?}",
         messages.first()
     );
 
@@ -1199,7 +1200,7 @@ fn assert_message_sequence_is_valid(messages: &[LlmMessage]) {
                 };
                 pending_calls.remove(index);
             }
-            LlmMessage::System { .. } | LlmMessage::User { .. } => {
+            LlmMessage::User { .. } => {
                 assert!(
                     pending_calls.is_empty(),
                     "tool-call batch was not completed before the next turn: {pending_calls:?}"
@@ -1389,11 +1390,8 @@ fn including_compaction_summary_produces_valid_sequencing() {
 fn assert_messages_are_structurally_valid(messages: &[LlmMessage]) {
     // The first message must be a valid conversation opener.
     assert!(
-        matches!(
-            messages.first(),
-            Some(LlmMessage::User { .. } | LlmMessage::System { .. })
-        ),
-        "first message must be a User or System turn, got {:?}",
+        matches!(messages.first(), Some(LlmMessage::User { .. })),
+        "first message must be a User turn, got {:?}",
         messages.first()
     );
 

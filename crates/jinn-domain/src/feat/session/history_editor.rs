@@ -1172,7 +1172,6 @@ mod tests {
                 LlmMessage::Assistant {
                     tool_calls: None, ..
                 }
-                | LlmMessage::System { .. }
                 | LlmMessage::User { .. } => {
                     if open.is_some_and(|remaining| !remaining.is_empty()) {
                         return false;

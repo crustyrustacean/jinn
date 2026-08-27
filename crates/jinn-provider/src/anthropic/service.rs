@@ -21,6 +21,8 @@ const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1/messages";
 const PROVIDER_NAME: &str = "Anthropic";
 
 /// An LLM service that talks to Anthropic's Messages API.
+///
+/// The system prompt is passed per request; no prompt state lives here.
 pub struct AnthropicService {
     /// HTTP client.
     client: Client,
@@ -28,8 +30,6 @@ pub struct AnthropicService {
     model: String,
     /// API key for authentication.
     api_key: String,
-    /// Optional system prompt override.
-    system_prompt: Option<String>,
     /// Base URL override (for testing).
     base_url: String,
 }
@@ -37,46 +37,33 @@ pub struct AnthropicService {
 impl AnthropicService {
     /// Create a new Anthropic service instance.
     #[must_use]
-    pub fn new(model: String, api_key: String, system_prompt: Option<String>) -> Self {
+    pub fn new(model: String, api_key: String) -> Self {
         Self {
             client: reqwest::Client::new(),
             model,
             api_key,
-            system_prompt,
             base_url: DEFAULT_BASE_URL.to_owned(),
         }
     }
 
     /// Create a new Anthropic service with a custom client.
     #[must_use]
-    pub fn with_client(
-        client: reqwest::Client,
-        model: String,
-        api_key: String,
-        system_prompt: Option<String>,
-    ) -> Self {
+    pub fn with_client(client: reqwest::Client, model: String, api_key: String) -> Self {
         Self {
             client,
             model,
             api_key,
-            system_prompt,
             base_url: DEFAULT_BASE_URL.to_owned(),
         }
     }
 
     /// Create a new Anthropic service instance with a custom base URL (for testing).
     #[must_use]
-    pub fn with_base_url(
-        model: String,
-        api_key: String,
-        system_prompt: Option<String>,
-        base_url: String,
-    ) -> Self {
+    pub fn with_base_url(model: String, api_key: String, base_url: String) -> Self {
         Self {
             client: reqwest::Client::new(),
             model,
             api_key,
-            system_prompt,
             base_url,
         }
     }
@@ -99,6 +86,7 @@ impl AnthropicService {
     /// Send a streaming request to Anthropic's Messages API.
     async fn send_streaming_request(
         &self,
+        system_prompt: Option<&str>,
         messages: &[LlmMessage],
         tools: &[ToolDefinition],
     ) -> Result<reqwest::Response, Report<LlmServiceError>> {
@@ -107,8 +95,7 @@ impl AnthropicService {
                 .attach(format!("Missing {PROVIDER_NAME} API key")));
         }
 
-        let body =
-            request::build_request(&self.model, messages, tools, self.system_prompt.as_deref());
+        let body = request::build_request(&self.model, messages, tools, system_prompt);
 
         let response = self
             .client
@@ -153,9 +140,12 @@ impl LlmService for AnthropicService {
 
     async fn chat_stream(
         &self,
+        system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>> {
-        let response = self.send_streaming_request(&messages, &[]).await?;
+        let response = self
+            .send_streaming_request(system_prompt, &messages, &[])
+            .await?;
         let parser = AnthropicStreamParser::new();
         let sse = SseParser::new();
 
@@ -194,10 +184,13 @@ impl LlmService for AnthropicService {
 
     async fn chat_stream_with_tools(
         &self,
+        system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
         tools: Vec<ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
-        let response = self.send_streaming_request(&messages, &tools).await?;
+        let response = self
+            .send_streaming_request(system_prompt, &messages, &tools)
+            .await?;
         let parser = AnthropicStreamParser::new();
         let sse = SseParser::new();
 
@@ -239,7 +232,6 @@ impl std::fmt::Debug for AnthropicService {
         f.debug_struct("AnthropicService")
             .field("model", &self.model)
             .field("api_key", &self.api_key)
-            .field("system_prompt", &self.system_prompt)
             .field("base_url", &self.base_url)
             .finish_non_exhaustive()
     }
@@ -276,12 +268,7 @@ mod tests {
             .await;
 
         let base_url = format!("{}/v1/messages", server.url());
-        let svc = AnthropicService::with_base_url(
-            "claude-3".to_owned(),
-            "test-key".to_owned(),
-            None,
-            base_url,
-        );
+        let svc = AnthropicService::with_base_url("claude-3".to_owned(), "test-key".to_owned(), base_url);
 
         // When listing models.
         let result = svc.list_models().await;
@@ -313,12 +300,7 @@ mod tests {
             .await;
 
         let base_url = format!("{}/v1/messages", server.url());
-        let svc = AnthropicService::with_base_url(
-            "claude-3".to_owned(),
-            "test-key".to_owned(),
-            None,
-            base_url,
-        );
+        let svc = AnthropicService::with_base_url("claude-3".to_owned(), "test-key".to_owned(), base_url);
 
         // When listing models.
         let result = svc.list_models().await;
