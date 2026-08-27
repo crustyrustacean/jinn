@@ -658,6 +658,7 @@ mod tests {
         session.history().iter().map(|e| e.id.clone()).collect()
     }
 
+    #[rstest::rstest]
     #[test]
     fn set_context_on_tool_call_excludes_whole_loop() {
         // Given a complete loop in history.
@@ -689,6 +690,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn worker_exclude_refused_for_pinned_member() {
         // Given a loop whose result is pinned (skill-load shape).
@@ -714,6 +716,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn worker_include_refused_for_user_excluded_chunk() {
         // Given a loop the user excluded.
@@ -739,6 +742,7 @@ mod tests {
         assert!(session.history()[1].context_override() == ContextOverride::ForcedExclude);
     }
 
+    #[rstest::rstest]
     #[test]
     fn user_exclude_refused_for_pinned_chunk() {
         // Given a pinned loop.
@@ -762,6 +766,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn internal_exclude_bypasses_pin_guard() {
         // Given a pinned but incomplete loop (hard-cancel shape).
@@ -781,6 +786,7 @@ mod tests {
         assert!(session.history()[2].context_override() == ContextOverride::ForcedExclude);
     }
 
+    #[rstest::rstest]
     #[test]
     fn pin_on_result_pins_whole_loop() {
         // Given a complete loop.
@@ -799,6 +805,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn unpin_clears_kind_level_pin_mirror() {
         // Given a loop pinned via the result.
@@ -821,6 +828,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn insert_standalone_after_advances_past_loop() {
         // Given a complete loop followed by a user entry.
@@ -858,6 +866,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn insert_standalone_after_plain_entry_inserts_directly() {
         // Given two user entries.
@@ -881,6 +890,7 @@ mod tests {
         assert_eq!(texts, vec!["a", "between", "b"]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn normalize_relocates_interior_interstitials_after_loop() {
         // Given a loop with a system entry between call and result.
@@ -915,6 +925,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn normalize_is_idempotent() {
         // Given an already-normalized history with an interstitial after a loop.
@@ -936,6 +947,7 @@ mod tests {
         assert_eq!(before, entry_ids(&session));
     }
 
+    #[rstest::rstest]
     #[test]
     fn remove_trailing_removes_descending() {
         // Given a session with five entries.
@@ -963,6 +975,7 @@ mod tests {
         assert_eq!(texts, vec!["a", "b", "d"]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn exclude_incomplete_loops_leaves_complete_loops() {
         // Given one complete loop and one incomplete loop.
@@ -985,6 +998,7 @@ mod tests {
         assert!(session.history()[5].context_override() == ContextOverride::ForcedExclude);
     }
 
+    #[rstest::rstest]
     #[test]
     fn apply_executes_mutation_batch() {
         // Given a complete loop.
@@ -1004,6 +1018,7 @@ mod tests {
         assert_eq!(changed.len(), 3);
     }
 
+    #[rstest::rstest]
     #[test]
     fn normalize_preserves_relative_order_of_multiple_interstitials() {
         // Given a loop with two interior interstitials.
@@ -1040,6 +1055,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn normalize_noop_when_no_loops() {
         // Given a history with no tool loops at all.
@@ -1058,6 +1074,7 @@ mod tests {
         assert_eq!(before, entry_ids(&session));
     }
 
+    #[rstest::rstest]
     #[test]
     fn normalize_continues_past_leading_non_loop_entries() {
         // Given a user entry before the loop and an interstitial inside it.
@@ -1092,6 +1109,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn pinned_skill_result_keeps_whole_loop_through_worker_exclude() {
         // Given a complete loop whose result carries a tool-requested pin
@@ -1166,6 +1184,7 @@ mod tests {
         open.is_none_or(|remaining| remaining.is_empty())
     }
 
+    #[rstest::rstest]
     #[test]
     fn randomized_editor_ops_always_assemble_valid_sequences() {
         use rand::Rng;

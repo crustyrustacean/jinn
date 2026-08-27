@@ -294,6 +294,7 @@ mod tests {
     )]
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn absent_transport_defaults_to_stdio() {
         // Given a config TOML with no transport field.
@@ -309,6 +310,7 @@ mod tests {
         assert_eq!(config.transport, TransportKind::Stdio);
     }
 
+    #[rstest::rstest]
     #[test]
     fn local_http_transport_round_trips_through_toml() {
         // Given a LocalHttp-mode config.
@@ -332,6 +334,7 @@ mod tests {
         assert_eq!(back.transport, TransportKind::LocalHttp);
     }
 
+    #[rstest::rstest]
     #[test]
     fn remote_http_transport_round_trips_through_toml() {
         // Given a RemoteHttp config with a URL.
@@ -353,6 +356,7 @@ mod tests {
         assert_eq!(back.url.as_deref(), Some("http://localhost:3001/mcp"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn stdio_transport_round_trips_through_toml() {
         // Given an explicit Stdio config.
@@ -373,6 +377,7 @@ mod tests {
         assert_eq!(back.transport, TransportKind::Stdio);
     }
 
+    #[rstest::rstest]
     #[test]
     fn command_is_optional_deserializes_when_absent() {
         // Given a config TOML with no command field.
@@ -388,6 +393,7 @@ mod tests {
         assert!(config.command.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn remote_http_config_needs_no_command() {
         // Given a RemoteHttp config with command set to None.
@@ -409,6 +415,7 @@ mod tests {
         assert_eq!(back.transport, TransportKind::RemoteHttp);
     }
 
+    #[rstest::rstest]
     #[test]
     fn absent_headers_default_to_empty() {
         // Given a config TOML with no headers field.
@@ -424,6 +431,7 @@ mod tests {
         assert!(config.headers.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn headers_deserialize_as_map_under_server_entry() {
         // Given a RemoteHttp config declaring auth headers as an inline table.
@@ -457,6 +465,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn bearer_prefix_survives_expansion() {
         // Given a header value embedding one token inside a scheme prefix,
@@ -470,6 +479,7 @@ mod tests {
         assert_eq!(expanded, "Bearer secret-value");
     }
 
+    #[rstest::rstest]
     #[test]
     fn multiple_tokens_expand_in_one_value() {
         // Given a value referencing two distinct variables.
@@ -486,6 +496,7 @@ mod tests {
         assert_eq!(expanded, "va-vb");
     }
 
+    #[rstest::rstest]
     #[test]
     fn value_without_tokens_is_literal() {
         // Given a plain literal value.
@@ -496,6 +507,7 @@ mod tests {
         assert_eq!(expanded, "plaintext");
     }
 
+    #[rstest::rstest]
     #[test]
     fn unset_variable_fails_naming_variable() {
         // Given a resolver with no entry for the referenced variable.
@@ -516,6 +528,7 @@ mod tests {
         assert!(!rendered.contains("secret"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn empty_resolved_value_treated_as_unset() {
         // Given a resolver that returns an empty string for the variable.
@@ -545,6 +558,7 @@ mod tests {
         assert_eq!(expanded, raw);
     }
 
+    #[rstest::rstest]
     #[test]
     fn malformed_then_valid_token_still_expands_valid() {
         // Given a value mixing a malformed construct with a real variable.
@@ -557,6 +571,7 @@ mod tests {
         assert_eq!(expanded, "${no-close}yes");
     }
 
+    #[rstest::rstest]
     #[test]
     fn trailing_text_after_last_token_is_kept() {
         // Given a value ending in literal text after a token.
@@ -569,6 +584,7 @@ mod tests {
         assert_eq!(expanded, "v-suffix");
     }
 
+    #[rstest::rstest]
     #[test]
     fn double_dollar_prefix_expands_inner_token() {
         // Given "$${VAR}" — dollar immediately before an open delimiter.
@@ -581,6 +597,7 @@ mod tests {
         assert_eq!(expanded, "$val");
     }
 
+    #[rstest::rstest]
     #[test]
     fn expand_mcp_headers_preserves_order_and_pairs() {
         // Given multiple configured headers referencing different variables.
@@ -606,6 +623,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn expand_mcp_headers_fails_on_first_unresolvable() {
         // Given one resolvable and one unresolvable header.
@@ -625,6 +643,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn absent_auto_enable_defaults_to_false() {
         // Given a config TOML with no auto_enable field.
@@ -641,6 +660,7 @@ mod tests {
         assert!(!config.auto_enable);
     }
 
+    #[rstest::rstest]
     #[test]
     fn explicit_auto_enable_false_deserializes() {
         // Given a config TOML with auto_enable explicitly false.
@@ -656,6 +676,7 @@ mod tests {
         assert!(!config.auto_enable);
     }
 
+    #[rstest::rstest]
     #[test]
     fn explicit_auto_enable_true_deserializes_and_round_trips() {
         // Given a config TOML with auto_enable enabled.

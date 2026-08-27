@@ -343,6 +343,7 @@ mod tests {
         std::fs::write(dir.join(filename), content).expect("write template");
     }
 
+    #[rstest::rstest]
     #[test]
     fn scan_dir_override_replaces_existing_template() {
         // Given a system directory with a template "greeting".
@@ -370,6 +371,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn scan_dir_only_loads_md_files() {
         // Given a directory with .md and .txt files.
@@ -387,6 +389,7 @@ mod tests {
         assert_eq!(templates[0].name, "valid");
     }
 
+    #[rstest::rstest]
     #[test]
     fn scan_dir_skips_underscore_prefixed_files() {
         // Given a directory with a normal and an underscore-prefixed template.

@@ -304,6 +304,7 @@ mod tests {
         state
     }
 
+    #[rstest::rstest]
     #[test]
     fn header_session_label_is_primary_text() {
         // Given a quake-bar state.
@@ -334,6 +335,7 @@ mod tests {
         assert!(found, "Session header should be primary_text");
     }
 
+    #[rstest::rstest]
     #[test]
     fn header_separator_equals_are_muted_text() {
         // Given a quake-bar state.
@@ -364,6 +366,7 @@ mod tests {
         assert!(found, "'-' separators should be muted_text");
     }
 
+    #[rstest::rstest]
     #[test]
     fn session_row_shows_pending_prune_tokens() {
         // Given a quake-bar state.
@@ -390,6 +393,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn lifecycle_row_shows_none_for_blank_session() {
         // Given a quake-bar state with a blank-lifecycle active session.
@@ -416,6 +420,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn lifecycle_row_shows_name_and_state_for_named_session() {
         // Given a quake-bar state whose active session has a named lifecycle
@@ -449,6 +454,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn lifecycle_row_uses_primary_text() {
         // Given a quake-bar state.
@@ -478,6 +484,7 @@ mod tests {
             "lifecycle row should use primary_text on quake_bar_bg"
         );
     }
+    #[rstest::rstest]
     #[test]
     fn input_prefix_is_focus_accent_yellow() {
         // Given a quake-bar state with some input.
@@ -506,6 +513,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn bright_divider_uses_lightened_background() {
         // Given a quake-bar state.
@@ -533,6 +541,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn muted_divider_uses_muted_text() {
         // Given a quake-bar state.
@@ -559,6 +568,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn overlay_spans_full_width_with_quake_bar_background() {
         // Given a quake-bar state.
@@ -593,6 +603,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn command_log_lines_render_below_bright_divider() {
         // Given a quake-bar state with a logged line.
@@ -619,6 +630,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn scroll_up_changes_which_log_line_is_visible() {
         // Given a quake bar with a full 20-line log, pinned to the bottom.

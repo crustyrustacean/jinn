@@ -14,6 +14,7 @@ use crate::feat::ui::picker_states::PickerExt;
 /// skill picker's vertical split.
 const LARGE_FRAME: Rect = Rect::new(0, 0, 120, 50);
 
+#[rstest::rstest]
 #[test]
 fn measure_returns_fallback_when_no_picker_active() {
     // Given default app state with no picker open.
@@ -26,6 +27,7 @@ fn measure_returns_fallback_when_no_picker_active() {
     assert_eq!(height, PICKER_VIEWPORT_FALLBACK);
 }
 
+#[rstest::rstest]
 #[test]
 fn measure_writes_into_state_field() {
     // Given a default app state.
@@ -45,6 +47,7 @@ fn state_with_picker(kind: PickerKind) -> AppState {
     state
 }
 
+#[rstest::rstest]
 #[test]
 fn measure_provider_picker_reserves_two_footer_rows() {
     // Given a Provider picker active (renders refresh + mode footers).
@@ -58,6 +61,7 @@ fn measure_provider_picker_reserves_two_footer_rows() {
     assert_eq!(height, 35);
 }
 
+#[rstest::rstest]
 #[test]
 fn measure_persona_picker_reserves_one_footer_row() {
     // Given a Persona picker active (one footer).
@@ -71,6 +75,7 @@ fn measure_persona_picker_reserves_one_footer_row() {
     assert_eq!(height, 36);
 }
 
+#[rstest::rstest]
 #[test]
 fn measure_skill_picker_uses_vertical_split_when_wide() {
     // Given a Skill picker active on a wide frame.
@@ -87,6 +92,7 @@ fn measure_skill_picker_uses_vertical_split_when_wide() {
     assert_eq!(height, 36);
 }
 
+#[rstest::rstest]
 #[test]
 fn measure_skill_picker_uses_horizontal_split_when_narrow() {
     // Given a Skill picker active on a narrow frame.
@@ -100,6 +106,7 @@ fn measure_skill_picker_uses_horizontal_split_when_narrow() {
     assert_eq!(height, jinn_selection_widget::HORIZONTAL_LIST_ROWS);
 }
 
+#[rstest::rstest]
 #[test]
 fn measure_never_returns_zero_on_tiny_terminal() {
     // Given a Persona picker active on a tiny frame.

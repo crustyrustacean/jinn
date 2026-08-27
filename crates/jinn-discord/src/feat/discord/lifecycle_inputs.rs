@@ -108,6 +108,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn numeric_params_produce_count_and_prompt() {
         // Given a lifecycle with two numeric positional params.
@@ -121,6 +122,7 @@ mod tests {
         assert_eq!(spec.prompt, "Please enter: <1> <2>");
     }
 
+    #[rstest::rstest]
     #[test]
     fn named_params_produce_count_and_prompt() {
         // Given a lifecycle with two named params.
@@ -134,6 +136,7 @@ mod tests {
         assert_eq!(spec.prompt, "Please enter: <branch> <target>");
     }
 
+    #[rstest::rstest]
     #[test]
     fn three_named_params_produce_three_count() {
         // Given a lifecycle with three named params.
@@ -150,6 +153,7 @@ mod tests {
         assert_eq!(spec.prompt, "Please enter: <branch> <target> <profile>");
     }
 
+    #[rstest::rstest]
     #[test]
     fn no_params_lifecycle_skips_prompt() {
         // Given a lifecycle with a zero-param setup command.
@@ -163,6 +167,7 @@ mod tests {
         assert_eq!(spec.prompt, "");
     }
 
+    #[rstest::rstest]
     #[test]
     fn single_param_lifecycle_produces_count_and_prompt() {
         // Given a lifecycle with one named positional param.
@@ -176,6 +181,7 @@ mod tests {
         assert_eq!(spec.prompt, "Please enter: <env>");
     }
 
+    #[rstest::rstest]
     #[test]
     fn splat_only_lifecycle_counts_as_zero() {
         // Given a lifecycle whose only param is the splat.
@@ -189,6 +195,7 @@ mod tests {
         assert_eq!(spec.prompt, "");
     }
 
+    #[rstest::rstest]
     #[test]
     fn missing_lifecycle_returns_none() {
         // Given a lifecycle list that does not contain the requested name.
@@ -201,6 +208,7 @@ mod tests {
         assert!(spec.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn builtin_lifecycle_counts_as_zero() {
         // Given a lifecycle whose setup is a compiled-in builtin handler.
@@ -222,6 +230,7 @@ mod tests {
         assert_eq!(spec.prompt, "");
     }
 
+    #[rstest::rstest]
     #[test]
     fn missing_setup_counts_as_zero() {
         // Given a lifecycle with no setup command at all.
@@ -239,6 +248,7 @@ mod tests {
         assert_eq!(spec.prompt, "");
     }
 
+    #[rstest::rstest]
     #[test]
     fn mixed_positional_and_splat_counts_non_splat_only() {
         // Given a lifecycle with one positional param and a splat.

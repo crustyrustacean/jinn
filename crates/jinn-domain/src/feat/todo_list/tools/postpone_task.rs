@@ -234,6 +234,7 @@ mod tests {
         (state, session_id, p1, t1, p2, t2)
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_task_creates_copy_after_reference() {
         let (state, session_id, _p1, t1, _p2, t2) = setup_with_two_phases();
@@ -252,6 +253,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_task_creates_copy_before_reference() {
         let (state, session_id, _p1, t1, _p2, t2) = setup_with_two_phases();
@@ -266,6 +268,7 @@ mod tests {
         assert!(result.success, "expected success: {:?}", result.content);
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_task_requires_after_or_before() {
         let (state, session_id, _p1, t1, _p2, _t2) = setup_with_two_phases();
@@ -287,6 +290,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_task_rejects_both_after_and_before() {
         let (state, session_id, _p1, t1, _p2, t2) = setup_with_two_phases();
@@ -303,6 +307,7 @@ mod tests {
         assert!(result.content.contains("both after_task and before_task"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_task_errors_on_unknown_task() {
         let (state, session_id, _p1, _t1, _p2, t2) = setup_with_two_phases();
@@ -318,6 +323,7 @@ mod tests {
         assert!(result.content.contains("task not found"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_task_errors_on_unknown_reference() {
         let (state, session_id, _p1, t1, _p2, _t2) = setup_with_two_phases();
@@ -333,6 +339,7 @@ mod tests {
         assert!(result.content.contains("task not found"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_task_return_has_next_block_at_top() {
         let (state, session_id, _p1, t1, _p2, t2) = setup_with_two_phases();
@@ -353,6 +360,7 @@ mod tests {
         assert!(result.content.contains("Postponed task"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_task_errors_on_self_reference() {
         let (state, session_id, _p1, t1, _p2, _t2) = setup_with_two_phases();
@@ -372,6 +380,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_task_requires_state() {
         let call = ToolCall {

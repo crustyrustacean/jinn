@@ -92,6 +92,7 @@ mod tests {
         assert_eq!(modalities.display(), "t");
     }
 
+    #[rstest::rstest]
     #[test]
     fn insert_image_keeps_text() {
         // Given text-only modalities.
@@ -105,6 +106,7 @@ mod tests {
         assert!(modalities.contains(Modality::Image));
     }
 
+    #[rstest::rstest]
     #[test]
     fn display_order_is_text_then_image_regardless_of_insert_order() {
         // Given modalities with image inserted before text.
@@ -118,6 +120,7 @@ mod tests {
         assert_eq!(display, "ti");
     }
 
+    #[rstest::rstest]
     #[test]
     fn serde_roundtrip_preserves_flags() {
         // Given modalities with both text and image set.

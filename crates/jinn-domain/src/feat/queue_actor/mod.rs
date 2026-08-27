@@ -403,6 +403,7 @@ mod tests {
         SessionId::new()
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn idle_transition_dispatches_user_message() {
         // Given a session with a queued user message.
@@ -433,6 +434,7 @@ mod tests {
         assert_eq!(persists.len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn idle_transition_dispatches_tool_continuation() {
         // Given a session with a queued tool continuation.
@@ -460,6 +462,7 @@ mod tests {
         assert!(submitted.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn non_idle_transition_does_nothing() {
         // Given a session with a queued message.
@@ -483,6 +486,7 @@ mod tests {
         assert!(audit.of_type::<SendToLlmProvider>().is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn idle_transition_with_empty_queue_does_nothing() {
         // Given a session with nothing queued.
@@ -501,6 +505,7 @@ mod tests {
         assert!(audit.of_type::<SendToLlmProvider>().is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_user_message_emits_chat_entry_submitted() {
         // Given a queue actor.
@@ -516,6 +521,7 @@ mod tests {
         assert_eq!(submitted.len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_user_message_sets_title_on_first_message() {
         // Given a session with no title.
@@ -532,6 +538,7 @@ mod tests {
         assert_eq!(session.title(), Some("first message here"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_user_message_does_not_overwrite_existing_title() {
         // Given a session with a title already set.
@@ -553,6 +560,7 @@ mod tests {
         assert_eq!(session.title(), Some("original title"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_user_message_transitions_to_sending() {
         // Given a queue actor.
@@ -569,6 +577,7 @@ mod tests {
         assert_eq!(session.phase(), PhaseKind::Sending);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_user_message_keeps_degraded_token_literal_through_re_expand() {
         // Given a resolved-but-queued entry carrying the degraded marker and a literal token.
@@ -611,6 +620,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_user_message_blocks_attachment_to_unknown_model() {
         // Given a queued entry carrying an image attachment and an unknown model.
@@ -652,6 +662,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_user_message_provider_id_is_none_when_no_provider() {
         // Given a queue actor with no model selected.
@@ -668,6 +679,7 @@ mod tests {
         assert!(sends[0].provider_id.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_user_message_provider_id_is_some_when_model_set() {
         // Given a queue actor with a model selected.
@@ -692,6 +704,7 @@ mod tests {
         assert!(sends[0].provider_id.is_some());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
         // Given a queue actor.
@@ -706,6 +719,7 @@ mod tests {
         assert_eq!(sends.len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_tool_continuation_does_not_emit_chat_entry_submitted() {
         // Given a queue actor.
@@ -720,6 +734,7 @@ mod tests {
         assert!(submitted.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_tool_continuation_does_not_emit_persist_session() {
         // Given a queue actor.
@@ -734,6 +749,7 @@ mod tests {
         assert!(persists.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_resume_emits_send_to_llm_provider() {
         // Given a queue actor.
@@ -748,6 +764,7 @@ mod tests {
         assert_eq!(sends.len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_user_message_drains_steering_buffer() {
         // Given a session with steering fragments.
@@ -770,6 +787,7 @@ mod tests {
         assert!(session.history().len() >= 2);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_resume_drains_steering_buffer() {
         // Given a session with steering fragments.
@@ -790,6 +808,7 @@ mod tests {
         assert!(!session.history().is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn idle_with_empty_queue_and_steering_dispatches_steering() {
         // Given a session with a steering fragment and an empty queue.
@@ -828,6 +847,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn idle_with_empty_queue_and_steering_clears_buffer() {
         // Given a session with a steering fragment and an empty queue.
@@ -856,6 +876,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn idle_with_empty_queue_and_steering_emits_chat_entry_submitted() {
         // Given a session with a steering fragment and an empty queue.
@@ -880,6 +901,7 @@ mod tests {
         assert_eq!(submitted.len(), 1,);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn idle_with_empty_queue_and_steering_emits_persist_session() {
         // Given a session with a steering fragment and an empty queue.
@@ -908,6 +930,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn idle_with_empty_queue_and_empty_steering_does_nothing() {
         // Given a session with nothing queued and no steering fragment.
@@ -933,6 +956,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn idle_with_queued_item_and_steering_dispatches_queue_item_first() {
         // Given a session with BOTH a queued user message and a steering fragment.
@@ -984,6 +1008,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dispatch_user_message_emits_phase_changed_idle_to_sending() {
         // Given a session in Idle with a queued user message.

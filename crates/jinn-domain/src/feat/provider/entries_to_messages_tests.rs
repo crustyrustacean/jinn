@@ -880,6 +880,7 @@ fn forced_include_actor_entry_produces_user_message() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn forced_exclude_dangling_tool_call_produces_valid_messages() {
     // Given a history with an empty Assistant and a dangling ToolCall (no ToolResult),
@@ -932,6 +933,7 @@ fn forced_exclude_dangling_tool_call_produces_valid_messages() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn forced_exclude_preserves_complete_tool_loop_in_messages() {
     // Given a history with a complete tool loop plus a dangling ToolCall.
@@ -983,6 +985,7 @@ fn forced_exclude_preserves_complete_tool_loop_in_messages() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
     // Given a complex history with multiple tool loops where some are dangling.
@@ -1052,6 +1055,7 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn complete_tool_batch_produces_valid_messages() {
     // Given a history simulating auto-compaction during ToolUse where the tool batch
@@ -1218,6 +1222,7 @@ fn assert_message_sequence_is_valid(messages: &[LlmMessage]) {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn message_sequence_validator_accepts_complete_multi_call_batch_in_order() {
     // Given a user turn followed by one assistant batch and two matching results.
@@ -1255,6 +1260,7 @@ fn message_sequence_validator_accepts_complete_multi_call_batch_in_order() {
     ));
 }
 
+#[rstest::rstest]
 #[test]
 fn message_sequence_validator_accepts_real_empty_assistant_tool_parent() {
     // Given a real empty assistant entry created by the streaming lifecycle.
@@ -1310,6 +1316,7 @@ fn compaction_entry(summary: &str) -> ChatEntry {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn excluding_compaction_summary_never_breaks_message_sequencing() {
     // Given a history whose compaction boundary would, without Pass 3, leave
@@ -1347,6 +1354,7 @@ fn excluding_compaction_summary_never_breaks_message_sequencing() {
     assert_message_sequence_is_valid(&messages);
 }
 
+#[rstest::rstest]
 #[test]
 fn including_compaction_summary_produces_valid_sequencing() {
     // Same history as above, but the summary is included (regression: the
@@ -1418,6 +1426,7 @@ fn assert_messages_are_structurally_valid(messages: &[LlmMessage]) {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn excluding_compaction_summary_yields_valid_message_sequence() {
     // Given a history reproducing the bug layout: a complete tool loop whose
@@ -1522,6 +1531,7 @@ fn tool_msg(id: &str, content: &str) -> LlmMessage {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn tripwire_accepts_valid_multi_call_batch() {
     // Given a valid assistant batch with both results in order.
@@ -1545,6 +1555,7 @@ fn tripwire_accepts_valid_multi_call_batch() {
     assert_eq!(messages.len(), 4);
 }
 
+#[rstest::rstest]
 #[test]
 fn tripwire_accepts_unordered_results() {
     // Given a valid batch whose results arrive in completion order.
@@ -1564,6 +1575,7 @@ fn tripwire_accepts_unordered_results() {
     assert_eq!(messages.len(), 3);
 }
 
+#[rstest::rstest]
 #[test]
 fn tripwire_strips_unresolved_calls_and_keeps_text() {
     // Given an assistant declaring two calls with only one result.
@@ -1600,6 +1612,7 @@ fn tripwire_strips_unresolved_calls_and_keeps_text() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn tripwire_removes_empty_assistant_after_stripping() {
     // Given an empty assistant whose single call has no result.
@@ -1637,6 +1650,7 @@ fn tripwire_removes_empty_assistant_after_stripping() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn tripwire_drops_orphan_tool_message() {
     // Given an orphan tool message with no preceding batch (the legacy
@@ -1672,6 +1686,7 @@ fn tripwire_drops_orphan_tool_message() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn tripwire_drops_unknown_and_duplicate_result_ids() {
     // Given a batch declared {a} followed by an unknown-id result and a
@@ -1702,6 +1717,7 @@ fn tripwire_drops_unknown_and_duplicate_result_ids() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn tripwire_strips_duplicate_declared_call_ids() {
     // Given an assistant declaring the same call id twice with two results.
@@ -1728,6 +1744,7 @@ fn tripwire_strips_duplicate_declared_call_ids() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn tripwire_end_of_list_closes_open_batch() {
     // Given an assistant declaring calls with no results at the very end.

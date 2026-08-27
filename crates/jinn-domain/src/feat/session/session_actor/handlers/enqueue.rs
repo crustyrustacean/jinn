@@ -676,6 +676,7 @@ mod tests {
         (actor, state, audit)
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_enqueue_user_message_dispatches_when_idle() {
         // Given an idle session.
@@ -711,6 +712,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_enqueue_user_message_sets_title_from_first_message() {
         // Given a new session with no title.
@@ -735,6 +737,7 @@ mod tests {
         assert_eq!(session.title(), Some("My First Question"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_enqueue_user_message_queues_when_busy() {
         // Given a session in Streaming phase (busy).
@@ -764,6 +767,7 @@ mod tests {
         assert_eq!(session.queue().len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_enqueue_user_message_no_provider_sends_none_provider_id() {
         // Given a session with default model (NO_PROVIDER_ID).
@@ -789,6 +793,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_set_chat_input_text_updates_buffer() {
         // Given a session.
@@ -811,6 +816,7 @@ mod tests {
         assert_eq!(session.chat_input().text(), "new input text");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_push_chat_entry_pushes_and_emits() {
         // Given a session.
@@ -852,6 +858,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_send_message_emits_enqueue_user_message() {
         // Given a test context.
@@ -873,6 +880,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn before_turn_no_attachments_dispatches_normally() {
         // Given an idle session with no attachments.
@@ -935,6 +943,7 @@ mod tests {
             .set_model(ModelSelection::Single(model_id.to_owned()));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn at_path_image_to_text_only_model_is_blocked_with_error_entry() {
         // Given an idle session whose active model is a known text-only model.
@@ -978,6 +987,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn at_path_image_to_vision_model_dispatches_with_attachment() {
         // Given an idle session whose active model is vision-capable.
@@ -1012,6 +1022,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn at_path_image_to_unknown_model_is_blocked_with_error_entry() {
         use crate::feat::session::model_selection::ModelSelection;
@@ -1060,6 +1071,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn text_only_message_to_unknown_model_dispatches_normally() {
         use crate::feat::session::model_selection::ModelSelection;
@@ -1096,6 +1108,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_enqueue_resume_turn_noop_when_streaming() {
         // Given a session already in Streaming phase.
@@ -1128,6 +1141,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_enqueue_resume_turn_idle_dispatches_directly() {
         // Given an idle session.
@@ -1175,6 +1189,7 @@ mod tests {
         assert_eq!(markers.len(), 1, "expected one System marker pushed");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_enqueue_resume_turn_drains_steering_buffer_before_assembly() {
         // Given an idle session with a non-empty steering buffer.
@@ -1234,6 +1249,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn handle_enqueue_user_message_drains_steering_buffer_on_idle_dispatch() {
         // Given an idle session with a non-empty steering buffer.
@@ -1279,6 +1295,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn enqueue_publishes_none_when_session_has_no_effort() {
         // Given a global default reasoning effort of High but a session with no own effort.
@@ -1318,6 +1335,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn enqueue_publishes_sessions_own_reasoning_effort() {
         // Given a session with its own effort of Low (and a stale global of High that
@@ -1392,6 +1410,7 @@ mod tests {
         })
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn nonexistent_at_path_dispatches() {
         // Given an idle vision-model session.
@@ -1416,6 +1435,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn nonexistent_at_path_keeps_literal_expanded() {
         // Given an idle vision-model session.
@@ -1444,6 +1464,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn existing_non_image_at_path_dispatches() {
         // Given an idle vision-model session and an existing non-image file.
@@ -1471,6 +1492,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn existing_non_image_at_path_keeps_literal_expanded() {
         // Given an idle vision-model session and an existing non-image file.
@@ -1502,6 +1524,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn recognizable_image_without_converter_blocks_with_error() {
         // Given an idle vision-model session and a recognizable HEIC file (test converter is unavailable).
@@ -1542,6 +1565,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn mixed_native_image_and_nonexistent_token_dispatches_with_one_attachment() {
         // Given an idle vision-model session, a real PNG, and a nonexistent path in one message.
@@ -1584,6 +1608,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn mixed_native_image_and_existing_non_image_dispatches_with_one_attachment() {
         // Given an idle vision-model session, a real PNG, and an existing non-image file.
@@ -1632,6 +1657,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn multiple_nonexistent_tokens_all_stay_literal() {
         // Given an idle vision-model session and a message with several nonexistent @paths.
@@ -1668,6 +1694,7 @@ mod tests {
         assert_eq!(attachments, Some(0), "no attachments expected");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn multiple_native_images_all_attach() {
         // Given an idle vision-model session and a message with two real PNGs.
@@ -1701,6 +1728,7 @@ mod tests {
         assert_eq!(attachments, Some(2), "both images should attach");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn mixed_native_image_and_conversion_failing_image_blocks() {
         // Given an idle vision-model session, a real PNG, and a recognizable HEIC (converter unavailable).
@@ -1741,6 +1769,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn email_at_path_is_not_matched() {
         // Given an idle vision-model session and a message with an email address.

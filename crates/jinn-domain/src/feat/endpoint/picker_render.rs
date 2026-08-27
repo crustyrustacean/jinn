@@ -90,6 +90,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
+    #[rstest::rstest]
     #[test]
     fn render_endpoint_picker_does_not_panic_with_populated_picker() {
         // Given a state whose endpoint picker has a populated entry.
@@ -108,6 +109,7 @@ mod tests {
             .expect("draw");
     }
 
+    #[rstest::rstest]
     #[test]
     fn render_endpoint_picker_with_real_upstream_shows_preview_metadata() {
         // Given a picker with a real upstream entry carrying metadata.
@@ -154,6 +156,7 @@ mod tests {
             row.contains(needle)
         })
     }
+    #[rstest::rstest]
     #[test]
     fn footer_shows_fetching_indicator_while_loading() {
         // Given a populated picker mid-fetch (loading flag set).
@@ -172,6 +175,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn footer_shows_fetched_age_when_not_loading() {
         // Given a populated picker with a fetch timestamp and loading cleared.

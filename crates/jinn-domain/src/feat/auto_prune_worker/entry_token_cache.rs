@@ -219,6 +219,7 @@ mod tests {
             .expect("valid ChatEntryId JSON")
     }
 
+    #[rstest::rstest]
     #[test]
     fn new_cache_returns_none_for_get() {
         let cache = HistoryWorkerChatEntryTokenCache::new();
@@ -227,6 +228,7 @@ mod tests {
         assert_eq!(cache.get(&s, &e), None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn default_cache_returns_none_for_get() {
         let cache = HistoryWorkerChatEntryTokenCache::default();
@@ -235,6 +237,7 @@ mod tests {
         assert_eq!(cache.get(&s, &e), None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn insert_then_get_returns_value() {
         let cache = HistoryWorkerChatEntryTokenCache::new();
@@ -244,6 +247,7 @@ mod tests {
         assert_eq!(cache.get(&s, &e), Some(42));
     }
 
+    #[rstest::rstest]
     #[test]
     fn insert_overwrites_previous_value() {
         let cache = HistoryWorkerChatEntryTokenCache::new();
@@ -254,6 +258,7 @@ mod tests {
         assert_eq!(cache.get(&s, &e), Some(99));
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_or_insert_with_invokes_closure_on_first_call() {
         let cache = HistoryWorkerChatEntryTokenCache::new();
@@ -269,6 +274,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_or_insert_with_does_not_reinvoke_on_second_call() {
         let cache = HistoryWorkerChatEntryTokenCache::new();
@@ -292,6 +298,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_or_insert_with_distinguishes_entries_within_session() {
         let cache = HistoryWorkerChatEntryTokenCache::new();
@@ -308,6 +315,7 @@ mod tests {
         assert_eq!(cache.get(&s, &e2), Some(200));
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_or_insert_with_distinguishes_sessions() {
         // ChatEntryId uniqueness is global, so this is a defensive test —
@@ -327,6 +335,7 @@ mod tests {
         assert_eq!(cache.get(&s2, &e), Some(22));
     }
 
+    #[rstest::rstest]
     #[test]
     fn remove_session_evicts_inner_map() {
         let cache = HistoryWorkerChatEntryTokenCache::new();
@@ -354,6 +363,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn remove_session_is_noop_if_session_not_present() {
         let cache = HistoryWorkerChatEntryTokenCache::new();
@@ -363,6 +373,7 @@ mod tests {
         assert_eq!(cache.get(&s, &test_entry_id(0)), None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn remove_session_does_not_affect_other_sessions() {
         let cache = HistoryWorkerChatEntryTokenCache::new();
@@ -379,6 +390,7 @@ mod tests {
         assert_eq!(cache.get(&s2, &e), Some(222));
     }
 
+    #[rstest::rstest]
     #[test]
     fn clone_shares_underlying_state() {
         let cache_a = HistoryWorkerChatEntryTokenCache::new();
@@ -396,6 +408,7 @@ mod tests {
         assert_eq!(cache_a.get(&s, &e), None);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn concurrent_get_or_insert_with_invokes_closure_once() {
         // N tasks all race on the same (session_id, entry_id) pair. The
@@ -449,6 +462,7 @@ mod tests {
         HistoryWorkerChatEntryTokenCacheEvictionActor::new(HistoryWorkerChatEntryTokenCache::new())
     }
 
+    #[rstest::rstest]
     #[test]
     fn handle_session_closed_removes_session_entries() {
         let actor = make_actor();
@@ -464,6 +478,7 @@ mod tests {
         assert_eq!(actor.cache.get(&s_b, &e), Some(20));
     }
 
+    #[rstest::rstest]
     #[test]
     fn handle_session_closed_is_noop_for_unknown_session() {
         let actor = make_actor();

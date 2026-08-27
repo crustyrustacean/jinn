@@ -50,6 +50,7 @@ fn stub_config() -> McpServerConfig {
 
 /// An `ExecuteTool` for a namespaced MCP tool is dispatched to the actor, which
 /// forwards it to the stub server's `tools/call` and publishes the result.
+#[rstest::rstest]
 #[tokio::test]
 async fn execute_tool_for_namespaced_echo_returns_server_response() {
     // Given an McpActor wired to the stub server, with the session id known to
@@ -106,6 +107,7 @@ async fn execute_tool_for_namespaced_echo_returns_server_response() {
 
 /// A `ToolExecutionCompleted` is published even when the actor holds no
 /// connected client — the failure path produces a failed result, never a hang.
+#[rstest::rstest]
 #[tokio::test]
 async fn execute_tool_when_client_disconnected_yields_failed_result() {
     // Given an McpActor whose injected client is already dropped (simulating a
@@ -160,6 +162,7 @@ async fn execute_tool_when_client_disconnected_yields_failed_result() {
 /// When the orchestrator sends tight truncation limits, the actor bounds the
 /// server's response and records the original in `full_content` — proving
 /// the limits flow through `ExecuteTool` and apply end-to-end.
+#[rstest::rstest]
 #[tokio::test]
 async fn execute_tool_truncates_large_response_to_orchestrator_limits() {
     // Given an McpActor wired to the stub server.
@@ -222,6 +225,7 @@ async fn execute_tool_truncates_large_response_to_orchestrator_limits() {
 ///
 /// Covers AC1, AC2, AC4: detection works (transport-level), the dead status is
 /// published, and the final tail is published alongside it.
+#[rstest::rstest]
 #[tokio::test]
 async fn transport_close_publishes_dead_status() {
     // Given an McpActor wired to a stub server we can kill, recording status.
@@ -281,6 +285,7 @@ async fn transport_close_publishes_dead_status() {
 /// ordering prevents the race.
 ///
 /// Covers AC3.
+#[rstest::rstest]
 #[tokio::test]
 async fn normal_teardown_publishes_exactly_one_dead() {
     // Given a running McpActor recording status.
@@ -331,6 +336,7 @@ async fn normal_teardown_publishes_exactly_one_dead() {
 /// watcher must be gone — a fresh actor spawned in its place must work normally
 /// and its watcher must be the only one publishing. This is the zombie-prevention
 /// regression: `on_stop` sets the old watcher's shutdown flag.
+#[rstest::rstest]
 #[tokio::test]
 async fn restarted_actor_has_no_zombie_watcher_from_the_previous_one() {
     // Given a first McpActor that is stopped (simulating the kill-half of restart).
@@ -385,6 +391,7 @@ async fn restarted_actor_has_no_zombie_watcher_from_the_previous_one() {
 /// Normal teardown (`on_stop`) publishes `ToolsUnregistered` carrying the
 /// server's provider namespace and session — so registries and context caches
 /// can prune this server's session-scoped tools on disable/close/restart.
+#[rstest::rstest]
 #[tokio::test]
 async fn normal_teardown_publishes_tools_unregistered() {
     // Given a running McpActor recording ToolsUnregistered.
@@ -422,6 +429,7 @@ async fn normal_teardown_publishes_tools_unregistered() {
 /// succeeds; after teardown (the coordinator's disable path) the actor is gone
 /// and the registry cleanup means no subscriber hangs the call — the exact
 /// bug this work fixes, exercised across the real bus.
+#[rstest::rstest]
 #[tokio::test]
 async fn disable_cycle_calls_fail_fast_after_teardown() {
     // Given a running McpActor wired to the stub server, its tools registered
@@ -522,6 +530,7 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
 /// server stays "running" and the child becomes a zombie. The watcher fixes
 /// both: `try_wait()` reaps, and the cancel-token flip lets the liveness
 /// watcher publish `Dead`.
+#[rstest::rstest]
 #[tokio::test]
 async fn http_child_exit_reaps_and_cancels_transport() {
     // Given a real child process (`sleep 30`) and a stub MCP client whose
@@ -591,6 +600,7 @@ async fn http_child_exit_reaps_and_cancels_transport() {
 /// Normal teardown (disable/restart) signals the watcher's shutdown flag;
 /// the watcher exits, drops the `Child`, and `kill_on_drop` kills the
 /// still-alive process. The child is reaped (no zombie).
+#[rstest::rstest]
 #[tokio::test]
 async fn http_teardown_kills_and_reaps_still_alive_child() {
     // Given a watcher running over a still-alive child.

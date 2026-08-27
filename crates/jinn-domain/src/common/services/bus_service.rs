@@ -266,6 +266,7 @@ mod tests {
     }
     impl crate::common::bus::BusMessage for Beta {}
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn new_recording_starts_empty() {
         let (_bus, audit) = BusService::new_recording();
@@ -274,6 +275,7 @@ mod tests {
         assert!(audit.names().is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn publish_captures_single_message() {
         let (bus, audit) = BusService::new_recording();
@@ -285,6 +287,7 @@ mod tests {
         assert_eq!(alphas[0].val, 42);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn publish_captures_multiple_types_in_order() {
         let (bus, audit) = BusService::new_recording();
@@ -302,6 +305,7 @@ mod tests {
         assert_eq!(audit.of_type::<Beta>()[0].text, "hello");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn contains_name_finds_published_type() {
         let (bus, audit) = BusService::new_recording();
@@ -310,6 +314,7 @@ mod tests {
         assert!(!audit.contains_name("Beta"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn clear_removes_all_messages() {
         let (bus, audit) = BusService::new_recording();
@@ -320,6 +325,7 @@ mod tests {
         assert!(audit.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn of_type_returns_empty_for_unpublished_type() {
         let (bus, audit) = BusService::new_recording();
@@ -328,6 +334,7 @@ mod tests {
         assert!(betas.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn register_is_noop_in_recording_mode() {
         let (bus, _audit) = BusService::new_recording();

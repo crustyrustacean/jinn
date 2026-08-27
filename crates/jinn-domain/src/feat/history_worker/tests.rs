@@ -93,6 +93,7 @@ fn snapshot_event(session_id: SessionId, entries: Vec<ChatEntry>) -> HistorySnap
 
 // ── Tests ──────────────────────────────────────────────────────────
 
+#[rstest::rstest]
 #[test]
 fn worker_produces_mutations_for_long_history() {
     let entries: Vec<ChatEntry> = (0..5)
@@ -111,6 +112,7 @@ fn worker_produces_mutations_for_long_history() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn worker_produces_no_mutations_for_short_history() {
     let entries: Vec<ChatEntry> = (0..3)
@@ -123,6 +125,7 @@ fn worker_produces_no_mutations_for_short_history() {
     assert!(mutations.is_empty());
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn actor_publishes_submit_mutations_for_long_history() {
     // Given a history worker actor and a recorder for SubmitHistoryMutations.
@@ -156,6 +159,7 @@ async fn actor_publishes_submit_mutations_for_long_history() {
     assert_eq!(messages[0].mutations.len(), 2);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn actor_publishes_nothing_for_short_history() {
     // Given a history worker actor and a recorder.
@@ -186,6 +190,7 @@ async fn actor_publishes_nothing_for_short_history() {
     assert!(messages.is_empty());
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn noop_worker_never_produces_mutations() {
     // Given a noop worker actor and a recorder.

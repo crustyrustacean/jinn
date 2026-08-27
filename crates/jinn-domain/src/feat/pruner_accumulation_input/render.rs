@@ -101,6 +101,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
+    #[rstest::rstest]
     #[test]
     fn render_shows_title_and_seeded_value() {
         // Given the popup scope active with a seeded threshold of 10000.

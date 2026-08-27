@@ -165,6 +165,7 @@ mod tests {
     )]
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn instant_entry_has_timing_at_creation() {
         // Given the current time.
@@ -180,6 +181,7 @@ mod tests {
         assert!(timing.at() <= after);
     }
 
+    #[rstest::rstest]
     #[test]
     fn streamed_entry_begins_with_dispatched_at_only() {
         // Given a dispatched-at timestamp.
@@ -204,6 +206,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn streamed_entry_gets_first_token_at_on_creation() {
         // Given a streamed timing with no first_token_at.
@@ -226,6 +229,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn streamed_entry_gets_finished_at_on_stream_complete() {
         // Given a streamed timing with first_token set.
@@ -249,6 +253,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn instant_timing_serializes_to_json() {
         // Given an instant timing.
@@ -263,6 +268,7 @@ mod tests {
         assert_eq!(timing, roundtripped);
     }
 
+    #[rstest::rstest]
     #[test]
     fn streamed_timing_serializes_to_json() {
         // Given a streamed timing with partial timestamps.
@@ -287,6 +293,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn legacy_plain_timestamp_parses_as_instant_via_fallback() {
         // Given a raw ISO timestamp string (pre-v17 data in the database).
@@ -314,6 +321,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn ttft_returns_none_for_instant() {
         // Given an instant timing.
@@ -324,6 +332,7 @@ mod tests {
         assert!(timing.ttft().is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn ttft_returns_none_when_first_token_not_recorded() {
         // Given a streamed timing with no first_token_at.
@@ -334,6 +343,7 @@ mod tests {
         assert!(timing.ttft().is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn ttft_returns_duration_when_first_token_recorded() {
         // Given a streamed timing with a 2-second gap between dispatch and first token.
@@ -354,6 +364,7 @@ mod tests {
         assert_eq!(ttft.as_secs(), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn total_duration_returns_none_for_instant() {
         // Given an instant timing.
@@ -364,6 +375,7 @@ mod tests {
         assert!(timing.total_duration().is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn total_duration_returns_none_when_finished_not_recorded() {
         // Given a streamed timing with no finished_at.
@@ -374,6 +386,7 @@ mod tests {
         // Then it returns None.
         assert!(timing.total_duration().is_none());
     }
+    #[rstest::rstest]
     #[test]
     fn total_duration_returns_none_when_first_token_not_recorded() {
         // Given a streamed timing with finished_at set but no first_token_at.
@@ -392,6 +405,7 @@ mod tests {
         assert!(timing.total_duration().is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn total_duration_returns_duration_when_finished_recorded() {
         // Given a streamed timing with first_token at 2s and finished at 15s
@@ -416,6 +430,7 @@ mod tests {
         assert_eq!(dur.as_secs(), 13);
     }
 
+    #[rstest::rstest]
     #[test]
     fn ttft_preserves_subsecond_precision() {
         // Given a streamed timing with a 450ms gap between dispatch and first token.
@@ -437,6 +452,7 @@ mod tests {
         assert_eq!(ttft.subsec_millis(), 450);
     }
 
+    #[rstest::rstest]
     #[test]
     fn total_duration_preserves_subsecond_precision() {
         // Given a streamed timing with first_token at 200ms and finished at 2.45s.

@@ -263,6 +263,7 @@ mod tests {
         rt.block_on(async { run_evaluate(worker, history).await })
     }
 
+    #[rstest::rstest]
     #[test]
     fn no_edit_produces_no_mutations() {
         let history = vec![
@@ -276,6 +277,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn successful_edit_produces_no_mutations() {
         let mut history = Vec::new();
@@ -290,6 +292,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_old_failed_edit() {
         // With min_age = 0, the failed edit is pruned even when it is recent.
@@ -299,6 +302,7 @@ mod tests {
         assert_eq!(mutations.len(), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_failed_edit() {
         // Failed edit at idx 0, history len = 12, age = 11. With min_age = 50, protected.
@@ -308,6 +312,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_old_failed_edit_with_long_history() {
         // Long history, failed edit far back, min_age = 0 → prune.
@@ -317,6 +322,7 @@ mod tests {
         assert_eq!(mutations.len(), 2);
     }
 
+    #[rstest::rstest]
     #[test]
     fn failed_edit_at_boundary_protected() {
         // Failed edit at idx 0. history.len() = 51 (edit + result + 49 user).
@@ -327,6 +333,7 @@ mod tests {
         assert_eq!(mutations.len(), 2, "age == min_age is not protected");
     }
 
+    #[rstest::rstest]
     #[test]
     fn failed_edit_one_below_boundary_not_protected() {
         // history.len() = 50, age = 49. min_age = 50 → 49 < 50 → protected.
@@ -343,6 +350,7 @@ mod tests {
     // alias and populate the new `min_age` field. Back-compat for users
     // with existing `jinn.toml` files.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn config_alias_min_tail_entries_still_parses() {
         // Given a TOML fragment using the legacy `min_tail_entries` field.
@@ -359,6 +367,7 @@ mod tests {
         assert!(config.enabled);
     }
 
+    #[rstest::rstest]
     #[test]
     fn already_excluded_call_produces_no_duplicate_mutation() {
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
@@ -375,6 +384,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn already_excluded_result_produces_no_duplicate_mutation() {
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
@@ -391,6 +401,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn forced_included_call_produces_no_mutation() {
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
@@ -410,6 +421,7 @@ mod tests {
         let _ = (call_id, result_id);
     }
 
+    #[rstest::rstest]
     #[test]
     fn forced_included_result_produces_no_mutation() {
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
@@ -428,6 +440,7 @@ mod tests {
         let _ = (call_id, result_id);
     }
 
+    #[rstest::rstest]
     #[test]
     fn multiple_failed_edits_all_pruned_when_old_enough() {
         let mut history = Vec::new();
@@ -456,6 +469,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn edit_without_result_produces_no_mutation() {
         let mut history = Vec::new();
@@ -474,6 +488,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn only_failed_edits_are_pruned_not_successful_ones() {
         let mut history = Vec::new();

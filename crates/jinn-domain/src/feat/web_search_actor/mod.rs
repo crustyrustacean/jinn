@@ -371,6 +371,7 @@ mod tests {
 
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn default_config_has_expected_values() {
         // Given no input.
@@ -383,6 +384,7 @@ mod tests {
         assert!(config.safe_search);
     }
 
+    #[rstest::rstest]
     #[test]
     fn config_serializes_with_web_search_section() {
         // Given a default config.
@@ -397,6 +399,7 @@ mod tests {
         assert!(toml.contains("safe_search = true"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn config_round_trips_through_toml() {
         // Given a custom config.
@@ -415,6 +418,7 @@ mod tests {
         assert_eq!(back, config);
     }
 
+    #[rstest::rstest]
     #[test]
     fn config_uses_defaults_when_empty() {
         // Given an empty TOML table.
@@ -427,6 +431,7 @@ mod tests {
         assert_eq!(config, WebSearchConfig::default());
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_results_empty_returns_no_results_message() {
         // Given no results.
@@ -437,6 +442,7 @@ mod tests {
         assert_eq!(out, "No results found.");
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_results_single_result_is_numbered() {
         // Given one result.
@@ -453,6 +459,7 @@ mod tests {
         assert_eq!(out, "1. Example — https://example.com\n   An example site");
     }
 
+    #[rstest::rstest]
     #[test]
     fn format_results_multiple_results_are_separated() {
         // Given two results.
@@ -563,6 +570,7 @@ mod actor_tests {
         WebSearchConfig::default()
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn startup_registers_web_search_tool() {
         // Given a WebSearchActor.
@@ -587,6 +595,7 @@ mod actor_tests {
         assert_eq!(messages[0].definitions[0].name, "web-search");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_search_success() {
         // Given a WebSearchActor.
@@ -626,6 +635,7 @@ mod actor_tests {
         assert_eq!(messages[0].session_id, session_id);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_search_invalid_args() {
         // Given a WebSearchActor.
@@ -665,6 +675,7 @@ mod actor_tests {
         assert!(messages[0].result.content.contains("invalid arguments"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_search_empty_query() {
         // Given a WebSearchActor.
@@ -704,6 +715,7 @@ mod actor_tests {
         assert!(messages[0].result.content.contains("empty"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_search_formats_numbered_text() {
         // Given a WebSearchActor whose searcher returns two canned results.
@@ -754,6 +766,7 @@ mod actor_tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn challenge_progress_emits_started_then_output_then_completed() {
         // Given a searcher that reports a challenge detection then succeeds.
@@ -803,6 +816,7 @@ mod actor_tests {
         assert!(completed[0].result.success);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn clean_search_emits_no_tool_execution_started() {
         // Given a searcher that reports no progress events.

@@ -255,6 +255,7 @@ mod tests {
         setup_command: LifecycleCommand,
     }
 
+    #[rstest::rstest]
     #[test]
     fn shell_serializes_as_bare_string() {
         // Given a Shell command.
@@ -267,6 +268,7 @@ mod tests {
         assert!(toml_str.contains("echo /tmp"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn builtin_serializes_as_map() {
         // Given a Builtin command.
@@ -280,6 +282,7 @@ mod tests {
         assert!(toml_str.contains("hello-world"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn bare_string_deserializes_as_shell() {
         // Given a bare string TOML value (wrapped in a table for valid TOML).
@@ -295,6 +298,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn builtin_map_deserializes_as_builtin() {
         // Given a { builtin = "name" } TOML value (wrapped in a table for valid TOML).
@@ -310,6 +314,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn roundtrip_shell() {
         // Given a Shell command.
@@ -326,6 +331,7 @@ mod tests {
         assert_eq!(restored.cmd, original);
     }
 
+    #[rstest::rstest]
     #[test]
     fn roundtrip_builtin() {
         // Given a Builtin command.
@@ -342,6 +348,7 @@ mod tests {
         assert_eq!(restored.cmd, original);
     }
 
+    #[rstest::rstest]
     #[test]
     fn builtin_id_display_outputs_inner_string() {
         // Given a BuiltinId.
@@ -354,6 +361,7 @@ mod tests {
         assert_eq!(displayed, "hello-world");
     }
 
+    #[rstest::rstest]
     #[test]
     fn registry_register_and_get_roundtrip() {
         // Given an empty registry.
@@ -368,6 +376,7 @@ mod tests {
         assert!(result.is_some());
     }
 
+    #[rstest::rstest]
     #[test]
     fn registry_get_returns_none_for_unknown() {
         // Given a registry with one handler.
@@ -381,6 +390,7 @@ mod tests {
         assert!(result.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn registry_is_empty_true_when_no_handlers() {
         // Given an empty registry.
@@ -390,6 +400,7 @@ mod tests {
         assert!(registry.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn registry_is_empty_false_after_register() {
         // Given a registry with one handler.
@@ -400,6 +411,7 @@ mod tests {
         assert!(!registry.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn registry_debug_shows_count() {
         // Given a registry with two handlers.
@@ -414,6 +426,7 @@ mod tests {
         assert!(debug_str.contains("count"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn deserialize_invalid_field_returns_error() {
         // Given TOML with an unknown field in a builtin map.
@@ -426,6 +439,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[rstest::rstest]
     #[test]
     fn deserialize_non_string_non_map_returns_error() {
         // Given TOML where the command is a number (not a string or map).

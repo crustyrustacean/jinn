@@ -276,6 +276,7 @@ fn steer_submit_while_busy_routes_to_steer(
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn steer_submit_while_idle_falls_back_to_enqueue() {
     // Given default (Steer) mode + Idle phase with text typed.

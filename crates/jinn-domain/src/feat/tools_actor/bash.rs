@@ -1011,6 +1011,7 @@ mod tests {
         assert!(batcher.should_flush());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn flush_is_noop_on_empty_buffer() {
         // Given a fresh batcher and a recording bus.
@@ -1028,6 +1029,7 @@ mod tests {
         assert!(outputs.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn flush_emits_and_clears_buffer() {
         // Given a batcher with two buffered lines and a recording bus.
@@ -1243,6 +1245,7 @@ mod tests {
         assert!(!batcher.should_flush());
     }
 
+    #[rstest::rstest]
     #[test]
     fn definition_schema_injects_default_timeout_secs() {
         // Given the global default of 300s.
@@ -1257,6 +1260,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn definition_schema_exposes_max_duration_secs_not_timeout() {
         // Given the bash tool definition.
@@ -1275,6 +1279,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn definition_description_names_max_duration_secs_and_shows_example() {
         // Given the bash tool definition.
@@ -1286,6 +1291,7 @@ mod tests {
         assert!(def.description.contains("\"max_duration_secs\": 600"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn definition_guidelines_have_proactive_and_reactive_bullets() {
         // Given the bash tool definition.

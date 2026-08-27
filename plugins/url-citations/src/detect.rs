@@ -231,6 +231,7 @@ mod tests {
 
     // ── Call rule ────────────────────────────────────────────────────────
 
+    #[rstest::rstest]
     #[test]
     fn call_rule_finds_top_level_url() {
         // Given builtin web-fetch arguments.
@@ -242,6 +243,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn call_rule_finds_urls_in_array() {
         // Given Parallel web_fetch arguments (urls array).
@@ -258,6 +260,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn call_rule_finds_nested_url() {
         // Given arguments with a URL nested in an object.
@@ -269,6 +272,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn call_rule_ignores_non_http_schemes() {
         // Given arguments with ftp and bare-host strings.
@@ -280,6 +284,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn call_rule_ignores_unparseable_args() {
         // Given non-JSON arguments.
@@ -288,6 +293,7 @@ mod tests {
         assert_eq!(urls_from_call_args("not json"), Vec::<String>::new());
     }
 
+    #[rstest::rstest]
     #[test]
     fn call_rule_descends_into_embedded_json_arguments() {
         // Given arguments whose payload field is a JSON string wrapping an
@@ -301,6 +307,7 @@ mod tests {
         assert_eq!(urls, vec!["https://wrapped.example".to_owned()]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn deep_nested_wrapping_terminates_within_depth_cap() {
         // Given arguments with a string nesting one step beyond the descent
@@ -326,6 +333,7 @@ mod tests {
         assert_eq!(urls, Vec::<String>::new());
     }
 
+    #[rstest::rstest]
     #[test]
     fn wrapping_within_the_depth_cap_still_surfaces_urls() {
         // Given arguments with three wrapping layers — comfortably inside
@@ -345,6 +353,7 @@ mod tests {
 
     // ── Result rule ──────────────────────────────────────────────────────
 
+    #[rstest::rstest]
     #[test]
     fn result_rule_reads_parallel_web_search_shape() {
         // Given a Parallel web_search result payload.
@@ -373,6 +382,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn result_rule_reads_parallel_web_fetch_shape() {
         // Given a Parallel web_fetch result payload.
@@ -399,6 +409,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn result_rule_reads_multiple_results() {
         // Given a payload with three result objects.
@@ -413,6 +424,7 @@ mod tests {
         assert_eq!(citations_from_result_content(content).len(), 3);
     }
 
+    #[rstest::rstest]
     #[test]
     fn result_rule_ignores_plain_text() {
         // Given the builtin web-search plain-text output.
@@ -423,6 +435,7 @@ mod tests {
         assert!(citations_from_result_content(content).is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn result_rule_ignores_json_without_url_title_pairs() {
         // Given JSON with a URL but no title pairing.
@@ -435,6 +448,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn result_rule_ignores_non_http_urls() {
         // Given a result object with an ftp url.
@@ -458,6 +472,7 @@ mod tests {
         format!("\"[{escaped}]\"")
     }
 
+    #[rstest::rstest]
     #[test]
     fn result_rule_decodes_double_encoded_zai_array() {
         // Given a doubly-encoded Zai-style result payload (string-wrapped
@@ -490,6 +505,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn result_rule_accepts_bare_link_objects() {
         // Given an unwrapped object using `link` instead of `url`.
@@ -505,6 +521,7 @@ mod tests {
         assert_eq!(citations[0].content.as_deref(), Some("x"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn result_rule_prefers_url_over_link_when_both_present() {
         // Given an object carrying both keys.
@@ -519,6 +536,7 @@ mod tests {
         assert_eq!(citations[0].url, "https://canonical.example");
     }
 
+    #[rstest::rstest]
     #[test]
     fn snippet_falls_back_to_content_when_excerpts_absent() {
         // Given a Zai-shaped object with only a `content` string.
@@ -533,6 +551,7 @@ mod tests {
         assert_eq!(citations[0].content.as_deref(), Some("snippet text here"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn snippet_truncates_long_content_on_a_char_boundary() {
         // Given a wrapped fetch-shaped object whose content is far longer
@@ -558,6 +577,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn snippet_prefers_excerpts_over_content() {
         // Given an object carrying both an excerpts array and a content
@@ -576,6 +596,7 @@ mod tests {
         assert_eq!(citations[0].content.as_deref(), Some("the excerpt"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn snippet_is_none_for_empty_or_missing_content() {
         // Given objects whose snippet fields are missing or empty strings.
@@ -596,6 +617,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn result_rule_ignores_non_http_link() {
         // Given a Zai-shaped entry with a non-http(s) link.
@@ -608,6 +630,7 @@ mod tests {
         assert!(citations_from_result_content(&content).is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn opaque_wrapper_strings_are_inert() {
         // Given payloads whose strings do NOT parse as JSON containers.
@@ -625,6 +648,7 @@ mod tests {
 
     // ── web-search carve-out ─────────────────────────────────────────────
 
+    #[rstest::rstest]
     #[test]
     fn ddg_citation_builds_from_query() {
         // Given builtin web-search arguments.
@@ -638,6 +662,7 @@ mod tests {
         assert_eq!(citation.title, "rust async await");
     }
 
+    #[rstest::rstest]
     #[test]
     fn ddg_citation_encodes_special_characters() {
         // Given a query with spaces and &.
@@ -649,6 +674,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn ddg_citation_encodes_empty_query() {
         // Given an empty query.
@@ -657,6 +683,7 @@ mod tests {
         assert_eq!(ddg_search_url(""), "https://duckduckgo.com/?q=");
     }
 
+    #[rstest::rstest]
     #[test]
     fn ddg_citation_none_without_query() {
         // Given arguments with no query field.

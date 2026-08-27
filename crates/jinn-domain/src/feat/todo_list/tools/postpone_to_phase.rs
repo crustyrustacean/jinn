@@ -243,6 +243,7 @@ mod tests {
         (state, session_id, p1, t1, p2)
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_to_existing_phase_appends_copy() {
         let (state, session_id, _p1, t1, p2) = setup_with_two_phases();
@@ -261,6 +262,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_to_new_phase_creates_and_appends() {
         let (state, session_id, _p1, t1, _p2) = setup_with_two_phases();
@@ -280,6 +282,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_to_phase_rejects_both_options() {
         let (state, session_id, _p1, t1, p2) = setup_with_two_phases();
@@ -306,6 +309,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_to_phase_requires_one_option() {
         let (state, session_id, _p1, t1, _p2) = setup_with_two_phases();
@@ -327,6 +331,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_to_phase_errors_on_unknown_phase() {
         let (state, session_id, _p1, t1, _p2) = setup_with_two_phases();
@@ -342,6 +347,7 @@ mod tests {
         assert!(result.content.contains("phase not found"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_to_phase_errors_on_unknown_task() {
         let (state, session_id, _p1, _t1, p2) = setup_with_two_phases();
@@ -357,6 +363,7 @@ mod tests {
         assert!(result.content.contains("task not found"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_to_phase_errors_on_already_postponed() {
         let (state, session_id, _p1, t1, p2) = setup_with_two_phases();
@@ -384,6 +391,7 @@ mod tests {
         assert!(result2.content.contains("already postponed"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn postpone_to_phase_requires_state() {
         let call = ToolCall {

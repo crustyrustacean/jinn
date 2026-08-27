@@ -1108,6 +1108,7 @@ mod timeout_tests {
         })
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_exceeding_timeout_returns_failed_result() {
         // Given a tool timeout of 50ms and a tool that sleeps 500ms.
@@ -1138,6 +1139,7 @@ mod timeout_tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_completing_under_timeout_returns_normal_result() {
         // Given a tool timeout of 500ms and a tool that completes immediately.
@@ -1158,6 +1160,7 @@ mod timeout_tests {
         assert_eq!(result.content, "done");
     }
 
+    #[rstest::rstest]
     #[test]
     fn tool_timeout_value_sourced_from_preferences() {
         // Given preferences with a custom tool timeout.
@@ -1174,6 +1177,7 @@ mod timeout_tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_max_duration_reads_max_duration_secs_field() {
         // Given args with max_duration_secs.
@@ -1184,6 +1188,7 @@ mod timeout_tests {
         assert_eq!(d, Some(42));
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_max_duration_falls_back_to_legacy_timeout_key() {
         // Given args with only the legacy timeout key.
@@ -1194,6 +1199,7 @@ mod timeout_tests {
         assert_eq!(d, Some(7));
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_max_duration_prefers_new_key_when_both_present() {
         // Given args with both max_duration_secs and legacy timeout.
@@ -1203,6 +1209,7 @@ mod timeout_tests {
         assert_eq!(d, Some(30));
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_max_duration_returns_none_when_no_field() {
         // Given args with neither key.
@@ -1213,6 +1220,7 @@ mod timeout_tests {
         assert_eq!(d, None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_max_duration_tolerates_malformed_json() {
         // Given malformed args.
@@ -1223,6 +1231,7 @@ mod timeout_tests {
         assert_eq!(d, None);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn override_in_args_overrides_global_timeout() {
         // Given a 50ms override in args and a long global timeout.
@@ -1239,6 +1248,7 @@ mod timeout_tests {
         assert!(result.success);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn zero_override_disables_timeout() {
         // Given a 0 override (disable sentinel) and no global timeout.
@@ -1252,6 +1262,7 @@ mod timeout_tests {
         assert!(result.success);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn no_override_uses_global_timeout() {
         // Given no override in args and a 50ms global timeout.
@@ -1283,6 +1294,7 @@ mod panic_safety_tests {
     use super::panicked_tool_result;
     use jinn_provider::tool_types::{ToolCall, ToolResult};
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn builtin_tool_panic_publishes_failed_execution_completed() {
         // Given a builtin execute_fn that panics.
@@ -1328,6 +1340,7 @@ mod panic_safety_tests {
         assert_eq!(result.name, "boom");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn arbitrary_future_panic_publishes_failed_execution_completed() {
         // Given an arbitrary future that panics.
@@ -1378,6 +1391,7 @@ mod routing_lookup_tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn session_scoped_registration_beats_global() {
         // Given a session map and a global map both defining the same tool name.
@@ -1392,6 +1406,7 @@ mod routing_lookup_tests {
         assert_eq!(provider_of(resolved), Some("mcp__session__"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn global_used_when_session_map_absent() {
         // Given only a global registration.
@@ -1404,6 +1419,7 @@ mod routing_lookup_tests {
         assert_eq!(provider_of(resolved), Some("web-fetch"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn global_used_when_session_map_lacks_tool() {
         // Given a session map without the tool and a global map with it.
@@ -1417,6 +1433,7 @@ mod routing_lookup_tests {
         assert_eq!(provider_of(resolved), Some("web-search"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn resolves_none_when_neither_has_tool() {
         // Given empty session and global maps.
@@ -1536,6 +1553,7 @@ mod mcp_dispatch_gate_tests {
             .await;
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tools_unregistered_removes_the_providers_tools_from_the_routing_map() {
         // Given a state with a seeded session, the stub tools registered for it.
@@ -1568,6 +1586,7 @@ mod mcp_dispatch_gate_tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn gate_fails_fast_when_the_server_is_disabled() {
         // Given a session where the stub server is NOT enabled, with its
@@ -1592,6 +1611,7 @@ mod mcp_dispatch_gate_tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn gate_fails_fast_when_the_enabled_server_is_dead() {
         // Given a session where the stub server is enabled but its connection
@@ -1626,6 +1646,7 @@ mod mcp_dispatch_gate_tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn gate_passes_through_when_the_server_is_enabled_and_running() {
         // Given a session where the stub server is enabled and Running, with

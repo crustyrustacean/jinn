@@ -469,6 +469,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 1. empty_history_produces_no_mutations
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn empty_history_produces_no_mutations() {
         let w = worker(100);
@@ -481,6 +482,7 @@ mod tests {
     // The only entry is simultaneously first-anchor and last-anchor.
     // There are no other candidates, so no mutations.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn single_entry_history_produces_no_mutations() {
         let w = worker(100);
@@ -495,6 +497,7 @@ mod tests {
     // far from the originating User. Pre-fix this was pruned. Post-fix the
     // last-entry anchor keeps it.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn last_entry_is_anchor_protects_wrap_up() {
         let w = worker(100);
@@ -519,6 +522,7 @@ mod tests {
     // Symmetric to #3: a leading assistant at index 0 must be kept even
     // when far from any subsequent User.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn first_entry_is_anchor_protects_leading_assistant() {
         let w = worker(100);
@@ -541,6 +545,7 @@ mod tests {
     // Anchors at first (User), middle (User), and last (trivial) positions.
     // A large assistant sits between them, beyond radius from each.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn large_assistant_far_from_all_anchors_is_pruned() {
         let w = worker(5);
@@ -570,6 +575,7 @@ mod tests {
     // First+User anchor at 0, large assistant at index R. Distance = R.
     // Rule is "strictly greater than R" → kept.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn radius_boundary_at_exact_radius_is_kept() {
         let radius = 10;
@@ -595,6 +601,7 @@ mod tests {
     // First+User anchor at 0, large assistant at index R+1. Now also far
     // from any tail anchor because of trailing padding.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn radius_boundary_at_radius_plus_one_is_pruned() {
         let radius = 10;
@@ -619,6 +626,7 @@ mod tests {
     //
     // User at 0, candidate just before a mid-history User → kept.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn forward_anchor_protects_wrap_up() {
         let radius = 5;
@@ -646,6 +654,7 @@ mod tests {
     // Large assistant at index 0 (also first-anchor), user at index 3.
     // Either way the candidate is within radius.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn no_preceding_anchor_only_following_within_radius_kept() {
         let w = worker(5);
@@ -671,6 +680,7 @@ mod tests {
     // First+User anchor at 0, candidate in the middle, tail anchor far
     // away. The candidate is beyond radius from both anchors.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn assistant_far_from_all_anchors_pruned() {
         let radius = 3;
@@ -694,6 +704,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 11. already_excluded_entry_is_skipped
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn already_excluded_entry_is_skipped() {
         let w = worker(1);
@@ -721,6 +732,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 11b. forced_included_entry_is_skipped
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn forced_included_entry_is_skipped() {
         let w = worker(1);
@@ -743,6 +755,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 12. pinned_entry_is_skipped
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn pinned_entry_is_skipped() {
         use crate::feat::session::chat_entry::PinPosition;
@@ -764,6 +777,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 13. empty_assistant_is_skipped
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn empty_assistant_is_skipped() {
         let w = worker(1);
@@ -784,6 +798,7 @@ mod tests {
     // pruned by this worker — that's the trivial_assistant worker's
     // job. Verifies the disjoint-candidate-set contract.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn small_assistant_far_from_user_is_not_pruned() {
         let w = worker(2);
@@ -807,6 +822,7 @@ mod tests {
     //
     // ToolCall, ToolResult, System, etc. must not receive mutations.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn non_assistant_entries_in_prune_region_not_targeted() {
         use crate::feat::session::tool_result_status::ToolResultStatus;
@@ -850,6 +866,7 @@ mod tests {
     // Verify by intercepting with a known token-count and observing the
     // cached value.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn token_cache_populated_after_evaluate() {
         let w = worker(1);
@@ -879,6 +896,7 @@ mod tests {
     // If the second call recomputes, it will get >80 and emit a prune
     // mutation. If it reads from cache (now sabotaged to 10), it skips.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn second_evaluate_uses_cached_tokens_not_recomputed() {
         let w = worker(1);
@@ -939,6 +957,7 @@ mod tests {
     // ------------------------------------------------------------------
     // 16. radius_clamped_to_minimum_one
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn radius_clamped_to_minimum_one() {
         let w = worker(0);
@@ -972,6 +991,7 @@ mod tests {
     // With trailing padding past the last large assistant, all the middle
     // large assistants are beyond radius from every anchor.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn multiple_large_assistants_far_from_anchors_all_pruned() {
         let w = worker(5);
@@ -1006,6 +1026,7 @@ mod tests {
     // After applying mutations to history, second evaluate must produce
     // zero new mutations.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn idempotency_second_evaluate_no_new_mutations() {
         let w = worker(2);
@@ -1057,12 +1078,14 @@ mod tests {
     // Direct unit tests for the helper. The first and last index are
     // always anchors when present.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn distances_helper_empty_anchors_returns_none_none() {
         let (a, b) = distances_to_nearest_anchors(5, &[]);
         assert_eq!((a, b), (None, None));
     }
 
+    #[rstest::rstest]
     #[test]
     fn distances_helper_anchor_before_returns_back_only() {
         // anchors at 0 (first) and 10.
@@ -1071,6 +1094,7 @@ mod tests {
         assert_eq!((a, b), (Some(3), Some(7)));
     }
 
+    #[rstest::rstest]
     #[test]
     fn distances_helper_anchor_after_returns_fwd_only() {
         // anchors at 0 (first) and 5.
@@ -1079,6 +1103,7 @@ mod tests {
         assert_eq!((a, b), (Some(2), Some(3)));
     }
 
+    #[rstest::rstest]
     #[test]
     fn distances_helper_anchors_both_sides_returns_both() {
         // anchors at 0 (first), 10, 20.
@@ -1087,6 +1112,7 @@ mod tests {
         assert_eq!((a, b), (Some(2), Some(8)));
     }
 
+    #[rstest::rstest]
     #[test]
     fn distances_helper_idx_is_anchor_returns_zero_zero() {
         // Candidate idx is itself an anchor.
@@ -1101,11 +1127,13 @@ mod tests {
     // Verify the anchor-collection invariant: first, last, and every User
     // are anchors; the result is sorted and deduped.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn collect_anchors_empty_history() {
         assert!(collect_anchor_indices(&[]).is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn collect_anchors_single_entry_is_both_first_and_last() {
         let history = vec![ChatEntry::assistant("only")];
@@ -1113,6 +1141,7 @@ mod tests {
         assert_eq!(anchors, vec![0]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn collect_anchors_no_user_first_and_last_are_anchors() {
         let history = vec![
@@ -1124,6 +1153,7 @@ mod tests {
         assert_eq!(anchors, vec![0, 2]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn collect_anchors_first_is_user_deduped() {
         let history = vec![
@@ -1137,6 +1167,7 @@ mod tests {
         assert_eq!(anchors, vec![0, 2]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn collect_anchors_last_is_user_deduped() {
         let history = vec![
@@ -1149,6 +1180,7 @@ mod tests {
         assert_eq!(anchors, vec![0, 2]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn collect_anchors_mid_user_included() {
         let history = vec![
@@ -1163,11 +1195,13 @@ mod tests {
     // collect_user_anchor_indices
     // ------------------------------------------------------------------
 
+    #[rstest::rstest]
     #[test]
     fn collect_user_anchors_empty_history() {
         assert!(collect_user_anchor_indices(&[]).is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn collect_user_anchors_returns_user_entries_only() {
         let history = vec![
@@ -1181,6 +1215,7 @@ mod tests {
         assert_eq!(anchors, vec![1, 3]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn collect_user_anchors_no_user_entries_is_empty() {
         let history = vec![
@@ -1199,6 +1234,7 @@ mod tests {
     // large assistant beyond radius from both ends is pruned; the
     // boundary assistants are kept.
     // ------------------------------------------------------------------
+    #[rstest::rstest]
     #[test]
     fn no_user_entries_first_and_last_still_anchor() {
         let w = worker(5);
@@ -1236,6 +1272,7 @@ mod tests {
     // min_age protection tests
     // ------------------------------------------------------------------
 
+    #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_old_large_assistant() {
         // Layout: idx 0 = User anchor; idx 1..=100 = padding; idx 101 = candidate;
@@ -1258,6 +1295,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_large_assistant() {
         // Same layout as above (history_len=152, candidate idx=101, age=51).
@@ -1280,6 +1318,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn min_age_boundary_strict_less_than_anchored_assistant_radius() {
         // Layout: idx 0 = User anchor; idx 1..=100 = padding; idx 101 = candidate;

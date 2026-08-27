@@ -271,6 +271,7 @@ fn esc_in_picker_task_list_returns_to_normal_mode() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn alt_q_in_input_scope_toggles_input_mode() {
     // Given the keymap rooted at Input scope.
@@ -286,6 +287,7 @@ fn alt_q_in_input_scope_toggles_input_mode() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn alt_s_in_input_scope_focuses_sidebar_sessions() {
     // Given the keymap rooted at Input scope.
@@ -301,6 +303,7 @@ fn alt_s_in_input_scope_focuses_sidebar_sessions() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn sessions_i_resolves_to_sidebar_confirm_insert() {
     // Given the keymap rooted at the Sessions sidebar.
@@ -316,6 +319,7 @@ fn sessions_i_resolves_to_sidebar_confirm_insert() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn sessions_enter_still_resolves_to_sidebar_confirm() {
     // Given the keymap rooted at the Sessions sidebar.
@@ -331,6 +335,7 @@ fn sessions_enter_still_resolves_to_sidebar_confirm() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn pins_enter_resolves_to_sidebar_leave() {
     // Given the keymap rooted at the Pins sidebar.
@@ -346,6 +351,7 @@ fn pins_enter_resolves_to_sidebar_leave() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn alt_s_in_normal_scope_focuses_sidebar_sessions() {
     // Given the keymap rooted at Normal scope.
@@ -361,6 +367,7 @@ fn alt_s_in_normal_scope_focuses_sidebar_sessions() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn r_in_normal_scope_resets_entry_to_default_context() {
     // Given the keymap rooted at Normal scope.

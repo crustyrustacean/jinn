@@ -239,6 +239,7 @@ mod tests {
         (state, session_id)
     }
 
+    #[rstest::rstest]
     #[test]
     fn set_list_replaces_entire_list() {
         let (state, session_id) = setup_with_existing_list();
@@ -268,6 +269,7 @@ mod tests {
         assert!(!result.content.contains("Old task"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn set_list_with_empty_tasks() {
         let (state, session_id) = setup_with_existing_list();
@@ -288,6 +290,7 @@ mod tests {
         assert!(result.content.contains("(no tasks)"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn set_list_errors_on_empty_phases() {
         let (state, session_id) = setup_with_existing_list();
@@ -307,6 +310,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn set_list_errors_on_missing_phase_description() {
         let (state, session_id) = setup_with_existing_list();
@@ -331,6 +335,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn set_list_requires_state() {
         let call = ToolCall {
@@ -348,6 +353,7 @@ mod tests {
         assert!(result.content.contains("no application state"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn set_list_return_has_next_block_at_top() {
         let (state, session_id) = setup_with_existing_list();

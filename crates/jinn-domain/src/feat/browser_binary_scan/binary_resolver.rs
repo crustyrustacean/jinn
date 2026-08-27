@@ -356,6 +356,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn auto_prefers_chrome_when_present() {
         // Given Chrome and Chromium both present.
@@ -375,6 +376,7 @@ mod tests {
         assert_eq!(resolved.fallback_note, None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn auto_falls_back_to_chromium_when_chrome_absent() {
         // Given only Chromium present.
@@ -395,6 +397,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn auto_falls_back_to_bundled_when_neither_present() {
         // Given an empty filesystem.
@@ -413,6 +416,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn explicit_chrome_missing_falls_back_to_bundled() {
         // Given a filesystem with only Chromium.
@@ -430,6 +434,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn explicit_chromium_missing_falls_back_to_bundled() {
         // Given a filesystem with only Chrome.
@@ -447,6 +452,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn resolver_returns_first_existing_candidate_in_search_order() {
         // Given Chrome candidates where the first is missing and the second exists.
@@ -465,6 +471,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_major_version_extracts_chrome_version() {
         // Given a Chrome --version line.
@@ -475,6 +482,7 @@ mod tests {
         assert_eq!(major.as_deref(), Some("138"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_major_version_extracts_chromium_version() {
         // Given a Chromium --version line.
@@ -484,6 +492,7 @@ mod tests {
         assert_eq!(major.as_deref(), Some("140"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_major_version_returns_none_on_unparseable_output() {
         // Given output with no version token.

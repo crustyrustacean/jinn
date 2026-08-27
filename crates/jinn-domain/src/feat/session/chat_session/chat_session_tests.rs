@@ -2064,6 +2064,7 @@ fn is_empty_false_after_pushing_entry() {
     assert!(!session.is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn begin_tool_result_creates_pending_entry() {
     // Given a session in streaming state.
@@ -2094,6 +2095,7 @@ fn begin_tool_result_creates_pending_entry() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn begin_tool_result_tracks_history_index() {
     // Given a session in streaming state with one entry.
@@ -2124,6 +2126,7 @@ fn begin_tool_result_tracks_history_index() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn append_tool_result_output_appends_to_pending_entry() {
     // Given a session in streaming state with a pending tool result.
@@ -2158,6 +2161,7 @@ line 2
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn append_tool_result_output_bumps_history_activity_timestamp() {
     // Given a session whose last activity is in the past.
@@ -2182,6 +2186,7 @@ fn append_tool_result_output_bumps_history_activity_timestamp() {
     assert!(session.core.last_history_activity_at > before);
 }
 
+#[rstest::rstest]
 #[test]
 fn append_tool_result_output_ignores_unknown_call_id() {
     // Given a session with no pending tool result.
@@ -2197,6 +2202,7 @@ fn append_tool_result_output_ignores_unknown_call_id() {
     assert!(session.history().is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn finalize_tool_result_completes_pending_entry() {
     // Given a session in streaming state with a pending tool result.
@@ -2235,6 +2241,7 @@ fn finalize_tool_result_completes_pending_entry() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn tool_result_entry_gets_finished_at_on_finalize() {
     // Given a session in streaming state with a pending tool result.
@@ -2263,6 +2270,7 @@ fn tool_result_entry_gets_finished_at_on_finalize() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
     // Given a session with no pending tool result.
@@ -2290,6 +2298,7 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn begin_tool_result_does_not_push_when_not_streaming() {
     // Given a session NOT in streaming phase (defaults to Idle).
@@ -2306,6 +2315,7 @@ fn begin_tool_result_does_not_push_when_not_streaming() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn begin_tool_result_does_not_push_in_sending_phase() {
     // Given a session in Sending phase (not Streaming).
@@ -2323,6 +2333,7 @@ fn begin_tool_result_does_not_push_in_sending_phase() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn finalize_tool_result_updates_existing_pending_by_kind_id() {
     // Given a session with a manually-pushed pending ToolResult
@@ -2360,6 +2371,7 @@ fn finalize_tool_result_updates_existing_pending_by_kind_id() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn finalize_tool_result_updates_existing_with_truncation() {
     // Given a session with a pending ToolResult.
@@ -2406,6 +2418,7 @@ fn finalize_tool_result_updates_existing_with_truncation() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn finalize_tool_result_pushes_new_with_truncation_when_no_existing() {
     // Given an empty session.
@@ -3414,6 +3427,7 @@ fn toggle_twice_on_default_user_ends_forced_include() {
     assert!(session.history()[idx].is_in_context());
 }
 
+#[rstest::rstest]
 #[test]
 fn new_session_is_not_persistable() {
     // Given a new session with no history or interaction.
@@ -3423,6 +3437,7 @@ fn new_session_is_not_persistable() {
     assert!(!session.is_persistable());
 }
 
+#[rstest::rstest]
 #[test]
 fn session_becomes_persistable_after_mark_interacted() {
     // Given a new session.
@@ -3435,6 +3450,7 @@ fn session_becomes_persistable_after_mark_interacted() {
     assert!(session.is_persistable());
 }
 
+#[rstest::rstest]
 #[test]
 fn lifecycle_session_is_always_persistable() {
     // Given a new session with a lifecycle name but no interaction.
@@ -3446,6 +3462,7 @@ fn lifecycle_session_is_always_persistable() {
     assert!(!session.has_interacted());
 }
 
+#[rstest::rstest]
 #[test]
 fn forked_session_is_always_persistable() {
     // Given a new session with a parent session but no interaction.
@@ -3457,6 +3474,7 @@ fn forked_session_is_always_persistable() {
     assert!(!session.has_interacted());
 }
 
+#[rstest::rstest]
 #[test]
 fn force_exclude_excludes_dangling_tool_call_and_empty_assistant() {
     // Given a history with an empty Assistant and a ToolCall with no matching ToolResult.
@@ -3481,6 +3499,7 @@ fn force_exclude_excludes_dangling_tool_call_and_empty_assistant() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn force_exclude_preserves_complete_tool_loop() {
     // Given a history with a complete tool loop (ToolCall + ToolResult).
@@ -3510,6 +3529,7 @@ fn force_exclude_preserves_complete_tool_loop() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn force_exclude_excludes_non_empty_assistant_with_its_dangling_call() {
     // Given a history with a non-empty Assistant and a dangling ToolCall.
@@ -3536,6 +3556,7 @@ fn force_exclude_excludes_non_empty_assistant_with_its_dangling_call() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn force_exclude_handles_multiple_dangling_calls() {
     // Given a history with multiple dangling ToolCalls.
@@ -3565,6 +3586,7 @@ fn force_exclude_handles_multiple_dangling_calls() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn force_exclude_mixed_complete_and_incomplete() {
     // Given a history with a complete loop and an incomplete loop.
@@ -3600,6 +3622,7 @@ fn force_exclude_mixed_complete_and_incomplete() {
     ); // ToolCall tc-2
 }
 
+#[rstest::rstest]
 #[test]
 fn force_exclude_no_tool_calls_is_noop() {
     // Given a history with no tool calls.
@@ -5247,6 +5270,7 @@ fn session_with_included_entry() -> (super::ChatSessionState, ChatEntryId) {
     (session, id)
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_worker_forced_include_blocked_on_user_force_excluded() {
     // Given an entry with ForcedExclude set by User.
@@ -5275,6 +5299,7 @@ fn apply_mutations_worker_forced_include_blocked_on_user_force_excluded() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_worker_forced_include_allowed_on_worker_force_excluded() {
     // Given an entry with ForcedExclude set by Worker.
@@ -5305,6 +5330,7 @@ fn apply_mutations_worker_forced_include_allowed_on_worker_force_excluded() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_internal_forced_include_bypasses_user_guard() {
     // Given an entry with ForcedExclude set by User.
@@ -5333,6 +5359,7 @@ fn apply_mutations_internal_forced_include_bypasses_user_guard() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_user_toggled_back_to_default_allows_worker_re_include() {
     // Given an entry whose most recent audit event is User → Default
@@ -5366,6 +5393,7 @@ fn apply_mutations_user_toggled_back_to_default_allows_worker_re_include() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn apply_mutations_existing_forced_include_guard_still_works() {
     // Given an entry at ForcedInclude.
@@ -5410,6 +5438,7 @@ fn dispatched_at() -> jiff::Timestamp {
     jiff::Timestamp::now()
 }
 
+#[rstest::rstest]
 #[test]
 fn streamed_entry_begins_with_dispatched_at_only() {
     // Given a session in streaming phase.
@@ -5437,6 +5466,7 @@ fn streamed_entry_begins_with_dispatched_at_only() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn streamed_entry_gets_first_token_at_on_creation() {
     // Given a session in streaming phase.
@@ -5466,6 +5496,7 @@ fn streamed_entry_gets_first_token_at_on_creation() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn streamed_entry_gets_finished_at_on_stream_complete() {
     // Given a session in streaming phase with an assistant entry.
@@ -5503,6 +5534,7 @@ fn streamed_entry_gets_finished_at_on_stream_complete() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
     // Given a session in streaming phase.
@@ -5654,6 +5686,7 @@ fn reset_streaming_entries_for_retry_removes_partial_thinking_entry() {
 // MCP server enablement
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn new_session_has_no_mcp_servers_enabled() {
     // Given a freshly created session.
@@ -5663,6 +5696,7 @@ fn new_session_has_no_mcp_servers_enabled() {
     assert!(session.enabled_mcp_servers().is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn enabling_mcp_server_adds_it_to_the_set() {
     // Given a session with no servers enabled.
@@ -5676,6 +5710,7 @@ fn enabling_mcp_server_adds_it_to_the_set() {
     assert!(session.is_mcp_server_enabled("excalimate"));
 }
 
+#[rstest::rstest]
 #[test]
 fn enabling_already_enabled_mcp_server_reports_no_change() {
     // Given a session with a server already enabled.
@@ -5689,6 +5724,7 @@ fn enabling_already_enabled_mcp_server_reports_no_change() {
     assert!(!changed);
 }
 
+#[rstest::rstest]
 #[test]
 fn disabling_mcp_server_removes_it_from_the_set() {
     // Given a session with a server enabled.
@@ -5703,6 +5739,7 @@ fn disabling_mcp_server_removes_it_from_the_set() {
     assert!(!session.is_mcp_server_enabled("excalimate"));
 }
 
+#[rstest::rstest]
 #[test]
 fn disabling_unknown_mcp_server_reports_no_change() {
     // Given a session with no servers enabled.
@@ -5715,6 +5752,7 @@ fn disabling_unknown_mcp_server_reports_no_change() {
     assert!(!changed);
 }
 
+#[rstest::rstest]
 #[test]
 fn set_enabled_mcp_servers_replaces_the_set() {
     // Given a session with one server enabled.

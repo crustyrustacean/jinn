@@ -34,6 +34,7 @@ fn welcome_envelope() -> Envelope {
 
 // ── Framing ───────────────────────────────────────���───────────────────────────
 
+#[rstest::rstest]
 #[test]
 fn decode_parses_one_envelope_per_line() {
     // Given one encoded envelope as a line.
@@ -49,6 +50,7 @@ fn decode_parses_one_envelope_per_line() {
     assert_eq!(bytes.pop(), Some(b'\n'));
 }
 
+#[rstest::rstest]
 #[test]
 fn decode_skips_blank_lines() {
     // Given whitespace-only padding lines.
@@ -58,6 +60,7 @@ fn decode_skips_blank_lines() {
     assert!(decode_envelope(b"").expect("decode empty").is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn decode_rejects_malformed_json() {
     // Given a line that is not an envelope.
@@ -67,6 +70,7 @@ fn decode_rejects_malformed_json() {
     assert!(matches!(result, Err(FramingError::Parse(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn decode_rejects_version_mismatch() {
     // Given an envelope carrying a different protocol version.
@@ -80,6 +84,7 @@ fn decode_rejects_version_mismatch() {
     assert!(matches!(result, Err(FramingError::VersionMismatch)));
 }
 
+#[rstest::rstest]
 #[test]
 fn decode_rejects_lines_over_the_cap() {
     // Given a syntactically valid line longer than MAX_LINE_BYTES.
@@ -98,6 +103,7 @@ fn decode_rejects_lines_over_the_cap() {
     ));
 }
 
+#[rstest::rstest]
 #[test]
 fn decode_accepts_unknown_plugin_messages() {
     // Given an inbound envelope whose msg is an unknown future variant.
@@ -123,6 +129,7 @@ fn dir_context() -> DirContext {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn expand_template_resolves_defined_variables() {
     // Given a template using every defined variable.
@@ -136,6 +143,7 @@ fn expand_template_resolves_defined_variables() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn expand_template_rejects_undefined_variables() {
     // Given a template with an unknown token.
@@ -150,6 +158,7 @@ fn expand_template_rejects_undefined_variables() {
     ));
 }
 
+#[rstest::rstest]
 #[test]
 fn resolve_grants_with_no_grants_grants_nothing() {
     // Given a manifest with no path grants.
@@ -162,6 +171,7 @@ fn resolve_grants_with_no_grants_grants_nothing() {
     assert!(grants.write_dirs.is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn resolve_grants_sorts_read_and_write_intents() {
     // Given one read grant and one writable grant.
@@ -187,6 +197,7 @@ fn resolve_grants_sorts_read_and_write_intents() {
     assert!(resolved.http);
 }
 
+#[rstest::rstest]
 #[test]
 fn template_tokens_are_the_documented_literals() {
     // Given the documented template variables.
