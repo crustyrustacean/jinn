@@ -5,6 +5,10 @@
 //! It bridges Discord to the jinn actor bus via the shared [`State`] (read
 //! session history) and [`Bridge`] (publish commands).
 //!
+//! Inbound access is deny-by-default: both the plain-message handler and every
+//! slash command gate on `[discord].authorized_users` via
+//! [`jinn_domain::feat::discord::authorize`] — an empty list authorizes nobody.
+//!
 //! See `.plans/discord/plan.md` for the full architecture.
 
 use std::sync::Arc;

@@ -15,9 +15,11 @@
 /// entries never match.
 #[must_use]
 pub fn is_authorized(authorized_users: &[String], author_id: u64) -> bool {
-    authorized_users
-        .iter()
-        .any(|raw| raw.trim().parse::<u64>().is_ok_and(|allowed| allowed == author_id))
+    authorized_users.iter().any(|raw| {
+        raw.trim()
+            .parse::<u64>()
+            .is_ok_and(|allowed| allowed == author_id)
+    })
 }
 
 #[cfg(test)]
@@ -27,8 +29,8 @@ mod tests {
     use super::is_authorized;
 
     #[rstest]
-    #[case::listed_id("123456789012345678", 123456789012345678)]
-    #[case::padded_entry("  123456789012345678\t", 123456789012345678)]
+    #[case::listed_id("123456789012345678", 123_456_789_012_345_678)]
+    #[case::padded_entry("  123456789012345678\t", 123_456_789_012_345_678)]
     fn allows_configured_author(#[case] entry: &str, #[case] author_id: u64) {
         // Given an allow-list containing the author's id
         //     (possibly with surrounding whitespace).
@@ -47,7 +49,7 @@ mod tests {
         let authorized_users = &["123456789012345678".to_owned()];
 
         // When checking authorization.
-        let allowed = is_authorized(authorized_users, 876543210987654321);
+        let allowed = is_authorized(authorized_users, 876_543_210_987_654_321);
 
         // Then the author is denied.
         assert!(!allowed);
@@ -59,7 +61,7 @@ mod tests {
         let authorized_users: &[String] = &[];
 
         // When checking authorization.
-        let allowed = is_authorized(authorized_users, 123456789012345678);
+        let allowed = is_authorized(authorized_users, 123_456_789_012_345_678);
 
         // Then nobody is authorized.
         assert!(!allowed);
@@ -68,10 +70,13 @@ mod tests {
     #[test]
     fn malformed_entries_dont_block_valid_ones() {
         // Given an allow-list mixing a garbled entry with the author's id.
-        let authorized_users = &["not-a-snowflake".to_owned(), "123456789012345678".to_owned()];
+        let authorized_users = &[
+            "not-a-snowflake".to_owned(),
+            "123456789012345678".to_owned(),
+        ];
 
         // When checking authorization.
-        let allowed = is_authorized(authorized_users, 123456789012345678);
+        let allowed = is_authorized(authorized_users, 123_456_789_012_345_678);
 
         // Then the author is authorized via the valid entry.
         assert!(allowed);
@@ -96,8 +101,8 @@ mod tests {
 
         // When checking ids that differ from it by one digit
         //     (leading and trailing).
-        let leading = is_authorized(authorized_users, 223456789012345678);
-        let trailing = is_authorized(authorized_users, 123456789012345679);
+        let leading = is_authorized(authorized_users, 223_456_789_012_345_678);
+        let trailing = is_authorized(authorized_users, 123_456_789_012_345_679);
 
         // Then neither near-collision is authorized.
         assert!(!leading);
