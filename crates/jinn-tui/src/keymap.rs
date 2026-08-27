@@ -587,6 +587,7 @@ mod tests {
     /// another scope (SidebarSessions), the leaf must survive the
     /// Leaf→Branch promotion. Before the fix, the library dropped the
     /// existing binding and the catch-all fired instead.
+    #[rstest::rstest]
     #[test]
     fn p_prefix_group_in_sidebar_does_not_drop_normal_pin_binding() {
         use crate::app::WhichKeyInstance;
@@ -609,6 +610,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn alt_backtick_in_input_scope_does_not_insert_literal_backtick() {
         // Given a keymap with the global <M-`> binding, queried in Input scope.
@@ -639,6 +641,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn quake_bar_scope_esc_fires_close_quake_bar() {
         // Given a keymap queried in QuakeBar scope.
@@ -667,6 +670,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn quake_bar_scope_meta_backtick_fires_close_quake_bar() {
         // Given a keymap queried in QuakeBar scope.
@@ -696,6 +700,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn quake_bar_scope_printable_char_routes_to_insert_char() {
         // Given a keymap queried in QuakeBar scope.
@@ -724,6 +729,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn quake_bar_scope_pgup_fires_scroll_up() {
         // Given a keymap queried in QuakeBar scope.
@@ -752,6 +758,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn task_list_scope_pgup_fires_preview_scroll_up() {
         // Given a keymap queried in SidebarTaskList scope.
@@ -780,6 +787,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn task_list_scope_pgdn_fires_preview_scroll_down() {
         // Given a keymap queried in SidebarTaskList scope.
@@ -808,6 +816,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn ctrl_d_in_project_picker_removes_highlighted() {
         use crate::app::WhichKeyInstance;
@@ -830,6 +839,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn bare_d_in_project_picker_types_into_filter() {
         use crate::app::WhichKeyInstance;
@@ -855,6 +865,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn bare_a_in_project_picker_types_into_filter_not_add_cwd() {
         use crate::app::WhichKeyInstance;
@@ -1197,6 +1208,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn bracket_c_chord_does_not_resolve_in_input_scope() {
         // Given the default keymap queried in Input scope.
@@ -1289,6 +1301,7 @@ mod leak_check {
     use crate::scope::Scope;
     use ratatui_which_key::Keymap as WKKeymap;
 
+    #[rstest::rstest]
     #[test]
     fn dashboard_scope_has_no_chathistory_or_sidebar_bindings() {
         let keymap: WKKeymap<
@@ -1309,6 +1322,7 @@ mod leak_check {
             "ChatHistory groups leaked into Dashboard: {all_desc:?}"
         );
     }
+    #[rstest::rstest]
     #[test]
     fn normal_scope_still_shows_chathistory_and_sidebar_groups() {
         // Regression: the library fix must not remove ChatHistory groups from
@@ -1336,6 +1350,7 @@ mod leak_check {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn picker_scope_pgup_fires_picker_page_up() {
         // Given a keymap queried in a generic picker scope.
@@ -1364,6 +1379,7 @@ mod leak_check {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn picker_scope_pgdn_fires_picker_page_down() {
         // Given a keymap queried in a generic picker scope.
@@ -1392,6 +1408,7 @@ mod leak_check {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn skill_scope_pgup_fires_picker_page_up_not_preview_scroll() {
         // Given a keymap queried in the skill picker scope.
@@ -1420,6 +1437,7 @@ mod leak_check {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn skill_scope_ctrl_u_fires_preview_scroll_up() {
         // Given a keymap queried in the skill picker scope.
@@ -1444,6 +1462,7 @@ mod leak_check {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn skill_scope_ctrl_d_fires_preview_scroll_down() {
         // Given a keymap queried in the skill picker scope.
@@ -1468,6 +1487,7 @@ mod leak_check {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn ctrl_l_in_skill_picker_fires_skill_load_selected() {
         use crate::app::WhichKeyInstance;

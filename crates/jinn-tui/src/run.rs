@@ -456,6 +456,7 @@ mod tests {
         assert_eq!(shell_escape(""), "''");
     }
 
+    #[rstest::rstest]
     #[test]
     fn apply_selected_cwd_publishes_set_session_cwd_for_valid_dir() {
         let rt = test_runtime();
@@ -486,6 +487,7 @@ mod tests {
         });
     }
 
+    #[rstest::rstest]
     #[test]
     fn apply_selected_cwd_rejects_non_directory_path() {
         let rt = test_runtime();
@@ -514,6 +516,7 @@ mod tests {
         });
     }
 
+    #[rstest::rstest]
     #[test]
     fn apply_selected_cwd_rejects_nonexistent_path() {
         let rt = test_runtime();

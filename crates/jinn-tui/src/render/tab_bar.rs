@@ -67,6 +67,7 @@ mod tests {
         app
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn chat_tab_is_highlighted_in_normal_scope() {
         // Given an app in Normal (chat) scope.
@@ -94,6 +95,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dashboard_tab_is_highlighted_in_dashboard_scope() {
         // Given an app in Dashboard scope.
@@ -123,6 +125,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dashboard_tab_stays_highlighted_when_quake_bar_open() {
         let mut app = build_app_with_scope(FocusScope::Dashboard).await;
