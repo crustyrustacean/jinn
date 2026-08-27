@@ -175,6 +175,36 @@ impl PluginHost {
         Ok(())
     }
 
+    /// Writes one pre-encoded NDJSON line to the guest's stdin.
+    ///
+    /// For payloads the typed [`Envelope`] cannot represent (e.g. a wire
+    /// tag this build doesn't know) and for tests exercising raw-line
+    /// handling. The newline is appended if absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`PluginHostError::Write`] report if the stdin pipe fails
+    /// to write or flush (guest gone, pipe closed).
+    pub async fn write_raw_line(&mut self, line: &str) -> Result<(), Report<PluginHostError>> {
+        let mut bytes = line.as_bytes().to_vec();
+        if !bytes.ends_with(b"\n") {
+            bytes.push(b'\n');
+        }
+        self.write
+            .stdin
+            .write_all(&bytes)
+            .await
+            .change_context(PluginHostError::Write)
+            .attach("plugin stdin write failed")?;
+        self.write
+            .stdin
+            .flush()
+            .await
+            .change_context(PluginHostError::Write)
+            .attach("plugin stdin flush failed")?;
+        Ok(())
+    }
+
     /// Reads the next envelope from the guest's stdout.
     ///
     /// Returns `Ok(None)` on EOF (guest ended). Malformed lines are
@@ -228,6 +258,18 @@ pub enum FakeGuestScript {
         /// Raw wire lines to send after `Hello`.
         lines: Vec<String>,
     },
+    /// Like [`FakeGuestScript::HelloThenLines`], but the `Hello` declares
+    /// event subscriptions (exercising the host→guest forwarder) and the
+    /// script stays alive: every line the host writes to its stdin is
+    /// pushed back as a `push_citations` whose citation title carries the
+    /// raw line. Intended for forwarder tests — the guest never exits, and
+    /// what the host forwarded becomes observable on the plugin→host side.
+    SubscribedEcho {
+        /// Protocol version the fake claims.
+        protocol_version: u32,
+        /// Subscription kinds to declare in the `Hello`.
+        subscriptions: Vec<String>,
+    },
     /// Sends nothing and closes stdout immediately (a guest that dies
     /// before handshaking).
     Silent,
@@ -249,6 +291,58 @@ pub enum FakeGuestScript {
     },
 }
 
+/// Writes a `Hello` (with optional subscriptions) followed by raw lines.
+///
+/// Shared by the fake-guest script variants that open with a handshake.
+async fn write_hello_then<W>(
+    guest_tx: &mut W,
+    protocol_version: u32,
+    subscriptions: &[String],
+    lines: &[String],
+) where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    use tokio::io::AsyncWriteExt;
+
+    let hello = Envelope::for_plugin(
+        jinn_plugin_api::PluginToHost::Hello(jinn_plugin_api::Hello {
+            protocol_version,
+            name: String::new(),
+            subscriptions: subscriptions.to_vec(),
+        }),
+        0,
+        0,
+    );
+    let mut out = serde_json::to_string(&hello).unwrap_or_default();
+    out.push('\n');
+    for line in lines {
+        out.push_str(line);
+        out.push('\n');
+    }
+    let _ = guest_tx.write_all(out.as_bytes()).await;
+}
+
+/// Reads one newline-terminated line from the fake guest's stdin.
+///
+/// Returns the raw bytes (newline stripped) or `None` on EOF/pipe error —
+/// the echo script treats both as "host closed stdin".
+async fn guest_rx_read_line<R>(reader: &mut R, buf: &mut Vec<u8>) -> Option<Vec<u8>>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    use tokio::io::AsyncReadExt;
+
+    buf.clear();
+    loop {
+        let mut byte = [0u8; 1];
+        match reader.read(&mut byte).await {
+            Ok(0) | Err(_) => return None,
+            Ok(_) if byte[0] == b'\n' => return Some(buf.clone()),
+            Ok(_) => buf.push(byte[0]),
+        }
+    }
+}
+
 impl PluginHost {
     /// Test-only constructor: a host whose guest is an in-process scripted
     /// fake speaking the same NDJSON wire over the same duplex pipes. No
@@ -262,7 +356,6 @@ impl PluginHost {
         let (host_to_guest, guest_rx) = tokio::io::duplex(PIPE_CAPACITY_BYTES);
         let (guest_tx, host_rx) = tokio::io::duplex(PIPE_CAPACITY_BYTES);
         let stderr_ring = Arc::new(Mutex::new(StderrRing::new()));
-        let name_owned = name.to_owned();
 
         let guest_task = tokio::spawn(async move {
             let mut guest_rx = guest_rx;
@@ -274,22 +367,54 @@ impl PluginHost {
                         protocol_version,
                         lines,
                     } => {
-                        let hello = Envelope::for_plugin(
-                            jinn_plugin_api::PluginToHost::Hello(jinn_plugin_api::Hello {
-                                protocol_version,
-                                name: name_owned.clone(),
-                                subscriptions: vec![],
-                            }),
-                            0,
-                            0,
-                        );
-                        let mut out = serde_json::to_string(&hello).unwrap_or_default();
-                        out.push('\n');
-                        for line in lines {
-                            out.push_str(&line);
-                            out.push('\n');
+                        write_hello_then(&mut guest_tx, protocol_version, &[], &lines).await;
+                    }
+                    FakeGuestScript::SubscribedEcho {
+                        protocol_version,
+                        subscriptions,
+                    } => {
+                        // Handshake, then stay alive: read each host→guest
+                        // line and push it back inside a citation title so
+                        // forwarder tests can assert on what crossed the
+                        // wire.
+                        write_hello_then(&mut guest_tx, protocol_version, &subscriptions, &[])
+                            .await;
+                        // Skip the Welcome the handshake writes — the echo
+                        // replies to *events* only.
+                        let mut line = Vec::new();
+                        let _ = guest_rx_read_line(&mut guest_rx, &mut line).await;
+                        loop {
+                            let mut line = Vec::new();
+                            match guest_rx_read_line(&mut guest_rx, &mut line).await {
+                                Some(raw) => {
+                                    let title = String::from_utf8_lossy(&raw).into_owned();
+                                    let reply = jinn_plugin_api::Envelope::for_plugin(
+                                        jinn_plugin_api::PluginToHost::PushCitations(
+                                            jinn_plugin_api::PushCitations {
+                                                // A parseable session id so host-side
+                                                // validation publishes the echo rather
+                                                // than dropping it.
+                                                session_id: "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e"
+                                                    .to_owned(),
+                                                citations: vec![jinn_plugin_api::PluginCitation {
+                                                    url: "https://echo.invalid/".to_owned(),
+                                                    title,
+                                                    content: None,
+                                                }],
+                                            },
+                                        ),
+                                        0,
+                                        0,
+                                    );
+                                    let mut out = serde_json::to_string(&reply).unwrap_or_default();
+                                    out.push('\n');
+                                    if guest_tx.write_all(out.as_bytes()).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                None => break,
+                            }
                         }
-                        let _ = guest_tx.write_all(out.as_bytes()).await;
                     }
                     FakeGuestScript::Silent => {}
                     FakeGuestScript::FirstLine(line) => {
@@ -302,17 +427,8 @@ impl PluginHost {
                         lines,
                         repeat,
                     } => {
-                        let hello = Envelope::for_plugin(
-                            jinn_plugin_api::PluginToHost::Hello(jinn_plugin_api::Hello {
-                                protocol_version,
-                                name: name_owned.clone(),
-                                subscriptions: vec![],
-                            }),
-                            0,
-                            0,
-                        );
-                        let mut out = serde_json::to_string(&hello).unwrap_or_default();
-                        out.push('\n');
+                        write_hello_then(&mut guest_tx, protocol_version, &[], &[]).await;
+                        let mut out = String::new();
                         for _ in 0..repeat {
                             for line in &lines {
                                 out.push_str(line);
@@ -322,16 +438,12 @@ impl PluginHost {
                         let _ = guest_tx.write_all(out.as_bytes()).await;
                     }
                 }
-                // Closing stdout signals guest end.
+                // Closing stdout signals guest end. (SubscribedEcho's
+                // script only returns at stdin EOF, so it stays alive as
+                // long as the host keeps the pipe open.)
                 let _ = guest_tx.shutdown().await;
             };
-            tokio::select! {
-                () = script_task => {}
-                read = guest_rx.read(&mut discard) => {
-                    // Host closed stdin before the script finished.
-                    let _ = read;
-                }
-            }
+            script_task.await;
             // Drain stdin so the host writer never blocks on a full pipe.
             loop {
                 match guest_rx.read(&mut discard).await {

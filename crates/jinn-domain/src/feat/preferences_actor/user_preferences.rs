@@ -124,6 +124,28 @@ pub struct UserPreferences {
     #[serde(default)]
     pub min_collapse_count: Option<usize>,
 
+    /// Tool names disabled by default in newly created sessions.
+    ///
+    /// Entries are bare tool names (`bash`) or fully qualified MCP tool
+    /// names (`mcp__<server>__<tool>`). Names that match nothing are inert,
+    /// so listings stay forward-compatible with tools added later. Seeding
+    /// happens at session creation only; picker toggles inside a session
+    /// override it per-session and never write back here.
+    ///
+    /// `BTreeSet` rather than `HashSet`: preferences serialize through the
+    /// comment-preserving patcher on every save, and hash iteration order
+    /// would reshuffle the array bytes between runs.
+    #[serde(default)]
+    pub disabled_tools: std::collections::BTreeSet<String>,
+
+    /// Skill names disabled by default in newly created sessions.
+    ///
+    /// Same semantics as [`UserPreferences::disabled_tools`] but applied to
+    /// skills: listed skills are omitted from advertised skills and refused
+    /// by the `skill` tool until re-enabled within the session.
+    #[serde(default)]
+    pub disabled_skills: std::collections::BTreeSet<String>,
+
     /// Named session lifecycle recipes - paired setup/teardown commands.
     /// The implicit "blank" lifecycle (no commands) is always available and
     /// does not need to be listed here.
@@ -234,6 +256,8 @@ impl Default for UserPreferences {
         Self {
             tool_entry_max_lines: None,
             min_collapse_count: None,
+            disabled_tools: std::collections::BTreeSet::new(),
+            disabled_skills: std::collections::BTreeSet::new(),
             session_lifecycles: vec![
                 SessionLifecycle {
                     name: "fossil branch checkout".to_owned(),
@@ -669,29 +693,8 @@ mod tests {
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             tool_entry_max_lines: Some(10),
-            min_collapse_count: None,
             session_lifecycles: vec![],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            web_search: WebSearchConfig::default(),
-            browser: BrowserConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
-            projects: vec![],
-            mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
-            discord: crate::feat::discord::DiscordConfig::default(),
-            tool_default_timeout_secs: default_tool_default_timeout_secs(),
-            history_stall_timeout_secs: default_history_stall_timeout_secs(),
-            stall_retry_max_retries: default_stall_retry_max_retries(),
-            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
-            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
+            ..UserPreferences::default()
         };
 
         // When saving and reloading.
@@ -759,30 +762,8 @@ mod tests {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("nested").join("dir").join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            tool_entry_max_lines: None,
-            min_collapse_count: None,
             session_lifecycles: vec![],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            web_search: WebSearchConfig::default(),
-            browser: BrowserConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
-            projects: vec![],
-            mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
-            discord: crate::feat::discord::DiscordConfig::default(),
-            tool_default_timeout_secs: default_tool_default_timeout_secs(),
-            history_stall_timeout_secs: default_history_stall_timeout_secs(),
-            stall_retry_max_retries: default_stall_retry_max_retries(),
-            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
-            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
+            ..UserPreferences::default()
         };
 
         // When saving.
@@ -799,29 +780,8 @@ mod tests {
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             tool_entry_max_lines: Some(10),
-            min_collapse_count: None,
             session_lifecycles: vec![],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            web_search: WebSearchConfig::default(),
-            browser: BrowserConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
-            projects: vec![],
-            mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
-            discord: crate::feat::discord::DiscordConfig::default(),
-            tool_default_timeout_secs: default_tool_default_timeout_secs(),
-            history_stall_timeout_secs: default_history_stall_timeout_secs(),
-            stall_retry_max_retries: default_stall_retry_max_retries(),
-            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
-            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
+            ..UserPreferences::default()
         };
 
         // When saving and reloading.
@@ -871,6 +831,57 @@ mod tests {
 
         // Then the round-tripped value matches.
         assert_eq!(reloaded.min_collapse_count, Some(5));
+    }
+
+    #[rstest::rstest]
+    fn default_preferences_has_empty_disablement_sets() {
+        // Given default preferences.
+        let prefs = UserPreferences::default();
+
+        // Then no tools are disabled by default.
+        assert!(prefs.disabled_tools.is_empty());
+        // And no skills are disabled by default.
+        assert!(prefs.disabled_skills.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn disabled_tools_and_skills_round_trip_through_save_load() {
+        // Given preferences with disabled tool/skill defaults configured.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            disabled_tools: ["bash", "mcp__excalimate__draw"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            disabled_skills: ["phased-task-loop"].into_iter().map(String::from).collect(),
+            ..UserPreferences::default()
+        };
+
+        // When saving and reloading.
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then both disablement sets survive the round-trip exactly.
+        assert_eq!(reloaded.disabled_tools, prefs.disabled_tools);
+        // And the skill set too.
+        assert_eq!(reloaded.disabled_skills, prefs.disabled_skills);
+    }
+
+    #[rstest::rstest]
+    fn minimal_legacy_toml_yields_empty_disablement_sets() {
+        // Given a pre-feature jinn.toml without the new keys.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, "tool_entry_max_lines = 10\n").expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then both disablement sets deserialize to empty via serde default.
+        assert!(prefs.disabled_tools.is_empty());
+        // And skills likewise.
+        assert!(prefs.disabled_skills.is_empty());
     }
 
     #[rstest::rstest]
@@ -1109,29 +1120,8 @@ mod tests {
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             tool_entry_max_lines: Some(99),
-            min_collapse_count: None,
             session_lifecycles: vec![],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            web_search: WebSearchConfig::default(),
-            browser: BrowserConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
-            projects: vec![],
-            mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
-            discord: crate::feat::discord::DiscordConfig::default(),
-            tool_default_timeout_secs: default_tool_default_timeout_secs(),
-            history_stall_timeout_secs: default_history_stall_timeout_secs(),
-            stall_retry_max_retries: default_stall_retry_max_retries(),
-            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
-            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
+            ..UserPreferences::default()
         };
 
         save_preferences_to(&prefs, &path).expect("save");
@@ -1326,6 +1316,53 @@ args = ["@excalimate/mcp-server", "--stdio"]
             on_disk.contains("# this comment must survive"),
             "user comment was wiped by the patcher: {on_disk}"
         );
+    }
+
+    #[rstest::rstest]
+    fn mcp_server_headers_sub_table_round_trips_preserving_comments() {
+        // Given an existing jinn.toml whose MCP server entry declares a
+        // headers sub-table under a user comment.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[mcp_server.remote]
+transport = "remote_http"
+url = "http://localhost:3001/mcp"
+
+# auth header config must survive edits
+[mcp_server.remote.headers]
+Authorization = "Bearer ${MY_KEY}"
+"#,
+        )
+        .expect("write");
+
+        // When loading and saving unchanged.
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(
+            prefs.mcp_server["remote"]
+                .headers
+                .get("Authorization")
+                .map(String::as_str),
+            Some("Bearer ${MY_KEY}"),
+            "pre-existing headers must load"
+        );
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the headers sub-table survives on disk.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            on_disk.contains("Authorization = \"Bearer ${MY_KEY}\""),
+            "headers must round-trip through the patcher: {on_disk}"
+        );
+        // And the user's comment above it survives too.
+        assert!(
+            on_disk.contains("# auth header config must survive edits"),
+            "comment above the headers table was wiped: {on_disk}"
+        );
+        // And the result still parses back identically.
+        let reloaded = load_preferences_from(&path).expect("reload");
+        assert_eq!(reloaded.mcp_server, prefs.mcp_server);
     }
 
     #[rstest::rstest]

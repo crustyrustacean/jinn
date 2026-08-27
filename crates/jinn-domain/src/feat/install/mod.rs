@@ -254,6 +254,13 @@ const BUNDLED: &[Bundled] = &[
             "../../../../../res/plugins/theme-loader.wasm"
         )),
     },
+    Bundled {
+        kind: Kind::Plugin,
+        relative: "url-citations.wasm",
+        contents: BundleContents::Wasm(include_bytes!(
+            "../../../../../res/plugins/url-citations.wasm"
+        )),
+    },
 ];
 
 /// Installs every bundled default resource into the given destinations.

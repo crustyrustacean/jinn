@@ -79,10 +79,12 @@ Entries are added or amended **only with human approval**.
 - (keybinds) The `p` prefix group in the sidebar does not drop the normal-scope pin binding (group bindings are scope-local and don't shadow cross-scope bindings).
 - (keybinds) The `y` yank-selected-entry binding copies the entry's raw content to the clipboard: tool results yield untruncated output without the tool-name prefix, tool calls yield the raw JSON arguments, and ANSI escapes are stripped.
 - (keybinds) `Alt+Q` in input scope toggles input mode; `Alt+S` focuses the sidebar sessions section from both input and normal scopes.
+- (keybinds) `<leader>sP` opens the read-only plugin picker in normal scope.
 - (keybinds) `s` in the sidebar task-list section opens the task-list picker.
 - (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over **stdio** (child process, JSON-RPC over stdin/stdout), **local_http** (jinn spawns a managed child process and connects via `StreamableHTTP`), or **remote_http** (jinn connects to an already-running server with no process management).
 - (mcp) MCP tools are namespaced `mcp__<server>__<tool>` and registered per-session via `RegisterTools { session_id: Some(_) }`.
 - (mcp) MCP server enablement is per-session, persisted in `SessionCore`, off by default; enabling spawns the actor+process, disabling kills both.
+- (mcp) Each `[mcp_server.<name>]` block in `jinn.toml` accepts `auto_enable = true` to start that server already enabled in newly created sessions; the MCP coordinator reconciles `SessionCreated` against the session's actual enabled set.
 - (mcp) MCP servers are configured in `jinn.toml` under `[[mcp_server]]`.
 - (mcp) MCP server child processes have piped stderr captured to a bounded ring buffer owned by each `McpActor`; stderr never reaches jinn's terminal.
 - (mcp) Per-session MCP server status is owned by `McpCoordinatorActor`, driven by `McpServerStatus` events; it is surfaced in the sidebar, not the dashboard.
@@ -93,7 +95,12 @@ Entries are added or amended **only with human approval**.
 - (mcp) A `remote_http` server (transport = "remote_http") connects to an externally-managed HTTP server at the configured `url` with no process management; `command` is optional (unused for remote_http).
 - (mcp) MCP connections are monitored post-connect: `McpActor` spawns a liveness watcher that polls `is_transport_closed()` and publishes `Dead` when the connection drops, working uniformly across stdio, local_http, and remote_http transports. local_http connections additionally run a child-exit watcher that reaps the child (preventing zombies) and tears down the transport on process death, since a half-open TCP socket does not trip `is_transport_closed()` on its own. No auto-restart — a dead connection surfaces in the sidebar/picker for the user to restart via the inspector.
 - (mcp) The `restart_mcp_server` built-in tool lets the model restart a dead MCP server by name (or by stripping a `mcp__<server>__<tool>` namespace). It awaits the coordinator's restart result — which resolves when the new connection succeeds (`Running`) or fails (`ConnectFailed`), with a 60s `Timeout` if neither — before returning, so the model cannot retry a tool call mid-startup. On any failure (including timeout) the result instructs the model to stop and wait for the user.
+- (mcp) MCP server entries accept a `headers` map; values support `${VAR}` env-var token expansion anywhere in the string, applied to both `local_http` and `remote_http` connections and ignored on stdio.
+- (mcp) MCP header variables are resolved once at startup into the shared key store alongside provider keys; an unset or empty variable prevents connection with an error naming the variable, and header values are never logged or rendered.
 - (mcp) MCP child processes (stdio and local_http) spawn terminal-isolated, like tool children.
+- (mcp) Disabling an MCP server (or session close/archive/teardown, or restart-kill) unregisters its session-scoped tools from both the dispatch registry and the context tool cache via a `ToolsUnregistered` event published by `McpActor` teardown.
+- (tools) MCP tool dispatch fails fast with a legible error when the server is disabled for the session or not Running; it never publishes `ExecuteTool` to a bus with no MCP subscriber.
+- (tools) Newly created sessions seed `disabled_tools`/`disabled_skills` from top-level arrays in `jinn.toml`; sessions own the sets thereafter (picker toggles persist per session, forks inherit).
 - (tools) Actor-provided tools route by their registration `provider` prefix via the generic `ExecuteTool` command, not a hardcoded per-name match; `web-fetch`/`web-search` remain distinct provider keys.
 - (paths) Config lives at `~/.config/jinn` (providers, prompts, personas, themes, `jinn.toml`).
 - (paths) Data lives at `~/.local/share/jinn` (`sessions.db`).
@@ -103,8 +110,12 @@ Entries are added or amended **only with human approval**.
 - (plugins) A plugin coordinator actor validates and authorizes all inbound plugin messages and caches contributions into `AppState`; synchronous consumers (pickers, renderer, assembly) read only the cache, never the plugin.
 - (plugins) Plugins declare the filesystem paths and http access they need in their own `[package.metadata.jinn]` manifest (Cargo.toml); the manifest is embedded into the built `.wasm` as a custom section and auto-applied at install, where `--grant`/`--http` flags override it. Install fails hard on an artifact with no embedded manifest. Nothing is granted implicitly — persistence is declared as `"<plugin_data_dir>:w"`.
 - (plugins) The plugin wire contract is a hand-maintained JSON Schema kept in sync with the `jinn-plugin-api` types by a drift test; plugin SDKs are consumed as a git dependency on the jinn repo, not crates.io.
+- (plugins) Plugin `Hello` subscriptions negotiate host→guest events (`tool_call`, `tool_result`, `turn_end`); the host forwards matching bus events to subscribed guests and validates `PushCitations` contributions before publishing.
+- (plugins) `url-citations` is a first-party plugin seeded enabled by default; a dead or missing instance means no Sources footer, never a startup failure.
 - (plugins) First-party plugin names carry no jinn-/plugin padding: the themes plugin is `theme-loader` and the personas plugin is `persona-loader`.
 - (plugins) First-party plugins ship as prebuilt wasm embedded in the jinn binary; `jinn install` copies them into the plugins dir and registers them in `jinn.toml` with their manifest-declared grants. Artifacts are refreshed into `res/plugins/` by `just refresh-plugins` (run by `just release`).
+- (plugins) The plugin picker (`<leader>sP`) is a read-only list of loaded plugins (name + phase) snapshot from the contribution cache at open time; plugins are managed outside jinn and cannot be toggled from within.
+- (plugins) A plugin guest that closes stdout cleanly after the handshake ends in phase `Done` (run-to-completion loaders; contributions stay cached); `Dead` is reserved for spawn/handshake failure, traps, and abrupt pipe loss.
 - (persona) Personas are markdown templates with TOML frontmatter; the persona picker (`<leader>se`) switches the active session persona.
 - (persona) Persona discovery flows through a `persona-loader` plugin (prebuilt, shipped by `jinn install`): it scans `~/.config/jinn/personas/*.md` and contributes definitions over the plugin wire; the coordinator publishes them as `PersonasLoaded`.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
@@ -148,6 +159,8 @@ Entries are added or amended **only with human approval**.
 - (tokens) The session token ledger stores the pre-send local estimate (`tokens_sent`) alongside provider-reported `prompt_tokens` and `cached_tokens` per request; the estimate is never overwritten.
 - (tokens) The status-bar `↑sent` count uses the provider-reported `prompt_tokens` when a turn completed with usage, falling back to the estimate for turns without usage.
 - (tokens) The status bar shows a cache-hit percentage (`⬢` glyph, leftmost) for OpenAI-compatible providers when cached prompt tokens are reported, computed over turns that reported usage.
+- (tokens) The status-bar cache-hit percentage is color-banded on its displayed value: >=95% uses theme.success, 90-94% uses theme.warning, below 90% uses theme.error_text.
+- (tokens) The session-tree aggregate applies the same cache-hit color bands, shown only when more than one session exists.
 - (tools) After a successful edit, a numbered snippet of the changed region is returned so the agent can chain edits without re-reading.
 - (tools) File edits, reads, and other built-in tool calls all funnel through a single `tools_actor` chokepoint.
 - (tools) The `bash` tool accepts an optional `max_duration_secs` argument that overrides the default timeout; the schema exposes `max_duration_secs`, not a raw `timeout`.
@@ -187,7 +200,7 @@ Entries are added or amended **only with human approval**.
 - (watchdog) A stall watchdog detects sessions stuck in sending, mid-tool-batch stalls, and streaming sessions with no history change, and publishes a cancel after the budget is exhausted.
 - (watchdog) An idle session is never scanned by the watchdog, and an active streaming session is never flagged.
 - (watchdog) The watchdog resets its stall counter at turn boundaries (not on activity jitter) and resets the budget when provider activity resumes; retries are suppressed within a backoff window.
-- (web) Web search runs via DuckDuckGo and web fetch supports concurrent requests; consulted sources are deduped and flushed as a Sources footer when the turn reaches a final assistant answer.
+- (web) Web search runs via DuckDuckGo and web fetch supports concurrent requests; citation collection lives in the first-party `url-citations` plugin (shape-based detection from forwarded tool call/result events), and core only routes `CitationsReceived` into the Sources footer when a turn reaches a final assistant answer.
 - (web) Browser-backed web tools (fetch + search) keep their Chromium process warm via a periodic heartbeat; a missed liveness probe force-evicts the handle so the next request lazily launches a fresh browser rather than hanging on a dead WebSocket.
 - (web) Browser-backed renders detect bot challenges via a shared vendor-signature list (Cloudflare, Anubis, DuckDuckGo anomaly, DataDome, PerimeterX, Kasada, Imperva) plus a conservative behavioral fallback (near-zero text after a settle window).
 - (web) In headed mode a detected challenge keeps its tab open and waits up to [browser] challenge_wait_secs for a human solve; headless mode fails fast with an error suggesting the headed-chrome backend.
@@ -195,3 +208,5 @@ Entries are added or amended **only with human approval**.
 - (web) [browser] keep_tabs_open controls whether render tabs close after a read (default: close).
 - (workflow) Commits use `just commit '<message>'`, which runs `fossil addremove --dotfiles` so dot-directories like `.agents/` are included.
 - (workflow) The workspace is checked with `just check` (compile), `just test` (tests), and `just lint` (lints); all tests must pass before committing.
+- (plugins) url-citations result-rule detection accepts `link` as a synonym for `url`, so Z.ai-shaped search results surface citations.
+- (plugins) url-citations shape rules recurse into strings that themselves parse as JSON (any value type, bounded depth), so doubly-encoded tool outputs are detected.

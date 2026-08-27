@@ -50,6 +50,43 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
 
     state.frontend.scope_stack.push(FocusScope::Picker { kind });
 
+    reset_picker_for_open(state, kind);
+
+    match kind {
+        PickerKind::Provider => IntentResult::new_message(LoadProviderPickerEntries),
+        PickerKind::Session => IntentResult::new_message(LoadSessionPickerEntries),
+        PickerKind::Persona => IntentResult::new_message(LoadPersonaPickerEntries),
+        PickerKind::Theme
+        | PickerKind::Tool
+        | PickerKind::Skill
+        | PickerKind::TaskList
+        | PickerKind::Project
+        | PickerKind::McpServer
+        | PickerKind::Plugin => IntentResult::empty(),
+        PickerKind::SessionLifecycle => {
+            // Populate from user preferences + implicit blank lifecycle.
+            load_lifecycle_picker_entries(state);
+            IntentResult::empty()
+        }
+        PickerKind::CompactionModel => IntentResult::new_message(
+            crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
+        ),
+
+        PickerKind::ReasoningEffort => IntentResult::new_message(
+            crate::feat::provider::protocol::command::LoadReasoningEffortPickerEntries,
+        ),
+
+        PickerKind::Endpoint => IntentResult::new_message(
+            crate::feat::provider::protocol::command::LoadEndpointPickerEntries,
+        ),
+    }
+}
+
+/// Resets and repopulates the target picker's state before it is shown.
+///
+/// Each arm owns its picker's open-time preparation: reset, snapshot for
+/// ESC revert (where applicable), and synchronous entry loading.
+fn reset_picker_for_open(state: &mut AppState, kind: PickerKind) {
     match kind {
         PickerKind::Provider => {
             state.provider.provider_picker.reset();
@@ -80,7 +117,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::CompactionModel => {
             state.frontend.compaction_model_picker_mut().reset();
         }
-
         PickerKind::ReasoningEffort => {
             state.frontend.reasoning_effort_picker_mut().reset();
         }
@@ -116,38 +152,14 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 Some(state.active_session().enabled_mcp_servers().clone());
             crate::feat::mcp::intent::load_mcp_picker_entries(state);
         }
+        PickerKind::Plugin => {
+            state.frontend.plugin_picker_mut().reset();
+            load_plugin_picker_entries(state);
+        }
         PickerKind::Endpoint => {
             state.frontend.endpoint_picker_mut().reset();
             state.frontend.pickers.endpoint_loading = true;
         }
-    }
-
-    match kind {
-        PickerKind::Provider => IntentResult::new_message(LoadProviderPickerEntries),
-        PickerKind::Session => IntentResult::new_message(LoadSessionPickerEntries),
-        PickerKind::Persona => IntentResult::new_message(LoadPersonaPickerEntries),
-        PickerKind::Theme
-        | PickerKind::Tool
-        | PickerKind::Skill
-        | PickerKind::TaskList
-        | PickerKind::Project
-        | PickerKind::McpServer => IntentResult::empty(),
-        PickerKind::SessionLifecycle => {
-            // Populate from user preferences + implicit blank lifecycle.
-            load_lifecycle_picker_entries(state);
-            IntentResult::empty()
-        }
-        PickerKind::CompactionModel => IntentResult::new_message(
-            crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
-        ),
-
-        PickerKind::ReasoningEffort => IntentResult::new_message(
-            crate::feat::provider::protocol::command::LoadReasoningEffortPickerEntries,
-        ),
-
-        PickerKind::Endpoint => IntentResult::new_message(
-            crate::feat::provider::protocol::command::LoadEndpointPickerEntries,
-        ),
     }
 }
 
@@ -211,6 +223,25 @@ fn load_theme_picker_entries(state: &mut AppState) {
     entries.extend(rest);
 
     state.frontend.theme_picker_mut().set_items(entries);
+}
+
+/// Loads plugins into the plugin picker from the plugin contribution cache.
+///
+/// One read-only entry per known plugin (name + latest phase), in name
+/// order (BTreeMap iteration). Opening the picker never touches the plugin
+/// coordinator — it reads whatever phases were last mirrored into the cache.
+fn load_plugin_picker_entries(state: &mut AppState) {
+    use crate::feat::plugin::PluginPickerEntry;
+
+    let entries: Vec<PluginPickerEntry> = state
+        .plugins
+        .phases()
+        .map(|(name, phase)| {
+            PluginPickerEntry::new(name.to_owned(), phase, state.frontend.theme.clone())
+        })
+        .collect();
+
+    state.frontend.plugin_picker_mut().set_items(entries);
 }
 
 /// Previews the selected theme in real-time when the Theme picker is active.
@@ -315,7 +346,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::McpServer) => (crate::feat::mcp::intent::confirm_mcp(state), None),
         Some(PickerKind::Endpoint) => (confirm_endpoint(state), None),
 
-        Some(PickerKind::CompactionModel | PickerKind::TaskList) | None => {
+        Some(PickerKind::CompactionModel | PickerKind::TaskList | PickerKind::Plugin) | None => {
             (IntentResult::empty(), None)
         }
         Some(PickerKind::Tool) => (confirm_tool(state), None),
@@ -3290,6 +3321,37 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn load_tool_picker_entries_marks_config_seeded_disabled_tools() {
+        // Given state whose active session profile has the registered
+        // web_search tool disabled (as seeded from jinn.toml disabled_tools
+        // at session creation).
+        let mut state = setup_state_with_web_search_tool("openrouter/openai/gpt-oss-120b");
+        state.active_session_mut().set_disabled_tools(
+            ["openrouter:web_search"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+        );
+
+        // When loading tool picker entries.
+        load_tool_picker_entries(&mut state);
+
+        // Then the seeded-disabled tool renders as disabled (crossed out) in
+        // the picker.
+        let entry = state
+            .frontend
+            .tool_picker()
+            .items()
+            .iter()
+            .find(|e| e.name == "openrouter:web_search")
+            .expect("web_search entry present");
+        assert!(
+            !entry.enabled,
+            "config-seeded disabled tool must show as disabled"
+        );
+    }
+
+    #[rstest::rstest]
     fn load_tool_picker_entries_hides_web_search_for_non_openrouter_model() {
         // Given state on a non-openrouter model with a web_search tool registered.
         let mut state = setup_state_with_web_search_tool("zai/glm-4.6");
@@ -3442,5 +3504,98 @@ mod tests {
         // Then the picker offers exactly the built-in default.
         assert_eq!(state.frontend.theme_picker().items().len(), 1);
         assert_eq!(state.frontend.theme_picker().items()[0].name, "default");
+    }
+
+    use crate::feat::plugin_coordinator_actor::protocol::PluginPhase;
+
+    fn plugin_state_with(phases: &[(&str, PluginPhase)]) -> AppState {
+        let mut state = AppState::default();
+        for (name, phase) in phases {
+            state.plugins.set_phase((*name).to_owned(), *phase);
+        }
+        state
+    }
+
+    #[rstest::rstest]
+    fn open_plugin_picker_loads_one_entry_per_cached_phase() {
+        // Given two plugins mirrored into the contribution cache.
+        let mut state = plugin_state_with(&[
+            ("theme-loader", PluginPhase::Running),
+            ("url-citations", PluginPhase::Dead),
+        ]);
+
+        // When opening the plugin picker.
+        handle_open_picker(&mut state, PickerKind::Plugin);
+
+        // Then the picker holds one entry per cached plugin.
+        assert_eq!(state.frontend.plugin_picker().items().len(), 2);
+    }
+
+    #[rstest::rstest]
+    fn open_plugin_picker_with_empty_cache_opens_empty() {
+        // Given no plugins in the contribution cache.
+        let mut state = AppState::default();
+
+        // When opening the plugin picker.
+        handle_open_picker(&mut state, PickerKind::Plugin);
+
+        // Then the picker holds zero entries.
+        assert!(state.frontend.plugin_picker().items().is_empty());
+    }
+
+    #[rstest::rstest]
+    fn open_plugin_picker_lists_entries_in_name_order() {
+        // Given plugins cached in non-alphabetical insertion order.
+        let mut state = plugin_state_with(&[
+            ("zeta", PluginPhase::Running),
+            ("alpha", PluginPhase::Running),
+        ]);
+
+        // When opening the plugin picker.
+        handle_open_picker(&mut state, PickerKind::Plugin);
+
+        // Then entries follow name order (BTreeMap iteration).
+        let names: Vec<&str> = state
+            .frontend
+            .plugin_picker()
+            .items()
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["alpha", "zeta"]);
+    }
+
+    #[rstest::rstest]
+    fn open_plugin_picker_carries_entry_phase() {
+        // Given one plugin cached with the Unresponsive phase.
+        let mut state = plugin_state_with(&[("flood", PluginPhase::Unresponsive)]);
+
+        // When opening the plugin picker.
+        handle_open_picker(&mut state, PickerKind::Plugin);
+
+        // Then the entry carries that phase.
+        assert_eq!(
+            state.frontend.plugin_picker().items()[0].phase,
+            PluginPhase::Unresponsive
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirm_plugin_picker_is_noop() {
+        // Given a plugin picker open with one entry.
+        let mut state = plugin_state_with(&[("theme-loader", PluginPhase::Running)]);
+        handle_open_picker(&mut state, PickerKind::Plugin);
+
+        // When confirming the selection.
+        let (result, redispatch) = handle_picker_confirm(&mut state);
+
+        // Then nothing is emitted and nothing is re-dispatched.
+        assert!(result.message_names.is_empty());
+        assert!(redispatch.is_none());
+        // And the picker is still open (read-only; Enter does not close).
+        assert_eq!(
+            state.frontend.scope_stack.picker_kind(),
+            Some(&PickerKind::Plugin)
+        );
     }
 }

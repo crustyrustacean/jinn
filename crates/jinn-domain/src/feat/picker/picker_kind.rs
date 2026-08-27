@@ -35,9 +35,35 @@ pub enum PickerKind {
     Project,
     /// MCP server picker - toggle which MCP servers are enabled for the session.
     McpServer,
+    /// Plugin picker - read-only list of loaded plugins with their lifecycle phase.
+    Plugin,
     /// OpenRouter endpoint picker - pin a specific routing upstream for
     /// prefix-cache affinity on an OpenRouter-served Single model.
     Endpoint,
+}
+
+impl PickerKind {
+    /// Every variant, in declaration order.
+    ///
+    /// Lets exhaustive drift tests (e.g. scope-binding coverage) iterate
+    /// all kinds without a strum dependency.
+    pub const ALL: [Self; 14] = [
+        Self::Provider,
+        Self::Session,
+        Self::Persona,
+        Self::Theme,
+        Self::SessionLifecycle,
+        Self::CompactionModel,
+        Self::ReasoningEffort,
+        Self::Tool,
+        Self::Skill,
+        Self::TaskList,
+        Self::Project,
+        Self::McpServer,
+        Self::Plugin,
+        // Update this count when adding a variant; `Endpoint` is last.
+        Self::Endpoint,
+    ];
 }
 
 impl std::fmt::Display for PickerKind {
@@ -59,6 +85,7 @@ impl std::fmt::Display for PickerKind {
             Self::TaskList => write!(f, "task list"),
             Self::Project => write!(f, "projects"),
             Self::McpServer => write!(f, "mcp servers"),
+            Self::Plugin => write!(f, "plugins"),
 
             Self::Endpoint => write!(f, "endpoints"),
         }
@@ -93,6 +120,7 @@ impl PickerKind {
             | Self::TaskList
             | Self::Project
             | Self::McpServer
+            | Self::Plugin
             | Self::Endpoint => 1,
         }
     }
@@ -117,5 +145,13 @@ mod tests {
         // When displaying.
         // Then it renders as 'endpoints'.
         assert_eq!(PickerKind::Endpoint.to_string(), "endpoints");
+    }
+
+    #[test]
+    fn plugin_displays_as_plugins() {
+        // Given the Plugin picker kind.
+        // When displaying.
+        // Then it renders as 'plugins'.
+        assert_eq!(PickerKind::Plugin.to_string(), "plugins");
     }
 }

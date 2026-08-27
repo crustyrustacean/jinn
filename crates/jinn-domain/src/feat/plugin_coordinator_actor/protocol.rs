@@ -19,6 +19,10 @@ pub enum PluginPhase {
     /// messages were dropped. Cleared back to `Running` when the channel
     /// drains.
     Unresponsive,
+    /// The guest completed its work and exited cleanly after the
+    /// handshake (run-to-completion plugins like the loaders). The host
+    /// keeps the plugin's contributions cached after the guest ends.
+    Done,
 }
 
 /// A lifecycle transition for one configured plugin.
@@ -34,3 +38,20 @@ pub struct PluginStatus {
 }
 
 impl crate::common::bus::BusMessage for PluginStatus {}
+
+/// The validated subscription set a running plugin's guest declared in its
+/// `Hello`.
+///
+/// Published by the plugin actor right after `PluginStatus::Running`. The
+/// coordinator's event forwarder consumes it to know which host events to
+/// write to that guest's stdin.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginSubscriptions {
+    /// The configured plugin name (`jinn.toml` `[plugin.<name>]` key).
+    pub name: String,
+    /// The validated subscription kind tags (see
+    /// `jinn_plugin_api::SUBSCRIPTION_KINDS`).
+    pub kinds: Vec<String>,
+}
+
+impl crate::common::bus::BusMessage for PluginSubscriptions {}

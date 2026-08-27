@@ -82,6 +82,54 @@ impl Default for SessionProfile {
     }
 }
 
+/// The per-session defaults derived from `jinn.toml` at session creation.
+///
+/// One instance is computed from the user's preferences for each newly
+/// created session (welcome session, lifecycle-created sessions, and
+/// replacement sessions after close/archive). It carries every config-seeded
+/// value in one place so the creation paths can't drift apart.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionSeed {
+    /// Tool names to start the session with disabled.
+    pub disabled_tools: HashSet<String>,
+    /// Skill names to start the session with disabled.
+    pub disabled_skills: HashSet<String>,
+    /// MCP servers to start the session with enabled.
+    pub enabled_mcp: std::collections::BTreeSet<String>,
+}
+
+impl SessionSeed {
+    /// Derives the seed for a new session from user preferences.
+    ///
+    /// Tool/skill disablement copies verbatim; enabled MCP servers are the
+    /// names of configured `[mcp_server.<name>]` entries whose
+    /// `auto_enable` flag is on.
+    #[must_use]
+    pub fn from_preferences(prefs: &crate::feat::preferences_actor::UserPreferences) -> Self {
+        Self {
+            disabled_tools: prefs.disabled_tools.iter().cloned().collect(),
+            disabled_skills: prefs.disabled_skills.iter().cloned().collect(),
+            enabled_mcp: prefs
+                .mcp_server
+                .iter()
+                .filter(|(_, cfg)| cfg.auto_enable)
+                .map(|(name, _)| name.clone())
+                .collect(),
+        }
+    }
+
+    /// True when no MCP server would be auto-enabled.
+    ///
+    /// Creation sites publish an [`McpEnablementChanged`](crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged)
+    /// event only when this returns false — with nothing desired there is
+    /// nothing for the coordinator to reconcile, and skipping the broadcast
+    /// avoids waking a subscriber on every session creation.
+    #[must_use]
+    pub fn has_auto_enabled_mcp(&self) -> bool {
+        !self.enabled_mcp.is_empty()
+    }
+}
+
 impl SessionProfile {
     /// Creates a profile seeded from config values.
     pub fn from_config(model: String) -> Self {
@@ -381,5 +429,94 @@ mod tests {
             reloaded.endpoint.as_ref().map(|e| e.tag.as_str()),
             Some("azure")
         );
+    }
+
+    #[rstest::rstest]
+    fn session_seed_from_default_preferences_is_all_enabled() {
+        // Given default (empty) user preferences.
+        let prefs = crate::feat::preferences_actor::UserPreferences::default();
+
+        // When deriving the seed.
+        let seed = SessionSeed::from_preferences(&prefs);
+
+        // Then nothing is disabled and nothing auto-enabled.
+        assert!(seed.disabled_tools.is_empty());
+        assert!(seed.disabled_skills.is_empty());
+        assert!(!seed.has_auto_enabled_mcp());
+    }
+
+    #[rstest::rstest]
+    fn session_seed_copies_disablement_sets_from_preferences() {
+        // Given preferences listing disabled tools, skills, and an
+        // auto-enabled MCP server.
+        let prefs = crate::feat::preferences_actor::UserPreferences {
+            disabled_tools: ["bash", "mcp__excalimate__draw"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+            disabled_skills: ["phased-task-loop"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+            mcp_server: [(
+                "excalimate".to_owned(),
+                crate::feat::mcp::McpServerConfig {
+                    command: Some("npx".to_owned()),
+                    auto_enable: true,
+                    ..Default::default()
+                },
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        };
+
+        // When deriving the seed.
+        let seed = SessionSeed::from_preferences(&prefs);
+
+        // Then the disablement sets carry the listed names.
+        assert!(seed.disabled_tools.contains("bash"));
+        assert!(seed.disabled_tools.contains("mcp__excalimate__draw"));
+        assert!(seed.disabled_skills.contains("phased-task-loop"));
+        // And only servers with auto_enable=true are enabled.
+        assert_eq!(
+            seed.enabled_mcp.iter().collect::<Vec<_>>(),
+            vec!["excalimate"]
+        );
+        assert!(seed.has_auto_enabled_mcp());
+    }
+
+    #[rstest::rstest]
+    fn session_seed_excludes_servers_without_auto_enable() {
+        // Given preferences with two servers where one has auto_enable off.
+        let prefs = crate::feat::preferences_actor::UserPreferences {
+            mcp_server: [
+                (
+                    "on".to_owned(),
+                    crate::feat::mcp::McpServerConfig {
+                        command: Some("a".to_owned()),
+                        auto_enable: true,
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "off".to_owned(),
+                    crate::feat::mcp::McpServerConfig {
+                        command: Some("b".to_owned()),
+                        auto_enable: false,
+                        ..Default::default()
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        };
+
+        // When deriving the seed.
+        let seed = SessionSeed::from_preferences(&prefs);
+
+        // Then only the auto-enabled server is in the desired set.
+        assert_eq!(seed.enabled_mcp.iter().collect::<Vec<_>>(), vec!["on"]);
     }
 }

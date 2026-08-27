@@ -83,9 +83,16 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
 
     // Remove and replace if last session.
     let was_last = state.session.session_count() == 1;
+    let mut mcp_enablement = None;
     if was_last {
         // Last session - create a new one with the last-used model.
-        let new_session = {
+        let (new_session, enablement) = {
+            // Seed per-session defaults from jinn.toml (disablement sets +
+            // auto-enabled MCP servers), matching every other creation path.
+            let seed = crate::feat::session::profile::SessionSeed::from_preferences(
+                &state.frontend.preferences,
+            );
+
             let model = state
                 .frontend
                 .app_state
@@ -100,8 +107,24 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
             let mut profile =
                 crate::feat::session::profile::SessionProfile::from_model_selection(model);
             profile.reasoning_effort = reasoning_effort;
-            crate::feat::session::chat_session::ChatSessionState::new_with_profile(profile)
+            {
+                let p = &mut profile;
+                p.disabled_tools.clone_from(&seed.disabled_tools);
+                p.disabled_skills.clone_from(&seed.disabled_skills);
+            }
+            let mut new_session =
+                crate::feat::session::chat_session::ChatSessionState::new_with_profile(profile);
+            new_session.set_enabled_mcp_servers(seed.enabled_mcp.clone());
+
+            let enablement = seed.has_auto_enabled_mcp().then(|| {
+                crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged {
+                    session_id: new_session.session_id().clone(),
+                    enabled: seed.enabled_mcp,
+                }
+            });
+            (new_session, enablement)
         };
+        mcp_enablement = enablement;
         state.session.remove_and_replace(&closing_id, new_session);
     } else {
         state.session.remove(&closing_id);
@@ -109,7 +132,14 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
 
     super::reconcile_after_session_removal(state);
 
-    crate::protocol::IntentResult::empty()
+    let result = crate::protocol::IntentResult::empty();
+    // The replacement session may carry config-seeded MCP enablement; attach
+    // it so the coordinator spawns the servers for the replacement. Skipped
+    // when nothing is auto-enabled (nothing to reconcile).
+    match mcp_enablement {
+        Some(enablement) => result.with_message(enablement),
+        None => result,
+    }
 }
 
 /// Handles `SidebarSessionClose` - closes the selected session.
