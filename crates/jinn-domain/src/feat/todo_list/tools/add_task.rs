@@ -226,6 +226,7 @@ mod tests {
         (state, session_id, pid, tid)
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_task_appends_to_phase() {
         let (state, session_id, pid, _tid) = setup_with_phase();
@@ -245,6 +246,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_task_inserts_after_reference() {
         let (state, session_id, pid, tid) = setup_with_phase();
@@ -261,6 +263,7 @@ mod tests {
         assert!(result.success, "expected success: {:?}", result.content);
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_task_inserts_before_reference() {
         let (state, session_id, pid, tid) = setup_with_phase();
@@ -276,6 +279,7 @@ mod tests {
         assert!(result.success, "expected success: {:?}", result.content);
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_task_errors_on_missing_phase() {
         let (state, session_id, _pid, _tid) = setup_with_phase();
@@ -291,6 +295,7 @@ mod tests {
         assert!(result.content.contains("phase not found"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_task_errors_on_both_after_and_before() {
         let (state, session_id, pid, tid) = setup_with_phase();
@@ -307,6 +312,7 @@ mod tests {
         assert!(result.content.contains("both after_task and before_task"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_task_requires_state() {
         let call = ToolCall {
@@ -321,6 +327,7 @@ mod tests {
         assert!(result.content.contains("no application state"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn add_task_return_has_next_block_at_top() {
         let (state, session_id, pid, _tid) = setup_with_phase();
