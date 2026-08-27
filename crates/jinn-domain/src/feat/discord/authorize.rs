@@ -43,9 +43,9 @@ mod tests {
         assert!(allowed);
     }
 
+    #[rstest::rstest]
     #[test]
     fn rejects_unlisted_author() {
-        // Given an allow-list that does not contain the author's id.
         let authorized_users = &["123456789012345678".to_owned()];
 
         // When checking authorization.
@@ -55,6 +55,7 @@ mod tests {
         assert!(!allowed);
     }
 
+    #[rstest::rstest]
     #[test]
     fn denies_everyone_when_list_empty() {
         // Given an empty allow-list (also what a missing key deserializes to).
@@ -67,6 +68,7 @@ mod tests {
         assert!(!allowed);
     }
 
+    #[rstest::rstest]
     #[test]
     fn malformed_entries_dont_block_valid_ones() {
         // Given an allow-list mixing a garbled entry with the author's id.
@@ -82,6 +84,7 @@ mod tests {
         assert!(allowed);
     }
 
+    #[rstest::rstest]
     #[test]
     fn zero_author_id_matches_only_zero_entry() {
         // Given an allow-list containing "0".
@@ -94,6 +97,7 @@ mod tests {
         assert!(matched);
     }
 
+    #[rstest::rstest]
     #[test]
     fn near_collide_ids_are_distinguished() {
         // Given an allow-list holding one specific snowflake.

@@ -57,7 +57,7 @@ async fn connect_with_timeout(cmd: &ServerCommand) -> McpClient {
 // > 10s workspace default: hits a live Node MCP server over stdio; only run
 // with --ignored, never in-suite.
 #[rstest::rstest]
-#[timeout(Duration::from_secs(120))]
+#[timeout(Duration::from_mins(2))]
 #[tokio::test]
 #[ignore = "requires Node + a built excalimate server at /tmp/excalimate"]
 async fn excalimate_lists_create_scene_and_calls_it() {
@@ -128,7 +128,7 @@ async fn excalimate_lists_create_scene_and_calls_it() {
 // > 10s workspace default: hits a live Node MCP server over stdio; only run
 // with --ignored, never in-suite.
 #[rstest::rstest]
-#[timeout(Duration::from_secs(120))]
+#[timeout(Duration::from_mins(2))]
 #[tokio::test]
 #[ignore = "requires Node + a built excalimate server at /tmp/excalimate"]
 async fn two_connections_are_independent_processes() {

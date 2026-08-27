@@ -96,6 +96,7 @@ fn re_serializing_disabled_default_round_trips() {
     assert!(!reparsed.enabled);
 }
 
+#[rstest::rstest]
 #[test]
 fn missing_authorized_users_deserializes_to_empty_list() {
     // Given a [discord] table with no `authorized_users` key.
@@ -116,6 +117,7 @@ fn missing_authorized_users_deserializes_to_empty_list() {
     assert!(parsed.discord.authorized_users.is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn authorized_users_round_trip_through_toml() {
     // Given a [discord] table with a populated `authorized_users` list.
