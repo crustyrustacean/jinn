@@ -132,6 +132,7 @@ mod tests {
     use crate::feat::discovery_coordinator::DiscoverySnapshot;
     use crate::protocol::{ChatEntryKind, SessionId};
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn settled_event_posts_one_transient_chat_entry() {
         // Given a notifier and a recorder wired to the bus.
@@ -168,6 +169,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn empty_discovery_says_no_resources() {
         // Given a notifier and a recorder.
@@ -200,6 +202,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn delayed_reason_surfaces_in_message() {
         // Given a notifier and a recorder.
@@ -235,6 +238,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn failed_scan_notes_error_in_message() {
         // Given a notifier and a recorder.

@@ -164,6 +164,7 @@ mod tests {
         (actor, buffer)
     }
 
+    #[rstest::rstest]
     #[test]
     fn bus_delivers_published_message_to_registered_recipient() {
         let rt = test_runtime();
@@ -186,6 +187,7 @@ mod tests {
         });
     }
 
+    #[rstest::rstest]
     #[test]
     fn bridge_closure_publishes_to_bus_and_actor_receives() {
         let rt = test_runtime();

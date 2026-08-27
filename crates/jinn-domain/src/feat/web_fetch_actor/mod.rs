@@ -392,6 +392,7 @@ mod tests {
         })
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn startup_registers_web_fetch_tool() {
         // Given a WebFetchActor.
@@ -410,6 +411,7 @@ mod tests {
         assert_eq!(messages[0].definitions[0].name, "web-fetch");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn startup_web_fetch_tool_exposes_clean_format_enum() {
         // Given a WebFetchActor.
@@ -435,6 +437,7 @@ mod tests {
         assert_eq!(formats, vec!["html", "markdown", "markdown-clean"]);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_fetch_success() {
         // Given a WebFetchActor.
@@ -469,6 +472,7 @@ mod tests {
         assert_eq!(messages[0].session_id, session_id);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_fetch_invalid_args() {
         // Given a WebFetchActor.
@@ -502,6 +506,7 @@ mod tests {
         assert!(messages[0].result.content.contains("invalid arguments"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_fetch_fetch_error() {
         // Given a WebFetchActor with an error-producing fetcher.
@@ -535,6 +540,7 @@ mod tests {
         assert!(messages[0].result.content.contains("fetch failed"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_fetch_concurrent_requests_overlap() {
         // Given a WebFetchActor whose fetcher sleeps 200ms per fetch.

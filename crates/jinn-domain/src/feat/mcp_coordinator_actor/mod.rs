@@ -552,6 +552,7 @@ mod lifecycle_tests {
         s
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn enabling_a_configured_server_spawns_an_mcp_actor() {
         // Given a lifecycle actor with one configured server and a status recorder.
@@ -580,6 +581,7 @@ mod lifecycle_tests {
         assert_eq!(events[0].server, "unrunnable");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn enabling_unknown_server_spawns_nothing() {
         // Given a lifecycle actor with no configured servers.
@@ -604,6 +606,7 @@ mod lifecycle_tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn closing_a_session_does_not_panic_after_enable() {
         // Given a lifecycle actor with an enabled server for a session.
@@ -637,6 +640,7 @@ mod lifecycle_tests {
     /// disable works, re-enable's duplicate-spawn guard sees an empty slot and
     /// respawns — producing a second `Starting`. If disable were a no-op, the
     /// stale entry would block respawn and we'd see only one `Starting`.
+    #[rstest::rstest]
     #[tokio::test]
     async fn disabling_then_re_enabling_respawns_the_actor() {
         // Given a lifecycle actor with one configured server.
@@ -693,6 +697,7 @@ mod lifecycle_tests {
 
     /// A 1ms `restart_one` timeout fires before the new actor can finish
     /// `on_start` (connect + tools/list), so it returns `Err(Timeout)`.
+    #[rstest::rstest]
     #[tokio::test]
     async fn restart_one_times_out_when_startup_exceeds_the_timeout() {
         // Given a coordinator with a server that hangs forever on the MCP handshake.
@@ -736,6 +741,7 @@ mod lifecycle_tests {
         session_id
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_created_spawns_actors_for_prepopulated_enablement() {
         // Given a coordinator with one configured server and a session whose
@@ -761,6 +767,7 @@ mod lifecycle_tests {
         assert_eq!(events[0].server, "unrunnable");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn duplicate_created_and_enablement_messages_spawn_only_once() {
         // Given a coordinator, a server, and a pre-populated session.
@@ -800,6 +807,7 @@ mod lifecycle_tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn created_reconcile_against_shrunk_set_kills_leftover_actor() {
         // Given a coordinator with an already-spawned actor for a session.
@@ -916,6 +924,7 @@ mod status_tests {
         s.mcp_server_stderr().get(server).cloned()
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn dead_status_is_written_to_session_map() {
         // Given a coordinator with a seeded session.
@@ -939,6 +948,7 @@ mod status_tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn running_status_is_written_to_session_map() {
         // Given a coordinator with a seeded session.
@@ -962,6 +972,7 @@ mod status_tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn status_for_one_session_is_not_visible_in_another() {
         // Given a coordinator with two seeded sessions.
@@ -988,6 +999,7 @@ mod status_tests {
         assert_eq!(status_of(&state, &session_b, "excalimate"), None);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stderr_tail_is_written_to_session_map() {
         // Given a coordinator with a seeded session.
@@ -1011,6 +1023,7 @@ mod status_tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stderr_tail_for_one_session_is_not_visible_in_another() {
         // Given a coordinator with two seeded sessions.

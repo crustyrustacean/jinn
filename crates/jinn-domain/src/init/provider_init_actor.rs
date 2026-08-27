@@ -205,6 +205,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sends_provider_switch_when_last_model_set() {
         // Given a provider init actor with preferences containing last_model.
@@ -234,6 +235,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sends_provider_switch_with_alloy_when_last_model_is_alloy() {
         // Given a provider init actor with last_model set to an alloy.
@@ -267,6 +269,7 @@ mod tests {
         assert_eq!(switches[0].provider_id, alloy);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn does_not_send_provider_switch_when_no_last_model() {
         // Given a provider init actor with no last_model in preferences.
@@ -282,6 +285,7 @@ mod tests {
         assert!(switches.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pushes_no_api_keys_msg_when_keys_empty() {
         // Given a provider init actor with no API keys.
@@ -311,6 +315,7 @@ mod tests {
         assert!(entries[0].entry.text().contains("No API keys found"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn emits_model_cache_loaded_when_cache_exists_on_disk() {
         // Given a provider init actor with a cache file on disk.
@@ -353,6 +358,7 @@ mod tests {
         assert!(loaded[0].cache.entries.contains_key("ollama"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn does_not_send_provider_switch_when_session_has_explicit_model() {
         // Given a provider init actor with app state containing last_model

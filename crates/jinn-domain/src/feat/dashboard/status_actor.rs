@@ -124,6 +124,7 @@ mod tests {
         (tx, actor)
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn republishes_kanal_update_on_the_bus() {
         // Given a DiscordStatusActor (translator) and a DashboardActor (consumer).

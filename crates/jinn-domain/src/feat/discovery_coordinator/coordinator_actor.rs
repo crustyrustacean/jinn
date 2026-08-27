@@ -398,6 +398,7 @@ mod tests {
         (harness, actor, recorder)
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn one_resource_does_not_emit_settled() {
         // Given a coordinator.
@@ -419,6 +420,7 @@ mod tests {
         assert_eq!(messages.len(), 0, "one resource must not settle");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn two_resources_do_not_emit_settled() {
         // Given a coordinator.
@@ -448,6 +450,7 @@ mod tests {
         assert_eq!(messages.len(), 0, "two resources must not settle");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn all_three_emit_one_settled_with_no_delay() {
         // Given a coordinator.
@@ -489,6 +492,7 @@ mod tests {
         assert_eq!(messages[0].snapshot.context_file_count, 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn failed_scan_still_counts_as_settled() {
         // Given a coordinator.
@@ -530,6 +534,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn two_sessions_settle_independently() {
         // Given a coordinator.
@@ -569,6 +574,7 @@ mod tests {
         assert_eq!(messages.len(), 2);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn second_trigger_resets_and_emits_again() {
         // Given a coordinator.
@@ -641,6 +647,7 @@ mod tests {
         assert_eq!(last.snapshot.context_file_count, 6);
     }
 
+    #[rstest::rstest]
     #[tokio::test(start_paused = true)]
     async fn safety_net_timer_fires_delayed_settled() {
         // Given a coordinator.
@@ -682,6 +689,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test(start_paused = true)]
     async fn all_three_just_under_timeout_settles_without_delay() {
         // Given a coordinator.
