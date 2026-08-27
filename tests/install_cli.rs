@@ -17,6 +17,7 @@ fn jinn_bin() -> PathBuf {
 // When running `jinn install`.
 // Then it succeeds, seeds the plugin payloads, registers both first-party
 // plugins, and prints the restart hint.
+#[rstest::rstest]
 #[test]
 fn install_seeds_plugins_and_registers_entries() {
     let bin = jinn_bin();
@@ -47,6 +48,7 @@ fn install_seeds_plugins_and_registers_entries() {
 // Given the plugin payloads already on disk.
 // When running `jinn install` again without --force.
 // Then both payloads are reported skipped.
+#[rstest::rstest]
 #[test]
 fn install_skips_existing_plugins_without_force() {
     let bin = jinn_bin();
@@ -87,6 +89,7 @@ fn install_skips_existing_plugins_without_force() {
 // When reading the plugin payloads and `jinn.toml`.
 // Then both wasm payloads exist and both entries carry their
 // manifest-declared grants.
+#[rstest::rstest]
 #[test]
 fn install_writes_plugin_payloads_and_toml_entries() {
     let bin = jinn_bin();

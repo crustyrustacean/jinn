@@ -101,6 +101,7 @@ mod tests {
         assert_ne!(theme.focus_accent, ratatui::style::Color::Reset);
     }
 
+    #[rstest::rstest]
     #[test]
     fn input_mode_theme_fields_have_non_reset_defaults() {
         // Given the default theme.
