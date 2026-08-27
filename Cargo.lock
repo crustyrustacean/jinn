@@ -2808,6 +2808,7 @@ version = "0.1.0"
 dependencies = [
  "error-stack",
  "jiff",
+ "rstest",
  "rusqlite",
  "serde",
  "serde_json",
@@ -6794,6 +6795,7 @@ dependencies = [
  "form_urlencoded",
  "jinn-plugin-api",
  "jinn-plugin-sdk",
+ "rstest",
  "serde_json",
 ]
 
