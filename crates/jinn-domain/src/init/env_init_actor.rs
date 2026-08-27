@@ -228,8 +228,10 @@ mod tests {
         // Then startup succeeded and the referenced key landed in the store.
         assert!(loaded.is_some(), "config should load");
         assert_eq!(keys.get(SET_VAR), Some("live-value".to_owned()));
-        // SAFETY: cleanup of the var set above.
-        unsafe { std::env::remove_var(SET_VAR) };
+        // SAFETY: removing the test-only var set above; no concurrent readers.
+        unsafe {
+            std::env::remove_var(SET_VAR);
+        };
     }
 
     #[tokio::test]
@@ -241,7 +243,9 @@ mod tests {
         let harness = TestHarness::new().await;
         let deps = harness.actor_deps().await;
         let service = deps.services.user_preferences_storage.clone();
-        service.save(&prefs_referencing(&[MISSING_VAR])).expect("save");
+        service
+            .save(&prefs_referencing(&[MISSING_VAR]))
+            .expect("save");
         let keys = deps.services.api_keys.clone();
 
         // When the env init actor resolves keys for a config request.
@@ -254,7 +258,10 @@ mod tests {
         let result: Result<Option<ProvidersConfig>, _> = actor.ask(GetEnvironmentConfig).await;
 
         // Then startup still succeeds (silent skip).
-        assert!(result.expect("ask succeeds").is_some(), "config should load");
+        assert!(
+            result.expect("ask succeeds").is_some(),
+            "config should load"
+        );
         // And nothing was seeded for the missing variable.
         assert!(keys.get(MISSING_VAR).is_none());
     }

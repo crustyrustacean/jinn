@@ -230,8 +230,7 @@ fn expand_server_headers(
     server: &McpServerConfig,
 ) -> Result<Vec<(String, String)>, Report<McpClientError>> {
     let resolve = |name: &str| services.api_keys.get(name);
-    crate::feat::mcp::expand_mcp_headers(&server.headers, &resolve)
-        .change_context(McpClientError)
+    crate::feat::mcp::expand_mcp_headers(&server.headers, &resolve).change_context(McpClientError)
 }
 
 /// Acquires a connected [`McpClient`] and the server's tool definitions.
@@ -336,25 +335,25 @@ impl kameo::Actor for McpActor {
         // list) is non-fatal to the process: the actor runs idle, the lifecycle
         // actor / dashboard surfaces the dead status, and a later enable/disable
         // cycle can respawn.
-        let (mut client, definitions) = match acquire_client(&deps.services, &name, &server, injected_client).await
-        {
-            Ok(ready) => ready,
-            Err(half_open) => {
-                if let Some(mut half_open) = half_open {
-                    half_open.shutdown().await;
+        let (mut client, definitions) =
+            match acquire_client(&deps.services, &name, &server, injected_client).await {
+                Ok(ready) => ready,
+                Err(half_open) => {
+                    if let Some(mut half_open) = half_open {
+                        half_open.shutdown().await;
+                    }
+                    publish_status(&deps, &session_id, &name, McpConnectionStatus::Dead).await;
+                    return Ok(Self {
+                        deps,
+                        session_id,
+                        name,
+                        client: None,
+                        stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
+                        liveness_task_shutdown: Arc::new(AtomicBool::new(false)),
+                        child_task_shutdown: None,
+                    });
                 }
-                publish_status(&deps, &session_id, &name, McpConnectionStatus::Dead).await;
-                return Ok(Self {
-                    deps,
-                    session_id,
-                    name,
-                    client: None,
-                    stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
-                    liveness_task_shutdown: Arc::new(AtomicBool::new(false)),
-                    child_task_shutdown: None,
-                });
-            }
-        };
+            };
 
         let provider = provider_name(&name);
         tracing::info!(

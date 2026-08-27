@@ -28,7 +28,12 @@ use jinn_mcp::client::McpClient;
 async fn connect_http_rejects_nonexistent_command() {
     // Given a program that does not exist.
     // When attempting to spawn the HTTP server.
-    let result = McpClient::connect_http("definitely-not-a-real-binary-xyzzy", &[], "127.0.0.1", Vec::new());
+    let result = McpClient::connect_http(
+        "definitely-not-a-real-binary-xyzzy",
+        &[],
+        "127.0.0.1",
+        Vec::new(),
+    );
 
     // Then spawn fails fast with an error (no hang).
     assert!(result.is_err(), "nonexistent command should fail to spawn");

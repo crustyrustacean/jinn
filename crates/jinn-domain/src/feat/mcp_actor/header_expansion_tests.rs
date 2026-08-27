@@ -14,6 +14,8 @@
 #![allow(
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::items_after_statements,
+    clippy::panic,
     reason = "test assertions"
 )]
 
@@ -66,12 +68,16 @@ async fn remote_http_server_with_unresolved_header_variable_lands_dead() {
     // Then startup completes in the Dead state.
     let statuses = await_recorded(&status_recorder, 1, Duration::from_secs(3)).await;
     assert!(
-        statuses.iter().any(|m| m.status == McpConnectionStatus::Dead),
+        statuses
+            .iter()
+            .any(|m| m.status == McpConnectionStatus::Dead),
         "expected a Dead status for unresolved header var, got: {statuses:?}"
     );
     // And Running was never published.
     assert!(
-        !statuses.iter().any(|m| m.status == McpConnectionStatus::Running),
+        !statuses
+            .iter()
+            .any(|m| m.status == McpConnectionStatus::Running),
         "actor must not reach Running when headers cannot expand, got: {statuses:?}"
     );
 }
@@ -125,13 +131,17 @@ async fn remote_http_server_with_resolvable_headers_enters_retry_loop() {
     // published Dead, resolvable headers show only Starting — no Dead.
     let statuses = await_recorded(&status_recorder, 1, Duration::from_secs(3)).await;
     assert!(
-        statuses.iter().any(|m| m.status == McpConnectionStatus::Starting),
+        statuses
+            .iter()
+            .any(|m| m.status == McpConnectionStatus::Starting),
         "expected at least a Starting status, got: {statuses:?}"
     );
     // And Dead never fires within that same window (the loop is retrying).
     let settled = await_recorded(&status_recorder, 0, Duration::from_millis(700)).await;
     assert!(
-        settled.iter().all(|m| m.status != McpConnectionStatus::Dead),
+        settled
+            .iter()
+            .all(|m| m.status != McpConnectionStatus::Dead),
         "resolvable headers must not produce Dead while retrying, got: {settled:?}"
     );
 }
@@ -158,13 +168,11 @@ async fn stdio_arm_ignores_configured_headers_entirely() {
     };
 
     // When connecting through the transport dispatcher.
-    let result =
-        crate::feat::mcp_actor::connect_for_transport(&services, &server).await;
+    let result = crate::feat::mcp_actor::connect_for_transport(&services, &server).await;
 
     // Then the attempt fails because the binary cannot spawn.
-    let err = match result {
-        Err(report) => report,
-        Ok(_) => panic!("nonexistent stdio command must fail"),
+    let Err(err) = result else {
+        panic!("nonexistent stdio command must fail")
     };
     let rendered = format!("{err:?}");
     assert!(
@@ -219,7 +227,9 @@ async fn stdio_server_with_bogus_header_variable_still_connects() {
     // Then startup reaches Running — headers were never consulted.
     let statuses = await_recorded(&status_recorder, 1, Duration::from_secs(3)).await;
     assert!(
-        statuses.iter().any(|m| m.status == McpConnectionStatus::Running),
+        statuses
+            .iter()
+            .any(|m| m.status == McpConnectionStatus::Running),
         "stdio server should reach Running regardless of headers, got: {statuses:?}"
     );
 }

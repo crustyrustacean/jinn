@@ -17,6 +17,7 @@
 #![allow(
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::items_after_statements,
     reason = "test assertions"
 )]
 
@@ -40,7 +41,7 @@ async fn remote_http_to_unreachable_url_loops_instead_of_failing() {
         args: vec![],
         transport: TransportKind::RemoteHttp,
         url: Some("http://127.0.0.1:1/mcp".to_owned()),
-        headers: Default::default(),
+        headers: std::collections::BTreeMap::default(),
     };
 
     // When attempting to connect, bounded by a short timeout.
