@@ -152,6 +152,7 @@ mod tests {
             .and_then(|s| s.style.fg)
     }
 
+    #[rstest::rstest]
     #[test]
     fn attached_token_renders_green() {
         // Given a user entry whose @img.png token attached.
@@ -170,6 +171,7 @@ mod tests {
         assert_eq!(token_span(&lines, "@img.png"), Some(ctx().theme.success));
     }
 
+    #[rstest::rstest]
     #[test]
     fn degraded_missing_token_renders_red() {
         // Given a user entry whose @whatever token degraded (missing file).
@@ -191,6 +193,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn degraded_non_image_token_renders_red() {
         // Given a user entry whose @notes.txt token degraded (not an image).
@@ -212,6 +215,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn non_boundary_at_word_renders_without_outcome_color() {
         // Given a user entry with an email-style @ (no boundary before it) and
@@ -230,6 +234,7 @@ mod tests {
         assert!(!any_special, "email-style @ must not be outcome-colored");
     }
 
+    #[rstest::rstest]
     #[test]
     fn mixed_attached_and_degraded_tokens_color_separately() {
         // Given a user entry with one attached and one degraded token.

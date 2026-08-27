@@ -200,6 +200,7 @@ fn insert_entries(mutations: &[HistoryMutation]) -> Vec<&HistoryMutation> {
 // SECTION 1: Compaction worker integration tests
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[rstest::rstest]
 #[test]
 fn worker_produces_mutations_when_threshold_exceeded() {
     // Given a worker and a long history that exceeds the small reserve.
@@ -217,6 +218,7 @@ fn worker_produces_mutations_when_threshold_exceeded() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn worker_returns_empty_when_within_reserve() {
     // Given a worker and a short history that fits in the huge reserve.
@@ -234,6 +236,7 @@ fn worker_returns_empty_when_within_reserve() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn mutations_exclude_gathered_entries() {
     // Given a worker and a long history.
@@ -258,6 +261,7 @@ fn mutations_exclude_gathered_entries() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn mutations_insert_compaction_summary_at_boundary() {
     // Given a worker and a long history.
@@ -303,6 +307,7 @@ fn mutations_insert_compaction_summary_at_boundary() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn mutations_exclude_entries_around_prior_compaction() {
     // Given a history with a prior compaction followed by entries.
@@ -328,6 +333,7 @@ fn mutations_exclude_entries_around_prior_compaction() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn worker_preserves_recent_entries_in_reserve() {
     // Given a history with enough entries to trigger compaction, but with
@@ -360,6 +366,7 @@ fn big_assistant(marker: &str) -> ChatEntry {
     ChatEntry::assistant(format!("{marker} {padding}", padding = "w".repeat(600)))
 }
 
+#[rstest::rstest]
 #[test]
 fn kept_region_after_compaction_opens_with_a_valid_turn() {
     // Given a history whose reserve boundary lands on an Assistant opener:
@@ -403,6 +410,7 @@ fn kept_region_after_compaction_opens_with_a_valid_turn() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn evaluate_for_session_returns_empty_for_empty_history() {
     // Given a worker with a session that has no history.
@@ -431,6 +439,7 @@ fn evaluate_for_session_returns_empty_for_empty_history() {
 // SECTION 2: Bug regression tests
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[rstest::rstest]
 #[test]
 fn no_compaction_below_threshold() {
     // Given a short history and a huge reserve.
@@ -448,6 +457,7 @@ fn no_compaction_below_threshold() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn compaction_triggers_above_threshold() {
     // Given a long history and a small reserve.
@@ -465,6 +475,7 @@ fn compaction_triggers_above_threshold() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn no_double_compaction_after_first() {
     // Bug 2 regression: after compaction mutations are applied and prompt
@@ -487,6 +498,7 @@ fn no_double_compaction_after_first() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn session_continues_after_background_compaction() {
     // Bug 3 regression: compaction mutations applied during an active session
@@ -562,6 +574,7 @@ fn session_continues_after_background_compaction() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn threshold_uses_fresh_history_not_stale_context_size() {
     // Bug 1 regression: the worker uses the passed-in history, not a stale
@@ -724,6 +737,7 @@ fn threshold_config(threshold: f64, fallback: usize) -> CompactionConfig {
 
 // ── Test 1: context_size is None ──
 
+#[rstest::rstest]
 #[test]
 fn gate_skips_when_context_size_is_none() {
     let env = ThresholdTestEnv::new();
@@ -742,6 +756,7 @@ fn gate_skips_when_context_size_is_none() {
 
 // ── Test 2: context_size is 0 ──
 
+#[rstest::rstest]
 #[test]
 fn gate_skips_when_context_size_is_zero() {
     let env = ThresholdTestEnv::new();
@@ -760,6 +775,7 @@ fn gate_skips_when_context_size_is_zero() {
 
 // ── Test 3: below threshold ──
 
+#[rstest::rstest]
 #[test]
 fn gate_skips_when_below_threshold() {
     let env = ThresholdTestEnv::new();
@@ -778,6 +794,7 @@ fn gate_skips_when_below_threshold() {
 
 // ── Test 4: above threshold ──
 
+#[rstest::rstest]
 #[test]
 fn gate_triggers_when_above_threshold() {
     let env = ThresholdTestEnv::new();
@@ -796,6 +813,7 @@ fn gate_triggers_when_above_threshold() {
 
 // ── Test 5: exactly at threshold ──
 
+#[rstest::rstest]
 #[test]
 fn gate_triggers_when_exactly_at_threshold() {
     let env = ThresholdTestEnv::new();
@@ -815,6 +833,7 @@ fn gate_triggers_when_exactly_at_threshold() {
 
 // ── Test 6: just below threshold ──
 
+#[rstest::rstest]
 #[test]
 fn gate_skips_just_below_threshold() {
     let env = ThresholdTestEnv::new();
@@ -834,6 +853,7 @@ fn gate_skips_just_below_threshold() {
 
 // ── Test 7: uses fallback when model cache is None ──
 
+#[rstest::rstest]
 #[test]
 fn gate_uses_fallback_when_no_model_cache() {
     let env = ThresholdTestEnv::new();
@@ -853,6 +873,7 @@ fn gate_uses_fallback_when_no_model_cache() {
 
 // ── Test 8: uses fallback when model not in cache ──
 
+#[rstest::rstest]
 #[test]
 fn gate_uses_fallback_when_model_not_in_cache() {
     let env = ThresholdTestEnv::new();
@@ -872,6 +893,7 @@ fn gate_uses_fallback_when_model_not_in_cache() {
 
 // ── Test 9: uses fallback when model context_length is None ──
 
+#[rstest::rstest]
 #[test]
 fn gate_uses_fallback_when_model_context_length_is_none() {
     let env = ThresholdTestEnv::new();
@@ -890,6 +912,7 @@ fn gate_uses_fallback_when_model_context_length_is_none() {
 
 // ── Test 10: session not found ──
 
+#[rstest::rstest]
 #[test]
 fn gate_skips_when_session_not_found() {
     let env = ThresholdTestEnv::new();
@@ -911,6 +934,7 @@ fn gate_skips_when_session_not_found() {
 
 // ── Test 11: high threshold triggers ──
 
+#[rstest::rstest]
 #[test]
 fn gate_triggers_at_high_threshold() {
     let env = ThresholdTestEnv::new();
@@ -929,6 +953,7 @@ fn gate_triggers_at_high_threshold() {
 
 // ── Test 12: high threshold skips ──
 
+#[rstest::rstest]
 #[test]
 fn gate_skips_at_high_threshold() {
     let env = ThresholdTestEnv::new();
@@ -947,6 +972,7 @@ fn gate_skips_at_high_threshold() {
 
 // ── Test 13: low threshold triggers ──
 
+#[rstest::rstest]
 #[test]
 fn gate_triggers_at_low_threshold() {
     let env = ThresholdTestEnv::new();
@@ -965,6 +991,7 @@ fn gate_triggers_at_low_threshold() {
 
 // ── Test 14: low threshold skips ──
 
+#[rstest::rstest]
 #[test]
 fn gate_skips_at_low_threshold() {
     let env = ThresholdTestEnv::new();
@@ -983,6 +1010,7 @@ fn gate_skips_at_low_threshold() {
 
 // ── Test 15: context_size equals context_limit ──
 
+#[rstest::rstest]
 #[test]
 fn gate_triggers_when_context_size_equals_limit() {
     let env = ThresholdTestEnv::new();
@@ -1001,6 +1029,7 @@ fn gate_triggers_when_context_size_equals_limit() {
 
 // ── Test 16: context_size exceeds context_limit ──
 
+#[rstest::rstest]
 #[test]
 fn gate_triggers_when_context_size_exceeds_limit() {
     let env = ThresholdTestEnv::new();
@@ -1019,6 +1048,7 @@ fn gate_triggers_when_context_size_exceeds_limit() {
 
 // ── Test 17: manual compact_all bypasses gate ──
 
+#[rstest::rstest]
 #[test]
 fn manual_compact_all_bypasses_threshold_gate() {
     let env = ThresholdTestEnv::new();
@@ -1050,6 +1080,7 @@ fn manual_compact_all_bypasses_threshold_gate() {
 // directly to evaluate_with_config - it does NOT go through evaluate_history.
 // So it should produce mutations regardless of context_size.
 
+#[rstest::rstest]
 #[test]
 fn manual_compact_bypasses_threshold_gate() {
     let env = ThresholdTestEnv::new();
@@ -1083,6 +1114,7 @@ fn manual_compact_bypasses_threshold_gate() {
 
 // ── Test 19: provider/model format splits correctly ──
 
+#[rstest::rstest]
 #[test]
 fn gate_splits_provider_model_format() {
     let env = ThresholdTestEnv::new();
@@ -1107,6 +1139,7 @@ fn gate_splits_provider_model_format() {
 
 // ── Test 20: nested provider path ──
 
+#[rstest::rstest]
 #[test]
 fn gate_handles_nested_provider_path() {
     let env = ThresholdTestEnv::new();
@@ -1139,6 +1172,7 @@ fn gate_handles_nested_provider_path() {
 // ── Test 21: empty history above threshold ──
 // Threshold gate passes but evaluate_with_config finds nothing to compact.
 
+#[rstest::rstest]
 #[test]
 fn gate_passes_but_nothing_to_compact_with_empty_history() {
     let mut session = ChatSessionState::new();
@@ -1185,6 +1219,7 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
 
 // ── Test 22: ratio matches status bar exactly ──
 
+#[rstest::rstest]
 #[test]
 fn gate_ratio_matches_status_bar_math() {
     let env = ThresholdTestEnv::new();
@@ -1204,6 +1239,7 @@ fn gate_ratio_matches_status_bar_math() {
 
 // ── Test 23: threshold 1.0 requires full context ──
 
+#[rstest::rstest]
 #[test]
 fn gate_threshold_one_requires_full_context() {
     let env = ThresholdTestEnv::new();
@@ -1223,6 +1259,7 @@ fn gate_threshold_one_requires_full_context() {
 
 // ── Test 24: threshold 0.0 always triggers ──
 
+#[rstest::rstest]
 #[test]
 fn gate_threshold_zero_always_triggers() {
     let env = ThresholdTestEnv::new();
@@ -1243,6 +1280,7 @@ fn gate_threshold_zero_always_triggers() {
 // ── Test 25: uses session model not compaction model for lookup ──
 // The threshold gate uses session.profile().model, not config.model.
 
+#[rstest::rstest]
 #[test]
 fn gate_uses_session_model_for_context_lookup() {
     let env = ThresholdTestEnv::new();
@@ -1272,6 +1310,7 @@ fn gate_uses_session_model_for_context_lookup() {
 // we verify that a second evaluate call with the same session still works
 // (the in_flight guard is at the actor level, not the worker level).
 
+#[rstest::rstest]
 #[test]
 fn gate_prevents_double_compaction_after_first() {
     let env = ThresholdTestEnv::new();
@@ -1298,6 +1337,7 @@ fn gate_prevents_double_compaction_after_first() {
 
 // ── Test 27: threshold re-checked on next HistoryAppended after skip ──
 
+#[rstest::rstest]
 #[test]
 fn gate_re_evaluated_on_subsequent_event() {
     let env = ThresholdTestEnv::new();
@@ -1324,6 +1364,7 @@ fn gate_re_evaluated_on_subsequent_event() {
 
 // ── Test 28: context_size updates after prompt reassembly ──
 
+#[rstest::rstest]
 #[test]
 fn gate_skips_after_compaction_reduces_context_size() {
     let env = ThresholdTestEnv::new();
@@ -1373,6 +1414,7 @@ fn worker_pending_id(worker: &CompactionWorker, session_id: &SessionId) -> Optio
     worker.pending_compaction_id.lock().get(session_id).cloned()
 }
 
+#[rstest::rstest]
 #[test]
 fn snapshot_skipped_when_compaction_in_flight() {
     // Given a worker with compaction in flight.
@@ -1402,6 +1444,7 @@ fn snapshot_skipped_when_compaction_in_flight() {
     assert_eq!(worker_pending_id(&worker, &session_id), Some(pending_id));
 }
 
+#[rstest::rstest]
 #[test]
 fn snapshot_clears_flag_when_compaction_entry_found() {
     // Given a worker with compaction in flight.
@@ -1435,6 +1478,7 @@ fn snapshot_clears_flag_when_compaction_entry_found() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn error_clears_flag_and_allows_retry() {
     // Given a worker with a failing LLM factory.
@@ -1555,6 +1599,7 @@ impl jinn_provider::LlmService for FailingLlmService {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn manual_compaction_does_not_set_flag() {
     // Given a worker.
@@ -1588,6 +1633,7 @@ fn manual_compaction_does_not_set_flag() {
 
 // ── Multi-session isolation tests ──────────────────────────────────
 
+#[rstest::rstest]
 #[test]
 fn one_session_in_flight_does_not_suppress_another() {
     // Given a worker where session A has compaction in flight (pending
@@ -1625,6 +1671,7 @@ fn one_session_in_flight_does_not_suppress_another() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn clearing_session_b_does_not_clear_session_a() {
     // Given a worker where BOTH sessions have compaction in flight.

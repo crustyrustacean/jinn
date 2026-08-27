@@ -56,6 +56,7 @@ mod tests {
     )]
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn serializes_user_entry() {
         let entries = vec![ChatEntry::user("Hello world")];
@@ -63,6 +64,7 @@ mod tests {
         assert_eq!(result, "[User]: Hello world");
     }
 
+    #[rstest::rstest]
     #[test]
     fn serializes_assistant_entry() {
         let entries = vec![ChatEntry::assistant("Hi there")];
@@ -70,6 +72,7 @@ mod tests {
         assert_eq!(result, "[Assistant]: Hi there");
     }
 
+    #[rstest::rstest]
     #[test]
     fn skips_tool_call_entry() {
         // Given a tool call.
@@ -79,6 +82,7 @@ mod tests {
         assert!(result.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn truncates_long_tool_result() {
         let long_content = "x".repeat(5000);
@@ -92,6 +96,7 @@ mod tests {
         assert!(result.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn skips_system_entry() {
         let entries = vec![ChatEntry::system("ready")];
@@ -99,6 +104,7 @@ mod tests {
         assert!(result.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn skips_thinking_entry() {
         let entries = vec![ChatEntry::thinking("reasoning")];
@@ -106,6 +112,7 @@ mod tests {
         assert!(result.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn serializes_mixed_entries() {
         let entries = vec![
@@ -128,6 +135,7 @@ mod tests {
         assert!(lines[2].starts_with("[Assistant]"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn truncates_tool_result_with_multibyte_at_boundary() {
         // Given content where byte 2000 falls in the middle of an em-dash (3 bytes).
@@ -150,6 +158,7 @@ mod tests {
         assert!(result.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn truncates_tool_result_with_emoji() {
         // Given content with emoji exceeding 2000 bytes.
@@ -169,6 +178,7 @@ mod tests {
         assert!(result.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn skips_tool_result_with_content() {
         // Given a tool result with sensitive output.
