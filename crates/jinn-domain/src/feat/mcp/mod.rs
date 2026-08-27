@@ -87,6 +87,16 @@ pub struct McpServerConfig {
     /// Unused for [`Stdio`](TransportKind::Stdio).
     #[serde(default)]
     pub url: Option<String>,
+    /// Start this server already enabled in newly created sessions.
+    ///
+    /// Off by default (jinn's historical behavior): servers spawn only after
+    /// the user enables them in the MCP picker. `true` seeds the server's
+    /// name into each new session's enabled set at creation, so its
+    /// connection comes up without a picker visit. Toggle state is owned by
+    /// the session afterwards and persists per-session; this flag never
+    /// re-enables itself on existing sessions.
+    #[serde(default)]
+    pub auto_enable: bool,
     /// HTTP headers sent on `StreamableHTTP` connections
     /// ([`LocalHttp`](TransportKind::LocalHttp) and
     /// [`RemoteHttp`](TransportKind::RemoteHttp)).
@@ -311,6 +321,7 @@ mod tests {
             transport: TransportKind::LocalHttp,
             url: Some("http://127.0.0.1:<port>/mcp".to_owned()),
             headers: BTreeMap::new(),
+            auto_enable: false,
         };
 
         // When serializing and deserializing.
@@ -330,6 +341,7 @@ mod tests {
             transport: TransportKind::RemoteHttp,
             url: Some("http://localhost:3001/mcp".to_owned()),
             headers: BTreeMap::new(),
+            auto_enable: false,
         };
 
         // When serializing and deserializing.
@@ -350,6 +362,7 @@ mod tests {
             transport: TransportKind::Stdio,
             url: None,
             headers: BTreeMap::new(),
+            auto_enable: false,
         };
 
         // When serializing and deserializing.
@@ -384,6 +397,7 @@ mod tests {
             transport: TransportKind::RemoteHttp,
             url: Some("http://localhost:3001/mcp".to_owned()),
             headers: BTreeMap::new(),
+            auto_enable: false,
         };
 
         // When serializing and deserializing.
@@ -609,5 +623,56 @@ mod tests {
             err.current_context(),
             HeaderExpandError::UnresolvedVariable { variable: v } if v == "NOT_THERE"
         ));
+    }
+
+    #[test]
+    fn absent_auto_enable_defaults_to_false() {
+        // Given a config TOML with no auto_enable field.
+        let toml = r#"
+            command = "npx"
+            args = ["@excalimate/mcp-server", "--stdio"]
+        "#;
+
+        // When deserializing.
+        let config: McpServerConfig = toml::from_str(toml).expect("parse");
+
+        // Then auto_enable defaults to false (historical behavior:
+        // servers start disabled in new sessions until the user opts in).
+        assert!(!config.auto_enable);
+    }
+
+    #[test]
+    fn explicit_auto_enable_false_deserializes() {
+        // Given a config TOML with auto_enable explicitly false.
+        let toml = r#"
+            command = "npx"
+            auto_enable = false
+        "#;
+
+        // When deserializing.
+        let config: McpServerConfig = toml::from_str(toml).expect("parse");
+
+        // Then the flag reads back false.
+        assert!(!config.auto_enable);
+    }
+
+    #[test]
+    fn explicit_auto_enable_true_deserializes_and_round_trips() {
+        // Given a config TOML with auto_enable enabled.
+        let toml = r#"
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-everything"]
+            auto_enable = true
+        "#;
+
+        // When deserializing and re-serializing.
+        let config: McpServerConfig = toml::from_str(toml).expect("parse");
+        let serialized = toml::to_string(&config).expect("serialize");
+        let back: McpServerConfig = toml::from_str(&serialized).expect("deserialize");
+
+        // Then the flag is preserved as true through the round-trip.
+        assert!(config.auto_enable);
+        // And it survives re-serialization.
+        assert!(back.auto_enable);
     }
 }
