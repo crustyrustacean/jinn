@@ -145,6 +145,7 @@ mod split_tests {
     use super::split_message;
     use crate::feat::discord::message_split::DISCORD_MAX_LEN;
 
+    #[rstest::rstest]
     #[test]
     fn short_message_is_single_chunk_with_suffix() {
         // Given a short message.
@@ -154,6 +155,7 @@ mod split_tests {
         assert_eq!(chunks, vec!["hi\n(Message 1 of 1)".to_owned()]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn empty_message_is_just_the_suffix() {
         // Given an empty message.
@@ -163,6 +165,7 @@ mod split_tests {
         assert_eq!(chunks, vec!["(Message 1 of 1)".to_owned()]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn long_message_splits_into_chunks_under_max() {
         // Given a message well over the limit.
@@ -192,6 +195,7 @@ mod split_tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn code_fence_splitting_keeps_chunks_balanced() {
         // Given a fenced block that straddles the chunk boundary.

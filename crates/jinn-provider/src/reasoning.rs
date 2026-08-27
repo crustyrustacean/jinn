@@ -117,6 +117,7 @@ mod tests {
         assert_eq!(value, expected);
     }
 
+    #[rstest::rstest]
     #[test]
     fn unknown_effort_string_is_rejected() {
         // Given a wire string that isn't a known effort level.

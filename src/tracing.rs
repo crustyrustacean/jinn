@@ -208,6 +208,7 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    #[rstest::rstest]
     #[test]
     fn panic_log_path_is_sibling_of_log_path() {
         // Given a resolved log path /x/jinn.log.
@@ -220,6 +221,7 @@ mod tests {
         assert_eq!(panic_path, PathBuf::from("/x/jinn-panic.log"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn panic_log_path_falls_back_to_cwd_when_no_parent() {
         // Given a log path with no parent directory.
@@ -232,6 +234,7 @@ mod tests {
         assert_eq!(panic_path, PathBuf::from("jinn-panic.log"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn write_panic_record_appends_message_and_location() {
         // Given a temp directory as the panic-log location.
@@ -253,6 +256,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn install_panic_hook_chains_to_previous_hook() {
         // Given a sentinel previous hook that sets a flag.

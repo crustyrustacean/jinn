@@ -236,6 +236,7 @@ mod tests {
 
     // Given no --log-file argument.
     // Then Cli.log_file is None (default).
+    #[rstest::rstest]
     #[test]
     fn log_file_flag_defaults_to_none() {
         let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
@@ -244,6 +245,7 @@ mod tests {
 
     // Given a global --log-file argument before a subcommand.
     // Then Cli.log_file captures the override.
+    #[rstest::rstest]
     #[test]
     fn log_file_flag_global_overrides() {
         let cli = Cli::parse_from([
@@ -262,6 +264,7 @@ mod tests {
 
     // Given the old --log-dir argument.
     // Then clap rejects it (the flag has been removed).
+    #[rstest::rstest]
     #[test]
     fn log_dir_flag_removed() {
         // In debug mode, missing --db-path would trigger first,
@@ -273,6 +276,7 @@ mod tests {
 
     // Given --log-file scoped to the headless subcommand (old shape).
     // Then clap rejects it: the flag is global now, not a subcommand arg.
+    #[rstest::rstest]
     #[test]
     fn headless_scoped_log_file_removed() {
         let result = Cli::try_parse_from([
@@ -290,6 +294,7 @@ mod tests {
 
     // Given a global --log-file alongside a headless subcommand.
     // Then Cli.log_file captures the override.
+    #[rstest::rstest]
     #[test]
     fn log_file_flag_works_with_headless() {
         let cli = Cli::parse_from([
@@ -309,6 +314,7 @@ mod tests {
     }
 
     #[cfg(debug_assertions)]
+    #[rstest::rstest]
     #[test]
     fn db_path_required_in_debug() {
         // Given no --db-path flag.
@@ -319,6 +325,7 @@ mod tests {
     }
 
     #[cfg(not(debug_assertions))]
+    #[rstest::rstest]
     #[test]
     fn db_path_optional_in_release() {
         // Given no --db-path flag.
@@ -328,6 +335,7 @@ mod tests {
         assert!(cli.db_path_opt().is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn db_path_opt_returns_some_when_provided() {
         // Given --db-path /tmp/test.db.
@@ -342,6 +350,7 @@ mod tests {
 
     // Given no --browser-profile argument.
     // Then Cli.browser_profile is None (defaults to AppPaths).
+    #[rstest::rstest]
     #[test]
     fn browser_profile_flag_defaults_to_none() {
         let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
@@ -350,6 +359,7 @@ mod tests {
 
     // Given a --browser-profile argument.
     // Then Cli.browser_profile captures the override.
+    #[rstest::rstest]
     #[test]
     fn browser_profile_flag_parses_to_path() {
         let cli = Cli::parse_from([

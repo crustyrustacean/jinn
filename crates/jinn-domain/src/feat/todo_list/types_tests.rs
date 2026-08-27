@@ -19,6 +19,7 @@ use crate::feat::todo_list::{PhaseId, TaskId, TaskList, TaskListError, TaskPosit
 // add_phase
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn add_phase_creates_phase_with_id_and_description() {
     let mut list = TaskList::new();
@@ -32,6 +33,7 @@ fn add_phase_creates_phase_with_id_and_description() {
     assert!(phase.is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn add_phase_generates_distinct_ids() {
     let mut list = TaskList::new();
@@ -43,6 +45,7 @@ fn add_phase_generates_distinct_ids() {
     assert_ne!(id1, id3);
 }
 
+#[rstest::rstest]
 #[test]
 fn add_phase_returns_distinct_ids() {
     let mut list = TaskList::new();
@@ -55,6 +58,7 @@ fn add_phase_returns_distinct_ids() {
 // add_task - append (no position)
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn add_task_appends_to_phase_end_when_no_position() {
     let mut list = TaskList::new();
@@ -71,6 +75,7 @@ fn add_task_appends_to_phase_end_when_no_position() {
 // add_task - insert_after
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn add_task_inserts_after_specified_task() {
     let mut list = TaskList::new();
@@ -94,6 +99,7 @@ fn add_task_inserts_after_specified_task() {
 // add_task - insert_before
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn add_task_inserts_before_specified_task() {
     let mut list = TaskList::new();
@@ -117,6 +123,7 @@ fn add_task_inserts_before_specified_task() {
 // add_task - error cases
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn add_task_rejects_invalid_phase_id() {
     let mut list = TaskList::new();
@@ -125,6 +132,7 @@ fn add_task_rejects_invalid_phase_id() {
     assert_eq!(result, Err(TaskListError::PhaseNotFound(bad_id)));
 }
 
+#[rstest::rstest]
 #[test]
 fn add_task_with_after_rejects_task_not_in_phase() {
     let mut list = TaskList::new();
@@ -150,6 +158,7 @@ fn add_task_with_after_rejects_task_not_in_phase() {
 // complete_task
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn complete_task_marks_as_completed() {
     let mut list = TaskList::new();
@@ -178,6 +187,7 @@ fn complete_task_marks_as_completed() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn complete_task_rejects_unknown_id() {
     let mut list = TaskList::new();
@@ -191,12 +201,14 @@ fn complete_task_rejects_unknown_id() {
 // is_empty
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn is_empty_true_when_no_phases() {
     let list = TaskList::new();
     assert!(list.is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn is_empty_false_when_has_phases() {
     let mut list = TaskList::new();
@@ -208,6 +220,7 @@ fn is_empty_false_when_has_phases() {
 // get_phase / get_task
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn get_phase_returns_none_for_missing_id() {
     let list = TaskList::new();
@@ -215,6 +228,7 @@ fn get_phase_returns_none_for_missing_id() {
     assert!(list.get_phase(&missing).is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn get_task_finds_task_from_any_phase() {
     let mut list = TaskList::new();
@@ -226,6 +240,7 @@ fn get_task_finds_task_from_any_phase() {
     assert!(list.get_task(&t2).is_some());
 }
 
+#[rstest::rstest]
 #[test]
 fn get_task_returns_none_for_missing_id() {
     let list = TaskList::new();
@@ -237,12 +252,14 @@ fn get_task_returns_none_for_missing_id() {
 // render_text
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn render_text_returns_empty_placeholder() {
     let list = TaskList::new();
     assert_eq!(list.render_text(), "No phases defined.");
 }
 
+#[rstest::rstest]
 #[test]
 fn render_text_shows_phases_and_tasks() {
     let mut list = TaskList::new();
@@ -258,6 +275,7 @@ fn render_text_shows_phases_and_tasks() {
     assert!(rendered.contains(&format!("[{pid}]")));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_text_shows_completed_task() {
     let mut list = TaskList::new();
@@ -271,6 +289,7 @@ fn render_text_shows_completed_task() {
     assert!(rendered.contains("[✓] Write code"));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_phase_text_for_single_phase() {
     let mut list = TaskList::new();
@@ -282,6 +301,7 @@ fn render_phase_text_for_single_phase() {
     assert!(rendered.contains("Read docs"));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_phase_text_returns_none_for_missing_phase() {
     let list = TaskList::new();
@@ -293,6 +313,7 @@ fn render_phase_text_returns_none_for_missing_phase() {
 // Serde roundtrip
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn serde_roundtrip_preserves_state() {
     let mut list = TaskList::new();
@@ -314,6 +335,7 @@ fn serde_roundtrip_preserves_state() {
     assert_eq!(list, restored2);
 }
 
+#[rstest::rstest]
 #[test]
 fn serde_default_creates_empty_list() {
     let json = "{}";
@@ -321,6 +343,7 @@ fn serde_default_creates_empty_list() {
     assert!(list.is_empty());
 }
 
+#[rstest::rstest]
 #[test]
 fn serde_deserializes_partial_json() {
     // Only phases field (no counters) - a valid old-format JSON.
@@ -333,6 +356,7 @@ fn serde_deserializes_partial_json() {
 // TaskId / PhaseId helpers (exposed for testing via pub(crate))
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn id_display_format() {
     let pid = PhaseId::new_for_test("p1");
@@ -345,6 +369,7 @@ fn id_display_format() {
 // Random ID generation
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn id_format_is_correct() {
     // Phase IDs start with 'p' and are 4 chars total.
@@ -381,6 +406,7 @@ fn id_format_is_correct() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn id_generation_no_collision() {
     let mut list = TaskList::new();
@@ -409,6 +435,7 @@ fn id_generation_no_collision() {
     assert_eq!(unique_tids.len(), task_ids.len());
 }
 
+#[rstest::rstest]
 #[test]
 fn serde_backward_compat_with_counters() {
     // Old-format JSON with counter fields should deserialize cleanly.
@@ -422,6 +449,7 @@ fn serde_backward_compat_with_counters() {
     assert_eq!(tid.to_string().len(), 4);
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_task_marks_source_and_creates_copy() {
     let mut list = TaskList::new();
@@ -447,6 +475,7 @@ fn postpone_task_marks_source_and_creates_copy() {
     assert_eq!(phase2.tasks().len(), 2);
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_task_same_phase() {
     let mut list = TaskList::new();
@@ -470,6 +499,7 @@ fn postpone_task_same_phase() {
     assert_eq!(phase.tasks().len(), 3);
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_task_error_on_missing_source() {
     let mut list = TaskList::new();
@@ -481,6 +511,7 @@ fn postpone_task_error_on_missing_source() {
     assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_task_error_on_missing_reference() {
     let mut list = TaskList::new();
@@ -492,6 +523,7 @@ fn postpone_task_error_on_missing_reference() {
     assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_task_error_on_self_reference() {
     let mut list = TaskList::new();
@@ -502,6 +534,7 @@ fn postpone_task_error_on_self_reference() {
     assert!(matches!(result, Err(TaskListError::SelfReference(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_task_error_on_already_postponed() {
     let mut list = TaskList::new();
@@ -519,6 +552,7 @@ fn postpone_task_error_on_already_postponed() {
     assert!(matches!(result, Err(TaskListError::AlreadyPostponed(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_text_excludes_postponed() {
     let mut list = TaskList::new();
@@ -543,6 +577,7 @@ fn render_text_excludes_postponed() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn render_text_shows_no_tasks_when_all_postponed() {
     let mut list = TaskList::new();
@@ -565,6 +600,7 @@ fn render_text_shows_no_tasks_when_all_postponed() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn render_phase_text_excludes_postponed() {
     let mut list = TaskList::new();
@@ -582,6 +618,7 @@ fn render_phase_text_excludes_postponed() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_to_phase_appends_to_existing_phase() {
     let mut list = TaskList::new();
@@ -605,6 +642,7 @@ fn postpone_to_phase_appends_to_existing_phase() {
     assert_eq!(phase2.tasks().len(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_to_phase_errors_on_missing_source() {
     let mut list = TaskList::new();
@@ -615,6 +653,7 @@ fn postpone_to_phase_errors_on_missing_source() {
     assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_to_phase_errors_on_missing_phase() {
     let mut list = TaskList::new();
@@ -626,6 +665,7 @@ fn postpone_to_phase_errors_on_missing_phase() {
     assert!(matches!(result, Err(TaskListError::PhaseNotFound(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_to_phase_errors_on_already_postponed() {
     let mut list = TaskList::new();
@@ -641,6 +681,7 @@ fn postpone_to_phase_errors_on_already_postponed() {
     assert!(matches!(result, Err(TaskListError::AlreadyPostponed(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn set_from_descriptions_creates_phases_and_tasks() {
     let mut list = TaskList::new();
@@ -683,6 +724,7 @@ fn set_from_descriptions_creates_phases_and_tasks() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn set_from_descriptions_replaces_existing() {
     let mut list = TaskList::new();
@@ -698,6 +740,7 @@ fn set_from_descriptions_replaces_existing() {
     assert_eq!(list.phases()[0].tasks()[0].description(), "New task");
 }
 
+#[rstest::rstest]
 #[test]
 fn set_from_descriptions_errors_on_empty() {
     let mut list = TaskList::new();
@@ -709,6 +752,7 @@ fn set_from_descriptions_errors_on_empty() {
 // cancel_task
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn cancel_task_marks_as_cancelled() {
     let mut list = TaskList::new();
@@ -723,6 +767,7 @@ fn cancel_task_marks_as_cancelled() {
     assert_eq!(task.status(), TaskStatus::Cancelled);
 }
 
+#[rstest::rstest]
 #[test]
 fn cancel_task_errors_on_unknown_task() {
     let mut list = TaskList::new();
@@ -732,6 +777,7 @@ fn cancel_task_errors_on_unknown_task() {
     assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn cancel_task_errors_on_already_cancelled() {
     let mut list = TaskList::new();
@@ -745,6 +791,7 @@ fn cancel_task_errors_on_already_cancelled() {
     assert!(matches!(result, Err(TaskListError::AlreadyCancelled(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn cancel_task_can_cancel_postponed_task() {
     let mut list = TaskList::new();
@@ -761,6 +808,7 @@ fn cancel_task_can_cancel_postponed_task() {
     assert_eq!(task.status(), TaskStatus::Cancelled);
 }
 
+#[rstest::rstest]
 #[test]
 fn complete_task_errors_on_cancelled() {
     let mut list = TaskList::new();
@@ -774,6 +822,7 @@ fn complete_task_errors_on_cancelled() {
     assert!(matches!(result, Err(TaskListError::TaskCancelled(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_task_errors_on_cancelled() {
     let mut list = TaskList::new();
@@ -786,6 +835,7 @@ fn postpone_task_errors_on_cancelled() {
     assert!(matches!(result, Err(TaskListError::TaskCancelled(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn postpone_to_phase_errors_on_cancelled() {
     let mut list = TaskList::new();
@@ -798,6 +848,7 @@ fn postpone_to_phase_errors_on_cancelled() {
     assert!(matches!(result, Err(TaskListError::TaskCancelled(_))));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_text_shows_cancelled_with_prefix() {
     let mut list = TaskList::new();
@@ -812,6 +863,7 @@ fn render_text_shows_cancelled_with_prefix() {
     assert!(rendered.contains("[\u{2717}]"));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_text_hides_postponed_shows_cancelled() {
     let mut list = TaskList::new();
@@ -838,6 +890,7 @@ fn render_text_hides_postponed_shows_cancelled() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn render_phase_text_handles_cancelled() {
     let mut list = TaskList::new();
@@ -851,6 +904,7 @@ fn render_phase_text_handles_cancelled() {
     assert!(rendered.contains("CANCELLED: Write code"));
 }
 
+#[rstest::rstest]
 #[test]
 fn serde_roundtrip_with_cancelled() {
     let mut list = TaskList::new();
@@ -869,6 +923,7 @@ fn serde_roundtrip_with_cancelled() {
 // has_pending_work
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn has_pending_work_true_when_any_pending() {
     let mut list = TaskList::new();
@@ -888,6 +943,7 @@ fn has_pending_work_true_when_any_pending() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn has_pending_work_false_when_only_completed_cancelled_postponed() {
     let mut list = TaskList::new();
@@ -922,12 +978,14 @@ fn has_pending_work_false_when_only_completed_cancelled_postponed() {
 // active_phase
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn active_phase_returns_none_when_empty() {
     let list = TaskList::new();
     assert!(list.active_phase().is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn active_phase_returns_earliest_with_pending() {
     let mut list = TaskList::new();
@@ -945,6 +1003,7 @@ fn active_phase_returns_earliest_with_pending() {
     assert_eq!(active.id, p2);
 }
 
+#[rstest::rstest]
 #[test]
 fn active_phase_returns_none_when_all_complete() {
     let mut list = TaskList::new();
@@ -955,6 +1014,7 @@ fn active_phase_returns_none_when_all_complete() {
     assert!(list.active_phase().is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn active_phase_skips_phase_with_only_postponed_cancelled_completed() {
     let mut list = TaskList::new();
@@ -982,6 +1042,7 @@ fn active_phase_skips_phase_with_only_postponed_cancelled_completed() {
 // completion_counts
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn completion_counts_empty_list_is_zero_zero() {
     // Given an empty task list.
@@ -994,6 +1055,7 @@ fn completion_counts_empty_list_is_zero_zero() {
     assert_eq!((completed, total), (0, 0));
 }
 
+#[rstest::rstest]
 #[test]
 fn completion_counts_all_pending() {
     // Given a phase with three pending tasks.
@@ -1011,6 +1073,7 @@ fn completion_counts_all_pending() {
     assert_eq!((completed, total), (0, 3));
 }
 
+#[rstest::rstest]
 #[test]
 fn completion_counts_all_completed() {
     // Given a phase where every task is completed.
@@ -1032,6 +1095,7 @@ fn completion_counts_all_completed() {
     assert_eq!((completed, total), (3, 3));
 }
 
+#[rstest::rstest]
 #[test]
 fn completion_counts_counts_only_completed() {
     // Given a phase with two completed, one pending, one postponed, one cancelled.
@@ -1058,6 +1122,7 @@ fn completion_counts_counts_only_completed() {
     assert_eq!((completed, total), (2, 7));
 }
 
+#[rstest::rstest]
 #[test]
 fn completion_counts_aggregates_across_phases() {
     // Given tasks split across two phases.
@@ -1077,6 +1142,7 @@ fn completion_counts_aggregates_across_phases() {
     assert_eq!((completed, total), (2, 3));
 }
 
+#[rstest::rstest]
 #[test]
 fn completion_counts_treats_empty_phases_as_zero() {
     // Given two phases, one empty and one with two completed tasks.
@@ -1101,12 +1167,14 @@ fn completion_counts_treats_empty_phases_as_zero() {
 // render_text_with_blockers
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn render_text_with_blockers_returns_empty_placeholder() {
     let list = TaskList::new();
     assert_eq!(list.render_text_with_blockers(), "No phases defined.");
 }
 
+#[rstest::rstest]
 #[test]
 fn render_text_with_blockers_no_prefix_for_single_phase() {
     let mut list = TaskList::new();
@@ -1121,6 +1189,7 @@ fn render_text_with_blockers_no_prefix_for_single_phase() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn render_text_with_blockers_prefixes_non_active_phases() {
     let mut list = TaskList::new();
@@ -1144,6 +1213,7 @@ fn render_text_with_blockers_prefixes_non_active_phases() {
     assert!(rendered.contains("Phase 3: (Blocked by previous phase) Later"));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_text_with_blockers_no_prefix_when_all_complete() {
     let mut list = TaskList::new();
@@ -1156,6 +1226,7 @@ fn render_text_with_blockers_no_prefix_when_all_complete() {
     assert!(!rendered.contains("(Blocked by previous phase)"));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_text_with_blockers_no_prefix_for_completed_phase() {
     let mut list = TaskList::new();
@@ -1170,12 +1241,14 @@ fn render_text_with_blockers_no_prefix_for_completed_phase() {
     assert!(!rendered.contains("(Blocked by previous phase) Phase 1"));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_empty_when_no_phases() {
     let list = TaskList::new();
     assert_eq!(list.render_next_block(), "");
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_empty_when_phases_have_no_tasks() {
     let mut list = TaskList::new();
@@ -1184,6 +1257,7 @@ fn render_next_block_empty_when_phases_have_no_tasks() {
     assert_eq!(list.render_next_block(), "");
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_points_at_active_phase_next_task() {
     let mut list = TaskList::new();
@@ -1204,6 +1278,7 @@ fn render_next_block_points_at_active_phase_next_task() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_skips_cancelled_tasks() {
     // Cancelled tasks are filtered out; the next Pending task is found.
@@ -1224,6 +1299,7 @@ fn render_next_block_skips_cancelled_tasks() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_includes_remaining_count() {
     let mut list = TaskList::new();
@@ -1238,6 +1314,7 @@ fn render_next_block_includes_remaining_count() {
     assert!(block.starts_with(&format!("→ NEXT: {} — A", t_first)));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_all_complete_message() {
     let mut list = TaskList::new();
@@ -1249,6 +1326,7 @@ fn render_next_block_all_complete_message() {
     assert_eq!(block, "→ All phases complete — stop.");
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_all_complete_with_multiple_phases() {
     let mut list = TaskList::new();
@@ -1263,6 +1341,7 @@ fn render_next_block_all_complete_with_multiple_phases() {
     drop(p2);
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_empty_for_phase_with_no_tasks_anywhere() {
     let mut list = TaskList::new();
@@ -1271,6 +1350,7 @@ fn render_next_block_empty_for_phase_with_no_tasks_anywhere() {
     assert_eq!(list.render_next_block(), "");
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_after_completion_same_phase_remaining() {
     let mut list = TaskList::new();
@@ -1288,6 +1368,7 @@ fn render_next_block_after_completion_same_phase_remaining() {
     assert!(block.contains("1 pending in phase"));
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_after_completion_phase_done_no_later() {
     let mut list = TaskList::new();
@@ -1302,6 +1383,7 @@ fn render_next_block_after_completion_phase_done_no_later() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_after_completion_phase_done_with_later_blocked() {
     let mut list = TaskList::new();
@@ -1321,6 +1403,7 @@ fn render_next_block_after_completion_phase_done_with_later_blocked() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn render_next_block_after_completion_falls_back_when_phase_missing() {
     let mut list = TaskList::new();

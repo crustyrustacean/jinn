@@ -196,6 +196,7 @@ mod tests {
         assert_eq!(deserialized, expected);
     }
 
+    #[rstest::rstest]
     #[test]
     fn output_format_default_is_markdown_clean() {
         // Given no explicit format.

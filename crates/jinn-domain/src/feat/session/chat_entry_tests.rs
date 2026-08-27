@@ -1015,6 +1015,7 @@ fn entry_with_user_toggle_back() -> ChatEntry {
     entry
 }
 
+#[rstest::rstest]
 #[test]
 fn is_user_force_excluded_returns_true_when_last_event_is_user_force_exclude() {
     // Given an entry whose last audit event is User → ForcedExclude.
@@ -1028,6 +1029,7 @@ fn is_user_force_excluded_returns_true_when_last_event_is_user_force_exclude() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn is_user_force_excluded_returns_false_when_last_event_is_worker_force_exclude() {
     // Given an entry whose last audit event is Worker → ForcedExclude.
@@ -1041,6 +1043,7 @@ fn is_user_force_excluded_returns_false_when_last_event_is_worker_force_exclude(
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn is_user_force_excluded_returns_false_when_history_is_empty() {
     // Given a freshly constructed entry with no audit history.
@@ -1054,6 +1057,7 @@ fn is_user_force_excluded_returns_false_when_history_is_empty() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn is_user_force_excluded_returns_false_when_user_toggled_back_to_default() {
     // Given an entry whose last audit event is User → Default (after

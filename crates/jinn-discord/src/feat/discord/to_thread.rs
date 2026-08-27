@@ -76,6 +76,7 @@ mod tests {
         assert_eq!(decision, expected);
     }
 
+    #[rstest::rstest]
     #[test]
     fn refusal_reason_is_some_only_when_already_bound() {
         // Given an AlreadyBound decision.
@@ -85,6 +86,7 @@ mod tests {
         assert_eq!(reason, Some(CreateThreadReason::AlreadyBound));
     }
 
+    #[rstest::rstest]
     #[test]
     fn refusal_reason_is_none_when_proceeding() {
         // Given a Proceed decision.
@@ -104,6 +106,7 @@ mod tests {
     // pure decision seam — the only layer reachable without a live Discord
     // connection.
 
+    #[rstest::rstest]
     #[test]
     fn regression_session_bound_via_new_then_gdc_refuses_without_rebind() {
         // Given a session already bound via `/new` (a mapping exists).
@@ -121,6 +124,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn regression_session_bound_via_prior_gdc_then_gdc_again_refuses_without_rebind() {
         // Given a session already bound via a prior `gdc` (a mapping exists).

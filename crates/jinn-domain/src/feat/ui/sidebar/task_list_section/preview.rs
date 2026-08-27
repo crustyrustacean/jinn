@@ -308,6 +308,7 @@ mod tests {
         app
     }
 
+    #[rstest::rstest]
     #[test]
     fn popup_hidden_when_section_unfocused() {
         // Given a populated task list but no SidebarTaskList focus.
@@ -328,6 +329,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn rect_some_when_phase_selected_and_focused() {
         // Given a focused task list with a selected phase.
@@ -340,6 +342,7 @@ mod tests {
         assert!(rect.is_some());
     }
 
+    #[rstest::rstest]
     #[test]
     fn rect_right_edge_meets_sidebar_left() {
         // Given a focused task list.
@@ -353,6 +356,7 @@ mod tests {
         assert_eq!(rect.x + rect.width, sidebar.x);
     }
 
+    #[rstest::rstest]
     #[test]
     fn rect_top_aligns_with_persona_plus_pins() {
         // Given a focused task list (persona=4, pins=0 by default).
@@ -368,6 +372,7 @@ mod tests {
         assert_eq!(rect.y, expected_top);
     }
 
+    #[rstest::rstest]
     #[test]
     fn rect_width_capped_to_space_left_of_sidebar() {
         // Given a very narrow frame where 60% would exceed the space left of the sidebar.
@@ -383,6 +388,7 @@ mod tests {
         assert_eq!(rect.x, 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn popup_hidden_when_no_phase_selected() {
         // Given a focused task list with no selected phase.
@@ -421,6 +427,7 @@ mod tests {
             .collect()
     }
 
+    #[rstest::rstest]
     #[test]
     fn popup_renders_only_selected_phase_tasks() {
         // Given focus on phase 0 ("Read docs"), with phase 1 holding "Write code".
@@ -441,6 +448,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn popup_phase_with_no_tasks_shows_placeholder() {
         // Given focus on an empty phase.
@@ -460,6 +468,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn write_geometry_clamps_stale_scroll_when_content_shrinks() {
         // Given a focused phase whose content is short, but scroll is stale from a
@@ -487,6 +496,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn long_task_wraps_to_popup_width_not_sidebar_width() {
         // Given a focused phase with one 60-char task description.
@@ -513,6 +523,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn task_line_has_no_leading_margin() {
         // Given a phase with a pending task.

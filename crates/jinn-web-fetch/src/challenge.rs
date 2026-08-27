@@ -429,6 +429,7 @@ mod tests {
 
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn clean_page_is_not_a_challenge() {
         // Given a normal page.
@@ -439,6 +440,7 @@ mod tests {
         assert_eq!(detect_challenge(html), ChallengeKind::None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn anubis_title_marker_detected() {
         // Given a page with the Anubis challenge title.
@@ -449,6 +451,7 @@ mod tests {
         assert_eq!(detect_challenge(html), ChallengeKind::Anubis);
     }
 
+    #[rstest::rstest]
     #[test]
     fn anubis_data_attribute_detected() {
         // Given a page with the Anubis challenge script data attribute.
@@ -459,6 +462,7 @@ mod tests {
         assert_eq!(detect_challenge(html), ChallengeKind::Anubis);
     }
 
+    #[rstest::rstest]
     #[test]
     fn cloudflare_challenge_platform_detected() {
         // Given a page loading the Cloudflare challenge platform script.
@@ -469,6 +473,7 @@ mod tests {
         assert_eq!(detect_challenge(html), ChallengeKind::Cloudflare);
     }
 
+    #[rstest::rstest]
     #[test]
     fn cloudflare_just_a_moment_without_platform_not_detected() {
         // Given a page that mentions "Just a moment..." but has no
@@ -480,6 +485,7 @@ mod tests {
         assert_eq!(detect_challenge(html), ChallengeKind::None);
     }
 
+    #[rstest::rstest]
     #[test]
     fn wait_returns_immediately_when_no_challenge() {
         // Given a get_html closure that always returns clean content.
@@ -492,6 +498,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[rstest::rstest]
     #[test]
     fn wait_succeeds_when_challenge_clears() {
         // Given a closure that returns challenge HTML twice, then clean content.
@@ -512,6 +519,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[rstest::rstest]
     #[test]
     fn wait_times_out_when_challenge_persists() {
         // Given a closure that always returns challenge HTML.
@@ -524,6 +532,7 @@ mod tests {
         assert!(matches!(result, Err(FetchError::Render(_))));
     }
 
+    #[rstest::rstest]
     #[test]
     fn wait_propagates_get_html_error() {
         // Given a closure that fails.
@@ -540,6 +549,7 @@ mod tests {
     // Vendor signature tests
     // -----------------------------------------------------------------------
 
+    #[rstest::rstest]
     #[test]
     fn ddg_anomaly_markers_detected() {
         // Given a page carrying DuckDuckGo's anomaly markers.
@@ -551,6 +561,7 @@ mod tests {
         assert_eq!(detect_challenge(html), ChallengeKind::DdgAnomaly);
     }
 
+    #[rstest::rstest]
     #[test]
     fn datadome_marker_detected() {
         // Given a page loading the DataDome challenge script.
@@ -561,6 +572,7 @@ mod tests {
         assert_eq!(detect_challenge(html), ChallengeKind::Datadome);
     }
 
+    #[rstest::rstest]
     #[test]
     fn perimeterx_marker_detected() {
         // Given a page with the PerimeterX captcha element.
@@ -571,6 +583,7 @@ mod tests {
         assert_eq!(detect_challenge(html), ChallengeKind::PerimeterX);
     }
 
+    #[rstest::rstest]
     #[test]
     fn kasada_marker_detected() {
         // Given a page loading a Kasada challenge script.
@@ -581,6 +594,7 @@ mod tests {
         assert_eq!(detect_challenge(html), ChallengeKind::Kasada);
     }
 
+    #[rstest::rstest]
     #[test]
     fn imperva_marker_detected() {
         // Given a page with the Incapsula script identifier.
@@ -591,6 +605,7 @@ mod tests {
         assert_eq!(detect_challenge(html), ChallengeKind::Imperva);
     }
 
+    #[rstest::rstest]
     #[test]
     fn is_ddg_blocked_matches_detection() {
         // Given the DDG anomaly page.
@@ -621,6 +636,7 @@ mod tests {
     // Behavioral fallback tests
     // -----------------------------------------------------------------------
 
+    #[rstest::rstest]
     #[test]
     fn full_article_page_is_not_interstitial() {
         // Given a page with substantial visible text.
@@ -634,6 +650,7 @@ mod tests {
         assert!(!looks_like_interstitial(&html));
     }
 
+    #[rstest::rstest]
     #[test]
     fn near_empty_shell_is_interstitial_suspected() {
         // Given an interstitial shell: big head, almost no visible text.
@@ -645,6 +662,7 @@ mod tests {
         assert!(looks_like_interstitial(html));
     }
 
+    #[rstest::rstest]
     #[test]
     fn visible_text_len_strips_tags() {
         // Given markup with tags and text nodes.
@@ -675,6 +693,7 @@ mod tests {
         )
     }
 
+    #[rstest::rstest]
     #[test]
     fn healthy_page_clears_immediately_with_one_fetch() {
         // Given a closure serving a healthy page and counting calls.
@@ -696,6 +715,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn hard_signature_headless_returns_challenge_without_waiting() {
         // Given a closure always serving the DDG anomaly page (not auto-clearable).
@@ -718,6 +738,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn auto_clearable_challenge_headless_gets_auto_window_then_verdict() {
         // Given a closure serving a Cloudflare page that never clears.
@@ -734,6 +755,7 @@ mod tests {
         assert_eq!(outcome, WaitOutcome::Challenge(ChallengeKind::Cloudflare));
     }
 
+    #[rstest::rstest]
     #[test]
     fn auto_clearable_challenge_that_solves_returns_cleared() {
         // Given a closure serving one Cloudflare page then real content.
@@ -756,6 +778,7 @@ mod tests {
         assert_eq!(outcome, WaitOutcome::Cleared);
     }
 
+    #[rstest::rstest]
     #[test]
     fn empty_page_headless_verdict_after_settle() {
         // Given a closure always serving an empty shell with no signature.
@@ -774,6 +797,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn slow_spa_filling_within_settle_clears() {
         // Given a closure serving an empty shell first, then real content.
@@ -794,6 +818,7 @@ mod tests {
         assert_eq!(outcome, WaitOutcome::Cleared);
     }
 
+    #[rstest::rstest]
     #[test]
     fn headed_escalation_emits_detection_and_ticks_then_verdict() {
         // Given a closure always serving the DDG anomaly page, headed mode.
@@ -827,6 +852,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn headed_challenge_cleared_mid_window_returns_cleared() {
         // Given a closure serving the anomaly page once, then real content.

@@ -137,6 +137,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn new_accumulator_is_empty_with_zero_total() {
         // Given a fresh accumulator.
@@ -147,6 +148,7 @@ mod tests {
         assert_eq!(acc.total_tokens(), 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn push_one_entry_reflects_its_token_cost() {
         // Given an empty accumulator.
@@ -160,6 +162,7 @@ mod tests {
         assert_eq!(acc.total_tokens(), 300);
     }
 
+    #[rstest::rstest]
     #[test]
     fn re_pushing_same_entry_does_not_inflate_total() {
         // Given an accumulator with one 300-token exclude.
@@ -173,6 +176,7 @@ mod tests {
         assert_eq!(acc.total_tokens(), 500);
     }
 
+    #[rstest::rstest]
     #[test]
     fn two_distinct_entries_sum_their_token_costs() {
         // Given an accumulator with one 300-token entry.
@@ -186,6 +190,7 @@ mod tests {
         assert_eq!(acc.total_tokens(), 1000);
     }
 
+    #[rstest::rstest]
     #[test]
     fn forced_include_displaces_buffered_forced_exclude() {
         // Given an accumulator with a ForcedExclude for entry 1.
@@ -207,6 +212,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn forced_exclude_cannot_displace_buffered_forced_include() {
         // Given an accumulator with a ForcedInclude for entry 1.
@@ -228,6 +234,7 @@ mod tests {
         assert_eq!(acc.total_tokens(), 0); // drained
     }
 
+    #[rstest::rstest]
     #[test]
     fn shield_dominance_is_order_independent() {
         // Given include-then-exclude ordering.
@@ -259,6 +266,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn equal_value_noop_repush_keeps_total_stable() {
         // Given an accumulator with a 300-token exclude.
@@ -272,6 +280,7 @@ mod tests {
         assert_eq!(acc.total_tokens(), 300);
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_returns_all_buffered_mutations_and_resets() {
         // Given an accumulator with two entries.
@@ -289,6 +298,7 @@ mod tests {
         assert_eq!(acc.total_tokens(), 0);
     }
 
+    #[rstest::rstest]
     #[test]
     fn drain_on_empty_returns_empty_vec() {
         // Given an empty accumulator.
@@ -301,6 +311,7 @@ mod tests {
         assert!(drained.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn is_empty_true_after_drain() {
         // Given a non-empty accumulator.

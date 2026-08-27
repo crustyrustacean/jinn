@@ -15,6 +15,7 @@
 use crate::feat::discord::{DiscordConfig, DiscordThreadMap};
 use serde::Deserialize;
 
+#[rstest::rstest]
 #[test]
 fn empty_toml_deserializes_to_disabled_bot() {
     // Given an empty TOML document.
@@ -29,6 +30,7 @@ fn empty_toml_deserializes_to_disabled_bot() {
     assert_eq!(cfg.guild_id, None);
 }
 
+#[rstest::rstest]
 #[test]
 fn populated_discord_table_round_trips() {
     // Given a populated [discord] table.
@@ -52,6 +54,7 @@ fn populated_discord_table_round_trips() {
     assert_eq!(parsed.discord.guild_id.as_deref(), Some("9999"));
 }
 
+#[rstest::rstest]
 #[test]
 fn leftover_lifecycle_key_is_ignored() {
     // Given a [discord] table with a stale `lifecycle` key plus the
@@ -78,6 +81,7 @@ fn leftover_lifecycle_key_is_ignored() {
     assert_eq!(parsed.discord.guild_id.as_deref(), Some("9999"));
 }
 
+#[rstest::rstest]
 #[test]
 fn re_serializing_disabled_default_round_trips() {
     // Given a default config.
@@ -148,6 +152,7 @@ async fn make_map() -> (TempDir, DiscordThreadMap) {
     (dir, map)
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dao_set_then_forward_lookup_returns_session_id() {
     // Given an empty map with one mapping inserted.
@@ -163,6 +168,7 @@ async fn dao_set_then_forward_lookup_returns_session_id() {
     assert_eq!(session.as_deref(), Some("session-1"));
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dao_set_then_reverse_lookup_returns_mapping() {
     // Given a map with one mapping.
@@ -185,6 +191,7 @@ async fn dao_set_then_reverse_lookup_returns_mapping() {
     assert_eq!(mapping.created_at, 1_700_000_000);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dao_unknown_thread_returns_none() {
     // Given an empty map.
@@ -200,6 +207,7 @@ async fn dao_unknown_thread_returns_none() {
     assert!(session.is_none());
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dao_set_rebinds_existing_thread_to_new_session() {
     // Given a thread already mapped to session-1.
@@ -249,6 +257,7 @@ fn make_actor() -> (DiscordBridgeActor, kanal::AsyncReceiver<BridgeEvent>) {
     )
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn idle_transition_forwards_one_turn_finished() {
     // Given a bridge actor.
@@ -273,6 +282,7 @@ async fn idle_transition_forwards_one_turn_finished() {
     assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn streaming_transition_is_dropped() {
     // Given a bridge actor.
@@ -292,6 +302,7 @@ async fn streaming_transition_is_dropped() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn setup_completed_forwards_cwd_and_error() {
     // Given a bridge actor.
@@ -322,6 +333,7 @@ async fn setup_completed_forwards_cwd_and_error() {
     assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn teardown_finished_forwards_error_and_session() {
     // Given a bridge actor.
@@ -346,6 +358,7 @@ async fn teardown_finished_forwards_error_and_session() {
     assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn archived_forwards_session_id() {
     // Given a bridge actor.
@@ -406,6 +419,7 @@ async fn spawn_on_bus_with_rx() -> (
     (harness, rx.to_async(), gw_rx.to_async())
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn bus_subscription_forwards_turn_finished() {
     // Given a bridge actor spawned via on_start against a real bus.
@@ -432,6 +446,7 @@ async fn bus_subscription_forwards_turn_finished() {
     assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn bus_subscription_forwards_setup_completed() {
     // Given a bridge actor spawned via on_start against a real bus.
@@ -464,6 +479,7 @@ async fn bus_subscription_forwards_setup_completed() {
     assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn bus_subscription_forwards_teardown_finished() {
     // Given a bridge actor spawned via on_start against a real bus.
@@ -490,6 +506,7 @@ async fn bus_subscription_forwards_teardown_finished() {
     assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn bus_subscription_forwards_archived() {
     // Given a bridge actor spawned via on_start against a real bus.
@@ -514,6 +531,7 @@ async fn bus_subscription_forwards_archived() {
     assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn bus_subscription_forwards_create_thread_for_session() {
     // Given a bridge actor spawned via on_start against a real bus.

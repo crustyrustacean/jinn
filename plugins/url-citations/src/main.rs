@@ -190,6 +190,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn call_rule_candidates_promote_on_success() {
         // Given a builtin web-fetch call and its successful result.
@@ -208,6 +209,7 @@ mod tests {
             .expect("call-rule citation promoted");
     }
 
+    #[rstest::rstest]
     #[test]
     fn call_rule_candidates_discarded_on_failure() {
         // Given a builtin web-fetch call and its failed result.
@@ -221,6 +223,7 @@ mod tests {
         assert!(state.on_turn_end(&turn_end("s-1", true)).is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn parallel_search_result_yields_citations() {
         // Given a parallel web_search call and its JSON result.
@@ -246,6 +249,7 @@ mod tests {
         assert_eq!(citation.content.as_deref(), Some("Learn Rust."));
     }
 
+    #[rstest::rstest]
     #[test]
     fn web_search_carve_out_flushes_ddg_url() {
         // Given a builtin web-search call and its plain-text result.
@@ -269,6 +273,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn zai_turn_buffers_and_flushes_deduped_citations() {
         // Given a Z.ai web_search_prime call whose result content is a
@@ -320,6 +325,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn buffer_dedups_by_url_across_rules() {
         // Given a parallel web_search citing a URL, then a web_fetch of it.
@@ -347,6 +353,7 @@ mod tests {
         assert_eq!(matches[0].title, "Titled", "titled entry wins");
     }
 
+    #[rstest::rstest]
     #[test]
     fn errored_turn_retains_buffer_for_next_turn() {
         // Given a buffered citation and a non-final turn end.
@@ -367,6 +374,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn flush_clears_the_session_buffer() {
         // Given a flushed citation.
@@ -380,6 +388,7 @@ mod tests {
         assert!(state.on_turn_end(&turn_end("s-1", true)).is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn sessions_are_isolated() {
         // Given citations buffered for two sessions.
@@ -422,6 +431,7 @@ mod tests {
         assert_eq!(flushed_b[0].url, "https://b.example");
     }
 
+    #[rstest::rstest]
     #[test]
     fn call_rule_url_title_falls_back_via_merge() {
         // Given a call-rule URL (empty title) later matched by a titled
@@ -447,6 +457,7 @@ mod tests {
         assert_eq!(matches[0].title, "X Title");
     }
 
+    #[rstest::rstest]
     #[test]
     fn empty_buffer_flush_pushes_nothing() {
         // Given no buffered citations.

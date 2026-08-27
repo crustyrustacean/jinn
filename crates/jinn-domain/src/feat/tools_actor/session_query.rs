@@ -200,6 +200,7 @@ mod tests {
         (state, session_id)
     }
 
+    #[rstest::rstest]
     #[test]
     fn get_recent_returns_last_n_entries() {
         // Given a session with 5 entries.
@@ -228,6 +229,7 @@ mod tests {
         assert!(!result.contains("msg2"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn search_returns_matching_entries() {
         // Given a session with mixed entries.
@@ -262,6 +264,7 @@ mod tests {
         assert!(!result.contains("Goodbye moon"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn invalid_session_id_returns_error() {
         // Given a query for a nonexistent session.
@@ -278,6 +281,7 @@ mod tests {
         assert!(result.contains("Error"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn empty_history_returns_no_entries() {
         // Given a session with no entries.
@@ -295,6 +299,7 @@ mod tests {
         assert_eq!(result, "No entries to display.");
     }
 
+    #[rstest::rstest]
     #[test]
     fn search_with_no_matches_returns_not_found() {
         // Given a session with one entry.
@@ -313,6 +318,7 @@ mod tests {
         assert_eq!(result, "No matching entries found.");
     }
 
+    #[rstest::rstest]
     #[test]
     fn transient_and_thinking_entries_are_excluded() {
         // Given a session with transient and thinking entries mixed in.

@@ -247,6 +247,7 @@ mod tests {
 
     /// `invalidate_all` (called on theme change) must clear the skill preview cache
     /// so stale theme-colored lines are never displayed after a theme switch.
+    #[rstest::rstest]
     #[test]
     fn invalidate_all_clears_skill_preview_cache() {
         // Given a populated skill preview cache.
@@ -268,6 +269,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn default_includes_empty_reasoning_effort_picker() {
         // Given a default FrontendState.

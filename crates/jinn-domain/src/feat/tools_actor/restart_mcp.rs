@@ -254,6 +254,7 @@ mod tests {
         vec!["excalimate".to_owned(), "context7".to_owned()]
     }
 
+    #[rstest::rstest]
     #[test]
     fn resolve_server_exact_match_returns_name() {
         // Given a configured server list and a bare server name.
@@ -264,6 +265,7 @@ mod tests {
         assert_eq!(resolved.as_deref(), Some("excalimate"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn resolve_server_strips_mcp_namespace() {
         // Given a configured server list and a full mcp__ namespaced tool name.
@@ -274,6 +276,7 @@ mod tests {
         assert_eq!(resolved.as_deref(), Some("excalimate"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn resolve_server_returns_none_for_unknown_server() {
         // Given a name that is not configured.
@@ -284,6 +287,7 @@ mod tests {
         assert!(resolved.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn resolve_server_returns_none_for_unknown_namespace() {
         // Given a namespaced tool whose server is not configured.
@@ -294,6 +298,7 @@ mod tests {
         assert!(resolved.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_args_rejects_missing_server_argument() {
         // Given a state with configured servers but no server arg.
@@ -310,6 +315,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_args_rejects_non_string_server() {
         // Given a state and a numeric server arg.
@@ -322,6 +328,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[rstest::rstest]
     #[test]
     fn parse_args_rejects_unknown_server() {
         // Given a state and an unconfigured server name.
@@ -335,6 +342,7 @@ mod tests {
         assert!(result.unwrap_err().contains("ghost"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn definition_has_teaching_description_with_stop_instruction() {
         // Given the tool definition.

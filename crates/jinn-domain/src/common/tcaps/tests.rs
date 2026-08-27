@@ -14,6 +14,7 @@ use crate::common::tcaps::mint;
 // the `tcaps/` subtree, the forge test would compile instead of failing. A
 // separate TC6 test adds no coverage.
 
+#[rstest::rstest]
 #[test]
 fn read_returns_full_snapshot() {
     // Given a State holding an AppState with default frontend and session.
@@ -28,6 +29,7 @@ fn read_returns_full_snapshot() {
     let _: &crate::common::session_map::SessionMap = &guard.session;
 }
 
+#[rstest::rstest]
 #[test]
 fn push_entry_routes_through_history_append() {
     // Given a State with one active session and a minted SessionCap.
@@ -46,6 +48,7 @@ fn push_entry_routes_through_history_append() {
     assert_eq!(after, before + 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn provider_write_routes_through_provider_ops() {
     // Given a State with no model cache and a minted ProviderCap.

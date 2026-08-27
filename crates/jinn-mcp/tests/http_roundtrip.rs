@@ -162,6 +162,7 @@ fn first_text(result: &rmcp::model::CallToolResult) -> String {
 }
 
 /// A full HTTP lifecycle — connect, list, call — completes end-to-end.
+#[rstest::rstest]
 #[tokio::test]
 async fn http_roundtrip_lists_and_calls_tools() {
     // Given a running in-process HTTP MCP server.
@@ -205,6 +206,7 @@ async fn http_roundtrip_lists_and_calls_tools() {
 /// This is the load-bearing contract the HTTP child-exit watcher relies on:
 /// when the child dies, the watcher calls `cancel_token().cancel()`, and the
 /// existing liveness watcher observes the close and publishes Dead.
+#[rstest::rstest]
 #[tokio::test]
 async fn cancel_token_cancels_the_transport() {
     // Given a connected client (remote path, but the transport cancellation
@@ -242,6 +244,7 @@ async fn cancel_token_cancels_the_transport() {
 /// proving resolved headers are applied as default headers on the wire. The
 /// `local_http` path satisfies this by construction: it flows through the very
 /// same `http_client_with` + `attempt_http_handshake` pair under test here.
+#[rstest::rstest]
 #[tokio::test]
 async fn auth_gated_server_rejects_headerless_and_accepts_resolved_header() {
     // Given an MCP server that requires `Authorization: Bearer s3cr3t`.

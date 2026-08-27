@@ -780,6 +780,7 @@ fn truncate_str_strips_ansi_before_truncating() {
     assert_eq!(result, "he\u{2026}");
 }
 
+#[rstest::rstest]
 #[test]
 fn tool_result_with_wide_emoji_fits_narrow_sidebar() {
     // Given a pinned tool result with the ✓ success icon.

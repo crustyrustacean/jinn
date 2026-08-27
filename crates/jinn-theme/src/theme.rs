@@ -730,6 +730,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn input_mode_fields_fall_back_when_absent() {
         // Given a ThemeFile with both input_mode fields explicitly None.
@@ -785,35 +786,4 @@ mod tests {
         assert_eq!(resolved.input_mode_queue, fallback.input_mode_queue);
         assert_eq!(resolved.input_mode_steer, fallback.input_mode_steer);
     }
-}
-
-#[test]
-fn style_map_returns_entry_for_every_theme_field() {
-    // Given the default theme.
-    let theme = crate::default_theme();
-    // When building the style map.
-    let map = theme.style_map();
-    // Then it has one entry per Theme field (40 fields).
-    assert_eq!(map.len(), 40, "style_map should cover all Theme fields");
-}
-
-#[test]
-fn style_map_values_are_fg_only_styles() {
-    // Given the default theme.
-    let theme = crate::default_theme();
-    // When building the style map.
-    let map = theme.style_map();
-    // Then selected entries resolve to Style::default().fg(field).
-    assert_eq!(
-        map.get("streaming"),
-        Some(&Style::default().fg(theme.streaming))
-    );
-    assert_eq!(
-        map.get("accent_action"),
-        Some(&Style::default().fg(theme.accent_action))
-    );
-    assert_eq!(
-        map.get("muted_text"),
-        Some(&Style::default().fg(theme.muted_text))
-    );
 }

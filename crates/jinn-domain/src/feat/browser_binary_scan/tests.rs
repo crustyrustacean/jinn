@@ -59,6 +59,7 @@ async fn harness_with_locator(
     (harness, actor)
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn environment_loaded_with_present_binary_emits_verified() {
     // Given an actor configured for Auto where Chrome exists.
@@ -92,6 +93,7 @@ async fn environment_loaded_with_present_binary_emits_verified() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn environment_loaded_with_no_binary_falls_back_to_bundled() {
     // Given an actor configured for Chrome where neither binary exists.
@@ -120,6 +122,7 @@ async fn environment_loaded_with_no_binary_falls_back_to_bundled() {
     assert!(messages[0].fallback_note.is_some());
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn auto_falls_back_to_chromium_when_chrome_absent() {
     // Given an actor configured for Auto where only Chromium exists.

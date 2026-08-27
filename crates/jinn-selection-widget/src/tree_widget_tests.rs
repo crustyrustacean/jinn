@@ -63,6 +63,7 @@ fn render_to_buffer(state: &TreePickerState<TestItem>) -> Buffer {
     terminal.backend().clone().buffer().clone()
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_prefix_rendered_for_child_entry() {
     // Given: root A → child B.
@@ -80,6 +81,7 @@ fn tree_prefix_rendered_for_child_entry() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn no_tree_prefix_for_root_entry() {
     // Given: only root items (no children).
@@ -99,6 +101,7 @@ fn no_tree_prefix_for_root_entry() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn widget_renders_title() {
     // Given: state with items and a title.

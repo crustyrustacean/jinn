@@ -21,10 +21,14 @@ jiff = { workspace = true }
 wherror = { workspace = true }
 tracing = { workspace = true }
 
-# (no dev-dependencies; the `testing` feature is consumed by jinn-domain test code)
+# The `testing` feature is consumed by jinn-domain test code.
+# (tests use rstest for the workspace-wide timeout; see .cargo/config.toml)
 
 [features]
 # Exposes test-only helpers (apply_migrations_inner, apply_up_to_no_fk) so
 # downstream crates' test suites can stand up a DB at a specific legacy
 # schema version. Enabled in [dev-dependencies] by jinn-domain's tests.
 testing = []
+
+[dev-dependencies]
+rstest = { workspace = true }

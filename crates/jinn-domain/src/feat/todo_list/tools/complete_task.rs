@@ -186,6 +186,7 @@ mod tests {
         (state, session_id, tid)
     }
 
+    #[rstest::rstest]
     #[test]
     fn complete_task_marks_as_completed() {
         let (state, session_id, tid) = setup_with_task();
@@ -204,6 +205,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn complete_task_errors_on_unknown_task() {
         let (state, session_id, _tid) = setup_with_task();
@@ -219,6 +221,7 @@ mod tests {
         assert!(result.content.contains("task not found"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn complete_task_requires_state() {
         let call = ToolCall {
@@ -232,6 +235,7 @@ mod tests {
         assert!(!result.success);
     }
 
+    #[rstest::rstest]
     #[test]
     fn complete_task_next_block_appears_at_top() {
         let (state, session_id, tid) = setup_with_task();
@@ -257,6 +261,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn complete_task_next_block_when_more_tasks_in_phase() {
         // Two tasks in same phase; complete the first.
@@ -303,6 +308,7 @@ mod tests {
         assert!(result.content.contains("1 pending in phase"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn complete_task_next_block_when_phase_done_with_later_blocked() {
         // Complete last task in P1 while P2 still has pending work.
@@ -353,6 +359,7 @@ mod tests {
         assert!(result.content.contains("(Blocked by previous phase)"));
     }
 
+    #[rstest::rstest]
     #[test]
     fn complete_task_next_block_when_all_phases_complete() {
         // Complete the last pending task across all phases.
@@ -393,6 +400,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn complete_task_error_includes_rendered_list() {
         // Error path should also return the prefix-aware list for self-correction.

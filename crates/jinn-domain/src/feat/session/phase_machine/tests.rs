@@ -48,6 +48,7 @@ fn assert_from(err: &TransitionError, expected_from: PhaseKind) {
 // SECTION 1: Valid transitions
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[rstest::rstest]
 #[test]
 fn idle_to_sending_on_dispatch() {
     // Given a machine in Idle.
@@ -63,6 +64,7 @@ fn idle_to_sending_on_dispatch() {
     assert_eq!(m.kind(), PhaseKind::Sending);
 }
 
+#[rstest::rstest]
 #[test]
 fn sending_to_streaming_on_first_token() {
     // Given a machine in Sending.
@@ -77,6 +79,7 @@ fn sending_to_streaming_on_first_token() {
     assert_eq!(m.kind(), PhaseKind::Streaming);
 }
 
+#[rstest::rstest]
 #[test]
 fn streaming_to_sending_on_tool_use() {
     // Given a machine in Streaming.
@@ -94,6 +97,7 @@ fn streaming_to_sending_on_tool_use() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn streaming_to_idle_on_finished() {
     // Given a machine in Streaming.
@@ -111,6 +115,7 @@ fn streaming_to_idle_on_finished() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn streaming_to_idle_on_error() {
     // Given a machine in Streaming.
@@ -124,6 +129,7 @@ fn streaming_to_idle_on_error() {
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn streaming_to_idle_on_canceled() {
     // Given a machine in Streaming.
@@ -137,6 +143,7 @@ fn streaming_to_idle_on_canceled() {
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn sending_to_streaming_on_tool_batch() {
     // Given a machine in Sending (no flags set).
@@ -150,6 +157,7 @@ fn sending_to_streaming_on_tool_batch() {
     assert_eq!(outcome.new_phase, PhaseKind::Streaming);
 }
 
+#[rstest::rstest]
 #[test]
 fn sending_to_idle_on_tool_loop_disabled() {
     // Given a machine in Sending with tool_loop_disabled set.
@@ -164,6 +172,7 @@ fn sending_to_idle_on_tool_loop_disabled() {
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn cancel_during_streaming() {
     // Given a machine in Streaming.
@@ -179,6 +188,7 @@ fn cancel_during_streaming() {
     assert_eq!(m.kind(), PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn soft_cancel_sets_flag() {
     // Given a machine in Streaming.
@@ -197,6 +207,7 @@ fn soft_cancel_sets_flag() {
     assert_eq!(m.kind(), PhaseKind::Streaming);
 }
 
+#[rstest::rstest]
 #[test]
 fn soft_cancel_deferred_to_finished() {
     // Given a machine in Streaming with soft cancel requested.
@@ -211,6 +222,7 @@ fn soft_cancel_deferred_to_finished() {
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn soft_cancel_deferred_to_tool_use() {
     // Given a machine in Streaming with soft cancel requested.
@@ -225,6 +237,7 @@ fn soft_cancel_deferred_to_tool_use() {
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn first_token_creates_default_streaming_state() {
     // Given a machine in Sending.
@@ -242,6 +255,7 @@ fn first_token_creates_default_streaming_state() {
     assert!(!sp.soft_cancel_requested);
 }
 
+#[rstest::rstest]
 #[test]
 fn streaming_state_cleared_on_finish() {
     // Given a machine in Streaming with populated state.
@@ -263,6 +277,7 @@ fn streaming_state_cleared_on_finish() {
     assert_eq!(m.kind(), PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn tool_loop_disabled_cleared() {
     // Given a machine in Sending with tool_loop_disabled set.
@@ -281,6 +296,7 @@ fn tool_loop_disabled_cleared() {
 // SECTION 2: Invalid transitions
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[rstest::rstest]
 #[test]
 fn reject_dispatch_while_streaming() {
     let mut m = streaming_machine();
@@ -288,6 +304,7 @@ fn reject_dispatch_while_streaming() {
     assert_from(&err, PhaseKind::Streaming);
 }
 
+#[rstest::rstest]
 #[test]
 fn reject_dispatch_while_sending() {
     let mut m = sending_machine();
@@ -295,6 +312,7 @@ fn reject_dispatch_while_sending() {
     assert_from(&err, PhaseKind::Sending);
 }
 
+#[rstest::rstest]
 #[test]
 fn reject_first_token_while_idle() {
     let mut m = idle_machine();
@@ -302,6 +320,7 @@ fn reject_first_token_while_idle() {
     assert_from(&err, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn reject_first_token_while_streaming() {
     let mut m = streaming_machine();
@@ -309,6 +328,7 @@ fn reject_first_token_while_streaming() {
     assert_from(&err, PhaseKind::Streaming);
 }
 
+#[rstest::rstest]
 #[test]
 fn reject_stream_completed_while_idle() {
     let mut m = idle_machine();
@@ -316,6 +336,7 @@ fn reject_stream_completed_while_idle() {
     assert_from(&err, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn reject_stream_completed_while_sending() {
     let mut m = sending_machine();
@@ -323,6 +344,7 @@ fn reject_stream_completed_while_sending() {
     assert_from(&err, PhaseKind::Sending);
 }
 
+#[rstest::rstest]
 #[test]
 fn reject_tool_batch_while_idle() {
     let mut m = idle_machine();
@@ -330,6 +352,7 @@ fn reject_tool_batch_while_idle() {
     assert_from(&err, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn reject_tool_batch_while_streaming() {
     let mut m = streaming_machine();
@@ -337,6 +360,7 @@ fn reject_tool_batch_while_streaming() {
     assert_from(&err, PhaseKind::Streaming);
 }
 
+#[rstest::rstest]
 #[test]
 fn reject_cancel_while_idle() {
     let mut m = idle_machine();
@@ -344,6 +368,7 @@ fn reject_cancel_while_idle() {
     assert_from(&err, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn cancel_during_sending() {
     // Given a machine in Sending.
@@ -361,6 +386,7 @@ fn cancel_during_sending() {
     assert!(result.old_streaming.streaming_entry_index.is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn reject_soft_cancel_while_idle() {
     let mut m = idle_machine();
@@ -368,6 +394,7 @@ fn reject_soft_cancel_while_idle() {
     assert_from(&err, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn reject_soft_cancel_while_sending() {
     let mut m = sending_machine();
@@ -379,6 +406,7 @@ fn reject_soft_cancel_while_sending() {
 // SECTION 3: Tool loop cycles
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[rstest::rstest]
 #[test]
 fn full_tool_loop_cycle() {
     // Idle → Sending → Streaming → Sending → Streaming → Idle
@@ -401,6 +429,7 @@ fn full_tool_loop_cycle() {
     assert_eq!(m.kind(), PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn tool_loop_with_cancel_mid_stream() {
     // Idle → Sending → Streaming → cancel() → Idle
@@ -414,6 +443,7 @@ fn tool_loop_with_cancel_mid_stream() {
     assert_eq!(m.kind(), PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn tool_loop_with_soft_cancel_at_boundary() {
     // Idle → Sending → Streaming → soft_cancel() → on_stream_completed_tool_use() → Idle
@@ -429,6 +459,7 @@ fn tool_loop_with_soft_cancel_at_boundary() {
     assert_eq!(m.kind(), PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn tool_loop_disabled_mid_cycle() {
     // Idle → Sending → Streaming → Sending(tool_loop_disabled=true) → Idle
@@ -450,6 +481,7 @@ fn tool_loop_disabled_mid_cycle() {
 // SECTION 4: Side effects
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[rstest::rstest]
 #[test]
 fn cancel_returns_streaming_data() {
     // Given a machine in Streaming with populated state.
@@ -483,6 +515,7 @@ fn cancel_returns_streaming_data() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn streaming_phase_tracks_tool_calls() {
     // Given a machine in Streaming.
@@ -504,6 +537,7 @@ fn streaming_phase_tracks_tool_calls() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn streaming_phase_tracks_thinking() {
     // Given a machine in Streaming.
@@ -523,6 +557,7 @@ fn streaming_phase_tracks_thinking() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn sending_phase_tracks_tool_loop_disabled() {
     // Given a machine in Sending.
@@ -536,6 +571,7 @@ fn sending_phase_tracks_tool_loop_disabled() {
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
 }
 
+#[rstest::rstest]
 #[test]
 fn soft_cancel_flag_consumed_on_transition() {
     // Given a machine in Streaming with soft cancel set.
@@ -559,6 +595,7 @@ fn soft_cancel_flag_consumed_on_transition() {
 // SECTION 5: Accessor edge cases
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[rstest::rstest]
 #[test]
 fn streaming_accessor_returns_none_when_not_streaming() {
     let m = SessionPhaseMachine::new();
@@ -567,6 +604,7 @@ fn streaming_accessor_returns_none_when_not_streaming() {
     assert!(m.streaming_phase_mut().is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn sending_accessor_returns_none_when_not_sending() {
     let m = SessionPhaseMachine::new();
@@ -575,6 +613,7 @@ fn sending_accessor_returns_none_when_not_sending() {
     assert!(m.sending_phase_mut().is_none());
 }
 
+#[rstest::rstest]
 #[test]
 fn phase_starts_as_idle() {
     let m = SessionPhaseMachine::new();

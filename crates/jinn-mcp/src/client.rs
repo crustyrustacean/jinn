@@ -644,6 +644,7 @@ mod tests {
     #![allow(clippy::expect_used, reason = "test assertions")]
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn stderr_buffer_starts_empty() {
         // Given a fresh buffer.
@@ -653,6 +654,7 @@ mod tests {
         assert!(buf.tail().is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn stderr_buffer_appends_and_joins_lines() {
         // Given a fresh buffer.
@@ -666,6 +668,7 @@ mod tests {
         assert_eq!(buf.tail(), "first\nsecond");
     }
 
+    #[rstest::rstest]
     #[test]
     fn stderr_buffer_drops_oldest_when_over_byte_budget() {
         // Given a buffer with a tiny 10-byte budget.
@@ -681,6 +684,7 @@ mod tests {
         assert!(!buf.tail().starts_with("AAAAA"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn connect_http_spawns_and_captures_combined_output() {
         // Given a no-op server script that prints to both stdout and stderr
@@ -715,6 +719,7 @@ mod tests {
         let _ = half.child.kill().await;
     }
 
+    #[rstest::rstest]
     #[test]
     fn http_client_with_empty_headers_is_plain_client() {
         // Given no resolved headers.
@@ -725,6 +730,7 @@ mod tests {
         let _ = client;
     }
 
+    #[rstest::rstest]
     #[test]
     fn invalid_header_name_fails_attaching_name_not_value() {
         // Given a header pair with a name that is not a valid HTTP token.
@@ -746,6 +752,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn invalid_header_value_fails_attaching_name_not_value() {
         // Given a header pair whose value contains an illegal control char.
@@ -770,6 +777,7 @@ mod tests {
     }
 
     /// Default headers built by `http_client_with` are sent on real requests.
+    #[rstest::rstest]
     #[tokio::test]
     async fn default_headers_are_sent_on_the_wire() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
