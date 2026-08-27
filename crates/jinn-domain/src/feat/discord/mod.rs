@@ -7,6 +7,7 @@
 //! lives in a separate `jinn-discord` crate so the domain never depends on
 //! serenity.
 
+pub mod authorize;
 pub mod bridge_actor;
 pub mod config;
 pub mod message_split;
