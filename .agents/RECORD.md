@@ -213,3 +213,5 @@ Entries are added or amended **only with human approval**.
 - (testing) All workspace Rust tests run under rstest's timeout: RSTEST_TIMEOUT=10s is set via .cargo/config.toml [env] and baked into tests at compile time, independent of the command entrypoint.
 - (testing) Tests exceeding the default rstest timeout carry an explicit #[timeout] override (typically 30s); the trybuild compile-fail suite in jinn-domain is exempt from rstest entirely.
 - (testing) just lint rejects bare #[test]/#[tokio::test] attributes without an accompanying rstest attribute.
+- (discord) Inbound Discord input — plain messages and every slash command — is accepted only from user IDs listed in `[discord].authorized_users`; an empty or missing list authorizes nobody (deny by default).
+- (discord) Unauthorized slash-command use gets an ephemeral refusal; unauthorized plain messages are silently dropped.

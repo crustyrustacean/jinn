@@ -5,6 +5,10 @@
 //! It bridges Discord to the jinn actor bus via the shared [`State`] (read
 //! session history) and [`Bridge`] (publish commands).
 //!
+//! Inbound access is deny-by-default: both the plain-message handler and every
+//! slash command gate on `[discord].authorized_users` via
+//! [`jinn_domain::feat::discord::authorize`] — an empty list authorizes nobody.
+//!
 //! See `.plans/discord/plan.md` for the full architecture.
 
 use std::sync::Arc;
@@ -17,7 +21,7 @@ use jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate;
 use jinn_domain::feat::discord::{
     BridgeEvent, CreateThreadReason, DiscordConfig, DiscordThreadCreateFailed,
     DiscordThreadCreated, DiscordThreadMap, FinalReply, ForumChannelError, GatewayRequest,
-    read_final_reply, split_message,
+    authorize, read_final_reply, split_message,
 };
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
@@ -82,6 +86,17 @@ pub async fn run(
             message: "no token configured".to_owned(),
         });
         return Err(Report::new(SpawnError));
+    }
+
+    // Deny-by-default: an empty allow-list means every inbound interaction is
+    // refused. Do not abort — running disabled-by-config is legal — but make
+    // the consequence loud so a misconfigured owner recognizes the fix.
+    if data.config.authorized_users.is_empty() {
+        tracing::warn!(
+            "[discord].authorized_users is empty — nobody will be able to \
+             interact with the bot; add your numeric Discord user ID(s) to \
+             jinn.toml and restart"
+        );
     }
 
     let intents =
@@ -503,6 +518,18 @@ async fn on_event(
     // route into sessions — system messages carry empty content and would
     // produce empty user turns that LLM providers reject (e.g. ZAI error 1213).
     if !is_forwardable_message_type(new_message.kind) || new_message.author.bot {
+        return Ok(());
+    }
+    // Deny-by-default: unauthorized authors are dropped silently — no reply,
+    // no publish — so probing strangers get no feedback. Ordering matters:
+    // this sits after the self/bot/type filters so system noise never even
+    // reaches the check.
+    if !authorize::is_authorized(&data.config.authorized_users, new_message.author.id.get()) {
+        tracing::debug!(
+            author_id = new_message.author.id.get(),
+            channel_id = new_message.channel_id.get(),
+            "unauthorized discord message dropped"
+        );
         return Ok(());
     }
     handle_inbound_message(ctx, new_message, data).await?;
