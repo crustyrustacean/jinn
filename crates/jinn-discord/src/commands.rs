@@ -9,6 +9,7 @@
 use std::time::Duration;
 
 use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
+use jinn_domain::feat::discord::authorize;
 use jinn_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
 use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
 use jinn_domain::protocol::Intent;
@@ -16,6 +17,29 @@ use jinn_domain::{Bridge, SessionId};
 use poise::serenity_prelude as serenity;
 
 use crate::gateway::{BotContext, BotData, BotError};
+
+/// Deny-by-default gate shared by every slash command.
+///
+/// Returns `true` when the invoker may proceed; otherwise sends the single
+/// generic ephemeral refusal — identical for every command so a denial
+/// reveals nothing about bot state — and returns `false`.
+///
+/// # Errors
+///
+/// Returns [`BotError`] if sending the refusal fails.
+async fn ensure_authorized(ctx: &BotContext<'_>) -> Result<bool, BotError> {
+    let data = ctx.data();
+    if authorize::is_authorized(&data.config.authorized_users, ctx.author().id.get()) {
+        return Ok(true);
+    }
+    tracing::debug!(
+        author_id = ctx.author().id.get(),
+        "unauthorized slash command refused"
+    );
+    ctx.send(ephemeral("You are not authorized to use this bot."))
+        .await?;
+    Ok(false)
+}
 
 /// Start a new jinn session in this thread.
 ///
@@ -28,6 +52,9 @@ use crate::gateway::{BotContext, BotData, BotError};
 /// loop when the `SessionSetupCompleted` event arrives.
 #[poise::command(slash_command)]
 pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
+    if !ensure_authorized(&ctx).await? {
+        return Ok(());
+    }
     let data = ctx.data();
 
     // 1. Gather projects from preferences.
@@ -142,6 +169,9 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
 /// when the session has no teardown command configured.
 #[poise::command(slash_command)]
 pub async fn teardown(ctx: BotContext<'_>) -> Result<(), BotError> {
+    if !ensure_authorized(&ctx).await? {
+        return Ok(());
+    }
     let data = ctx.data().clone();
     let thread_id = ctx.channel_id().get().to_string();
 
@@ -187,6 +217,9 @@ fn build_teardown_publish(
 /// Replies with an error message when no session is bound to the thread.
 #[poise::command(slash_command)]
 pub async fn archive(ctx: BotContext<'_>) -> Result<(), BotError> {
+    if !ensure_authorized(&ctx).await? {
+        return Ok(());
+    }
     let data = ctx.data().clone();
     let thread_id = ctx.channel_id().get().to_string();
 
@@ -245,6 +278,9 @@ enum Lookup {
 /// is triggered; the store is whatever the session loaded at startup.
 #[poise::command(slash_command)]
 pub async fn prompts(ctx: BotContext<'_>) -> Result<(), BotError> {
+    if !ensure_authorized(&ctx).await? {
+        return Ok(());
+    }
     let data = ctx.data();
     let channel_id = ctx.channel_id();
 
