@@ -370,6 +370,111 @@ async fn builtin_web_tools_turn_yields_both_citations() {
         .expect("shutdown timed out");
 }
 
+/// A Z.ai web_search_prime turn — doubly-encoded `{title, link, content,
+/// refer}` results — yields grouped citations through the real guest.
+#[tokio::test]
+async fn zai_search_turn_yields_push_citations() {
+    // Given the real url-citations guest, handshaken.
+    let engine = PluginEngine::new().expect("engine");
+    let grants = Grants {
+        read_dirs: vec![],
+        write_dirs: vec![],
+        http: false,
+        config: serde_json::Value::Null,
+    };
+    let mut host = PluginHost::start(
+        &engine,
+        "url-citations",
+        std::path::Path::new(WASM),
+        &grants,
+    )
+    .expect("guest started");
+    let _ = next_message(&mut host).await; // Hello
+    send(
+        &mut host,
+        HostToPlugin::Welcome(jinn_plugin_api::Welcome {
+            protocol_version: PROTOCOL_VERSION,
+            plugin_id: "url-citations".to_owned(),
+            read_dirs: vec![],
+            write_dirs: vec![],
+            http_allowed: false,
+            config: serde_json::Value::Null,
+        }),
+        0,
+    )
+    .await;
+
+    // When a Z.ai search runs: the result content is a JSON *string*
+    // wrapping an array of {title, link, content, refer} objects.
+    let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
+    let inner_entries = concat!(
+        r#"{\"title\":\"Mega Man Legends (series) - MMKB - Fandom\",\"link\":\"https://megaman.fandom.com/wiki/Mega_Man_Legends_(series)\",\"content\":\"It is centered around MegaMan Volnutt.\",\"refer\":\"ref_1\"},"#,
+        r#"{\"title\":\"Mega Man Legends\",\"link\":\"https://en.wikipedia.org/wiki/Mega_Man_Legends\",\"content\":\"The player controls Mega Man Volnutt.\",\"refer\":\"ref_2\"}"#
+    );
+    send(
+        &mut host,
+        HostToPlugin::ToolCallEvent(ToolCallEvent {
+            session_id: session.clone(),
+            tool_call_id: "call_z1".to_owned(),
+            name: "mcp__zai-web-search-prime__web_search_prime".to_owned(),
+            arguments: r#"{"search_query":"mega man legends series","location":"us"}"#.to_owned(),
+        }),
+        1,
+    )
+    .await;
+    send(
+        &mut host,
+        HostToPlugin::ToolResultEvent(ToolResultEvent {
+            session_id: session.clone(),
+            tool_call_id: "call_z1".to_owned(),
+            name: "mcp__zai-web-search-prime__web_search_prime".to_owned(),
+            content: format!(r#""[{inner_entries}]""#),
+            success: true,
+        }),
+        2,
+    )
+    .await;
+    send(
+        &mut host,
+        HostToPlugin::TurnEndEvent(TurnEndEvent {
+            session_id: session.clone(),
+            final_answer: true,
+        }),
+        3,
+    )
+    .await;
+
+    // Then the push carries one citation per Zai entry, decoded with the
+    // link as URL and the content field as the snippet (refer ignored).
+    let pushed = next_message(&mut host).await;
+    let PluginToHost::PushCitations(msg) = pushed else {
+        panic!("expected PushCitations, got {pushed:?}");
+    };
+    assert_eq!(msg.session_id, session);
+    assert_eq!(msg.citations.len(), 2, "one per Zai entry");
+    assert_eq!(
+        msg.citations[0].url,
+        "https://megaman.fandom.com/wiki/Mega_Man_Legends_(series)"
+    );
+    assert_eq!(
+        msg.citations[0].title,
+        "Mega Man Legends (series) - MMKB - Fandom"
+    );
+    assert_eq!(
+        msg.citations[0].content.as_deref(),
+        Some("It is centered around MegaMan Volnutt.")
+    );
+    assert_eq!(
+        msg.citations[1].url,
+        "https://en.wikipedia.org/wiki/Mega_Man_Legends"
+    );
+
+    eprintln!("[e2e] shutting down");
+    tokio::time::timeout(WAIT, host.shutdown())
+        .await
+        .expect("shutdown timed out");
+}
+
 /// An errored turn (final_answer=false) retains citations; the next
 /// successful turn flushes them.
 #[tokio::test]
