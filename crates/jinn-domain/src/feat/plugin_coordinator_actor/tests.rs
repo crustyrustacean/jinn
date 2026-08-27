@@ -111,6 +111,7 @@ fn plugins() -> std::collections::BTreeMap<String, PluginConfig> {
 }
 
 /// A healthy guest ends up Running on the bus.
+#[rstest::rstest]
 #[tokio::test]
 async fn healthy_guest_reaches_running_phase() {
     // Given a coordinator with one scripted-healthy plugin and a recorder.
@@ -140,6 +141,7 @@ async fn healthy_guest_reaches_running_phase() {
 }
 
 /// Contributions from a healthy guest land in the cache.
+#[rstest::rstest]
 #[tokio::test]
 async fn set_theme_entries_populates_contribution_cache() {
     // Given a coordinator with a guest contributing one theme.
@@ -177,6 +179,7 @@ async fn set_theme_entries_populates_contribution_cache() {
 }
 
 /// Malformed input from a guest does not kill it or the app.
+#[rstest::rstest]
 #[tokio::test]
 async fn malformed_lines_are_dropped_not_fatal() {
     // Given a guest whose wire output includes garbage around a valid line.
@@ -211,6 +214,7 @@ async fn malformed_lines_are_dropped_not_fatal() {
 
 /// A guest whose stdout closes after contributing ended cleanly; its
 /// cached contributions remain and the phase is Done.
+#[rstest::rstest]
 #[tokio::test]
 async fn guest_end_keeps_contributions_and_marks_done() {
     // Given a coordinator with a guest that contributes then ends.
@@ -240,6 +244,7 @@ async fn guest_end_keeps_contributions_and_marks_done() {
 }
 
 /// A guest that never sends Hello times out and dies without contributing.
+#[rstest::rstest]
 #[tokio::test]
 async fn silent_guest_dies_at_handshake() {
     // Given a coordinator with a guest that says nothing.
@@ -261,6 +266,7 @@ async fn silent_guest_dies_at_handshake() {
 }
 
 /// A first message that is not Hello fails the handshake.
+#[rstest::rstest]
 #[tokio::test]
 async fn non_hello_first_message_fails_handshake() {
     // Given a coordinator with a guest whose first line is a contribution.
@@ -287,6 +293,7 @@ async fn non_hello_first_message_fails_handshake() {
 }
 
 /// Protocol version mismatch fails the handshake.
+#[rstest::rstest]
 #[tokio::test]
 async fn version_mismatch_fails_handshake() {
     // Given a coordinator with a guest speaking a different major version.
@@ -317,6 +324,7 @@ async fn version_mismatch_fails_handshake() {
 
 /// A persisted theme name pending on startup is late-applied when the
 /// plugin's first contribution lands.
+#[rstest::rstest]
 #[tokio::test]
 async fn first_contribution_late_applies_pending_theme_name() {
     // Given a coordinator whose frontend holds a persisted theme name that
@@ -369,6 +377,7 @@ async fn first_contribution_late_applies_pending_theme_name() {
 /// A flooding guest overflows the inbound channel: the pump drops, marks
 /// the plugin `Unresponsive`, and the app continues (contributions still
 /// arrive).
+#[rstest::rstest]
 #[tokio::test]
 async fn flooding_guest_is_marked_unresponsive_then_recovers() {
     // Given a coordinator with a guest flooding far more lines than the
@@ -418,6 +427,7 @@ async fn flooding_guest_is_marked_unresponsive_then_recovers() {
 }
 
 /// An identical consecutive contribution is debounced: no duplicate work.
+#[rstest::rstest]
 #[tokio::test]
 async fn identical_consecutive_theme_batch_is_debounced() {
     // Given a guest contributing the same batch twice (names differ so a
@@ -454,6 +464,7 @@ async fn identical_consecutive_theme_batch_is_debounced() {
 
 /// A batch whose every entry fails translation is dropped with a warn,
 /// leaving the cache empty for that plugin.
+#[rstest::rstest]
 #[tokio::test]
 async fn all_invalid_theme_batch_is_dropped_entirely() {
     // Given a guest contributing one theme with no valid color values.
@@ -486,6 +497,7 @@ async fn all_invalid_theme_batch_is_dropped_entirely() {
 
 /// No configured plugins means no spawns, no status events, and an empty
 /// contribution cache — the default install.
+#[rstest::rstest]
 #[tokio::test]
 async fn no_plugins_configured_is_quiescent() {
     // Given a coordinator with zero plugin entries and a recorder.
@@ -520,6 +532,7 @@ fn persona_line(name: &str, description: Option<&str>) -> String {
 }
 
 /// A persona contribution is translated and published as `PersonasLoaded`.
+#[rstest::rstest]
 #[tokio::test]
 async fn set_persona_entries_publishes_personas_loaded() {
     // Given a coordinator with a guest contributing one persona and a recorder.
@@ -548,6 +561,7 @@ async fn set_persona_entries_publishes_personas_loaded() {
 }
 
 /// An identical consecutive persona batch is debounced to a single publish.
+#[rstest::rstest]
 #[tokio::test]
 async fn duplicate_persona_batch_is_debounced() {
     // Given a coordinator with a guest pushing the same persona batch twice.
@@ -597,6 +611,7 @@ fn seed_entry(state: &State, session_id: &SessionId, is_assistant: bool) {
 }
 
 /// A subscribed plugin's guest stays alive; its registration lands.
+#[rstest::rstest]
 #[tokio::test]
 async fn subscribed_guest_registers_its_kinds() {
     // Given a coordinator with a guest subscribing to all three kinds.
@@ -627,6 +642,7 @@ async fn subscribed_guest_registers_its_kinds() {
 
 /// An unsubscribed plugin receives no forwarded events (the guest would
 /// misparse them); only subscribed kinds flow.
+#[rstest::rstest]
 #[tokio::test]
 async fn unsubscribed_kind_is_not_forwarded() {
     // Given a guest subscribing only to turn_end (no tool events).
@@ -682,6 +698,7 @@ async fn statuses_recorder(
 }
 
 /// `final_answer` is true only when the last entry is an assistant message.
+#[rstest::rstest]
 #[tokio::test]
 async fn turn_end_final_answer_reflects_last_entry() {
     // Given a session whose last entry is an assistant message.
@@ -725,6 +742,7 @@ async fn turn_end_final_answer_reflects_last_entry() {
 }
 
 /// A valid PushCitations line publishes CitationsReceived on the bus.
+#[rstest::rstest]
 #[tokio::test]
 async fn push_citations_publishes_citations_received() {
     // Given a coordinator with a guest pushing one citation.
@@ -756,6 +774,7 @@ async fn push_citations_publishes_citations_received() {
 }
 
 /// Invalid citations are dropped entry-wise; valid ones survive.
+#[rstest::rstest]
 #[tokio::test]
 async fn push_citations_drops_invalid_entries_keeps_valid() {
     // Given a guest pushing one invalid (ftp) and one valid citation.
@@ -786,6 +805,7 @@ async fn push_citations_drops_invalid_entries_keeps_valid() {
 }
 
 /// An unparseable session id drops the whole batch without publishing.
+#[rstest::rstest]
 #[tokio::test]
 async fn push_citations_with_bad_session_id_is_dropped() {
     // Given a guest pushing citations for a non-UUID session id.
@@ -813,6 +833,7 @@ async fn push_citations_with_bad_session_id_is_dropped() {
 }
 
 /// Two identical citation pushes in sequence both publish (no debounce).
+#[rstest::rstest]
 #[tokio::test]
 async fn identical_citation_batches_both_publish() {
     // Given a guest pushing the same citation batch twice.
@@ -842,6 +863,7 @@ async fn identical_citation_batches_both_publish() {
 
 /// `final_answer` computation: an assistant last entry yields true, an
 /// error last entry yields false (the flush gate).
+#[rstest::rstest]
 #[tokio::test]
 async fn final_answer_reflects_last_history_entry_kind() {
     // Given a session whose last entry is an error.
@@ -868,6 +890,7 @@ async fn final_answer_reflects_last_history_entry_kind() {
 
 /// With no plugins configured, forwarded bus events are harmless no-ops and
 /// the coordinator stays alive — no footer, no startup failure.
+#[rstest::rstest]
 #[tokio::test]
 async fn no_plugins_forwarded_events_are_harmless() {
     // Given a coordinator with zero plugins configured and a recorder.
@@ -915,6 +938,7 @@ async fn no_plugins_forwarded_events_are_harmless() {
 /// LLM-context limit only. The echo guest returns each forwarded line
 /// inside a citation title, so the recorder asserts exactly what crossed
 /// the wire.
+#[rstest::rstest]
 #[tokio::test]
 async fn truncated_result_forwards_full_content_to_guest() {
     // Given a coordinator with an echo guest subscribed to tool results.
@@ -970,6 +994,7 @@ async fn truncated_result_forwards_full_content_to_guest() {
 }
 
 /// An empty citations list publishes nothing.
+#[rstest::rstest]
 #[tokio::test]
 async fn push_citations_with_empty_list_publishes_nothing() {
     // Given a coordinator with a guest pushing an empty citations batch.
@@ -999,6 +1024,7 @@ async fn push_citations_with_empty_list_publishes_nothing() {
 
 /// A run-to-completion guest (handshake, no further lines, clean stdout
 /// close — the loader shape) ends up Done, not Dead.
+#[rstest::rstest]
 #[tokio::test]
 async fn clean_exit_guest_reaches_done_phase() {
     // Given a coordinator whose guest handshakes then closes stdout cleanly.
@@ -1040,6 +1066,7 @@ async fn clean_exit_guest_reaches_done_phase() {
 
 /// A guest that dies before handshaking still ends up Dead (clean-exit
 /// marking must not mask real failures).
+#[rstest::rstest]
 #[tokio::test]
 async fn silent_guest_reaches_dead_phase() {
     // Given a coordinator whose guest closes stdout before Hello.

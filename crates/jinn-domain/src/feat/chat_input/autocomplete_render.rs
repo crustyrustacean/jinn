@@ -312,6 +312,7 @@ mod tests {
             .collect()
     }
 
+    #[rstest::rstest]
     #[test]
     fn render_at_popup_shows_directory_entry_with_trailing_slash() {
         // Given an active @ popup seeded with a directory entry.
@@ -342,6 +343,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn render_at_popup_shows_loading_state() {
         // Given an active @ popup with a listing in flight.
@@ -362,6 +364,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn render_at_popup_shows_empty_state() {
         // Given an active @ popup with an empty listing (not loading).
@@ -376,6 +379,7 @@ mod tests {
         assert!(rendered.contains("empty"), "empty state should be rendered");
     }
 
+    #[rstest::rstest]
     #[test]
     fn render_at_popup_narrows_rows_by_typed_prefix() {
         // Given an active @ popup with several entries and a typed filter 'sr'.
@@ -419,6 +423,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn render_at_popup_shows_empty_when_no_prefix_match() {
         // Given an active @ popup whose entries don't match the typed filter.
@@ -515,6 +520,7 @@ mod tests {
         ratatui::layout::Rect::new(x, y, width, height)
     }
 
+    #[rstest::rstest]
     #[test]
     fn hash_popup_horizontal_anchor_follows_wrapped_trigger_col() {
         // Given a # popup whose trigger sits on a wrapped continuation line,
@@ -546,6 +552,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn hash_popup_sits_above_trigger_visual_line_not_input_top() {
         // Given a # popup whose trigger sits on the second wrapped visual line.
@@ -573,6 +580,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn hash_popup_follows_cursor_down_through_wrapped_lines() {
         // Given a # popup whose trigger sits on the THIRD wrapped visual line,
@@ -602,6 +610,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn at_popup_uses_cursor_anchored_vertical_positioning() {
         // Given an @ popup whose trigger sits on a wrapped continuation line,
@@ -633,6 +642,7 @@ mod tests {
             "@ popup bottom should follow the trigger down to row 2"
         );
     }
+    #[rstest::rstest]
     #[test]
     fn at_popup_horizontal_anchor_follows_wrapped_trigger_col() {
         // Given an @ popup whose trigger sits on a wrapped continuation line,
@@ -668,6 +678,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn at_popup_keeps_selected_entry_visible_when_scrolled() {
         // Given an @ popup with 30 entries and the selection moved well past
@@ -697,6 +708,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn at_popup_drops_top_entry_when_selection_scrolls_past() {
         // Given an @ popup with 30 entries and the selection scrolled to index 20.
@@ -726,6 +738,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn at_popup_shows_top_entry_when_selection_at_zero() {
         // Given an @ popup with 30 entries and the selection at index 0.
@@ -750,6 +763,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn at_popup_keeps_last_entry_visible_at_tail() {
         // Given an @ popup with 30 entries and the selection at the last entry.

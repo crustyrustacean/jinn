@@ -64,6 +64,7 @@ mod tests {
         assert_eq!(resolve_effort(Some(effort)), expected);
     }
 
+    #[rstest::rstest]
     #[test]
     fn returns_none_when_session_has_no_effort() {
         // Given a session with no effort set.

@@ -148,6 +148,7 @@ mod tests {
     /// documented safety property the lifecycle cancel path relies on:
     /// the cancel handler may run after the process has already exited.
     #[cfg(unix)]
+    #[rstest::rstest]
     #[tokio::test]
     async fn kill_process_group_by_pid_is_infallible_on_dead_pid() {
         // Given a process group whose leader has already exited.
@@ -175,6 +176,7 @@ mod tests {
     /// and the child was spawned with `process_group(0)` so its pid _is_ the
     /// pgid. A naive single-process kill would orphan the grandchild.
     #[cfg(unix)]
+    #[rstest::rstest]
     #[tokio::test]
     async fn kill_process_group_by_pid_terminates_grandchildren() {
         // Given a shell child that backgrounds a long-running `sleep` (the

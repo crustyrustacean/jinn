@@ -78,6 +78,7 @@ mod tests {
     use crate::common::bus::test_harness::TestHarness;
     use kameo::actor::Spawn;
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn signals_on_all_actors_spawned() {
         // Given a SystemReadyActor.
@@ -97,6 +98,7 @@ mod tests {
         assert!(result.is_ok(), "oneshot should be sent");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn does_not_signal_without_all_actors_spawned() {
         // Given a SystemReadyActor.

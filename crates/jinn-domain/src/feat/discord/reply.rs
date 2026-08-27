@@ -53,6 +53,7 @@ mod tests {
     use super::{FinalReply, read_final_reply};
     use crate::feat::session::chat_entry::ChatEntry;
 
+    #[rstest::rstest]
     #[test]
     fn history_ending_in_assistant_returns_its_text() {
         // Given a history ending in an assistant message.
@@ -63,6 +64,7 @@ mod tests {
         assert_eq!(reply, Some(FinalReply::Assistant("hello there".to_owned())));
     }
 
+    #[rstest::rstest]
     #[test]
     fn history_ending_in_error_returns_the_error_text() {
         // Given a history ending in an error.
@@ -73,6 +75,7 @@ mod tests {
         assert_eq!(reply, Some(FinalReply::Error("boom".to_owned())));
     }
 
+    #[rstest::rstest]
     #[test]
     fn history_ending_in_user_returns_none() {
         // Given a history that ends with the user's own message (no model reply).

@@ -65,6 +65,7 @@ async fn spawn_actor(deps: &ActorDeps, state: &State) -> ActorRef<SkillsScanActo
     actor
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn scan_skills_command_writes_to_app_state() {
     // Given an actor with a temp directory containing a skill.
@@ -106,6 +107,7 @@ async fn scan_skills_command_writes_to_app_state() {
     assert_eq!(session.discovered_skills()[0].name, "test-skill");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn session_created_event_scans_skills() {
     // Given an actor whose active session cwd contains a skill.
@@ -138,6 +140,7 @@ async fn session_created_event_scans_skills() {
     assert_eq!(session.discovered_skills().len(), 1);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn session_created_event_skips_scan_when_cwd_is_sentinel() {
     // Given an actor whose active session cwd is the pending "." sentinel.
@@ -161,6 +164,7 @@ async fn session_created_event_skips_scan_when_cwd_is_sentinel() {
     assert!(session.discovered_skills().is_empty());
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn session_setup_completed_event_scans_skills() {
     // Given an actor whose active session cwd contains a skill.
@@ -195,6 +199,7 @@ async fn session_setup_completed_event_scans_skills() {
     assert_eq!(session.discovered_skills().len(), 1);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn session_cwd_changed_event_scans_skills() {
     // Given an actor whose active session cwd contains a skill.
@@ -228,6 +233,7 @@ async fn session_cwd_changed_event_scans_skills() {
     assert_eq!(session.discovered_skills().len(), 1);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn environment_loaded_event_scans_active_session_skills() {
     // Given an actor whose active session cwd contains a skill.
@@ -264,6 +270,7 @@ async fn environment_loaded_event_scans_active_session_skills() {
     assert_eq!(session.discovered_skills().len(), 1);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn scan_skills_preserves_skill_preview_cache() {
     use jinn_selection_widget::PreviewCache as _;
@@ -352,6 +359,7 @@ fn draw_picker(state: &State) -> String {
     buffer
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn rescan_after_body_edit_renders_new_content() {
     // Given a scanned skill whose preview has been rendered into the cache.
@@ -445,6 +453,7 @@ async fn rescan_after_body_edit_renders_new_content() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn scan_skills_command_emits_skills_loaded() {
     // Given an actor with a temp directory.
@@ -464,6 +473,7 @@ async fn scan_skills_command_emits_skills_loaded() {
     assert!(loaded.error.is_none());
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn scan_skills_empty_dir_emits_empty_loaded() {
     // Given an actor with an empty temp directory.
@@ -484,6 +494,7 @@ async fn scan_skills_empty_dir_emits_empty_loaded() {
     assert!(loaded.error.is_none());
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn scan_skills_replacing_cwd_clears_previous_discovered_skills() {
     // Given a session whose cwd has a project skill, scanned once so the
@@ -575,6 +586,7 @@ async fn scan_skills_replacing_cwd_clears_previous_discovered_skills() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn scan_skills_nonexistent_dir_emits_empty_loaded() {
     // Given an actor with a nonexistent directory.
@@ -595,6 +607,7 @@ async fn scan_skills_nonexistent_dir_emits_empty_loaded() {
     assert!(loaded.error.is_none());
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn scan_skills_project_overrides_global_same_name() {
     // Given a global skill `shared` and a project skill `shared` at the cwd.
@@ -639,6 +652,7 @@ async fn scan_skills_project_overrides_global_same_name() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn scan_skills_discovers_ancestor_project_skill_from_nested_cwd() {
     // Given a tree home/repo/.agents/skills/ancestor and a session whose
@@ -699,6 +713,7 @@ async fn scan_skills_discovers_ancestor_project_skill_from_nested_cwd() {
     assert_eq!(skills[0].name, "ancestor");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn scan_skills_routes_discovery_per_session_cwd() {
     // Two sessions with two different cwds, each with a distinct project skill.

@@ -61,6 +61,7 @@ impl QueueTestHarness {
     }
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn session_phase_changed_idle_pops_user_message_from_queue() {
     // Given a session with a queued user message in Idle phase.
@@ -98,6 +99,7 @@ async fn session_phase_changed_idle_pops_user_message_from_queue() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn session_phase_changed_non_idle_does_not_pop_queue() {
     // Given a session with a queued user message in non-Idle phase.
@@ -133,6 +135,7 @@ async fn session_phase_changed_non_idle_does_not_pop_queue() {
     assert_eq!(session.queue_len(), 1);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn session_phase_changed_idle_with_empty_queue_is_noop() {
     // Given a session with an empty queue.
@@ -155,6 +158,7 @@ async fn session_phase_changed_idle_with_empty_queue_is_noop() {
     assert!(send_cmds.is_empty(), "expected no commands for empty queue");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dispatch_user_message_emits_chat_entry_submitted() {
     // Given a queue actor wired to the bus.
@@ -182,6 +186,7 @@ async fn dispatch_user_message_emits_chat_entry_submitted() {
     assert!(!chat_events.is_empty(), "expected ChatEntrySubmitted event");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dispatch_user_message_sets_title_on_first_message() {
     // Given a session with no title.
@@ -213,6 +218,7 @@ async fn dispatch_user_message_sets_title_on_first_message() {
     assert_eq!(session.title(), Some("my new chat"));
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dispatch_user_message_transitions_to_sending() {
     // Given a session in Idle phase.
@@ -242,6 +248,7 @@ async fn dispatch_user_message_transitions_to_sending() {
     assert!(matches!(session.phase(), PhaseKind::Sending));
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
     // Given a session in Idle phase with history and a tool continuation queued.
@@ -267,6 +274,7 @@ async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
     assert!(!send_cmds.is_empty(), "expected SendToLlmProvider command");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dispatch_user_message_provider_id_is_none_when_no_provider() {
     // Given a session with the default model (NO_PROVIDER_ID).
@@ -299,6 +307,7 @@ async fn dispatch_user_message_provider_id_is_none_when_no_provider() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dispatch_user_message_provider_id_is_some_when_model_set() {
     // Given a session with an explicit model.
@@ -329,6 +338,7 @@ async fn dispatch_user_message_provider_id_is_some_when_model_set() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dispatch_tool_continuation_provider_id_is_none_when_no_provider() {
     // Given a session with the default model (NO_PROVIDER_ID) and history.
@@ -359,6 +369,7 @@ async fn dispatch_tool_continuation_provider_id_is_none_when_no_provider() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dispatch_tool_continuation_provider_id_is_some_when_model_set() {
     // Given a session with an explicit model and history.
@@ -390,6 +401,7 @@ async fn dispatch_tool_continuation_provider_id_is_some_when_model_set() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dispatch_user_message_drains_steering_buffer_before_assembly() {
     // Given a session with a non-empty steering buffer and a queued user message.
@@ -434,6 +446,7 @@ async fn dispatch_user_message_drains_steering_buffer_before_assembly() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn dispatch_resume_drains_steering_buffer_before_assembly() {
     // Given a session with a non-empty steering buffer and a tool continuation queued.

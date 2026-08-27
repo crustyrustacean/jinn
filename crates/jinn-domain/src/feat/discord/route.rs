@@ -35,6 +35,7 @@ mod tests {
     use super::{RouteDecision, route_decision};
     use crate::feat::session::phase_machine::PhaseKind;
 
+    #[rstest::rstest]
     #[test]
     fn idle_phase_routes_to_enqueue() {
         // Given an idle session phase.
@@ -44,6 +45,7 @@ mod tests {
         assert_eq!(decision, RouteDecision::Enqueue);
     }
 
+    #[rstest::rstest]
     #[test]
     fn streaming_phase_routes_to_steer() {
         // Given a streaming session phase.
@@ -53,6 +55,7 @@ mod tests {
         assert_eq!(decision, RouteDecision::Steer);
     }
 
+    #[rstest::rstest]
     #[test]
     fn sending_phase_routes_to_steer() {
         // Given a sending session phase.

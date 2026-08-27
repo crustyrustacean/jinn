@@ -139,6 +139,7 @@ mod tests {
 
     use super::*;
 
+    #[rstest::rstest]
     #[test]
     fn default_config_uses_documented_challenge_defaults() {
         // Given no input.
@@ -151,6 +152,7 @@ mod tests {
         assert!(!config.keep_tabs_open);
     }
 
+    #[rstest::rstest]
     #[test]
     fn config_round_trips_challenge_fields_through_toml() {
         // Given a custom config.
@@ -169,6 +171,7 @@ mod tests {
         assert_eq!(back, config);
     }
 
+    #[rstest::rstest]
     #[test]
     fn config_fills_challenge_defaults_when_empty() {
         // Given an empty TOML table.
@@ -179,6 +182,7 @@ mod tests {
         assert_eq!(config, BrowserConfig::default());
     }
 
+    #[rstest::rstest]
     #[test]
     fn from_config_populates_challenge_settings() {
         // Given a config with non-default challenge values.

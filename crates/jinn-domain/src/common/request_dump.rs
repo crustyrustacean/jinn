@@ -88,6 +88,7 @@ mod tests {
         Sample { msg: "hello" }
     }
 
+    #[rstest::rstest]
     #[test]
     fn dump_is_noop_when_dir_is_none() {
         // Given a disabled service (dir = None) and an empty temp dir.
@@ -106,6 +107,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn dump_writes_pretty_json_at_first_counter_value() {
         // Given a service pointing at a temp dir.
@@ -125,6 +127,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn dump_increments_counter_across_calls() {
         // Given a service pointing at a temp dir.
@@ -141,6 +144,7 @@ mod tests {
         assert!(!tmp.path().join("000003.json").exists());
     }
 
+    #[rstest::rstest]
     #[test]
     fn dump_produces_unique_filenames_across_clones() {
         // Given a service and two clones of it (one source counter).

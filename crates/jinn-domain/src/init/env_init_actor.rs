@@ -203,6 +203,7 @@ mod tests {
         prefs
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn referenced_header_variables_seed_api_keys_store() {
         // Given preferences declaring an MCP server header referencing a
@@ -234,6 +235,7 @@ mod tests {
         };
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn unset_header_variable_skips_store_and_startup_still_succeeds() {
         // Given preferences declaring a header referencing a variable that is
@@ -266,6 +268,7 @@ mod tests {
         assert!(keys.get(MISSING_VAR).is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn get_environment_config_returns_none_without_config_file() {
         // Given an env init actor with no config file.
@@ -284,6 +287,7 @@ mod tests {
         assert!(config.is_ok(), "ask should succeed");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn environment_loaded_can_be_published_for_reload() {
         // Given an env init actor and a recorder.

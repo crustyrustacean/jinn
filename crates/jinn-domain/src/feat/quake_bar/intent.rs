@@ -120,6 +120,7 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
 
+    #[rstest::rstest]
     #[test]
     fn open_pushes_quake_bar_scope() {
         // Given default app state (Normal scope on top).
@@ -135,6 +136,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn close_pops_when_quake_bar_is_top() {
         // Given a state with the quake bar open.
@@ -151,6 +153,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn close_is_noop_when_quake_bar_not_top() {
         // Given a state in the default scope (quake bar not open).
@@ -163,6 +166,7 @@ mod tests {
         // Then the scope is unchanged.
         assert_eq!(state.frontend.scope_stack.current(), &scope_before);
     }
+    #[rstest::rstest]
     #[test]
     fn insert_char_appends_to_input() {
         // Given a quake bar with an empty input.
@@ -175,6 +179,7 @@ mod tests {
         assert_eq!(state.frontend.quake_bar.input.text.input, "x");
     }
 
+    #[rstest::rstest]
     #[test]
     fn submit_clears_input_buffer() {
         // Given a quake bar with typed input.
@@ -189,6 +194,7 @@ mod tests {
         assert!(state.frontend.quake_bar.input.text.input.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn submit_with_text_emits_submit_command() {
         // Given a quake bar with typed input.
@@ -209,6 +215,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn submit_with_empty_input_emits_no_command() {
         // Given a quake bar with empty input.

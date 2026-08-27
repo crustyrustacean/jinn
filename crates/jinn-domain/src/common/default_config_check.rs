@@ -98,6 +98,7 @@ mod tests {
         42
     }
 
+    #[rstest::rstest]
     #[test]
     fn check_returns_ok_for_template_equal_to_default() {
         // Given a template that deserializes to SampleConfig::default().
@@ -110,6 +111,7 @@ mod tests {
         assert!(result.is_ok(), "expected Ok, got {result:?}");
     }
 
+    #[rstest::rstest]
     #[test]
     fn check_returns_drift_err_for_mismatched_template() {
         // Given a template whose count differs from the default of 42.
@@ -122,6 +124,7 @@ mod tests {
         assert!(matches!(result, Err(DefaultConfigCheckError::Drift)));
     }
 
+    #[rstest::rstest]
     #[test]
     fn check_returns_parse_err_for_invalid_toml() {
         // Given a template with invalid TOML syntax.

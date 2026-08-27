@@ -3462,6 +3462,7 @@ mod tests {
         assert_eq!(state.provider.provider_picker.selection(), 5);
     }
 
+    #[rstest::rstest]
     #[test]
     fn theme_picker_lists_default_first_then_contributed_sorted() {
         // Given a cache with unsorted contributed themes.
@@ -3493,6 +3494,7 @@ mod tests {
         assert_eq!(names, vec!["default", "alpha", "Beta", "zeta"]);
     }
 
+    #[rstest::rstest]
     #[test]
     fn theme_picker_empty_cache_shows_default_only() {
         // Given no plugin contributions (dead or absent themes plugin).

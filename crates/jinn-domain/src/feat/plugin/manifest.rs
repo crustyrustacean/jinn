@@ -324,6 +324,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_manifest_parses_full_metadata() {
         // Given a Cargo.toml with a complete metadata.jinn section.
@@ -355,6 +356,7 @@ http = true
         assert!(cm.manifest.http);
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_manifest_name_falls_back_to_crate_name() {
         // Given a manifest section with no name override.
@@ -375,6 +377,7 @@ http = false
         assert_eq!(cm.crate_name, "theme-loader");
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_manifest_missing_section_errors() {
         // Given a plain Cargo.toml.
@@ -390,6 +393,7 @@ http = false
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn read_manifest_unparseable_toml_errors() {
         // Given garbage text.
@@ -403,6 +407,7 @@ http = false
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn embed_extract_round_trip_preserves_manifest() {
         // Given a module and a manifest.
@@ -417,6 +422,7 @@ http = false
         assert_eq!(extracted, manifest);
     }
 
+    #[rstest::rstest]
     #[test]
     fn embed_replaces_existing_manifest_section() {
         // Given a module with a manifest already embedded.
@@ -446,6 +452,7 @@ http = false
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn extract_from_wasm_without_section_errors() {
         // Given a module with no manifest section.
@@ -461,6 +468,7 @@ http = false
         ));
     }
 
+    #[rstest::rstest]
     #[test]
     fn embed_leaves_module_valid_for_full_parse() {
         // Given an embedded artifact.
