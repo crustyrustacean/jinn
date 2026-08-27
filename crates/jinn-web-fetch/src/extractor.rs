@@ -170,6 +170,7 @@ mod tests {
 
     // ---- CleanMarkdownExtractor ----
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_drops_inline_script() {
         // Given a CleanMarkdownExtractor and HTML with an inline script.
@@ -183,6 +184,7 @@ mod tests {
         assert!(!result.contains("alert"), "script body must be dropped");
     }
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_drops_style() {
         // Given a CleanMarkdownExtractor and HTML with a style block.
@@ -196,6 +198,7 @@ mod tests {
         assert!(!result.contains("color: red"), "css must be dropped");
     }
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_drops_aside() {
         // Given a CleanMarkdownExtractor and HTML with an aside (sidebar).
@@ -209,6 +212,7 @@ mod tests {
         assert!(!result.contains("related"), "aside must be dropped");
     }
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_drops_footer() {
         // Given a CleanMarkdownExtractor and HTML with a footer.
@@ -222,6 +226,7 @@ mod tests {
         assert!(!result.contains("Acme"), "footer must be dropped");
     }
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_drops_form() {
         // Given a CleanMarkdownExtractor and HTML with a form.
@@ -235,6 +240,7 @@ mod tests {
         assert!(!result.contains("query"), "form must be dropped");
     }
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_drops_svg() {
         // Given a CleanMarkdownExtractor and HTML with inline SVG.
@@ -248,6 +254,7 @@ mod tests {
         assert!(!result.contains("circle"), "svg must be dropped");
     }
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_drops_math() {
         // Given a CleanMarkdownExtractor and HTML with MathML.
@@ -264,6 +271,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_keeps_nav_links() {
         // Given a CleanMarkdownExtractor and HTML with a nav containing links.
@@ -277,6 +285,7 @@ mod tests {
         assert!(result.contains("/docs"), "nav link href must survive");
     }
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_keeps_header() {
         // Given a CleanMarkdownExtractor and HTML with a header.
@@ -289,6 +298,7 @@ mod tests {
         assert!(result.contains("Site Title"), "header content must survive");
     }
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_converts_article_to_markdown() {
         // Given a CleanMarkdownExtractor and HTML with an article.
@@ -305,6 +315,7 @@ mod tests {
         assert!(result.contains("body"), "paragraph must survive");
     }
 
+    #[rstest::rstest]
     #[test]
     fn clean_extractor_returns_empty_for_empty_html() {
         // Given a CleanMarkdownExtractor and empty input.
