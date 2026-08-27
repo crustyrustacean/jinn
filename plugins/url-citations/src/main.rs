@@ -2,8 +2,9 @@
 //!
 //! Subscribes to `tool_call` / `tool_result` / `turn_end` host events and
 //! detects citable web sources by shape (see [`detect`]): URLs appearing in
-//! tool-call arguments, and `{url, title}` objects in successful tool-result
-//! JSON — plus one builtin `web-search` carve-out that rebuilds the
+//! tool-call arguments, and `{url/link, title}` objects in successful
+//! tool-result JSON — both descended into strings that embed further JSON,
+//! bounded — plus one builtin `web-search` carve-out that rebuilds the
 //! DuckDuckGo re-run URL from the query. Detected citations accumulate in a
 //! per-session buffer, deduplicated by URL, and flush as one
 //! `PushCitations` contribution when a turn reaches a final answer.
@@ -265,6 +266,57 @@ mod tests {
             flushed
                 .iter()
                 .any(|c| c.url == "https://duckduckgo.com/?q=rust+async")
+        );
+    }
+
+    #[test]
+    fn zai_turn_buffers_and_flushes_deduped_citations() {
+        // Given a Z.ai web_search_prime call whose result content is a
+        // doubly-encoded array of {title, link, content, refer} entries —
+        // one entry sharing another's URL to exercise dedup across rules.
+        let mut state = CitationState::new();
+        state.on_tool_call(&call(
+            "c1",
+            "mcp__zai-web-search-prime__web_search_prime",
+            r#"{"search_query":"mega man legends series","location":"us"}"#,
+        ));
+        let wrapped = |entries: &str| {
+            let escaped = entries.replace('"', "\\\"");
+            format!("\"[{escaped}]\"")
+        };
+        let content = wrapped(
+            r#"{"title":"Mega Man Legends (series) - MMKB - Fandom","link":"https://megaman.fandom.com/wiki/Mega_Man_Legends_(series)","content":"It is centered around MegaMan Volnutt.","refer":"ref_1"},{"title":"Mega Man Legends","link":"https://en.wikipedia.org/wiki/Mega_Man_Legends","content":"The player controls Mega Man Volnutt.","refer":"ref_2"},{"title":"Same Page Again","link":"https://megaman.fandom.com/wiki/Mega_Man_Legends_(series)","content":"duplicate url","refer":"ref_3"}"#,
+        );
+
+        // When the result succeeds and the turn reaches a final answer.
+        state.on_tool_result(&result(
+            "c1",
+            "mcp__zai-web-search-prime__web_search_prime",
+            &content,
+            true,
+        ));
+        let flushed = state
+            .on_turn_end(&turn_end("s-1", true))
+            .expect("zai turn flushes");
+
+        // Then the flushed citations carry each unique source in payload
+        // order with title + snippet, the duplicate URL appearing once.
+        assert_eq!(flushed.len(), 2);
+        assert_eq!(
+            flushed[0].url,
+            "https://megaman.fandom.com/wiki/Mega_Man_Legends_(series)"
+        );
+        assert_eq!(
+            flushed[0].title,
+            "Mega Man Legends (series) - MMKB - Fandom"
+        );
+        assert_eq!(
+            flushed[0].content.as_deref(),
+            Some("It is centered around MegaMan Volnutt.")
+        );
+        assert_eq!(
+            flushed[1].url,
+            "https://en.wikipedia.org/wiki/Mega_Man_Legends"
         );
     }
 
