@@ -89,11 +89,90 @@ fmt:
 fmt-fix:
     cargo fmt
 
-# Run all linters (check + clippy + fmt check)
+# Run all linters (check + clippy + fmt check + test-attr guard)
 lint:
     cargo check --workspace
     just clippy
     cargo fmt -- --check
+    just lint-testattr
+
+# Fail on any bare #[test]/#[tokio::test] without an rstest attribute in its
+# stack. Every workspace test must run under rstest's compile-time-baked
+# timeout (see .cargo/config.toml) — a bare attribute silently escapes it.
+# Sanctioned exception: the trybuild compile-fail runner, which measures
+# compiler behavior on cold fixture builds, not runtime behavior.
+lint-testattr:
+   #!/usr/bin/env python3
+   import os
+   import re
+   import sys
+
+   ALLOWLIST = {
+       os.path.normpath("crates/jinn-domain/tests/tcaps_compile_fail.rs"),
+   }
+   SKIP_DIRS = {"target", "vendor"}
+
+   def is_test_attr(s):
+       if re.fullmatch(r"#\[test\]", s):
+           return True
+       return bool(re.fullmatch(r"#\[tokio::test(?:\([^()]*(?:\([^()]*\)[^()]*)?\))?\]", s))
+
+   offenders = []
+   for dirpath, dirnames, filenames in os.walk(os.getcwd()):
+       dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+       for fn in filenames:
+           if not fn.endswith(".rs"):
+               continue
+           fpath = os.path.join(dirpath, fn)
+           rel = os.path.normpath(os.path.relpath(fpath, os.getcwd()))
+           if rel in ALLOWLIST:
+               continue
+           with open(fpath, encoding="utf-8") as f:
+               lines = f.readlines()
+           i, n = 0, len(lines)
+           while i < n:
+               s = lines[i].strip()
+               if s.startswith("#["):
+                   # Walk the contiguous attribute region (multi-line ok).
+                   depth = 0
+                   has_rstest = False
+                   has_bare = False
+                   bare_line = None
+                   j = i
+                   while j < n:
+                       sj = lines[j].strip()
+                       depth += sj.count("[") + sj.count("(")
+                       depth -= sj.count("]") + sj.count(")")
+                       if "rstest" in sj:
+                           has_rstest = True
+                       if depth == 0 and is_test_attr(sj):
+                           has_bare = True
+                           bare_line = j + 1
+                       if depth <= 0:
+                           nxt = j + 1
+                           if nxt < n and lines[nxt].strip().startswith("#["):
+                               j = nxt
+                               continue
+                           break
+                       j += 1
+                   else:
+                       j = n - 1
+                   if has_bare and not has_rstest:
+                       offenders.append((rel, bare_line))
+                   i = j + 1
+               else:
+                   i += 1
+
+   for rel, ln in offenders:
+       print(f"ERROR: {rel}:{ln}: bare test attribute lacks an #[rstest::rstest] companion", file=sys.stderr)
+   if offenders:
+       print(
+           f"\n{len(offenders)} test(s) would run WITHOUT the rstest timeout.\n"
+           "Stack #[rstest::rstest] above the attribute (or extend the allowlist\n"
+           "in the lint-testattr recipe with a stated reason).",
+           file=sys.stderr,
+       )
+       sys.exit(1)
 
 # Full CI pipeline (lint + test + docs)
 ci: lint test
@@ -172,63 +251,6 @@ apply-license:
    done
 
    echo "Done!"
-
-# Check inline test modules for excessive length
-lint-testlength:
-   #!/usr/bin/env python3
-   import os
-   import re
-
-   root = os.getcwd()
-   max_lines = 200
-   found = 0
-
-   for dirpath, _, filenames in os.walk(root):
-       # Skip vendor directory
-       if 'target' in dirpath.split(os.sep):
-           continue
-       if 'vendor' in dirpath.split(os.sep):
-           continue
-       for fn in filenames:
-           if not fn.endswith('.rs'):
-               continue
-           fpath = os.path.join(dirpath, fn)
-           with open(fpath) as f:
-               lines = f.readlines()
-           for i, line in enumerate(lines):
-               if line.strip() != '#[cfg(test)]':
-                   continue
-               # Look at next non-empty line
-               j = i + 1
-               while j < len(lines) and lines[j].strip() == '':
-                   j += 1
-               if j >= len(lines):
-                   continue
-               match = re.match(r'^mod\s+(\w+)\s*\{', lines[j].strip())
-               if not match:
-                   continue
-               # Count lines by tracking brace depth
-               depth = 0
-               end_line = None
-               for k in range(j, len(lines)):
-                   for ch in lines[k]:
-                       if ch == '{':
-                           depth += 1
-                       elif ch == '}':
-                           depth -= 1
-                   if depth == 0 and k >= j:
-                       end_line = k
-                       break
-               if end_line is None:
-                   continue
-               mod_lines = end_line - i + 1
-               if mod_lines > max_lines:
-                   relpath = os.path.relpath(fpath, root)
-                   print(f"WARN: {relpath}:{i + 1}: test module is {mod_lines} lines (max {max_lines})")
-                   found += 1
-
-   if found:
-       print(f"\n{found} inline test module(s) exceed {max_lines} lines")
 
 # Copy themes, personas, and prompts to user config directory
 install-defaults:
