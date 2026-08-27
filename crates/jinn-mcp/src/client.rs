@@ -20,6 +20,10 @@
 //! - **HTTP, remote** ([`McpClient::connect_remote`]): connects to an externally
 //!   managed URL with no child process.
 //!
+//! Both HTTP transports accept resolved `(name, value)` header pairs that are
+//! applied as default headers on every request. jinn-domain expands `${VAR}`
+//! tokens before calling in; this module never reads the environment.
+//!
 //! [`McpClient::shutdown`] closes the transport and waits (with a timeout) for
 //! the child to exit if one was spawned.
 
@@ -28,6 +32,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use error_stack::{Report, ResultExt};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rmcp::model::{CallToolRequestParams, CallToolResult};
 use rmcp::service::{RoleClient, RunningService, ServiceExt};
 use rmcp::transport::StreamableHttpClientTransport;
@@ -125,12 +130,48 @@ impl LivenessProbe {
 pub struct HalfOpenHttp {
     /// The known URL (`http://<bind_addr>:<port>/mcp`) to connect to.
     pub url: String,
+    /// Resolved HTTP headers (name/value pairs) sent on every request,
+    /// including the MCP handshake. Already expanded by the caller.
+    pub headers: Vec<(String, String)>,
     /// The spawned child process; `kill_on_drop` terminates it if dropped
     /// before connection completes.
     pub child: tokio::process::Child,
     /// Shared log buffer (stdout + stderr), kept after connection so the
     /// inspector's live log pane keeps working.
     pub buffer: Arc<Mutex<McpStderrBuffer>>,
+}
+
+/// Builds a `reqwest::Client` whose default headers carry `headers`, so every
+/// request — handshake and subsequent JSON-RPC traffic alike — includes them.
+///
+/// An empty slice yields a plain client (no header behavior change).
+///
+/// # Errors
+///
+/// Returns an error attaching the offending header **name** if any name or
+/// value is not valid per the HTTP spec; resolved values are never included
+/// in error context.
+fn http_client_with(
+    headers: &[(String, String)],
+) -> Result<reqwest::Client, Report<McpClientError>> {
+    if headers.is_empty() {
+        return Ok(reqwest::Client::default());
+    }
+    let mut map = HeaderMap::new();
+    for (name, value) in headers {
+        let name = HeaderName::from_bytes(name.as_bytes())
+            .change_context(McpClientError)
+            .attach(format!("invalid MCP header name: {name}"))?;
+        let value = HeaderValue::from_str(value)
+            .change_context(McpClientError)
+            .attach(format!("invalid value for MCP header: {name}"))?;
+        map.append(name, value);
+    }
+    reqwest::Client::builder()
+        .default_headers(map)
+        .build()
+        .change_context(McpClientError)
+        .attach("failed to build HTTP client with configured MCP headers")
 }
 
 impl McpClient {
@@ -235,6 +276,7 @@ impl McpClient {
         program: &str,
         args: &[String],
         url_template: &str,
+        headers: Vec<(String, String)>,
     ) -> Result<HalfOpenHttp, Report<McpClientError>> {
         let bind_addr = parse_host(url_template);
         let port = pick_free_port(&bind_addr)
@@ -271,7 +313,12 @@ impl McpClient {
         }
 
         tracing::info!(%url, "spawned HTTP MCP server");
-        Ok(HalfOpenHttp { url, child, buffer })
+        Ok(HalfOpenHttp {
+            url,
+            headers,
+            child,
+            buffer,
+        })
     }
 
     /// Polls an HTTP endpoint until the MCP initialize handshake succeeds,
@@ -291,9 +338,13 @@ impl McpClient {
     pub async fn connect_with_retry(half: HalfOpenHttp) -> Result<Self, Report<McpClientError>> {
         let HalfOpenHttp {
             url,
+            headers,
             mut child,
             buffer,
         } = half;
+        // Build the HTTP client (with resolved default headers) once, before
+        // the retry loop — every attempt reuses it.
+        let http = http_client_with(&headers)?;
         let mut backoff = Duration::from_millis(50);
         let cap = Duration::from_secs(1);
 
@@ -322,7 +373,7 @@ impl McpClient {
             // hung handshake (port open but server unresponsive) still lets the
             // child-exit check re-run — without this, a server that accepts the
             // TCP connection then hangs mid-handshake blocks forever.
-            match Self::attempt_http_handshake(&url).await {
+            match Self::attempt_http_handshake(&http, &url).await {
                 Ok(service) => {
                     tracing::info!(%url, "connected to HTTP MCP server");
                     return Ok(Self {
@@ -345,13 +396,14 @@ impl McpClient {
     ///
     /// Returns `Ok(service)` on success, or `Err(reason)` (a tracing field
     /// value string) if the handshake errored or timed out — both are
-    /// retryable.
+    /// retryable. The `client` carries any configured default headers and is
+    /// reused across attempts by the caller.
     async fn attempt_http_handshake(
+        client: &reqwest::Client,
         url: &str,
     ) -> Result<RunningService<RoleClient, ()>, &'static str> {
         let config = StreamableHttpClientTransportConfig::with_uri(url.to_owned());
-        let transport =
-            StreamableHttpClientTransport::with_client(reqwest::Client::default(), config);
+        let transport = StreamableHttpClientTransport::with_client(client.clone(), config);
         match tokio::time::timeout(Duration::from_secs(3), ().serve(transport)).await {
             Ok(Ok(service)) => Ok(service),
             Ok(Err(_e)) => Err("handshake error"),
@@ -368,12 +420,19 @@ impl McpClient {
     ///
     /// # Errors
     ///
-    /// Returns an error only if the underlying transport construction fails.
-    pub async fn connect_remote(url: &str) -> Result<Self, Report<McpClientError>> {
+    /// Returns an error if the header set is invalid or the underlying
+    /// transport construction fails.
+    pub async fn connect_remote(
+        url: &str,
+        headers: Vec<(String, String)>,
+    ) -> Result<Self, Report<McpClientError>> {
+        // Build the HTTP client (with resolved default headers) once, before
+        // the retry loop — every attempt reuses it.
+        let http = http_client_with(&headers)?;
         let mut backoff = Duration::from_millis(50);
         let cap = Duration::from_secs(1);
         loop {
-            match Self::attempt_http_handshake(url).await {
+            match Self::attempt_http_handshake(&http, url).await {
                 Ok(service) => {
                     tracing::info!(url, "connected to remote HTTP MCP server");
                     let stderr_buffer = Arc::new(Mutex::new(McpStderrBuffer::new()));
@@ -635,7 +694,8 @@ mod tests {
         ];
 
         let mut half =
-            McpClient::connect_http("sh", &args, "http://127.0.0.1:<port>/mcp").expect("spawn");
+            McpClient::connect_http("sh", &args, "http://127.0.0.1:<port>/mcp", Vec::new())
+                .expect("spawn");
 
         // Then the URL is a localhost URL on a real port.
         assert!(half.url.starts_with("http://127.0.0.1:"));
@@ -653,5 +713,126 @@ mod tests {
 
         // Cleanup: kill the child.
         let _ = half.child.kill().await;
+    }
+
+    #[test]
+    fn http_client_with_empty_headers_is_plain_client() {
+        // Given no resolved headers.
+        // When building the HTTP client.
+        let client = http_client_with(&[]).expect("client builds");
+
+        // Then a usable default client comes back (no panic, no error).
+        let _ = client;
+    }
+
+    #[test]
+    fn invalid_header_name_fails_attaching_name_not_value() {
+        // Given a header pair with a name that is not a valid HTTP token.
+        let headers = vec![("Bad Header\nName".to_owned(), "whatever".to_owned())];
+
+        // When building the HTTP client.
+        let result = http_client_with(&headers);
+
+        // Then it fails, and the report names the header — not its value.
+        let err = result.expect_err("invalid name must fail");
+        let rendered = format!("{err:?}");
+        assert!(
+            rendered.contains("Bad Header"),
+            "name in report: {rendered}"
+        );
+        assert!(
+            !rendered.contains("whatever"),
+            "value must not appear: {rendered}"
+        );
+    }
+
+    #[test]
+    fn invalid_header_value_fails_attaching_name_not_value() {
+        // Given a header pair whose value contains an illegal control char.
+        let headers = vec![("X-Ok".to_owned(), "bad\u{0}value".to_owned())];
+
+        // When building the HTTP client.
+        let result = http_client_with(&headers);
+
+        // Then it fails naming the header only.
+        // (HeaderName's Display is canonicalized to lowercase.)
+        let err = result.expect_err("invalid value must fail");
+        let rendered = format!("{err:?}");
+        let lowered = rendered.to_ascii_lowercase();
+        assert!(
+            lowered.contains("x-ok"),
+            "header name in report: {rendered}"
+        );
+        assert!(
+            !rendered.contains('\u{0}'),
+            "raw value must not appear: {rendered}"
+        );
+    }
+
+    /// Default headers built by `http_client_with` are sent on real requests.
+    #[tokio::test]
+    async fn default_headers_are_sent_on_the_wire() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        // Given a TCP listener acting as a raw HTTP capture server.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        // And an HTTP client carrying one Authorization default header.
+        let client = http_client_with(&[(
+            "Authorization".to_owned(),
+            "Bearer captured-value".to_owned(),
+        )])
+        .expect("client builds");
+
+        // When issuing a request to the capture server.
+        let request_handle =
+            tokio::spawn(async move { client.get(format!("http://{addr}/probe")).send().await });
+
+        // And capturing exactly one connection's request head, bounded by a
+        // short wall-clock guard and a loop (TCP fragments — a single `read`
+        // is not guaranteed to see the whole head).
+        let captured = tokio::time::timeout(Duration::from_secs(2), async {
+            let (mut sock, _) = listener.accept().await?;
+            let mut head = String::new();
+            let mut buf = [0u8; 1024];
+            loop {
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                if let Some(chunk) = buf.get(..n) {
+                    head.push_str(&String::from_utf8_lossy(chunk));
+                }
+                if head.contains("\r\n\r\n") {
+                    break;
+                }
+            }
+            // Respond so the pending client send completes instead of
+            // deadlocking the test against itself.
+            let _ = sock
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
+                .await;
+            drop(sock);
+            Ok::<String, std::io::Error>(head)
+        })
+        .await;
+
+        // Then the configured header appears on the wire. The captured head is
+        // included in every failure message for diagnosis (no subscriber wired
+        // in unit tests, so tracing output would be invisible here).
+        let head = captured
+            .expect("capture must finish within 2s")
+            .expect("read");
+        assert!(
+            head.to_ascii_lowercase()
+                .contains("authorization: bearer captured-value"),
+            "expected header on wire, got: {head}"
+        );
+
+        // The sender completes once the canned response arrives.
+        let _ = request_handle.await;
     }
 }
