@@ -61,6 +61,7 @@ fn sample_persona() -> PersonaDef {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn hello_envelope_validates_against_schema() {
     // Given a Hello envelope.
@@ -78,6 +79,7 @@ fn hello_envelope_validates_against_schema() {
     assert_valid(&envelope);
 }
 
+#[rstest::rstest]
 #[test]
 fn set_theme_entries_envelope_validates_against_schema() {
     // Given a SetThemeEntries envelope with a populated theme.
@@ -93,6 +95,7 @@ fn set_theme_entries_envelope_validates_against_schema() {
     assert_valid(&envelope);
 }
 
+#[rstest::rstest]
 #[test]
 fn set_persona_entries_envelope_validates_against_schema() {
     // Given a SetPersonaEntries envelope with a populated persona.
@@ -108,6 +111,7 @@ fn set_persona_entries_envelope_validates_against_schema() {
     assert_valid(&envelope);
 }
 
+#[rstest::rstest]
 #[test]
 fn set_persona_entries_without_description_validates_against_schema() {
     // Given a SetPersonaEntries envelope whose persona has no description.
@@ -127,6 +131,7 @@ fn set_persona_entries_without_description_validates_against_schema() {
     assert_valid(&envelope);
 }
 
+#[rstest::rstest]
 #[test]
 fn welcome_envelope_validates_against_schema() {
     // Given a Welcome envelope with grants and config.
@@ -147,6 +152,7 @@ fn welcome_envelope_validates_against_schema() {
     assert_valid(&envelope);
 }
 
+#[rstest::rstest]
 #[test]
 fn unknown_plugin_tag_deserializes_to_unknown() {
     // Given a wire line with a tag this build does not know, carrying data.
@@ -162,6 +168,7 @@ fn unknown_plugin_tag_deserializes_to_unknown() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn unknown_host_tag_deserializes_to_unknown() {
     // Given a host→plugin wire line with an unknown tag.
@@ -175,6 +182,7 @@ fn unknown_host_tag_deserializes_to_unknown() {
     assert_eq!(envelope.msg, PluginToHostOrHostToPlugin::Unknown);
 }
 
+#[rstest::rstest]
 #[test]
 fn tool_call_event_envelope_validates_against_schema() {
     // Given a ToolCallEvent envelope.
@@ -193,6 +201,7 @@ fn tool_call_event_envelope_validates_against_schema() {
     assert_valid(&envelope);
 }
 
+#[rstest::rstest]
 #[test]
 fn tool_result_event_envelope_validates_against_schema() {
     // Given a ToolResultEvent envelope.
@@ -212,6 +221,7 @@ fn tool_result_event_envelope_validates_against_schema() {
     assert_valid(&envelope);
 }
 
+#[rstest::rstest]
 #[test]
 fn turn_end_event_envelope_validates_against_schema() {
     // Given a TurnEndEvent envelope.
@@ -228,6 +238,7 @@ fn turn_end_event_envelope_validates_against_schema() {
     assert_valid(&envelope);
 }
 
+#[rstest::rstest]
 #[test]
 fn push_citations_envelope_validates_against_schema() {
     // Given a PushCitations envelope with populated citations.
@@ -255,6 +266,7 @@ fn push_citations_envelope_validates_against_schema() {
     assert_valid(&envelope);
 }
 
+#[rstest::rstest]
 #[test]
 fn push_citations_without_content_validates_against_schema() {
     // Given a PushCitations envelope whose citation has no content field.
@@ -271,6 +283,7 @@ fn push_citations_without_content_validates_against_schema() {
     assert_eq!(msg.citations[0].content, None);
 }
 
+#[rstest::rstest]
 #[test]
 fn new_event_and_contribution_envelopes_round_trip() {
     // Given each new wire message.
@@ -328,6 +341,7 @@ fn new_event_and_contribution_envelopes_round_trip() {
     }
 }
 
+#[rstest::rstest]
 #[test]
 fn envelope_round_trips_through_json() {
     // Given a populated envelope.
@@ -373,6 +387,7 @@ fn color_strings_accept_all_core_formats(#[case] color: &str) {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn theme_def_serializes_slot_keys_as_snake_case() {
     // Given a theme def referencing two slots via the typed enum.
@@ -402,6 +417,7 @@ fn theme_def_serializes_slot_keys_as_snake_case() {
     assert!(colors.get("quake_bar_bg").is_some());
 }
 
+#[rstest::rstest]
 #[test]
 fn every_slot_key_is_a_snake_case_identifier() {
     // Given every declared color slot.

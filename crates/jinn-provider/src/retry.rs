@@ -265,6 +265,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn retry_succeeds_after_transient_failure() {
         // Given a service that fails once with Retryable.
@@ -291,6 +292,7 @@ mod tests {
         assert_eq!(calls[0].0, 1); // attempt 1
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn retry_gives_up_after_max_retries() {
         // Given a service that always fails with Retryable.
@@ -316,6 +318,7 @@ mod tests {
         assert_eq!(calls.len(), 3);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn retry_does_not_retry_non_retryable_error() {
         // Given a service that fails with Provider error.
@@ -341,6 +344,7 @@ mod tests {
         assert!(calls.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn retry_uses_provider_hint_over_exponential() {
         // Given a service that fails with RateLimited and a 50ms hint.
@@ -373,6 +377,7 @@ mod tests {
         assert_eq!(calls[0].2, Duration::from_millis(50));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn provider_hint_exceeds_max_delay() {
         // Given a service that fails with RateLimited and a hint exceeding max_delay.
@@ -403,6 +408,7 @@ mod tests {
         assert_eq!(calls[0].2, Duration::from_millis(200));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn no_retry_when_max_retries_is_zero() {
         // Given a service that fails with Retryable but max_retries is 0.
@@ -428,6 +434,7 @@ mod tests {
         assert!(calls.is_empty());
     }
 
+    #[rstest::rstest]
     #[test]
     fn compute_delay_returns_none_for_non_retryable() {
         let svc = RetryingLlmService::new(
@@ -446,6 +453,7 @@ mod tests {
         assert!(d.is_none());
     }
 
+    #[rstest::rstest]
     #[test]
     fn compute_delay_uses_provider_hint() {
         let svc = RetryingLlmService::new(
@@ -468,6 +476,7 @@ mod tests {
         assert_eq!(d, Some(Duration::from_secs(100)));
     }
 
+    #[rstest::rstest]
     #[test]
     fn first_retry_delay_equals_base_delay() {
         // Given a retry config with base_delay=2s, max_delay=60s.
@@ -517,6 +526,7 @@ mod tests {
         assert_eq!(delay, expected);
     }
 
+    #[rstest::rstest]
     #[test]
     fn retry_delay_capped_at_max_delay() {
         // Given a retry config where base*2^attempt exceeds max_delay.
@@ -539,6 +549,7 @@ mod tests {
         assert_eq!(delay, Duration::from_secs(1));
     }
 
+    #[rstest::rstest]
     #[test]
     fn retry_delay_zero_base_returns_zero() {
         // Given a retry config with base_delay=0.

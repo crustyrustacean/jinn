@@ -38,6 +38,7 @@ fn themes_grants() -> Grants {
 
 /// The full guest lifecycle over the real engine: Hello → Welcome →
 /// SetThemeEntries → guest end.
+#[rstest::rstest]
 #[tokio::test]
 async fn themes_guest_handshakes_and_contributes_over_real_engine() {
     let Some(wasm) = themes_wasm() else {
@@ -120,6 +121,7 @@ async fn themes_guest_handshakes_and_contributes_over_real_engine() {
 }
 
 /// A guest with no granted dirs contributes an empty set and ends.
+#[rstest::rstest]
 #[tokio::test]
 async fn themes_guest_with_empty_grants_contributes_nothing() {
     let Some(wasm) = themes_wasm() else {
