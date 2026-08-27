@@ -1,3 +1,17 @@
+## 2026-08-27 v0.111.0
+
+- Add user filter for Discord bot usage. The bot will only respond to users listed in the TOML.
+  - This is a minimal implementation, there is no role filtering or allow-all.
+
+```toml
+# jinn.toml
+[discord]
+enabled = true              # Whether the Discord bot is active.
+guild_id = "123"            # Discord guild (server) ID the bot operates in.
+forum_channel = "456"       # Forum channel where the bot creates session threads.
+authorized_users = ["789"]  # Users allowed to interact with the bot.
+```
+
 ## 2026-08-26 v0.110.0
 
 - Move citation tracking into plugin.
