@@ -1,8 +1,6 @@
 COPYRIGHT_NAME := "Jayson Lennon"
 COPYRIGHT_YEAR := "2026"
 
-export RSTEST_TIMEOUT := "10"
-
 fossil-branch NAME:
     fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
 
