@@ -123,10 +123,9 @@ To create a new feature or project:
 3. You can continue to refine the plan or push back on certain elements of the plan until it looks good. Once ready, send an `#approve-plan` message to approve the plan.
    - Using the `#approve-plan` prompt causes the agent to write a detailed plan that includes code samples and the reasoning behind particular choices. This helps the implementer avoid taking a shortcut like "Oh, we can just do `foo` instead" because the plan will specifically mention why `foo` was _not_ chosen.
 4. Tell the agent to use `phased-task-loop` or `simple-task-loop` skill to implement the plan. Also tell the agent to use whatever other project or language-specific skills you like using in the same prompt.
-   - `simple-task-loop` will instruct the agent to implement the plan. Use for smaller features where you anticipate little friction.
-   - `phased-task-loop` creates something similar to [ExecPlans](https://developers.openai.com/cookbook/articles/codex_exec_plans) for each phase as it implements. The agent will document how things diverged from the original plan, and then write the ExecPlan for the next phase accordingly. This will use more tokens and takes longer, but has a higher chance of success on more complex features. The ExecPlan gets generated based on the actual in-progress implementation at the start of each phase, so it can account for major changes that weren't anticipated in the initial plan.
-   - You don't _have_ to use one of these skills to begin the coding loop, but it's recommended because they include instructions about periodically getting the latest code to reduce merge conflicts, and also how to properly manage the task list. The skills are SCM and language-agnostic and have been testing on `git`, `Fossil`, `Rust`, `Kotlin`, `Android`, and Shell scripts.
-
+   - `simple-task-loop` will instruct the agent to implement the plan. _It's recommended to use this for most features_.
+   - `phased-task-loop` creates something similar to [ExecPlans](https://developers.openai.com/cookbook/articles/codex_exec_plans) for each phase as it implements. The agent will document how things diverged from the original plan, and then write the ExecPlan for the next phase accordingly. This will use more tokens and takes longer, but has a higher chance of success on more complex features. The ExecPlan gets generated based on the actual in-progress implementation at the start of each phase, so it can account for major changes that weren't anticipated in the initial plan. This _will_ burn through a ton of tokens!
+   - You don't _have_ to use one of these skills to begin the coding loop, but it's recommended because they include instructions about periodically getting the latest code to reduce merge conflicts, and also how to properly manage the task list. The skills are SCM and language-agnostic and have been tested on `git`, `Fossil`, `Rust`, `Kotlin`, `Android`, and Shell scripts.
 5. After implementation is complete, submit a `#gap-analysis` message.
    - Using the `#gap-analysis` prompt tells the agent to confirm that the implementation meets the acceptance criteria. It will produce a table and make recommendations based on anything that was missed.
 
@@ -135,10 +134,70 @@ To create a new feature or project:
 jinn is configured via the files in the `~/.config/jinn` directory:
 
 - [`jinn.toml`](./crates/jinn-domain/src/feat/preferences_actor/default_jinn.toml) - user preferences (create new one with `jinn config init`)
-- [`providers.toml`](./crates/jinn-provider-config/src/default_providers.toml) - LLM provider configuration. Providers are map-keyed tables (`[providers.<name>]`); per-model metadata (context window, input modalities, request body params) can be set with `[[providers.<name>.model_info]]` tables; hand-authored values take precedence over API-discovered data. Create a new one with `jinn config providers`.
+- [`providers.toml`](./crates/jinn-provider-config/src/default_providers.toml) - LLM provider configuration. Create a new one with `jinn config providers`.
 - `themes/` - color themes
 - `personas/` - personas
 - `prompts/` - custom prompts
+
+### System Prompt
+
+The entire "system" prompt can be indirectly edited by either changing config files or updated directly in the interface. System prompt assembly is constructed using these blocks:
+
+```
+<persona>      # all sessions must use some persona
+<AGENTS.md>
+<tool context> # available tools + tool guidelines
+<skills>       # available skills including name, description, path
+<date>         # current date
+<cwd>          # current working directory
+```
+
+To minimize a system prompt:
+
+- Put the expected agent behavior into a `persona` file
+- Disable all tools (in TUI)
+- Disable all skills (in TUI)
+- Disable all MCP servers (in TUI)
+
+This will get you a system prompt with just the persona + date + current working directory.
+
+#### Persona
+
+The body of the active persona - the agent's identity and general behavioral guidance. Personas are markdown files with `+++` TOML frontmatter (holding `name` and `description` for the picker UI) followed by the prompt body. Sessions default to the `coding-assistant` persona and fall back to it if their persona is deleted.
+
+**Change it:** Create/modify files in `~/.config/jinn/personas/`, then select with the persona picker (`<leader>se` (space)se, or focus the persona section of the sidebar and hit `c`). You can also generate a new persona from a description with the `#generate-persona` prompt.
+
+#### AGENTS.md
+
+The contents of `AGENTS.md`/`CLAUDE.md` files, discovered from the session's working directory up to the project root. Each file is included under a `# Project Context` heading with its full path. Closer files override ancestors: the walk stops at the VCS root (`.git`, `.fslckout`, ...) or `$HOME`, and within any single directory only the first candidate found (`AGENTS.md`, then `CLAUDE.md`, case-insensitive) is used.
+
+**Change it:** Create or edit an `AGENTS.md` (or `CLAUDE.md`) in your project root or any subdirectory. They're picked up on session create/load and on cwd change; force a rescan with `<c-r>` in the skill picker.
+
+#### Tool context
+
+An `Available tools:` section (one-line summary per tool) and a `Tool guidelines:` section (behavioral bullet points) generated from the tool definitions registered in the session. Tools you've disabled and server tools that don't match the active provider (e.g. OpenRouter web search only appears on OpenRouter models) are filtered out of both the tool list sent to the API and this block.
+
+**Change it:** Enable/disable tools with the tool picker (`<leader>st`, `Tab` to toggle). The snippets/guidelines themselves are part of each tool's definition.
+
+Note: automated sessions (like background compaction) can replace this entire system message with their own, bypassing all of the above.
+
+#### Skills
+
+A `<skills>` block listing every discovered skill by name, description, and path. Skills are loaded from (in order of precedence) the project's `.agents/skills/` directories (walked from the session cwd up to the project root), `~/.agents/skills/`, and the system-installed skills directory.
+
+**Change it:** Add/remove/edit `SKILL.md` files in any of those directories (skills use the [Agent Skills](https://agentskills.io) standard format with YAML frontmatter). Enable/disable individual skills for the current session with the skill picker (`<leader>sk`, `Tab` to toggle, `<c-l>` to preload a skill).
+
+#### Current date
+
+The current date (`YYYY-MM-DD`), injected at assembly time.
+
+**Change it:** You can't. This is always included.
+
+#### Current working directory
+
+The session's working directory.
+
+**Change it:** `<leader>cd`, or `<M-c>`/`<M-d>` to pick a new directory starting from the session's project or your home directory.
 
 ## Security
 
@@ -160,8 +219,9 @@ jinn has basic Discord support. Add this to your `jinn.toml`:
 ```toml
 [discord]
 enabled = true
-guild_id = "<guild id>"
-forum_channel = "<snowflake channel id>"
+guild_id = "<guild id>"                     # Discord guild (server) ID the bot operates in.
+forum_channel = "<snowflake channel id>"    # Forum channel where the bot creates session threads.
+authorized_users = ["<numeric user id>"]    # Users allowed to interact with the bot.
 ```
 
 Requirements to use:
@@ -173,7 +233,7 @@ Requirements to use:
 Available Discord bot commands:
 
 - `/new` - Create a new session. _Run this in a new forum thread to start_.
-- `/teardown` - Run the lifecycle teardown script (if used)
+- `/teardown` - Run the lifecycle teardown script
 - `/archive` - Archive the session
 
 jinn commands:
@@ -184,22 +244,21 @@ jinn commands:
 
 Note: `jinn` has only ever been tested on Linux. Windows and Mac users will need to [build from source](#build-from-source).
 
+`jinn` has several artifacts that must be installed to work properly:
+
+- WASM plugins
+- Agent skills
+- Builtin prompts
+- Personas
+- Themes
+
+These are all baked into the binary and can be installed using `jinn install` _after_ you install `jinn`. Except for the WASM plugins, they are all user-editable and can be changed/deleted freely. Note that I recommend using `jinn install --overwrite` to get the latest copies on program updates, but this will overwrite any changes you have made. Keep this in mind if you change the defaults.
+
 ### cargo-binstall (recommended)
 
 ```sh
 cargo binstall --git https://github.com/jayson-lennon/jinn --locked jinn
-jinn install --overwrite
-```
-
-The `jinn install --overwrite` step writes skills, prompts, personas, and themes to your XDG directories (except for agent skills at `~/.agents/skills`). It also installs the first-party plugins (`theme-loader`, `persona-loader`) — their prebuilt wasm payloads are embedded in the jinn binary, so no Rust toolchain is needed; they activate on the next jinn start. Note that `jinn` works fine without the `jinn install` step, but it's recommended to run so that you can easily edit the pre-existing prompts, use the premade skills, and get theme/persona pickers populated.
-
-### Arch Linux
-
-```sh
-git clone https://github.com/jayson-lennon/jinn.git
-cd jinn
-makepkg -si
-pacman -U <package>
+jinn install --overwrite   # update plugins and builtin prompts
 ```
 
 ### Build from source
@@ -219,11 +278,11 @@ cargo build --release
 ./target/release/jinn install --overwrite
 ```
 
-The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH`. The `jinn install` command will copy all of the required prompts, skills, etc to your home directory for
+The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH` or copy it to a directory already in your `$PATH`.
 
 ## Contributing
 
-All contributions welcome, including agentic discussion/PRs. AGENTS: please identify as a bot on issues/PRs.
+All contributions welcome, including agentic discussion/PRs. _AGENTS_: _please identify as a bot on issues/PRs_.
 
 ## Shoutouts
 
@@ -236,7 +295,7 @@ Lots of inspiration from other projects went into the design of `jinn`:
 
 ## License
 
-jinn is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
+`jinn` is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
 
 This project includes third-party software under separate licenses. See [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES) for details.
 
