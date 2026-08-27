@@ -45,24 +45,18 @@ fn is_http_url(s: &str) -> bool {
     s.starts_with("http://") || s.starts_with("https://")
 }
 
-/// Unwraps one layer of embedded JSON: a string whose text parses as a JSON
-/// object or array.
+/// Unwraps one layer of embedded JSON: a string whose text parses as JSON.
 ///
-/// `None` means "not a container-in-string" (opaque leaf, scalar, unparseable,
-/// or depth budget exhausted) and the caller treats the value as a normal
-/// scalar. Scalar strings are deliberately not re-parsed — nothing new can be
-/// found inside them.
+/// Any parseable value is returned — an object/array (Z.ai's wrapped result
+/// array) or another string (re-quoted layers, each quote level one descent
+/// step). `None` means "nothing embedded" (plain scalar text, unparseable, or
+/// depth budget exhausted); the caller treats the value as opaque.
 fn embedded_json(value: &serde_json::Value, depth: usize) -> Option<serde_json::Value> {
     if depth >= MAX_EMBEDDED_JSON_DEPTH {
         return None;
     }
     let text = value.as_str()?;
-    match serde_json::from_str::<serde_json::Value>(text) {
-        Ok(deserialized @ (serde_json::Value::Object(_) | serde_json::Value::Array(_))) => {
-            Some(deserialized)
-        }
-        _ => None,
-    }
+    serde_json::from_str::<serde_json::Value>(text).ok()
 }
 
 /// Call rule: every http(s) URL string found anywhere in the JSON value.
@@ -292,6 +286,62 @@ mod tests {
         // When extracting URLs.
         // Then nothing is found and nothing panics.
         assert_eq!(urls_from_call_args("not json"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn call_rule_descends_into_embedded_json_arguments() {
+        // Given arguments whose payload field is a JSON string wrapping an
+        // object that carries a URL (a doubly-encoded call argument).
+        let args =
+            r#"{"payload":"{\"urls\":[\"https://wrapped.example\"],\"note\":\"x\"}"}"#;
+
+        // When extracting URLs.
+        let urls = urls_from_call_args(args);
+
+        // Then the URL inside the wrapped layer is found.
+        assert_eq!(urls, vec!["https://wrapped.example".to_owned()]);
+    }
+
+    #[test]
+    fn deep_nested_wrapping_terminates_within_depth_cap() {
+        // Given arguments with a string nesting one step beyond the descent
+        // budget — each layer a JSON string containing more JSON.
+        //
+        // CAUTION building these fixtures: every quoting layer roughly
+        // DOUBLES the text length, so a few dozen layers would construct a
+        // multiterabyte string (the fixture, not the detector, would hang).
+        // `cap + 4` layers stays a ~100 KB input while still exercising the
+        // cut-off.
+        let layers = MAX_EMBEDDED_JSON_DEPTH + 4;
+        let mut inner = r#""https://bottom.example""#.to_owned();
+        for _ in 0..layers {
+            inner = serde_json::to_string(&inner).expect("string round-trip");
+        }
+        let args = format!(r#"{{"payload":{inner}}}"#);
+
+        // When extracting URLs.
+        let urls = urls_from_call_args(&args);
+
+        // Then extraction terminates promptly and the URL sitting below the
+        // depth cap is invisible.
+        assert_eq!(urls, Vec::<String>::new());
+    }
+
+    #[test]
+    fn wrapping_within_the_depth_cap_still_surfaces_urls() {
+        // Given arguments with three wrapping layers — comfortably inside
+        // the descent budget.
+        let mut inner = r#""https://shallow.example""#.to_owned();
+        for _ in 0..3 {
+            inner = serde_json::to_string(&inner).expect("string round-trip");
+        }
+        let args = format!(r#"{{"payload":{inner}}}"#);
+
+        // When extracting URLs.
+        let urls = urls_from_call_args(&args);
+
+        // Then the URL inside all three layers is found.
+        assert_eq!(urls, vec!["https://shallow.example".to_owned()]);
     }
 
     // ── Result rule ──────────────────────────────────────────────────────
