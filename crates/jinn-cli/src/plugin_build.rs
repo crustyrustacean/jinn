@@ -208,6 +208,7 @@ mod tests {
     // Given a directory with a Cargo.toml but no [package.metadata.jinn].
     // When building.
     // Then it fails with NotAPlugin (a plain crate is not a plugin).
+    #[rstest::rstest]
     #[test]
     fn build_rejects_crate_without_metadata_section() {
         let dir = tmp_dir("no-metadata");
@@ -228,6 +229,7 @@ mod tests {
     // Given a directory with no Cargo.toml at all.
     // When building.
     // Then it fails with NotACrate (distinct from NotAPlugin).
+    #[rstest::rstest]
     #[test]
     fn build_rejects_directory_without_cargo_toml() {
         let dir = tmp_dir("no-crate");
@@ -243,6 +245,7 @@ mod tests {
     // needs wasm32-wasip2 target installed, else skipped).
     // When building.
     // Then the artifact carries the embedded manifest.
+    #[rstest::rstest]
     #[test]
     fn build_embeds_manifest_into_artifact() {
         if !target_installed() {
@@ -282,6 +285,7 @@ mod tests {
     // When comparing the artifact `add` builds against a manual build.
     // Then both produce the same embedded manifest and module bytes —
     // the composed flow cannot diverge from the two-step flow.
+    #[rstest::rstest]
     #[test]
     fn add_build_output_matches_two_step_flow() {
         if !target_installed() {
