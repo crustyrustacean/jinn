@@ -78,6 +78,7 @@ fn tree_item(id: &str, parent_id: Option<&str>, label: &str) -> TreeTestItem {
 // SelectionState<T> through dyn PickerOps
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn flat_insert_char_through_trait() {
     let mut state: SelectionState<FlatItem> = SelectionState::new();
@@ -86,6 +87,7 @@ fn flat_insert_char_through_trait() {
     assert_eq!(state.filter(), "x");
 }
 
+#[rstest::rstest]
 #[test]
 fn flat_insert_text_through_trait() {
     let mut state: SelectionState<FlatItem> = SelectionState::new();
@@ -94,6 +96,7 @@ fn flat_insert_text_through_trait() {
     assert_eq!(state.filter(), "hello");
 }
 
+#[rstest::rstest]
 #[test]
 fn flat_insert_text_strips_newlines_through_trait() {
     let mut state: SelectionState<FlatItem> = SelectionState::new();
@@ -102,6 +105,7 @@ fn flat_insert_text_strips_newlines_through_trait() {
     assert_eq!(state.filter(), "abc");
 }
 
+#[rstest::rstest]
 #[test]
 fn flat_backspace_through_trait() {
     let mut state: SelectionState<FlatItem> = SelectionState::new();
@@ -113,6 +117,7 @@ fn flat_backspace_through_trait() {
     assert_eq!(state.cursor_pos(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn flat_move_up_through_trait() {
     let mut state = SelectionState::with_items(vec![
@@ -126,6 +131,7 @@ fn flat_move_up_through_trait() {
     assert_eq!(state.selection(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn flat_move_down_through_trait() {
     let mut state = SelectionState::with_items(vec![
@@ -139,6 +145,7 @@ fn flat_move_down_through_trait() {
     assert_eq!(state.selection(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn flat_page_up_through_trait() {
     // Given a flat state with 20 items and selection=10.
@@ -150,6 +157,7 @@ fn flat_page_up_through_trait() {
     assert_eq!(state.selection(), 5);
 }
 
+#[rstest::rstest]
 #[test]
 fn flat_page_down_through_trait() {
     // Given a flat state with 20 items and selection=0.
@@ -161,6 +169,7 @@ fn flat_page_down_through_trait() {
     assert_eq!(state.selection(), 5);
 }
 
+#[rstest::rstest]
 #[test]
 fn flat_move_cursor_left_through_trait() {
     let mut state: SelectionState<FlatItem> = SelectionState::new();
@@ -170,6 +179,7 @@ fn flat_move_cursor_left_through_trait() {
     assert_eq!(state.cursor_pos(), 2);
 }
 
+#[rstest::rstest]
 #[test]
 fn flat_move_cursor_right_through_trait() {
     let mut state: SelectionState<FlatItem> = SelectionState::new();
@@ -184,6 +194,7 @@ fn flat_move_cursor_right_through_trait() {
 // TreePickerState<I> through dyn PickerOps
 // ---------------------------------------------------------------------------
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_char_through_trait() {
     let mut state = TreePickerState::with_items(vec![tree_item("a", None, "Alpha")]);
@@ -192,6 +203,7 @@ fn tree_insert_char_through_trait() {
     assert_eq!(state.filter(), "x");
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_text_through_trait() {
     let mut state = TreePickerState::with_items(vec![tree_item("a", None, "Alpha")]);
@@ -200,6 +212,7 @@ fn tree_insert_text_through_trait() {
     assert_eq!(state.filter(), "hello");
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_insert_text_strips_newlines_through_trait() {
     let mut state = TreePickerState::with_items(vec![tree_item("a", None, "Alpha")]);
@@ -208,6 +221,7 @@ fn tree_insert_text_strips_newlines_through_trait() {
     assert_eq!(state.filter(), "abc");
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_backspace_through_trait() {
     let mut state = TreePickerState::with_items(vec![tree_item("a", None, "Alpha")]);
@@ -219,6 +233,7 @@ fn tree_backspace_through_trait() {
     assert_eq!(state.cursor_pos(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_up_through_trait() {
     let items = vec![
@@ -233,6 +248,7 @@ fn tree_move_up_through_trait() {
     assert_eq!(state.selection(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_down_through_trait() {
     let items = vec![
@@ -247,6 +263,7 @@ fn tree_move_down_through_trait() {
     assert_eq!(state.selection(), 1);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_page_up_through_trait() {
     // Given a tree with 20 root items and selection=10.
@@ -260,6 +277,7 @@ fn tree_page_up_through_trait() {
     assert_eq!(state.selection(), 5);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_page_down_through_trait() {
     // Given a tree with 20 root items and selection=0.
@@ -273,6 +291,7 @@ fn tree_page_down_through_trait() {
     assert_eq!(state.selection(), 5);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_cursor_left_through_trait() {
     let mut state = TreePickerState::with_items(vec![tree_item("a", None, "Alpha")]);
@@ -282,6 +301,7 @@ fn tree_move_cursor_left_through_trait() {
     assert_eq!(state.cursor_pos(), 2);
 }
 
+#[rstest::rstest]
 #[test]
 fn tree_move_cursor_right_through_trait() {
     let mut state = TreePickerState::with_items(vec![tree_item("a", None, "Alpha")]);
