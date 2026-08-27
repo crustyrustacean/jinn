@@ -18,7 +18,7 @@ authorized_users = ["789"]  # Users allowed to interact with the bot.
   - Add support for tracking citations via ZAI `web-search-prime` MCP tool
   - Add support for tracking citations using `web-search` + `web-fetch` tool
   - Add support for tracking citations using `openrouter:web-search` tool
-- Disabling an MCP server now removes it's associated tool calls from the session tool listing.
+- Disabling an MCP server now removes it's associated tools from the session tool listing.
 - Add plugin status screen under `<leader>sP`.
 - Cache indicator is now colorized based on cache hit rate.
   - <90%: red
