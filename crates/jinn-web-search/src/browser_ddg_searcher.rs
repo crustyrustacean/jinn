@@ -278,6 +278,7 @@ mod tests {
         ))))
     }
 
+    #[rstest::rstest]
     #[test]
     fn build_url_encodes_query_and_options_as_get_params() {
         // Given a query and options.
@@ -313,6 +314,7 @@ mod tests {
         assert!(!params.contains_key("b"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_returns_blocked_when_browser_renders_challenge_page() {
         // Given a browser-backed searcher whose browser render fails with a
@@ -330,6 +332,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_parses_results_from_browser_rendered_results_page() {
         // Given a browser-backed searcher whose browser renders the results fixture.
@@ -347,6 +350,7 @@ mod tests {
         assert_eq!(results[0].title, "Rust Programming Language");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_returns_error_for_empty_query() {
         // Given a browser-backed searcher.
@@ -360,6 +364,7 @@ mod tests {
         assert!(matches!(result, Err(SearchError::InvalidQuery)));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_truncates_to_max_results() {
         // Given a browser-backed searcher rendering the 5-result fixture.
@@ -377,6 +382,7 @@ mod tests {
         assert_eq!(results.len(), 2);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn search_observed_relays_progress_events_to_caller() {
         // Given a searcher backed by a browser that reports one progress event.
