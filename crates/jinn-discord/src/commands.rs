@@ -3,7 +3,9 @@
 //! [`new`] starts a session via the configured lifecycle wizard; [`prompts`]
 //! lists the prompt templates available to the current thread's session;
 //! [`teardown`] and [`archive`] operate on the session bound to the invoking
-//! thread. Plain messages are handled in [`crate::gateway`] via the poise event
+//! thread. Every command is deny-by-default — the `ensure_authorized` helper
+//! gates on `[discord].authorized_users` before any command body runs. Plain
+//! messages are handled (and gated) in [`crate::gateway`] via the poise event
 //! handler, not here.
 
 use std::time::Duration;
