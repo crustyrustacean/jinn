@@ -36,4 +36,13 @@ pub struct DiscordConfig {
     /// view access to this channel.
     #[serde(default)]
     pub forum_channel: Option<String>,
+
+    /// Discord user IDs (numeric, as strings) allowed to interact with the
+    /// bot. Deny-by-default: an empty or missing list authorizes nobody —
+    /// slash commands get an ephemeral refusal and plain messages are dropped
+    /// silently. Entries that don't parse as numeric IDs are ignored.
+    ///
+    /// Like every `[discord]` field, changes apply on restart only.
+    #[serde(default)]
+    pub authorized_users: Vec<String>,
 }
