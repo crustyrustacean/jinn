@@ -314,7 +314,10 @@ mod tests {
             flushed[0].content.as_deref(),
             Some("It is centered around MegaMan Volnutt.")
         );
-        assert_eq!(flushed[1].url, "https://en.wikipedia.org/wiki/Mega_Man_Legends");
+        assert_eq!(
+            flushed[1].url,
+            "https://en.wikipedia.org/wiki/Mega_Man_Legends"
+        );
     }
 
     #[test]

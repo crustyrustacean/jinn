@@ -292,8 +292,7 @@ mod tests {
     fn call_rule_descends_into_embedded_json_arguments() {
         // Given arguments whose payload field is a JSON string wrapping an
         // object that carries a URL (a doubly-encoded call argument).
-        let args =
-            r#"{"payload":"{\"urls\":[\"https://wrapped.example\"],\"note\":\"x\"}"}"#;
+        let args = r#"{"payload":"{\"urls\":[\"https://wrapped.example\"],\"note\":\"x\"}"}"#;
 
         // When extracting URLs.
         let urls = urls_from_call_args(args);
