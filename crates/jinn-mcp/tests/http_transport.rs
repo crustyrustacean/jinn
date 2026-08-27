@@ -24,6 +24,7 @@ use std::time::Duration;
 use jinn_mcp::client::McpClient;
 
 /// A nonexistent command fails at spawn time with a clear error (AC4).
+#[rstest::rstest]
 #[tokio::test]
 async fn connect_http_rejects_nonexistent_command() {
     // Given a program that does not exist.
@@ -41,6 +42,7 @@ async fn connect_http_rejects_nonexistent_command() {
 
 /// A child that exits immediately causes connect to return `Err` with the
 /// captured output, never hanging (AC4).
+#[rstest::rstest]
 #[tokio::test]
 async fn connect_with_retry_returns_err_when_child_exits_immediately() {
     // Given a half-open HTTP server whose process exits at once (`false`).
@@ -67,6 +69,7 @@ async fn connect_with_retry_returns_err_when_child_exits_immediately() {
 /// A slow-booting process (one that never speaks HTTP) keeps the retry loop
 /// trying indefinitely — proving no false `Dead` from a wall-clock timeout
 /// (AC5).
+#[rstest::rstest]
 #[tokio::test]
 async fn connect_with_retry_keeps_trying_when_server_never_listens() {
     // Given a half-open HTTP server whose process stays alive but never speaks

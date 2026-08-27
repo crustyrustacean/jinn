@@ -86,6 +86,7 @@ mod tests {
     use jinn_domain::feat::session::phase_machine::PhaseKind;
     use poise::serenity_prelude::MessageType;
 
+    #[rstest::rstest]
     #[test]
     fn unbound_channel_is_no_op() {
         // Given an unbound channel (no thread→session mapping).
@@ -95,6 +96,7 @@ mod tests {
         assert_eq!(outcome, InboundOutcome::UnboundNoOp);
     }
 
+    #[rstest::rstest]
     #[test]
     fn unbound_channel_ignores_phase() {
         // Given an unbound channel even if a phase were somehow provided.
@@ -104,6 +106,7 @@ mod tests {
         assert_eq!(outcome, InboundOutcome::UnboundNoOp);
     }
 
+    #[rstest::rstest]
     #[test]
     fn bound_idle_session_enqueues() {
         // Given a bound channel with an idle session present.
@@ -113,6 +116,7 @@ mod tests {
         assert_eq!(outcome, InboundOutcome::Enqueue);
     }
 
+    #[rstest::rstest]
     #[test]
     fn bound_streaming_session_steers() {
         // Given a bound channel with a streaming session.
@@ -122,6 +126,7 @@ mod tests {
         assert_eq!(outcome, InboundOutcome::Steer);
     }
 
+    #[rstest::rstest]
     #[test]
     fn bound_sending_session_steers() {
         // Given a bound channel with a sending session.
@@ -131,6 +136,7 @@ mod tests {
         assert_eq!(outcome, InboundOutcome::Steer);
     }
 
+    #[rstest::rstest]
     #[test]
     fn bound_missing_session_loads() {
         // Given a bound channel whose session is not in State.
@@ -140,6 +146,7 @@ mod tests {
         assert_eq!(outcome, InboundOutcome::LoadMissing);
     }
 
+    #[rstest::rstest]
     #[test]
     fn regular_message_is_forwardable() {
         // Given a plain typed text message.
@@ -149,6 +156,7 @@ mod tests {
         assert!(forwardable);
     }
 
+    #[rstest::rstest]
     #[test]
     fn inline_reply_is_forwardable() {
         // Given a user inline reply (carries real content).
@@ -158,6 +166,7 @@ mod tests {
         assert!(forwardable);
     }
 
+    #[rstest::rstest]
     #[test]
     fn pins_add_is_not_forwardable() {
         // Given a "pinned a message" system indicator (empty content).
@@ -167,6 +176,7 @@ mod tests {
         assert!(!forwardable);
     }
 
+    #[rstest::rstest]
     #[test]
     fn member_join_is_not_forwardable() {
         // Given a member-join system indicator.
@@ -176,6 +186,7 @@ mod tests {
         assert!(!forwardable);
     }
 
+    #[rstest::rstest]
     #[test]
     fn thread_created_is_not_forwardable() {
         // Given a thread-created system indicator.
@@ -185,6 +196,7 @@ mod tests {
         assert!(!forwardable);
     }
 
+    #[rstest::rstest]
     #[test]
     fn unknown_message_type_is_not_forwardable() {
         // Given a message type serenity does not recognize.

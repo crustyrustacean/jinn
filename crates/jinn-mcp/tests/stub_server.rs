@@ -107,6 +107,7 @@ fn spawn_stub_server() -> DuplexStream {
     client_io
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn connect_lists_tools_calls_echo_and_shuts_down() {
     // Given a stub MCP server reachable over an in-memory duplex pipe.
@@ -164,6 +165,7 @@ async fn connect_lists_tools_calls_echo_and_shuts_down() {
     client.shutdown().await;
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn calling_an_unknown_tool_returns_a_protocol_error() {
     // Given a connected client with the echo server.
@@ -187,6 +189,7 @@ async fn calling_an_unknown_tool_returns_a_protocol_error() {
     );
 }
 
+#[rstest::rstest]
 #[test]
 fn server_command_carries_program_and_args() {
     // Given an excalimate-style stdio command.
@@ -200,6 +203,7 @@ fn server_command_carries_program_and_args() {
     assert_eq!(cmd.args, vec!["@excalimate/mcp-server", "--stdio"]);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn is_transport_closed_returns_false_on_a_live_client() {
     // Given a stub MCP server reachable over an in-memory duplex pipe.
@@ -223,6 +227,7 @@ async fn is_transport_closed_returns_false_on_a_live_client() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn is_transport_closed_returns_true_after_shutdown() {
     // Given a connected client.
@@ -246,6 +251,7 @@ async fn is_transport_closed_returns_true_after_shutdown() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn liveness_probe_reflects_transport_state_independently_of_client() {
     // Given a connected client and a standalone liveness probe cloned from it.
@@ -269,6 +275,7 @@ async fn liveness_probe_reflects_transport_state_independently_of_client() {
     assert!(probe.is_transport_closed());
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn killer_drops_and_flips_transport_closed() {
     // Given a connected client with a killer handle.
@@ -295,6 +302,7 @@ async fn killer_drops_and_flips_transport_closed() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn liveness_probe_flips_when_killer_drops_across_task_boundary() {
     // Given a connected client + killer, mirroring how McpActor owns the client
@@ -327,6 +335,7 @@ async fn liveness_probe_flips_when_killer_drops_across_task_boundary() {
     );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn killer_variant_stays_alive_until_dropped() {
     // Given a connected client from the killer variant.

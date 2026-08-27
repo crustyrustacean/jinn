@@ -54,6 +54,7 @@ async fn connect_with_timeout(cmd: &ServerCommand) -> McpClient {
 }
 
 /// AC1: excalimate advertises `create_scene`, and calling it returns content.
+#[rstest::rstest]
 #[tokio::test]
 #[ignore = "requires Node + a built excalimate server at /tmp/excalimate"]
 async fn excalimate_lists_create_scene_and_calls_it() {
@@ -121,6 +122,7 @@ async fn excalimate_lists_create_scene_and_calls_it() {
 /// are distinct processes (their own scene state) by verifying both see the
 /// same tool surface but cannot share scene state — proving sessions do not
 /// share a single server process.
+#[rstest::rstest]
 #[tokio::test]
 #[ignore = "requires Node + a built excalimate server at /tmp/excalimate"]
 async fn two_connections_are_independent_processes() {
