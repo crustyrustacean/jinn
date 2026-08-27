@@ -44,8 +44,12 @@ async fn remote_http_to_unreachable_url_loops_instead_of_failing() {
     };
 
     // When attempting to connect, bounded by a short timeout.
-    let result =
-        tokio::time::timeout(Duration::from_millis(500), connect_for_transport(&config)).await;
+    let services = crate::Services::new_fake().await;
+    let result = tokio::time::timeout(
+        Duration::from_millis(500),
+        connect_for_transport(&services, &config),
+    )
+    .await;
 
     // Then the connect is still looping (timeout fires), proving it did not
     // fail fast on the first refused connection.
