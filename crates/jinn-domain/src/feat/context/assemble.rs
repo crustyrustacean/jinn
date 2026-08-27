@@ -19,14 +19,42 @@ use crate::protocol::{
     ChatEntry, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
 };
 
+/// The assembled system prompt for one LLM request.
+///
+/// A newtype over `Option<String>`: `None` when the assembly produced no
+/// system content at all. Renders as an empty string when absent so
+/// `to_string()` is always safe.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SystemPrompt(Option<String>);
+
+impl SystemPrompt {
+    /// Wraps prompt content. An empty string becomes [`None`].
+    #[must_use]
+    pub fn new(content: String) -> Self {
+        Self(if content.is_empty() { None } else { Some(content) })
+    }
+
+    /// The prompt content, if any.
+    #[must_use]
+    pub fn as_deref(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+}
+
+impl std::fmt::Display for SystemPrompt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_deref().unwrap_or(""))
+    }
+}
+
 /// Overrides for [`assemble_prompt`]. When provided, these replace the default
 /// sources for system prompt, tools, skills, and context files.
 ///
 /// Used by automated sessions to control the LLM prompt independently of global state.
 #[derive(Debug, Clone, Default)]
 pub struct AssemblyOverrides {
-    /// If set, replaces the entire system prompt (persona, skills, env context, context files).
-    /// Pinned system entries from history are still included.
+    /// If set, replaces the entire system prompt (all generated sections).
+    /// Pinned history entries remain conversation messages regardless.
     pub system_prompt: Option<String>,
     /// If set, replaces global tool definitions in both the assembled prompt's
     /// `tool_definitions` field and the tool context block.
@@ -46,11 +74,15 @@ pub struct AssemblyOverrides {
 pub struct AssembledPrompt {
     /// The session this prompt was assembled for.
     pub session_id: SessionId,
-    /// The assembled conversation messages ready for the LLM.
+    /// The assembled system prompt, separate from the conversation messages.
+    pub system_prompt: SystemPrompt,
+    /// The assembled conversation messages ready for the LLM. Contains no
+    /// system-level content; pins ride in conversation order.
     pub messages: Vec<LlmMessage>,
     /// Tool definitions to include in the API request.
     pub tool_definitions: Vec<ToolDefinition>,
-    /// Estimated token count (tiktoken o200k_base) of all messages.
+    /// Estimated token count (tiktoken o200k_base) of the system prompt and
+    /// all messages.
     pub estimated_tokens: u32,
 }
 
@@ -71,10 +103,10 @@ impl AssembledPrompt {
 ///
 /// 1. Read skills, persona, context files, tools, history from state.
 /// 2. Split history into TOP/BOTTOM pins and working history.
-/// 3. Build system prompt sections (skills, pinned system, env context, tools).
-/// 4. Convert working history to messages via [`entries_to_messages`].
+/// 3. Compose the system prompt from per-section builders.
+/// 4. Convert history (pins and working) to messages via [`entries_to_messages`].
 /// 5. Re-inject pins in correct positions.
-/// 6. Count tokens in all assembled messages.
+/// 6. Count tokens in the system prompt and all assembled messages.
 /// 7. Return [`AssembledPrompt`].
 ///
 /// # Panics
@@ -188,25 +220,11 @@ pub fn assemble_prompt(
     let top_messages = entries_to_messages(&top_pins);
     let bottom_messages = entries_to_messages(&bottom_pins);
 
-    // Extract pinned System entry contents and non-system top messages.
-    let pinned_system_contents: Vec<String> = top_messages
-        .iter()
-        .filter_map(|m| match m {
-            LlmMessage::System { content } => Some(content.clone()),
-            _ => None,
-        })
-        .collect();
-    let top_non_system: Vec<LlmMessage> = top_messages
-        .into_iter()
-        .filter(|m| !matches!(m, LlmMessage::System { .. }))
-        .collect();
-
     // Compose the system prompt in fixed section order. Empty sections are
     // omitted entirely; the rest are joined with a blank line between them.
-    let full_system = if let Some(content) = forced_system {
-        // Override replaces all generated system parts.
-        // Still include pinned system entries from history below.
-        Some(content)
+    let system_prompt = if let Some(content) = forced_system {
+        // Override replaces all generated system sections.
+        SystemPrompt::new(content)
     } else {
         let mut system_parts: Vec<String> = Vec::new();
         system_parts.extend(env_sections);
@@ -221,9 +239,9 @@ pub fn assemble_prompt(
             system_parts.push(cwd_section(&cwd));
         }
         if system_parts.is_empty() {
-            None
+            SystemPrompt::default()
         } else {
-            Some(system_parts.join("\n\n"))
+            SystemPrompt::new(system_parts.join("\n\n"))
         }
     };
 
@@ -234,24 +252,22 @@ pub fn assemble_prompt(
     // split an assistant from its results.
     let working_messages = entries_to_messages(&working_history);
 
-    // Build final message list.
+    // Build final message list: TOP pins first (in history order, nothing
+    // reserved), then working history.
     let mut final_messages = Vec::new();
-
-    if let Some(content) = full_system {
-        final_messages.push(LlmMessage::System { content });
-    }
-    final_messages.extend(top_non_system);
+    final_messages.extend(top_messages);
     final_messages.extend(working_messages);
 
     // Insert BOTTOM pins just before the last message, walking back over a
     // trailing tool run so the pins land before the loop's assistant.
     insert_bottom_pins(&mut final_messages, bottom_messages);
 
-    // Count tokens.
-    let estimated_tokens = count_messages(&final_messages, counter);
+    // Count tokens: the system prompt plus every conversation message.
+    let estimated_tokens = count_messages(&system_prompt, &final_messages, counter);
 
     AssembledPrompt {
         session_id: session_id.clone(),
+        system_prompt,
         messages: final_messages,
         tool_definitions: tool_defs,
         estimated_tokens,
@@ -311,17 +327,22 @@ fn insert_bottom_pins(final_messages: &mut Vec<LlmMessage>, bottom_messages: Vec
     final_messages.splice(insert_at..insert_at, bottom_messages);
 }
 
-/// Counts tokens across all messages.
-fn count_messages(messages: &[LlmMessage], counter: &dyn TokenCounter) -> u32 {
+/// Counts tokens across the system prompt and all messages.
+fn count_messages(
+    system_prompt: &SystemPrompt,
+    messages: &[LlmMessage],
+    counter: &dyn TokenCounter,
+) -> u32 {
+    let system_tokens = system_prompt.as_deref().map_or(0, |c| counter.count(c));
     messages
         .iter()
         .map(|msg| match msg {
-            LlmMessage::System { content }
-            | LlmMessage::User { content, .. }
+            LlmMessage::User { content, .. }
             | LlmMessage::Assistant { content, .. }
             | LlmMessage::Tool { content, .. } => counter.count(content),
         })
-        .sum::<usize>() as u32
+        .sum::<usize>()
+        .wrapping_add(system_tokens) as u32
 }
 
 #[cfg(test)]
@@ -664,17 +685,12 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
-        // Then the first message is System and contains the skill.
+        // Then the system prompt contains the skill.
+        let system = result.system_prompt.to_string();
         assert!(
-            !result.messages.is_empty(),
-            "should have at least a system message"
+            system.contains("test-skill"),
+            "system prompt should contain skill, got: {system}"
         );
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(content.contains("test-skill"));
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
     }
 
     #[rstest::rstest]
@@ -687,15 +703,10 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
-        // Then the system message still has date and CWD from env context.
-        assert!(!result.messages.is_empty());
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(content.contains("Current date:"));
-                assert!(content.contains("Current working directory:"));
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
+        // Then the system prompt still has date and CWD from env context.
+        let system = result.system_prompt.to_string();
+        assert!(system.contains("Current date:"));
+        assert!(system.contains("Current working directory:"));
     }
 
     #[rstest::rstest]
@@ -812,10 +823,14 @@ mod tests {
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then no message contains the thinking text.
+        let system = result.system_prompt.to_string();
+        assert!(
+            !system.contains("internal thoughts"),
+            "thinking entry should be excluded from system prompt"
+        );
         for msg in &result.messages {
             match msg {
-                LlmMessage::System { content }
-                | LlmMessage::User { content, .. }
+                LlmMessage::User { content, .. }
                 | LlmMessage::Assistant { content, .. }
                 | LlmMessage::Tool { content, .. } => {
                     assert!(
@@ -844,17 +859,21 @@ mod tests {
             "token count should be positive"
         );
 
-        // Manual count.
+        // Manual count: system prompt plus every message.
+        let system_tokens = result
+            .system_prompt
+            .as_deref()
+            .map_or(0, |c| counter.count(c));
         let manual: usize = result
             .messages
             .iter()
             .map(|m| match m {
-                LlmMessage::System { content }
-                | LlmMessage::User { content, .. }
+                LlmMessage::User { content, .. }
                 | LlmMessage::Assistant { content, .. }
                 | LlmMessage::Tool { content, .. } => counter.count(content),
             })
-            .sum();
+            .sum::<usize>()
+            + system_tokens;
         assert_eq!(result.estimated_tokens(), manual as u32);
     }
 
@@ -919,10 +938,11 @@ mod tests {
         // Then web search is in the tool definitions AND the system prompt block.
         assert_eq!(result.tool_definitions.len(), 1);
         assert_eq!(result.tool_definitions[0].name, "openrouter:web_search");
-        match &result.messages[0] {
-            LlmMessage::System { content } => assert!(content.contains("Web search (OpenRouter)")),
-            other => panic!("expected System message, got {other:?}"),
-        }
+        let system = result.system_prompt.to_string();
+        assert!(
+            system.contains("Web search (OpenRouter)"),
+            "system prompt should contain web search snippet, got: {system}"
+        );
     }
 
     #[rstest::rstest]
@@ -945,10 +965,11 @@ mod tests {
 
         // Then web search is absent from tool definitions AND the system prompt block.
         assert!(result.tool_definitions.is_empty());
-        match &result.messages[0] {
-            LlmMessage::System { content } => assert!(!content.contains("Web search (OpenRouter)")),
-            other => panic!("expected System message, got {other:?}"),
-        }
+        let system = result.system_prompt.to_string();
+        assert!(
+            !system.contains("Web search (OpenRouter)"),
+            "system prompt should not contain web search snippet, got: {system}"
+        );
     }
 
     #[rstest::rstest]
@@ -993,15 +1014,10 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
-        // Then the system message contains the context file content.
-        assert!(!result.messages.is_empty());
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(content.contains("Use Rust."));
-                assert!(content.contains("Project Context"));
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
+        // Then the system prompt contains the context file content.
+        let system = result.system_prompt.to_string();
+        assert!(system.contains("Use Rust."));
+        assert!(system.contains("Project Context"));
     }
 
     #[rstest::rstest]
@@ -1030,15 +1046,9 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
 
-        // Then the system message is exactly the override - no skills, no context files.
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert_eq!(content, "You are a workflow assistant.");
-                assert!(!content.contains("test-skill"));
-                assert!(!content.contains("Use Rust."));
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
+        // Then the system prompt is exactly the override - no skills, no context files.
+        let system = result.system_prompt.to_string();
+        assert_eq!(system, "You are a workflow assistant.");
     }
 
     #[rstest::rstest]
@@ -1094,13 +1104,9 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
 
-        // Then the system message does NOT contain the skill.
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(!content.contains("test-skill"));
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
+        // Then the system prompt does NOT contain the skill.
+        let system = result.system_prompt.to_string();
+        assert!(!system.contains("test-skill"));
     }
 
     #[rstest::rstest]
@@ -1126,16 +1132,12 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
 
-        // Then the system message does NOT contain the context file content.
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(!content.contains("Use Rust."));
-                assert!(!content.contains("Project Context"));
-                // But still has env context (date, CWD).
-                assert!(content.contains("Current date:"));
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
+        // Then the system prompt does NOT contain the context file content.
+        let system = result.system_prompt.to_string();
+        assert!(!system.contains("Use Rust."));
+        assert!(!system.contains("Project Context"));
+        // But still has env context (date, CWD).
+        assert!(system.contains("Current date:"));
     }
 
     #[rstest::rstest]
@@ -1159,13 +1161,8 @@ mod tests {
         let result_none = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then the result matches what we'd get from the original behavior.
-        assert!(!result_none.messages.is_empty());
-        match &result_none.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(content.contains("test-skill"));
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
+        let system = result_none.system_prompt.to_string();
+        assert!(system.contains("test-skill"));
         assert_eq!(result_none.tool_definitions.len(), 1);
         assert_eq!(result_none.tool_definitions[0].name, "bash");
     }
@@ -1253,20 +1250,16 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
-        // Then the system message tool block excludes disabled tools.
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(
-                    content.contains("read does things"),
-                    "enabled tool should be in tool context block, got: {content}"
-                );
-                assert!(
-                    !content.contains("bash does things"),
-                    "disabled tool should be excluded from tool context block, got: {content}"
-                );
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
+        // Then the system prompt tool block excludes disabled tools.
+        let system = result.system_prompt.to_string();
+        assert!(
+            system.contains("read does things"),
+            "enabled tool should be in tool context block, got: {system}"
+        );
+        assert!(
+            !system.contains("bash does things"),
+            "disabled tool should be excluded from tool context block, got: {system}"
+        );
     }
 
     #[rstest::rstest]
@@ -1293,24 +1286,20 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
-        // Then the system message skills block excludes disabled skills.
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(
-                    content.contains("<name>phased-task-loop</name>"),
-                    "enabled skill should be in skills block, got: {content}"
-                );
-                assert!(
-                    content.contains("<name>scream</name>"),
-                    "enabled skill should be in skills block, got: {content}"
-                );
-                assert!(
-                    !content.contains("<name>web-coder</name>"),
-                    "disabled skill should be excluded from skills block, got: {content}"
-                );
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
+        // Then the system prompt skills block excludes disabled skills.
+        let system = result.system_prompt.to_string();
+        assert!(
+            system.contains("<name>phased-task-loop</name>"),
+            "enabled skill should be in skills block, got: {system}"
+        );
+        assert!(
+            system.contains("<name>scream</name>"),
+            "enabled skill should be in skills block, got: {system}"
+        );
+        assert!(
+            !system.contains("<name>web-coder</name>"),
+            "disabled skill should be excluded from skills block, got: {system}"
+        );
     }
 
     #[rstest::rstest]
@@ -1377,16 +1366,12 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
-        // Then the system message contains the custom persona body.
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(
-                    content.contains("You are a custom persona."),
-                    "should contain custom persona body, got: {content}"
-                );
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
+        // Then the system prompt contains the custom persona body.
+        let system = result.system_prompt.to_string();
+        assert!(
+            system.contains("You are a custom persona."),
+            "should contain custom persona body, got: {system}"
+        );
     }
 
     #[rstest::rstest]
@@ -1412,21 +1397,17 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
-        // Then the system message contains the coding-assistant fallback.
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(
-                    content.contains("You are a coding assistant."),
-                    "should contain coding-assistant fallback, got: {content}"
-                );
-            }
-            other => panic!("expected System message, got {other:?}"),
-        }
+        // Then the system prompt contains the coding-assistant fallback.
+        let system = result.system_prompt.to_string();
+        assert!(
+            system.contains("You are a coding assistant."),
+            "should contain coding-assistant fallback, got: {system}"
+        );
     }
 
     #[rstest::rstest]
     #[test]
-    fn assemble_prompt_includes_pinned_system_entry_in_system_message() {
+    fn assemble_prompt_emits_pinned_system_entry_as_user_message() {
         // Given a session with a top-pinned System entry.
         let mut sys_entry = ChatEntry::system("Custom system instructions");
         sys_entry.pin_position = Some(PinPosition::Top);
@@ -1437,21 +1418,22 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
-        // Then the system message contains the pinned system content.
-        match &result.messages[0] {
-            LlmMessage::System { content } => {
-                assert!(
-                    content.contains("Custom system instructions"),
-                    "should contain pinned system entry, got: {content}"
-                );
+        // Then the pinned system entry rides as a [System]-prefixed User message.
+        let first = &result.messages[0];
+        match first {
+            LlmMessage::User { content, .. } => {
+                assert_eq!(content, "[System] Custom system instructions");
             }
-            other => panic!("expected System message, got {other:?}"),
+            other => panic!("expected User message, got {other:?}"),
         }
+        // And the system prompt does NOT absorb it.
+        let system = result.system_prompt.to_string();
+        assert!(!system.contains("Custom system instructions"));
     }
 
     #[rstest::rstest]
     #[test]
-    fn assemble_prompt_excludes_pinned_system_from_non_system_messages() {
+    fn assemble_prompt_pins_occupy_array_front_in_history_order() {
         // Given a session with a top-pinned System entry and a top-pinned User entry.
         let mut sys_entry = ChatEntry::system("System stuff");
         sys_entry.pin_position = Some(PinPosition::Top);
@@ -1463,32 +1445,17 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
-        // Then the system message contains the system entry content.
-        let system_msg = result
-            .messages
-            .iter()
-            .find(|m| matches!(m, LlmMessage::System { .. }));
-        assert!(system_msg.is_some(), "should have a system message");
-        if let LlmMessage::System { content } = system_msg.expect("checked") {
-            assert!(content.contains("System stuff"));
+        // Then the pins occupy the array front in history order - nothing reserved.
+        match (&result.messages[0], &result.messages[1]) {
+            (
+                LlmMessage::User { content: first, .. },
+                LlmMessage::User { content: second, .. },
+            ) => {
+                assert_eq!(first, "[System] System stuff");
+                assert_eq!(second, "pinned user");
+            }
+            other => panic!("expected two pin messages at the front, got {other:?}"),
         }
-
-        // And the pinned user message appears as a separate User message (not merged into system).
-        let user_msgs: Vec<_> = result
-            .messages
-            .iter()
-            .filter(|m| matches!(m, LlmMessage::User { .. }))
-            .collect();
-        assert!(
-            user_msgs.iter().any(|m| {
-                if let LlmMessage::User { content, .. } = m {
-                    content == "pinned user"
-                } else {
-                    false
-                }
-            }),
-            "pinned user message should appear as User: {user_msgs:?}"
-        );
     }
 
     #[rstest::rstest]

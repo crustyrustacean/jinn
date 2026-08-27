@@ -245,6 +245,7 @@ impl SessionPersistenceActor {
             endpoint_tag,
             session_id: session_id.clone(),
             messages: assembled.messages,
+            system_prompt: assembled.system_prompt,
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,

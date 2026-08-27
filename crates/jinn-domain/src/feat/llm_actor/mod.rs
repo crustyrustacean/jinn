@@ -73,6 +73,7 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
+use crate::feat::context::assemble::SystemPrompt;
 use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::provider_infra::LlmServiceFactoryService;
@@ -614,6 +615,7 @@ impl LlmActor {
         let retry_config = prefs.request_retry.clone();
 
         let tools = payload.tool_definitions.clone();
+        let system_prompt = payload.system_prompt.clone();
         let messages = payload.messages.clone();
         let session_id = payload.session_id.clone();
 
@@ -668,6 +670,7 @@ impl LlmActor {
             bus,
             sid,
             model_id,
+            system_prompt,
             messages,
             tools,
             dispatched_at,
@@ -799,6 +802,7 @@ async fn run_stream(
     bus: BusService,
     sid: SessionId,
     model_id: String,
+    system_prompt: SystemPrompt,
     messages: Vec<LlmMessage>,
     tools: Vec<ToolDefinition>,
     dispatched_at: jiff::Timestamp,
@@ -812,7 +816,10 @@ async fn run_stream(
         }
     };
 
-    let stream = match service.chat_stream_with_tools(messages, tools).await {
+    let stream = match service
+        .chat_stream_with_tools(system_prompt.as_deref(), messages, tools)
+        .await
+    {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(err = ?e, "failed to start LLM stream");
@@ -872,12 +879,14 @@ mod test_fakes {
         }
         async fn chat_stream(
             &self,
+            _system_prompt: Option<&str>,
             _messages: Vec<jinn_provider::LlmMessage>,
         ) -> Result<ChatStream, Report<LlmServiceError>> {
             Ok(Box::pin(futures::stream::pending()))
         }
         async fn chat_stream_with_tools(
             &self,
+            _system_prompt: Option<&str>,
             _messages: Vec<jinn_provider::LlmMessage>,
             _tools: Vec<jinn_provider::ToolDefinition>,
         ) -> Result<ToolStream, Report<LlmServiceError>> {
@@ -923,12 +932,14 @@ mod test_fakes {
         }
         async fn chat_stream(
             &self,
+            _system_prompt: Option<&str>,
             _messages: Vec<jinn_provider::LlmMessage>,
         ) -> Result<ChatStream, Report<LlmServiceError>> {
             Err(Report::new(LlmServiceError::Provider))
         }
         async fn chat_stream_with_tools(
             &self,
+            _system_prompt: Option<&str>,
             _messages: Vec<jinn_provider::LlmMessage>,
             _tools: Vec<jinn_provider::ToolDefinition>,
         ) -> Result<ToolStream, Report<LlmServiceError>> {
@@ -1169,6 +1180,7 @@ mod tests {
             endpoint_tag: None,
             session_id: session_id.clone(),
             messages: vec![],
+            system_prompt: SystemPrompt::default(),
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
@@ -1209,6 +1221,7 @@ mod tests {
             endpoint_tag: None,
             session_id: session_id.clone(),
             messages: vec![],
+            system_prompt: SystemPrompt::default(),
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
@@ -1246,6 +1259,7 @@ mod tests {
             endpoint_tag: None,
             session_id: session_id.clone(),
             messages: vec![],
+            system_prompt: SystemPrompt::default(),
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
@@ -1289,6 +1303,7 @@ mod tests {
             endpoint_tag: None,
             session_id: session_id.clone(),
             messages: vec![],
+            system_prompt: SystemPrompt::default(),
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
@@ -1364,6 +1379,7 @@ mod tests {
                 endpoint_tag: None,
                 session_id: session_id.clone(),
                 messages: vec![],
+                system_prompt: SystemPrompt::default(),
                 tool_definitions: vec![],
                 provider_id: None,
                 estimated_tokens: 0,
@@ -1414,6 +1430,7 @@ mod tests {
                 endpoint_tag: None,
                 session_id: session_id.clone(),
                 messages: vec![],
+                system_prompt: SystemPrompt::default(),
                 tool_definitions: vec![],
                 provider_id: None,
                 estimated_tokens: 0,

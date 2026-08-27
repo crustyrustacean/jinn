@@ -343,6 +343,7 @@ impl LlmService for FakeLlmService {
 
     async fn chat_stream(
         &self,
+        _system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>> {
         // Record the messages for test observability.
@@ -355,6 +356,7 @@ impl LlmService for FakeLlmService {
 
     async fn chat_stream_with_tools(
         &self,
+        _system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
         _tools: Vec<crate::tool_types::ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {

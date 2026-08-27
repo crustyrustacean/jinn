@@ -18,12 +18,11 @@ use crate::protocol::{ChatEntry, ChatEntryKind, ContextOverride};
 /// | Assistant | `LlmMessage::Assistant` | Tool calls attached from subsequent `ToolCall` entries |
 /// | ToolCall | Attached to previous `Assistant` message | Or creates empty assistant |
 /// | ToolResult | `LlmMessage::Tool` | |
-/// | System | `LlmMessage::System` | Only when in context (pinned or forced-include) |
+/// | System | `LlmMessage::User` with `[System]` prefix | Only when in context (pinned or forced-include) |
 /// | Actor | `LlmMessage::User` with `[Actor: source]` prefix | Only when in context |
 /// | Error | `LlmMessage::User` with `[Error]` prefix or actionable framing | `[Error]` prefix when `Default` (incl. pinned); actionable framing (`The user has shared...`) when `ForcedInclude` |
 /// | Thinking | `LlmMessage::User` with `[Thinking]` prefix | Only when in context |
 /// | Transient | `LlmMessage::User` with `[Transient]` prefix | Only when in context |
-/// | Skill | `LlmMessage::System` with skill XML | Always in context by default |
 /// | Compaction | `LlmMessage::User` with summary | Always in context by default |
 ///
 /// Tool-loop atomicity is enforced upstream by the history editor (write
@@ -130,11 +129,13 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     content: content.clone(),
                 });
             }
-            // System entries produce a System message when in context
-            // (pinned or forced-include).
+            // System entries ride as a prefixed User message when in context
+            // (pinned or forced-include); the system prompt itself is
+            // assembled separately and never originates from history.
             ChatEntryKind::System(content) => {
-                messages.push(LlmMessage::System {
-                    content: content.clone(),
+                messages.push(LlmMessage::User {
+                    content: format!("[System] {content}"),
+                    attachments: Vec::new(),
                 });
             }
             // Actor entries produce a User message when in context

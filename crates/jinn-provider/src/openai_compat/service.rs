@@ -108,6 +108,7 @@ impl OpenAiCompatibleService {
     /// Build and send a streaming chat completion request, returning the raw response.
     async fn send_streaming_request(
         &self,
+        system_prompt: Option<&str>,
         messages: &[LlmMessage],
         tools: &[ToolDefinition],
     ) -> Result<reqwest::Response, Report<LlmServiceError>> {
@@ -116,7 +117,13 @@ impl OpenAiCompatibleService {
                 .attach(format!("Missing {} API key", self.config.name)));
         }
 
-        let body = request::build_request(&self.model, messages, tools, &self.extra_body);
+        let body = request::build_request(
+            &self.model,
+            system_prompt,
+            messages,
+            tools,
+            &self.extra_body,
+        );
 
         let url = format!(
             "{}/{}",
@@ -252,9 +259,12 @@ impl LlmService for OpenAiCompatibleService {
 
     async fn chat_stream(
         &self,
+        system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>> {
-        let response = self.send_streaming_request(&messages, &[]).await?;
+        let response = self
+            .send_streaming_request(system_prompt, &messages, &[])
+            .await?;
         let parser = StreamResponseParser::new();
         let sse = SseParser::new();
         let name = self.config.name.to_owned();
@@ -298,10 +308,13 @@ impl LlmService for OpenAiCompatibleService {
 
     async fn chat_stream_with_tools(
         &self,
+        system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
         tools: Vec<ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
-        let response = self.send_streaming_request(&messages, &tools).await?;
+        let response = self
+            .send_streaming_request(system_prompt, &messages, &tools)
+            .await?;
         Ok(create_tool_stream(response, self.config.name))
     }
 }

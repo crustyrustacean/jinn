@@ -1577,6 +1577,7 @@ impl jinn_provider::LlmService for FailingLlmService {
 
     async fn chat_stream(
         &self,
+        _system_prompt: Option<&str>,
         _messages: Vec<jinn_provider::LlmMessage>,
     ) -> Result<jinn_provider::ChatStream, error_stack::Report<jinn_provider::LlmServiceError>>
     {
@@ -1588,6 +1589,7 @@ impl jinn_provider::LlmService for FailingLlmService {
 
     async fn chat_stream_with_tools(
         &self,
+        _system_prompt: Option<&str>,
         _messages: Vec<jinn_provider::LlmMessage>,
         _tools: Vec<jinn_provider::ToolDefinition>,
     ) -> Result<jinn_provider::ToolStream, error_stack::Report<jinn_provider::LlmServiceError>>

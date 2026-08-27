@@ -63,6 +63,7 @@ async fn text_streaming_yields_text_events() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "hi".into(),
                 attachments: Vec::new(),
@@ -110,6 +111,7 @@ async fn text_streaming_yields_done_event() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "hi".into(),
                 attachments: Vec::new(),
@@ -155,6 +157,7 @@ async fn tool_call_streaming_yields_tool_use_start() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "call echo".into(),
                 attachments: Vec::new(),
@@ -207,6 +210,7 @@ async fn tool_call_streaming_yields_input_delta() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "call echo".into(),
                 attachments: Vec::new(),
@@ -259,6 +263,7 @@ async fn tool_call_streaming_yields_tool_use_complete() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "call echo".into(),
                 attachments: Vec::new(),
@@ -311,6 +316,7 @@ async fn tool_call_streaming_yields_done_event() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "call echo".into(),
                 attachments: Vec::new(),
@@ -473,6 +479,7 @@ async fn extra_body_fields_included_in_request() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "test".into(),
                 attachments: Vec::new(),
@@ -512,6 +519,7 @@ async fn error_response_401_mapped_to_provider_error() {
     // When starting a chat stream.
     let result = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "hi".into(),
                 attachments: Vec::new(),
@@ -548,6 +556,7 @@ async fn reasoning_content_produces_reasoning_event() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "think".into(),
                 attachments: Vec::new(),
@@ -599,6 +608,7 @@ async fn base_url_override_routes_to_correct_host() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "hi".into(),
                 attachments: Vec::new(),
@@ -665,7 +675,7 @@ async fn chat_stream_yields_text_tokens_only() {
 
     let service = factory.create().unwrap();
     let stream = service
-        .chat_stream(vec![LlmMessage::User {
+        .chat_stream(None, vec![LlmMessage::User {
             content: "hi".into(),
             attachments: Vec::new(),
         }])
@@ -719,6 +729,7 @@ async fn custom_headers_from_config_are_sent() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "hi".into(),
                 attachments: Vec::new(),
@@ -767,6 +778,7 @@ async fn openrouter_emits_nested_reasoning_effort_in_request() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "test".into(),
                 attachments: Vec::new(),
@@ -810,6 +822,7 @@ async fn non_openrouter_emits_flat_reasoning_effort_in_request() {
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "test".into(),
                 attachments: Vec::new(),

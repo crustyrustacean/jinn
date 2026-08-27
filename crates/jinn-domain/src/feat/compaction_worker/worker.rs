@@ -502,6 +502,7 @@ fn resolve_context_limit(
 struct CompactionDump<'a> {
     kind: &'static str,
     model: &'a str,
+    system_prompt: &'a str,
     messages: &'a [LlmMessage],
 }
 
@@ -546,8 +547,6 @@ async fn generate_summary(
     // Wrap with retry decorator.
     let service = RetryingLlmService::new(service, retry_config.clone(), Box::new(NoOpOnRetry));
 
-    let system_prompt = compaction_prompt.to_owned();
-
     let mut user_content = String::new();
     if let Some(prev) = previous_summary {
         user_content.push_str("A previous compaction summary exists:\n\n<previous-summary>\n");
@@ -565,25 +564,22 @@ async fn generate_summary(
     }
     user_content.push_str(serialized_entries);
 
-    let messages = vec![
-        LlmMessage::System {
-            content: system_prompt,
-        },
-        LlmMessage::User {
-            content: user_content,
-            attachments: Vec::new(),
-        },
-    ];
+    let messages = vec![LlmMessage::User {
+        content: user_content,
+        attachments: Vec::new(),
+    }];
 
     // Dump the complete compaction request payload (one file per send).
     services.request_dump.dump(&CompactionDump {
         kind: "compaction",
         model: model_id,
+        system_prompt: compaction_prompt,
         messages: &messages,
     });
 
-    // Call the LLM and collect the response.
-    let stream = match service.chat_stream(messages).await {
+    // Call the LLM and collect the response. The compaction prompt travels
+    // explicitly as the system prompt, never inside the message array.
+    let stream = match service.chat_stream(Some(compaction_prompt), messages).await {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(error = %e, "failed to start compaction LLM stream");

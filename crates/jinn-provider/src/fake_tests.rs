@@ -17,7 +17,7 @@ async fn fake_service_yields_configured_tokens() {
 
     // When creating a service and streaming.
     let service = factory.create().expect("create service");
-    let stream = service.chat_stream(vec![]).await.expect("chat_stream");
+    let stream = service.chat_stream(None, vec![]).await.expect("chat_stream");
     let tokens: Vec<String> = StreamExt::map(stream, |r| r.expect("token"))
         .collect()
         .await;
@@ -34,7 +34,7 @@ async fn fake_service_empty_tokens() {
 
     // When creating a service and streaming.
     let service = factory.create().expect("create service");
-    let stream = service.chat_stream(vec![]).await.expect("chat_stream");
+    let stream = service.chat_stream(None, vec![]).await.expect("chat_stream");
     let tokens: Vec<String> = stream.map(|r| r.expect("token")).collect().await;
 
     // Then no tokens are produced.
@@ -50,7 +50,7 @@ async fn fake_service_yields_text_events_and_done() {
     // When streaming with tools.
     let service = factory.create().expect("create service");
     let stream = service
-        .chat_stream_with_tools(vec![], vec![])
+        .chat_stream_with_tools(None, vec![], vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -84,7 +84,7 @@ async fn fake_service_emits_text_events() {
     // When streaming with tools.
     let service = factory.create().expect("create service");
     let stream = service
-        .chat_stream_with_tools(vec![], vec![])
+        .chat_stream_with_tools(None, vec![], vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -110,7 +110,7 @@ async fn fake_service_emits_tool_events() {
     // When streaming with tools.
     let service = factory.create().expect("create service");
     let stream = service
-        .chat_stream_with_tools(vec![], vec![])
+        .chat_stream_with_tools(None, vec![], vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -147,7 +147,7 @@ async fn fake_service_emits_done_with_tool_use() {
     // When streaming with tools.
     let service = factory.create().expect("create service");
     let stream = service
-        .chat_stream_with_tools(vec![], vec![])
+        .chat_stream_with_tools(None, vec![], vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -184,7 +184,7 @@ async fn tool_loop_emits_text_token() {
         attachments: Vec::new(),
     }];
     let stream = service
-        .chat_stream_with_tools(messages, vec![])
+        .chat_stream_with_tools(None, messages, vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -215,7 +215,7 @@ async fn tool_loop_emits_tool_use_start() {
         attachments: Vec::new(),
     }];
     let stream = service
-        .chat_stream_with_tools(messages, vec![])
+        .chat_stream_with_tools(None, messages, vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -249,7 +249,7 @@ async fn tool_loop_emits_tool_use_delta() {
         attachments: Vec::new(),
     }];
     let stream = service
-        .chat_stream_with_tools(messages, vec![])
+        .chat_stream_with_tools(None, messages, vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -283,7 +283,7 @@ async fn tool_loop_emits_tool_use_complete() {
         attachments: Vec::new(),
     }];
     let stream = service
-        .chat_stream_with_tools(messages, vec![])
+        .chat_stream_with_tools(None, messages, vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -317,7 +317,7 @@ async fn tool_loop_emits_done_with_tool_use() {
         attachments: Vec::new(),
     }];
     let stream = service
-        .chat_stream_with_tools(messages, vec![])
+        .chat_stream_with_tools(None, messages, vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -356,14 +356,14 @@ async fn tool_loop_second_call_returns_text_only() {
 
     // First call - consume the tool_use response.
     let stream = service
-        .chat_stream_with_tools(messages.clone(), vec![])
+        .chat_stream_with_tools(None, messages.clone(), vec![])
         .await
         .expect("first call");
     let _events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
 
     // Second call - should return text only.
     let stream = service
-        .chat_stream_with_tools(messages, vec![])
+        .chat_stream_with_tools(None, messages, vec![])
         .await
         .expect("second call");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -400,7 +400,7 @@ async fn non_trigger_produces_default_events() {
         attachments: Vec::new(),
     }];
     let stream = service
-        .chat_stream_with_tools(messages, vec![])
+        .chat_stream_with_tools(None, messages, vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -434,7 +434,7 @@ async fn non_trigger_does_not_enter_tool_loop() {
         attachments: Vec::new(),
     }];
     let stream = service
-        .chat_stream_with_tools(messages, vec![])
+        .chat_stream_with_tools(None, messages, vec![])
         .await
         .expect("chat_stream_with_tools");
     let _events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -457,7 +457,7 @@ async fn with_tool_calls_and_empty_tokens_yields_tool_events_only() {
     // When streaming with tools.
     let service = factory.create().expect("create service");
     let stream = service
-        .chat_stream_with_tools(vec![], vec![])
+        .chat_stream_with_tools(None, vec![], vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -507,7 +507,7 @@ async fn tool_loop_with_multiple_tool_calls_on_first_response() {
         attachments: Vec::new(),
     }];
     let stream = service
-        .chat_stream_with_tools(messages, vec![])
+        .chat_stream_with_tools(None, messages, vec![])
         .await
         .expect("chat_stream_with_tools");
     let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
@@ -566,13 +566,13 @@ async fn scripted_queue_serves_responses_in_fifo_order() {
     let s1 = factory
         .create()
         .expect("create")
-        .chat_stream_with_tools(vec![], vec![])
+        .chat_stream_with_tools(None, vec![], vec![])
         .await
         .expect("stream1");
     let s2 = factory
         .create()
         .expect("create")
-        .chat_stream_with_tools(vec![], vec![])
+        .chat_stream_with_tools(None, vec![], vec![])
         .await
         .expect("stream2");
     let (t1, r1) = collect_tool_stream(s1).await;
@@ -603,7 +603,7 @@ async fn scripted_queue_tool_call_uses_tooluse_stop_reason() {
     let stream = factory
         .create()
         .expect("create")
-        .chat_stream_with_tools(vec![], vec![])
+        .chat_stream_with_tools(None, vec![], vec![])
         .await
         .expect("stream");
     let (text, reason) = collect_tool_stream(stream).await;
@@ -623,7 +623,7 @@ async fn scripted_queue_exhaustion_falls_back_to_static_text_stream() {
     let stream = factory
         .create()
         .expect("create")
-        .chat_stream_with_tools(vec![], vec![])
+        .chat_stream_with_tools(None, vec![], vec![])
         .await
         .expect("stream");
     let (text, _reason) = collect_tool_stream(stream).await;
