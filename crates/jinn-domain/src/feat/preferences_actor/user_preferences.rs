@@ -1319,6 +1319,53 @@ args = ["@excalimate/mcp-server", "--stdio"]
     }
 
     #[rstest::rstest]
+    fn mcp_server_headers_sub_table_round_trips_preserving_comments() {
+        // Given an existing jinn.toml whose MCP server entry declares a
+        // headers sub-table under a user comment.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[mcp_server.remote]
+transport = "remote_http"
+url = "http://localhost:3001/mcp"
+
+# auth header config must survive edits
+[mcp_server.remote.headers]
+Authorization = "Bearer ${MY_KEY}"
+"#,
+        )
+        .expect("write");
+
+        // When loading and saving unchanged.
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(
+            prefs.mcp_server["remote"]
+                .headers
+                .get("Authorization")
+                .map(String::as_str),
+            Some("Bearer ${MY_KEY}"),
+            "pre-existing headers must load"
+        );
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the headers sub-table survives on disk.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            on_disk.contains("Authorization = \"Bearer ${MY_KEY}\""),
+            "headers must round-trip through the patcher: {on_disk}"
+        );
+        // And the user's comment above it survives too.
+        assert!(
+            on_disk.contains("# auth header config must survive edits"),
+            "comment above the headers table was wiped: {on_disk}"
+        );
+        // And the result still parses back identically.
+        let reloaded = load_preferences_from(&path).expect("reload");
+        assert_eq!(reloaded.mcp_server, prefs.mcp_server);
+    }
+
+    #[rstest::rstest]
     fn default_preferences_has_no_mcp_servers() {
         // Given default preferences.
         let prefs = UserPreferences::default();

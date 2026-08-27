@@ -17,6 +17,7 @@
 #![allow(
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::items_after_statements,
     reason = "test assertions"
 )]
 
@@ -40,12 +41,17 @@ async fn remote_http_to_unreachable_url_loops_instead_of_failing() {
         args: vec![],
         transport: TransportKind::RemoteHttp,
         url: Some("http://127.0.0.1:1/mcp".to_owned()),
+        headers: std::collections::BTreeMap::default(),
         auto_enable: false,
     };
 
     // When attempting to connect, bounded by a short timeout.
-    let result =
-        tokio::time::timeout(Duration::from_millis(500), connect_for_transport(&config)).await;
+    let services = crate::Services::new_fake().await;
+    let result = tokio::time::timeout(
+        Duration::from_millis(500),
+        connect_for_transport(&services, &config),
+    )
+    .await;
 
     // Then the connect is still looping (timeout fires), proving it did not
     // fail fast on the first refused connection.
