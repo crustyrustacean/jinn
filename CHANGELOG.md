@@ -1,4 +1,4 @@
-## (development; unreleased) v0.112.0
+## 2026-08-27 v0.112.0
 
 - Add keybind `gci` in normal mode to "isolate" the selected chat entry.
   - The motivating use-case for this is planning -> isolate the approved plan -> implement with fresh context to maintain lifecycle.
