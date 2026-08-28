@@ -741,12 +741,6 @@ bump LEVEL:
         exit 1
     fi
 
-    # --- Pre-flight: PKGBUILD must exist ---
-    if [ ! -f PKGBUILD ]; then
-        echo "Error: PKGBUILD not found" >&2
-        exit 1
-    fi
-
     # --- Compute new version ---
     CURRENT=$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
     NEW=$(rust-script scripts/bump-version.rs "$CURRENT" "{{LEVEL}}")
@@ -766,8 +760,6 @@ bump LEVEL:
 
     # --- Update files ---
     sed -i "/^\[workspace\.package\]/,/^\[/{s/^version = \".*\"/version = \"$CANDIDATE\"/}" Cargo.toml
-    sed -i "s/^pkgver=.*/pkgver=$CANDIDATE/" PKGBUILD
-    sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
     # --- Regenerate Cargo.lock for the new workspace version ---
     cargo update --workspace
