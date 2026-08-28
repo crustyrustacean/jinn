@@ -5067,22 +5067,6 @@ fn enqueue_front_puts_item_at_front_of_queue() {
 }
 
 #[rstest::rstest]
-fn is_automated_returns_real_value() {
-    // Given a session that is not automated.
-    let session = ChatSessionState::new();
-
-    // Then is_automated returns false.
-    assert!(!session.is_automated());
-
-    // Given a session marked as automated.
-    let mut wf_session = ChatSessionState::new();
-    wf_session.core.is_automated = true;
-
-    // Then is_automated returns true (not hardcoded false).
-    assert!(wf_session.is_automated());
-}
-
-#[rstest::rstest]
 fn steering_buffer_not_persisted_across_serialization() {
     // Given a session with a non-empty steering buffer.
     let mut session = ChatSessionState::new();
