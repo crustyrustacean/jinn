@@ -81,6 +81,8 @@ pub struct FakeLlmServiceFactory {
     tool_loop_subsequent_tokens: Vec<String>,
     /// Messages received by all services created from this factory.
     received_calls: Arc<Mutex<Vec<Vec<LlmMessage>>>>,
+    /// System prompts received alongside each call, paired with the messages.
+    received_system_prompts: Arc<Mutex<Vec<Option<String>>>>,
     /// Shared FIFO queue of scripted responses. Each `chat_stream_with_tools`
     /// call pops the next entry; when empty, the static fields above are used
     /// (preserving the legacy `new`/`with_tool_calls`/`with_tool_loop` behavior).
@@ -98,6 +100,7 @@ impl FakeLlmServiceFactory {
             tool_loop_first_tool_calls: vec![],
             tool_loop_subsequent_tokens: vec![],
             received_calls: Arc::new(Mutex::new(Vec::new())),
+            received_system_prompts: Arc::new(Mutex::new(Vec::new())),
             scripted_queue: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
@@ -116,6 +119,7 @@ impl FakeLlmServiceFactory {
             tool_loop_first_tool_calls: vec![],
             tool_loop_subsequent_tokens: vec![],
             received_calls: Arc::new(Mutex::new(Vec::new())),
+            received_system_prompts: Arc::new(Mutex::new(Vec::new())),
             scripted_queue: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
@@ -143,6 +147,7 @@ impl FakeLlmServiceFactory {
             tool_loop_first_tool_calls: first_tool_calls,
             tool_loop_subsequent_tokens: subsequent_tokens,
             received_calls: Arc::new(Mutex::new(Vec::new())),
+            received_system_prompts: Arc::new(Mutex::new(Vec::new())),
             scripted_queue: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
@@ -165,6 +170,18 @@ impl FakeLlmServiceFactory {
     #[must_use]
     pub fn received_calls(&self) -> Vec<Vec<LlmMessage>> {
         self.received_calls.lock().clone()
+    }
+
+    /// Returns the system prompt received with each call, in call order.
+    ///
+    /// `None` entries mean the call passed no system prompt.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn received_system_prompts(&self) -> Vec<Option<String>> {
+        self.received_system_prompts.lock().clone()
     }
 
     /// Clears all recorded calls.
@@ -200,6 +217,7 @@ impl LlmServiceFactory for FakeLlmServiceFactory {
             tool_loop_first_tool_calls: self.tool_loop_first_tool_calls.clone(),
             tool_loop_subsequent_tokens: self.tool_loop_subsequent_tokens.clone(),
             received_calls: self.received_calls.clone(),
+            received_system_prompts: self.received_system_prompts.clone(),
             scripted_queue: self.scripted_queue.clone(),
         }))
     }
@@ -222,6 +240,8 @@ struct FakeLlmService {
     tool_loop_subsequent_tokens: Vec<String>,
     /// Shared call recording with the parent factory.
     received_calls: Arc<Mutex<Vec<Vec<LlmMessage>>>>,
+    /// Shared system-prompt recording with the parent factory.
+    received_system_prompts: Arc<Mutex<Vec<Option<String>>>>,
     /// Shared FIFO queue of scripted responses (with the parent factory).
     scripted_queue: Arc<Mutex<VecDeque<ScriptedResponse>>>,
 }
@@ -343,11 +363,14 @@ impl LlmService for FakeLlmService {
 
     async fn chat_stream(
         &self,
-        _system_prompt: Option<&str>,
+        system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>> {
-        // Record the messages for test observability.
+        // Record the messages and system prompt for test observability.
         self.received_calls.lock().push(messages);
+        self.received_system_prompts
+            .lock()
+            .push(system_prompt.map(str::to_owned));
 
         let tokens = self.tokens.clone();
         let stream: ChatStream = Box::pin(stream::iter(tokens.into_iter().map(Ok)));
@@ -356,12 +379,15 @@ impl LlmService for FakeLlmService {
 
     async fn chat_stream_with_tools(
         &self,
-        _system_prompt: Option<&str>,
+        system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
         _tools: Vec<crate::tool_types::ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
-        // Record the messages for test observability.
+        // Record the messages and system prompt for test observability.
         self.received_calls.lock().push(messages.clone());
+        self.received_system_prompts
+            .lock()
+            .push(system_prompt.map(str::to_owned));
 
         // Scripted FIFO queue takes precedence over the static fields.
         // Each call pops the next response; when empty, fall back to the
