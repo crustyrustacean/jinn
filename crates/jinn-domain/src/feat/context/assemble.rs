@@ -199,6 +199,7 @@ pub fn assemble_prompt(
 
     // Apply overrides: environment sections. A system prompt override replaces
     // every generated section; skip_context_files drops only the files section.
+    // Builders returning an empty section are omitted entirely.
     let env_sections = if overrides.is_some_and(|o| o.system_prompt.is_some()) {
         Vec::new()
     } else {
@@ -208,6 +209,9 @@ pub fn assemble_prompt(
             context_files
         };
         vec![persona_section(persona), context_files_section(files)]
+            .into_iter()
+            .filter(|section| !section.is_empty())
+            .collect::<Vec<_>>()
     };
 
     // Check for system prompt override.
@@ -223,6 +227,7 @@ pub fn assemble_prompt(
 
     // Compose the system prompt in fixed section order. Empty sections are
     // omitted entirely; the rest are joined with a blank line between them.
+    // Date and cwd are unconditional - their builders always render content.
     let system_prompt = if let Some(content) = forced_system {
         // Override replaces all generated system sections.
         SystemPrompt::new(content)
@@ -235,15 +240,9 @@ pub fn assemble_prompt(
         if !skills_block.is_empty() {
             system_parts.push(skills_block);
         }
-        if !system_parts.is_empty() {
-            system_parts.push(date_section());
-            system_parts.push(cwd_section(&cwd));
-        }
-        if system_parts.is_empty() {
-            SystemPrompt::default()
-        } else {
-            SystemPrompt::new(system_parts.join("\n\n"))
-        }
+        system_parts.push(date_section());
+        system_parts.push(cwd_section(&cwd));
+        SystemPrompt::new(system_parts.join("\n\n"))
     };
 
     // Convert working history to messages. Bottom pins are inserted before
@@ -708,6 +707,9 @@ mod tests {
         let system = result.system_prompt.to_string();
         assert!(system.contains("Current date:"));
         assert!(system.contains("Current working directory:"));
+        // And empty sections leave no gaps in the join.
+        assert!(!system.contains("\n\n\n"), "empty section gap: {system:?}");
+        assert!(!system.starts_with('\n'), "leading separator: {system:?}");
     }
 
     #[rstest::rstest]
@@ -1458,6 +1460,67 @@ mod tests {
                 assert_eq!(second, "pinned user");
             }
             other => panic!("expected two pin messages at the front, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn assemble_prompt_system_sections_appear_in_declared_order() {
+        // Given a state where every system section has content.
+        let (state, session_id) = state_with_history(vec![]);
+        {
+            let mut guard = state.write_test_no_cap();
+            guard.context.push_persona(crate::feat::persona::Persona {
+                name: "custom".to_owned(),
+                description: "Custom persona".to_owned(),
+                body: "ORDER-MARK-PERSONA".to_owned(),
+            });
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session exists")
+                .set_persona_name("custom".to_owned());
+            guard
+                .active_session_mut()
+                .set_discovered_context_files(vec![ContextFile {
+                    path: std::path::PathBuf::from("/project/AGENTS.md"),
+                    content: "ORDER-MARK-FILES".to_owned(),
+                }]);
+            guard
+                .context
+                .global_tool_definitions
+                .insert("ordermark".to_owned(), make_tool("ordermark"));
+            guard
+                .active_session_mut()
+                .set_discovered_skills(vec![make_skill("ordermark-skill")]);
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then each section's marker appears after the previous section's.
+        let system = result.system_prompt.to_string();
+        let positions = [
+            system.find("ORDER-MARK-PERSONA"),
+            system.find("ORDER-MARK-FILES"),
+            system.find("ordermark does things"),
+            system.find("<name>ordermark-skill</name>"),
+            system.find("Current date:"),
+            system.find("Current working directory:"),
+        ];
+        assert!(
+            positions.iter().all(Option::is_some),
+            "all six sections must be present, positions: {positions:?}"
+        );
+        let mut prev = 0;
+        for (index, pos) in positions.iter().enumerate() {
+            let pos = pos.expect("checked above");
+            assert!(
+                pos >= prev,
+                "section {index} out of declared order: {positions:?}"
+            );
+            prev = pos;
         }
     }
 

@@ -43,10 +43,11 @@ Entries are added or amended **only with human approval**.
 - (compaction) The compaction gate is re-evaluated on subsequent events and prevents double-compaction after the first; `threshold=0` always triggers and `threshold=1` requires the full context.
 - (compaction) The compaction gate splits on `provider/model` format and uses the session's model for the context-length lookup.
 - (compaction) The compaction worker is per-session: clearing/compacting session A does not affect session B.
-- (compaction) When working history exceeds the session token budget, entries are trimmed newest-to-oldest (pinned entries preserved) and a compaction prompt is injected.
+- (compaction) When working history exceeds the session token budget, entries are trimmed newest-to-oldest (pinned entries preserved) and the compaction prompt is sent as the explicit system prompt of the summary request.
 - (context) A forced system-prompt override replaces all generated system sections; pinned history entries remain conversation messages regardless of override.
 - (context) Context assembly builds the system prompt from dedicated per-section builders in fixed order: persona body, project context files, tool context, skills block, current date, working directory; empty sections are omitted.
 - (context) The assembled system prompt travels as an explicit field through dispatch and provider requests; the message array carries only chat history, and provider request builders never extract content from it.
+- (context) System-kind chat entries ride in LLM context as `[System]`-prefixed `User` messages in conversation order (when pinned or forced-include), never inside the system prompt.
 - (context) Context assembly partitions history into top, bottom, and working outgoing groups while preserving assistant tool-call/tool-result loops as atomic units.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
 - (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (token stays literal, turn dispatches); only a recognizable image failing conversion hard-blocks. A user entry carrying attachments is blocked unless the active model is confirmed image-capable via models.dev — unknown models are blocked, not allowed.
