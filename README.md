@@ -146,7 +146,7 @@ The entire "system" prompt can be indirectly edited by either changing config fi
 ```
 <persona>      # all sessions must use some persona
 <AGENTS.md>
-<tool context> # available tools + tool guidelines
+<tool context> # available tools + tool guidelines (NOT schemas)
 <skills>       # available skills including name, description, path
 <date>         # current date
 <cwd>          # current working directory
