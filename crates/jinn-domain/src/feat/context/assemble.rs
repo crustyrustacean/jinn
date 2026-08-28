@@ -130,9 +130,8 @@ pub fn assemble_prompt(
     // Filter out disabled tools and server tools that don't match the active provider.
     let provider_name = session.model_selection().provider_name().to_owned();
     let disabled = session.disabled_tools();
-    tool_defs.retain(|def| {
-        !disabled.contains(&def.name) && def.available_for_provider(&provider_name)
-    });
+    tool_defs
+        .retain(|def| !disabled.contains(&def.name) && def.available_for_provider(&provider_name));
 
     let filtered_map: BTreeMap<String, ToolDefinition> = tool_defs
         .iter()
@@ -153,10 +152,13 @@ pub fn assemble_prompt(
     // Compose environment sections. Builders returning an empty section are
     // omitted entirely.
     let env_sections = {
-        vec![persona_section(persona), context_files_section(context_files)]
-            .into_iter()
-            .filter(|section| !section.is_empty())
-            .collect::<Vec<_>>()
+        vec![
+            persona_section(persona),
+            context_files_section(context_files),
+        ]
+        .into_iter()
+        .filter(|section| !section.is_empty())
+        .collect::<Vec<_>>()
     };
 
     // Split and normalize history before converting any partition. Tool loops

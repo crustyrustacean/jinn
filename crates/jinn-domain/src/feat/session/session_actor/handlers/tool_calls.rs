@@ -169,10 +169,7 @@ impl SessionPersistenceActor {
 
     /// Assembles the continuation prompt, transitions to streaming phase,
     /// and emits the SendToLlmProvider command.
-    async fn assemble_and_send_continuation(
-        &self,
-        session_id: &crate::protocol::SessionId,
-    ) {
+    async fn assemble_and_send_continuation(&self, session_id: &crate::protocol::SessionId) {
         let assembled = {
             let guard = self.state.read();
             // FIXME: make spawn_blocking probably

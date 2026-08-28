@@ -75,6 +75,9 @@ mod restart_mcp_tests;
 pub mod save_plan;
 pub mod session_query;
 pub mod skill;
+pub mod task;
+pub mod task_phase_listener_actor;
+pub mod task_registry;
 pub mod tool_entry;
 pub mod tool_types;
 pub(crate) mod truncation;
@@ -121,6 +124,11 @@ pub(crate) enum ToolRegistration {
         definition: ToolDefinition,
         /// The function that executes the tool call.
         execute: fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        /// When `true`, the dispatcher's timeout wrapper is bypassed: the
+        /// tool receives the per-call budget in `ToolContext.timeout` and
+        /// enforces it itself. Required for tools that must not be aborted
+        /// by a dropped future (`task` would orphan its child session).
+        self_managed_timeout: bool,
     },
     /// An actor-provided tool routed via [`ExecuteTool`] command.
     Actor {
@@ -301,21 +309,22 @@ impl Actor for ToolOrchestratorActor {
         let builtins: Vec<_> = if let Some(ref filter) = args.builtin_filter {
             all_builtins
                 .into_iter()
-                .filter(|(def, _)| filter.contains(&def.name))
+                .filter(|(def, _, _)| filter.contains(&def.name))
                 .collect()
         } else {
             all_builtins
         };
         let mut builtin_definitions: Vec<ToolDefinition> =
-            builtins.iter().map(|(d, _)| d.clone()).collect();
+            builtins.iter().map(|(d, _, _)| d.clone()).collect();
 
-        for (def, execute_fn) in builtins {
+        for (def, execute_fn, self_managed_timeout) in builtins {
             let name = def.name.clone();
             actor.tools.insert(
                 name,
                 ToolRegistration::Builtin {
                     definition: def,
                     execute: execute_fn,
+                    self_managed_timeout,
                 },
             );
         }
@@ -326,6 +335,8 @@ impl Actor for ToolOrchestratorActor {
             web_search_def.name.clone(),
             ToolRegistration::Builtin {
                 definition: web_search_def.clone(),
+                // Server tool; never dispatched locally so the flag is moot.
+                self_managed_timeout: false,
                 execute: |_call, _ctx| {
                     // Server tool - handled by OpenRouter, never dispatched locally.
                     Box::pin(std::future::ready(ToolResult {
@@ -566,6 +577,7 @@ impl ToolOrchestratorActor {
             dispatched_at,
             session_cap: Some(self.session_cap),
             mcp_coordinator: self.services.mcp_coordinator.get().cloned(),
+            task_spawns: Some(self.services.task_spawns.clone()),
         }
     }
 
@@ -592,9 +604,17 @@ impl ToolOrchestratorActor {
         );
 
         match self.find_registration(&session_id, &tool_call.name) {
-            Some(ToolRegistration::Builtin { execute, .. }) => {
-                Some(self.dispatch_builtin(session_id, tool_call, dispatched_at, *execute))
-            }
+            Some(ToolRegistration::Builtin {
+                execute,
+                self_managed_timeout,
+                ..
+            }) => Some(self.dispatch_builtin(
+                session_id,
+                tool_call,
+                dispatched_at,
+                *execute,
+                *self_managed_timeout,
+            )),
             Some(ToolRegistration::Actor { provider, .. }) => {
                 self.dispatch_actor(session_id, tool_call, provider, dispatched_at)
                     .await
@@ -617,12 +637,18 @@ impl ToolOrchestratorActor {
     }
 
     /// Spawns a builtin tool, applying its configured timeout, and publishes the result.
+    ///
+    /// `self_managed_timeout` bypasses [`run_builtin_with_timeout`]: the tool
+    /// runs bare with the per-call budget left in `ToolContext.timeout` so it
+    /// can enforce (or ignore) the deadline itself without risk of its future
+    /// being dropped mid-run.
     fn dispatch_builtin(
         &self,
         session_id: SessionId,
         tool_call: ToolCall,
         dispatched_at: Timestamp,
         execute_fn: fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        self_managed_timeout: bool,
     ) -> tokio::task::JoinHandle<()> {
         let bus = self.bus().clone();
         let tool_ctx = self.build_tool_context(&session_id, dispatched_at);
@@ -633,14 +659,15 @@ impl ToolOrchestratorActor {
         tokio::spawn(async move {
             use futures::FutureExt as _;
             use std::panic::AssertUnwindSafe;
-            let result =
-                match AssertUnwindSafe(run_builtin_with_timeout(tool_call, tool_ctx, execute_fn))
-                    .catch_unwind()
-                    .await
-                {
-                    Ok(r) => r,
-                    Err(_) => panicked_tool_result(&call_id, &call_name),
-                };
+            let inner: BoxedToolFuture = if self_managed_timeout {
+                execute_fn(tool_call, tool_ctx)
+            } else {
+                Box::pin(run_builtin_with_timeout(tool_call, tool_ctx, execute_fn))
+            };
+            let result = match AssertUnwindSafe(inner).catch_unwind().await {
+                Ok(r) => r,
+                Err(_) => panicked_tool_result(&call_id, &call_name),
+            };
             bus.publish(ToolExecutionCompleted { session_id, result })
                 .await;
         })
@@ -1074,6 +1101,7 @@ mod timeout_tests {
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
             mcp_coordinator: None,
+            task_spawns: None,
         }
     }
 
@@ -1324,6 +1352,7 @@ mod panic_safety_tests {
                 dispatched_at: jiff::Timestamp::now(),
                 session_cap: None,
                 mcp_coordinator: None,
+                task_spawns: None,
             },
         ))
         .catch_unwind()
