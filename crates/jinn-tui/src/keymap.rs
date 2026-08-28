@@ -149,6 +149,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
             .bind("gcp", Intent::OpenPrunerAccumulationInput, KeyCategory::Context)
+            // Isolate selected entry: force-include its tool loop, force-exclude the rest
+            .bind("gci", Intent::ChatEntryIsolateSelected, KeyCategory::Context)
             .bind("gdc", Intent::ToDiscordThread, KeyCategory::General)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
