@@ -1,3 +1,9 @@
+## (development; unreleased) v0.112.0
+
+- Add keybind `gci` in normal mode to "isolate" the selected chat entry.
+  - The motivating use-case for this is planning -> isolate the approved plan -> implement with fresh context to maintain lifecycle.
+- Changed context assembly order for system prompt.
+
 ## 2026-08-27 v0.111.0
 
 - Add user filter for Discord bot usage. The bot will only respond to users listed in the TOML.
