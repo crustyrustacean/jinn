@@ -60,14 +60,21 @@ pub trait LlmService: Send + Sync {
 
     /// Start a streaming chat completion (text only).
     ///
+    /// `system_prompt` is the assembled system prompt for this request; it
+    /// travels as request data, never inside `messages`.
+    ///
     /// Returns a stream of text tokens. The stream ends when the LLM finishes
     /// generating or errors.
     async fn chat_stream(
         &self,
+        system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>>;
 
     /// Start a streaming chat completion with tool support.
+    ///
+    /// `system_prompt` is the assembled system prompt for this request; it
+    /// travels as request data, never inside `messages`.
     ///
     /// Returns a stream of [`StreamEvent`] variants. When `tools` is non-empty,
     /// the stream may include tool call events. The default implementation
@@ -76,11 +83,12 @@ pub trait LlmService: Send + Sync {
     /// [`StreamEvent::Done`].
     async fn chat_stream_with_tools(
         &self,
+        system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
         tools: Vec<ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
         let _ = tools; // Default: no tool support, ignore tool definitions.
-        let text_stream = self.chat_stream(messages).await?;
+        let text_stream = self.chat_stream(system_prompt, messages).await?;
         let events = text_stream.map(|result| result.map(StreamEvent::Text));
         let done = stream::once(async {
             Ok(StreamEvent::Done {

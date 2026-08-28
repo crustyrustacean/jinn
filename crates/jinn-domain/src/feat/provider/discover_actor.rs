@@ -77,7 +77,6 @@ impl BusPublish for DiscoverActor {
     }
 }
 impl DiscoverActor {
-    #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     async fn refresh_models(&self) {
         let entries = {
             let registry = self.deps.services.provider_registry.read();
@@ -135,11 +134,8 @@ impl DiscoverActor {
 
             let result: Result<Vec<ModelInfo>, Report<LlmServiceError>> = match backend {
                 Backend::Anthropic => {
-                    let svc = AnthropicService::new(
-                        placeholder_model.clone(),
-                        api_key_str.to_owned(),
-                        None,
-                    );
+                    let svc =
+                        AnthropicService::new(placeholder_model.clone(), api_key_str.to_owned());
                     svc.list_models().await
                 }
                 Backend::Google => {

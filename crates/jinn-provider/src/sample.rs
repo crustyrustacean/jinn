@@ -73,6 +73,7 @@ impl LlmService for SampleLlmService {
 
     async fn chat_stream(
         &self,
+        _system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>> {
         let last_user_msg = messages
@@ -175,7 +176,10 @@ mod tests {
         }];
 
         // When streaming.
-        let stream = service.chat_stream(messages).await.expect("chat_stream");
+        let stream = service
+            .chat_stream(None, messages)
+            .await
+            .expect("chat_stream");
         let output: String = StreamExt::map(stream, |r| r.expect("token"))
             .collect::<Vec<_>>()
             .await
@@ -198,7 +202,10 @@ mod tests {
         }];
 
         // When streaming.
-        let stream = service.chat_stream(messages).await.expect("chat_stream");
+        let stream = service
+            .chat_stream(None, messages)
+            .await
+            .expect("chat_stream");
         let output: String = stream
             .map(|r| r.expect("token"))
             .collect::<Vec<_>>()
@@ -223,7 +230,10 @@ mod tests {
         }];
 
         // When streaming.
-        let stream = service.chat_stream(messages).await.expect("chat_stream");
+        let stream = service
+            .chat_stream(None, messages)
+            .await
+            .expect("chat_stream");
         let output: String = stream
             .map(|r| r.expect("token"))
             .collect::<Vec<_>>()
@@ -246,7 +256,10 @@ mod tests {
         }];
 
         // When streaming.
-        let stream = service.chat_stream(messages).await.expect("chat_stream");
+        let stream = service
+            .chat_stream(None, messages)
+            .await
+            .expect("chat_stream");
         let output: String = stream
             .map(|r| r.expect("token"))
             .collect::<Vec<_>>()
@@ -264,7 +277,10 @@ mod tests {
         let service = SampleLlmServiceFactory.create().expect("create service");
 
         // When streaming with no messages.
-        let stream = service.chat_stream(vec![]).await.expect("chat_stream");
+        let stream = service
+            .chat_stream(None, vec![])
+            .await
+            .expect("chat_stream");
         let output: String = stream
             .map(|r| r.expect("token"))
             .collect::<Vec<_>>()
@@ -308,7 +324,10 @@ mod tests {
             content: "!Response".to_owned(),
             attachments: Vec::new(),
         }];
-        let stream = service.chat_stream(messages).await.expect("chat_stream");
+        let stream = service
+            .chat_stream(None, messages)
+            .await
+            .expect("chat_stream");
         let output: String = stream
             .map(|r| r.expect("token"))
             .collect::<Vec<_>>()

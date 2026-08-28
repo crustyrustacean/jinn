@@ -47,6 +47,7 @@ impl LlmService for NoProvidersAvailableService {
 
     async fn chat_stream(
         &self,
+        _system_prompt: Option<&str>,
         _messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>> {
         let tokens = tokenize(HELP_MESSAGE);
@@ -84,7 +85,10 @@ mod tests {
 
         // When creating a service and streaming.
         let service = factory.create().expect("create service");
-        let stream = service.chat_stream(vec![]).await.expect("chat_stream");
+        let stream = service
+            .chat_stream(None, vec![])
+            .await
+            .expect("chat_stream");
         let tokens: Vec<String> = StreamExt::map(stream, |r| r.expect("token"))
             .collect()
             .await;
