@@ -14,11 +14,7 @@ test:
 check:
     cargo check --workspace
 
-# Build every in-tree wasm plugin (needs the wasm32-wasip2 target and
-# the jinn binary — built first if missing). Discovers plugins by globbing
-# plugins/*/Cargo.toml, so new plugin dirs need no justfile edit. Each
-# invocation goes through `jinn plugin build` so the [package.metadata.jinn]
-# manifest is embedded into the artifact.
+# Build every in-tree wasm plugin (needs wasm32-wasip2 target + jinn binary); see plugins/*/Cargo.toml
 build-plugins:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -46,9 +42,7 @@ build-plugins:
         target/release/jinn plugin build "$dir"
     done
 
-# Build every in-tree plugin and install it as a jinn plugin (build +
-# `jinn plugin add` per plugin). Grants/http come from each plugin's
-# embedded manifest — no flags needed. Plugins activate on next jinn start.
+# Build every in-tree plugin and install it via `jinn plugin add` (manifest-embedded grants/http)
 install-plugins: build-plugins
     #!/usr/bin/env bash
     set -euo pipefail
@@ -61,10 +55,7 @@ install-plugins: build-plugins
         target/release/jinn plugin add "$dir"
     done
 
-# Rebuild all in-tree plugins and copy the artifacts into res/plugins/ —
-# the payloads that get embedded into the jinn binary (see
-# crates/jinn-domain/src/feat/install/). Run before `just release` so
-# released binaries never embed stale payloads; commit the results.
+# Rebuild plugins and copy artifacts into res/plugins/ (embedded payloads; run before `just release`)
 refresh-plugins: build-plugins
     #!/usr/bin/env bash
     set -euo pipefail
@@ -96,11 +87,7 @@ lint:
     cargo fmt -- --check
     just lint-testattr
 
-# Fail on any bare #[test]/#[tokio::test] without an rstest attribute in its
-# stack. Every workspace test must run under rstest's compile-time-baked
-# timeout (see .cargo/config.toml) — a bare attribute silently escapes it.
-# Sanctioned exception: the trybuild compile-fail runner, which measures
-# compiler behavior on cold fixture builds, not runtime behavior.
+# Fail on bare #[test]/#[tokio::test] lacking an rstest attr (escapes the rstest timeout)
 lint-testattr:
    #!/usr/bin/env python3
    import os
@@ -183,9 +170,7 @@ ci: lint test
 cucumber:
     cargo test --test e2e -p jinn-e2e
 
-# Rebuild the dao compile-time validation database. Run this if `#[query]`
-# validation acts stale after editing migrations in jinn-session-schema —
-# it forces jinn-domain's build.rs to recreate the DB on the next check.
+# Rebuild the dao compile-time validation DB (forces jinn-domain build.rs on next check)
 dao-db-rebuild:
     cargo clean -p jinn-domain
 
@@ -512,7 +497,7 @@ sync-github:
 #   just gh-pr-list [STATE]    browse PRs (default open)
 #   just gh-pr-view N          PR metadata in the terminal
 #   just gh-pr-fetch N         download patch + metadata, extract the author
-#   just gh-pr-apply N         dry-run then apply the patch to the working tree
+#   just gh-pr-apply N         apply the patch; conflicts become conflict markers
 #   ...review, `just check`, `just test`...
 #   just gh-pr-land N          commit, attributed to the contributor
 #   just sync-github           mirror the landed commit to GitHub
@@ -523,12 +508,7 @@ sync-github:
 export GH_REPO := "jayson-lennon/jinn"
 GH_PR_STATE_DIR := "target/gh-pr"
 
-# One-time: teach gh which repo to talk to from this fossil-only workspace.
-# `gh repo set-default` refuses to run outside a git repo (verified), so we
-# skip it entirely and rely on the GH_REPO environment variable instead —
-# honored by every gh subcommand with no .git required. The export above
-# makes it ambient for both `just` recipes and your interactive shell (via
-# `just --evaluate`-visible recipes) and nothing is written to gh's config.
+# One-time: export GH_REPO so gh works outside git (gh repo set-default refuses fossil-only workspaces)
 gh-setup:
     @echo "GH_REPO={{GH_REPO}} (exported by the justfile; no setup needed)"
     @GH_REPO={{GH_REPO}} gh auth status && echo "gh is ready"
@@ -543,9 +523,7 @@ gh-pr-view N:
         --json number,title,url,author,headRefName,headRefOid,additions,deletions,changedFiles \
         --jq '"#\(.number) \(.title)", "  by \(.author.login)  \(.headRefName)@\(.headRefOid[0:10])", "  +\(.additions) -\(.deletions) across \(.changedFiles) file(s)", "  \(.url)"'
 
-# Fetch the PR's format-patch and auto-extract the contributor identity from
-# the first commit's "From: Name <email>" header — the same email GitHub uses
-# for account linking, so attribution stays exact.
+# Fetch PR patch + extract contributor identity from the first commit's "From:" header
 gh-pr-fetch N:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -582,9 +560,10 @@ gh-pr-fetch N:
     fi
     echo "==> Saved: $dir/{meta.json,pr.patch,identity}"
 
-# Apply the fetched patch to the working tree. Refuses a dirty tree, always
-# dry-runs first, and tolerates already-applied hunks (--forward) instead of
-# hanging on an interactive prompt.
+# Apply the fetched patch to the working tree. Refuses a dirty tree.
+# Clean apply: patch goes straight in. Conflicting hunks are written into
+# the files as `<<<<<<<`/`=======`/`>>>>>>>` markers (--merge) — resolve
+# them by hand or hand them to an agent (they're greppable), then land.
 gh-pr-apply N:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -602,17 +581,29 @@ gh-pr-apply N:
         echo "Note: applying on branch '$branch', not trunk" >&2
     fi
 
-    echo '==> Dry run'
-    patch -p1 --dry-run --forward < "$dir/pr.patch"
-    echo '==> Applying'
-    patch -p1 --forward < "$dir/pr.patch"
+    echo '==> Probing with dry run'
+    if patch -p1 --dry-run < "$dir/pr.patch" >/dev/null 2>&1; then
+        echo '==> Clean apply'
+        patch -p1 < "$dir/pr.patch"
+    else
+        echo '==> Conflicts detected: writing conflict markers into the tree'
+        patch -p1 --merge < "$dir/pr.patch" || true
+        # drop patch's .orig backups; the conflicted files themselves carry
+        # the pre-image in the `<<<<<<<` block, so .orig is redundant noise
+        find . -name '*.orig' -not -path './.fossil/*' -not -path './target/*' -delete
+        echo
+        echo '    Conflicted spots (resolve every one, then delete its markers):'
+        grep -rn '^<<<<<<<' --exclude-dir=.fossil --exclude-dir=target . || true
+        echo
+        echo '    After resolving:'
+        echo '      just check && just test'
+        echo "      just gh-pr-land {{N}}"
+    fi
     fossil addremove --dotfiles
-    echo "==> Applied. Review, then: just check && just test && just gh-pr-land {{N}}"
+    echo "==> Applied. Then: just gh-pr-land {{N}}"
 
-# Commit the applied patch, attributed to the contributor: auto-provisions a
-# fossil user carrying the identity extracted at fetch time (that contact info
-# is what `fossil git export` later writes into the git author field, which is
-# what GitHub links back to their profile).
+# Commit the applied patch attributed to the contributor (auto-provisions a fossil user).
+# Refuses to run while unresolved conflict markers remain in the tree.
 gh-pr-land N:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -623,6 +614,13 @@ gh-pr-land N:
     }
     if [ -z "$(fossil changes --differ)" ]; then
         echo 'ERROR: nothing to commit; apply the patch first: just gh-pr-apply {{N}}' >&2
+        exit 1
+    fi
+
+    if grep -rn '^<<<<<<<' --exclude-dir=.fossil --exclude-dir=target . >/dev/null 2>&1; then
+        echo 'ERROR: unresolved conflict markers remain:' >&2
+        grep -rn '^<<<<<<<' --exclude-dir=.fossil --exclude-dir=target . | head -10 >&2
+        echo 'Resolve them (or hand them to an agent), then re-run.' >&2
         exit 1
     fi
 
@@ -651,8 +649,7 @@ gh-pr-land N:
     echo '    then: just sync-github'
     echo "    then: just gh-pr-close {{N}} 'Landed in Fossil as $hash; mirrored shortly.'"
 
-# Opt-in: close the PR on GitHub, optionally with a note (the `just gh-pr-land`
-# output prints a ready-made message including the fossil hash).
+# Opt-in: close the PR on GitHub (pass COMMENT for a ready-made message from gh-pr-land output)
 gh-pr-close N COMMENT="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -662,17 +659,7 @@ gh-pr-close N COMMENT="":
     fi
     gh pr close {{N}} "${args[@]}"
 
-# Prune stale branches out of the git mirror (and then GitHub, via the next
-# `just sync-github`, whose `git push --mirror` propagates deletions).
-#
-# `fossil branch close` does NOT delete the mirror's git ref, so every branch
-# ever exported accumulates in the mirror forever. A branch is prunable when
-# its tip is an ancestor of the mirror's main branch (i.e. its work is on
-# trunk). Unmerged branches are listed and kept unless PRUNE_ALL=1.
-#
-#   just mirror-prune              # preview only (always safe)
-#   just mirror-prune apply        # delete merged branches from the mirror
-#   just mirror-prune apply 1      # also delete UNMERGED branches (careful!)
+# Prune merged branches from the git mirror (preview default; PRUNE_ALL=1 also deletes unmerged)
 mirror-prune MODE="preview" PRUNE_ALL="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -840,11 +827,7 @@ unshm-target:
         echo "$SHM_DIR does not exist"
     fi
 
-# Build the Arch package in ./build (isolated from the source tree).
-# BUILDDIR keeps makepkg's src/ and pkg/ scratch dirs out of the repo's
-# real src/; PKGDEST lands the output tarball in ./build/ instead of root.
-# The PKGBUILD uses a local-checkout symlink (prepare()), so makepkg must
-# run from the repo root — only the scratch/output dirs are redirected.
+# Build the Arch package in ./build (isolated src/pkg scratch dirs; run from repo root)
 pkg:
     @mkdir -p build
     @BUILDDIR="$(pwd)/build" PKGDEST="$(pwd)/build" makepkg -f
@@ -858,9 +841,7 @@ pkg:
 # Prerequisite: install the GitHub CLI and authenticate once:
 #     https://cli.github.com/   then   gh auth login
 
-# Build the release binary and package it into a cargo-binstall tarball.
-# The internal layout ({name}-{target}-v{version}/jinn) matches the
-# `bin-dir` template in [package.metadata.binstall].
+# Build the release binary and package it into a cargo-binstall tarball
 build-release-tarball:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -882,17 +863,7 @@ build-release-tarball:
 
     echo "==> Created ${TARBALL}"
 
-# Release the current version to GitHub and verify cargo-binstall.
-#
-# Orchestrates the full publish flow after `just bump` has been run:
-#   1. Mirror trunk (and tags) to GitHub
-#   2. Refresh the bundled plugin payloads in res/plugins/
-#   3. Build the cargo-binstall tarball
-#   4. Create (or update) the GitHub release and attach the tarball
-#   5. Smoke-test: `cargo binstall` into a temp dir, confirm `jinn --version`
-#
-# Usage: just release v0.98.0
-# Prerequisites: gh CLI installed + authenticated, cargo-binstall installed.
+# Release to GitHub + smoke-test cargo-binstall (after `just bump`; needs gh auth + cargo-binstall)
 release TAG:
     #!/usr/bin/env bash
     set -euo pipefail
