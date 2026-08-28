@@ -42,7 +42,7 @@ fn tree_entry(
         depth,
         ancestor_continuations,
         is_last_child,
-        is_subagent: false,
+        is_subagent,
     }
 }
 
@@ -412,5 +412,117 @@ fn non_judge_child_at_depth_1_uses_grapheme_count_for_tree() {
     assert!(
         title_span.ends_with('…'),
         "truncated title should end with ellipsis, got: {title_span}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// assemble_entry_line - subagent symbol
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn sidebar_marks_child_with_symbol() {
+    // Given a subagent session entry.
+    let entry = SessionEntry {
+        kind: SessionEntryKind::Session,
+        id: SessionId::new(),
+        title: "Explore".to_owned(),
+        is_active: false,
+        created_at: Timestamp::now(),
+        is_idle: true,
+        last_entry_is_error: false,
+        parent_id: Some(SessionId::new()),
+        depth: 1,
+        ancestor_continuations: vec![true],
+        is_last_child: true,
+        is_subagent: true,
+    };
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+
+    // Then the line ends with the subagent symbol span.
+    let last_span = line.spans.last().expect("spans");
+    assert!(
+        last_span.content.contains('⤷'),
+        "subagent line must end with the symbol, got: {last_span:?}"
+    );
+    // And the symbol uses the muted title color.
+    assert_eq!(
+        last_span.style.fg,
+        Some(theme.muted_text),
+        "symbol should use muted_text color"
+    );
+}
+
+#[rstest::rstest]
+fn sidebar_omits_symbol_for_regular_session() {
+    // Given a regular (non-subagent) session entry.
+    let entry = SessionEntry {
+        kind: SessionEntryKind::Session,
+        id: SessionId::new(),
+        title: "Root".to_owned(),
+        is_active: false,
+        created_at: Timestamp::now(),
+        is_idle: true,
+        last_entry_is_error: false,
+        parent_id: None,
+        depth: 0,
+        ancestor_continuations: vec![],
+        is_last_child: true,
+        is_subagent: false,
+    };
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+
+    // Then no span carries the subagent symbol.
+    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    assert!(
+        !text.contains('⤷'),
+        "regular session must not show the symbol, got: {text}"
+    );
+}
+
+#[rstest::rstest]
+fn sidebar_symbol_consumes_truncation_budget() {
+    // Given two subagent entries with a long title, one narrow viewport.
+    let make = |is_subagent: bool| SessionEntry {
+        kind: SessionEntryKind::Session,
+        id: SessionId::new(),
+        title: "A very long session title that will be truncated".to_owned(),
+        is_active: false,
+        created_at: Timestamp::now(),
+        is_idle: true,
+        last_entry_is_error: false,
+        parent_id: None,
+        depth: 0,
+        ancestor_continuations: vec![],
+        is_last_child: true,
+        is_subagent,
+    };
+    let plain = make(false);
+    let subagent = make(true);
+    let theme = default_theme();
+    let max_len = 12;
+
+    // When assembling both entry lines.
+    let plain_line = assemble_entry_line(&plain, false, max_len, &idle_throbber(), &theme);
+    let sub_line = assemble_entry_line(&subagent, false, max_len, &idle_throbber(), &theme);
+
+    // Then the subagent's title span is shorter: the symbol consumed part of
+    // the same budget (no overflow past max_len).
+    let plain_title = plain_line.spans[3].content.graphemes(true).count();
+    let sub_title = sub_line.spans[3].content.graphemes(true).count();
+    let symbol_len = " ⤷".graphemes(true).count();
+    assert!(
+        sub_title + symbol_len <= max_len,
+        "title ({sub_title}) + symbol ({symbol_len}) must fit the budget {max_len}"
+    );
+    assert_eq!(
+        sub_title,
+        plain_title - symbol_len,
+        "the symbol must reduce the title budget by its own width"
     );
 }

@@ -219,3 +219,8 @@ Entries are added or amended **only with human approval**.
 - (testing) just lint rejects bare #[test]/#[tokio::test] attributes without an accompanying rstest attribute.
 - (discord) Inbound Discord input — plain messages and every slash command — is accepted only from user IDs listed in `[discord].authorized_users`; an empty or missing list authorizes nobody (deny by default).
 - (discord) Unauthorized slash-command use gets an ephemeral refusal; unauthorized plain messages are silently dropped.
+- (subagents) Subagents are regular sessions spawned by the `task` tool: fresh history, linked to the parent, inheriting the parent's model, cwd, tools, skills, and MCP servers; they appear in the sidebar as children marked with a subagent symbol.
+- (subagents) The `task` tool blocks until the child session reaches Idle and forwards the child's last chat entry as its tool result; cancellations forward the cancel entry as a failure.
+- (subagents) Sessions with a parent link cannot spawn subagents — the `task` tool is excluded from their toolset (depth-1).
+- (watchdog) The stall watchdog skips sessions with a pending `task` tool call.
+- (session) Sessions carry no automation flag; child sessions are ordinary sessions linked via `parent_session`.

@@ -99,8 +99,6 @@ impl AssembledPrompt {
 ///
 /// Panics if the given `session_id` does not exist in the session map.
 #[must_use]
-#[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
-#[expect(clippy::expect_used, reason = "infallible")]
 pub fn assemble_prompt(
     state: &AppState,
     session_id: &SessionId,
@@ -313,7 +311,7 @@ mod tests {
     use crate::protocol::{ChatEntry, SessionId};
     use jinn_provider::ServerToolType;
 
-    fn counter() -> TiktokenCounter {
+    pub(crate) fn counter() -> TiktokenCounter {
         TiktokenCounter::o200k_base()
     }
 
@@ -328,7 +326,7 @@ mod tests {
         }
     }
 
-    fn make_tool(name: &str) -> ToolDefinition {
+    pub(crate) fn make_tool(name: &str) -> ToolDefinition {
         ToolDefinition {
             name: name.to_owned(),
             description: format!("{name} tool"),
@@ -339,7 +337,7 @@ mod tests {
         }
     }
 
-    fn state_with_history(entries: Vec<ChatEntry>) -> (State, SessionId) {
+    pub(crate) fn state_with_history(entries: Vec<ChatEntry>) -> (State, SessionId) {
         let state = State::new(AppState::default());
         let session_id = {
             let mut guard = state.write_test_no_cap();
@@ -1381,6 +1379,86 @@ mod tests {
         assert_eq!(
             user_msg_count, 1,
             "top pinned user should appear exactly once, appeared {user_msg_count}"
+        );
+    }
+}
+// ---------------------------------------------------------------------------
+// Depth-1 subagent guard
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod depth1_tests {
+    use super::tests::{counter, make_tool};
+    use super::*;
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
+    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+
+    #[rstest::rstest]
+    #[test]
+    fn child_sessions_lack_task_tool() {
+        // Given a state whose context advertises the task tool, and a child
+        // session linked to a parent.
+        let state = State::new(AppState::default());
+        let parent_id = SessionId::new();
+        let child_id;
+        {
+            let mut guard = state.write_test_no_cap();
+            guard
+                .context
+                .global_tool_definitions
+                .insert(TASK_TOOL_NAME.to_owned(), make_tool(TASK_TOOL_NAME));
+            let child =
+                crate::feat::session::chat_session::ChatSessionState::new_child(&parent_id, true);
+            child_id = child.session_id().clone();
+            guard.session.insert(child);
+        }
+
+        // When assembling the prompt for the child.
+        let snapshot = state.read();
+        let result = assemble_prompt(&snapshot, &child_id, &counter());
+
+        // Then the tool definitions omit task.
+        assert!(
+            !result
+                .tool_definitions
+                .iter()
+                .any(|def| def.name == TASK_TOOL_NAME),
+            "child sessions must not see the task tool, got: {:?}",
+            result
+                .tool_definitions
+                .iter()
+                .map(|d| d.name.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn root_sessions_keep_task_tool() {
+        // Given the same context but a root session.
+        let state = State::new(AppState::default());
+        let session_id;
+        {
+            let mut guard = state.write_test_no_cap();
+            guard
+                .context
+                .global_tool_definitions
+                .insert(TASK_TOOL_NAME.to_owned(), make_tool(TASK_TOOL_NAME));
+            session_id = guard.session.active_session_id().clone();
+        }
+
+        // When assembling the prompt for the root.
+        let snapshot = state.read();
+        let result = assemble_prompt(&snapshot, &session_id, &counter());
+
+        // Then the tool definitions include task.
+        assert!(
+            result
+                .tool_definitions
+                .iter()
+                .any(|def| def.name == TASK_TOOL_NAME),
+            "root sessions keep the task tool"
         );
     }
 }
