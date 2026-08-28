@@ -462,6 +462,49 @@ sync-github:
        --mainbranch trunk \
        --autopush "$GITHUB_REMOTE"
 
+   # Prune mirror branches whose fossil branch is closed. fossil's git export
+   # never deletes refs (verified), so closed branches accumulate on GitHub
+   # forever. Deletion here is mirror-only and does NOT delete commits — all
+   # history stays reachable via trunk on GitHub. A branch still open in
+   # fossil would be re-created by the next export, so only closed branches
+   # qualify. "Closed" = fossil's own rule (src/branch.c): the branch's
+   # current leaf carries the 'closed' tag — matches `fossil branch ls`.
+   echo '==> Pruning mirror branches closed in fossil'
+   git -C "$MIRROR_DIR" for-each-ref --format='%(refname:short)' refs/heads |
+   while IFS= read -r branch; do
+       # the mirror's main branch IS fossil's trunk (sync-github exports with
+       # --mainbranch trunk, which becomes 'main' in git); never prune it.
+       # (fossil-side the sql would return empty for 'main' anyway, but make
+       # the intent explicit.)
+       [ "$branch" = "main" ] && continue
+       # "Closed" uses fossil's own createBrlistQuery semantics (src/branch.c):
+       # the branch's newest commit (max mtime) carries the 'closed' tag. The
+       # bare bx.rid inside the aggregate is NOT a bug — SQLite binds bare
+       # columns to the single max(mtime) row, which is exactly what fossil's
+       # `branch ls` relies on. Results verified 1:1 against `fossil branch ls`.
+       closed=$(fossil sql -R "$FOSSIL_REPO" "
+           SELECT count(*) FROM (
+             SELECT bx.value AS name,
+                    max(event.mtime) AS mtime,
+                    EXISTS(SELECT 1 FROM tagxref tx
+                           WHERE tx.rid=bx.rid
+                             AND tx.tagid=(SELECT tagid FROM tag WHERE tagname='closed')
+                             AND tx.tagtype>0) AS isclosed
+             FROM tagxref bx, tag, event
+             WHERE bx.tagid=tag.tagid AND tag.tagname='branch' AND bx.tagtype>0
+               AND event.objid=bx.rid AND bx.value='$branch'
+             GROUP BY bx.value) WHERE isclosed=1;" 2>/dev/null || true)
+       if [ "$closed" = "1" ]; then
+           echo "    deleting closed branch: $branch"
+           git -C "$MIRROR_DIR" branch -D "$branch" >/dev/null
+       fi
+   done
+
+   # Publish the pruned mirror. `--mirror` is what makes deletions propagate;
+   # fossil's own autopush would leave the deleted refs alive on GitHub.
+   echo '==> Pushing mirror (with deletions)'
+   git -C "$MIRROR_DIR" push --mirror "$GITHUB_REMOTE"
+
 # ---------------------------------------------------------------------------
 # GitHub PR intake (fossil-primary, patch-based — no git↔fossil import).
 #
@@ -618,6 +661,70 @@ gh-pr-close N COMMENT="":
         args+=(--comment "{{COMMENT}}")
     fi
     gh pr close {{N}} "${args[@]}"
+
+# Prune stale branches out of the git mirror (and then GitHub, via the next
+# `just sync-github`, whose `git push --mirror` propagates deletions).
+#
+# `fossil branch close` does NOT delete the mirror's git ref, so every branch
+# ever exported accumulates in the mirror forever. A branch is prunable when
+# its tip is an ancestor of the mirror's main branch (i.e. its work is on
+# trunk). Unmerged branches are listed and kept unless PRUNE_ALL=1.
+#
+#   just mirror-prune              # preview only (always safe)
+#   just mirror-prune apply        # delete merged branches from the mirror
+#   just mirror-prune apply 1      # also delete UNMERGED branches (careful!)
+mirror-prune MODE="preview" PRUNE_ALL="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    MIRROR_DIR="/mnt/zed/repos/jinn/.github-mirror"
+    main_branch="trunk"   # sync-github exports with --mainbranch trunk
+    cd "$MIRROR_DIR"
+
+    merged=()
+    unmerged=()
+    while IFS= read -r b; do
+        [ "$b" = "$main_branch" ] && continue
+        if git merge-base --is-ancestor "$b" "$main_branch" 2>/dev/null; then
+            merged+=("$b")
+        else
+            unmerged+=("$b")
+        fi
+    done < <(git for-each-ref --format='%(refname:short)' refs/heads)
+    n_merged=${#merged[@]}
+    n_unmerged=${#unmerged[@]}
+    n_total=$(( n_merged + n_unmerged ))
+
+    echo "mirror branches: total $n_total = $n_merged merged + $n_unmerged unmerged (into '$main_branch')"
+
+    if [ "$n_unmerged" -gt 0 ]; then
+        echo '-- unmerged branches (NOT touched unless PRUNE_ALL=1):'
+        printf '   %s\n' "${unmerged[@]}" | head -40
+        [ "${#unmerged[@]}" -gt 40 ] && echo "   ... and $(( ${#unmerged[@]} - 40 )) more"
+    fi
+
+    case "{{MODE}}" in
+        preview)
+            echo "==> preview only; run: just mirror-prune apply"
+            ;;
+        apply)
+            n=0
+            for b in "${merged[@]}"; do
+                git branch -d "$b" && n=$((n+1))
+            done
+            if [ "{{PRUNE_ALL}}" = "1" ]; then
+                echo "==> PRUNE_ALL=1: deleting unmerged branches too"
+                for b in "${unmerged[@]}"; do
+                    git branch -D "$b" && n=$((n+1))
+                done
+            fi
+            echo "==> deleted $n branch(es) from the mirror"
+            echo "    next: just sync-github   (pushes deletions to GitHub)"
+            ;;
+        *)
+            echo "ERROR: MODE must be 'preview' or 'apply'" >&2
+            exit 1
+            ;;
+    esac
 
 # Bump version (major/minor/patch), commit, and tag in Fossil
 bump LEVEL:
