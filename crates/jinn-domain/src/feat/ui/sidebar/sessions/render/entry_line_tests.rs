@@ -28,6 +28,7 @@ fn tree_entry(
     depth: usize,
     ancestor_continuations: Vec<bool>,
     is_last_child: bool,
+    is_subagent: bool,
 ) -> SessionEntry {
     SessionEntry {
         kind: SessionEntryKind::Session,
@@ -41,6 +42,7 @@ fn tree_entry(
         depth,
         ancestor_continuations,
         is_last_child,
+        is_subagent: false,
     }
 }
 
@@ -59,7 +61,7 @@ fn idle_throbber() -> ThrobberState {
 #[rstest::rstest]
 fn tree_prefix_is_empty_for_root_entry() {
     // Given a root entry (depth 0).
-    let entry = tree_entry(0, vec![], true);
+    let entry = tree_entry(0, vec![], true, false);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
@@ -75,7 +77,7 @@ fn tree_prefix_is_empty_for_root_entry() {
 #[rstest::rstest]
 fn tree_prefix_last_child_at_depth_1() {
     // Given a last child at depth 1.
-    let entry = tree_entry(1, vec![true], true);
+    let entry = tree_entry(1, vec![true], true, false);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
@@ -87,7 +89,7 @@ fn tree_prefix_last_child_at_depth_1() {
 #[rstest::rstest]
 fn tree_prefix_not_last_child_at_depth_1() {
     // Given a non-last child at depth 1.
-    let entry = tree_entry(1, vec![true], false);
+    let entry = tree_entry(1, vec![true], false, false);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
@@ -103,7 +105,7 @@ fn tree_prefix_not_last_child_at_depth_1() {
 #[rstest::rstest]
 fn tree_prefix_last_child_with_continuing_ancestor() {
     // Given a last child at depth 2 with a continuing intermediate ancestor.
-    let entry = tree_entry(2, vec![true, true], true);
+    let entry = tree_entry(2, vec![true, true], true, false);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
@@ -115,7 +117,7 @@ fn tree_prefix_last_child_with_continuing_ancestor() {
 #[rstest::rstest]
 fn tree_prefix_last_child_with_non_continuing_ancestor() {
     // Given a last child at depth 2 with a non-continuing intermediate ancestor.
-    let entry = tree_entry(2, vec![true, false], true);
+    let entry = tree_entry(2, vec![true, false], true, false);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
@@ -127,7 +129,7 @@ fn tree_prefix_last_child_with_non_continuing_ancestor() {
 #[rstest::rstest]
 fn tree_prefix_not_last_child_with_continuing_ancestor() {
     // Given a non-last child at depth 2 with a continuing intermediate ancestor.
-    let entry = tree_entry(2, vec![true, true], false);
+    let entry = tree_entry(2, vec![true, true], false, false);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
@@ -143,7 +145,7 @@ fn tree_prefix_not_last_child_with_continuing_ancestor() {
 #[rstest::rstest]
 fn tree_prefix_deep_chain_not_last() {
     // Given a non-last child at depth 5 with mixed continuations.
-    let entry = tree_entry(5, vec![true, true, false, true, true], false);
+    let entry = tree_entry(5, vec![true, true, false, true, true], false, false);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
@@ -155,7 +157,7 @@ fn tree_prefix_deep_chain_not_last() {
 #[rstest::rstest]
 fn tree_prefix_deep_chain_last() {
     // Given a last child at depth 5 with mixed continuations.
-    let entry = tree_entry(5, vec![true, true, false, true, true], true);
+    let entry = tree_entry(5, vec![true, true, false, true, true], true, false);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
@@ -183,6 +185,7 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: true,
+        is_subagent: false,
     };
     let theme = default_theme();
 
@@ -212,6 +215,7 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         depth: 0,
         ancestor_continuations: vec![],
         is_last_child: true,
+        is_subagent: false,
     };
     let theme = default_theme();
 
@@ -242,6 +246,7 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: false,
+        is_subagent: false,
     };
     let theme = default_theme();
 
@@ -276,6 +281,7 @@ fn title_is_truncated_more_at_higher_depth() {
         depth: 0,
         ancestor_continuations: vec![],
         is_last_child: true,
+        is_subagent: false,
     };
     let child = SessionEntry {
         kind: SessionEntryKind::Session,
@@ -289,6 +295,7 @@ fn title_is_truncated_more_at_higher_depth() {
         depth: 3,
         ancestor_continuations: vec![true, true, true],
         is_last_child: true,
+        is_subagent: false,
     };
     let theme = default_theme();
     let max_len = 20;
@@ -327,6 +334,7 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         depth: 2,
         ancestor_continuations: vec![true, true],
         is_last_child: true,
+        is_subagent: false,
     };
     let theme = default_theme();
 
@@ -361,6 +369,7 @@ fn tree_prefix_uses_muted_text_color() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: true,
+        is_subagent: false,
     };
     let theme = default_theme();
 
@@ -383,7 +392,7 @@ fn tree_prefix_uses_muted_text_color() {
 fn non_judge_child_at_depth_1_uses_grapheme_count_for_tree() {
     // Given a non-judge child at depth 1 with a long title.
     // Tree prefix "├─ " = 3 graphemes (but 7 bytes).
-    let mut entry = tree_entry(1, vec![true], false);
+    let mut entry = tree_entry(1, vec![true], false, false);
     entry.title = "ABCDEFGHIJ".to_owned();
     let theme = default_theme();
     // max_title_len = 7 → budget = 7 - 3 (tree prefix graphemes) = 4 graphemes for title.
