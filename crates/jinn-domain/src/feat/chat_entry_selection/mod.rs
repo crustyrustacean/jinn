@@ -5,4 +5,5 @@
 
 pub mod ignore_sweep;
 pub mod intent;
+pub mod isolate;
 pub mod validator;
