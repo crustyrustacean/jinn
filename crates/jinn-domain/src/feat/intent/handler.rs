@@ -579,6 +579,9 @@ impl IntentHandler {
             Intent::ChatEntryResetSelected => {
                 feat::chat_entry_selection::intent::handle_reset_selected(state)
             }
+            Intent::ChatEntryIsolateSelected => {
+                feat::chat_entry_selection::isolate::handle_isolate_selected(state)
+            }
 
             Intent::SessionLifecycleSetup {
                 lifecycle_name,

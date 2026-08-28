@@ -248,6 +248,45 @@ pub fn validate_chat_entry_reset_selected(
     Ok(())
 }
 
+/// Errors from validating a ChatEntryIsolateSelected intent.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub enum ChatEntryIsolateSelectedError {
+    /// No chat entry is currently selected.
+    NoSelection,
+    /// The chat history is empty.
+    EmptyHistory,
+    /// The highlighted entry is pinned (its override is already authoritative).
+    IsPinned,
+}
+
+/// Validates the ChatEntryIsolateSelected intent.
+///
+/// Mirrors the `x` toggle rules: the history must be non-empty, an entry must
+/// be highlighted (a cursor resting on a collapsed ignored block selects
+/// nothing), and a pinned highlight is rejected (isolate would force-include
+/// what the pin already forces in, silently doing nothing).
+///
+/// # Errors
+///
+/// Returns an error if the history is empty, no entry is selected,
+/// or the highlighted entry is pinned.
+pub fn validate_chat_entry_isolate_selected(
+    state: &AppState,
+) -> Result<(), ChatEntryIsolateSelectedError> {
+    if state.active_session().history().is_empty() {
+        return Err(ChatEntryIsolateSelectedError::EmptyHistory);
+    }
+    let selected = state
+        .active_session()
+        .selected_entry()
+        .ok_or(ChatEntryIsolateSelectedError::NoSelection)?;
+    if selected.is_pinned() {
+        return Err(ChatEntryIsolateSelectedError::IsPinned);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod fork_from_entry_tests {
     #![allow(
@@ -959,5 +998,74 @@ mod ignore_selected_tests {
 
         // Then validation fails with IsPinned.
         assert!(matches!(result, Err(ChatEntryResetSelectedError::IsPinned)));
+    }
+
+    #[rstest::rstest]
+    fn isolate_selected_rejects_empty_history() {
+        // Given an empty session.
+        let state = AppState::default();
+
+        // When validating isolate selected.
+        let result = validate_chat_entry_isolate_selected(&state);
+
+        // Then validation fails with EmptyHistory.
+        assert!(matches!(
+            result,
+            Err(ChatEntryIsolateSelectedError::EmptyHistory)
+        ));
+    }
+
+    #[rstest::rstest]
+    fn isolate_selected_rejects_no_selection() {
+        // Given a state with entries but no selection.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().clear_selection();
+
+        // When validating isolate selected.
+        let result = validate_chat_entry_isolate_selected(&state);
+
+        // Then validation fails with NoSelection.
+        assert!(matches!(
+            result,
+            Err(ChatEntryIsolateSelectedError::NoSelection)
+        ));
+    }
+
+    #[rstest::rstest]
+    fn isolate_selected_rejects_pinned_entry() {
+        // Given a state with a selected pinned entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello").with_pin(PinPosition::Top));
+        state.active_session_mut().select_next_entry();
+
+        // When validating isolate selected.
+        let result = validate_chat_entry_isolate_selected(&state);
+
+        // Then validation fails with IsPinned.
+        assert!(matches!(
+            result,
+            Err(ChatEntryIsolateSelectedError::IsPinned)
+        ));
+    }
+
+    #[rstest::rstest]
+    fn isolate_selected_accepts_unpinned_selection() {
+        // Given a state with a selected unpinned entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("a metaprompt"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating isolate selected.
+        let result = validate_chat_entry_isolate_selected(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
     }
 }
