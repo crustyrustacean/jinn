@@ -1,3 +1,10 @@
+## 2026-08-27 v0.112.1
+
+- Add better Windows support (contributor: Jeff Mitchell <crusty.rustacean@gmail.com>)
+  - Fix Kitty keyboard startup failure
+  - Git Bash resolution
+  - Browser version probe
+
 ## 2026-08-27 v0.112.0
 
 - Add keybind `gci` in normal mode to "isolate" the selected chat entry.
