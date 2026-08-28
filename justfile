@@ -627,18 +627,22 @@ gh-pr-land N:
     ident=$(<"$dir/identity")
     login=$(jq -r '.author.login' "$dir/meta.json")
     url=$(jq -r '.url' "$dir/meta.json")
-    name=${ident%% <*}
     email=${ident#*<}; email=${email%>*}
 
     if fossil user list | awk '{print $1}' | grep -qx "$login"; then
         echo "==> fossil user '$login' already exists (contact not modified)"
     else
-        fossil user new "$login" "$ident" >/dev/null
+        # --pw '': contributors never log into the fossil repo; their account
+        # exists purely to carry attribution (contact info + --user-override).
+        fossil user new "$login" "$ident" --pw "" >/dev/null
         echo "==> created fossil user '$login' ($ident)"
     fi
 
-    msg=$(printf 'Apply PR #{{N}} by %s\n\nPicked from %s\n\nCo-authored-by: %s\n' \
-        "$name" "$url" "$ident")
+    # --user-override already records the contributor as the check-in user
+    # (rendered as "user: <login>" in the timeline and as git author in the
+    # mirror), so the comment doesn't repeat the "by <name>" attribution.
+    msg=$(printf 'Apply PR #{{N}} from %s\n\nPicked from %s\n' \
+        "$ident" "$url")
     fossil addremove --dotfiles
     fossil commit -m "$msg" --user-override "$login" --no-verify-comment
 
