@@ -6,11 +6,12 @@
 
 use std::io;
 
+#[cfg(not(windows))]
+use crossterm::event::{
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
 use crossterm::{
-    event::{
-        DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
-    },
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -51,7 +52,7 @@ impl<'a> TerminalGuard<'a> {
         execute!(terminal.backend_mut(), LeaveAlternateScreen)
             .change_context(TerminalSuspendError)
             .attach("failed to leave alternate screen")?;
-        let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
+        let _ = disable_keyboard_enhancement(terminal.backend_mut());
         terminal
             .show_cursor()
             .change_context(TerminalSuspendError)
@@ -64,10 +65,7 @@ impl Drop for TerminalGuard<'_> {
     fn drop(&mut self) {
         let _ = enable_raw_mode();
         let _ = execute!(self.terminal.backend_mut(), EnterAlternateScreen);
-        let _ = execute!(
-            self.terminal.backend_mut(),
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
-        );
+        let _ = enable_keyboard_enhancement(self.terminal.backend_mut());
         let _ = execute!(self.terminal.backend_mut(), EnableMouseCapture);
         let _ = self.terminal.hide_cursor();
         let _ = self.terminal.clear();
@@ -90,4 +88,163 @@ where
 {
     let _guard = TerminalGuard::new(terminal)?;
     Ok(f())
+}
+
+/// Enables the Kitty keyboard protocol's disambiguated escape codes so
+/// crossterm can distinguish modified special keys (e.g. Shift+Enter,
+/// Ctrl+Enter). Terminals that don't implement the protocol ignore the
+/// sequence.
+///
+/// # Errors
+///
+/// Returns an error if writing the sequence to the terminal fails.
+#[cfg(not(windows))]
+pub(crate) fn enable_keyboard_enhancement<W>(writer: &mut W) -> io::Result<()>
+where
+    W: io::Write,
+{
+    execute!(
+        writer,
+        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+    )
+}
+
+/// Windows twin of the Unix [`enable_keyboard_enhancement`]: never emits
+/// the protocol sequence.
+///
+/// crossterm's Windows input path reads Win32 console records, which carry
+/// modifier state natively, and crossterm rejects the push/pop commands on
+/// Windows with an `Unsupported` error regardless of terminal — so jinn
+/// must not emit them there.
+///
+/// # Errors
+///
+/// Never fails; the signature mirrors the Unix twin for uniform call sites.
+#[cfg(windows)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "signature mirrors the Unix twin so call sites are uniform"
+)]
+pub(crate) fn enable_keyboard_enhancement<W>(_writer: &mut W) -> io::Result<()>
+where
+    W: io::Write,
+{
+    Ok(())
+}
+
+/// Disables the Kitty keyboard protocol by popping the flags pushed by
+/// [`enable_keyboard_enhancement`].
+///
+/// # Errors
+///
+/// Returns an error if writing the sequence to the terminal fails.
+#[cfg(not(windows))]
+pub(crate) fn disable_keyboard_enhancement<W>(writer: &mut W) -> io::Result<()>
+where
+    W: io::Write,
+{
+    execute!(writer, PopKeyboardEnhancementFlags)
+}
+
+/// Windows twin of the Unix [`disable_keyboard_enhancement`]: never emits
+/// the protocol sequence. See the Windows [`enable_keyboard_enhancement`]
+/// twin for why.
+///
+/// # Errors
+///
+/// Never fails; the signature mirrors the Unix twin for uniform call sites.
+#[cfg(windows)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "signature mirrors the Unix twin so call sites are uniform"
+)]
+pub(crate) fn disable_keyboard_enhancement<W>(_writer: &mut W) -> io::Result<()>
+where
+    W: io::Write,
+{
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
+
+    /// Writer that records bytes without touching a real terminal.
+    #[derive(Default)]
+    struct RecordingWriter {
+        bytes: Vec<u8>,
+    }
+
+    impl io::Write for RecordingWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.bytes.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[cfg(not(windows))]
+    #[rstest::rstest]
+    fn enable_keyboard_enhancement_writes_kitty_push_sequence() {
+        // Given a recording writer.
+        let mut writer = RecordingWriter::default();
+
+        // When enabling keyboard enhancement.
+        let result = enable_keyboard_enhancement(&mut writer);
+
+        // Then the kitty push sequence for DISAMBIGUATE_ESCAPE_CODES is written.
+        assert!(result.is_ok());
+        assert_eq!(writer.bytes, b"\x1b[>1u");
+    }
+
+    #[cfg(not(windows))]
+    #[rstest::rstest]
+    fn disable_keyboard_enhancement_writes_kitty_pop_sequence() {
+        // Given a recording writer.
+        let mut writer = RecordingWriter::default();
+
+        // When disabling keyboard enhancement.
+        let result = disable_keyboard_enhancement(&mut writer);
+
+        // Then the kitty pop sequence is written.
+        assert!(result.is_ok());
+        assert_eq!(writer.bytes, b"\x1b[<1u");
+    }
+
+    #[cfg(windows)]
+    #[rstest::rstest]
+    fn enable_keyboard_enhancement_writes_nothing() {
+        // Given a recording writer.
+        let mut writer = RecordingWriter::default();
+
+        // When enabling keyboard enhancement.
+        let result = enable_keyboard_enhancement(&mut writer);
+
+        // Then nothing is written and the call succeeds.
+        assert!(result.is_ok());
+        assert!(writer.bytes.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[rstest::rstest]
+    fn disable_keyboard_enhancement_writes_nothing() {
+        // Given a recording writer.
+        let mut writer = RecordingWriter::default();
+
+        // When disabling keyboard enhancement.
+        let result = disable_keyboard_enhancement(&mut writer);
+
+        // Then nothing is written and the call succeeds.
+        assert!(result.is_ok());
+        assert!(writer.bytes.is_empty());
+    }
 }

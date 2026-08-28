@@ -200,6 +200,12 @@ impl BinaryLocator for SystemBinaryLocator {
 /// or `Chromium 138.0.7204.157`. The major version is the integer before
 /// the first dot. Returns `None` on any failure so callers fall back to
 /// a hardcoded version.
+///
+/// Windows never probes: `chrome.exe --version` does not print a version
+/// on Windows — Chrome ignores the flag and launches the browser instead,
+/// opening a visible window at jinn startup. The user-agent falls back to
+/// the hardcoded major version on this platform.
+#[cfg(not(windows))]
 fn detect_version(path: &std::path::Path) -> Option<String> {
     let output = std::process::Command::new(path)
         .arg("--version")
@@ -209,11 +215,25 @@ fn detect_version(path: &std::path::Path) -> Option<String> {
     parse_major_version(&stdout)
 }
 
+/// Windows twin of the Unix [`detect_version`]: never probes the binary.
+///
+/// Probing `chrome.exe --version` on Windows opens a browser window
+/// instead of printing a version, so version detection is skipped
+/// entirely; the caller uses the hardcoded user-agent version.
+///
+/// See the Unix [`detect_version`] twin for the probe this replaces.
+#[cfg(windows)]
+fn detect_version(_path: &std::path::Path) -> Option<String> {
+    None
+}
+
 /// Extracts the major version from a `--version` output line.
 ///
 /// Looks for a `D.D.D.D` version token anywhere in the text and returns the
 /// digits before the first dot. Made a free function so tests can exercise
-/// the parser without spawning a process.
+/// the parser without spawning a process. Unix-only: only the Unix
+/// [`detect_version`] twin probes the binary for its version.
+#[cfg(not(windows))]
 fn parse_major_version(version_output: &str) -> Option<String> {
     // Find the first dot-delimited numeric token.
     let token = version_output.split_whitespace().find(|tok| {
@@ -473,6 +493,19 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    #[cfg(windows)]
+    fn windows_detect_version_never_probes() {
+        // Given the Windows detect_version twin.
+        // When called with any path.
+        let result = detect_version(std::path::Path::new("C:\\nonexistent\\chrome.exe"));
+
+        // Then it returns None without launching anything.
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    #[cfg(not(windows))]
     fn parse_major_version_extracts_chrome_version() {
         // Given a Chrome --version line.
         // When parsing.
@@ -484,6 +517,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    #[cfg(not(windows))]
     fn parse_major_version_extracts_chromium_version() {
         // Given a Chromium --version line.
         let major = parse_major_version("Chromium 140.0.7339.80");
@@ -494,6 +528,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    #[cfg(not(windows))]
     fn parse_major_version_returns_none_on_unparseable_output() {
         // Given output with no version token.
         let major = parse_major_version("some error message");
