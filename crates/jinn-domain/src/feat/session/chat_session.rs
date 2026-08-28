@@ -822,6 +822,25 @@ impl ChatSessionState {
         (!changed.is_empty()).then_some(pressed_id)
     }
 
+    /// Set the context override on the entry with the given id to a specific
+    /// value. Unlike [`Self::set_entry_context_override`] this targets an
+    /// entry by id rather than the cursor, so callers can write chunks
+    /// without moving the selection.
+    ///
+    /// Returns `Some(entry_id)` if the override was changed, `None` if no-op
+    /// (entry was already at the target state) or the id is unknown.
+    pub fn set_entry_context_override_by_id(
+        &mut self,
+        id: &ChatEntryId,
+        override_state: ContextOverride,
+    ) -> Option<ChatEntryId> {
+        // Chunk semantics: the write applies to the whole tool loop.
+        let changed = self
+            .edit_history()
+            .set_context(id, override_state, &ChangeSource::User);
+        (!changed.is_empty()).then(|| id.clone())
+    }
+
     /// After a sweep changes an entry from excluded to in-context, propagate
     /// `shown_ignored_blocks` to any new sub-blocks created by the split.
     ///

@@ -48,6 +48,7 @@ Entries are added or amended **only with human approval**.
 - (context) Context assembly builds the system prompt in priority order: skills block, pinned system entries, environment context, tool context.
 - (context) Context assembly partitions history into top, bottom, and working outgoing groups while preserving assistant tool-call/tool-result loops as atomic units.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
+- (context) The `gci` isolate handler iterates tool-loop chunks (one history-editor write per chunk) through the user-source `set_context` path, then emits one `ContextOverrideChanged` per changed chunk id and persists the session.
 - (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (token stays literal, turn dispatches); only a recognizable image failing conversion hard-blocks. A user entry carrying attachments is blocked unless the active model is confirmed image-capable via models.dev — unknown models are blocked, not allowed.
 - (attachments) `@path` tokens in user entries are colored by resolution outcome in the chat render: green when attached as an image, red when degraded (missing file or not an image).
 - (context) `#name` prompt-template tokens in user text expand to the template body; `@path` tokens resolve to `file://` URIs against cwd/home **when the file is a readable image, otherwise the token is left as literal text**; both are consumed in a second expansion pass.
@@ -81,6 +82,7 @@ Entries are added or amended **only with human approval**.
 - (keybinds) `Alt+Q` in input scope toggles input mode; `Alt+S` focuses the sidebar sessions section from both input and normal scopes.
 - (keybinds) `<leader>sP` opens the read-only plugin picker in normal scope.
 - (keybinds) `s` in the sidebar task-list section opens the task-list picker.
+- (keybinds) `gci` in normal scope isolates the highlighted entry's tool loop: it force-includes that loop and user-force-excludes every other non-pinned entry, leaving pins untouched.
 - (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over **stdio** (child process, JSON-RPC over stdin/stdout), **local_http** (jinn spawns a managed child process and connects via `StreamableHTTP`), or **remote_http** (jinn connects to an already-running server with no process management).
 - (mcp) MCP tools are namespaced `mcp__<server>__<tool>` and registered per-session via `RegisterTools { session_id: Some(_) }`.
 - (mcp) MCP server enablement is per-session, persisted in `SessionCore`, off by default; enabling spawns the actor+process, disabling kills both.
