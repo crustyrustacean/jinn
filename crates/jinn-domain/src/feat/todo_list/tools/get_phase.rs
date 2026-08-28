@@ -143,6 +143,7 @@ mod tests {
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
             mcp_coordinator: None,
+            task_spawns: None,
         }
     }
 

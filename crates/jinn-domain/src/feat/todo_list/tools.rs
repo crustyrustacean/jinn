@@ -29,10 +29,8 @@ pub mod postpone_to_phase;
 pub mod set_list;
 
 use crate::feat::tools_actor::BoxedToolFuture;
+use crate::feat::tools_actor::registry::BuiltinToolEntry;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
-
-/// A built-in tool entry: its definition paired with its execute function.
-pub type BuiltinToolEntry = (ToolDefinition, fn(ToolCall, ToolContext) -> BoxedToolFuture);
 
 /// Returns all todo list tool entries (definition + execute function).
 ///
@@ -42,38 +40,47 @@ pub fn tool_entries() -> Vec<BuiltinToolEntry> {
         (
             add_phase::definition(),
             add_phase::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             add_task::definition(),
             add_task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             cancel_task::definition(),
             cancel_task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             complete_task::definition(),
             complete_task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             postpone_task::definition(),
             postpone_task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             postpone_to_phase::definition(),
             postpone_to_phase::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             get_task_list::definition(),
             get_task_list::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             get_phase::definition(),
             get_phase::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             set_list::definition(),
             set_list::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
     ]
 }
