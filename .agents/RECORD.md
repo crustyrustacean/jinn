@@ -224,3 +224,4 @@ Entries are added or amended **only with human approval**.
 - (subagents) Sessions with a parent link cannot spawn subagents — the `task` tool is excluded from their toolset (depth-1).
 - (watchdog) The stall watchdog skips sessions with a pending `task` tool call.
 - (session) Sessions carry no automation flag; child sessions are ordinary sessions linked via `parent_session`.
+- (subagents) A spawned subagent's first dispatch waits — bounded by a 15-second budget — for its discovery scans (project context files, skills, prompt templates) and enabled MCP servers to settle, so the first prompt includes MCP tools and project context; the message is sent regardless once the budget expires.

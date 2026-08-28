@@ -22,14 +22,20 @@
 //! child's last chat entry becomes the tool result. Subagents are just
 //! sessions: they appear in the sidebar, can be steered, and persist.
 //!
-//! Ordering guarantees: the completion listener is spawned and subscribed
-//! before `SessionCreated` is published (other actors react to that event),
-//! and the in-flight spawn is registered before the wait begins (so the stall
-//! watchdog sees the suspended parent). The default duration is unlimited;
-//! `max_duration_secs` overrides per call. The deadline is managed *here*,
-//! not by the dispatcher's outer timeout wrapper — that wrapper drops its
-//! future on expiry, which would orphan the child. On deadline expiry this
-//! tool cancels the child itself.
+//! Ordering guarantees: both listeners (completion and discovery settlement)
+//! are spawned and subscribed before `SessionCreated` is published (other
+//! actors react to that event), and the in-flight spawn is registered before
+//! the wait begins (so the stall watchdog sees the suspended parent). The
+//! default duration is unlimited; `max_duration_secs` overrides per call. The
+//! deadline is managed *here*, not by the dispatcher's outer timeout wrapper —
+//! that wrapper drops its future on expiry, which would orphan the child. On
+//! deadline expiry this tool cancels the child itself.
+//!
+//! Between `SessionCreated` and the first `EnqueueUserMessage`, the spawn
+//! waits for the child's discovery to settle — the context-files, skills, and
+//! prompt-template scans plus a terminal status from every enabled MCP
+//! server — bounded by [`SETTLE_BUDGET`]. The gate only delays: on expiry the
+//! message is sent regardless, so a hung discovery never blocks the child.
 
 use std::time::Duration;
 
@@ -44,6 +50,9 @@ use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::feat::tools_actor::task_phase_listener_actor::{
     TaskPhaseListenerActor, TaskPhaseListenerDeps,
+};
+use crate::feat::tools_actor::task_settle_listener_actor::{
+    TaskSettleListenerActor, TaskSettleListenerDeps,
 };
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::SessionId;
@@ -236,6 +245,40 @@ fn title_from_prompt(prompt: &str) -> String {
         .collect()
 }
 
+/// Backstop for discovery events that never arrive. The expected path is
+/// milliseconds — bounded directory walks and local MCP handshakes.
+const SETTLE_BUDGET: Duration = Duration::from_secs(15);
+
+/// Waits until the child's discovery quorum settles, or `budget` expires —
+/// whichever comes first. Either way the caller proceeds to enqueue.
+///
+/// Spawns a [`TaskSettleListenerActor`] subscribed to the child's discovery
+/// events (context files, skills, prompt templates, MCP server statuses) and
+/// races its oneshot against the budget. Must be called *after* the actor's
+/// subscriptions are live but *before* `EnqueueUserMessage` is published.
+pub(crate) async fn await_discovery_settlement(
+    bus: &crate::common::services::bus_service::BusService,
+    child_id: &SessionId,
+    expected_servers: &std::collections::BTreeSet<String>,
+    budget: Duration,
+) {
+    let (settled_tx, settled_rx) = tokio::sync::oneshot::channel();
+    let listener = TaskSettleListenerActor::spawn(TaskSettleListenerDeps {
+        bus: bus.clone(),
+        child_id: child_id.clone(),
+        expected_servers: expected_servers.clone(),
+        settled: settled_tx,
+    });
+    listener.wait_for_startup().await;
+    // Ok(quorum met) or Err(budget elapsed): both proceed. On expiry the
+    // receiver drops with this future and the listener notices the closed
+    // channel on its next event.
+    let _ = tokio::time::timeout(budget, settled_rx).await;
+    // Stop a listener that lingered past the budget. Idempotent: it already
+    // self-stopped on quorum, which surfaces as a send error — ignore.
+    let _ = listener.stop_gracefully().await;
+}
+
 /// Result of the await step.
 async fn await_child(
     bus: &crate::common::services::bus_service::BusService,
@@ -307,6 +350,10 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
         build_child(parent, &parent_id, &args, ctx.app_paths.home_dir())
     };
     let child_id = child.session_id().clone();
+    // The settle gate's expectation set, frozen at spawn: the MCP coordinator
+    // reconciles exactly the child's enabled set on SessionCreated, so these
+    // are the servers whose terminal statuses the gate waits on.
+    let expected_servers = child.enabled_mcp_servers().clone();
 
     // Insert the child before any event flies. Every later writer (session
     // actor on EnqueueUserMessage, MCP coordinator on SessionCreated) looks
@@ -339,6 +386,12 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
         session_id: child_id.clone(),
     })
     .await;
+
+    // Settle gate: give the discovery actors (context files, skills, prompt
+    // templates, MCP servers) a bounded chance to land so the child's first
+    // prompt is complete. Only delays — never fails the spawn.
+    await_discovery_settlement(&bus, &child_id, &expected_servers, SETTLE_BUDGET).await;
+
     bus.publish(EnqueueUserMessage {
         session_id: child_id.clone(),
         entry: ChatEntry::user(args.prompt.clone()),

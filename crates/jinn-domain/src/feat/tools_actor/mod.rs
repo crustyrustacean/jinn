@@ -78,6 +78,7 @@ pub mod skill;
 pub mod task;
 pub mod task_phase_listener_actor;
 pub mod task_registry;
+pub mod task_settle_listener_actor;
 #[cfg(test)]
 mod task_tests;
 pub mod tool_entry;
