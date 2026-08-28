@@ -172,12 +172,11 @@ impl SessionPersistenceActor {
     async fn assemble_and_send_continuation(
         &self,
         session_id: &crate::protocol::SessionId,
-        assembly_overrides: Option<&crate::feat::context::assemble::AssemblyOverrides>,
     ) {
         let assembled = {
             let guard = self.state.read();
             // FIXME: make spawn_blocking probably
-            assemble_prompt(&guard, session_id, &self.counter, assembly_overrides)
+            assemble_prompt(&guard, session_id, &self.counter)
         };
 
         // Resolve model under write lock (round-robin mutates index), push token
@@ -350,17 +349,7 @@ impl SessionPersistenceActor {
 
         self.apply_pending_mutations_and_steering(session_id).await;
 
-        let assembly_overrides = {
-            let state = self.state.read();
-            let session = state.session(session_id);
-            session
-                .is_automated()
-                .then(|| session.core.assembly_overrides.clone())
-                .flatten()
-        };
-
-        self.assemble_and_send_continuation(session_id, assembly_overrides.as_ref())
-            .await;
+        self.assemble_and_send_continuation(session_id).await;
     }
 }
 

@@ -888,31 +888,6 @@ async fn fork_inherits_lifecycle_script_state() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn is_automated_round_trips_through_save_and_load() {
-    // Given a persisted automated session.
-    let (_dir, store) = make_store().await;
-    let session_id = SessionId::new();
-    let mut session = ChatSessionState::new();
-    session.set_session_id(session_id.clone());
-    session.set_title("Automated".to_owned());
-    session.core.is_automated = true;
-    session.core.persist = true;
-
-    // When saving and loading.
-    store.save(&session).await.expect("save");
-    let loaded = store
-        .load_session(&session_id)
-        .await
-        .expect("load")
-        .expect("should exist");
-
-    // Then both flags are preserved.
-    assert!(loaded.is_automated(), "is_automated should round-trip");
-    assert!(loaded.core.persist, "persist should round-trip");
-}
-
-#[rstest::rstest]
-#[tokio::test]
 async fn non_persistent_session_is_not_written() {
     // Given a transient (persist=false) session.
     let (_dir, store) = make_store().await;
@@ -921,7 +896,6 @@ async fn non_persistent_session_is_not_written() {
     session.set_session_id(session_id.clone());
     session.set_title("Transient".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    session.core.is_automated = true;
     session.core.persist = false;
 
     // When saving.
@@ -948,7 +922,6 @@ async fn persistent_session_is_written() {
     session.set_session_id(session_id.clone());
     session.set_title("Persistent".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    session.core.is_automated = true;
     session.core.persist = true;
 
     // When saving.
@@ -961,11 +934,7 @@ async fn persistent_session_is_written() {
         .expect("load query")
         .expect("should exist");
     assert_eq!(loaded.session_id(), &session_id);
-    // And the automated + persist flags round-trip through SQLite.
-    assert!(
-        loaded.core.is_automated,
-        "is_automated must survive save/load"
-    );
+    // And the persist flag round-trips through SQLite.
     assert!(loaded.core.persist, "persist must survive save/load");
 }
 

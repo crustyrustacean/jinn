@@ -67,15 +67,9 @@ impl SessionPersistenceActor {
             return;
         }
 
-        let (action, assembly_overrides) = {
+        let action = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
-                let assembly_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> =
-                    if session.is_automated() {
-                        session.core.assembly_overrides.clone()
-                    } else {
-                        None
-                    };
                 match session.phase() {
                     PhaseKind::Idle => {
                         // Normal path: set title, push entry, begin_sending.
@@ -90,13 +84,13 @@ impl SessionPersistenceActor {
                         }
                         session.push_entry(entry.clone());
                         session.begin_sending();
-                        (EnqueueAction::DispatchDirectly, assembly_overrides)
+                        EnqueueAction::DispatchDirectly
                     }
                     PhaseKind::Sending | PhaseKind::Streaming => {
                         session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
                             Box::new(entry.clone()),
                         ));
-                        (EnqueueAction::Queued, None)
+                        EnqueueAction::Queued
                     }
                 }
             })
@@ -122,12 +116,7 @@ impl SessionPersistenceActor {
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();
-                    assemble_prompt(
-                        &guard,
-                        &payload.session_id,
-                        &self.counter,
-                        assembly_overrides.as_ref(),
-                    )
+                    assemble_prompt(&guard, &payload.session_id, &self.counter)
                 };
 
                 let (old_phase, new_phase) = {
@@ -476,7 +465,7 @@ impl SessionPersistenceActor {
         // Assemble prompt. Marker is excluded by default.
         let assembled = {
             let guard = self.state.read();
-            assemble_prompt(&guard, session_id, &self.counter, None)
+            assemble_prompt(&guard, session_id, &self.counter)
         };
 
         // Resolve model under write lock (round-robin mutates index).
