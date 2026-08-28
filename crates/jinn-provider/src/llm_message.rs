@@ -11,11 +11,6 @@ use crate::tool_types::ToolCall;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "role", rename_all = "snake_case")]
 pub enum LlmMessage {
-    /// A system-level instruction to the LLM.
-    System {
-        /// The system prompt content.
-        content: String,
-    },
     /// A message from the user.
     User {
         /// The text content of the message.
@@ -82,16 +77,6 @@ mod tests {
                 tool_calls: None,
             }
         );
-    }
-
-    #[rstest::rstest]
-    fn system_message_roundtrips() {
-        let msg = LlmMessage::System {
-            content: "You are helpful.".to_owned(),
-        };
-        let json = serde_json::to_string(&msg).expect("serialize");
-        let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back, msg);
     }
 
     #[rstest::rstest]

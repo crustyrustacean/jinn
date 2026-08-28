@@ -3,6 +3,7 @@
 use crate::common::bus::BusMessage;
 use serde::{Deserialize, Serialize};
 
+use crate::feat::context::assemble::SystemPrompt;
 use crate::feat::provider::llm_message::LlmMessage;
 
 use crate::feat::session::model_selection::ModelSelection;
@@ -45,13 +46,17 @@ impl BusMessage for CancelStream {}
 /// Command to send conversation context to the LLM provider.
 ///
 /// Emitted by `LlmRequestHandler` when a user message is submitted.
-/// Carries the full conversation history as pre-converted messages.
+/// Carries the assembled system prompt and the conversation history as
+/// pre-converted messages; the message array never contains system content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendToLlmProvider {
     /// The session this request belongs to.
     pub session_id: SessionId,
     /// The full conversation history, converted to LLM messages.
     pub messages: Vec<LlmMessage>,
+    /// The assembled system prompt for this request.
+    #[serde(default)]
+    pub system_prompt: SystemPrompt,
     /// Tool definitions available for the LLM to call.
     #[serde(default)]
     pub tool_definitions: Vec<ToolDefinition>,

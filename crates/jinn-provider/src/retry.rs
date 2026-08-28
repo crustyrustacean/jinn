@@ -158,20 +158,24 @@ impl LlmService for RetryingLlmService {
 
     async fn chat_stream(
         &self,
+        system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>> {
-        self.retry_loop(|| self.inner.chat_stream(messages.clone()))
+        let system = system_prompt.map(std::borrow::ToOwned::to_owned);
+        self.retry_loop(|| self.inner.chat_stream(system.as_deref(), messages.clone()))
             .await
     }
 
     async fn chat_stream_with_tools(
         &self,
+        system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
         tools: Vec<ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
+        let system = system_prompt.map(std::borrow::ToOwned::to_owned);
         self.retry_loop(|| {
             self.inner
-                .chat_stream_with_tools(messages.clone(), tools.clone())
+                .chat_stream_with_tools(system.as_deref(), messages.clone(), tools.clone())
         })
         .await
     }
@@ -206,6 +210,7 @@ mod tests {
 
         async fn chat_stream(
             &self,
+            _system_prompt: Option<&str>,
             _messages: Vec<LlmMessage>,
         ) -> Result<ChatStream, Report<LlmServiceError>> {
             let mut count = self.fail_count.lock();
@@ -283,7 +288,7 @@ mod tests {
         );
 
         // When calling chat_stream.
-        let result = svc.chat_stream(vec![]).await;
+        let result = svc.chat_stream(None, vec![]).await;
 
         // Then it succeeds after one retry.
         assert!(result.is_ok());
@@ -310,7 +315,7 @@ mod tests {
         );
 
         // When calling chat_stream.
-        let result = svc.chat_stream(vec![]).await;
+        let result = svc.chat_stream(None, vec![]).await;
 
         // Then it fails after max retries.
         assert!(result.is_err());
@@ -336,7 +341,7 @@ mod tests {
         );
 
         // When calling chat_stream.
-        let result = svc.chat_stream(vec![]).await;
+        let result = svc.chat_stream(None, vec![]).await;
 
         // Then it fails immediately without retry.
         assert!(result.is_err());
@@ -367,7 +372,7 @@ mod tests {
         );
 
         // When calling chat_stream.
-        let result = svc.chat_stream(vec![]).await;
+        let result = svc.chat_stream(None, vec![]).await;
 
         // Then it succeeds.
         assert!(result.is_ok());
@@ -400,7 +405,7 @@ mod tests {
         );
 
         // When calling chat_stream.
-        let result = svc.chat_stream(vec![]).await;
+        let result = svc.chat_stream(None, vec![]).await;
 
         // Then it succeeds and the wait is 200ms (provider hint overrides max_delay).
         assert!(result.is_ok());
@@ -426,7 +431,7 @@ mod tests {
         );
 
         // When calling chat_stream.
-        let result = svc.chat_stream(vec![]).await;
+        let result = svc.chat_stream(None, vec![]).await;
 
         // Then it fails immediately.
         assert!(result.is_err());

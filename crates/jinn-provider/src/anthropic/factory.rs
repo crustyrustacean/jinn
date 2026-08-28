@@ -52,7 +52,6 @@ impl LlmServiceFactory for AnthropicFactory {
             self.client.clone(),
             self.model.clone(),
             self.api_key.clone(),
-            None,
         );
 
         Ok(Box::new(service))

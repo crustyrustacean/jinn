@@ -220,6 +220,62 @@ fn worker_produces_mutations_when_threshold_exceeded() {
 
 #[rstest::rstest]
 #[test]
+fn compaction_passes_prompt_explicitly_not_in_message_array() {
+    // Given a worker whose fake LLM records calls, and a long history.
+    let factory = FakeLlmServiceFactory::new(vec![FAKE_SUMMARY.to_owned()]);
+    let services = TestServices::builder()
+        .llm_service(LlmServiceFactoryService::new(Arc::new(factory.clone())))
+        .build();
+    let handle = services.handle.clone();
+    let worker = CompactionWorker::new(
+        services,
+        handle,
+        State::new(AppState::default()),
+        crate::common::tcaps::mint::mint_session_cap(),
+    );
+    let history = alternating_history(20);
+    let config = small_reserve_config();
+    let compaction_prompt = "COMPACT-MARKER-PROMPT";
+
+    // When evaluating with the compaction prompt.
+    let rt = tokio::runtime::Runtime::new().expect("test runtime");
+    rt.block_on(async {
+        worker
+            .evaluate_with_config(
+                &history,
+                &config,
+                "test-model",
+                compaction_prompt,
+                &RetryConfig::default(),
+                false,
+                ChatEntryId::new(),
+            )
+            .await
+            .expect("evaluate_with_config should succeed")
+    });
+
+    // Then the compaction prompt traveled as the explicit system prompt.
+    let prompts = factory.received_system_prompts();
+    assert_eq!(prompts.len(), 1, "one LLM call expected");
+    assert_eq!(
+        prompts[0].as_deref(),
+        Some(compaction_prompt),
+        "compaction prompt must be the system prompt parameter"
+    );
+    // And the message array holds only the serialized-history User message.
+    let calls = factory.received_calls();
+    assert_eq!(calls.len(), 1);
+    let messages = &calls[0];
+    assert_eq!(messages.len(), 1, "exactly one message expected");
+    assert!(
+        matches!(messages[0], jinn_provider::LlmMessage::User { .. }),
+        "message array holds a User message, got {:?}",
+        messages[0]
+    );
+}
+
+#[rstest::rstest]
+#[test]
 fn worker_returns_empty_when_within_reserve() {
     // Given a worker and a short history that fits in the huge reserve.
     let worker = test_worker(FAKE_SUMMARY);
@@ -1577,6 +1633,7 @@ impl jinn_provider::LlmService for FailingLlmService {
 
     async fn chat_stream(
         &self,
+        _system_prompt: Option<&str>,
         _messages: Vec<jinn_provider::LlmMessage>,
     ) -> Result<jinn_provider::ChatStream, error_stack::Report<jinn_provider::LlmServiceError>>
     {
@@ -1588,6 +1645,7 @@ impl jinn_provider::LlmService for FailingLlmService {
 
     async fn chat_stream_with_tools(
         &self,
+        _system_prompt: Option<&str>,
         _messages: Vec<jinn_provider::LlmMessage>,
         _tools: Vec<jinn_provider::ToolDefinition>,
     ) -> Result<jinn_provider::ToolStream, error_stack::Report<jinn_provider::LlmServiceError>>

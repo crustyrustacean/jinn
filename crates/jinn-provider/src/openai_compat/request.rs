@@ -48,44 +48,35 @@ pub enum ToolChoiceValue {
 }
 
 /// Builds a [`ChatCompletionRequest`] from protocol types.
+///
+/// The system prompt comes exclusively from the `system_prompt` parameter;
+/// when present it becomes a single leading system-role message. The message
+/// array is pure conversation and is never inspected for system content.
 pub fn build_request(
     model: &str,
+    system_prompt: Option<&str>,
     messages: &[LlmMessage],
     tools: &[ToolDefinition],
     extra_body: &serde_json::Map<String, serde_json::Value>,
 ) -> ChatCompletionRequest {
-    // Concatenate all System messages into one system-role message.
-    let mut system_contents: Vec<String> = Vec::new();
-    let mut non_system: Vec<&LlmMessage> = Vec::new();
-    for msg in messages {
-        match msg {
-            LlmMessage::System { content } => {
-                system_contents.push(content.clone());
-            }
-            other => {
-                non_system.push(other);
-            }
-        }
-    }
-
     // Coalesce consecutive same-role messages (user, assistant without tool_calls)
     // into single messages. Many OpenAI-compatible providers (e.g. ZAI) reject
     // consecutive messages with the same role.
-    let openai_messages = coalesce_messages(&non_system);
+    let borrowed: Vec<&LlmMessage> = messages.iter().collect();
+    let coalesced = coalesce_messages(&borrowed);
 
-    #[expect(
-        clippy::if_not_else,
-        reason = "system message branch is the interesting one, keep it first"
-    )]
-    let openai_messages = if !system_contents.is_empty() {
-        let mut result = vec![serde_json::json!({
-            "role": "system",
-            "content": system_contents.join("\n\n"),
-        })];
-        result.extend(openai_messages);
+    // Prepend exactly one system-role message from the explicit parameter,
+    // after coalescing, so it stays a distinct leading message.
+    let openai_messages = {
+        let mut result = Vec::with_capacity(coalesced.len() + 1);
+        if let Some(system) = system_prompt {
+            result.push(serde_json::json!({
+                "role": "system",
+                "content": system,
+            }));
+        }
+        result.extend(coalesced);
         result
-    } else {
-        openai_messages
     };
 
     let openai_tools = if tools.is_empty() {
@@ -157,10 +148,6 @@ fn coalesce_messages(messages: &[&LlmMessage]) -> Vec<serde_json::Value> {
 /// Convert an [`LlmMessage`] to an OpenAI-format JSON object.
 fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
     match msg {
-        LlmMessage::System { content } => serde_json::json!({
-            "role": "system",
-            "content": content,
-        }),
         LlmMessage::User {
             content,
             attachments,
@@ -273,7 +260,7 @@ mod tests {
         }];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then model and stream are correct.
         assert_eq!(req.model, "gpt-4");
@@ -298,7 +285,7 @@ mod tests {
         }];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &tools, &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &tools, &serde_json::Map::new());
 
         // Then tools are included and tool_choice is auto.
         assert!(req.tools.is_some());
@@ -312,19 +299,60 @@ mod tests {
         extra.insert("enable_thinking".into(), serde_json::json!(true));
 
         // When building request.
-        let req = build_request("gpt-4", &[], &[], &extra);
+        let req = build_request("gpt-4", None, &[], &[], &extra);
 
         // Then extra_body is merged.
         assert_eq!(req.extra.get("enable_thinking").unwrap(), true);
     }
 
     #[rstest::rstest]
-    fn system_message_serializes_correctly() {
-        let json = message_to_json(&LlmMessage::System {
-            content: "You are helpful.".into(),
-        });
-        assert_eq!(json["role"], "system");
-        assert_eq!(json["content"], "You are helpful.");
+    fn explicit_system_prompt_prepends_single_system_message() {
+        // Given conversation messages and an explicit system prompt.
+        let messages = vec![
+            LlmMessage::User {
+                content: "first".into(),
+                attachments: Vec::new(),
+            },
+            LlmMessage::User {
+                content: "second".into(),
+                attachments: Vec::new(),
+            },
+        ];
+
+        // When building request with the system prompt parameter.
+        let req = build_request(
+            "gpt-4",
+            Some("You are helpful."),
+            &messages,
+            &[],
+            &serde_json::Map::new(),
+        );
+
+        // Then exactly one system message leads and user messages stay coalesced after it.
+        assert_eq!(req.messages.len(), 2);
+        assert_eq!(req.messages[0]["role"], "system");
+        assert_eq!(req.messages[0]["content"], "You are helpful.");
+        assert_eq!(req.messages[1]["role"], "user");
+        assert_eq!(
+            req.messages[1]["content"].as_str().unwrap(),
+            "first\n\nsecond"
+        );
+    }
+
+    #[rstest::rstest]
+    fn no_system_prompt_produces_no_system_message() {
+        // Given conversation messages and no system prompt.
+        let messages = vec![LlmMessage::User {
+            content: "hello".into(),
+            attachments: Vec::new(),
+        }];
+
+        // When building request with None.
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
+
+        // Then no system-role message appears.
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(req.messages[0]["role"], "user");
     }
 
     #[rstest::rstest]
@@ -340,35 +368,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn build_request_concats_multiple_system_messages() {
-        // Given messages with two System messages and a User message.
-        let messages = vec![
-            LlmMessage::System {
-                content: "First system.".into(),
-            },
-            LlmMessage::System {
-                content: "Second system.".into(),
-            },
-            LlmMessage::User {
-                content: "hello".into(),
-                attachments: Vec::new(),
-            },
-        ];
-
-        // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
-
-        // Then messages has exactly 2 entries: system then user.
-        assert_eq!(req.messages.len(), 2);
-        assert_eq!(req.messages[0]["role"], "system");
-        assert_eq!(
-            req.messages[0]["content"].as_str().unwrap(),
-            "First system.\n\nSecond system."
-        );
-        assert_eq!(req.messages[1]["role"], "user");
-    }
-
-    #[rstest::rstest]
     fn build_request_includes_stream_options() {
         // Given a basic request.
         let messages = vec![LlmMessage::User {
@@ -377,7 +376,7 @@ mod tests {
         }];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then stream_options requests usage data.
         assert!(req.stream_options.include_usage);
@@ -414,7 +413,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then they are merged into one user message.
         assert_eq!(req.messages.len(), 1);
@@ -440,7 +439,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then they are merged into one assistant message.
         assert_eq!(req.messages.len(), 1);
@@ -470,7 +469,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then both messages are kept separate.
         assert_eq!(req.messages.len(), 2);
@@ -495,7 +494,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then they are kept as separate messages.
         assert_eq!(req.messages.len(), 2);
@@ -522,7 +521,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then all messages are kept separate.
         assert_eq!(req.messages.len(), 3);
@@ -550,7 +549,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then all three are merged into a single user message.
         assert_eq!(req.messages.len(), 1);
@@ -581,7 +580,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then the two user messages are kept separate.
         assert_eq!(req.messages.len(), 3);
@@ -615,7 +614,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then the two user messages are kept separate.
         assert_eq!(req.messages.len(), 3);
@@ -625,18 +624,12 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn system_messages_do_not_participate_in_coalescing() {
-        // Given system + user + system + user.
+    fn explicit_system_message_stays_leading_and_users_coalesce_after() {
+        // Given two consecutive user messages and an explicit system prompt.
         let messages = vec![
-            LlmMessage::System {
-                content: "You are helpful.".into(),
-            },
             LlmMessage::User {
                 content: "hello".into(),
                 attachments: Vec::new(),
-            },
-            LlmMessage::System {
-                content: "Be concise.".into(),
             },
             LlmMessage::User {
                 content: "world".into(),
@@ -644,16 +637,19 @@ mod tests {
             },
         ];
 
-        // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        // When building request with the system prompt parameter.
+        let req = build_request(
+            "gpt-4",
+            Some("Be concise."),
+            &messages,
+            &[],
+            &serde_json::Map::new(),
+        );
 
-        // Then system messages are merged at front and user messages are coalesced.
+        // Then the system message leads and user messages are coalesced after it.
         assert_eq!(req.messages.len(), 2);
         assert_eq!(req.messages[0]["role"], "system");
-        assert_eq!(
-            req.messages[0]["content"].as_str().unwrap(),
-            "You are helpful.\n\nBe concise."
-        );
+        assert_eq!(req.messages[0]["content"], "Be concise.");
         assert_eq!(req.messages[1]["role"], "user");
         assert_eq!(
             req.messages[1]["content"].as_str().unwrap(),
@@ -696,7 +692,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then all messages are preserved in order with no coalescing.
         assert_eq!(req.messages.len(), 5);
@@ -716,7 +712,7 @@ mod tests {
         }];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then it is unchanged.
         assert_eq!(req.messages.len(), 1);
@@ -730,7 +726,7 @@ mod tests {
         let messages: Vec<LlmMessage> = vec![];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then request messages is empty.
         assert!(req.messages.is_empty());
@@ -751,7 +747,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then they are coalesced with a separator.
         assert_eq!(req.messages.len(), 1);
@@ -781,7 +777,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then they are merged into one user message.
         assert_eq!(req.messages.len(), 1);
@@ -926,7 +922,7 @@ mod tests {
         ];
 
         // When building request.
-        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
 
         // Then the two user messages are NOT coalesced (array content can't merge).
         assert_eq!(req.messages.len(), 2);

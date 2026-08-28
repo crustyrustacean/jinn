@@ -11,7 +11,6 @@ fn make_service(server: &mockito::ServerGuard) -> jinn_provider::anthropic::Anth
     jinn_provider::anthropic::AnthropicService::with_base_url(
         "claude-3".into(),
         "test-key".into(),
-        None,
         format!("{}/v1/messages", server.url()),
     )
 }
@@ -45,6 +44,7 @@ async fn text_streaming_yields_text_events() {
 
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "hi".into(),
                 attachments: Vec::new(),
@@ -96,6 +96,7 @@ async fn text_streaming_yields_done_event() {
 
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "hi".into(),
                 attachments: Vec::new(),
@@ -140,6 +141,7 @@ async fn tool_call_streaming_yields_tool_use_start() {
 
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "call echo".into(),
                 attachments: Vec::new(),
@@ -191,6 +193,7 @@ async fn tool_call_streaming_yields_input_delta() {
 
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "call echo".into(),
                 attachments: Vec::new(),
@@ -242,6 +245,7 @@ async fn tool_call_streaming_yields_tool_use_complete() {
 
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "call echo".into(),
                 attachments: Vec::new(),
@@ -293,6 +297,7 @@ async fn tool_call_streaming_yields_done_event() {
 
     let stream = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "call echo".into(),
                 attachments: Vec::new(),
@@ -360,10 +365,13 @@ async fn chat_stream_yields_text_tokens_only() {
         .await;
 
     let stream = service
-        .chat_stream(vec![LlmMessage::User {
-            content: "hi".into(),
-            attachments: Vec::new(),
-        }])
+        .chat_stream(
+            None,
+            vec![LlmMessage::User {
+                content: "hi".into(),
+                attachments: Vec::new(),
+            }],
+        )
         .await
         .unwrap();
 
@@ -395,6 +403,7 @@ async fn error_response_401_returns_error() {
     // When starting a chat stream.
     let result = service
         .chat_stream_with_tools(
+            None,
             vec![LlmMessage::User {
                 content: "hi".into(),
                 attachments: Vec::new(),

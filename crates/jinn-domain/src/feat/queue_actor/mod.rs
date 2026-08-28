@@ -246,6 +246,7 @@ impl QueueActor {
             endpoint_tag,
             session_id: session_id.clone(),
             messages: assembled.messages,
+            system_prompt: assembled.system_prompt,
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
@@ -350,6 +351,7 @@ impl QueueActor {
             endpoint_tag,
             session_id: session_id.clone(),
             messages: assembled.messages,
+            system_prompt: assembled.system_prompt,
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
@@ -717,6 +719,16 @@ mod tests {
         // Then SendToLlmProvider was published.
         let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
         assert_eq!(sends.len(), 1);
+        // And the command carries the assembled system prompt (date section
+        // is unconditional, so it proves assembly populated the field).
+        let prompt = sends[0]
+            .system_prompt
+            .as_deref()
+            .expect("system prompt assembled");
+        assert!(
+            prompt.contains("Current date:"),
+            "dispatch system prompt should come from assembly, got: {prompt:?}"
+        );
     }
 
     #[rstest::rstest]
