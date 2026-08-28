@@ -7,6 +7,11 @@
 //! but suspended waiting on a subagent — without this, a long-running child
 //! would make its waiting parent look stalled.
 
+#![allow(
+    clippy::expect_used,
+    reason = "poisoned registry lock is unrecoverable, matching session_map.rs"
+)]
+
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
@@ -23,6 +28,10 @@ pub struct TaskSpawnRegistry {
 
 impl TaskSpawnRegistry {
     /// Records a parent→child pair for an in-flight `task` call.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the registry lock is poisoned.
     pub fn register(&self, parent: SessionId, child: SessionId) {
         self.inner
             .lock()
@@ -34,6 +43,10 @@ impl TaskSpawnRegistry {
 
     /// Removes a parent→child pair. Idempotent: removing an unknown pair
     /// (or one already removed) is a no-op.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the registry lock is poisoned.
     pub fn unregister(&self, parent: &SessionId, child: &SessionId) {
         let mut map = self.inner.lock().expect("task spawn registry poisoned");
         if let Some(children) = map.get_mut(parent) {
@@ -45,6 +58,10 @@ impl TaskSpawnRegistry {
     }
 
     /// Whether the given session has at least one in-flight `task` call.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the registry lock is poisoned.
     pub fn has_in_flight(&self, parent: &SessionId) -> bool {
         self.inner
             .lock()

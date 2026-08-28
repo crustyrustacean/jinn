@@ -1054,6 +1054,60 @@ use rusqlite::params;
 /// serialization that v19 must repair.
 const LEGACY_065_BLOB: &str = "{\"session_id\":\"10000000-0000-0000-0000-000000000065\",\"title\":\"Legacy 065\",\"profile\":{\"strategy\":\"sliding_window\",\"model\":\"ollama/llama3\",\"persona_name\":\"coding-assistant\",\"token_budget\":150000,\"sliding_window_size\":5},\"cwd\":\".\",\"parent_session\":null,\"blobs\":{},\"lifecycle_name\":null,\"lifecycle_args\":[],\"lifecycle_script_state\":\"nothing_ran\",\"session_state\":\"Loaded\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\",\"is_automated\":false,\"persist\":true}";
 
+/// A 0.66-shape metadata blob for the automated row (`is_automated: true`
+/// as written by the removed workflow feature).
+fn legacy_automated_blob() -> String {
+    LEGACY_065_BLOB
+        .replace(
+            "\"10000000-0000-0000-0000-000000000065\"",
+            "\"10000000-0000-0000-0000-000000000099\"",
+        )
+        .replace("\"Legacy 065\"", "\"Automated Legacy\"")
+        .replace("\"is_automated\":false", "\"is_automated\":true")
+}
+
+/// A row recorded by the removed workflow feature with `is_automated = 1`.
+/// After the automation removal, the flag no longer exists in code: the row
+/// must load as a perfectly ordinary session.
+#[rstest::rstest]
+#[tokio::test]
+async fn legacy_automated_row_loads_as_normal_session() {
+    // Given a database holding a session row flagged is_automated = 1.
+    let dir = TempDir::new().expect("temp dir");
+    let db_path = dir.path().join("sessions.db");
+    seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
+        conn.execute(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
+             lifecycle_script_state, is_automated, persist, metadata) \
+             VALUES ('10000000-0000-0000-0000-000000000099', 'Automated Legacy', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"model\":{\"single\":\"ollama/llama3\"}}', '{}', 'nothing_ran', 1, 1, ?)",
+            params![legacy_automated_blob()],
+        ).map(|_| ())
+    })
+    .await;
+
+    // When loading the session through the store.
+    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
+    let loaded = store
+        .load_session(&SessionId::from(
+            "10000000-0000-0000-0000-000000000099".to_owned(),
+        ))
+        .await
+        .expect("load_session")
+        .expect("session should exist");
+
+    // Then it loads as an ordinary session: not a child, in the Loaded state.
+    assert_eq!(
+        loaded.parent_session(),
+        &None,
+        "flag row has no parent link"
+    );
+    assert_eq!(
+        loaded.session_state(),
+        crate::feat::session::chat_session::SessionState::Loaded,
+    );
+}
+
 #[rstest::rstest]
 #[tokio::test]
 async fn legacy_065_blob_loads_after_v19() {

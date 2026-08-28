@@ -202,11 +202,11 @@ fn build_child(
     {
         let p = child.profile_mut();
         p.model = model;
-        p.persona_name = profile.persona_name.clone();
+        p.persona_name.clone_from(&profile.persona_name);
         p.reasoning_effort = profile.reasoning_effort;
-        p.endpoint = profile.endpoint.clone();
-        p.disabled_tools = profile.disabled_tools.clone();
-        p.disabled_skills = profile.disabled_skills.clone();
+        p.endpoint.clone_from(&profile.endpoint);
+        p.disabled_tools.clone_from(&profile.disabled_tools);
+        p.disabled_skills.clone_from(&profile.disabled_skills);
     }
     child.set_cwd(parent.cwd().to_path_buf());
     // Home resolves fresh at creation in every other path (runtime-only,
@@ -304,7 +304,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
         let Some(parent) = guard.session.get(&parent_id) else {
             return tool_error(call, "parent session not found in state");
         };
-        build_child(parent, &parent_id, &args, &ctx.app_paths.home_dir())
+        build_child(parent, &parent_id, &args, ctx.app_paths.home_dir())
     };
     let child_id = child.session_id().clone();
 
@@ -319,10 +319,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     // Register the in-flight pair before blocking so the stall watchdog sees
     // the suspended parent. The guard covers success, failure, and abort
     // (parent tool-call future dropped) paths.
-    let registry = ctx
-        .task_spawns
-        .clone()
-        .unwrap_or_else(crate::feat::tools_actor::task_registry::TaskSpawnRegistry::default);
+    let registry = ctx.task_spawns.clone().unwrap_or_default();
     let guard = registry.guard(parent_id.clone(), child_id.clone());
 
     // Listener before publication: guarantees the Idle subscription exists

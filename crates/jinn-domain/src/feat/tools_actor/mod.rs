@@ -78,6 +78,8 @@ pub mod skill;
 pub mod task;
 pub mod task_phase_listener_actor;
 pub mod task_registry;
+#[cfg(test)]
+mod task_tests;
 pub mod tool_entry;
 pub mod tool_types;
 pub(crate) mod truncation;
