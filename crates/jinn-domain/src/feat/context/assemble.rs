@@ -133,6 +133,12 @@ pub fn assemble_prompt(
     tool_defs
         .retain(|def| !disabled.contains(&def.name) && def.available_for_provider(&provider_name));
 
+    // Depth-1 subagent guard: sessions with a parent link cannot spawn
+    // further subagents. Structural, so it can't be undone from the picker.
+    if session.parent_session().is_some() {
+        tool_defs.retain(|def| def.name != crate::feat::tools_actor::task::TASK_TOOL_NAME);
+    }
+
     let filtered_map: BTreeMap<String, ToolDefinition> = tool_defs
         .iter()
         .cloned()

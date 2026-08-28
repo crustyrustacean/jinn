@@ -69,6 +69,18 @@ impl Message<SessionPhaseChanged> for TaskPhaseListenerActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionPhaseChanged, ctx: &mut Context<Self, Self::Reply>) {
+        // Abort path: the awaiting `task` future was dropped (parent tool
+        // batch cancelled), closing the channel. There is nothing left to
+        // signal — stop listening. Bus traffic gives us the chance to notice.
+        if self
+            .completion
+            .as_ref()
+            .is_none_or(tokio::sync::oneshot::Sender::is_closed)
+        {
+            ctx.stop();
+            return;
+        }
+
         // Match any transition into Idle regardless of the old phase: the
         // cancel path force-publishes Idle→Idle, and the listener must not
         // miss it.

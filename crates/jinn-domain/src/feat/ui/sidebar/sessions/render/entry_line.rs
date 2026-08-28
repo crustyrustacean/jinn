@@ -119,6 +119,9 @@ pub(crate) fn assemble_entry_line(
     }
 }
 
+/// Glyph marking a subagent session, rendered after its title.
+const SUBAGENT_SYMBOL: &str = " ⤷";
+
 /// Renders a session entry line (indicator + arrow + tree + styled title).
 fn assemble_session_line(
     entry: &SessionEntry,
@@ -137,11 +140,29 @@ fn assemble_session_line(
         entry.last_entry_is_error,
         theme,
     );
-    let display_title = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len));
+    // The subagent symbol is part of the title's rendered width so the
+    // truncation budget accounts for it.
+    let symbol = if entry.is_subagent {
+        SUBAGENT_SYMBOL
+    } else {
+        ""
+    };
+    let symbol_len = symbol.graphemes(true).count();
+    let budget = max_title_len.saturating_sub(tree_len);
+    let display_title = {
+        let title_budget = budget.saturating_sub(symbol_len);
+        truncate_str(&entry.title, title_budget)
+    };
     let mut spans = vec![indicator, Span::raw(" "), arrow];
     if !tree.is_empty() {
         spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
     }
     spans.push(Span::styled(display_title, style));
+    if !symbol.is_empty() {
+        spans.push(Span::styled(
+            symbol.to_owned(),
+            Style::default().fg(theme.muted_text),
+        ));
+    }
     Line::from(spans)
 }

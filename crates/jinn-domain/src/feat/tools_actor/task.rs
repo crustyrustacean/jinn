@@ -48,10 +48,14 @@ use crate::feat::tools_actor::task_phase_listener_actor::{
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::SessionId;
 
+/// The `task` tool's registration name, shared by the registry and the
+/// depth-1 assembly filter.
+pub const TASK_TOOL_NAME: &str = "task";
+
 /// Returns the tool definition for `task`.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: "task".to_owned(),
+        name: TASK_TOOL_NAME.to_owned(),
         description: "Delegate a task to a fresh subagent session and block until it finishes. \
             Spawns a new session inheriting your model, cwd, tools, skills, and MCP servers — \
             but with empty history: it sees only the prompt you give it. When its session goes \
