@@ -2004,17 +2004,19 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn push_screen_wording_never_claims_handback_or_control() {
+    fn push_screen_wording_speaks_as_the_user_not_about_them() {
         // Given a captured screen.
         let screen = "shared-marker";
 
         // When building the push message text.
         let text = crate::feat::interactive_term::takeover_intent::push_screen_text(screen);
 
-        // Then the screen is described as shared by the user.
-        assert!(text.contains("shared"));
+        // Then the text opens with the first-person screen offer.
+        assert!(text.contains("Here is the current terminal screen"));
         assert!(text.contains(screen));
-        // And the text never carries control-flow wording or the refusal note.
+        // And it never speaks about the user in third person, never claims
+        // a handback, and never embeds the refusal note.
+        assert!(!text.contains("The user"));
         assert!(!text.contains("handed"));
         assert!(
             !text

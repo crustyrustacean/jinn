@@ -453,14 +453,12 @@ impl InteractiveTermActor {
             return outcome;
         }
         // User takeover: refuse agent input (checked here and re-checked
-        // after the settle below).
+        // after the settle below). No screen is returned — the user's
+        // terminal is theirs to read; the tool layer fails the call with
+        // the wait notice.
         if self.control.get() == ControlHolder::User {
-            let outcome = SendTermOutcome::UserHasControl(TermScreen {
-                screen: session.last_screen.clone(),
-                exited: None,
-            });
             self.sessions.insert(chat, session);
-            return outcome;
+            return SendTermOutcome::UserHasControl;
         }
 
         let bytes = encode_input(msg.text.as_deref(), &msg.keys, msg.enter);
@@ -495,11 +493,9 @@ impl InteractiveTermActor {
         );
 
         if self.control.get() == ControlHolder::User {
-            // The user grabbed the terminal mid-call; report the takeover.
-            return SendTermOutcome::UserHasControl(TermScreen {
-                screen,
-                exited: self.sessions.get(&chat).and_then(|s| s.exited.clone()),
-            });
+            // The user grabbed the terminal mid-call; report the takeover
+            // without a screen (their terminal, their read).
+            return SendTermOutcome::UserHasControl;
         }
         SendTermOutcome::Sent(TermScreen {
             screen,
@@ -1121,26 +1117,25 @@ mod tests {
         msg.text = Some("should-not-appear".to_owned());
         let reply = actor.ask(msg).await.expect("send reply");
 
-        // Then the outcome is UserHasControl and no bytes reached the pty.
-        let SendTermOutcome::UserHasControl(screen) = reply else {
+        // Then the outcome is UserHasControl (a refusal, not a screen).
+        let SendTermOutcome::UserHasControl = reply else {
             panic!("expected UserHasControl, got {reply:?}");
         };
-        assert!(!plain_screen(&screen.screen).contains("should-not-appear"));
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn agent_input_while_user_controls_reaches_no_process() {
-        // Given a coordinator running a program that exits after any input,
-        // with the user holding control.
+        // Given a coordinator running a program that echoes "got-input"
+        // only after consuming a byte, with the user holding control.
         let harness = TestHarness::new().await;
         let control = TermControl::default();
-        let (actor, _root) = spawn_coordinator(&harness, control.clone()).await;
+        let (actor, _state, _root) = spawn_coordinator_with_state(&harness, control.clone()).await;
         let chat = crate::protocol::SessionId::new();
         let session_id = {
             let SpawnTermOutcome::Started { session_id, .. } = actor
                 .ask(spawn_msg(
-                    chat,
+                    chat.clone(),
                     "printf waiting; IFS= read -rsn1 k; printf got-input; sleep 30",
                 ))
                 .await
@@ -1152,20 +1147,26 @@ mod tests {
         };
         control.set(ControlHolder::User);
 
-        // When the agent sends input.
+        // When the agent sends input and is refused.
         let mut msg = send_msg(session_id.clone());
         msg.text = Some("x".to_owned());
         msg.enter = true;
-        let SendTermOutcome::UserHasControl(_) = actor.ask(msg).await.expect("send reply") else {
-            panic!("expected UserHasControl");
-        };
+        let reply = actor.ask(msg).await.expect("send reply");
 
-        // Then the program never saw it (still waiting, not exited).
+        // Then the refusal carries no screen (the user's terminal is theirs
+        // to read)…
+        assert!(
+            matches!(reply, SendTermOutcome::UserHasControl),
+            "expected UserHasControl, got {reply:?}"
+        );
+        // …and the program never consumed a byte: after the user releases
+        // control, a fresh ask still shows the waiting screen, not
+        // "got-input".
+        control.set(ControlHolder::Agent);
         let mut sync = send_msg(session_id);
         sync.max_wait = Duration::from_millis(600);
-        let SendTermOutcome::UserHasControl(screen) = actor.ask(sync).await.expect("sync reply")
-        else {
-            panic!("expected UserHasControl");
+        let SendTermOutcome::Sent(screen) = actor.ask(sync).await.expect("sync reply") else {
+            panic!("expected Sent after release");
         };
         assert!(
             !plain_screen(&screen.screen).contains("got-input"),
@@ -1210,7 +1211,7 @@ mod tests {
         let replied = replied.expect("send must return promptly after takeover");
         let reply = replied.expect("join");
         assert!(
-            matches!(reply, SendTermOutcome::UserHasControl(_)),
+            matches!(reply, SendTermOutcome::UserHasControl),
             "expected UserHasControl, got {reply:?}"
         );
     }
@@ -1264,7 +1265,7 @@ mod tests {
             .expect("send must resolve promptly after takeover")
             .expect("join");
         assert!(
-            matches!(reply, SendTermOutcome::UserHasControl(_)),
+            matches!(reply, SendTermOutcome::UserHasControl),
             "expected UserHasControl after mid-call takeover, got {reply:?}"
         );
 

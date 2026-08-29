@@ -127,10 +127,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 ///
 /// The terminal overlay toggle (`<M-t>`) and the quake-bar open key
 /// (`<M-\`>`) are deliberately **scope bindings, not globals**: in
-/// `TerminalView` they would pop the overlay out from under the user, and in
-/// `TerminalControl` they would leave the control flag stuck on `User`
-/// (the agent locked out). Every non-terminal scope registers them locally;
-/// the two terminal scopes intentionally do not — capture mode is hermetic.
+/// `TerminalControl` a toggle would leave the control flag stuck on `User`
+/// (the agent locked out). Every other scope registers them locally,
+/// including `TerminalView` where `<M-t>` closes the overlay; only
+/// `TerminalControl` does not — capture mode is hermetic.
 #[must_use]
 #[rustfmt::skip]
 #[expect(clippy::too_many_lines, reason = "exhaustive keymap bindings grow with each scope")]
@@ -440,15 +440,17 @@ pub fn init_with_control_toggle(control_toggle: &str) -> Keymap<KeyEvent, Scope,
 
     // TerminalView scope — watching an interactive_term session. Passive:
     // nothing forwards to the pty. The configured toggle key enters control
-    // mode; `y` yanks the visible screen to the clipboard; `I` yanks it and
-    // pushes the text to the model. `T` mirrors the sidebar's toggle so the
-    // overlay closes from inside. Deliberately unbound here: <M-t>, <M-`>
-    // (per-scope toggles would pop the overlay), and `i` (capture must be a
-    // deliberate act via the toggle key).
+    // mode; `<M-t>` toggles the overlay closed (view mode holds no user
+    // state, so the toggle is safe here); `y` yanks the visible screen to
+    // the clipboard; `I` yanks it and pushes the text to the model. `T`
+    // mirrors the sidebar's toggle. Deliberately unbound here: <M-`> (would
+    // pop the overlay) and `i` (capture must be a deliberate act via the
+    // toggle key).
     keymap.scope(Scope::TerminalView, |b| {
         b
         .bind("<Tab>", Intent::SwitchTab, KeyCategory::General)
         .bind("T", Intent::ToggleTerminalOverlayForSelected, KeyCategory::General)
+        .bind("<M-t>", Intent::ToggleTerminalOverlay { session_id: None }, KeyCategory::General)
         .bind(control_toggle, Intent::TerminalTakeControl, KeyCategory::General)
         .bind("y", Intent::TerminalYank, KeyCategory::General)
         .bind("I", Intent::TerminalPushScreen, KeyCategory::General)
@@ -727,14 +729,13 @@ mod tests {
     }
 
     /// Capture mode is hermetic: neither would-be global resolves in the
-    /// terminal scopes. In TerminalView they are simply unbound; in
-    /// TerminalControl the catch-all forwards <M-t>/<M-`> to the pty like
-    /// any other key. (The old globals leaked here and could strand the
-    /// control flag on User.)
+    /// TerminalControl scope — the catch-all forwards <M-t>/<M-`> to the
+    /// pty like any other key. (The old globals leaked here and could
+    /// strand the control flag on User.) In TerminalView, <M-t> is bound
+    /// (the toggle closes the overlay); <M-`> stays unbound.
     #[rstest::rstest]
-    #[case(Scope::TerminalView)]
     #[case(Scope::TerminalControl)]
-    fn alt_t_and_quake_do_not_resolve_in_terminal_scopes(#[case] scope: Scope) {
+    fn alt_t_and_quake_do_not_resolve_in_terminal_control(#[case] scope: Scope) {
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
@@ -752,12 +753,11 @@ mod tests {
         };
         let intent = wk.handle_key(alt_t);
 
-        // Then it never opens the quake bar or toggles the overlay: view
-        // mode drops it, control mode forwards it to the pty.
+        // Then it never toggles the overlay: control mode forwards it to
+        // the pty.
         assert!(
-            !matches!(intent, Some(Intent::OpenQuakeBar))
-                && !matches!(intent, Some(Intent::ToggleTerminalOverlay { .. })),
-            "{scope:?}: <M-t> must not fire an overlay/quake intent; got {intent:?}"
+            !matches!(intent, Some(Intent::ToggleTerminalOverlay { .. })),
+            "{scope:?}: <M-t> must not fire an overlay intent; got {intent:?}"
         );
 
         // When pressing <M-`>.
@@ -778,10 +778,11 @@ mod tests {
         );
     }
 
-    /// Every scope the keymap registers except the two terminal ones must
-    /// carry both would-be-global toggles. This is the audit half of the
-    /// hermetic-capture guarantee: a future scope registered without
-    /// `add_terminal_toggles` fails here ( quake/toggle dead in that scope).
+    /// Every scope except TerminalControl (hermetic capture) and the
+    /// quake-adjacent exclusions noted per-test must carry the would-be
+    /// global toggles. This is the audit half of the hermetic-capture
+    /// guarantee: a future scope registered without `add_terminal_toggles`
+    /// fails here (toggle dead in that scope).
     #[rstest::rstest]
     #[case(Scope::Normal)]
     #[case(Scope::Input)]
@@ -812,6 +813,7 @@ mod tests {
     #[case(Scope::CwdInput)]
     #[case(Scope::ProjectAddInput)]
     #[case(Scope::QuakeBar)]
+    #[case(Scope::TerminalView)]
     fn alt_t_resolves_in_every_non_terminal_scope(#[case] scope: Scope) {
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, KeyEvent, Modifiers};
@@ -845,8 +847,8 @@ mod tests {
     /// close binding in QuakeBar). Registered per-scope via
     /// `add_terminal_toggles`; deliberately skipped in ArgInput, where
     /// unresolved keys fall through to an InsertChar guard that would
-    /// mutate the arg buffer, and in the terminal scopes where capture
-    /// must stay hermetic.
+    /// mutate the arg buffer, in TerminalView (would pop the overlay), and
+    /// in TerminalControl where capture must stay hermetic.
     #[rstest::rstest]
     #[case(Scope::Normal)]
     #[case(Scope::Input)]
