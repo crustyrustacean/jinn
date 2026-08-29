@@ -203,6 +203,13 @@ pub enum Intent {
     SidebarSessionTeardown,
     /// Archive the selected session without running teardown.
     SidebarSessionArchive,
+    /// Archive the selected session and all its descendant sessions.
+    ///
+    /// Behind a press-again confirmation: the first press arms a prompt
+    /// showing the subtree size (or a busy notice if any member is streaming),
+    /// the second press emits the archive command. All-or-nothing — if any
+    /// member is busy, nothing archives.
+    SidebarSessionArchiveTree,
     /// Open the persona picker from the sidebar.
     SidebarPersonaEdit,
     /// Open the session lifecycle picker from the sidebar sessions section.
@@ -459,6 +466,7 @@ impl std::fmt::Display for Intent {
             Intent::SidebarSessionClose => write!(f, "close session (w/teardown)"),
             Intent::SidebarSessionTeardown => write!(f, "run teardown script"),
             Intent::SidebarSessionArchive => write!(f, "archive session"),
+            Intent::SidebarSessionArchiveTree => write!(f, "archive session tree"),
             Intent::SidebarPersonaEdit => write!(f, "change persona"),
             Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::SidebarSessionContinue => write!(f, "continue session"),

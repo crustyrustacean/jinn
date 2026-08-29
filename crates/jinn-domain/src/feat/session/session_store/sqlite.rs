@@ -321,6 +321,20 @@ impl SessionStore for SqliteSessionStore {
         Ok(())
     }
 
+    async fn set_archived_many(
+        &self,
+        session_ids: &[SessionId],
+        archived: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        let id_strs: Vec<String> = session_ids.iter().map(ToString::to_string).collect();
+        self.pool
+            .with_conn(move |conn| set_archived_many_in_transaction(conn, &id_strs, archived))
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to set archived flag for session tree")?;
+        Ok(())
+    }
+
     async fn load_unarchived_summaries(
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
@@ -1135,6 +1149,30 @@ fn fork_in_transaction(
          WHERE session_id = ? AND ordinal <= ?",
         rusqlite::params![new_id_str, source_str, at_ordinal as i32],
     )?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Sets the `archived` flag for many sessions in one transaction.
+///
+/// Free function (not a DAO method) because the dynamic `IN (…)` placeholder
+/// list cannot be statically validated against the compile-time schema DB.
+/// Unknown IDs simply match no rows.
+fn set_archived_many_in_transaction(
+    conn: &mut rusqlite::Connection,
+    id_strs: &[String],
+    archived: bool,
+) -> daow::Result<()> {
+    if id_strs.is_empty() {
+        return Ok(());
+    }
+    let tx = conn.transaction()?;
+    let placeholders = vec!["?"; id_strs.len()].join(", ");
+    let sql = format!("UPDATE sessions SET archived = ? WHERE id IN ({placeholders})");
+    let params: Vec<&dyn rusqlite::ToSql> = std::iter::once(&archived as &dyn rusqlite::ToSql)
+        .chain(id_strs.iter().map(|s| s as &dyn rusqlite::ToSql))
+        .collect();
+    tx.execute(&sql, rusqlite::params_from_iter(params))?;
     tx.commit()?;
     Ok(())
 }

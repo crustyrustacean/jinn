@@ -132,6 +132,14 @@ pub struct FrontendState {
     ///         SidebarSessionClose or dismissed on any other key).
     pub close_session_prompt: bool,
 
+    /// State of the "Press A again to archive N sessions" prompt.
+    /// `Confirm` arms the confirm press; `Busy` blocks it (a member of the
+    /// subtree is streaming). OWNER: IntentHandler (set on first
+    /// SidebarSessionArchiveTree, consumed on second SidebarSessionArchiveTree,
+    /// dismissed on any other key).
+    pub archive_tree_prompt:
+        Option<crate::feat::ui::sidebar::sessions::archive_tree::ArchiveTreePrompt>,
+
     /// All picker state - grouped for independent evolution.
     /// Use [`PickerExt`](super::picker_states::PickerExt) to access picker fields.
     pub pickers: PickerStates,
@@ -213,6 +221,7 @@ impl Default for FrontendState {
             cancel_stream_prompt: false,
             audit_popup_visible: false,
             close_session_prompt: false,
+            archive_tree_prompt: None,
             pickers: PickerStates::default(),
             themes_dir: std::path::PathBuf::new(),
             system_themes_dir: std::path::PathBuf::new(),

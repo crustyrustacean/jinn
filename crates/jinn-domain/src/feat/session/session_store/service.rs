@@ -96,6 +96,19 @@ impl SessionStoreService {
         self.svc.set_archived(session_id, archived).await
     }
 
+    /// Set the `archived` flag for many sessions in one transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the update fails.
+    pub async fn set_archived_many(
+        &self,
+        session_ids: &[SessionId],
+        archived: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        self.svc.set_archived_many(session_ids, archived).await
+    }
+
     /// Load lightweight summaries for all unarchived sessions.
     ///
     /// # Errors

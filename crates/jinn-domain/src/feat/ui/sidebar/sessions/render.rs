@@ -24,9 +24,12 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use throbber_widgets_tui::ThrobberState;
 
 use super::{ANIMATION_INTERVAL, MAX_VISIBLE_SESSIONS};
+use crate::feat::ui::sidebar::sessions::archive_tree::ArchiveTreePrompt;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use entry_line::assemble_entry_line;
 use scroll_tag::render_scroll_tag;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 /// The open sessions sidebar section.
 ///
@@ -166,22 +169,7 @@ impl SidebarSection for SessionsSection {
             && section_focused
             && let Some(sel) = selected_index
         {
-            let visual_row = sel.saturating_sub(scroll_offset) as u16;
-            let cursor_y = area.y + visual_row;
-            let prompt_y = cursor_y.saturating_sub(1);
-            let prompt = Paragraph::new(Line::from(Span::styled(
-                " Press x again to close ",
-                Style::default().fg(Color::Black).bg(Color::Yellow),
-            )));
-            frame.render_widget(
-                prompt,
-                Rect {
-                    x: area.x,
-                    y: prompt_y,
-                    width: area.width,
-                    height: 1,
-                },
-            );
+            render_close_session_prompt(frame, area, sel.saturating_sub(scroll_offset));
         }
     }
 
@@ -192,4 +180,111 @@ impl SidebarSection for SessionsSection {
         // entries(N).max(1) + footer(1)
         visible.max(1) + 1 // max(1) for the no-sessions placeholder line
     }
+}
+
+/// Renders the close-session confirmation prompt one row above the cursor.
+fn render_close_session_prompt(frame: &mut Frame<'_>, area: Rect, visual_row: usize) {
+    let cursor_y = area.y + visual_row as u16;
+    let prompt_y = cursor_y.saturating_sub(1);
+    let widget = Paragraph::new(Line::from(Span::styled(
+        " Press x again to close ",
+        Style::default().fg(Color::Black).bg(Color::Yellow),
+    )));
+    frame.render_widget(
+        widget,
+        Rect {
+            x: area.x,
+            y: prompt_y,
+            width: area.width,
+            height: 1,
+        },
+    );
+}
+
+/// Renders the archive-tree confirmation prompt as a late overlay.
+///
+/// Called AFTER the main column has rendered (from `jinn-tui`'s render pass,
+/// right after the session preview), so the banner may extend left over the
+/// input box. Anchored 1 row above the sidebar cursor row and right-aligned to
+/// the frame's right edge, spanning whatever width it needs — it is an
+/// overlay, not a sidebar element. Yellow = armed confirm ("Press A again to
+/// archive N sessions"); red = blocked (a member of the subtree is busy).
+pub fn render_archive_tree_prompt_for_state(
+    frame: &mut Frame<'_>,
+    sidebar_rect: Rect,
+    frame_area: Rect,
+    ctx: &RenderCtx,
+) {
+    let state = ctx.state;
+    let Some(prompt) = &state.frontend.archive_tree_prompt else {
+        return;
+    };
+    if !state.frontend.scope_stack.is_sidebar()
+        || state.frontend.scope_stack.sidebar_section() != Some(SidebarSectionId::Sessions)
+    {
+        return;
+    }
+    let Some(sel) = state.frontend.sessions_section.selected_index else {
+        return;
+    };
+
+    // Cursor row: the sessions section is the last, bottom-anchored section.
+    let sessions_height = {
+        let entry_count = sorted_open_sessions(state).len() as u16;
+        entry_count.min(MAX_VISIBLE_SESSIONS as u16).max(1) + 1
+    };
+    let sessions_top_y = sidebar_rect.y + sidebar_rect.height.saturating_sub(sessions_height);
+    let scroll_offset = state.frontend.sessions_section.scroll_offset;
+    let visual_row = sel.saturating_sub(scroll_offset) as u16;
+    let prompt_y = sessions_top_y + visual_row.saturating_sub(1);
+
+    let (text, bg) = match prompt {
+        ArchiveTreePrompt::Confirm { count } => (
+            format!(
+                " Press A again to archive {count} session{} ",
+                if *count == 1 { "" } else { "s" }
+            ),
+            Color::Yellow,
+        ),
+        ArchiveTreePrompt::Busy => (
+            " Cannot archive tree while a session is busy ".to_owned(),
+            Color::Red,
+        ),
+    };
+
+    // Right-align to the frame's right edge; extend left over the main column
+    // as far as the banner needs. Clip to the frame (grapheme-aware, never
+    // char-indexed) only if the banner could not fit at all.
+    let (text, prompt_x) = {
+        let text_width = text.width() as u16;
+        if text_width > frame_area.width {
+            let total = text.graphemes(true).count();
+            let cropped: String = {
+                let keep = frame_area.width as usize;
+                text.graphemes(true)
+                    .skip(total.saturating_sub(keep))
+                    .collect()
+            };
+            let cropped_width = cropped.width() as u16;
+            let x = frame_area.x + frame_area.width.saturating_sub(cropped_width);
+            (cropped, x)
+        } else {
+            let x = frame_area.x + frame_area.width - text_width;
+            (text, x)
+        }
+    };
+    let text_width = text.width() as u16;
+    let widget = Paragraph::new(Line::from(Span::styled(
+        text,
+        Style::default().fg(Color::Black).bg(bg),
+    )));
+    frame.render_widget(
+        widget,
+        Rect {
+            x: prompt_x,
+            y: prompt_y,
+            width: text_width,
+            height: 1,
+        },
+    );
 }
