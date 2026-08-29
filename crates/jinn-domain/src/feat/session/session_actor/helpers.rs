@@ -97,10 +97,11 @@ use parking_lot::Mutex;
 #[cfg(test)]
 /// A fake session store that returns pre-loaded sessions for testing.
 pub(crate) struct PopulatedFakeStore {
-    summaries: Vec<crate::feat::session::session_summary::SessionSummary>,
+    summaries: parking_lot::Mutex<Vec<crate::feat::session::session_summary::SessionSummary>>,
     sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
     archived: parking_lot::Mutex<Vec<crate::protocol::SessionId>>,
     saved: parking_lot::Mutex<Vec<crate::feat::session::chat_session::ChatSessionState>>,
+    fail_load_summaries: parking_lot::Mutex<bool>,
 }
 
 #[cfg(test)]
@@ -118,10 +119,11 @@ impl PopulatedFakeStore {
             })
             .collect();
         Self {
-            summaries,
+            summaries: Mutex::new(summaries),
             sessions,
             archived: Mutex::new(Vec::new()),
             saved: Mutex::new(Vec::new()),
+            fail_load_summaries: Mutex::new(false),
         }
     }
 
@@ -135,6 +137,25 @@ impl PopulatedFakeStore {
             .rev()
             .find(|s| s.session_id() == id)
             .cloned()
+    }
+
+    /// Snapshot of all IDs passed to `set_archived`/`set_archived_many`
+    /// (append order, duplicates preserved).
+    pub(super) fn archived_ids(&self) -> Vec<crate::protocol::SessionId> {
+        self.archived.lock().clone()
+    }
+
+    /// Replaces the summaries the store reports (simulates store-only rows).
+    pub(super) fn set_summaries(
+        &self,
+        summaries: Vec<crate::feat::session::session_summary::SessionSummary>,
+    ) {
+        *self.summaries.lock() = summaries;
+    }
+
+    /// Makes `load_summaries` fail (simulates a store read error).
+    pub(super) fn set_fail_load_summaries(&self, fail: bool) {
+        *self.fail_load_summaries.lock() = fail;
     }
 }
 
@@ -160,7 +181,12 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
         Vec<crate::feat::session::session_summary::SessionSummary>,
         error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
     > {
-        Ok(self.summaries.clone())
+        if *self.fail_load_summaries.lock() {
+            return Err(error_stack::Report::new(
+                crate::feat::session::session_store::SessionStoreError,
+            ));
+        }
+        Ok(self.summaries.lock().clone())
     }
 
     async fn load_session(
@@ -227,7 +253,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
         Vec<crate::feat::session::session_summary::SessionSummary>,
         error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
     > {
-        Ok(self.summaries.clone())
+        Ok(self.summaries.lock().clone())
     }
 }
 

@@ -43,6 +43,7 @@ use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, StreamCompleted, StreamToken,
 };
 use crate::feat::session::protocol::archive_session::ArchiveSession;
+use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
 use crate::feat::session::protocol::citations_received::CitationsReceived;
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
@@ -150,6 +151,7 @@ impl Actor for SessionPersistenceActor {
         bus.subscribe::<PersistSession, _>(&actor_ref).await;
         bus.subscribe::<CloseSession, _>(&actor_ref).await;
         bus.subscribe::<ArchiveSession, _>(&actor_ref).await;
+        bus.subscribe::<ArchiveSessionTree, _>(&actor_ref).await;
         bus.subscribe::<SubmitHistoryMutations, _>(&actor_ref).await;
         bus.subscribe::<MarkSessionInteracted, _>(&actor_ref).await;
         bus.subscribe::<RetryStalledSession, _>(&actor_ref).await;
@@ -336,6 +338,13 @@ impl Message<ArchiveSession> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: ArchiveSession, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_archive_session(&msg).await;
+    }
+}
+
+impl Message<ArchiveSessionTree> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ArchiveSessionTree, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_archive_session_tree(&msg).await;
     }
 }
 
