@@ -21,6 +21,7 @@ use crate::protocol::SessionId;
 use crate::feat::session_lifecycle::protocol::FinishSessionSetup;
 use crate::feat::session_lifecycle::protocol::command::{
     FinishSessionTeardown, PersistSession, RunSessionSetup, RunSessionTeardown, SetSessionCwd,
+    TeardownFollowUp,
 };
 use crate::feat::session_lifecycle::protocol::event::{
     SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
@@ -559,7 +560,7 @@ impl SessionPersistenceActor {
                             };
                             bus.publish(FinishSessionTeardown {
                                 session_id,
-                                close_after: false,
+                                follow_up: TeardownFollowUp::None,
                                 error,
                             })
                             .await;
@@ -569,7 +570,7 @@ impl SessionPersistenceActor {
                         let error_msg = format!("Failed to start teardown command: {report}");
                         self.publish(FinishSessionTeardown {
                             session_id,
-                            close_after: false,
+                            follow_up: TeardownFollowUp::None,
                             error: Some(error_msg),
                         })
                         .await;
@@ -700,7 +701,7 @@ impl SessionPersistenceActor {
                     crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) => {
                         // For shell teardowns: mark busy, spawn tokio task,
                         // then return immediately. The spawned task signals completion
-                        // via FinishSessionTeardown with close_after: true.
+                        // via FinishSessionTeardown with TeardownFollowUp::Close.
                         let rendered = {
                             let rendered = self.state.with_session(&self.cap, |view| -> Option<String> {
                                 use crate::feat::session_lifecycle::command_template::CommandTemplate;
@@ -764,7 +765,7 @@ impl SessionPersistenceActor {
                                     };
                                     bus.publish(FinishSessionTeardown {
                                         session_id,
-                                        close_after: true,
+                                        follow_up: TeardownFollowUp::Close,
                                         error,
                                     })
                                     .await;
@@ -775,7 +776,7 @@ impl SessionPersistenceActor {
                                     format!("Failed to start teardown command: {report}");
                                 self.publish(FinishSessionTeardown {
                                     session_id,
-                                    close_after: true,
+                                    follow_up: TeardownFollowUp::Close,
                                     error: Some(error_msg),
                                 })
                                 .await;
@@ -843,9 +844,10 @@ impl SessionPersistenceActor {
     /// Handle `FinishSessionTeardown` - completion of an async teardown shell command.
     ///
     /// Called by the spawned tokio task after the teardown shell command finishes.
-    /// Depending on `payload.close_after`:
-    /// - `false` (teardown-only, `t` key): advance lifecycle state, persist, emit events
-    /// - `true` (close-with-teardown, `x` key): archive and remove the session
+    /// Depending on `payload.follow_up`:
+    /// - `None` (teardown-only, `t` key): advance lifecycle state, persist, emit events
+    /// - `Close` (close-with-teardown, `x` key): archive and remove the session
+    /// - `CloseTree` (teardown-tree, `X` key): archive and remove the whole subtree
     ///
     /// On error, an error entry is pushed and the session returns to `Idle` phase.
     pub(in crate::feat::session::session_actor) async fn handle_finish_session_teardown(
@@ -888,7 +890,7 @@ impl SessionPersistenceActor {
         }
 
         // Teardown succeeded.
-        if payload.close_after {
+        if payload.follow_up != TeardownFollowUp::None {
             // Close-with-teardown: advance lifecycle, then archive and remove.
             {
                 let result = self.state.with_session(&self.cap, |view| -> Option<()> {
@@ -1375,7 +1377,7 @@ mod tests {
     use crate::feat::session::session_summary::SessionSummary;
     use crate::feat::session_lifecycle::protocol::command::{
         CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
-        RunSessionTeardown, SetSessionCwd,
+        RunSessionTeardown, SetSessionCwd, TeardownFollowUp,
     };
     use crate::feat::session_lifecycle::protocol::event::{
         SessionCwdChanged, SessionTeardownFinished,
@@ -1519,7 +1521,7 @@ mod tests {
         // Simulate async teardown failure.
         let finish = FinishSessionTeardown {
             session_id: target_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: Some("teardown failed".to_owned()),
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -1613,7 +1615,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: Some("exit code 1".to_owned()),
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -1658,7 +1660,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: Some("teardown failed".to_owned()),
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -1873,7 +1875,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: None,
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -1920,7 +1922,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: None,
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -2307,7 +2309,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: true,
+            follow_up: TeardownFollowUp::Close,
             error: Some("exit code 1".to_owned()),
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -2354,7 +2356,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: true,
+            follow_up: TeardownFollowUp::Close,
             error: Some("teardown failed".to_owned()),
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -2401,7 +2403,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: true,
+            follow_up: TeardownFollowUp::Close,
             error: None,
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -2488,7 +2490,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: None,
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -2538,7 +2540,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: true,
+            follow_up: TeardownFollowUp::Close,
             error: None,
         };
         actor.handle_finish_session_teardown(&finish).await;
