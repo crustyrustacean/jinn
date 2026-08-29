@@ -68,10 +68,10 @@ pub fn handle_send_key(
 
 /// Handles [`Intent::TerminalHandback`].
 ///
-/// Flips control to the agent, pops to TerminalView, and steers the captured
-/// screen to the model. Steering (not a direct message) is the product
-/// decision: the queue actor's existing idle/busy handling delivers the
-/// screen in both session phases without new wake machinery.
+/// Flips control to the agent, pops to TerminalView, and delivers the
+/// captured screen to the model using the same session-phase routing as
+/// chat submit: busy → steering buffer (drained at the next
+/// dispatch-resume); idle → `EnqueueUserMessage` (dispatched immediately).
 pub fn handle_handback(state: &mut AppState) -> crate::protocol::intent::IntentResult {
     if state.frontend.scope_stack.current() != &FocusScope::TerminalControl {
         return crate::protocol::intent::IntentResult::empty();
@@ -88,10 +88,20 @@ pub fn handle_handback(state: &mut AppState) -> crate::protocol::intent::IntentR
         "The user handed the terminal back to you. Current screen:\n\n\
          ```\n{screen}\n```\n\n{USER_HAS_CONTROL_NOTICE}"
     );
-    crate::protocol::intent::IntentResult::empty().with_message(
-        crate::feat::chat_input::protocol::command::SubmitSteeringMessage {
-            session_id: state.session.active_session_id().clone(),
-            text,
-        },
-    )
+    let session_id = state.session.active_session_id().clone();
+    if state.active_session().phase() == crate::feat::session::phase_machine::PhaseKind::Idle {
+        crate::protocol::intent::IntentResult::empty().with_message(
+            crate::feat::chat_input::protocol::command::EnqueueUserMessage {
+                session_id,
+                entry: crate::protocol::ChatEntry::user(text),
+            },
+        )
+    } else {
+        crate::protocol::intent::IntentResult::empty().with_message(
+            crate::feat::chat_input::protocol::command::SubmitSteeringMessage {
+                session_id,
+                text,
+            },
+        )
+    }
 }
