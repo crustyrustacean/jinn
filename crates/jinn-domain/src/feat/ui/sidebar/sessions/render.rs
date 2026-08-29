@@ -24,7 +24,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use throbber_widgets_tui::ThrobberState;
 
 use super::{ANIMATION_INTERVAL, MAX_VISIBLE_SESSIONS};
-use crate::feat::ui::sidebar::sessions::archive_tree::ArchiveTreePrompt;
+use crate::feat::ui::sidebar::sessions::archive_tree::{ArchiveTreePrompt, TreePromptAction};
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use entry_line::assemble_entry_line;
 use scroll_tag::render_scroll_tag;
@@ -207,8 +207,9 @@ fn render_close_session_prompt(frame: &mut Frame<'_>, area: Rect, visual_row: us
 /// right after the session preview), so the banner may extend left over the
 /// input box. Anchored 1 row above the sidebar cursor row and right-aligned to
 /// the frame's right edge, spanning whatever width it needs — it is an
-/// overlay, not a sidebar element. Yellow = armed confirm ("Press A again to
-/// archive N sessions"); red = blocked (a member of the subtree is busy).
+/// overlay, not a sidebar element. Yellow = armed confirm ("Press A/X again
+/// to archive/teardown-and-archive N sessions"); red = blocked (a member of
+/// the subtree is busy).
 pub fn render_archive_tree_prompt_for_state(
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
@@ -239,13 +240,19 @@ pub fn render_archive_tree_prompt_for_state(
     let prompt_y = sessions_top_y + visual_row.saturating_sub(1);
 
     let (text, bg) = match prompt {
-        ArchiveTreePrompt::Confirm { count } => (
-            format!(
-                " Press A again to archive {count} session{} ",
-                if *count == 1 { "" } else { "s" }
-            ),
-            Color::Yellow,
-        ),
+        ArchiveTreePrompt::Confirm { count, action } => {
+            let (key, verb) = match action {
+                TreePromptAction::Archive => ("A", "archive"),
+                TreePromptAction::TeardownAndArchive => ("X", "teardown and archive"),
+            };
+            (
+                format!(
+                    " Press {key} again to {verb} {count} session{} ",
+                    if *count == 1 { "" } else { "s" }
+                ),
+                Color::Yellow,
+            )
+        }
         ArchiveTreePrompt::Busy => (
             " Cannot archive tree while a session is busy ".to_owned(),
             Color::Red,

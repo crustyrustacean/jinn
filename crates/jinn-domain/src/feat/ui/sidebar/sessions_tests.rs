@@ -2162,7 +2162,7 @@ fn sidebar_unmarks_forked_sessions() {
 // ---------------------------------------------------------------------------
 
 use crate::feat::ui::sidebar::sessions::archive_tree::{
-    ArchiveTreeError, ArchiveTreePrompt, archive_tree_members,
+    ArchiveTreeError, ArchiveTreePrompt, TreePromptAction, archive_tree_members,
 };
 
 /// Helper: builds a session tree of root -> child -> grandchild, plus an
@@ -2350,7 +2350,10 @@ fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
     // Then the confirm prompt is armed with the subtree size.
     assert_eq!(
         state.frontend.archive_tree_prompt,
-        Some(ArchiveTreePrompt::Confirm { count: 3 })
+        Some(ArchiveTreePrompt::Confirm {
+            count: 3,
+            action: TreePromptAction::Archive,
+        })
     );
     // And no commands were emitted.
     assert!(result.message_names.is_empty());
@@ -2500,7 +2503,10 @@ fn archive_tree_prompt_renders_yellow_confirm_with_count() {
     // Given a focused selection with an armed confirm prompt of 3 sessions.
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
-    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm { count: 3 });
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm {
+        count: 3,
+        action: TreePromptAction::Archive,
+    });
 
     // When rendering the archive-tree prompt overlay.
     let text = render_archive_tree_prompt_overlay(&state, 60);

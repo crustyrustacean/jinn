@@ -75,18 +75,31 @@ pub struct SetSessionCwd {
 
 impl crate::common::bus::BusMessage for SetSessionCwd {}
 
+/// What the session actor does after a teardown finishes successfully.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TeardownFollowUp {
+    /// Teardown only: the session stays open (the sidebar `t` key).
+    None,
+    /// Close-with-teardown: archive/remove the session after teardown
+    /// succeeds (the sidebar `x` key).
+    Close,
+    /// Teardown-tree: archive/remove the session and its whole subtree after
+    /// teardown succeeds (the sidebar `X` key).
+    CloseTree,
+}
+
 /// Result of an async teardown shell command, sent back to the session actor.
 ///
 /// Emitted by the tokio task spawned during `handle_run_session_teardown` or
 /// `handle_close_session`. The session actor processes this to advance lifecycle
-/// state, emit events, and (if `close_after` is true) archive/remove the session.
+/// state, emit events, and then perform the requested [`TeardownFollowUp`]
+/// (keep open, close, or close the whole tree).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FinishSessionTeardown {
     /// The session that was being torn down.
     pub session_id: SessionId,
-    /// Whether this teardown was triggered by a close operation.
-    /// When true, the handler archives/removes the session after advancing lifecycle.
-    pub close_after: bool,
+    /// What to do with the session (or its subtree) once teardown finishes.
+    pub follow_up: TeardownFollowUp,
     /// Error message if teardown failed.
     pub error: Option<String>,
 }
