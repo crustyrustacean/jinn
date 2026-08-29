@@ -52,14 +52,21 @@ pub(crate) fn arrow_span(is_active: bool, theme: &Theme) -> Span<'static> {
 /// Computes the title style based on entry state.
 ///
 /// Priority: error+selected → red+reversed, error → red, selected → reversed,
-/// active → primary text, default → muted text.
-pub(crate) fn entry_title_style(
-    is_selected: bool,
-    is_active: bool,
-    last_entry_is_error: bool,
-    theme: &Theme,
-) -> Style {
-    if last_entry_is_error {
+/// active → subagent/primary text, default → subagent/muted text. Subagent
+/// sessions use [`Theme::subagent_fg`] wherever a regular session would use
+/// muted text, so machine-spawned sessions read as a different kind.
+pub(crate) fn entry_title_style(entry: &SessionEntry, is_selected: bool, theme: &Theme) -> Style {
+    let base = if entry.is_subagent {
+        theme.subagent_fg
+    } else {
+        theme.muted_text
+    };
+    let active = if entry.is_subagent {
+        theme.subagent_fg
+    } else {
+        theme.primary_text
+    };
+    if entry.last_entry_is_error {
         if is_selected {
             Style::default()
                 .fg(Color::Red)
@@ -69,10 +76,10 @@ pub(crate) fn entry_title_style(
         }
     } else if is_selected {
         Style::default().add_modifier(Modifier::REVERSED)
-    } else if is_active {
-        Style::default().fg(theme.primary_text)
+    } else if entry.is_active {
+        Style::default().fg(active)
     } else {
-        Style::default().fg(theme.muted_text)
+        Style::default().fg(base)
     }
 }
 
@@ -119,8 +126,8 @@ pub(crate) fn assemble_entry_line(
     }
 }
 
-/// Glyph marking a subagent session, rendered after its title.
-const SUBAGENT_SYMBOL: &str = " ⤷";
+/// Glyph marking a subagent session, rendered before its title.
+const SUBAGENT_SYMBOL: &str = "⋄ ";
 
 /// Renders a session entry line (indicator + arrow + tree + styled title).
 fn assemble_session_line(
@@ -134,12 +141,7 @@ fn assemble_session_line(
     let arrow = arrow_span(entry.is_active, theme);
     let tree = tree_prefix(entry);
     let tree_len = tree.graphemes(true).count();
-    let style = entry_title_style(
-        is_selected,
-        entry.is_active,
-        entry.last_entry_is_error,
-        theme,
-    );
+    let style = entry_title_style(entry, is_selected, theme);
     // The subagent symbol is part of the title's rendered width so the
     // truncation budget accounts for it.
     let symbol = if entry.is_subagent {
@@ -157,12 +159,12 @@ fn assemble_session_line(
     if !tree.is_empty() {
         spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
     }
-    spans.push(Span::styled(display_title, style));
     if !symbol.is_empty() {
         spans.push(Span::styled(
             symbol.to_owned(),
-            Style::default().fg(theme.muted_text),
+            Style::default().fg(theme.subagent_fg),
         ));
     }
+    spans.push(Span::styled(display_title, style));
     Line::from(spans)
 }

@@ -219,6 +219,21 @@ pub fn default_persist() -> bool {
     true
 }
 
+/// How a session came into being. Identity, not structure: a session's
+/// place in the tree is [`SessionCore::parent_session`]; its kind is
+/// this enum.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionOrigin {
+    /// Created by the user (new session, dashboard, restart restore of one).
+    #[default]
+    User,
+    /// Created by forking an existing session at an ordinal.
+    Fork,
+    /// Spawned by the `task` tool as a child of another session.
+    Subagent,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCore {
     /// Unique identifier for this session.
@@ -290,6 +305,12 @@ pub struct SessionCore {
     /// OWNER: session-actor (set during fork).
     #[serde(default)]
     pub fork_ordinal: Option<usize>,
+    /// Identity of this session's creation path. Set at construction by the
+    /// creating path (`new_child` → [`SessionOrigin::Subagent`], fork →
+    /// [`SessionOrigin::Fork`]); never mutated afterwards.
+    /// OWNER: session-actor (set at session creation).
+    #[serde(default)]
+    pub origin: SessionOrigin,
 
     /// Generic blob storage for future subsystems.
     #[serde(default)]
@@ -370,6 +391,7 @@ impl Default for SessionCore {
             token_ledger: Vec::new(),
             parent_session: None,
             fork_ordinal: None,
+            origin: SessionOrigin::User,
 
             blobs: HashMap::new(),
             lifecycle_name: None,
@@ -655,6 +677,7 @@ impl ChatSessionState {
         Self {
             core: SessionCore {
                 parent_session: Some(parent_session_id.clone()),
+                origin: SessionOrigin::Subagent,
                 persist,
                 ..SessionCore::default()
             },
@@ -2893,6 +2916,12 @@ impl ChatSessionState {
     /// `None` for root sessions.
     pub fn fork_ordinal(&self) -> Option<usize> {
         self.core.fork_ordinal
+    }
+
+    /// How this session came into being. Identity, not structure —
+    /// see [`SessionOrigin`].
+    pub fn origin(&self) -> SessionOrigin {
+        self.core.origin
     }
 
     /// Set the fork ordinal for testing and construction.

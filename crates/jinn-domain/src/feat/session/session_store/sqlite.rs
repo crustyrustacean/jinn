@@ -23,7 +23,8 @@ use crate::feat::session::SessionUi;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 use crate::feat::session::chat_history::ChatHistory;
 use crate::feat::session::chat_session::{
-    ChatSessionState, LifecycleScriptState, SessionCore, SessionCoreEphemeral, SessionState,
+    ChatSessionState, LifecycleScriptState, SessionCore, SessionCoreEphemeral, SessionOrigin,
+    SessionState,
 };
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::session_summary::SessionSummary;
@@ -479,6 +480,10 @@ pub(crate) struct PersistableCore {
     /// `None` for root sessions.
     #[serde(default)]
     fork_ordinal: Option<usize>,
+    /// Identity of this session's creation path.
+    /// Defaults to [`SessionOrigin::User`] for blobs written by older versions.
+    #[serde(default)]
+    origin: SessionOrigin,
 
     blobs: HashMap<String, JsonValue>,
     lifecycle_name: Option<String>,
@@ -509,6 +514,7 @@ impl From<&SessionCore> for PersistableCore {
             cwd: core.cwd.clone(),
             parent_session: core.parent_session.clone(),
             fork_ordinal: core.fork_ordinal,
+            origin: core.origin,
             blobs: core.blobs.clone(),
             lifecycle_name: core.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle_args.clone(),
@@ -536,6 +542,7 @@ impl From<PersistableCore> for SessionCore {
             token_ledger: vec![],
             parent_session: core.parent_session,
             fork_ordinal: core.fork_ordinal,
+            origin: core.origin,
             blobs: core.blobs,
             lifecycle_name: core.lifecycle_name,
             lifecycle_args: core.lifecycle_args,
@@ -584,6 +591,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     token_ledger: _ledger, // table (insert_token_ledger_row)
                     parent_session,    // row
                     fork_ordinal: _fork_ordinal, // blob
+                    origin: _origin,   // blob
                     blobs: _blobs,     // blob
                     lifecycle_name: _lifecycle_name, // blob
                     lifecycle_args: _lifecycle_args, // blob
@@ -1149,6 +1157,9 @@ fn fork_metadata(
     core.created_at = jiff::Timestamp::now();
     core.updated_at = jiff::Timestamp::now();
     core.fork_ordinal = Some(at_ordinal);
+    // A fork is a fork — even of a subagent session, the result is an
+    // ordinary user-visible session, never a marked subagent.
+    core.origin = SessionOrigin::Fork;
     serde_json::to_string(&core).ok()
 }
 
