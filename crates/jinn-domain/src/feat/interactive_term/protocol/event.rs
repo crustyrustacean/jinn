@@ -17,6 +17,8 @@ pub struct TermScreenUpdated {
     pub session_id: TermSessionId,
     /// The rendered screen (plain text).
     pub screen: String,
+    /// The styled cell grid matching `screen`.
+    pub cells: crate::feat::interactive_term::emulator::ScreenCells,
     /// Cursor position as (row, col).
     pub cursor: (u16, u16),
     /// Whether the program hid the cursor.

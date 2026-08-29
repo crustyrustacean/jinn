@@ -38,17 +38,12 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     let ctx = RenderCtx::new(&state);
 
     let is_dashboard = matches!(state.frontend.scope_stack.base(), FocusScope::Dashboard,);
-    let is_terminal = matches!(
-        state.frontend.scope_stack.base(),
-        FocusScope::TerminalView | FocusScope::TerminalControl
-    );
     let layout = AppFrameLayout::new(
         area,
         state.active_chat_input().visual_line_count() as u16,
         area.height / 2,
         state.frontend.sidebar_width,
         is_dashboard,
-        is_terminal,
     );
     let sidebar_focused = state.frontend.scope_stack.is_sidebar();
     let active_scope = state.frontend.scope_stack.current();
@@ -90,36 +85,34 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         wstate.frontend.scope_stack.base(),
         jinn_domain::FocusScope::Dashboard,
     );
-    let is_terminal = matches!(
-        wstate.frontend.scope_stack.base(),
-        jinn_domain::FocusScope::TerminalView | jinn_domain::FocusScope::TerminalControl
-    );
     let pre_layout = AppFrameLayout::new(
         area,
         wstate.active_chat_input().visual_line_count() as u16,
         area.height / 2,
         wstate.frontend.sidebar_width,
         is_dashboard,
-        is_terminal,
     );
+    // The terminal overlay's inner rect sizes the pty (WYSIWYG). Computed
+    // every frame while open; deduped by the mirror, sent through the bridge.
+    if matches!(
+        wstate.frontend.scope_stack.current(),
+        jinn_domain::FocusScope::TerminalView | jinn_domain::FocusScope::TerminalControl
+    ) {
+        let inner = jinn_domain::feat::interactive_term::overlay_geometry::terminal_overlay_inner_rect(area);
+        let (rows, cols) = (inner.height, inner.width);
+        if wstate.frontend.terminal.record_layout_size(rows, cols) {
+            let closure = jinn_domain::common::bridge::Bridge::publish_closure(
+                jinn_domain::feat::interactive_term::protocol::command::ResizeTerm {
+                    session_id: None,
+                    size: (rows, cols),
+                },
+            );
+            let _ = app.core.bridge.send(closure);
+        }
+    }
     match &pre_layout {
         AppFrameLayout::Dashboard(dash) => {
             wstate.frontend.dashboard.clamp_scroll(dash.content.height);
-        }
-        AppFrameLayout::Terminal(term) => {
-            // Propagate the tab's content rect to the pty so the program's
-            // rows/cols track the real layout. Deduped by the mirror; sent
-            // through the bridge (sync, drained by its async task).
-            let (rows, cols) = (term.content.height, term.content.width);
-            if wstate.frontend.terminal.record_layout_size(rows, cols) {
-                let closure = jinn_domain::common::bridge::Bridge::publish_closure(
-                    jinn_domain::feat::interactive_term::protocol::command::ResizeTerm {
-                        session_id: None,
-                        size: (rows, cols),
-                    },
-                );
-                let _ = app.core.bridge.send(closure);
-            }
         }
         AppFrameLayout::Chat(chat) => {
             let text_width = chat.main.width.saturating_sub(2) as usize;
@@ -210,10 +203,6 @@ fn render_base_layers(
             tab_bar::render_tab_bar(frame, dash.tab_bar, ctx);
             dashboard_tab::render_dashboard(frame, dash.content, ctx);
         }
-        AppFrameLayout::Terminal(term) => {
-            tab_bar::render_tab_bar(frame, term.tab_bar, ctx);
-            terminal_tab::render_terminal_tab(frame, term.content, ctx);
-        }
         AppFrameLayout::Chat(chat) => {
             tab_bar::render_tab_bar(frame, chat.tab_bar, ctx);
             chat_tab::border::render_border(frame, chat.border, ctx);
@@ -226,6 +215,12 @@ fn render_base_layers(
                 rects,
             );
             chat_tab::render_chat_tab(ui_registry, frame, chat, ctx, rects);
+            jinn_domain::feat::ui::sidebar::sessions::render_archive_tree_prompt_for_state(
+                frame,
+                chat.sidebar,
+                frame_area,
+                ctx,
+            );
             jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
                 frame,
                 chat.sidebar,
@@ -284,6 +279,12 @@ fn render_active_overlay(
                 frame, area, ctx,
             );
             Some(jinn_domain::feat::project_add_input::render::project_add_input_popup_rect(area))
+        }
+        FocusScope::TerminalView | FocusScope::TerminalControl => {
+            let overlay_rect =
+                jinn_domain::feat::interactive_term::overlay_geometry::terminal_overlay_rect(area);
+            crate::render::terminal_tab::render_terminal_tab(frame, overlay_rect, ctx);
+            Some(overlay_rect)
         }
         FocusScope::QuakeBar => {
             let quake_area = ratatui::layout::Rect {

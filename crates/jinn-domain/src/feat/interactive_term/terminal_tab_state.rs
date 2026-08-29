@@ -1,14 +1,33 @@
-//! Terminal tab state — the frontend mirror of the active `interactive_term`
-//! session.
+//! Terminal state — the frontend mirrors of `interactive_term` sessions.
 //!
 //! The [`InteractiveTermActor`](crate::feat::interactive_term::interactive_term_actor::InteractiveTermActor)
-//! writes this mirror from `TermScreenUpdated` events (plain-text screen,
-//! cursor, visibility) and `TermControlChanged`; the renderer only reads it.
-//! Keystrokes in control mode are *not* applied here — they go to the pty and
-//! round-trip back as screen updates, so this state is always the program's
-//! own rendering, never jinn's echo.
+//! writes per-session mirrors keyed by the owning **chat** [`SessionId`] and
+//! the `live_terms` set; the renderer reads them for the overlay and the
+//! sidebar symbol. Keystrokes in control mode are *not* applied here — they
+//! go to the pty and round-trip back as screen updates, so a mirror is always
+//! the program's own rendering, never jinn's echo.
 
-/// Who currently holds control of the active terminal session.
+use std::collections::{HashMap, HashSet};
+
+use crate::feat::interactive_term::emulator::ScreenCells;
+use crate::protocol::SessionId;
+
+/// One chat session's mirrored terminal screen.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TerminalMirror {
+    /// The coordinator's session id (the model-facing `term-N` handle).
+    pub term_session_id: String,
+    /// Last rendered screen (plain text, newline-separated rows).
+    pub screen: String,
+    /// Styled cell grid matching `screen` (for the colored overlay).
+    pub cells: ScreenCells,
+    /// Cursor position (row, col) on the mirrored screen.
+    pub cursor: (u16, u16),
+    /// Whether the program hid the cursor (TUIs hide it while redrawing).
+    pub cursor_hidden: bool,
+}
+
+/// Who currently holds control of a terminal session.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum TermControlHolder {
     /// The agent may send input via the `interactive_term_send` tool.
@@ -18,37 +37,53 @@ pub enum TermControlHolder {
     User,
 }
 
-/// Frontend mirror of the active `interactive_term` session.
-#[derive(Debug, Clone, Default, PartialEq)]
+/// Frontend mirror of all `interactive_term` sessions, keyed by chat session.
+#[derive(Debug, Clone, Default)]
 pub struct TerminalTabState {
-    /// The session currently shown in the terminal tab, if any.
-    pub session_id: Option<String>,
-    /// Last rendered screen (plain text, newline-separated rows).
-    pub screen: String,
-    /// Cursor position (row, col) on the mirrored screen.
-    pub cursor: (u16, u16),
-    /// Whether the program hid the cursor (TUIs hide it while redrawing).
-    pub cursor_hidden: bool,
-    /// Who holds control of the session.
+    /// Per-chat-session terminal mirrors.
+    pub mirrors: HashMap<SessionId, TerminalMirror>,
+    /// Chat sessions with a **live** terminal (spawned, not exited/killed).
+    /// Drives the sidebar's live-terminal symbol.
+    pub live_terms: HashSet<SessionId>,
+    /// Who holds control of each session (mirror of the coordinator flag).
     pub control: TermControlHolder,
-    /// Size of the terminal tab's content rect last reported as `(rows, cols)`;
-    /// dedupes resize publications.
-    pub layout_size: (u16, u16),
+    /// Inner rect of the overlay, last reported as `(rows, cols)`; dedupes
+    /// resize publications and seeds the spawn size before the first frame.
+    pub last_layout_size: (u16, u16),
 }
 
 impl TerminalTabState {
-    /// Replaces the mirrored screen and cursor from a screen-update event.
+    /// Replaces one session's mirrored screen and cursor from an update.
     pub fn apply_screen(
         &mut self,
-        session_id: &str,
+        chat_session_id: &SessionId,
+        term_session_id: &str,
         screen: String,
+        cells: ScreenCells,
         cursor: (u16, u16),
         cursor_hidden: bool,
     ) {
-        self.session_id = Some(session_id.to_owned());
-        self.screen = screen;
-        self.cursor = cursor;
-        self.cursor_hidden = cursor_hidden;
+        self.mirrors.insert(
+            chat_session_id.clone(),
+            TerminalMirror {
+                term_session_id: term_session_id.to_owned(),
+                screen,
+                cells,
+                cursor,
+                cursor_hidden,
+            },
+        );
+    }
+
+    /// Removes a session's mirror (session closed/teardown).
+    pub fn remove_mirror(&mut self, chat_session_id: &SessionId) {
+        self.mirrors.remove(chat_session_id);
+    }
+
+    /// Returns the mirror for a chat session, if any.
+    #[must_use]
+    pub fn mirror(&self, chat_session_id: &SessionId) -> Option<&TerminalMirror> {
+        self.mirrors.get(chat_session_id)
     }
 
     /// Sets who holds control.
@@ -56,18 +91,21 @@ impl TerminalTabState {
         self.control = holder;
     }
 
-    /// Returns the visible screen text (empty when no session is mirrored).
-    #[must_use]
-    pub fn screen(&self) -> &str {
-        &self.screen
+    /// Marks (or clears) a chat session's live-terminal flag.
+    pub fn set_live(&mut self, chat_session_id: &SessionId, live: bool) {
+        if live {
+            self.live_terms.insert(chat_session_id.clone());
+        } else {
+            self.live_terms.remove(chat_session_id);
+        }
     }
 
-    /// Records the tab's layout size, returning `true` when it changed and
+    /// Records the overlay's inner size, returning `true` when it changed and
     /// a resize should be published.
     pub fn record_layout_size(&mut self, rows: u16, cols: u16) -> bool {
-        let changed = self.layout_size != (rows, cols);
+        let changed = self.last_layout_size != (rows, cols);
         if changed {
-            self.layout_size = (rows, cols);
+            self.last_layout_size = (rows, cols);
         }
         changed
     }
@@ -81,22 +119,67 @@ mod tests {
 
     #[rstest::rstest]
     fn apply_screen_replaces_mirror() {
-        // Given an empty terminal tab state.
+        // Given an empty terminal state.
         let mut state = TerminalTabState::default();
+        let chat = SessionId::new();
 
         // When applying a screen update.
-        state.apply_screen("term-1", "hello\nworld".to_owned(), (1, 3), true);
+        state.apply_screen(
+            &chat,
+            "term-1",
+            "hello\nworld".to_owned(),
+            ScreenCells::default(),
+            (1, 3),
+            true,
+        );
 
         // Then the mirror carries the session, screen, cursor, and visibility.
-        assert_eq!(state.session_id.as_deref(), Some("term-1"));
-        assert_eq!(state.screen(), "hello\nworld");
-        assert_eq!(state.cursor, (1, 3));
-        assert!(state.cursor_hidden);
+        let mirror = state.mirror(&chat).expect("mirror");
+        assert_eq!(mirror.term_session_id, "term-1");
+        assert_eq!(mirror.screen, "hello\nworld");
+        assert_eq!(mirror.cursor, (1, 3));
+        assert!(mirror.cursor_hidden);
+    }
+
+    #[rstest::rstest]
+    fn mirrors_are_keyed_by_chat_session() {
+        // Given a state with two sessions' mirrors.
+        let mut state = TerminalTabState::default();
+        let a = SessionId::new();
+        let b = SessionId::new();
+        state.apply_screen(
+            &a,
+            "term-1",
+            "alpha".to_owned(),
+            ScreenCells::default(),
+            (0, 0),
+            false,
+        );
+        state.apply_screen(
+            &b,
+            "term-2",
+            "beta".to_owned(),
+            ScreenCells::default(),
+            (0, 0),
+            false,
+        );
+
+        // When reading each mirror back.
+        // Then each session sees only its own screen.
+        assert_eq!(state.mirror(&a).expect("a").screen, "alpha");
+        assert_eq!(state.mirror(&b).expect("b").screen, "beta");
+
+        // When removing one mirror.
+        state.remove_mirror(&a);
+
+        // Then only the other remains.
+        assert!(state.mirror(&a).is_none());
+        assert!(state.mirror(&b).is_some());
     }
 
     #[rstest::rstest]
     fn set_control_flips_holder() {
-        // Given a default (agent-controlled) terminal tab state.
+        // Given a default (agent-controlled) terminal state.
         let mut state = TerminalTabState::default();
 
         // When the user takes control.
@@ -108,7 +191,7 @@ mod tests {
 
     #[rstest::rstest]
     fn record_layout_size_reports_change_once() {
-        // Given a default terminal tab state (0, 0).
+        // Given a default terminal state (0, 0).
         let mut state = TerminalTabState::default();
 
         // When recording a new layout size.

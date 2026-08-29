@@ -112,6 +112,22 @@ pub trait SessionStore: Send + Sync + 'static {
         archived: bool,
     ) -> Result<(), Report<SessionStoreError>>;
 
+    /// Set the `archived` flag for many sessions in one transaction.
+    ///
+    /// Used by the sidebar archive-tree action: the whole subtree is written
+    /// atomically or not at all. Unknown IDs match no rows and are not an
+    /// error (a session that was never persisted, or one already deleted,
+    /// needs no writeback).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the update fails.
+    async fn set_archived_many(
+        &self,
+        session_ids: &[SessionId],
+        archived: bool,
+    ) -> Result<(), Report<SessionStoreError>>;
+
     /// Load lightweight summaries for all unarchived sessions.
     ///
     /// # Errors

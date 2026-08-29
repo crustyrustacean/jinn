@@ -127,11 +127,18 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     let tool_call_id = call.id;
     let tool_name = call.name;
 
-    let Some(coordinator) = ctx.interactive_term else {
+    // Every live terminal must be reachable by the user (overlay toggle key +
+    // sidebar symbol), which requires a chat-session anchor. Spawning outside
+    // a session context is rejected with an explanatory error. Validated
+    // before the coordinator lookup so a rejected call never depends on
+    // wiring availability.
+    let Some(chat_session_id) = ctx.session_id.clone() else {
         return failure_future(
             &tool_call_id,
             &tool_name,
-            "interactive-term coordinator is unavailable (this should only happen in tests)",
+            "interactive_term requires a chat session context (none is active). \
+             Run this tool from within a conversation session so the terminal \
+             can be linked to it and shown in the TUI.",
         );
     };
 
@@ -145,12 +152,20 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     let max_wait = super::extract_max_duration(&call.arguments)
         .map_or_else(default_max_wait, Duration::from_secs);
 
+    let Some(coordinator) = ctx.interactive_term.clone() else {
+        return failure_future(
+            &tool_call_id,
+            &tool_name,
+            "interactive-term coordinator is unavailable (this should only happen in tests)",
+        );
+    };
+
     // Defensive outer bound: settle cap + margin so a dead coordinator can't
     // hang the tool loop (mirrors the restart_mcp_server shape).
     let ask_timeout = max_wait + SPAWN_ASK_MARGIN;
 
     // Stream context so the coordinator's settle wait emits deltas attributed
-    // to this tool call (watchdog keepalive). None without a chat session.
+    // to this tool call (watchdog keepalive).
     let stream_ctx = ctx.session_id.clone().map(|session_id| StreamCtx {
         session_id,
         tool_call_id: tool_call_id.clone(),
@@ -160,8 +175,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // `AskRequest` needs `.send()` to become a future.
         let ask_fut = coordinator
             .ask(SpawnTerm {
+                chat_session_id: chat_session_id.clone(),
                 command: command.clone(),
-                cwd: std::path::PathBuf::from("."),
+                cwd: ctx.cwd.clone(),
                 size: (24, 80),
                 max_wait,
             })
@@ -193,12 +209,17 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         match replied {
-            SpawnTermOutcome::Started { session_id, screen } => success_result(
+            SpawnTermOutcome::Started {
+                session_id,
+                screen,
+                killed_previous,
+            } => success_result(
                 &tool_call_id,
                 &tool_name,
                 &session_id,
                 &screen.screen,
                 screen.exited.as_ref(),
+                killed_previous.as_ref(),
             ),
             SpawnTermOutcome::Failed(msg) => {
                 failure_result(&tool_call_id, &tool_name, &format!("failed to spawn `{command}`: {msg}"))
@@ -223,12 +244,23 @@ pub(crate) fn success_result(
     session_id: &TermSessionId,
     screen: &str,
     exited: Option<&crate::feat::interactive_term::pty_session::ExitInfo>,
+    killed_previous: Option<&crate::feat::interactive_term::protocol::command::KilledPrevious>,
 ) -> ToolResult {
     let exit_line = exited
         .map(|info| format!("\n\nThe program has {0}.", info.summary()))
         .unwrap_or_default();
+    let kill_line = killed_previous
+        .map(|killed| {
+            format!(
+                "\n\nNOTE: This session already had a live terminal ({}), which was \
+                 killed to start this one ({}).",
+                killed.session_id,
+                killed.exited.summary()
+            )
+        })
+        .unwrap_or_default();
     let body = format!(
-        "session_id: {session_id}\n\n{screen}{exit_line}\n\n{}",
+        "session_id: {session_id}\n\n{screen}{exit_line}{kill_line}\n\n{}",
         usage_footer(session_id)
     );
     let truncated = truncate_tail(&body, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES);

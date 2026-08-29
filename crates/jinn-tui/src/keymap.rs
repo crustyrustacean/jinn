@@ -243,9 +243,12 @@ pub fn init_with_handback(handback: &str) -> Keymap<KeyEvent, Scope, Intent, Key
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::Sidebar)
             .bind("r", Intent::SidebarRenameSession, KeyCategory::Sidebar)
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::Sidebar)
+            .bind("A", Intent::SidebarSessionArchiveTree, KeyCategory::Sidebar)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::Sidebar)
             .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::Sidebar)
 
+            // T toggles the terminal overlay for the selected session.
+            .bind("T", Intent::ToggleTerminalOverlayForSelected, KeyCategory::Sidebar)
             // i activates session and enters insert mode
             .bind("i", Intent::SidebarConfirmInsert, KeyCategory::Sidebar)
             // Unmapped character keys produce NoOp to dismiss confirmation prompts
@@ -570,6 +573,12 @@ pub fn init_with_handback(handback: &str) -> Keymap<KeyEvent, Scope, Intent, Key
 
     // Global bindings — apply in every scope, with specific-scope-wins precedence.
     keymap.bind_global("<M-`>", Intent::OpenQuakeBar, KeyCategory::General);
+    // Terminal overlay toggle for the active chat session.
+    keymap.bind_global(
+        "<M-t>",
+        Intent::ToggleTerminalOverlay { session_id: None },
+        KeyCategory::General,
+    );
 
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
         match mouse.kind {
@@ -625,6 +634,65 @@ mod tests {
             binding_count > 0,
             "scope {scope:?} for picker {kind} has no bindings — the picker would ignore all input"
         );
+    }
+
+    /// The global <M-t> toggle must resolve from any chat-tab scope (Normal
+    /// and Input) — globals pierce every scope.
+    #[rstest::rstest]
+    #[test]
+    fn global_alt_t_resolves_from_normal_and_input_scopes() {
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+
+        let alt_t = jinn_domain::KeyEvent {
+            key: Key::Char('t'),
+            modifiers: Modifiers {
+                alt: true,
+                ..Modifiers::none()
+            },
+        };
+
+        for scope in [Scope::Normal, Scope::Input] {
+            // Given the default keymap starting in `scope`.
+            let keymap = init();
+            let mut wk = WhichKeyInstance::new(keymap, scope);
+
+            // When pressing <M-t>.
+            let intent = wk.handle_key(alt_t.clone());
+
+            // Then the terminal overlay toggle fires.
+            assert!(
+                matches!(
+                    intent,
+                    Some(Intent::ToggleTerminalOverlay { session_id: None })
+                ),
+                "scope {scope:?}: expected ToggleTerminalOverlay, got {intent:?}"
+            );
+        }
+    }
+
+    /// The sidebar `T` key resolves to the selected-session overlay toggle.
+    #[rstest::rstest]
+    #[test]
+    fn sidebar_upper_t_resolves_to_selected_session_overlay_toggle() {
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+
+        // Given the default keymap in the SidebarSessions scope.
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::SidebarSessions);
+
+        // When pressing 'T'.
+        let intent = wk.handle_key(jinn_domain::KeyEvent {
+            key: Key::Char('T'),
+            modifiers: Modifiers::none(),
+        });
+
+        // Then the selected-session overlay toggle fires (not NoOp).
+        assert!(matches!(
+            intent,
+            Some(Intent::ToggleTerminalOverlayForSelected)
+        ));
     }
 
     /// Regression test for ratatui-which-key v0.12.1: when a key is bound as a

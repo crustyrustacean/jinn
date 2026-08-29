@@ -1,4 +1,4 @@
-//! Tab bar — top-level strip showing `[ Chat ] [ Dashboard ] [ Terminal ]`.
+//! Tab bar — top-level strip showing `[ Chat ] [ Dashboard ]`.
 
 use jinn_domain::RenderCtx;
 use ratatui::Frame;
@@ -11,15 +11,15 @@ use ratatui::widgets::Paragraph;
 ///
 /// Order must stay in sync with `active_tab_index`, which derives the active
 /// index from the current base `FocusScope`.
-const TAB_LABELS: [&str; 3] = ["Chat", "Dashboard", "Terminal"];
+const TAB_LABELS: [&str; 2] = ["Chat", "Dashboard"];
 
 /// Returns the highlighted tab index for the current base scope.
 ///
-/// Chat is `0`, Dashboard `1`, Terminal (view or control) `2`.
+/// Chat is `0`, Dashboard `1`. The terminal is an overlay (`<M-t>`), not a
+/// tab, so it never highlights a tab.
 fn active_tab_index(ctx: &RenderCtx) -> usize {
     match ctx.state.frontend.scope_stack.base() {
         jinn_domain::FocusScope::Dashboard => 1,
-        jinn_domain::FocusScope::TerminalView | jinn_domain::FocusScope::TerminalControl => 2,
         _ => 0,
     }
 }

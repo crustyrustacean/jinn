@@ -203,6 +203,13 @@ pub enum Intent {
     SidebarSessionTeardown,
     /// Archive the selected session without running teardown.
     SidebarSessionArchive,
+    /// Archive the selected session and all its descendant sessions.
+    ///
+    /// Behind a press-again confirmation: the first press arms a prompt
+    /// showing the subtree size (or a busy notice if any member is streaming),
+    /// the second press emits the archive command. All-or-nothing — if any
+    /// member is busy, nothing archives.
+    SidebarSessionArchiveTree,
     /// Open the persona picker from the sidebar.
     SidebarPersonaEdit,
     /// Open the session lifecycle picker from the sidebar sessions section.
@@ -364,8 +371,21 @@ pub enum Intent {
     /// Move dashboard selection to the last row.
     DashboardSelectLast,
 
-    // ── Terminal tab (interactive_term takeover) ──────────────────
-    /// Take control of the active `interactive_term` session (terminal tab,
+    // ── Terminal overlay (interactive_term takeover) ──────────────
+    /// Toggle the terminal overlay for a session (global `<M-t>`, or the
+    /// sidebar key for the *selected* session). `None` targets the active
+    /// session. Opens view mode when closed; closes the overlay when open.
+    /// No-op when the target session has no live terminal.
+    ToggleTerminalOverlay {
+        /// The chat session whose terminal to show; `None` = active session.
+        session_id: Option<crate::protocol::SessionId>,
+    },
+    /// Toggle the terminal overlay for the session *selected* in the sidebar
+    /// (sidebar `T` key). Resolves the selection at handling time; no-op when
+    /// the Sessions section is not focused, nothing is selected, or the
+    /// selected session has no live terminal.
+    ToggleTerminalOverlayForSelected,
+    /// Take control of the active `interactive_term` session (overlay open,
     /// `i` key). All subsequent keys forward to the pty until handback.
     TerminalTakeControl,
     /// Hand the terminal back to the agent (handback key, default `<c-g>`).
@@ -477,6 +497,7 @@ impl std::fmt::Display for Intent {
             Intent::SidebarSessionClose => write!(f, "close session (w/teardown)"),
             Intent::SidebarSessionTeardown => write!(f, "run teardown script"),
             Intent::SidebarSessionArchive => write!(f, "archive session"),
+            Intent::SidebarSessionArchiveTree => write!(f, "archive session tree"),
             Intent::SidebarPersonaEdit => write!(f, "change persona"),
             Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::SidebarSessionContinue => write!(f, "continue session"),
@@ -551,6 +572,13 @@ impl std::fmt::Display for Intent {
             Intent::DashboardSelectDown => write!(f, "dashboard select down"),
             Intent::DashboardSelectFirst => write!(f, "dashboard select first"),
             Intent::DashboardSelectLast => write!(f, "dashboard select last"),
+            Intent::ToggleTerminalOverlay { session_id } => match session_id {
+                Some(id) => write!(f, "toggle terminal overlay for session {id}"),
+                None => write!(f, "toggle terminal overlay"),
+            },
+            Intent::ToggleTerminalOverlayForSelected => {
+                write!(f, "toggle terminal overlay for selected session")
+            }
             Intent::TerminalTakeControl => write!(f, "terminal take control"),
             Intent::TerminalHandback => write!(f, "terminal handback"),
             Intent::TerminalSendKey { label, .. } => {
