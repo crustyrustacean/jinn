@@ -1087,3 +1087,138 @@ async fn silent_guest_reaches_dead_phase() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
+
+// ── Mirrored plugin→host requests ────────────────────────────────────────────
+
+use crate::feat::provider::protocol::command::CancelStream as ProviderCancelStream;
+use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
+
+/// A mirrored `cancel_stream` line translates to the internal provider
+/// `CancelStream` command on the bus.
+#[rstest::rstest]
+#[tokio::test]
+async fn mirrored_cancel_stream_publishes_internal_command() {
+    // Given a coordinator whose guest sends one mirrored cancel_stream line
+    // for a valid session, and a recorder for the internal command.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<ProviderCancelStream>().await;
+    let session_id = SessionId::new();
+    let line = format!(
+        r#"{{"v":1,"seq":2,"ts":0,"type":"cancel_stream","session_id":"{session_id}"}}"#
+    );
+    spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![line],
+        },
+    )
+    .await;
+
+    // When the mirror is processed.
+    let commands = await_recorded(&recorder, 1, WAIT).await;
+
+    // Then the internal CancelStream command carries the parsed session id.
+    assert_eq!(commands.len(), 1);
+    assert_eq!(commands[0].session_id, session_id);
+}
+
+/// A mirrored `insert_system_entry` line translates to a
+/// `SubmitHistoryMutations` tail-append of one system entry.
+#[rstest::rstest]
+#[tokio::test]
+async fn mirrored_insert_system_entry_appends_tail_entry() {
+    // Given a coordinator whose guest sends one mirrored insert_system_entry
+    // line for a session that already has one history entry.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<SubmitHistoryMutations>().await;
+    let session_id = SessionId::new();
+    let line = format!(
+        r#"{{"v":1,"seq":2,"ts":0,"type":"insert_system_entry","session_id":"{session_id}","text":"watchdog tripped"}}"#
+    );
+    let state = spawn_coordinator_prepared(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![line],
+        },
+        |state| {
+            let cap = crate::common::tcaps::mint::mint_session_cap();
+            state.with_session(&cap, |view| {
+                let session = view.session.map().get_or_create(&session_id);
+                session.push_entry(crate::feat::session::chat_entry::ChatEntry::error("boom"));
+            });
+        },
+    )
+    .await;
+    let tail_id = state
+        .read()
+        .try_session(&session_id)
+        .and_then(|session| session.history().last())
+        .map(|entry| entry.id.clone())
+        .expect("seeded entry");
+
+    // When the mirror is processed.
+    let batches = await_recorded(&recorder, 1, WAIT).await;
+
+    // Then one mutation batch appended a system entry after the tail id.
+    assert_eq!(batches.len(), 1);
+    assert_eq!(batches[0].session_id, session_id);
+    assert_eq!(batches[0].mutations.len(), 1);
+    let crate::feat::session::history_mutation::HistoryMutation::InsertEntry {
+        after_entry_id,
+        entry,
+    } = &batches[0].mutations[0]
+    else {
+        unreachable!("expected InsertEntry");
+    };
+    assert_eq!(*after_entry_id, Some(tail_id));
+    assert!(matches!(
+        entry.kind,
+        crate::feat::session::chat_entry::ChatEntryKind::System(_)
+    ));
+}
+
+/// A mirror line with an unparseable session id is dropped: no publish, no
+/// crash.
+#[rstest::rstest]
+#[tokio::test]
+async fn mirror_with_bad_session_id_is_dropped() {
+    // Given a coordinator whose guest sends mirrored lines with garbage ids.
+    let harness = TestHarness::new().await;
+    let cancels = harness.spawn_recorder::<ProviderCancelStream>().await;
+    let mutations = harness.spawn_recorder::<SubmitHistoryMutations>().await;
+    spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![
+                r#"{"v":1,"seq":2,"ts":0,"type":"cancel_stream","session_id":"not-a-uuid"}"#
+                    .to_owned(),
+                r#"{"v":1,"seq":3,"ts":0,"type":"insert_system_entry","session_id":"not-a-uuid","text":"nope"}"#
+                    .to_owned(),
+            ],
+        },
+    )
+    .await;
+
+    // When both lines are processed and the pipeline settles.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Then nothing was published on either command.
+    assert!(
+        await_recorded(&cancels, 0, Duration::from_millis(100))
+            .await
+            .is_empty(),
+        "bad-id cancel must be dropped"
+    );
+    assert!(
+        await_recorded(&mutations, 0, Duration::from_millis(100))
+            .await
+            .is_empty(),
+        "bad-id insert must be dropped"
+    );
+}
