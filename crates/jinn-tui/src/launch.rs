@@ -74,17 +74,25 @@ pub fn launch(
 
     // The single keymap-bootstrap site. Production and tests reach this
     // via the same path. The terminal handback binding comes from
-    // `[interactive_term]` prefs, normalized (falls back to the default).
-    let handback = jinn_domain::feat::interactive_term::prefs::normalize_handback_key(
-        &core
-            .state
-            .read()
-            .frontend
-            .preferences
-            .interactive_term
-            .handback_key,
-    )
-    .unwrap_or_else(|| jinn_domain::feat::interactive_term::prefs::DEFAULT_HANDBACK_KEY.to_owned());
+    // `[interactive_term]` prefs, validated by the same parser the keymap
+    // binds through (falls back to the default, loudly).
+    let configured = core
+        .state
+        .read()
+        .frontend
+        .preferences
+        .interactive_term
+        .handback_key
+        .clone();
+    let handback = jinn_domain::feat::interactive_term::prefs::normalize_handback_key(&configured)
+        .unwrap_or_else(|| {
+            tracing::warn!(
+                configured = %configured,
+                default = jinn_domain::feat::interactive_term::prefs::DEFAULT_HANDBACK_KEY,
+                "invalid [interactive_term] handback_key; falling back to the default"
+            );
+            jinn_domain::feat::interactive_term::prefs::DEFAULT_HANDBACK_KEY.to_owned()
+        });
     let keymap = keymap::init_with_handback(&handback);
     let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
 

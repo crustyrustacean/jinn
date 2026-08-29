@@ -43,25 +43,37 @@ impl Default for InteractiveTermPrefs {
     }
 }
 
-/// Normalizes the configured handback binding to a lowercase, bracketed
-/// form, or `None` when it is unusable (caller should fall back to the
-/// default).
+/// Normalizes the configured handback binding (trimmed), or `None` when it
+/// is unusable (caller should fall back to the default).
 ///
-/// Accepts `<c-g>`, `c-g`, `<C-G>`; rejects empty strings, multi-key
-/// sequences, and non-ctrl bindings (handback must not swallow plain keys).
+/// Any binding the keybind system accepts is allowed — single keys
+/// (`<c-g>`, `<m-g>`, `<f4>`, `'x'`) and sequences (`gg`) alike: validation
+/// delegates to [`ratatui_which_key::parse_key_sequence`] with the same
+/// [`KeyEvent`](crate::protocol::KeyEvent) the keymap binds through, so a
+/// config value accepted here is guaranteed to bind. Modifier-name case is
+/// irrelevant to parsing, so the raw spelling is returned unchanged.
+///
+/// A plain-key handback (e.g. `g`) shadows that key inside control mode —
+/// the binding beats the forwarding catch-all — which is the user's explicit
+/// choice via config.
 #[must_use]
 pub fn normalize_handback_key(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
-    let inner = trimmed
-        .strip_prefix('<')
-        .and_then(|s| s.strip_suffix('>'))
-        .unwrap_or(trimmed);
-    let lowered = inner.to_ascii_lowercase();
-    let key = lowered.strip_prefix("c-")?;
-    if key.is_empty() || key.len() > 1 {
+    if trimmed.is_empty() {
         return None;
     }
-    Some(format!("<c-{key}>"))
+    // The leader argument only matters for `<leader>` expansions; the
+    // handback binds through the keymap's own parsing at bind time.
+    let keys = ratatui_which_key::parse_key_sequence::<crate::protocol::KeyEvent>(
+        trimmed,
+        &<crate::protocol::KeyEvent as ratatui_which_key::Key>::space(),
+    );
+    if keys.is_empty() {
+        // Unparseable tokens are silently dropped by the parser; an empty
+        // result means nothing usable was written.
+        return None;
+    }
+    Some(trimmed.to_owned())
 }
 
 /// Validates the prefs: falls back to defaults for unusable values.
@@ -107,25 +119,29 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    #[case("<c-g>", Some("<c-g>"))]
-    #[case("c-g", Some("<c-g>"))]
-    #[case("<C-G>", Some("<c-g>"))]
-    #[case("<c-'>", Some("<c-'>"))]
-    fn normalizes_supported_notations(#[case] raw: &str, #[case] expected: Option<&str>) {
-        // When normalizing the raw binding.
+    #[case("<c-g>")]
+    #[case("<m-g>")]
+    #[case("<C-G>")]
+    #[case("<c-'>")]
+    #[case("<c-tab>")]
+    #[case("<f4>")]
+    #[case("<space>")]
+    #[case("gg")]
+    #[case("x")]
+    fn accepts_any_keymap_parseable_binding(#[case] raw: &str) {
+        // When normalizing a binding the keybind system can parse.
         let got = normalize_handback_key(raw);
 
-        // Then it matches the canonical bracketed lowercase form.
-        assert_eq!(got.as_deref(), expected);
+        // Then it is accepted verbatim (validation matches `bind()`).
+        assert_eq!(got.as_deref(), Some(raw));
     }
 
     #[rstest::rstest]
     #[case("")]
-    #[case("g")]
-    #[case("<c-tab>")]
-    #[case("<m-g>")]
+    #[case("   ")]
+    #[case("<junk>")]
     fn rejects_unusable_notations(#[case] raw: &str) {
-        // When normalizing an unusable binding.
+        // When normalizing a binding the keybind system cannot parse.
         let got = normalize_handback_key(raw);
 
         // Then it is rejected.
@@ -134,9 +150,9 @@ mod tests {
 
     #[rstest::rstest]
     fn validated_falls_back_to_default_for_bad_key() {
-        // Given prefs with a non-ctrl handback key.
+        // Given prefs with an unparseable handback key.
         let prefs = InteractiveTermPrefs {
-            handback_key: "g".to_owned(),
+            handback_key: "<junk>".to_owned(),
             ..InteractiveTermPrefs::default()
         };
 
@@ -149,8 +165,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn validated_normalizes_case_without_flagging_default() {
-        // Given prefs with an unnormalized but usable key.
+    fn validated_preserves_parseable_spellings() {
+        // Given prefs with an unusual but parseable key spelling (the
+        // keymap's parser is case-insensitive on modifier names).
         let prefs = InteractiveTermPrefs {
             handback_key: "<C-G>".to_owned(),
             ..InteractiveTermPrefs::default()
@@ -159,9 +176,9 @@ mod tests {
         // When validating.
         let (corrected, changed) = validated(&prefs);
 
-        // Then the key is canonicalized and flagged for rewrite.
-        assert_eq!(corrected.handback_key, "<c-g>");
-        assert!(changed);
+        // Then the user's spelling is kept untouched.
+        assert_eq!(corrected.handback_key, "<C-G>");
+        assert!(!changed);
     }
 
     #[rstest::rstest]
