@@ -87,9 +87,33 @@ pub struct SendToLlmProvider {
     pub endpoint_tag: Option<String>,
     /// When this request was dispatched to the LLM.
     pub dispatched_at: Timestamp,
+    /// Whether this request was user-initiated or an automatic tool-loop
+    /// continuation. The LLM actor drops `ToolContinuation` requests while a
+    /// session is tombstoned by a cancel.
+    #[serde(default)]
+    pub origin: StreamOrigin,
 }
 
 impl crate::common::bus::BusMessage for SendToLlmProvider {}
+
+/// Where an LLM request originated, from the tool loop's perspective.
+///
+/// The LLM actor uses this to enforce the cancel tombstone: after
+/// [`CancelStream`], further `ToolContinuation` requests are dropped until the
+/// next `User` request clears it. This closes the race where a cancel lands
+/// while a tool-loop continuation is already in flight — without the gate, the
+/// continuation re-dispatches a stream the user (or the tool-call watchdog)
+/// just cancelled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum StreamOrigin {
+    /// A user-initiated turn (submitted message, queue drain, retry).
+    #[default]
+    User,
+    /// The automatic continuation dispatched after a tool batch completes.
+    ToolContinuation,
+}
+
+impl crate::common::bus::BusMessage for StreamOrigin {}
 
 /// Refresh the model list from all providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
