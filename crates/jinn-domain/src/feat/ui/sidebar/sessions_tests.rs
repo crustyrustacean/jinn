@@ -2162,7 +2162,7 @@ fn sidebar_unmarks_forked_sessions() {
 // ---------------------------------------------------------------------------
 
 use crate::feat::ui::sidebar::sessions::archive_tree::{
-    ArchiveTreeError, ArchiveTreePrompt, archive_tree_members,
+    ArchiveTreeError, ArchiveTreePrompt, TreePromptAction, archive_tree_members,
 };
 
 /// Helper: builds a session tree of root -> child -> grandchild, plus an
@@ -2350,7 +2350,10 @@ fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
     // Then the confirm prompt is armed with the subtree size.
     assert_eq!(
         state.frontend.archive_tree_prompt,
-        Some(ArchiveTreePrompt::Confirm { count: 3 })
+        Some(ArchiveTreePrompt::Confirm {
+            count: 3,
+            action: TreePromptAction::Archive,
+        })
     );
     // And no commands were emitted.
     assert!(result.message_names.is_empty());
@@ -2460,6 +2463,173 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
     assert!(result.message_names.is_empty());
 }
 
+#[rstest::rstest]
+fn teardown_tree_arm_sets_confirm_prompt_with_action() {
+    // Given a focused idle subtree of three sessions.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+
+    // When handling the first SidebarSessionTeardownTree.
+    let result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+
+    // Then the confirm prompt is armed for teardown-and-archive.
+    assert_eq!(
+        state.frontend.archive_tree_prompt,
+        Some(ArchiveTreePrompt::Confirm {
+            count: 3,
+            action: TreePromptAction::TeardownAndArchive,
+        })
+    );
+    // And no commands were emitted.
+    assert!(result.message_names.is_empty());
+}
+
+#[rstest::rstest]
+fn teardown_tree_arm_sets_busy_prompt_when_subtree_busy() {
+    // Given a focused subtree containing a busy grandchild.
+    let (mut state, [.., grandchild_id, _survivor]) = state_with_archive_tree();
+    state
+        .session
+        .get_mut(&grandchild_id)
+        .expect("grandchild")
+        .begin_busy();
+    focus_sessions_and_select(&mut state, "tree root");
+
+    // When handling the first SidebarSessionTeardownTree.
+    let result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+
+    // Then the busy prompt is armed.
+    assert_eq!(
+        state.frontend.archive_tree_prompt,
+        Some(ArchiveTreePrompt::Busy)
+    );
+    // And no commands were emitted.
+    assert!(result.message_names.is_empty());
+}
+
+#[rstest::rstest]
+fn teardown_tree_second_press_emits_teardown_tree_command() {
+    // Given an armed teardown confirm prompt over an idle subtree.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+
+    // When handling a second SidebarSessionTeardownTree.
+    let result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+
+    // Then the TeardownSessionTree command is emitted.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("TeardownSessionTree")),
+        "should emit TeardownSessionTree: {:?}",
+        result.message_names
+    );
+    // And no archive-tree command was emitted.
+    assert!(
+        !result
+            .message_names
+            .iter()
+            .any(|n| n.contains("ArchiveSessionTree")),
+        "should not emit ArchiveSessionTree: {:?}",
+        result.message_names
+    );
+    // And the prompt is cleared.
+    assert_eq!(state.frontend.archive_tree_prompt, None);
+}
+
+#[rstest::rstest]
+fn teardown_tree_other_intent_dismisses_prompt() {
+    // Given an armed teardown confirm prompt.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+
+    // When handling a different intent (SidebarSectionNext).
+    let _result = IntentHandler::handle(&Intent::SidebarSectionNext, &mut state);
+
+    // Then the prompt is dismissed.
+    assert_eq!(state.frontend.archive_tree_prompt, None);
+}
+
+#[rstest::rstest]
+fn busy_tree_prompt_dismisses_on_other_intent() {
+    // Given the busy notice is showing.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
+
+    // When handling a different intent (SidebarSectionNext).
+    let _result = IntentHandler::handle(&Intent::SidebarSectionNext, &mut state);
+
+    // Then the busy notice is dismissed.
+    assert_eq!(state.frontend.archive_tree_prompt, None);
+}
+
+#[rstest::rstest]
+fn busy_tree_prompt_still_confirms_on_tree_key() {
+    // Given the busy notice is showing and the subtree has become idle.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
+
+    // When handling SidebarSessionTeardownTree (the notice's own key).
+    let result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+
+    // Then the re-validation passes and the teardown-tree command is emitted.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("TeardownSessionTree")),
+        "should emit TeardownSessionTree: {:?}",
+        result.message_names
+    );
+    // And the prompt is cleared.
+    assert_eq!(state.frontend.archive_tree_prompt, None);
+}
+
+#[rstest::rstest]
+fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
+    // Given an armed teardown confirm prompt.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+
+    // When handling SidebarSessionArchiveTree (the sibling tree key).
+    let _result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+
+    // Then the teardown prompt was replaced by a fresh archive prompt.
+    assert_eq!(
+        state.frontend.archive_tree_prompt,
+        Some(ArchiveTreePrompt::Confirm {
+            count: 3,
+            action: TreePromptAction::Archive,
+        })
+    );
+}
+
+#[rstest::rstest]
+fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
+    // Given an armed archive confirm prompt.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+
+    // When handling SidebarSessionTeardownTree (the sibling tree key).
+    let _result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+
+    // Then the archive prompt was replaced by a fresh teardown prompt.
+    assert_eq!(
+        state.frontend.archive_tree_prompt,
+        Some(ArchiveTreePrompt::Confirm {
+            count: 3,
+            action: TreePromptAction::TeardownAndArchive,
+        })
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Archive tree - prompt render
 // ---------------------------------------------------------------------------
@@ -2467,40 +2637,15 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
-/// Helper: renders the sidebar sessions section and returns the buffer text.
-/// Width 60 so prompt banners fit unclipped (the busy banner is 46 cols).
-fn render_sessions_area(state: &AppState) -> String {
-    let (width, height) = (60, 20);
-    let mut section = SessionsSection::new();
-    let area = ratatui::layout::Rect {
-        x: 0,
-        y: 0,
-        width,
-        height,
-    };
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    let ctx = RenderCtx::new(state);
-    terminal
-        .draw(|frame| section.render(frame, area, &ctx))
-        .expect("draw");
-    let buffer = terminal.backend().buffer();
-    (0..height)
-        .flat_map(|y| {
-            (0..width).map(move |x| {
-                buffer
-                    .cell((x, y))
-                    .map_or(' ', |c| c.symbol().chars().next().unwrap_or(' '))
-            })
-        })
-        .collect()
-}
-
 #[rstest::rstest]
 fn archive_tree_prompt_renders_yellow_confirm_with_count() {
     // Given a focused selection with an armed confirm prompt of 3 sessions.
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
-    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm { count: 3 });
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm {
+        count: 3,
+        action: TreePromptAction::Archive,
+    });
 
     // When rendering the archive-tree prompt overlay.
     let text = render_archive_tree_prompt_overlay(&state, 60);
@@ -2509,6 +2654,44 @@ fn archive_tree_prompt_renders_yellow_confirm_with_count() {
     assert!(
         text.contains("Press A again to archive 3 sessions"),
         "rendered: {text}"
+    );
+}
+
+#[rstest::rstest]
+fn close_session_prompt_right_aligns_inside_the_frame() {
+    // Given a narrow sidebar (20 of 60 columns) with the close prompt armed
+    // on a selected session — the banner text (50 columns) cannot fit inside
+    // the sidebar.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.close_session_prompt = true;
+
+    // When rendering the section plus the late overlay.
+    let rows = render_sessions_with_close_prompt(&state, 20);
+
+    // Then the banner is rendered fully, right-aligned to the frame's right
+    // edge (extending left over the main column) — not clipped to the sidebar.
+    let banner_row = rows
+        .iter()
+        .position(|row| row.contains("Press x again to teardown"))
+        .expect("banner is rendered");
+    let row = &rows[banner_row];
+    assert!(
+        row.contains("Press x again to teardown and archive 1 session"),
+        "banner is complete, not clipped: {row}"
+    );
+    // And its right edge touches the frame's right edge.
+    let right = row.trim_end().len();
+    assert_eq!(right, 59, "banner right edge at frame column 59: {row}");
+    // And it sits one row above the cursor row.
+    let cursor_row = rows
+        .iter()
+        .position(|r| r.contains("tree root"))
+        .expect("cursor session row is visible");
+    assert_eq!(
+        banner_row,
+        cursor_row.saturating_sub(1),
+        "banner must sit 1 row above the cursor row"
     );
 }
 
@@ -2525,6 +2708,59 @@ fn archive_tree_prompt_renders_red_busy_notice() {
     // Then the busy notice appears.
     assert!(
         text.contains("Cannot archive tree while a session is busy"),
+        "rendered: {text}"
+    );
+}
+
+#[rstest::rstest]
+fn archive_tree_prompt_anchors_above_the_cursor_row_at_top_of_list() {
+    // Given the survivor root selected — with two roots, the newest-first
+    // root sort puts the survivor at the very top row of the sessions list —
+    // and the busy prompt armed. The overlay helper must render through the
+    // Sidebar container: the production bottom-anchor lands the first entry
+    // at row 0, so a clamped sub(1) would paint the banner ON the cursor.
+    let (mut state, [.., survivor_id]) = state_with_archive_tree();
+    let survivor_title = entry_title(&state, &survivor_id);
+    focus_sessions_and_select(&mut state, &survivor_title);
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
+
+    // When rendering the sessions section followed by the overlay (the same
+    // late-overlay pass jinn-tui performs).
+    let rows = render_sessions_with_archive_tree_prompt(&state, 60);
+
+    // Then the banner renders on the row ABOVE the cursor row — never on
+    // the cursor row itself.
+    let cursor_row = rows
+        .iter()
+        .position(|row| row.contains(&survivor_title))
+        .expect("selected session row is visible");
+    let banner_row = rows
+        .iter()
+        .position(|row| row.contains("Cannot archive tree"))
+        .expect("banner is rendered");
+    assert_eq!(
+        banner_row,
+        cursor_row.saturating_sub(1),
+        "banner must sit 1 row above the cursor row"
+    );
+}
+
+#[rstest::rstest]
+fn teardown_tree_prompt_renders_teardown_confirm_text() {
+    // Given a focused selection with an armed teardown confirm prompt.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm {
+        count: 3,
+        action: TreePromptAction::TeardownAndArchive,
+    });
+
+    // When rendering the archive-tree prompt overlay.
+    let text = render_archive_tree_prompt_overlay(&state, 60);
+
+    // Then the teardown confirm text with the count appears.
+    assert!(
+        text.contains("Press X again to teardown and archive 3 sessions"),
         "rendered: {text}"
     );
 }
@@ -2548,8 +2784,8 @@ fn archive_tree_prompt_spans_past_the_sidebar_over_the_main_column() {
 }
 
 /// Helper: renders the archive-tree prompt overlay with the given sidebar
-/// width inside a 60-wide frame and returns the full buffer text.
-fn render_archive_tree_prompt_overlay(state: &AppState, sidebar_width: u16) -> String {
+/// width inside a 60-wide frame and returns the buffer as one string per row.
+fn render_archive_tree_prompt_rows(state: &AppState, sidebar_width: u16) -> Vec<String> {
     let (width, height) = (60, 12);
     let frame_area = ratatui::layout::Rect {
         x: 0,
@@ -2575,16 +2811,101 @@ fn render_archive_tree_prompt_overlay(state: &AppState, sidebar_width: u16) -> S
             );
         })
         .expect("draw");
+    buffer_rows(terminal, width, height)
+}
+
+/// Helper: renders the sessions section then the archive-tree prompt overlay
+/// (the same two-pass render jinn-tui performs) and returns one buffer string
+/// per row. Goes through the `Sidebar` container so the sessions section gets
+/// the same bottom-anchored sub-rect the production render gives it.
+fn render_sessions_with_archive_tree_prompt(state: &AppState, sidebar_width: u16) -> Vec<String> {
+    let (width, height) = (60, 20);
+    let frame_area = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width,
+        height,
+    };
+    let sidebar_rect = ratatui::layout::Rect {
+        x: width - sidebar_width,
+        y: 0,
+        width: sidebar_width,
+        height,
+    };
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+    let ctx = RenderCtx::new(state);
+    let mut sidebar = crate::feat::ui::sidebar::Sidebar::default();
+    sidebar.register(Box::new(SessionsSection::new()));
+    terminal
+        .draw(|frame| {
+            sidebar.render(frame, sidebar_rect, &ctx);
+            crate::feat::ui::sidebar::sessions::render_archive_tree_prompt_for_state(
+                frame,
+                sidebar_rect,
+                frame_area,
+                &ctx,
+            );
+        })
+        .expect("draw");
+    buffer_rows(terminal, width, height)
+}
+
+/// Helper: flattens a terminal's test backend into one string per row.
+fn buffer_rows(terminal: Terminal<TestBackend>, width: u16, height: u16) -> Vec<String> {
     let buffer = terminal.backend().buffer();
     (0..height)
-        .flat_map(|y| {
-            (0..width).map(move |x| {
-                buffer
-                    .cell((x, y))
-                    .map_or(' ', |c| c.symbol().chars().next().unwrap_or(' '))
-            })
+        .map(|y| {
+            (0..width)
+                .map(|x| {
+                    buffer
+                        .cell((x, y))
+                        .map_or(' ', |c| c.symbol().chars().next().unwrap_or(' '))
+                })
+                .collect()
         })
         .collect()
+}
+
+/// Helper: renders the sessions section then the close-session prompt overlay
+/// (the same two-pass render jinn-tui performs) and returns one buffer string
+/// per row. Goes through the `Sidebar` container so the sessions section gets
+/// the same bottom-anchored sub-rect the production render gives it.
+fn render_sessions_with_close_prompt(state: &AppState, sidebar_width: u16) -> Vec<String> {
+    let (width, height) = (60, 20);
+    let frame_area = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width,
+        height,
+    };
+    let sidebar_rect = ratatui::layout::Rect {
+        x: width - sidebar_width,
+        y: 0,
+        width: sidebar_width,
+        height,
+    };
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+    let ctx = RenderCtx::new(state);
+    let mut sidebar = crate::feat::ui::sidebar::Sidebar::default();
+    sidebar.register(Box::new(SessionsSection::new()));
+    terminal
+        .draw(|frame| {
+            sidebar.render(frame, sidebar_rect, &ctx);
+            crate::feat::ui::sidebar::sessions::render_close_session_prompt_for_state(
+                frame,
+                sidebar_rect,
+                frame_area,
+                &ctx,
+            );
+        })
+        .expect("draw");
+    buffer_rows(terminal, width, height)
+}
+
+/// Helper: renders the archive-tree prompt overlay with the given sidebar
+/// width inside a 60-wide frame and returns the full buffer text.
+fn render_archive_tree_prompt_overlay(state: &AppState, sidebar_width: u16) -> String {
+    render_archive_tree_prompt_rows(state, sidebar_width).concat()
 }
 
 #[rstest::rstest]

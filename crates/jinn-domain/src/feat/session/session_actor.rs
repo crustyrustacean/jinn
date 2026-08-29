@@ -54,6 +54,7 @@ use crate::feat::session::protocol::session_fork_requested::SessionForkRequested
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session::protocol::task_list_updated::TaskListUpdated;
+use crate::feat::session::protocol::teardown_session_tree::TeardownSessionTree;
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
 use crate::feat::session_lifecycle::protocol::command::{
     CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
@@ -152,6 +153,7 @@ impl Actor for SessionPersistenceActor {
         bus.subscribe::<CloseSession, _>(&actor_ref).await;
         bus.subscribe::<ArchiveSession, _>(&actor_ref).await;
         bus.subscribe::<ArchiveSessionTree, _>(&actor_ref).await;
+        bus.subscribe::<TeardownSessionTree, _>(&actor_ref).await;
         bus.subscribe::<SubmitHistoryMutations, _>(&actor_ref).await;
         bus.subscribe::<MarkSessionInteracted, _>(&actor_ref).await;
         bus.subscribe::<RetryStalledSession, _>(&actor_ref).await;
@@ -345,6 +347,13 @@ impl Message<ArchiveSessionTree> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: ArchiveSessionTree, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_archive_session_tree(&msg).await;
+    }
+}
+
+impl Message<TeardownSessionTree> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: TeardownSessionTree, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_teardown_session_tree(&msg).await;
     }
 }
 
