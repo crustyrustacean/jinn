@@ -50,7 +50,9 @@ Entries are added or amended **only with human approval**.
 - (context) The assembled system prompt travels as an explicit field through dispatch and provider requests; the message array carries only chat history, and provider request builders never extract content from it.
 - (context) System-kind chat entries ride in LLM context as `[System]`-prefixed `User` messages in conversation order (when pinned or forced-include), never inside the system prompt.
 - (context) Context assembly partitions history into top, bottom, and working outgoing groups while preserving assistant tool-call/tool-result loops as atomic units.
-- (context) Context assembly injects a synthetic `[System]`-prefixed task-list snapshot message positioned `echo_offset` messages before the most recent message (snapped backward to the nearest tool-loop boundary), rendered tree-only with no next-step line; injection is skipped when the task list is empty, the offset is 0, or history is at most the offset long.
+- (context) Context assembly can inject a synthetic `[System]`-prefixed task-list snapshot message into the assembled prompt, mirroring the live task list tree-only with no next-step line.
+- (context) Task-list echo injection is experimental and off unless `[task_list] echo_enabled = true`; it is also skipped when the task list is empty, `echo_offset` is 0, or history is at most `echo_offset` long.
+- (context) The task-list echo, when injected, is positioned `echo_offset` messages before the most recent message, snapped backward to the nearest tool-loop boundary.
 - (context) Task-list tool results include the next-step line and were deliberately left unchanged when the task-list echo was added.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
 - (context) The `gci` isolate handler iterates tool-loop chunks (one history-editor write per chunk) through the user-source `set_context` path, then emits one `ContextOverrideChanged` per changed chunk id and persists the session.
