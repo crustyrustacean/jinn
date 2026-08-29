@@ -1371,8 +1371,8 @@ mod tests {
     use crate::feat::session::protocol::close_session::CloseSession;
     use crate::feat::session::protocol::session_archived::SessionArchived;
     use crate::feat::session::protocol::session_closed::SessionClosed;
-    use crate::feat::session::session_summary::SessionSummary;
     use crate::feat::session::session_actor::SessionPersistenceActor;
+    use crate::feat::session::session_summary::SessionSummary;
     use crate::feat::session_lifecycle::protocol::command::{
         CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
         RunSessionTeardown, SetSessionCwd,
@@ -2990,7 +2990,10 @@ mod tests {
     }
 
     /// Seeds sessions into the actor's state and returns the root's ID.
-    fn seed_sessions(actor: &SessionPersistenceActor, sessions: Vec<ChatSessionState>) -> SessionId {
+    fn seed_sessions(
+        actor: &SessionPersistenceActor,
+        sessions: Vec<ChatSessionState>,
+    ) -> SessionId {
         let root_id = sessions[0].session_id().clone();
         let mut state = actor.state.write_test_no_cap();
         for session in sessions {

@@ -226,3 +226,6 @@ Entries are added or amended **only with human approval**.
 - (session) Sessions carry no automation flag; identity is a persisted origin enum (user, fork, subagent), and tree structure is linked via `parent_session`.
 - (subagents) A spawned subagent's first dispatch waits — bounded by a 15-second budget — for its discovery scans (project context files, skills, prompt templates) and enabled MCP servers to settle, so the first prompt includes MCP tools and project context; the message is sent regardless once the budget expires.
 - (subagents) The sidebar's subagent marking reflects the session's origin, not the parent link; forks always get fork origin — even forks of subagent sessions.
+- (session) The sidebar `A` key archives the selected session and all descendant sessions via the `parent_session` link — forks included — behind a press-again confirmation.
+- (session) Tree archive is all-or-nothing: if any member session is busy, nothing archives and a red busy popup is shown instead of the confirmation.
+- (session) Tree archive resolves descendants across memory and the session store; store-only descendants already archived are included as no-ops.
