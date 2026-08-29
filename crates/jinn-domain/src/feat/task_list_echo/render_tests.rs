@@ -6,6 +6,7 @@
 #![allow(
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::panic,
     reason = "test code"
 )]
 
@@ -21,8 +22,12 @@ fn populated_task_list() -> TaskList {
     let p1 = list.add_phase("Research");
     list.add_task(&p1, "First task", crate::feat::todo_list::TaskPosition::End)
         .expect("add first task");
-    list.add_task(&p1, "Second task", crate::feat::todo_list::TaskPosition::End)
-        .expect("add second task");
+    list.add_task(
+        &p1,
+        "Second task",
+        crate::feat::todo_list::TaskPosition::End,
+    )
+    .expect("add second task");
     let p2 = list.add_phase("Build");
     list.add_task(&p2, "Third task", crate::feat::todo_list::TaskPosition::End)
         .expect("add third task");
@@ -36,8 +41,12 @@ fn task_list_with_n_render_lines(n: usize) -> TaskList {
     // Each task renders as one line; two lines are the phase header and the
     // joined non-empty phases, so seed enough tasks to exceed any target.
     for i in 0..n {
-        list.add_task(&p, &format!("Task {i}"), crate::feat::todo_list::TaskPosition::End)
-            .expect("add task");
+        list.add_task(
+            &p,
+            &format!("Task {i}"),
+            crate::feat::todo_list::TaskPosition::End,
+        )
+        .expect("add task");
     }
     list
 }
@@ -51,14 +60,24 @@ fn echo_renders_wrapper_and_tree_without_next_line() {
     let msg = echo_message(&list, 60).expect("echo for non-empty list");
 
     // Then the message is a user message containing the header.
-    let LlmMessage::User { content, attachments } = &msg else {
+    let LlmMessage::User {
+        content,
+        attachments,
+    } = &msg
+    else {
         panic!("expected user message, got {msg:?}");
     };
     assert_eq!(content.split("\n\n").next(), Some(ECHO_HEADER));
     // And it contains the treatment contract.
-    assert!(content.contains(ECHO_PREAMBLE), "preamble missing: {content}");
+    assert!(
+        content.contains(ECHO_PREAMBLE),
+        "preamble missing: {content}"
+    );
     // And it contains the tree.
-    assert!(content.contains("## Phase 1: Research"), "tree missing: {content}");
+    assert!(
+        content.contains("## Phase 1: Research"),
+        "tree missing: {content}"
+    );
     assert!(content.contains("First task"), "task missing: {content}");
     // And it does not contain the next-step line.
     assert!(

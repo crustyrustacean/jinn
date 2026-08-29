@@ -37,6 +37,7 @@ Entries are added or amended **only with human approval**.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
 - (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
 - (arch) `AppState` is the shared state; the frontend writes user input, domain actors write their owned fields, and the TUI renderer reads it on each tick.
+- (context) jinn has no memory subsystem by decision: durable cross-session facts are carried by AGENTS.md/CLAUDE.md files, personas, and skills; cross-session recall is via the `session_query` tool; planning state is carried by pinned plan files.
 - (chat) The queue actor drains the steering buffer before context assembly on both user-message dispatch and dispatch-resume.
 - (compaction) Compaction is gated by a context-size threshold: it skips when below, triggers when at or above, and uses a fallback context length when the model isn't in the cache.
 - (compaction) Compaction preserves pinned entries; the cut index walks backwards from a reserve and advances past complete tool loops to a valid opener.
@@ -49,6 +50,8 @@ Entries are added or amended **only with human approval**.
 - (context) The assembled system prompt travels as an explicit field through dispatch and provider requests; the message array carries only chat history, and provider request builders never extract content from it.
 - (context) System-kind chat entries ride in LLM context as `[System]`-prefixed `User` messages in conversation order (when pinned or forced-include), never inside the system prompt.
 - (context) Context assembly partitions history into top, bottom, and working outgoing groups while preserving assistant tool-call/tool-result loops as atomic units.
+- (context) Context assembly injects a synthetic `[System]`-prefixed task-list snapshot message positioned `echo_offset` messages before the most recent message (snapped backward to the nearest tool-loop boundary), rendered tree-only with no next-step line; injection is skipped when the task list is empty, the offset is 0, or history is at most the offset long.
+- (context) Task-list tool results include the next-step line and were deliberately left unchanged when the task-list echo was added.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
 - (context) The `gci` isolate handler iterates tool-loop chunks (one history-editor write per chunk) through the user-source `set_context` path, then emits one `ContextOverrideChanged` per changed chunk id and persists the session.
 - (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (token stays literal, turn dispatches); only a recognizable image failing conversion hard-blocks. A user entry carrying attachments is blocked unless the active model is confirmed image-capable via models.dev — unknown models are blocked, not allowed.
