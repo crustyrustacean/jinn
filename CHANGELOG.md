@@ -15,6 +15,8 @@
 ## (development; unreleased) v0.113.0
 
 - Add `A` sidebar keybind to archive selected session and all of it's children.
+- Add `X` sidebar keybind to teardown selected session and then archive all of it's children.
+- Make archive/teardown confirmation banners use consistent wording.
 - Add subagents/spawnable subtasks.
 
 ### Subagents
