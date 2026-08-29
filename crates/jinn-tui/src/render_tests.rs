@@ -516,3 +516,69 @@ async fn mcp_inspector_tools_pane_renders_tool_names() {
         "tools pane shows the tool name"
     );
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn which_key_help_renders_above_the_terminal_overlay() {
+    // Given an app with the terminal overlay open in view mode and the
+    // which-key help activated (as if `?` had been pressed).
+    let mut app = render_test_app().await;
+    app.core
+        .state
+        .write_test_no_cap()
+        .frontend
+        .scope_stack
+        .swap_base(jinn_domain::FocusScope::TerminalView);
+    app.which_key.active = true;
+
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the help popup's title survives — the overlay did not paint
+    // over it.
+    let buf = terminal.backend().buffer();
+    let rendered: String = buf
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect();
+    assert!(
+        rendered.contains("Shortcuts"),
+        "which-key help must render above the terminal overlay, got: {rendered}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn which_key_help_renders_in_base_scopes() {
+    // Given a plain chat-scope app with the which-key help activated.
+    let mut app = render_test_app().await;
+    app.which_key.active = true;
+
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the help popup still renders (the reordering regressed nothing).
+    let buf = terminal.backend().buffer();
+    let rendered: String = buf
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect();
+    assert!(
+        rendered.contains("Shortcuts"),
+        "which-key help must render in base scopes"
+    );
+}
