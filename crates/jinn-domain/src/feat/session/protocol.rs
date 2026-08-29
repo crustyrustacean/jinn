@@ -19,6 +19,7 @@ pub mod session_new;
 pub mod session_phase_changed;
 pub mod submit_history_mutations;
 pub mod task_list_updated;
+pub mod teardown_session_tree;
 pub mod trigger_compaction;
 pub mod user_interacted;
 
@@ -31,4 +32,5 @@ pub use session_archived::SessionArchived;
 pub use session_closed::SessionClosed;
 pub use submit_history_mutations::SubmitHistoryMutations;
 pub use task_list_updated::TaskListUpdated;
+pub use teardown_session_tree::TeardownSessionTree;
 pub use user_interacted::UserInteracted;
