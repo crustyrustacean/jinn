@@ -395,14 +395,19 @@ pub enum Intent {
     /// selected session has no live terminal.
     ToggleTerminalOverlayForSelected,
     /// Take control of the active `interactive_term` session (overlay open,
-    /// `i` key). All subsequent keys forward to the pty until handback.
+    /// control-toggle key, default `<c-g>`). All subsequent keys forward to
+    /// the pty until the toggle key is pressed again.
     TerminalTakeControl,
-    /// Hand the terminal back to the agent (handback key, default `<c-g>`).
-    ///
-    /// Exits control mode; the captured screen is steered to the model so it
-    /// sees the post-takeover state in both busy (steering drain) and idle
-    /// (immediate dispatch) session phases.
+    /// Toggle control back to view mode (control-toggle key, default
+    /// `<c-g>`). Releases control to the agent without messaging it; the
+    /// status hint advertises `I` for pushing the screen.
     TerminalHandback,
+    /// Copy the visible terminal screen to the clipboard (view mode `y`).
+    TerminalYank,
+    /// Copy the visible terminal screen to the clipboard and push its text to
+    /// the model (view mode `I`): steered when the session is busy, dispatched
+    /// as a user message when idle.
+    TerminalPushScreen,
     /// Forward one key event to the pty while the user holds control.
     TerminalSendKey {
         /// Encoded bytes for the key (produced by the keymap catch_all).
@@ -590,7 +595,9 @@ impl std::fmt::Display for Intent {
                 write!(f, "toggle terminal overlay for selected session")
             }
             Intent::TerminalTakeControl => write!(f, "terminal take control"),
-            Intent::TerminalHandback => write!(f, "terminal handback"),
+            Intent::TerminalHandback => write!(f, "terminal control toggle exit"),
+            Intent::TerminalYank => write!(f, "terminal yank screen"),
+            Intent::TerminalPushScreen => write!(f, "terminal push screen"),
             Intent::TerminalSendKey { label, .. } => {
                 write!(f, "terminal send key ({label})")
             }

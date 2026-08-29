@@ -1,16 +1,21 @@
-//! IntentHandler arms for the terminal tab (takeover UI).
+//! IntentHandler arms for the terminal overlay (control capture and view actions).
 //!
-//! Three intents:
-//! - [`Intent::TerminalTakeControl`] — `i` in TerminalView: flips the shared
-//!   control flag to *user* (synchronously, so an in-flight tool call's drain
-//!   sees the takeover on its next iteration — mailbox ordering cannot
-//!   deliver that) and pushes [`FocusScope::TerminalControl`].
+//! Five intents:
+//! - [`Intent::TerminalTakeControl`] — control-toggle key in TerminalView:
+//!   flips the shared control flag to *user* (synchronously, so an in-flight
+//!   tool call's drain sees the takeover on its next iteration — mailbox
+//!   ordering cannot deliver that) and pushes [`FocusScope::TerminalControl`].
 //! - [`Intent::TerminalSendKey`] — catch-all routing in TerminalControl: the
 //!   encoded bytes go straight to the pty via [`IntentHandlerCommand::SendTermKey`].
-//! - [`Intent::TerminalHandback`] — handback key in TerminalControl: flips
-//!   control back to the agent, pops to TerminalView, and steers the captured
-//!   screen to the model (busy → steering buffer drained at next dispatch;
-//!   idle → dispatched immediately by the queue actor).
+//! - [`Intent::TerminalHandback`] — control-toggle key in TerminalControl:
+//!   releases control back to the agent and pops to TerminalView. Sends
+//!   nothing to the model — the status hint advertises `I` for that.
+//! - [`Intent::TerminalYank`] — `y` in TerminalView: copies the visible
+//!   screen to the clipboard via the TUI signal.
+//! - [`Intent::TerminalPushScreen`] — `I` in TerminalView: yanks the screen
+//!   *and* pushes its text to the model using the same session-phase routing
+//!   as chat submit (busy → steering buffer drained at next dispatch; idle →
+//!   dispatched immediately by the queue actor).
 //!
 //! Per the style guide, the IntentHandler is the exempt frontend mutator: it
 //! may write `frontend.terminal.control` (and the shared flag) even though
@@ -21,16 +26,20 @@ use crate::common::app_state::{AppState, FocusScope};
 use crate::feat::interactive_term::interactive_term_actor::TermControl;
 use crate::feat::interactive_term::protocol::command::ControlHolder;
 use crate::feat::interactive_term::terminal_tab_state::TermControlHolder;
-use crate::feat::tools_actor::interactive_term_send::USER_HAS_CONTROL_NOTICE;
 
 /// The shared control flag installed by actor wiring. Set once at startup;
-/// before that, takeover intents no-op (the tab renders an empty screen).
+/// before that, takeover intents no-op (the overlay renders an empty screen).
 pub static TERM_CONTROL: std::sync::OnceLock<TermControl> = std::sync::OnceLock::new();
 
 /// Returns the shared control flag, if installed.
 fn control() -> Option<&'static TermControl> {
     TERM_CONTROL.get()
 }
+
+/// The status hint shown after exiting capture mode: releasing control sends
+/// nothing, so the hint advertises the explicit push key.
+const HANDLED_HINT: &str =
+    "terminal control released — press I to send the current screen to the agent";
 
 /// Handles [`Intent::TerminalTakeControl`].
 pub fn handle_take_control(state: &mut AppState) -> crate::protocol::intent::IntentResult {
@@ -74,10 +83,9 @@ pub fn handle_send_key(
 
 /// Handles [`Intent::TerminalHandback`].
 ///
-/// Flips control to the agent, pops to TerminalView, and delivers the
-/// captured screen to the model using the same session-phase routing as
-/// chat submit: busy → steering buffer (drained at the next
-/// dispatch-resume); idle → `EnqueueUserMessage` (dispatched immediately).
+/// Pure state transition: releases control to the agent (shared flag +
+/// mirror), pops to TerminalView, and sets a status hint advertising `I`.
+/// Sends nothing to the model — pushing the screen is an explicit `I`.
 pub fn handle_handback(state: &mut AppState) -> crate::protocol::intent::IntentResult {
     if state.frontend.scope_stack.current() != &FocusScope::TerminalControl {
         return crate::protocol::intent::IntentResult::empty();
@@ -90,19 +98,72 @@ pub fn handle_handback(state: &mut AppState) -> crate::protocol::intent::IntentR
         .terminal
         .set_control(TermControlHolder::Agent);
     state.frontend.scope_stack.pop();
+    state.frontend.status_hint = Some(HANDLED_HINT.to_owned());
+    crate::protocol::intent::IntentResult::empty()
+}
 
-    // Steer the captured screen to the model (fenced, with instructions).
-    let chat = state.session.active_session_id().clone();
-    let screen = state
+/// Builds the model-facing message text for [`Intent::TerminalPushScreen`].
+///
+/// Public because the wording is part of the feature's contract with the
+/// agent: it describes the screen as *shared by the user* (never "handed
+/// back", which would imply a release event, and never the user-control
+/// notice, which belongs solely to refusal paths).
+#[must_use]
+pub fn push_screen_text(screen: &str) -> String {
+    format!("The user shared the current terminal screen:\n\n```\n{screen}\n```")
+}
+
+/// The visible screen of the active session's terminal, if any.
+fn active_screen(state: &AppState) -> Option<String> {
+    let chat = state.session.active_session_id();
+    state
         .frontend
         .terminal
-        .mirror(&chat)
+        .mirror(chat)
         .map(|mirror| mirror.screen.clone())
-        .unwrap_or_default();
-    let text = format!(
-        "The user handed the terminal back to you. Current screen:\n\n\
-         ```\n{screen}\n```\n\n{USER_HAS_CONTROL_NOTICE}"
-    );
+}
+
+/// Handles [`Intent::TerminalYank`].
+///
+/// Copies the visible screen to the clipboard (via the TUI yank signal) and
+/// reports the copied size in a status hint. No mirror → no-op with a hint.
+pub fn handle_yank(state: &mut AppState) -> crate::protocol::intent::IntentResult {
+    if state.frontend.scope_stack.current() != &FocusScope::TerminalView {
+        return crate::protocol::intent::IntentResult::empty();
+    }
+    let Some(screen) = active_screen(state) else {
+        state.frontend.status_hint =
+            Some("no live terminal to yank — ask the agent to run `interactive_term`".to_owned());
+        return crate::protocol::intent::IntentResult::empty();
+    };
+    let lines = screen.lines().count();
+    state.frontend.tui_signals.yank_text = Some(screen);
+    state.frontend.status_hint = Some(format!("yanked {lines} terminal lines to the clipboard"));
+    crate::protocol::intent::IntentResult::empty()
+}
+
+/// Handles [`Intent::TerminalPushScreen`].
+///
+/// Yanks (see [`handle_yank`]) and pushes the screen text to the model:
+/// busy → `SubmitSteeringMessage` (drained at the next dispatch-resume);
+/// idle → `EnqueueUserMessage` (dispatched immediately). No mirror → no-op
+/// with a hint.
+pub fn handle_push_screen(state: &mut AppState) -> crate::protocol::intent::IntentResult {
+    if state.frontend.scope_stack.current() != &FocusScope::TerminalView {
+        return crate::protocol::intent::IntentResult::empty();
+    }
+    let Some(screen) = active_screen(state) else {
+        state.frontend.status_hint =
+            Some("no live terminal to share — ask the agent to run `interactive_term`".to_owned());
+        return crate::protocol::intent::IntentResult::empty();
+    };
+    let lines = screen.lines().count();
+    state.frontend.tui_signals.yank_text = Some(screen.clone());
+    state.frontend.status_hint = Some(format!(
+        "yanked {lines} terminal lines and sent the screen to the agent"
+    ));
+
+    let text = push_screen_text(&screen);
     let session_id = state.session.active_session_id().clone();
     if state.active_session().phase() == crate::feat::session::phase_machine::PhaseKind::Idle {
         crate::protocol::intent::IntentResult::empty().with_message(

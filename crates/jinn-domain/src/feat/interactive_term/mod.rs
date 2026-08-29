@@ -21,7 +21,7 @@
 //!   (take control, send key, handback + steering)
 //! - [`terminal_tab_state`] — the frontend mirrors the actor writes and the
 //!   renderer reads
-//! - [`prefs`] — `[interactive_term]` config (handback key, settle wait)
+//! - [`prefs`] — `[interactive_term]` config (control-toggle key, settle wait)
 //! - [`protocol`] — its ask messages and events
 //!
 pub mod emulator;

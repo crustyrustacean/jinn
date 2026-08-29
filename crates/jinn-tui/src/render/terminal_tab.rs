@@ -543,7 +543,7 @@ mod tests {
             term.apply_screen(
                 state.session.active_session_id(),
                 "term-1",
-                "".to_owned(),
+                String::new(),
                 ScreenCells::default(),
                 (0, 0),
                 true,

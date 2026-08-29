@@ -782,6 +782,12 @@ impl IntentHandler {
             Intent::TerminalHandback => {
                 crate::feat::interactive_term::takeover_intent::handle_handback(state)
             }
+            Intent::TerminalYank => {
+                crate::feat::interactive_term::takeover_intent::handle_yank(state)
+            }
+            Intent::TerminalPushScreen => {
+                crate::feat::interactive_term::takeover_intent::handle_push_screen(state)
+            }
             Intent::TerminalSendKey { bytes, label } => {
                 crate::feat::interactive_term::takeover_intent::handle_send_key(
                     state,
@@ -1787,7 +1793,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn handback_pops_scope_and_steers_screen() {
+    fn handback_releases_flag_pops_scope_and_sends_nothing() {
         // Given an AppState where the user holds control with a screen mirror.
         let mut state = AppState::default();
         state
@@ -1817,22 +1823,60 @@ mod tests {
             state.frontend.terminal.control,
             crate::feat::interactive_term::terminal_tab_state::TermControlHolder::Agent
         );
-        // And an enqueue message carrying the screen is published (idle
-        // dispatch path).
+        // And no message is published to the model (release is silent; `I` pushes).
+        assert!(
+            result.messages.is_empty(),
+            "handback must not message the model; got {:?}",
+            result.message_names
+        );
+        // And the status hint advertises the push key.
+        assert!(
+            state
+                .frontend
+                .status_hint
+                .as_deref()
+                .is_some_and(|h| h.contains('I')),
+            "handback hint must advertise I; got {:?}",
+            state.frontend.status_hint
+        );
+    }
+
+    #[rstest::rstest]
+    fn push_screen_when_idle_enqueues_user_message() {
+        // Given an AppState in the TerminalView overlay with a screen mirror,
+        // and the session is idle.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
+            "term-1",
+            "idle-screen-marker".to_owned(),
+            ScreenCells::default(),
+            (0, 0),
+            false,
+        );
+
+        // When handling TerminalPushScreen.
+        let result = IntentHandler::handle(&Intent::TerminalPushScreen, &mut state);
+
+        // Then an enqueue message is published (idle dispatch path).
         assert!(
             result
                 .message_names
                 .iter()
                 .any(|name| name.ends_with("EnqueueUserMessage")),
-            "idle handback must publish EnqueueUserMessage; got {:?}",
+            "idle push must publish EnqueueUserMessage; got {:?}",
             result.message_names
         );
     }
 
     #[rstest::rstest]
-    fn handback_while_busy_steers_via_buffer() {
-        // Given an AppState where the user holds control while the session
-        // is mid-turn (Streaming).
+    fn push_screen_while_busy_steers_via_buffer() {
+        // Given an AppState in the TerminalView overlay with a screen mirror,
+        // while the session is mid-turn (Streaming).
         let mut state = AppState::default();
         state
             .frontend
@@ -1852,10 +1896,9 @@ mod tests {
                 session.begin_streaming();
             }
         }
-        IntentHandler::handle(&Intent::TerminalTakeControl, &mut state);
 
-        // When handling TerminalHandback.
-        let result = IntentHandler::handle(&Intent::TerminalHandback, &mut state);
+        // When handling TerminalPushScreen.
+        let result = IntentHandler::handle(&Intent::TerminalPushScreen, &mut state);
 
         // Then a steering message is published (buffer drains at next
         // dispatch-resume).
@@ -1864,16 +1907,14 @@ mod tests {
                 .message_names
                 .iter()
                 .any(|name| name.ends_with("SubmitSteeringMessage")),
-            "busy handback must publish SubmitSteeringMessage; got {:?}",
+            "busy push must publish SubmitSteeringMessage; got {:?}",
             result.message_names
         );
     }
 
     #[rstest::rstest]
-    fn handback_screen_survives_drain_as_user_entry() {
-        use crate::feat::session::steering_buffer::SteeringBuffer;
-
-        // Given a busy session where the user took control and hands back.
+    fn push_screen_yanks_the_screen_text() {
+        // Given an AppState in the TerminalView overlay with a screen mirror.
         let mut state = AppState::default();
         state
             .frontend
@@ -1882,34 +1923,152 @@ mod tests {
         state.frontend.terminal.apply_screen(
             state.session.active_session_id(),
             "term-1",
-            "drain-chain-marker".to_owned(),
+            "yank-and-push-marker".to_owned(),
             ScreenCells::default(),
             (0, 0),
             false,
         );
-        {
-            let sid = state.session.active_session_id().clone();
-            if let Some(session) = state.session.get_mut(&sid) {
-                session.begin_streaming();
-            }
-        }
-        IntentHandler::handle(&Intent::TerminalTakeControl, &mut state);
-        let result = IntentHandler::handle(&Intent::TerminalHandback, &mut state);
 
-        // When routing the published steering message through the buffer
-        // and draining it (the session actor's busy-path behavior).
-        let _ = result;
-        // Simulate the handler side: extract the message by re-deriving it
-        // from a second handback cycle is impossible; instead verify via
-        // the session actor contract — the steering fragment format from
-        // handle_handback equals SubmitSteeringMessage.text, which the
-        // session actor pushes via push_fragment then drains into a User
-        // entry. Assert the drain contract on the marker text directly.
-        let mut buf = SteeringBuffer::new();
-        buf.push_fragment(
-            "The user handed the terminal back to you. Current screen:\n\n```\ndrain-chain-marker\n```"
-                .to_owned(),
+        // When handling TerminalPushScreen.
+        IntentHandler::handle(&Intent::TerminalPushScreen, &mut state);
+
+        // Then the screen text was also staged for the clipboard.
+        assert_eq!(
+            state.frontend.tui_signals.yank_text.as_deref(),
+            Some("yank-and-push-marker"),
+            "push must also yank (I = yank + push)"
         );
+    }
+
+    #[rstest::rstest]
+    fn yank_stages_screen_text_and_sets_line_count_hint() {
+        // Given an AppState in the TerminalView overlay with a multi-line mirror.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
+            "term-1",
+            "line one\nline two\nline three".to_owned(),
+            ScreenCells::default(),
+            (0, 0),
+            false,
+        );
+
+        // When handling TerminalYank.
+        IntentHandler::handle(&Intent::TerminalYank, &mut state);
+
+        // Then the screen text was staged for the clipboard.
+        assert_eq!(
+            state.frontend.tui_signals.yank_text.as_deref(),
+            Some("line one\nline two\nline three")
+        );
+        // And the status hint reports the copied line count.
+        assert!(
+            state
+                .frontend
+                .status_hint
+                .as_deref()
+                .is_some_and(|h| h.contains('3')),
+            "yank hint must report the line count; got {:?}",
+            state.frontend.status_hint
+        );
+    }
+
+    #[rstest::rstest]
+    fn yank_without_live_terminal_sets_a_hint_and_stages_nothing() {
+        // Given an AppState in the TerminalView overlay with no mirror.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+
+        // When handling TerminalYank.
+        IntentHandler::handle(&Intent::TerminalYank, &mut state);
+
+        // Then nothing was staged for the clipboard.
+        assert!(state.frontend.tui_signals.yank_text.is_none());
+        // And a status hint explains the inert press.
+        assert!(
+            state
+                .frontend
+                .status_hint
+                .as_deref()
+                .is_some_and(|h| h.contains("no live terminal")),
+            "expected a no-live-terminal hint, got: {:?}",
+            state.frontend.status_hint
+        );
+    }
+
+    #[rstest::rstest]
+    fn push_screen_wording_never_claims_handback_or_control() {
+        // Given a captured screen.
+        let screen = "shared-marker";
+
+        // When building the push message text.
+        let text = crate::feat::interactive_term::takeover_intent::push_screen_text(screen);
+
+        // Then the screen is described as shared by the user.
+        assert!(text.contains("shared"));
+        assert!(text.contains(screen));
+        // And the text never carries control-flow wording or the refusal note.
+        assert!(!text.contains("handed"));
+        assert!(
+            !text
+                .contains(crate::feat::tools_actor::interactive_term_send::USER_HAS_CONTROL_NOTICE),
+            "push wording must not embed the user-control notice"
+        );
+    }
+
+    #[rstest::rstest]
+    fn close_overlay_from_view_leaves_control_with_agent() {
+        // Given an AppState with the overlay open in view mode (agent holds
+        // control; the user never took it).
+        let mut state = AppState::default();
+        state.frontend.terminal.control =
+            crate::feat::interactive_term::terminal_tab_state::TermControlHolder::Agent;
+        let chat = state.session.active_session_id().clone();
+        state.frontend.terminal.set_live(&chat, true);
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+
+        // When toggling the overlay closed.
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
+
+        // Then the overlay closed (pop on a base-only stack is a no-op, so
+        // the view scope remains as the base) and the control flag stayed
+        // Agent.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalView
+        );
+        assert_eq!(
+            state.frontend.terminal.control,
+            crate::feat::interactive_term::terminal_tab_state::TermControlHolder::Agent,
+            "closing from view must never strand control on User"
+        );
+    }
+
+    #[rstest::rstest]
+    fn handback_screen_survives_drain_as_user_entry() {
+        use crate::feat::session::steering_buffer::SteeringBuffer;
+
+        // Given the push message text for a captured screen.
+        let text =
+            crate::feat::interactive_term::takeover_intent::push_screen_text("drain-chain-marker");
+
+        // When routing the text through the steering buffer and draining it
+        // (the session actor's busy-path behavior).
+        let mut buf = SteeringBuffer::new();
+        buf.push_fragment(text);
         let entry = buf.drain_into_entry().expect("entry");
 
         // Then the drained entry is a normal User entry carrying the screen.
