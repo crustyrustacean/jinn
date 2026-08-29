@@ -1599,6 +1599,7 @@ mod tests {
 
     use crate::feat::chat_input::protocol::command::PushChatEntry;
     use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::chat_session::LifecycleScriptState;
     use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
     use crate::feat::session::protocol::close_session::CloseSession;
     use crate::feat::session::protocol::session_archived::SessionArchived;
@@ -3481,16 +3482,18 @@ mod tests {
 
     // ── Teardown tree ─────────────────────────────────────────────────────
 
-    /// Seeds a root (with one entry so it persists) whose lifecycle has run
-    /// setup, plus a child and grandchild under it, and registers a
-    /// lifecycle named `name` with the given teardown command in
+    /// Seeds a root (with one entry so it persists) whose lifecycle script
+    /// state is `script_state`, plus a child and grandchild under it, and
+    /// registers a lifecycle named `name` with the given teardown command in
     /// preferences.
     fn seed_teardown_tree(
         actor: &SessionPersistenceActor,
+        script_state: crate::feat::session::chat_session::LifecycleScriptState,
         lifecycle_name: &str,
         teardown: Option<LifecycleCommand>,
     ) -> (SessionId, SessionId, SessionId) {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+        use crate::feat::session::chat_session::LifecycleScriptState;
 
         let root = ChatSessionState::new();
         let root_id = root.session_id().clone();
@@ -3504,7 +3507,14 @@ mod tests {
         let session = state.session.get_mut(&root_id).expect("root in map");
         session.push_entry(ChatEntry::user("root entry"));
         session.set_lifecycle_name(Some(lifecycle_name.to_owned()));
-        session.advance_lifecycle_after_setup();
+        if script_state == LifecycleScriptState::SetupRan
+            || script_state == LifecycleScriptState::TeardownRan
+        {
+            session.advance_lifecycle_after_setup();
+        }
+        if script_state == LifecycleScriptState::TeardownRan {
+            session.advance_lifecycle_after_teardown();
+        }
         state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
             name: lifecycle_name.to_owned(),
             description: None,
@@ -3524,6 +3534,7 @@ mod tests {
         let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
         let (root_id, child_id, grandchild_id) = seed_teardown_tree(
             &actor,
+            LifecycleScriptState::SetupRan,
             "test",
             Some(LifecycleCommand::Shell("true".to_owned())),
         );
@@ -3584,10 +3595,13 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn teardown_tree_skips_teardown_and_archives_when_none_pending() {
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
         // Given a tree whose root ran setup but whose lifecycle has no
         // teardown command.
         let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
-        let (root_id, child_id, grandchild_id) = seed_teardown_tree(&actor, "test", None);
+        let (root_id, child_id, grandchild_id) =
+            seed_teardown_tree(&actor, LifecycleScriptState::SetupRan, "test", None);
 
         // When tearing down the tree.
         actor
@@ -3614,12 +3628,62 @@ mod tests {
     }
 
     #[rstest::rstest]
+    #[case(LifecycleScriptState::NothingRan)]
+    #[case(LifecycleScriptState::TeardownRan)]
+    #[tokio::test]
+    async fn teardown_tree_without_pending_teardown_archives_without_running_script(
+        #[case] script_state: LifecycleScriptState,
+    ) {
+        // Given a tree whose root has a configured teardown command but
+        // whose lifecycle state is not SetupRan (never set up, or already
+        // torn down).
+        let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
+        let (root_id, child_id, grandchild_id) = seed_teardown_tree(
+            &actor,
+            script_state,
+            "test",
+            Some(LifecycleCommand::Shell("true".to_owned())),
+        );
+
+        // When tearing down the tree.
+        actor
+            .handle_teardown_session_tree(&TeardownSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+
+        // Then the whole tree is archived immediately.
+        let state = actor.state.read();
+        assert!(!state.session.contains(&root_id));
+        assert!(!state.session.contains(&child_id));
+        assert!(!state.session.contains(&grandchild_id));
+        drop(state);
+
+        // And no teardown completion event was emitted (no script ran).
+        assert!(audit.of_type::<SessionTeardownFinished>().is_empty());
+        // And no teardown-running entry was pushed into the root's chat.
+        let running_pushed = audit.of_type::<PushChatEntry>().iter().any(|e| {
+            matches!(&e.entry.kind, ChatEntryKind::System(text) if text.contains("Running teardown script"))
+        });
+        assert!(!running_pushed, "no teardown script should have run");
+
+        // And the store writeback covers the full closure.
+        let archived = store.archived_ids();
+        for id in [&root_id, &child_id, &grandchild_id] {
+            assert!(archived.contains(id), "store writeback missing {id}");
+        }
+    }
+
+    #[rstest::rstest]
     #[tokio::test]
     async fn teardown_failure_archives_nothing() {
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
         // Given a tree whose root has a pending shell teardown that fails.
         let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
         let (root_id, child_id, grandchild_id) = seed_teardown_tree(
             &actor,
+            LifecycleScriptState::SetupRan,
             "test",
             Some(LifecycleCommand::Shell("exit 1".to_owned())),
         );
@@ -3660,11 +3724,14 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn teardown_tree_aborts_when_member_is_busy_after_teardown() {
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
         // Given a tree whose root has a pending teardown and a grandchild
         // that becomes busy while the script runs.
         let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
         let (root_id, child_id, grandchild_id) = seed_teardown_tree(
             &actor,
+            LifecycleScriptState::SetupRan,
             "test",
             Some(LifecycleCommand::Shell("true".to_owned())),
         );
