@@ -546,6 +546,238 @@
         },
         "additionalProperties": false
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "stream_start"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "session_id"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "stream_start"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "The session the LLM request belongs to."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "stream_event"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "session_id"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "stream_event"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "The session whose stream produced output."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "stream_end"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "session_id",
+          "reason"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "stream_end"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "The session whose stream ended."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "finished",
+              "canceled",
+              "tool_use",
+              "error"
+            ],
+            "description": "Why the stream ended; tool_use means the turn continues after tool execution."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "tick"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "now_ms"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "tick"
+          },
+          "now_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the tick was generated."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "restart_stalled_stream"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "v",
+          "seq",
+          "ts",
+          "type",
+          "session_id"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire protocol major version."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sender-assigned monotonic sequence number (per direction)."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds when the sender produced the message."
+          },
+          "type": {
+            "const": "restart_stalled_stream"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "The session whose stalled stream should be restarted."
+          }
+        },
+        "additionalProperties": false
+      }
     }
   ],
   "$defs": {

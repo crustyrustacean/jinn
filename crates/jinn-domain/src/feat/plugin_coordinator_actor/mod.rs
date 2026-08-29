@@ -449,6 +449,16 @@ async fn handle_inbound(
         jinn_plugin_api::PluginToHost::InsertSystemEntry(msg) => {
             apply_plugin_insert_system_entry(state, bus, name, msg).await;
         }
+        jinn_plugin_api::PluginToHost::RestartStalledStream(msg) => {
+            // No host component publishes stream-lifecycle events yet, so a
+            // restart request can never be legitimate — drop with a trace
+            // until the stream-event forwarding side exists.
+            tracing::debug!(
+                plugin = %name,
+                session_id = %msg.session_id,
+                "plugin restart_stalled_stream dropped: no stream-event source"
+            );
+        }
     }
 }
 
