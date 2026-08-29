@@ -236,6 +236,7 @@ impl SessionPersistenceActor {
             "emitting SendToLlmProvider"
         );
         self.publish(SendToLlmProvider {
+            origin: crate::feat::provider::protocol::command::StreamOrigin::ToolContinuation,
             model_used,
             reasoning_effort,
             endpoint_tag,
@@ -473,6 +474,144 @@ mod tests {
         assert!(
             sent.iter().any(|m| m.session_id == session_id),
             "expected SendToLlmProvider to reach the bus via the Message handler"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn canceled_after_tool_use_does_not_redispatch() {
+        // Given a spawned session actor with a streaming session whose tool
+        // batch has already landed (the buffered-batch pre-cancel state: history
+        // holds the tool call, phase is Streaming).
+        use crate::common::app_state::AppState;
+        use crate::common::bus::test_harness::{TestHarness, await_recorded};
+        use crate::common::state::State;
+        use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+        use crate::feat::provider::protocol::command::SendToLlmProvider;
+        use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
+        use crate::feat::session::phase_machine::PhaseKind;
+        use crate::feat::session::session_actor::{
+            SessionPersistenceActor, SessionPersistenceActorDeps,
+        };
+        use crate::feat::session_lifecycle::builtin::BuiltinRegistry;
+        use crate::feat::tools_actor::protocol::event::ToolBatchCompleted;
+        use crate::feat::tools_actor::tool_types::ToolResult;
+        use crate::protocol::ChatEntry;
+        use std::time::Duration;
+
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
+        let state = State::new(AppState::default());
+        {
+            let mut s = state.write_test_no_cap();
+            let session = s.active_session_mut();
+            session.push_entry(ChatEntry::user("fetch a thing"));
+            session.push_entry(ChatEntry::tool_call("tc-1", "web_fetch", r#"{"url":"x"}"#));
+            session.begin_streaming();
+        }
+        let session_id = state.read().session.active_session_id().clone();
+
+        let actor_ref = harness
+            .spawn_actor::<SessionPersistenceActor>(SessionPersistenceActorDeps {
+                deps: harness.actor_deps().await,
+                state: state.clone(),
+                cap: crate::common::tcaps::mint::mint_session_cap(),
+                frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
+                context_cap: crate::common::tcaps::mint::mint_context_cap(),
+                counter: TiktokenCounter::o200k_base(),
+                token_cache:
+                    crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::default(),
+                builtin_registry: BuiltinRegistry::new(),
+                shell: "/bin/sh".to_owned(),
+                image_converter: crate::feat::image_convert::ImageConverterService::unavailable(),
+            })
+            .await;
+        actor_ref.wait_for_startup().await;
+
+        // When the tool batch lands while the session is still Streaming — the
+        // tool-call-watchdog race shape: the batch is buffered, then the aborted
+        // stream task's StreamCompleted(ToolUse) arrives just BEFORE the cancel.
+        let batch = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "web_fetch".to_owned(),
+                content: "boom".to_owned(),
+                success: false,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }],
+        };
+        harness.publish(batch).await;
+        let event = StreamCompleted {
+            model_used: None,
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("calling the tool".to_owned()),
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
+            thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
+        };
+        harness.publish(event).await;
+        let sent = await_recorded::<SendToLlmProvider>(&recorder, 1, Duration::from_secs(2)).await;
+        assert!(
+            sent.iter().any(|m| m.session_id == session_id),
+            "precondition: the tool loop dispatched its continuation"
+        );
+
+
+        // And StreamCompleted(Canceled) arrives afterwards.
+        let cancel = StreamCompleted {
+            model_used: None,
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
+            thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
+        };
+        harness.publish(cancel).await;
+
+        // Then no FURTHER SendToLlmProvider is dispatched — the Canceled
+        // completion must not re-enter the tool loop. (The recorder drains on
+        // read, so this observes only post-cancel traffic.)
+        let extra = await_recorded::<SendToLlmProvider>(&recorder, 0, Duration::from_secs(1)).await;
+        assert!(
+            extra.iter().all(|m| m.session_id != session_id),
+            "cancel after tool-use must not trigger a second dispatch, got {:?}",
+            extra
+        );
+
+        // And the session settles in Idle with a single cancel entry appended.
+        let s = state.read();
+        let session = s.session.get_unchecked(&session_id);
+        assert_eq!(
+            session.phase(),
+            PhaseKind::Idle,
+            "terminal phase after the cancel must be Idle"
+        );
+        let cancelled_entries = session
+            .history()
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e.kind,
+                    crate::protocol::ChatEntryKind::Error { .. }
+                )
+            })
+            .count();
+        assert_eq!(
+            cancelled_entries, 1,
+            "exactly one 'Cancelled' error entry should be appended"
         );
     }
 
