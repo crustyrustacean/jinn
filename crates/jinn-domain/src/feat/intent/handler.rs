@@ -880,7 +880,13 @@ fn try_handle_archive_tree_prompt(intent: &Intent, state: &mut AppState) -> Opti
     // normal match arm then arms that key's own prompt.
     let action = match prompt {
         ArchiveTreePrompt::Confirm { action, .. } => *action,
-        ArchiveTreePrompt::Busy => pressed?,
+        ArchiveTreePrompt::Busy => {
+            if pressed.is_none() {
+                // Any non-tree key dismisses the busy notice too.
+                state.frontend.archive_tree_prompt = None;
+            }
+            pressed?
+        }
     };
     if pressed != Some(action) {
         // Any other key - dismiss prompt, fall through to normal processing.
