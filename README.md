@@ -242,7 +242,7 @@ jinn commands:
 
 ## Installation
 
-Note: `jinn` has only ever been tested on Linux. Windows and Mac users will need to [build from source](#build-from-source).
+Note: `jinn` is officially supported for Linux. Windows and Mac users will need to [build from source](#build-from-source).
 
 `jinn` has several artifacts that must be installed to work properly:
 
@@ -252,7 +252,7 @@ Note: `jinn` has only ever been tested on Linux. Windows and Mac users will need
 - Personas
 - Themes
 
-These are all baked into the binary and can be installed using `jinn install` _after_ you install `jinn`. Except for the WASM plugins, they are all user-editable and can be changed/deleted freely. Note that I recommend using `jinn install --overwrite` to get the latest copies on program updates, but this will overwrite any changes you have made. Keep this in mind if you change the defaults.
+These are all baked into the binary and can be installed using `jinn install` _after_ you install `jinn`. Except for the WASM plugins, the install content is all user-editable and can be changed/deleted freely. Note that I recommend using `jinn install --overwrite` to get the latest copies on program updates, but this will overwrite any changes you have made. Keep this in mind if you change the defaults.
 
 ### cargo-binstall (recommended)
 
