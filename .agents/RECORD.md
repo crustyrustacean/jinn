@@ -233,4 +233,6 @@ Entries are added or amended **only with human approval**.
 - (ui) The interactive terminal renders as a centered overlay showing the active session's terminal with colors, sized to the overlay's inner rect; the `<Tab>` cycle is Dashboard ↔ Normal.
 - (tools) Each chat session has at most one interactive_term terminal: spawning again kills the previous one (reported in the result), and spawning without a chat session is rejected.
 - (ui) The sidebar marks sessions with a live interactive_term terminal with a dedicated symbol.
+- (tools) interactive_term sessions stream screen updates to the overlay and mirror in realtime (~50ms tick) even when no tool call is in flight; tool calls settle against the same screen-version stream instead of draining the pump.
+- (tools) interactive_term_send named keys include "f1"–"f12" (SS3/CSI function-key bytes), encoded by the same table as the TUI's key events; agent f-keys were previously silently dropped.
 - (tools) `interactive_term` children run with their own PTY as controlling terminal (own session/pgid), unlike the deliberately tty-less children of other tools.

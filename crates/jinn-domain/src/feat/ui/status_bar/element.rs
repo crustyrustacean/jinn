@@ -207,9 +207,18 @@ fn render_token_info_line(
     };
     frame.render_widget(left_side, area);
 
-    let right_spans = vec![Span::styled(model, style)];
-    let model_widget = Paragraph::new(Line::from(right_spans)).alignment(Alignment::Right);
-    frame.render_widget(model_widget, area);
+    // A transient hint (e.g. an inert overlay toggle) replaces the model
+    // display until the next intent; it is warning-colored so it reads as a
+    // notice rather than ambient info.
+    let right_side = if let Some(hint) = &state.frontend.status_hint {
+        let hint_style = Style::default().fg(state.frontend.theme.warning);
+        Paragraph::new(Line::from(vec![Span::styled(hint.clone(), hint_style)]))
+            .alignment(Alignment::Right)
+    } else {
+        let right_spans = vec![Span::styled(model, style)];
+        Paragraph::new(Line::from(right_spans)).alignment(Alignment::Right)
+    };
+    frame.render_widget(right_side, area);
 }
 
 /// Builds the left-side token info string: sent/received counts + context budget.
