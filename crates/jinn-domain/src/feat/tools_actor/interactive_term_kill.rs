@@ -34,6 +34,8 @@ pub fn definition() -> ToolDefinition {
         prompt_guidelines: vec![
             "Kill interactive_term sessions when done with them so no processes are left running."
                 .to_owned(),
+            "Killing an already-exited session is safe — it returns the recorded final state."
+                .to_owned(),
         ],
         parameters: serde_json::json!({
             "type": "object",

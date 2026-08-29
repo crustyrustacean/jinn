@@ -513,8 +513,8 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         let _ = services.interactive_term.set(term_coordinator);
         // Install the shared flag for the IntentHandler's takeover intents
         // (synchronous flips that in-flight tool calls observe mid-drain).
-        let _ = jinn_domain::feat::interactive_term::takeover_intent::TERM_CONTROL
-            .set(term_control);
+        let _ =
+            jinn_domain::feat::interactive_term::takeover_intent::TERM_CONTROL.set(term_control);
 
         // Plugin lifecycle actor: reads `[[plugin]]` entries from jinn.toml and spawns one in-process
         // WASM guest per entry. Guests are hosted directly by jinn via the

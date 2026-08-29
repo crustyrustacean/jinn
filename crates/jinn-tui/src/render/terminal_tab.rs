@@ -61,17 +61,13 @@ fn render_empty(frame: &mut Frame<'_>, area: Rect, accent: ratatui::style::Color
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        reason = "test code"
-    )]
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
     use jinn_domain::common::app_state::{AppState, FocusScope};
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
-    async fn app_with_terminal_screen(screen: &str, cursor: (u16, u16)) -> AppState {
+    fn app_with_terminal_screen(screen: &str, cursor: (u16, u16)) -> AppState {
         let mut state = AppState::default();
         state
             .frontend
@@ -88,11 +84,8 @@ mod tests {
     #[tokio::test]
     async fn renders_screen_text_into_buffer() {
         // Given an app with a mirrored terminal screen.
-        let state = app_with_terminal_screen("hello from vim", (0, 0)).await;
-        let app = crate::TuiApp::test_builder()
-            .state(state)
-            .build()
-            .await;
+        let state = app_with_terminal_screen("hello from vim", (0, 0));
+        let app = crate::TuiApp::test_builder().state(state).build().await;
 
         // When rendering on a test backend.
         let backend = TestBackend::new(80, 24);
@@ -107,7 +100,7 @@ mod tests {
         // Then the buffer contains the screen text.
         let buffer = terminal.backend().buffer();
         let row: String = (0..15)
-            .map(|x| buffer[(x, 0)].symbol().to_string())
+            .map(|x| buffer[(x, 0)].symbol().to_owned())
             .collect();
         assert!(row.contains("hello from vim"), "row was: {row:?}");
     }
@@ -121,10 +114,7 @@ mod tests {
             .frontend
             .scope_stack
             .swap_base(FocusScope::TerminalView);
-        let app = crate::TuiApp::test_builder()
-            .state(state)
-            .build()
-            .await;
+        let app = crate::TuiApp::test_builder().state(state).build().await;
 
         // When rendering the terminal tab.
         let backend = TestBackend::new(80, 24);
@@ -139,7 +129,7 @@ mod tests {
         // Then the buffer shows the empty-session hint.
         let buffer = terminal.backend().buffer();
         let row: String = (0..60)
-            .map(|x| buffer[(x, 0)].symbol().to_string())
+            .map(|x| buffer[(x, 0)].symbol().to_owned())
             .collect();
         assert!(row.contains("no active terminal session"), "row: {row:?}");
     }

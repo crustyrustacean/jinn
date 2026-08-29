@@ -168,15 +168,19 @@ pub fn encode_key_event(event: &crate::protocol::key::KeyEvent) -> Vec<u8> {
     let m = event.modifiers;
     let byte_for_char = |c: char| -> Vec<u8> {
         let mut bytes = c.to_string().into_bytes();
-        if m.ctrl {
+        match (m.ctrl, m.shift) {
             // Ctrl produces C0 controls; letters map A..=Z & 0x1F.
-            if let Some(b) = bytes.first_mut() {
-                *b = b.to_ascii_uppercase() & 0x1f;
+            (true, _) => {
+                if let Some(b) = bytes.first_mut() {
+                    *b = b.to_ascii_uppercase() & 0x1f;
+                }
             }
-        } else if m.shift {
-            for b in &mut bytes {
-                *b = b.to_ascii_uppercase();
+            (false, true) => {
+                for b in &mut bytes {
+                    *b = b.to_ascii_uppercase();
+                }
             }
+            (false, false) => {}
         }
         if m.alt {
             let mut out = vec![0x1b];
@@ -375,10 +379,26 @@ mod tests {
 
     #[rstest::rstest]
     #[case(crate::protocol::key::Key::Enter, crate::protocol::key::Modifiers::none(), &b"\r"[..])]
-    #[case(crate::protocol::key::Key::Esc, crate::protocol::key::Modifiers::none(), b"\x1b")]
-    #[case(crate::protocol::key::Key::Up, crate::protocol::key::Modifiers::none(), b"\x1b[A")]
-    #[case(crate::protocol::key::Key::F(5), crate::protocol::key::Modifiers::none(), b"\x1b[15~")]
-    #[case(crate::protocol::key::Key::F(1), crate::protocol::key::Modifiers::none(), b"\x1bOP")]
+    #[case(
+        crate::protocol::key::Key::Esc,
+        crate::protocol::key::Modifiers::none(),
+        b"\x1b"
+    )]
+    #[case(
+        crate::protocol::key::Key::Up,
+        crate::protocol::key::Modifiers::none(),
+        b"\x1b[A"
+    )]
+    #[case(
+        crate::protocol::key::Key::F(5),
+        crate::protocol::key::Modifiers::none(),
+        b"\x1b[15~"
+    )]
+    #[case(
+        crate::protocol::key::Key::F(1),
+        crate::protocol::key::Modifiers::none(),
+        b"\x1bOP"
+    )]
     fn encodes_plain_keys_from_events(
         #[case] key: crate::protocol::key::Key,
         #[case] modifiers: crate::protocol::key::Modifiers,
@@ -438,5 +458,4 @@ mod tests {
         // Then the byte is uppercase.
         assert_eq!(bytes, b"G");
     }
-
 }

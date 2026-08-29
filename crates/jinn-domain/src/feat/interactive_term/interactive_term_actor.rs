@@ -32,8 +32,8 @@ use kameo::prelude::{Context, Message};
 use crate::common::services::bus_service::BusService;
 use crate::feat::interactive_term::emulator::Emulator;
 use crate::feat::interactive_term::protocol::command::{
-    ControlHolder, KillTerm, KillTermOutcome, ResizeTerm, SendTermInput, SendTermOutcome,
-    SendTermKey, SetTermControl, SpawnTerm, SpawnTermOutcome, TermScreen, TermSessionId,
+    ControlHolder, KillTerm, KillTermOutcome, ResizeTerm, SendTermInput, SendTermKey,
+    SendTermOutcome, SetTermControl, SpawnTerm, SpawnTermOutcome, TermScreen, TermSessionId,
 };
 use crate::feat::interactive_term::protocol::event::{TermControlChanged, TermScreenUpdated};
 use crate::feat::interactive_term::pty_session::{ExitInfo, OutputTx, PtySession};
@@ -370,7 +370,10 @@ async fn drain_until_settled(
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
     bus: &BusService,
     control: &TermControl,
-    mirror: Option<(&crate::common::state::State, &crate::common::tcaps::frontend::FrontendCap)>,
+    mirror: Option<(
+        &crate::common::state::State,
+        &crate::common::tcaps::frontend::FrontendCap,
+    )>,
     quiet: Duration,
     cap: Duration,
     max_wait: Duration,
@@ -418,7 +421,12 @@ async fn drain_until_settled(
                         if let Some((state, cap)) = mirror {
                             use crate::common::tcaps::frontend::TerminalMirrorWrite;
                             state.with_terminal(cap, |ops| {
-                                ops.apply_screen(&session_id.0, screen.clone(), cursor, cursor_hidden)
+                                ops.apply_screen(
+                                    &session_id.0,
+                                    screen.clone(),
+                                    cursor,
+                                    cursor_hidden,
+                                );
                             });
                         }
                     }
@@ -487,10 +495,10 @@ impl Message<SendTermKey> for InteractiveTermActor {
     async fn handle(&mut self, msg: SendTermKey, _ctx: &mut Context<Self, Self::Reply>) {
         // User keystrokes bypass the settle wait entirely: the user is
         // driving, so there is nothing to report back to an agent.
-        if let Some(session) = self.sessions.get_mut(&msg.session_id) {
-            if let Err(report) = session.pty.write(&msg.bytes) {
-                tracing::warn!(report = %report, session = %msg.session_id, "pty key write failed");
-            }
+        if let Some(session) = self.sessions.get_mut(&msg.session_id)
+            && let Err(report) = session.pty.write(&msg.bytes)
+        {
+            tracing::warn!(report = %report, session = %msg.session_id, "pty key write failed");
         }
     }
 }
@@ -587,12 +595,8 @@ mod tests {
     fn deps(
         bus: BusService,
         control: TermControl,
-    ) -> (
-        InteractiveTermActorDeps,
-        crate::common::state::State,
-    ) {
-        let state =
-            crate::common::state::State::new(crate::common::app_state::AppState::default());
+    ) -> (InteractiveTermActorDeps, crate::common::state::State) {
+        let state = crate::common::state::State::new(crate::common::app_state::AppState::default());
         let deps = InteractiveTermActorDeps {
             bus,
             control,
@@ -1027,9 +1031,14 @@ mod tests {
 
         // Then the mirror reflects the echoed output.
         let guard = state.read();
-        assert!(guard.frontend.terminal.screen().contains("mirrored-after-send"));
+        assert!(
+            guard
+                .frontend
+                .terminal
+                .screen()
+                .contains("mirrored-after-send")
+        );
     }
-
 
     #[rstest::rstest]
     #[tokio::test]
@@ -1078,5 +1087,4 @@ mod tests {
         // Then it is accepted silently.
         assert!(result.is_ok());
     }
-
 }

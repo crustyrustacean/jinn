@@ -24,8 +24,8 @@
 //!
 pub mod emulator;
 pub mod interactive_term_actor;
-pub mod protocol;
 pub mod prefs;
+pub mod protocol;
 pub mod pty_session;
 pub mod query_responder;
 pub mod settle;

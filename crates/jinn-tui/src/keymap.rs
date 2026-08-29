@@ -95,7 +95,6 @@ fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Inte
 /// Builds and returns the full keymap with all scope bindings.
 #[must_use]
 #[rustfmt::skip]
-#[expect(clippy::too_many_lines, reason = "exhaustive keymap bindings grow with each scope")]
 pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     init_with_handback(
         jinn_domain::feat::interactive_term::prefs::DEFAULT_HANDBACK_KEY,
@@ -684,6 +683,38 @@ mod tests {
         assert!(
             matches!(intent, Intent::OpenQuakeBar),
             "<M-`> must resolve to OpenQuakeBar, not InsertChar; got {intent:?}",
+        );
+    }
+
+    #[rstest::rstest]
+    #[case(Scope::TerminalView)]
+    #[case(Scope::TerminalControl)]
+    fn alt_backtick_fires_quake_from_terminal_scopes(#[case] scope: Scope) {
+        // Given a keymap queried in a terminal scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, scope);
+
+        // When pressing <M-`>.
+        let alt_backtick = KeyEvent {
+            key: Key::Char('`'),
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: true,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(alt_backtick);
+
+        // Then the quake bar opens (the global overlay wins over terminal
+        // scopes, suspending view/control cleanly).
+        let intent =
+            intent.expect("<M-`> must fire in terminal scopes; got None (global binding shadowed)");
+        assert!(
+            matches!(intent, Intent::OpenQuakeBar),
+            "<M-`> in {scope:?} must open the quake bar; got {intent:?}",
         );
     }
 
@@ -1357,7 +1388,10 @@ mod tests {
         let intent = wk.handle_key(g);
 
         // Then nothing fires (view mode is passive — no pty forwarding).
-        assert!(intent.is_none(), "TerminalView must not forward keys; got {intent:?}");
+        assert!(
+            intent.is_none(),
+            "TerminalView must not forward keys; got {intent:?}"
+        );
     }
 
     #[rstest::rstest]
@@ -1503,7 +1537,6 @@ mod tests {
         let intent = intent.expect("former handback key must forward");
         assert!(matches!(intent, Intent::TerminalSendKey { .. }));
     }
-
 }
 
 #[cfg(test)]

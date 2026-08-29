@@ -1,3 +1,13 @@
+## 2026-08-29 Unreleased
+
+- Add the `interactive_term` tools — run and drive interactive terminal programs (vim, psql, ssh, htop, REPLs) from the agent:
+  - `interactive_term` spawns the program in a pseudo-terminal (with its own controlling tty, unlike the deliberately tty-less `bash` children) and returns the rendered screen once output settles.
+  - `interactive_term_send` types text and presses named keys (`enter`, `ctrl+c`, arrows, ...); call with no inputs to re-sync the screen.
+  - `interactive_term_kill` terminates the whole process group and returns the final screen, transcript tail, and exit code (safe on already-exited sessions).
+  - Sessions persist across tool calls; calls block only for the settle window (default quiet 400ms, cap 3s — configurable via `[interactive_term]` in `jinn.toml`).
+  - While a call runs, heartbeat events keep the stall watchdog from retrying long interactive work.
+- Add the terminal tab to the `<Tab>` cycle: view mode is passive; `i` takes control (keys forward to the program); the handback key (default `<c-g>`, configurable) returns control to the agent and steers the captured screen to the model — drained into an in-progress turn, or dispatched immediately when idle.
+
 ## 2026-08-27 v0.112.1
 
 - Add better Windows support (contributor: Jeff Mitchell <crusty.rustacean@gmail.com>)

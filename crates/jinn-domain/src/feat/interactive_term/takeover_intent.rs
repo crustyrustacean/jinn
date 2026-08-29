@@ -46,21 +46,18 @@ pub fn handle_take_control(state: &mut AppState) -> crate::protocol::intent::Int
 pub fn handle_send_key(
     state: &mut AppState,
     bytes: Vec<u8>,
-    label: String,
+    _label: String,
 ) -> crate::protocol::intent::IntentResult {
     // No-op unless the user actually holds control.
     if state.frontend.scope_stack.current() != &FocusScope::TerminalControl {
         return crate::protocol::intent::IntentResult::empty();
     }
-    let _ = label;
     let Some(session_id) = state.frontend.terminal.session_id.clone() else {
         return crate::protocol::intent::IntentResult::empty();
     };
     crate::protocol::intent::IntentResult::empty().with_message(
         crate::feat::interactive_term::protocol::command::SendTermKey {
-            session_id: crate::feat::interactive_term::protocol::command::TermSessionId(
-                session_id,
-            ),
+            session_id: crate::feat::interactive_term::protocol::command::TermSessionId(session_id),
             bytes,
         },
     )
@@ -79,7 +76,10 @@ pub fn handle_handback(state: &mut AppState) -> crate::protocol::intent::IntentR
     if let Some(flag) = control() {
         flag.set(ControlHolder::Agent);
     }
-    state.frontend.terminal.set_control(TermControlHolder::Agent);
+    state
+        .frontend
+        .terminal
+        .set_control(TermControlHolder::Agent);
     state.frontend.scope_stack.pop();
 
     // Steer the captured screen to the model (fenced, with instructions).
@@ -98,10 +98,7 @@ pub fn handle_handback(state: &mut AppState) -> crate::protocol::intent::IntentR
         )
     } else {
         crate::protocol::intent::IntentResult::empty().with_message(
-            crate::feat::chat_input::protocol::command::SubmitSteeringMessage {
-                session_id,
-                text,
-            },
+            crate::feat::chat_input::protocol::command::SubmitSteeringMessage { session_id, text },
         )
     }
 }
