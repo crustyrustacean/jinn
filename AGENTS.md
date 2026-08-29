@@ -215,6 +215,12 @@ by their key field (`name`, `pattern`, etc.).
 
 Read-only TOML files (themes, prompt frontmatter) are unaffected.
 
+### Plugin API Policy
+
+When asked to create a new plugin, attempt to expand the plugin API surface to
+broaden plugin capabilities generally. Avoid introducing host capabilities that
+exist solely to satisfy a single plugin.
+
 ## 3. Architecture
 
 ### Data Flow
