@@ -17,7 +17,7 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
   - Pin messages with `p` to keep them in context indefinitely
 - Fork a new session from any message by hitting `f`
 - Agent-managed task list with progress display.
-- Interactive terminal: spawn TUI programs (vim, psql, ssh, htop) that the agent can drive key-by-key, with a live colored overlay you can toggle (`<M-t>`) and take over (`i`) at any moment. Hand control back to the agent with the handback key (default `<c-g>`, configurable via `[interactive_term] handback_key` in `jinn.toml`).
+- Interactive terminal: spawn TUI programs (vim, psql, ssh, htop) that the agent can drive key-by-key, with a live colored overlay you can toggle (`<M-t>`) and take over (`i`) at any moment. Hand control back to the agent with the handback key (default `<c-g>`; set any keybind-notation key or sequence via `[interactive_term] handback_key` in `jinn.toml`, e.g. `<m-g>`).
 - Customizable personas
 - Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these), MCP server support.
 
@@ -70,7 +70,7 @@ Any running `interactive_term` session can be shown in a **terminal overlay** �
 
 - Opening the overlay is **view mode** — watch only, keys are not forwarded.
 - Press `i` to take **control** — every key is forwarded to the program.
-- Press the handback key (default `<c-g>`) to hand control back to the agent; the current screen is sent to the model automatically (steered into an in-progress turn, or dispatched immediately if the session is idle).
+- Press the handback key (default `<c-g>`, configurable to any keybind notation incl. `<m-…>` and sequences via `[interactive_term] handback_key`) to hand control back to the agent; the current screen is sent to the model automatically (steered into an in-progress turn, or dispatched immediately if the session is idle).
 - While you hold control, agent input to the terminal is held off with a notice.
 
 Note: `<c-g>` is consumed by jinn while you hold control (it cannot reach the program).

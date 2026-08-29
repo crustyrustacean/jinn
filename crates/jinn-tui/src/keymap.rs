@@ -1634,6 +1634,58 @@ mod tests {
         assert!(matches!(intent, Intent::TerminalSendKey { .. }));
     }
 
+    /// An alt-modified handback key (e.g. `<m-g>`) must bind and resolve:
+    /// any keymap-parseable binding is accepted (`[interactive_term]
+    /// handback_key = "<m-g>"` in jinn.toml).
+    #[rstest::rstest]
+    #[test]
+    fn alt_handback_key_resolves() {
+        // Given a keymap built with `<m-g>` as the handback key.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init_with_handback("<m-g>");
+        let mut wk = WhichKeyInstance::new(keymap, Scope::TerminalControl);
+
+        // When pressing alt+g.
+        let alt_g = KeyEvent {
+            key: Key::Char('g'),
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: true,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(alt_g);
+
+        // Then it resolves to TerminalHandback.
+        let intent = intent.expect("configured alt handback key must fire an intent");
+        assert!(matches!(intent, Intent::TerminalHandback));
+    }
+
+    /// A sequence handback (e.g. `zx`) binds as a prefix: the first key
+    /// enters which-key pending state rather than forwarding to the pty.
+    #[rstest::rstest]
+    #[test]
+    fn sequence_handback_first_key_pends_not_forwards() {
+        // Given a keymap built with a two-key handback sequence.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init_with_handback("zx");
+        let mut wk = WhichKeyInstance::new(keymap, Scope::TerminalControl);
+
+        // When pressing the sequence's first key.
+        let z = KeyEvent {
+            key: Key::Char('z'),
+            modifiers: Modifiers::none(),
+        };
+        let intent = wk.handle_key(z);
+
+        // Then nothing forwards to the pty yet (pending state).
+        assert!(intent.is_none());
+    }
+
     /// A punctuation handback key (e.g. `<c-'>`) must bind and resolve —
     /// `normalize_handback_key` permits any single character after `c-`,
     /// so the keymap must too.
