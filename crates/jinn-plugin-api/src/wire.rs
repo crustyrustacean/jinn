@@ -156,6 +156,31 @@ pub struct PushCitations {
     pub citations: Vec<PluginCitation>,
 }
 
+/// Request: cancel the active provider stream for a session.
+///
+/// A message-style mirror of the host's internal `CancelStream` bus
+/// command — same effect, public wire shape. Canceling an idle session is
+/// a host-side no-op, so duplicate sends are harmless.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CancelStream {
+    /// The session whose active stream should be canceled (opaque id).
+    pub session_id: String,
+}
+
+/// Request: insert one system-kind chat entry at the end of a session's
+/// history.
+///
+/// A message-style mirror of the host's internal
+/// `SubmitHistoryMutations(InsertEntry)` tail-append flow — same effect,
+/// public wire shape. The host renders it like any other system entry.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InsertSystemEntry {
+    /// The session to append to (opaque id string).
+    pub session_id: String,
+    /// The system entry text.
+    pub text: String,
+}
+
 /// Plugin→host message union (transport only).
 ///
 /// Unknown tags are handled one level up, in
@@ -172,6 +197,10 @@ pub enum PluginToHost {
     SetPersonaEntries(SetPersonaEntries),
     /// Citation contribution (turn-scoped).
     PushCitations(PushCitations),
+    /// Cancel the active provider stream for a session.
+    CancelStream(CancelStream),
+    /// Insert a system entry at the end of a session's history.
+    InsertSystemEntry(InsertSystemEntry),
 }
 
 /// Host→plugin message union (transport only).
