@@ -98,6 +98,46 @@ pub(crate) fn default_tool_default_timeout_secs() -> u64 {
     DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS
 }
 
+/// Default number of messages between the task-list echo and the tail of the
+/// assembled prompt. Bounds the uncached tail window per send.
+pub(crate) const DEFAULT_TASK_LIST_ECHO_OFFSET: usize = 10;
+
+/// Default maximum rendered tree lines in the task-list echo before truncation.
+pub(crate) const DEFAULT_TASK_LIST_ECHO_MAX_LINES: usize = 60;
+
+/// Task-list echo configuration.
+///
+/// Serialized as `[task_list]` in `jinn.toml`. Controls the synthetic
+/// `[System]`-prefixed user message injected near the tail of every assembled
+/// LLM prompt, mirroring the live task list so it stays visible in context
+/// even after the originating tool results are pruned.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskListPreferences {
+    /// Messages between the echo and the most recent message. `0` disables
+    /// echo injection entirely. Default: 10.
+    #[serde(default)]
+    pub echo_offset: Option<usize>,
+    /// Maximum rendered tree lines in the echo before truncation with a
+    /// pointer to the task-list tools. Default: 60.
+    #[serde(default)]
+    pub echo_max_lines: Option<usize>,
+}
+
+impl TaskListPreferences {
+    /// Resolved echo offset: the configured value or the built-in default.
+    /// A resolved value of `0` disables echo injection.
+    #[must_use]
+    pub fn echo_offset(&self) -> usize {
+        self.echo_offset.unwrap_or(DEFAULT_TASK_LIST_ECHO_OFFSET)
+    }
+
+    /// Resolved echo tree line cap: the configured value or the default.
+    #[must_use]
+    pub fn echo_max_lines(&self) -> usize {
+        self.echo_max_lines.unwrap_or(DEFAULT_TASK_LIST_ECHO_MAX_LINES)
+    }
+}
+
 /// Errors that can occur during user preferences I/O.
 #[derive(Debug, Error)]
 pub enum UserPreferencesError {
@@ -218,6 +258,9 @@ pub struct UserPreferences {
     /// Todo auto-steer configuration.
     #[serde(default)]
     pub todo_auto_steer: TodoAutoSteerConfig,
+    /// Task-list echo configuration.
+    #[serde(default)]
+    pub task_list: TaskListPreferences,
     /// Discord bot configuration. Off by default.
     #[serde(default)]
     pub discord: crate::feat::discord::DiscordConfig,
@@ -295,6 +338,7 @@ impl Default for UserPreferences {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
+            task_list: TaskListPreferences::default(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -302,6 +346,22 @@ impl Default for UserPreferences {
             stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
             stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         }
+    }
+}
+
+impl UserPreferences {
+    /// Resolved task-list echo offset: the `[task_list] echo_offset` value or
+    /// the built-in default. A resolved value of `0` disables echo injection.
+    #[must_use]
+    pub fn task_list_echo_offset(&self) -> usize {
+        self.task_list.echo_offset()
+    }
+
+    /// Resolved task-list echo line cap: the `[task_list] echo_max_lines`
+    /// value or the built-in default.
+    #[must_use]
+    pub fn task_list_echo_max_lines(&self) -> usize {
+        self.task_list.echo_max_lines()
     }
 }
 
@@ -566,6 +626,42 @@ mod tests {
         // Then optional fields default to None.
         assert!(prefs.tool_entry_max_lines.is_none());
         assert!(prefs.min_collapse_count.is_none());
+    }
+
+    #[rstest::rstest]
+    fn config_defaults_when_keys_absent() {
+        // Given preferences loaded from a jinn.toml without a [task_list] section.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, "tool_entry_max_lines = 10\n").expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the echo offset resolves to the built-in default.
+        assert_eq!(prefs.task_list_echo_offset(), 10);
+        // And the echo line cap resolves to the built-in default.
+        assert_eq!(prefs.task_list_echo_max_lines(), 60);
+    }
+
+    #[rstest::rstest]
+    fn config_explicit_values_override_defaults() {
+        // Given preferences loaded from a jinn.toml with explicit [task_list] values.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            "[task_list]\necho_offset = 5\necho_max_lines = 20\n",
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the explicit offset overrides the default.
+        assert_eq!(prefs.task_list_echo_offset(), 5);
+        // And the explicit cap overrides the default.
+        assert_eq!(prefs.task_list_echo_max_lines(), 20);
     }
 
     #[rstest::rstest]
