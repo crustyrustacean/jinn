@@ -230,6 +230,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::Sidebar)
             .bind("r", Intent::SidebarRenameSession, KeyCategory::Sidebar)
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::Sidebar)
+            .bind("A", Intent::SidebarSessionArchiveTree, KeyCategory::Sidebar)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::Sidebar)
             .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::Sidebar)
 
