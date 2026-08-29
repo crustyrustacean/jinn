@@ -1,3 +1,14 @@
+## (development; unreleased) v0.113.0
+
+- Add `A` sidebar keybind to archive selected session and all of it's children.
+- Add subagents/spawnable subtasks.
+
+### Subagents
+
+Subagents can be spawned using a new `task` tool and will appear in _purple text_ as a child session in the sidebar. The max depth is set to 1 prevent runaway cascading subagents.
+
+Subagent sessions are regular sessions that you can load to view their progress, steer, or cancel whenever desired. Once the subagent session returns to an IDLE state, the last message in the session (regardless of what it is) is sent back to the parent as a tool result. This makes it impossible to introduce a broken program state by manually working with a subagent since it's just a parent session calling a tool and waiting for the result.
+
 ## 2026-08-27 v0.112.1
 
 - Add better Windows support (contributor: Jeff Mitchell <crusty.rustacean@gmail.com>)
