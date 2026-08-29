@@ -1,16 +1,19 @@
 //! Archive-tree validation and prompt flow.
 //!
 //! The `A` key in the sidebar sessions section archives the selected session
-//! and all of its descendants. The visible subtree (effective parent edges —
-//! exactly what the sidebar displays, forks included) is validated as
-//! all-or-nothing: if any member is busy, the whole archive is rejected.
+//! and all of its descendants; the `X` key is the teardown variant — it first
+//! tears down the root, then archives the whole visible subtree. Both keys
+//! share this module: the visible subtree (effective parent edges — exactly
+//! what the sidebar displays, forks included) is validated as all-or-nothing:
+//! if any member is busy, the whole action is rejected.
 //!
 //! Flow: the first press arms a confirmation prompt (or a busy notice), the
 //! second press — re-validated by the intent-handler interceptor — emits an
-//! [`ArchiveSessionTree`] command for the session actor, which resolves the
-//! authoritative closure and performs the archive.
+//! [`ArchiveSessionTree`] or [`TeardownSessionTree`] command for the session
+//! actor, which resolves the authoritative closure and performs the action.
 //!
 //! [`ArchiveSessionTree`]: crate::feat::session::protocol::ArchiveSessionTree
+//! [`TeardownSessionTree`]: crate::feat::session::protocol::TeardownSessionTree
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -19,11 +22,37 @@ use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use crate::feat::ui::sidebar::sessions::state::{SessionEntry, SessionEntryKind};
 use crate::protocol::SessionId;
 
+/// The tree action a confirmation prompt was armed for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TreePromptAction {
+    /// Archive the subtree as-is (`A` key).
+    Archive,
+    /// Tear down the root, then archive the subtree (`X` key).
+    TeardownAndArchive,
+}
+
+impl TreePromptAction {
+    /// The command the confirming press emits, wrapped for the actor bus.
+    #[must_use]
+    pub fn command_for(self, root: SessionId) -> crate::protocol::IntentResult {
+        match self {
+            TreePromptAction::Archive => {
+                use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
+                crate::protocol::IntentResult::new_message(ArchiveSessionTree { root })
+            }
+            TreePromptAction::TeardownAndArchive => {
+                use crate::feat::session::protocol::teardown_session_tree::TeardownSessionTree;
+                crate::protocol::IntentResult::new_message(TeardownSessionTree { root })
+            }
+        }
+    }
+}
+
 /// State of the archive-tree confirmation prompt.
 ///
-/// OWNER: IntentHandler (armed on the first `SidebarSessionArchiveTree`,
-/// consumed on the second `SidebarSessionArchiveTree` or dismissed on any
-/// other intent).
+/// OWNER: IntentHandler (armed on the first press of the arming key,
+/// consumed when that same key is pressed again, dismissed on any other
+/// intent).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArchiveTreePrompt {
     /// Armed: the subtree was fully idle at arm time; `count` is the visible
@@ -31,6 +60,8 @@ pub enum ArchiveTreePrompt {
     Confirm {
         /// Number of sessions the confirm press will archive.
         count: usize,
+        /// Which tree action the confirm press will perform.
+        action: TreePromptAction,
     },
     /// Blocked: at least one member is busy; nothing will archive.
     Busy,
@@ -49,9 +80,9 @@ pub enum ArchiveTreeError {
     SubtreeBusy,
 }
 
-/// Resolves the visible subtree for the archive-tree action: the selected
-/// session plus all of its visible descendants, in BFS order (selection
-/// first).
+/// Resolves the visible subtree for the tree actions (`A` and `X`): the
+/// selected session plus all of its visible descendants, in BFS order
+/// (selection first).
 ///
 /// Uses the sidebar's effective parent edges, so the member set is exactly
 /// the subtree the user sees — visually reattached children and forks
@@ -145,17 +176,21 @@ fn collect_subtree(
     members
 }
 
-/// Handles the first `SidebarSessionArchiveTree` press — arms the prompt.
+/// Handles the first press of a tree-action key — arms the prompt.
 ///
-/// Validates the visible subtree, then arms the confirmation prompt with the
-/// subtree size (idle subtree) or the busy notice (any member busy). Never
-/// emits a command; the intent-handler interceptor performs re-validation and
-/// emits the command on the confirm press.
-pub fn handle_session_archive_tree_arm(state: &mut AppState) -> crate::protocol::IntentResult {
+/// Validates the visible subtree, then arms the confirmation prompt for
+/// `action` with the subtree size (idle subtree) or the busy notice (any
+/// member busy). Never emits a command; the intent-handler interceptor
+/// performs re-validation and emits the command on the confirm press.
+pub fn handle_session_tree_action_arm(
+    state: &mut AppState,
+    action: TreePromptAction,
+) -> crate::protocol::IntentResult {
     match archive_tree_members(state) {
         Ok(members) => {
             state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm {
                 count: members.len(),
+                action,
             });
         }
         Err(ArchiveTreeError::SubtreeBusy) => {
@@ -171,14 +206,15 @@ pub fn handle_session_archive_tree_arm(state: &mut AppState) -> crate::protocol:
     crate::protocol::IntentResult::empty()
 }
 
-/// Handles the confirmed `SidebarSessionArchiveTree` press — emits the command.
+/// Handles the confirmed press of a tree-action key — emits the command.
 ///
 /// Called by the intent-handler interceptor after it has re-validated the
 /// subtree; `root` is the selection the validation just resolved.
-pub fn handle_session_archive_tree_confirm(
-    _state: &mut AppState,
+pub fn handle_session_tree_action_confirm(
+    state: &mut AppState,
+    action: TreePromptAction,
     root: SessionId,
 ) -> crate::protocol::IntentResult {
-    use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
-    crate::protocol::IntentResult::new_message(ArchiveSessionTree { root })
+    state.frontend.archive_tree_prompt = None;
+    action.command_for(root)
 }

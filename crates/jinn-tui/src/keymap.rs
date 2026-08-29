@@ -236,6 +236,7 @@ pub fn init_with_handback(handback: &str) -> Keymap<KeyEvent, Scope, Intent, Key
             b
             // Session management actions
             .bind("x", Intent::SidebarSessionClose, KeyCategory::Sidebar)
+            .bind("X", Intent::SidebarSessionTeardownTree, KeyCategory::Sidebar)
             .bind("t", Intent::SidebarSessionTeardown, KeyCategory::Sidebar)
             .describe_group_with_category("p", "sessions", KeyCategory::Sidebar)
             .bind("<enter>", Intent::SidebarSessionConfirm, KeyCategory::Sidebar)

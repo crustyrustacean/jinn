@@ -236,3 +236,5 @@ Entries are added or amended **only with human approval**.
 - (tools) interactive_term sessions stream screen updates to the overlay and mirror in realtime (~50ms tick) even when no tool call is in flight; tool calls settle against the same screen-version stream instead of draining the pump.
 - (tools) interactive_term_send named keys include "f1"–"f12" (SS3/CSI function-key bytes), encoded by the same table as the TUI's key events; agent f-keys were previously silently dropped.
 - (tools) `interactive_term` children run with their own PTY as controlling terminal (own session/pgid), unlike the deliberately tty-less children of other tools.
+- (session) The sidebar `X` key tears down the selected session and, on teardown success, archives the entire visible subtree (root and descendants) behind a press-again confirmation.
+- (session) Tree teardown-and-archive is all-or-nothing: a failed teardown or a busy member leaves every session open with nothing archived.

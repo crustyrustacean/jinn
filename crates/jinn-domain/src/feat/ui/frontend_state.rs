@@ -133,7 +133,7 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (raise); every handled intent dismisses it.
     pub status_hint: Option<String>,
 
-    /// Whether the "Press x again to confirm closure" prompt is showing.
+    /// Whether the "Press x again to teardown and archive 1 session" prompt is showing.
     /// OWNER: IntentHandler (set on first SidebarSessionClose, consumed on second
     ///         SidebarSessionClose or dismissed on any other key).
     pub close_session_prompt: bool,

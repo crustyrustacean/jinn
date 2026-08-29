@@ -210,6 +210,15 @@ pub enum Intent {
     /// the second press emits the archive command. All-or-nothing — if any
     /// member is busy, nothing archives.
     SidebarSessionArchiveTree,
+    /// Tear down the selected session, then archive it and all its
+    /// descendant sessions once teardown succeeds.
+    ///
+    /// Behind a press-again confirmation like the archive-tree prompt: the
+    /// first press arms a prompt showing the subtree size (or a busy notice
+    /// if any member is streaming), the second press emits the teardown-tree
+    /// command. The root's pending teardown runs first; if it fails or any
+    /// member is busy, nothing archives.
+    SidebarSessionTeardownTree,
     /// Open the persona picker from the sidebar.
     SidebarPersonaEdit,
     /// Open the session lifecycle picker from the sidebar sessions section.
@@ -498,6 +507,7 @@ impl std::fmt::Display for Intent {
             Intent::SidebarSessionTeardown => write!(f, "run teardown script"),
             Intent::SidebarSessionArchive => write!(f, "archive session"),
             Intent::SidebarSessionArchiveTree => write!(f, "archive session tree"),
+            Intent::SidebarSessionTeardownTree => write!(f, "teardown and archive tree"),
             Intent::SidebarPersonaEdit => write!(f, "change persona"),
             Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::SidebarSessionContinue => write!(f, "continue session"),
