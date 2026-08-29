@@ -15,6 +15,7 @@ use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::context::tool_prompt::build_tool_context_block;
 use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
 use crate::feat::skills::format::format_skills_for_prompt;
+use crate::feat::task_list_echo::echo_message;
 use crate::protocol::{
     ChatEntry, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
 };
@@ -203,6 +204,28 @@ pub fn assemble_prompt(
     final_messages.extend(top_messages);
     final_messages.extend(working_messages);
 
+    // Task-list echo: synthetic snapshot of the live task list, injected
+    // `echo_offset` messages before the tail so the list survives context
+    // pruning. Experimental — off unless `[task_list] echo_enabled = true`.
+    // Computed before bottom pins so both land inside the same
+    // already-uncached tail window (echo deeper, pins nearer the tail).
+    let echo = state
+        .frontend
+        .preferences
+        .task_list_echo_enabled()
+        .then(|| {
+            echo_message(
+                session.task_list(),
+                state.frontend.preferences.task_list_echo_max_lines(),
+            )
+        })
+        .flatten();
+    insert_echo_at_offset(
+        &mut final_messages,
+        echo,
+        state.frontend.preferences.task_list_echo_offset(),
+    );
+
     // Insert BOTTOM pins just before the last message, walking back over a
     // trailing tool run so the pins land before the loop's assistant.
     insert_bottom_pins(&mut final_messages, bottom_messages);
@@ -270,6 +293,48 @@ fn insert_bottom_pins(final_messages: &mut Vec<LlmMessage>, bottom_messages: Vec
         insert_at -= 1;
     }
     final_messages.splice(insert_at..insert_at, bottom_messages);
+}
+
+/// Inserts the task-list echo `offset` messages before the tail of the
+/// message list.
+///
+/// Runs at the message level, after pins are converted and before bottom
+/// pins are inserted, so the echo and the pins both live inside the same
+/// already-uncached tail window. Injection is skipped when:
+///
+/// - `offset` is `0` (feature disabled via `[task_list] echo_offset`), or
+/// - the message list is at most `offset` messages long — a short history
+///   has had nothing pruned, and injecting near position 0 would mutate the
+///   cache prefix for no benefit, or
+/// - the echo is `None` (empty task list).
+///
+/// When the target index lands inside a trailing tool run, the index walks
+/// backward (mirroring [`insert_bottom_pins`]) so a tool result is never
+/// separated from its declaring assistant — and walking backward keeps the
+/// echo inside the tail window.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "insert_at is bounded by the length guards above"
+)]
+fn insert_echo_at_offset(messages: &mut Vec<LlmMessage>, echo: Option<LlmMessage>, offset: usize) {
+    let Some(echo) = echo else {
+        return;
+    };
+    if offset == 0 || messages.len() <= offset {
+        return;
+    }
+
+    let mut insert_at = messages.len() - offset;
+    while insert_at > 0 && matches!(messages[insert_at], LlmMessage::Tool { .. }) {
+        insert_at -= 1;
+    }
+    if insert_at == 0 {
+        // Degenerate: the walk hit the top of the list. Injecting at
+        // position 0 would change the shared cache prefix on every send;
+        // skip rather than corrupt the head.
+        return;
+    }
+    messages.splice(insert_at..insert_at, std::iter::once(echo));
 }
 
 /// Counts tokens across the system prompt and all messages.
@@ -348,6 +413,289 @@ mod tests {
             guard.session.active_session_id().clone()
         };
         (state, session_id)
+    }
+
+    /// Seeds a two-phase task list into the session under test.
+    fn seed_task_list(state: &State, session_id: &SessionId) {
+        let mut guard = state.write_test_no_cap();
+        let session = guard.session.get_mut(session_id).expect("session exists");
+        let list = session.task_list_mut();
+        let p1 = list.add_phase("Research");
+        list.add_task(&p1, "First task", crate::feat::todo_list::TaskPosition::End)
+            .expect("add first task");
+        let p2 = list.add_phase("Build");
+        list.add_task(
+            &p2,
+            "Second task",
+            crate::feat::todo_list::TaskPosition::End,
+        )
+        .expect("add second task");
+    }
+
+    /// Seeds a task list AND enables the (default-off) echo feature.
+    fn seed_task_list_echo(state: &State, session_id: &SessionId) {
+        seed_task_list(state, session_id);
+        set_task_list_prefs(
+            state,
+            crate::feat::preferences_actor::TaskListPreferences {
+                echo_enabled: Some(true),
+                ..Default::default()
+            },
+        );
+    }
+
+    /// Overwrites the session's `[task_list]` preferences.
+    fn set_task_list_prefs(
+        state: &State,
+        prefs: crate::feat::preferences_actor::TaskListPreferences,
+    ) {
+        let mut guard = state.write_test_no_cap();
+        guard.frontend.preferences.task_list = prefs;
+    }
+
+    fn echo_position(messages: &[LlmMessage]) -> Option<usize> {
+        messages
+            .iter()
+            .position(|m| matches!(m, LlmMessage::User { content, .. } if content.starts_with("[System] Task list snapshot")))
+    }
+
+    #[rstest::rstest]
+    fn echo_injected_at_configured_offset() {
+        // Given a session with a populated task list and a plain history long
+        // enough for a default offset of 10.
+        let (state, session_id) = state_with_history(vec![
+            ChatEntry::user("u1"),
+            ChatEntry::assistant("a1"),
+            ChatEntry::user("u2"),
+            ChatEntry::assistant("a2"),
+            ChatEntry::user("u3"),
+            ChatEntry::assistant("a3"),
+            ChatEntry::user("u4"),
+            ChatEntry::assistant("a4"),
+            ChatEntry::user("u5"),
+            ChatEntry::assistant("a5"),
+            ChatEntry::user("u6"),
+            ChatEntry::assistant("a6"),
+        ]);
+        seed_task_list_echo(&state, &session_id);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then exactly one echo exists, followed by exactly `echo_offset`
+        // (10) messages — the configured distance to the most recent message.
+        let positions: Vec<usize> = (0..result.messages.len())
+            .filter(|&i| echo_position(&result.messages[i..=i]).is_some())
+            .collect();
+        assert_eq!(positions.len(), 1, "exactly one echo");
+        assert_eq!(
+            result.messages.len() - positions[0] - 1,
+            10,
+            "echo must sit 10 messages before the tail"
+        );
+    }
+
+    #[rstest::rstest]
+    fn echo_snaps_backward_to_loop_boundary() {
+        // Given a session whose tail is a complete tool loop (assistant call +
+        // result) with a populated task list and an offset of 1 — so the raw
+        // insertion index lands on the trailing tool result.
+        let entries: Vec<ChatEntry> = (0..6)
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
+            })
+            .collect();
+        let mut entries = entries;
+        entries.extend([
+            ChatEntry::assistant(""),
+            ChatEntry::tool_call("call-1", "bash", "{}"),
+            ChatEntry::tool_result("call-1", "bash", "ok", ToolResultStatus::Success),
+        ]);
+        let (state, session_id) = state_with_history(entries);
+        seed_task_list_echo(&state, &session_id);
+        set_task_list_prefs(
+            &state,
+            crate::feat::preferences_actor::TaskListPreferences {
+                echo_enabled: Some(true),
+                echo_offset: Some(1),
+                echo_max_lines: None,
+            },
+        );
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then the echo landed before the loop's declaring assistant, keeping
+        // the loop intact and contiguous behind it.
+        let echo_at = echo_position(&result.messages).expect("echo present");
+        assert!(
+            matches!(&result.messages[echo_at + 1], LlmMessage::Assistant { tool_calls: Some(calls), .. } if calls.iter().any(|c| c.id == "call-1")),
+            "message after echo must be the loop's declaring assistant"
+        );
+        // And the loop's result follows the assistant directly.
+        assert!(matches!(
+            &result.messages[echo_at + 2],
+            LlmMessage::Tool { .. }
+        ));
+        // And the echo is the final message before the loop.
+        assert_eq!(echo_at + 3, result.messages.len());
+    }
+
+    #[rstest::rstest]
+    fn echo_skipped_when_history_shorter_than_offset() {
+        // Given a session with a populated task list and fewer messages than
+        // the offset.
+        let (state, session_id) = state_with_history(vec![
+            ChatEntry::user("u1"),
+            ChatEntry::assistant("a1"),
+            ChatEntry::user("u2"),
+            ChatEntry::assistant("a2"),
+        ]);
+        seed_task_list_echo(&state, &session_id);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then no echo is injected.
+        assert_eq!(echo_position(&result.messages), None);
+    }
+
+    #[rstest::rstest]
+    fn echo_disabled_when_offset_zero() {
+        // Given a session with a populated task list and enough history, but
+        // `echo_offset = 0`.
+        let entries: Vec<ChatEntry> = (0..12)
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
+            })
+            .collect();
+        let (state, session_id) = state_with_history(entries);
+        seed_task_list_echo(&state, &session_id);
+        set_task_list_prefs(
+            &state,
+            crate::feat::preferences_actor::TaskListPreferences {
+                echo_enabled: Some(true),
+                echo_offset: Some(0),
+                echo_max_lines: None,
+            },
+        );
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then no echo is injected.
+        assert_eq!(echo_position(&result.messages), None);
+    }
+
+    #[rstest::rstest]
+    fn echo_counted_in_token_estimate() {
+        // Given two identical sessions, one with a task list and one without,
+        // both with history long enough for injection.
+        let entries: Vec<ChatEntry> = (0..12)
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
+            })
+            .collect();
+        let (state_without, id_without) = state_with_history(entries.clone());
+        let (state_with, id_with) = state_with_history(entries);
+        seed_task_list_echo(&state_with, &id_with);
+
+        // When assembling both prompts.
+        let g0 = state_without.read();
+        let g1 = state_with.read();
+        let without = assemble_prompt(&g0, &id_without, &counter());
+        let with = assemble_prompt(&g1, &id_with, &counter());
+
+        // Then the echo's tokens are included in the estimate.
+        assert!(with.estimated_tokens() > without.estimated_tokens());
+    }
+
+    #[rstest::rstest]
+    fn echo_disabled_by_default() {
+        // Given a session with a populated task list and enough history, but
+        // no `[task_list]` config at all (echo_enabled absent).
+        let entries: Vec<ChatEntry> = (0..12)
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
+            })
+            .collect();
+        let (state, session_id) = state_with_history(entries);
+        seed_task_list(&state, &session_id);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then no echo is injected.
+        assert_eq!(echo_position(&result.messages), None);
+    }
+
+    #[rstest::rstest]
+    fn echo_injected_when_explicitly_enabled() {
+        // Given a session with a populated task list, enough history, and
+        // `echo_enabled = true`.
+        let entries: Vec<ChatEntry> = (0..12)
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
+            })
+            .collect();
+        let (state, session_id) = state_with_history(entries);
+        seed_task_list_echo(&state, &session_id);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then the echo is injected.
+        assert!(echo_position(&result.messages).is_some());
+    }
+
+    #[rstest::rstest]
+    fn echo_stable_when_list_unchanged() {
+        // Given a session with a populated task list and enough history.
+        let entries: Vec<ChatEntry> = (0..12)
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
+            })
+            .collect();
+        let (state, session_id) = state_with_history(entries);
+        seed_task_list_echo(&state, &session_id);
+
+        // When assembling twice without mutating anything.
+        let guard = state.read();
+        let first = assemble_prompt(&guard, &session_id, &counter());
+        let second = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then the message vectors are identical.
+        assert_eq!(first.messages, second.messages);
     }
 
     #[rstest::rstest]
