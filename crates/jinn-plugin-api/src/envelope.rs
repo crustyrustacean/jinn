@@ -112,7 +112,12 @@ impl<'de> Deserialize<'de> for PluginToHostOrHostToPlugin {
         }
         if matches!(
             tag,
-            "hello" | "set_theme_entries" | "set_persona_entries" | "push_citations"
+            "hello"
+                | "set_theme_entries"
+                | "set_persona_entries"
+                | "push_citations"
+                | "cancel_stream"
+                | "insert_system_entry"
         ) {
             return PluginToHost::deserialize(value)
                 .map(Self::Plugin)

@@ -30,6 +30,7 @@ pub use envelope::{Envelope, PROTOCOL_VERSION, PluginToHostOrHostToPlugin};
 pub use persona_def::PersonaDef;
 pub use theme_def::{THEME_COLOR_SLOTS, ThemeColorSlot, ThemeDef};
 pub use wire::{
-    Hello, HostToPlugin, PluginCitation, PluginToHost, PushCitations, SUBSCRIPTION_KINDS,
-    SetPersonaEntries, SetThemeEntries, ToolCallEvent, ToolResultEvent, TurnEndEvent, Welcome,
+    CancelStream, Hello, HostToPlugin, InsertSystemEntry, PluginCitation, PluginToHost,
+    PushCitations, SUBSCRIPTION_KINDS, SetPersonaEntries, SetThemeEntries, ToolCallEvent,
+    ToolResultEvent, TurnEndEvent, Welcome,
 };
