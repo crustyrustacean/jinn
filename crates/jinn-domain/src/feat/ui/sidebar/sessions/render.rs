@@ -28,6 +28,7 @@ use crate::feat::ui::sidebar::sessions::archive_tree::ArchiveTreePrompt;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use entry_line::assemble_entry_line;
 use scroll_tag::render_scroll_tag;
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 /// The open sessions sidebar section.
@@ -234,14 +235,30 @@ fn render_archive_tree_prompt(
     };
     let cursor_y = area.y + visual_row as u16;
     let prompt_y = cursor_y.saturating_sub(1);
-    // Right-align the banner so the full message fits: pin its end to the
-    // area's right edge, clamped into the area when the term is narrow.
-    let text_width = text.width() as u16;
-    let prompt_x = {
-        let unclamped_end = area.x + area.width;
-        let end = unclamped_end.min(area.x.saturating_add(text_width));
-        end.saturating_sub(text_width)
+    // Right-align the banner to the sidebar's right edge. When the sidebar is
+    // narrower than the banner, crop from the LEFT (grapheme-aware, never
+    // char-indexed) so the informative tail — "…3 sessions" / "…is busy" —
+    // survives and the banner never renders outside the sidebar column, where
+    // later-drawn main-column rows would paint over it.
+    let (text, prompt_x) = {
+        let text_width = text.width() as u16;
+        if text_width > area.width {
+            let total = text.graphemes(true).count();
+            let cropped: String = {
+                let keep = area.width as usize;
+                text.graphemes(true)
+                    .skip(total.saturating_sub(keep))
+                    .collect()
+            };
+            let cropped_width = cropped.width() as u16;
+            let x = area.x + area.width.saturating_sub(cropped_width);
+            (cropped, x)
+        } else {
+            let x = area.x + area.width - text_width;
+            (text, x)
+        }
     };
+    let text_width = text.width() as u16;
     let widget = Paragraph::new(Line::from(Span::styled(
         text,
         Style::default().fg(Color::Black).bg(bg),
