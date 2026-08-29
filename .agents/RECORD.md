@@ -37,6 +37,7 @@ Entries are added or amended **only with human approval**.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
 - (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
 - (arch) `AppState` is the shared state; the frontend writes user input, domain actors write their owned fields, and the TUI renderer reads it on each tick.
+- (context) jinn has no memory subsystem by decision: durable cross-session facts are carried by AGENTS.md/CLAUDE.md files, personas, and skills; cross-session recall is via the `session_query` tool; planning state is carried by pinned plan files.
 - (chat) The queue actor drains the steering buffer before context assembly on both user-message dispatch and dispatch-resume.
 - (compaction) Compaction is gated by a context-size threshold: it skips when below, triggers when at or above, and uses a fallback context length when the model isn't in the cache.
 - (compaction) Compaction preserves pinned entries; the cut index walks backwards from a reserve and advances past complete tool loops to a valid opener.
@@ -49,11 +50,17 @@ Entries are added or amended **only with human approval**.
 - (context) The assembled system prompt travels as an explicit field through dispatch and provider requests; the message array carries only chat history, and provider request builders never extract content from it.
 - (context) System-kind chat entries ride in LLM context as `[System]`-prefixed `User` messages in conversation order (when pinned or forced-include), never inside the system prompt.
 - (context) Context assembly partitions history into top, bottom, and working outgoing groups while preserving assistant tool-call/tool-result loops as atomic units.
+- (context) Context assembly can inject a synthetic `[System]`-prefixed task-list snapshot message into the assembled prompt, mirroring the live task list tree-only with no next-step line.
+- (context) Task-list echo injection is experimental and off unless `[task_list] echo_enabled = true`; it is also skipped when the task list is empty, `echo_offset` is 0, or history is at most `echo_offset` long.
+- (context) The task-list echo, when injected, is positioned `echo_offset` messages before the most recent message, snapped backward to the nearest tool-loop boundary.
+- (context) Task-list tool results include the next-step line and were deliberately left unchanged when the task-list echo was added.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
 - (context) The `gci` isolate handler iterates tool-loop chunks (one history-editor write per chunk) through the user-source `set_context` path, then emits one `ContextOverrideChanged` per changed chunk id and persists the session.
-- (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (token stays literal, turn dispatches); only a recognizable image failing conversion hard-blocks. A user entry carrying attachments is blocked unless the active model is confirmed image-capable via models.dev — unknown models are blocked, not allowed.
+- (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (token stays literal, turn dispatches); only a recognizable image failing conversion hard-blocks.
+- (attachments) A user entry carrying attachments is blocked unless the active model is confirmed image-capable via models.dev — unknown models are blocked, not allowed.
 - (attachments) `@path` tokens in user entries are colored by resolution outcome in the chat render: green when attached as an image, red when degraded (missing file or not an image).
-- (context) `#name` prompt-template tokens in user text expand to the template body; `@path` tokens resolve to `file://` URIs against cwd/home **when the file is a readable image, otherwise the token is left as literal text**; both are consumed in a second expansion pass.
+- (context) `#name` prompt-template tokens in user text expand to the template body; both token kinds are consumed in a second expansion pass.
+- (context) `@path` tokens resolve to `file://` URIs against cwd/home when the file is a readable image; otherwise the token is left as literal text.
 - (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) and browser-binary detection (Chrome vs bundled) for the web-fetch feature.
 - (dashboard) `frontend.dashboard` is owned by `DashboardActor`, fed exclusively by events; `DiscordStatusActor` republishes its gateway status as a `DiscordStatusUpdate` event rather than writing the dashboard directly.
 - (discovery) Project discovery walks ancestors from the session cwd up to either a VCS root or `$HOME`, whichever comes first; `$HOME` is exclusive.
@@ -75,7 +82,8 @@ Entries are added or amended **only with human approval**.
 - (identity) The application ships three frontends: a TUI (default), a Discord gateway, and a debug-only headless mode.
 - (keybinds) Bare letters in pickers route to the filter input rather than triggering actions: `a` in the project picker types into the filter, and `d` removes the highlighted entry (not a filter character).
 - (keybinds) In the skill scope, `PgUp` pages the picker list, not the preview, so list paging and preview scrolling are separate bindings.
-- (keybinds) In the skill scope, `Ctrl+L` loads the highlighted skill into context as a pinned ToolResult paired with a synthetic ToolCall (the same on-disk shape the `skill` tool produces), auto-enabling a disabled skill first; the picker stays open so several skills can be loaded in one visit.
+- (keybinds) In the skill scope, `Ctrl+L` loads the highlighted skill into context as a pinned ToolResult paired with a synthetic ToolCall (the same on-disk shape the `skill` tool produces); the picker stays open so several skills can be loaded in one visit.
+- (keybinds) `Ctrl+L` in the skill scope auto-enables a disabled skill before loading it.
 - (keybinds) In the skill scope, `Tab` cannot disable a skill already loaded into context — disabling would imply an unload that does not happen (the body stays pinned until it is unpinned and pruned). `Tab` is a no-op for a loaded skill.
 - (keybinds) Leader-chord keybinds resolve multi-key sequences: `<leader>se` opens the persona picker, `<leader>sr` opens the reasoning-effort picker, and `<leader>[p]` jumps to pinned intents — chords that don't complete (e.g. `[c` in input scope) don't resolve.
 - (keybinds) Picker scopes bind `PgUp`/`PgDn` to page-up/page-down of the picker list; in the skill and task-list scopes these also scroll a preview pane (`Ctrl+D`/`Ctrl+U` for the skill preview).
@@ -85,7 +93,7 @@ Entries are added or amended **only with human approval**.
 - (keybinds) `<leader>sP` opens the read-only plugin picker in normal scope.
 - (keybinds) `s` in the sidebar task-list section opens the task-list picker.
 - (keybinds) `gci` in normal scope isolates the highlighted entry's tool loop: it force-includes that loop and user-force-excludes every other non-pinned entry, leaving pins untouched.
-- (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over **stdio** (child process, JSON-RPC over stdin/stdout), **local_http** (jinn spawns a managed child process and connects via `StreamableHTTP`), or **remote_http** (jinn connects to an already-running server with no process management).
+- (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over stdio, local_http (jinn-managed child process), or remote_http (externally-managed, no process management).
 - (mcp) MCP tools are namespaced `mcp__<server>__<tool>` and registered per-session via `RegisterTools { session_id: Some(_) }`.
 - (mcp) MCP server enablement is per-session, persisted in `SessionCore`, off by default; enabling spawns the actor+process, disabling kills both.
 - (mcp) Each `[mcp_server.<name>]` block in `jinn.toml` accepts `auto_enable = true` to start that server already enabled in newly created sessions; the MCP coordinator reconciles `SessionCreated` against the session's actual enabled set.
@@ -94,11 +102,13 @@ Entries are added or amended **only with human approval**.
 - (mcp) Per-session MCP server status is owned by `McpCoordinatorActor`, driven by `McpServerStatus` events; it is surfaced in the sidebar, not the dashboard.
 - (mcp) `McpActor` republishes its captured stderr tail via `McpServerLog` on a debounce while Running; `McpCoordinatorActor` owns the per-session tails alongside status.
 - (mcp) The MCP server picker (`<leader>sM`) is a multipane inspector: a server list with a preview pane that toggles (Ctrl-prefixed) between a live stderr-tail/status view and the server's tool list.
-- (mcp) For local_http servers, jinn parses the bind address from the server's `url` host, allocates a free port via bind-and-release, and injects both into the server's args via `<ip>`/`<port>` replacement tokens; the `<port>` token is also expanded in the `url` itself. The global `mcp_bind_address` preference has been removed — the bind address is per-server in the `url`.
+- (mcp) For local_http servers, jinn parses the bind address from the server's `url` host, allocates a free port via bind-and-release, and injects both into the server's args via `<ip>`/`<port>` replacement tokens; the `<port>` token is also expanded in the `url` itself.
+- (mcp) The global `mcp_bind_address` preference has been removed — the bind address is per-server in the `url`.
 - (mcp) HTTP connect has no wall-clock timeout: a server stays `Starting` until the HTTP endpoint is reachable, and is marked `Dead` only when the child process exits (captured stdout/stderr explain why).
 - (mcp) A `remote_http` server (transport = "remote_http") connects to an externally-managed HTTP server at the configured `url` with no process management; `command` is optional (unused for remote_http).
-- (mcp) MCP connections are monitored post-connect: `McpActor` spawns a liveness watcher that polls `is_transport_closed()` and publishes `Dead` when the connection drops, working uniformly across stdio, local_http, and remote_http transports. local_http connections additionally run a child-exit watcher that reaps the child (preventing zombies) and tears down the transport on process death, since a half-open TCP socket does not trip `is_transport_closed()` on its own. No auto-restart — a dead connection surfaces in the sidebar/picker for the user to restart via the inspector.
-- (mcp) The `restart_mcp_server` built-in tool lets the model restart a dead MCP server by name (or by stripping a `mcp__<server>__<tool>` namespace). It awaits the coordinator's restart result — which resolves when the new connection succeeds (`Running`) or fails (`ConnectFailed`), with a 60s `Timeout` if neither — before returning, so the model cannot retry a tool call mid-startup. On any failure (including timeout) the result instructs the model to stop and wait for the user.
+- (mcp) MCP connections are monitored post-connect: a liveness watcher polls for transport closure and publishes `Dead` when the connection drops, uniformly across stdio, local_http, and remote_http transports.
+- (mcp) The `restart_mcp_server` built-in tool lets the model restart a dead MCP server by name (or by stripping a `mcp__<server>__<tool>` namespace).
+- (mcp) `restart_mcp_server` awaits the coordinator's restart result before returning — success (`Running`), failure (`ConnectFailed`), or the configured timeout — so the model cannot retry a tool call mid-startup; on any failure the result instructs the model to stop and wait for the user.
 - (mcp) MCP server entries accept a `headers` map; values support `${VAR}` env-var token expansion anywhere in the string, applied to both `local_http` and `remote_http` connections and ignored on stdio.
 - (mcp) MCP header variables are resolved once at startup into the shared key store alongside provider keys; an unset or empty variable prevents connection with an error naming the variable, and header values are never logged or rendered.
 - (mcp) MCP child processes (stdio and local_http) spawn terminal-isolated, like tool children.
@@ -112,7 +122,8 @@ Entries are added or amended **only with human approval**.
 - (plugins) Plugins are WASM components hosted in-process by jinn itself (wasmtime, one store per plugin, task-supervised), speaking NDJSON over in-memory pipes; the wasm sandbox is the isolation boundary.
 - (plugins) Plugin configuration lives in `jinn.toml` under `[plugin.<name>]`; plugins spawn at app start and activate only after a jinn restart.
 - (plugins) A plugin coordinator actor validates and authorizes all inbound plugin messages and caches contributions into `AppState`; synchronous consumers (pickers, renderer, assembly) read only the cache, never the plugin.
-- (plugins) Plugins declare the filesystem paths and http access they need in their own `[package.metadata.jinn]` manifest (Cargo.toml); the manifest is embedded into the built `.wasm` as a custom section and auto-applied at install, where `--grant`/`--http` flags override it. Install fails hard on an artifact with no embedded manifest. Nothing is granted implicitly — persistence is declared as `"<plugin_data_dir>:w"`.
+- (plugins) Plugins declare the filesystem paths and http access they need in their own `[package.metadata.jinn]` manifest (Cargo.toml), which is embedded into the built `.wasm` as a custom section.
+- (plugins) Install auto-applies the embedded manifest; `--grant`/`--http` flags override it, install fails hard on an artifact with no embedded manifest, and nothing is granted implicitly (persistence is declared as `"<plugin_data_dir>:w"`).
 - (plugins) The plugin wire contract is a hand-maintained JSON Schema kept in sync with the `jinn-plugin-api` types by a drift test; plugin SDKs are consumed as a git dependency on the jinn repo, not crates.io.
 - (plugins) Plugin `Hello` subscriptions negotiate host→guest events (`tool_call`, `tool_result`, `turn_end`); the host forwards matching bus events to subscribed guests and validates `PushCitations` contributions before publishing.
 - (plugins) `url-citations` is a first-party plugin seeded enabled by default; a dead or missing instance means no Sources footer, never a startup failure.
@@ -204,7 +215,8 @@ Entries are added or amended **only with human approval**.
 - (watchdog) A stall watchdog detects sessions stuck in sending, mid-tool-batch stalls, and streaming sessions with no history change, and publishes a cancel after the budget is exhausted.
 - (watchdog) An idle session is never scanned by the watchdog, and an active streaming session is never flagged.
 - (watchdog) The watchdog resets its stall counter at turn boundaries (not on activity jitter) and resets the budget when provider activity resumes; retries are suppressed within a backoff window.
-- (web) Web search runs via DuckDuckGo and web fetch supports concurrent requests; citation collection lives in the first-party `url-citations` plugin (shape-based detection from forwarded tool call/result events), and core only routes `CitationsReceived` into the Sources footer when a turn reaches a final assistant answer.
+- (web) Web search runs via DuckDuckGo; browser web fetch supports concurrent requests.
+- (web) Citation collection lives in the first-party `url-citations` plugin (shape-based detection from forwarded tool call/result events); core routes `CitationsReceived` into the Sources footer when a turn reaches a final assistant answer.
 - (web) Browser-backed web tools (fetch + search) keep their Chromium process warm via a periodic heartbeat; a missed liveness probe force-evicts the handle so the next request lazily launches a fresh browser rather than hanging on a dead WebSocket.
 - (web) Browser-backed renders detect bot challenges via a shared vendor-signature list (Cloudflare, Anubis, DuckDuckGo anomaly, DataDome, PerimeterX, Kasada, Imperva) plus a conservative behavioral fallback (near-zero text after a settle window).
 - (web) In headed mode a detected challenge keeps its tab open and waits up to [browser] challenge_wait_secs for a human solve; headless mode fails fast with an error suggesting the headed-chrome backend.
@@ -224,7 +236,7 @@ Entries are added or amended **only with human approval**.
 - (subagents) Sessions with a parent link cannot spawn subagents — the `task` tool is excluded from their toolset (depth-1).
 - (watchdog) The stall watchdog skips sessions with a pending `task` tool call.
 - (session) Sessions carry no automation flag; identity is a persisted origin enum (user, fork, subagent), and tree structure is linked via `parent_session`.
-- (subagents) A spawned subagent's first dispatch waits — bounded by a 15-second budget — for its discovery scans (project context files, skills, prompt templates) and enabled MCP servers to settle, so the first prompt includes MCP tools and project context; the message is sent regardless once the budget expires.
+- (subagents) A spawned subagent's first dispatch waits for its discovery settle gate (project context files, skills, enabled MCP servers), bounded by an internal settle budget, so the first prompt includes MCP tools and project context; the message is sent regardless once the budget expires.
 - (subagents) The sidebar's subagent marking reflects the session's origin, not the parent link; forks always get fork origin — even forks of subagent sessions.
 - (tools) The built-in `interactive_term`, `interactive_term_send`, and `interactive_term_kill` tools are the PTY interactive-terminal interface; each call blocks until screen output settles and returns the rendered screen.
 - (tools) `interactive_term` PTY sessions persist across tool calls in a coordinator actor; the spawned program's lifetime is decoupled from tool calls.
