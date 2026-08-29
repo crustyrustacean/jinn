@@ -211,7 +211,8 @@ pub fn sorted_open_sessions_split(
             depth: 0,
             ancestor_continuations: vec![],
             is_last_child: false,
-            is_subagent: session.parent_session().is_some(),
+            is_subagent: session.origin()
+                == crate::feat::session::chat_session::SessionOrigin::Subagent,
         })
         .collect();
 

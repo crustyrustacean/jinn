@@ -17,6 +17,7 @@ pub const THEME_COLOR_SLOTS: &[ThemeColorSlot] = &[
     ThemeColorSlot::PopupTitle,
     ThemeColorSlot::PrimaryText,
     ThemeColorSlot::MutedText,
+    ThemeColorSlot::SubagentFg,
     ThemeColorSlot::ErrorText,
     ThemeColorSlot::Success,
     ThemeColorSlot::Warning,
@@ -68,6 +69,8 @@ pub enum ThemeColorSlot {
     PrimaryText,
     /// Muted/dim text.
     MutedText,
+    /// Subagent session title (sidebar).
+    SubagentFg,
     /// Error text.
     ErrorText,
     /// Success/healthy status.
@@ -151,6 +154,7 @@ impl ThemeColorSlot {
             Self::PopupTitle => "popup_title",
             Self::PrimaryText => "primary_text",
             Self::MutedText => "muted_text",
+            Self::SubagentFg => "subagent_fg",
             Self::ErrorText => "error_text",
             Self::Success => "success",
             Self::Warning => "warning",

@@ -111,6 +111,7 @@ fn slot_color(theme: &jinn_theme::Theme, slot: ThemeColorSlot) -> String {
         ThemeColorSlot::PopupTitle => theme.popup_title,
         ThemeColorSlot::PrimaryText => theme.primary_text,
         ThemeColorSlot::MutedText => theme.muted_text,
+        ThemeColorSlot::SubagentFg => theme.subagent_fg,
         ThemeColorSlot::ErrorText => theme.error_text,
         ThemeColorSlot::Success => theme.success,
         ThemeColorSlot::Warning => theme.warning,

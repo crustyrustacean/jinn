@@ -5775,3 +5775,28 @@ fn set_model_to_alloy_clears_endpoint_pin() {
     // incoherent across a rotating set).
     assert!(session.profile().endpoint.is_none());
 }
+
+#[rstest::rstest]
+#[test]
+fn default_origin_is_user() {
+    // Given a newly created session.
+    let session = ChatSessionState::new();
+
+    // Then its origin is User.
+    assert_eq!(session.origin(), SessionOrigin::User);
+}
+
+#[rstest::rstest]
+#[test]
+fn new_child_origin_is_subagent() {
+    // Given an existing parent session.
+    let parent = ChatSessionState::new();
+
+    // When creating a child via the task-tool constructor.
+    let child = ChatSessionState::new_child(&parent.session_id().clone(), true);
+
+    // Then the child's origin is Subagent.
+    // And the parent link is still set.
+    assert_eq!(child.origin(), SessionOrigin::Subagent);
+    assert!(child.parent_session().is_some());
+}

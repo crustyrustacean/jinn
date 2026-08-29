@@ -443,15 +443,23 @@ fn sidebar_marks_child_with_symbol() {
 
     // Then the line ends with the subagent symbol span.
     let last_span = line.spans.last().expect("spans");
-    assert!(
-        last_span.content.contains('⤷'),
-        "subagent line must end with the symbol, got: {last_span:?}"
-    );
-    // And the symbol uses the muted title color.
     assert_eq!(
-        last_span.style.fg,
-        Some(theme.muted_text),
-        "symbol should use muted_text color"
+        last_span.content.as_ref(),
+        "Explore",
+        "the symbol precedes the title, so the title is last"
+    );
+    // And the title span just before it is the diamond symbol in the
+    // subagent color.
+    let symbol_span = &line.spans[line.spans.len() - 2];
+    assert_eq!(
+        symbol_span.content.as_ref(),
+        "⋄ ",
+        "subagent line must carry the diamond symbol before its title"
+    );
+    assert_eq!(
+        symbol_span.style.fg,
+        Some(theme.subagent_fg),
+        "symbol should use subagent_fg color"
     );
 }
 
@@ -480,7 +488,7 @@ fn sidebar_omits_symbol_for_regular_session() {
     // Then no span carries the subagent symbol.
     let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
     assert!(
-        !text.contains('⤷'),
+        !text.contains('⋄'),
         "regular session must not show the symbol, got: {text}"
     );
 }
@@ -512,10 +520,13 @@ fn sidebar_symbol_consumes_truncation_budget() {
     let sub_line = assemble_entry_line(&subagent, false, max_len, &idle_throbber(), &theme);
 
     // Then the subagent's title span is shorter: the symbol consumed part of
-    // the same budget (no overflow past max_len).
-    let plain_title = plain_line.spans[3].content.graphemes(true).count();
-    let sub_title = sub_line.spans[3].content.graphemes(true).count();
-    let symbol_len = " ⤷".graphemes(true).count();
+    // the same budget (no overflow past max_len). The title is always the
+    // last span for both lines.
+    let plain_title = plain_line.spans.last().expect("spans").content.clone();
+    let sub_title = sub_line.spans.last().expect("spans").content.clone();
+    let plain_title = plain_title.graphemes(true).count();
+    let sub_title = sub_title.graphemes(true).count();
+    let symbol_len = "⋄ ".graphemes(true).count();
     assert!(
         sub_title + symbol_len <= max_len,
         "title ({sub_title}) + symbol ({symbol_len}) must fit the budget {max_len}"

@@ -1370,3 +1370,94 @@ const TINY_PNG: &[u8] = &[
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
     0x89,
 ];
+
+#[rstest::rstest]
+#[tokio::test]
+async fn legacy_blob_without_origin_loads_as_user() {
+    // Given a subagent-origin session serialized to the persisted blob shape.
+    let parent_id = SessionId::new();
+    let mut session = ChatSessionState::new_child(&parent_id, true);
+    let session_id = SessionId::new();
+    session.set_session_id(session_id.clone());
+    let blob = serde_json::to_string(
+        &crate::feat::session::session_store::sqlite::PersistableCore::from(&session.core),
+    )
+    .expect("serialize");
+
+    // When stripping the `origin` key (simulating a blob written before the
+    // field existed) and deserializing back.
+    let mut value: serde_json::Value = serde_json::from_str(&blob).expect("parse");
+    value
+        .as_object_mut()
+        .expect("blob is an object")
+        .remove("origin");
+    let stripped = serde_json::to_string(&value).expect("re-serialize");
+    let persistable: crate::feat::session::session_store::sqlite::PersistableCore =
+        serde_json::from_str(&stripped).expect("deserialize legacy blob");
+    let core = crate::feat::session::chat_session::SessionCore::from(persistable);
+
+    // Then the legacy blob loads as User.
+    assert_eq!(
+        core.origin,
+        crate::feat::session::chat_session::SessionOrigin::User
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn subagent_origin_roundtrips_through_store() {
+    // Given a store with a task-tool child session.
+    let (_dir, store) = make_store().await;
+    let parent_id = SessionId::new();
+    let session_id = SessionId::new();
+    let mut child = ChatSessionState::new_child(&parent_id, true);
+    child.set_session_id(session_id.clone());
+    child.set_title("subagent".to_owned());
+    child.push_entry(ChatEntry::user("hello"));
+    store.save(&child).await.expect("save");
+
+    // When loading it back.
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then the subagent origin survives persistence.
+    assert_eq!(
+        loaded.origin(),
+        crate::feat::session::chat_session::SessionOrigin::Subagent
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn forked_session_persists_fork_origin() {
+    // Given a store with a subagent-origin session that has 2 entries.
+    let (_dir, store) = make_store().await;
+    let parent_id = SessionId::new();
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new_child(&parent_id, true);
+    source.set_session_id(source_id.clone());
+    source.set_title("subagent".to_owned());
+    source.push_entry(ChatEntry::user("first"));
+    source.push_entry(ChatEntry::assistant("second"));
+    store.save(&source).await.expect("save source");
+
+    // When forking it at ordinal 0.
+    let forked_id = store.fork(&source_id, 0).await.expect("fork");
+
+    // Then the fork loads with Fork origin — even though its source was a
+    // subagent.
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+    assert_eq!(
+        forked.origin(),
+        crate::feat::session::chat_session::SessionOrigin::Fork
+    );
+    // And the fork still carries the parent link.
+    assert_eq!(forked.parent_session(), &Some(source_id.clone()));
+}
