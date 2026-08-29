@@ -43,6 +43,7 @@ fn tree_entry(
         ancestor_continuations,
         is_last_child,
         is_subagent,
+        has_live_term: false,
     }
 }
 
@@ -186,6 +187,7 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: false,
+        has_live_term: false,
     };
     let theme = default_theme();
 
@@ -216,6 +218,7 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        has_live_term: false,
     };
     let theme = default_theme();
 
@@ -247,6 +250,7 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         ancestor_continuations: vec![true],
         is_last_child: false,
         is_subagent: false,
+        has_live_term: false,
     };
     let theme = default_theme();
 
@@ -282,6 +286,7 @@ fn title_is_truncated_more_at_higher_depth() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        has_live_term: false,
     };
     let child = SessionEntry {
         kind: SessionEntryKind::Session,
@@ -296,6 +301,7 @@ fn title_is_truncated_more_at_higher_depth() {
         ancestor_continuations: vec![true, true, true],
         is_last_child: true,
         is_subagent: false,
+        has_live_term: false,
     };
     let theme = default_theme();
     let max_len = 20;
@@ -335,6 +341,7 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         ancestor_continuations: vec![true, true],
         is_last_child: true,
         is_subagent: false,
+        has_live_term: false,
     };
     let theme = default_theme();
 
@@ -370,6 +377,7 @@ fn tree_prefix_uses_muted_text_color() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: false,
+        has_live_term: false,
     };
     let theme = default_theme();
 
@@ -435,6 +443,7 @@ fn sidebar_marks_child_with_symbol() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: true,
+        has_live_term: false,
     };
     let theme = default_theme();
 
@@ -479,6 +488,7 @@ fn sidebar_omits_symbol_for_regular_session() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        has_live_term: false,
     };
     let theme = default_theme();
 
@@ -491,6 +501,113 @@ fn sidebar_omits_symbol_for_regular_session() {
         !text.contains('⋄'),
         "regular session must not show the symbol, got: {text}"
     );
+}
+
+#[rstest::rstest]
+fn sidebar_shows_live_term_symbol_for_session_with_terminal() {
+    // Given a session entry with a live interactive_term terminal.
+    let entry = SessionEntry {
+        kind: SessionEntryKind::Session,
+        id: SessionId::new(),
+        title: "Term".to_owned(),
+        is_active: false,
+        created_at: Timestamp::now(),
+        is_idle: true,
+        last_entry_is_error: false,
+        parent_id: None,
+        depth: 0,
+        ancestor_continuations: vec![],
+        is_last_child: true,
+        is_subagent: false,
+        has_live_term: true,
+    };
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+
+    // Then a span carries the live-term symbol in the success color.
+    let term_span = line
+        .spans
+        .iter()
+        .find(|s| s.content.as_ref() == "▣ ")
+        .expect("live-term line must carry the ▣ symbol");
+    assert_eq!(term_span.style.fg, Some(theme.success));
+}
+
+#[rstest::rstest]
+fn sidebar_omits_live_term_symbol_for_session_without_terminal() {
+    // Given a session entry with no live terminal.
+    let entry = SessionEntry {
+        kind: SessionEntryKind::Session,
+        id: SessionId::new(),
+        title: "Plain".to_owned(),
+        is_active: false,
+        created_at: Timestamp::now(),
+        is_idle: true,
+        last_entry_is_error: false,
+        parent_id: None,
+        depth: 0,
+        ancestor_continuations: vec![],
+        is_last_child: true,
+        is_subagent: false,
+        has_live_term: false,
+    };
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+
+    // Then no span carries the live-term symbol.
+    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    assert!(
+        !text.contains('▣'),
+        "session without a terminal must not show the symbol, got: {text}"
+    );
+}
+
+#[rstest::rstest]
+fn sidebar_live_term_symbol_consumes_truncation_budget() {
+    // Given two entries with a long title and a live term each, narrow budget.
+    let make = |is_subagent: bool| SessionEntry {
+        kind: SessionEntryKind::Session,
+        id: SessionId::new(),
+        title: "A very long session title that will be truncated".to_owned(),
+        is_active: false,
+        created_at: Timestamp::now(),
+        is_idle: true,
+        last_entry_is_error: false,
+        parent_id: None,
+        depth: 0,
+        ancestor_continuations: vec![],
+        is_last_child: true,
+        is_subagent,
+        has_live_term: true,
+    };
+    let plain = make(false);
+    let sub = make(true);
+    let theme = default_theme();
+    let max_len = 12;
+
+    // When assembling both lines.
+    let plain_line = assemble_entry_line(&plain, false, max_len, &idle_throbber(), &theme);
+    let sub_line = assemble_entry_line(&sub, false, max_len, &idle_throbber(), &theme);
+
+    // Then the subagent line's title is exactly one symbol-width shorter
+    // than the plain line's (it carries the extra ⋄ symbol).
+    let plain_title_len: usize = plain_line.spans.last().map(|s| s.content.as_ref().graphemes(true).count()).unwrap_or(0);
+    let sub_title_len: usize = sub_line.spans.last().map(|s| s.content.as_ref().graphemes(true).count()).unwrap_or(0);
+    let symbol_len = "⋄ ".graphemes(true).count();
+    assert_eq!(
+        sub_title_len,
+        plain_title_len - symbol_len,
+        "each extra symbol eats its width from the title budget"
+    );
+    // And both lines show the term symbol.
+    for (name, line) in [("plain", &plain_line), ("sub", &sub_line)] {
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(text.contains('▣'), "{name} line must show the term symbol");
+    }
 }
 
 #[rstest::rstest]
@@ -509,6 +626,7 @@ fn sidebar_symbol_consumes_truncation_budget() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent,
+        has_live_term: false,
     };
     let plain = make(false);
     let subagent = make(true);

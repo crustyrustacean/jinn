@@ -792,6 +792,76 @@ mod tests {
         session_id
     }
 
+    /// Agent-sent f-keys must reach the program as real terminal bytes:
+    /// `cat -v` echoes ESC as `^[`, so an F4 (`ESC O S`) shows as `^[OS`.
+    /// (v1 regression: `encode_key("f4")` produced no bytes at all.)
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn agent_f4_key_reaches_the_program_as_bytes() {
+        // Given a coordinator running `cat -v`.
+        let harness = TestHarness::new().await;
+        let (actor, _root) = spawn_coordinator(&harness, TermControl::default()).await;
+        let chat = crate::protocol::SessionId::new();
+        let SpawnTermOutcome::Started { session_id, .. } = actor
+            .ask(spawn_msg(chat, "cat -v"))
+            .await
+            .expect("spawn reply")
+        else {
+            panic!("expected Started");
+        };
+
+        // When sending the named f4 key.
+        let mut msg = send_msg(session_id.clone());
+        msg.keys = vec!["f4".to_owned()];
+        let outcome = actor.ask(msg).await.expect("send reply");
+
+        // Then the program echoed the F4 bytes (`^[` + `OS`).
+        match outcome {
+            SendTermOutcome::Sent(screen) => {
+                assert!(
+                    plain_screen(&screen.screen).contains("^[OS"),
+                    "cat -v should echo F4 as ^[OS, got: {}",
+                    plain_screen(&screen.screen)
+                );
+            }
+            other => panic!("expected Screen, got {other:?}"),
+        }
+    }
+
+    /// The pty child runs in the cwd the request carries (the tool passes
+    /// its context cwd), so `pwd` prints that directory.
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn spawn_pty_runs_in_the_requested_cwd() {
+        use std::path::PathBuf;
+
+        // Given a coordinator and a real scratch directory.
+        let harness = TestHarness::new().await;
+        let (actor, _root) = spawn_coordinator(&harness, TermControl::default()).await;
+        let dir = std::env::temp_dir().join(format!("jinn-term-cwd-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+
+        // When spawning `pwd` with that directory as cwd.
+        let mut msg = spawn_msg(crate::protocol::SessionId::new(), "pwd");
+        msg.cwd = PathBuf::from(&dir);
+        let reply = actor.ask(msg).await.expect("spawn reply");
+
+        // Then the screen shows the requested directory.
+        match reply {
+            SpawnTermOutcome::Started { screen, .. } => {
+                assert!(
+                    plain_screen(&screen.screen).contains(dir.to_str().expect("utf8 path")),
+                    "pwd should print the requested cwd, got: {}",
+                    plain_screen(&screen.screen)
+                );
+            }
+            other => panic!("expected Started, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn spawn_returns_session_with_screen() {

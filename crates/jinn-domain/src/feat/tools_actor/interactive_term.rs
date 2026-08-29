@@ -88,8 +88,10 @@ pub fn definition() -> ToolDefinition {
             the program's actual rendered state, not raw bytes. The session persists across tool \
             calls — the program keeps running after this returns. \
             \
-            Send input via `interactive_term_send` (keys like \"enter\", \"ctrl+c\", \"up\", text, \
+            Send input via `interactive_term_send` (keys like \"enter\", \"ctrl+c\", \"f4\", text, \
             or both). Kill the session with `interactive_term_kill` when done. \
+            Each chat session has AT MOST ONE terminal: spawning again kills the previous \
+            program (unsaved work is lost) and reports it. \
             \
             TIMEOUT: default settle budget is 3s. Pass `max_duration_secs` to extend for \
             slow-starting programs (e.g. {\"max_duration_secs\": 30})."
@@ -164,6 +166,16 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     // hang the tool loop (mirrors the restart_mcp_server shape).
     let ask_timeout = max_wait + SPAWN_ASK_MARGIN;
 
+    // Spawn size: the overlay's inner rect once known (WYSIWYG); the VT100
+    // default before the first frame.
+    let size = ctx
+        .state
+        .as_ref()
+        .map_or((24, 80), |state| {
+            let s = state.read();
+            s.frontend.terminal.last_layout_size
+        });
+
     // Stream context so the coordinator's settle wait emits deltas attributed
     // to this tool call (watchdog keepalive).
     let stream_ctx = ctx.session_id.clone().map(|session_id| StreamCtx {
@@ -178,7 +190,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 chat_session_id: chat_session_id.clone(),
                 command: command.clone(),
                 cwd: ctx.cwd.clone(),
-                size: (24, 80),
+                size,
                 max_wait,
             })
             .send();

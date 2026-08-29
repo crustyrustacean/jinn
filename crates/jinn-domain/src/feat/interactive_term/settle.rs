@@ -77,14 +77,47 @@ pub fn encode_input(text: Option<&str>, keys: &[String], enter: bool) -> Vec<u8>
     out
 }
 
+/// Encodes the legacy-xterm byte sequence for a function key `1..=12`.
+///
+/// F1–F4 use the short SS3 form (`ESC O P`…`ESC O S`); F5+ use `CSI n ~`
+/// (xterm codes 15, 17, 18, 19, 20, 21, 23, 24). Numbers outside `1..=12`
+/// encode to nothing.
+#[must_use]
+pub fn fkey_bytes(n: u8) -> Vec<u8> {
+    match n {
+        1 => vec![0x1b, b'O', b'P'],
+        2 => vec![0x1b, b'O', b'Q'],
+        3 => vec![0x1b, b'O', b'R'],
+        4 => vec![0x1b, b'O', b'S'],
+        5..=12 => {
+            let code = match n {
+                5 => 15,
+                6 => 17,
+                7 => 18,
+                8 => 19,
+                9 => 20,
+                10 => 21,
+                11 => 23,
+                _ => 24,
+            };
+            let mut out = b"\x1b[".to_vec();
+            out.extend_from_slice(code.to_string().as_bytes());
+            out.push(b'~');
+            out
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// Encodes one named key to its legacy-xterm byte sequence.
 ///
 /// Recognized names (case-insensitive; `"c-"` prefixes for control):
 /// `enter`/`return`, `esc`/`escape`, `tab`, `backspace`, `delete`/`del`,
 /// `space`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup`,
-/// `pagedown`, `ctrl+<letter>`/`c-<letter>`, `alt+<key>`/`m-<key>` (ESC
-/// prefix), and any single printable character verbatim. Unknown names
-/// encode to nothing (empty bytes) so a typo'd key never sends garbage.
+/// `pagedown`, `f1`–`f12`, `ctrl+<letter>`/`c-<letter>`,
+/// `alt+<key>`/`m-<key>` (ESC prefix), and any single printable character
+/// verbatim. Unknown names encode to nothing (empty bytes) so a typo'd key
+/// never sends garbage.
 #[must_use]
 pub fn encode_key(name: &str) -> Vec<u8> {
     let lower = name.trim().to_ascii_lowercase();
@@ -105,6 +138,20 @@ pub fn encode_key(name: &str) -> Vec<u8> {
         "pagedown" => b"\x1b[6~",
         _ if lower.starts_with("ctrl+") || lower.starts_with("c-") => return encode_ctrl(&lower),
         _ if lower.starts_with("alt+") || lower.starts_with("m-") => return encode_alt(&lower),
+        _ if lower.len() >= 2
+            && lower.as_bytes()[0] == b'f'
+            && lower.as_bytes()[1..].iter().all(u8::is_ascii_digit) =>
+        {
+            return lower
+                .as_bytes()[1..]
+                .iter()
+                .try_fold(0u32, |acc, d| {
+                    acc.checked_mul(10)
+                        .and_then(|n| n.checked_add(u32::from(d - b'0')))
+                })
+                .and_then(|n| u8::try_from(n).ok())
+                .map_or_else(Vec::new, fkey_bytes);
+        }
         // Single printable character, sent verbatim (case preserved —
         // `B` must reach a case-sensitive program as capital B).
         _ => {
@@ -211,31 +258,7 @@ pub fn encode_key_event(event: &crate::protocol::key::KeyEvent) -> Vec<u8> {
         Key::PageDown => b"\x1b[6~",
         Key::F(n) => {
             // F1–F4 use the short SS3 form; F5+ use `CSI n ~`.
-            return match n {
-                1 => vec![0x1b, b'O', b'P'],
-                2 => vec![0x1b, b'O', b'Q'],
-                3 => vec![0x1b, b'O', b'R'],
-                4 => vec![0x1b, b'O', b'S'],
-                _ => {
-                    // xterm codes: F5=15, F6=17, F7=18, F8=19, F9=20,
-                    // F10=21, F11=23, F12=24.
-                    let code = match n {
-                        5 => 15,
-                        6 => 17,
-                        7 => 18,
-                        8 => 19,
-                        9 => 20,
-                        10 => 21,
-                        11 => 23,
-                        12 => 24,
-                        other => u32::from(other),
-                    };
-                    let mut out = b"\x1b[".to_vec();
-                    out.extend_from_slice(code.to_string().as_bytes());
-                    out.extend_from_slice(b"~");
-                    out
-                }
-            };
+            return fkey_bytes(n);
         }
     };
     plain.to_vec()
@@ -380,6 +403,65 @@ mod tests {
 
         // Then it is exactly one quiet window after the last output.
         assert_eq!(deadline.duration_since(last), quiet);
+    }
+
+    /// Agent-path function keys must produce the same bytes a real terminal
+    /// sends: SS3 for F1–F4, `CSI n ~` with xterm codes for F5–F12. htop's
+    /// F4 filter (and every other program) depends on these exact bytes.
+    #[rstest::rstest]
+    #[case("f1", &b"\x1bOP"[..])]
+    #[case("f2", b"\x1bOQ")]
+    #[case("f3", b"\x1bOR")]
+    #[case("f4", b"\x1bOS")]
+    #[case("f5", b"\x1b[15~")]
+    #[case("f6", b"\x1b[17~")]
+    #[case("f7", b"\x1b[18~")]
+    #[case("f8", b"\x1b[19~")]
+    #[case("f9", b"\x1b[20~")]
+    #[case("f10", b"\x1b[21~")]
+    #[case("f11", b"\x1b[23~")]
+    #[case("f12", b"\x1b[24~")]
+    fn encode_key_sends_function_key_bytes(#[case] name: &str, #[case] expected: &[u8]) {
+        // Given the named function key.
+        // When encoding it for the pty.
+        let bytes = encode_key(name);
+
+        // Then it produces the legacy-xterm sequence.
+        assert_eq!(bytes, expected);
+    }
+
+    /// The user-takeover path and the agent path must agree on f-keys —
+    /// both wrap [`fkey_bytes`].
+    #[rstest::rstest]
+    #[case(1)]
+    #[case(4)]
+    #[case(5)]
+    #[case(12)]
+    fn encode_key_event_matches_encode_key_for_f_keys(#[case] n: u8) {
+        // Given the same function key on both paths.
+        let event = crate::protocol::key::KeyEvent {
+            key: crate::protocol::key::Key::F(n),
+            modifiers: crate::protocol::key::Modifiers::none(),
+        };
+
+        // When encoding via the event path and the name path.
+        let from_event = encode_key_event(&event);
+        let from_name = encode_key(&format!("f{n}"));
+
+        // Then the byte sequences are identical.
+        assert_eq!(from_event, from_name);
+        assert!(!from_event.is_empty());
+    }
+
+    /// Out-of-range f-key numbers encode to nothing (never garbage).
+    #[rstest::rstest]
+    fn encode_key_ignores_out_of_range_function_keys() {
+        // Given f-key names outside 1..=12.
+        // When encoding them.
+        // Then nothing is sent.
+        assert!(encode_key("f0").is_empty());
+        assert!(encode_key("f13").is_empty());
+        assert!(encode_key("f99999999999999999999").is_empty());
     }
 
     #[rstest::rstest]
