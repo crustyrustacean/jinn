@@ -178,6 +178,7 @@ impl SessionPersistenceActor {
                 let estimated_tokens = assembled.estimated_tokens();
 
                 self.publish(SendToLlmProvider {
+                    origin: crate::feat::provider::protocol::command::StreamOrigin::User,
                     model_used,
                     reasoning_effort,
                     endpoint_tag,
@@ -528,6 +529,7 @@ impl SessionPersistenceActor {
             .await;
 
         self.publish(SendToLlmProvider {
+            origin: crate::feat::provider::protocol::command::StreamOrigin::User,
             model_used,
             reasoning_effort,
             endpoint_tag,

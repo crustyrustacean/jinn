@@ -18,9 +18,9 @@
 use std::collections::BTreeMap;
 
 use jinn_plugin_api::{
-    Envelope, HostToPlugin, PersonaDef, PluginCitation, PluginToHost, PluginToHostOrHostToPlugin,
-    PushCitations, THEME_COLOR_SLOTS, ThemeDef, ToolCallEvent, ToolResultEvent, TurnEndEvent,
-    Welcome,
+    CancelStream, Envelope, HostToPlugin, InsertSystemEntry, PersonaDef, PluginCitation,
+    PluginToHost, PluginToHostOrHostToPlugin, PushCitations, THEME_COLOR_SLOTS, ThemeDef,
+    ToolCallEvent, ToolResultEvent, TurnEndEvent, Welcome,
 };
 
 /// Compiles the committed schema file for validation.
@@ -281,6 +281,78 @@ fn push_citations_without_content_validates_against_schema() {
     };
     assert_eq!(msg.citations.len(), 1);
     assert_eq!(msg.citations[0].content, None);
+}
+
+#[rstest::rstest]
+#[test]
+fn cancel_stream_envelope_validates_against_schema() {
+    // Given a mirrored CancelStream envelope.
+    let envelope = Envelope::for_plugin(
+        PluginToHost::CancelStream(CancelStream {
+            session_id: "s-1".to_owned(),
+        }),
+        3,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[rstest::rstest]
+#[test]
+fn insert_system_entry_envelope_validates_against_schema() {
+    // Given a mirrored InsertSystemEntry envelope.
+    let envelope = Envelope::for_plugin(
+        PluginToHost::InsertSystemEntry(InsertSystemEntry {
+            session_id: "s-1".to_owned(),
+            text: "tool-call-watchdog: cancelling the stream".to_owned(),
+        }),
+        2,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[rstest::rstest]
+#[test]
+fn raw_line_with_cancel_stream_tag_parses_as_plugin_direction() {
+    // Given a raw wire line carrying the cancel_stream tag.
+    let line = r#"{"v":1,"seq":3,"ts":0,"type":"cancel_stream","session_id":"s-1"}"#;
+
+    // When deserializing it as an envelope.
+    let envelope: Envelope = serde_json::from_str(line).expect("known tag parses");
+
+    // Then it routes to the Plugin direction with the payload intact —
+    // proving the envelope tag-dispatch list was extended (an omitted tag
+    // would silently degrade this to Unknown).
+    assert_eq!(
+        envelope.msg,
+        PluginToHostOrHostToPlugin::Plugin(PluginToHost::CancelStream(CancelStream {
+            session_id: "s-1".to_owned(),
+        }))
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn raw_line_with_insert_system_entry_tag_parses_as_plugin_direction() {
+    // Given a raw wire line carrying the insert_system_entry tag.
+    let line = r#"{"v":1,"seq":2,"ts":0,"type":"insert_system_entry","session_id":"s-1","text":"watchdog"}"#;
+
+    // When deserializing it as an envelope.
+    let envelope: Envelope = serde_json::from_str(line).expect("known tag parses");
+
+    // Then it routes to the Plugin direction with the payload intact.
+    assert_eq!(
+        envelope.msg,
+        PluginToHostOrHostToPlugin::Plugin(PluginToHost::InsertSystemEntry(InsertSystemEntry {
+            session_id: "s-1".to_owned(),
+            text: "watchdog".to_owned(),
+        }))
+    );
 }
 
 #[rstest::rstest]

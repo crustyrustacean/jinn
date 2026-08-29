@@ -231,3 +231,6 @@ Entries are added or amended **only with human approval**.
 - (session) Tree archive resolves descendants across memory and the session store; store-only descendants already archived are included as no-ops.
 - (session) The sidebar `X` key tears down the selected session and, on teardown success, archives the entire visible subtree (root and descendants) behind a press-again confirmation.
 - (session) Tree teardown-and-archive is all-or-nothing: a failed teardown or a busy member leaves every session open with nothing archived.
+- (plugins) Plugin→host session-affecting messages are message-style mirrors of internal bus messages; the coordinator validates and translates them, and the set of implemented translations is the whitelist.
+- (plugins) The first-party tool-call-watchdog plugin detects tool-failure spirals with a per-session saturating accumulator (success −1, failure +1, configurable max, default 4) and cancels the stream via a mirrored CancelStream message with a watchdog system entry.
+- (session) CancelStream arms the LLM actor with a per-session cancel tombstone that silently drops tool-continuation dispatches until a user-originated send clears it, closing the race where an in-flight tool loop resumed after a watchdog or manual cancel.
