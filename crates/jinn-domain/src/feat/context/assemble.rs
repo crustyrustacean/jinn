@@ -206,12 +206,20 @@ pub fn assemble_prompt(
 
     // Task-list echo: synthetic snapshot of the live task list, injected
     // `echo_offset` messages before the tail so the list survives context
-    // pruning. Computed before bottom pins so both land inside the same
+    // pruning. Experimental — off unless `[task_list] echo_enabled = true`.
+    // Computed before bottom pins so both land inside the same
     // already-uncached tail window (echo deeper, pins nearer the tail).
-    let echo = echo_message(
-        session.task_list(),
-        state.frontend.preferences.task_list_echo_max_lines(),
-    );
+    let echo = state
+        .frontend
+        .preferences
+        .task_list_echo_enabled()
+        .then(|| {
+            echo_message(
+                session.task_list(),
+                state.frontend.preferences.task_list_echo_max_lines(),
+            )
+        })
+        .flatten();
     insert_echo_at_offset(
         &mut final_messages,
         echo,
@@ -424,6 +432,18 @@ mod tests {
         .expect("add second task");
     }
 
+    /// Seeds a task list AND enables the (default-off) echo feature.
+    fn seed_task_list_echo(state: &State, session_id: &SessionId) {
+        seed_task_list(state, session_id);
+        set_task_list_prefs(
+            state,
+            crate::feat::preferences_actor::TaskListPreferences {
+                echo_enabled: Some(true),
+                ..Default::default()
+            },
+        );
+    }
+
     /// Overwrites the session's `[task_list]` preferences.
     fn set_task_list_prefs(
         state: &State,
@@ -457,7 +477,7 @@ mod tests {
             ChatEntry::user("u6"),
             ChatEntry::assistant("a6"),
         ]);
-        seed_task_list(&state, &session_id);
+        seed_task_list_echo(&state, &session_id);
 
         // When assembling the prompt.
         let guard = state.read();
@@ -497,10 +517,11 @@ mod tests {
             ChatEntry::tool_result("call-1", "bash", "ok", ToolResultStatus::Success),
         ]);
         let (state, session_id) = state_with_history(entries);
-        seed_task_list(&state, &session_id);
+        seed_task_list_echo(&state, &session_id);
         set_task_list_prefs(
             &state,
             crate::feat::preferences_actor::TaskListPreferences {
+                echo_enabled: Some(true),
                 echo_offset: Some(1),
                 echo_max_lines: None,
             },
@@ -536,7 +557,7 @@ mod tests {
             ChatEntry::user("u2"),
             ChatEntry::assistant("a2"),
         ]);
-        seed_task_list(&state, &session_id);
+        seed_task_list_echo(&state, &session_id);
 
         // When assembling the prompt.
         let guard = state.read();
@@ -560,10 +581,11 @@ mod tests {
             })
             .collect();
         let (state, session_id) = state_with_history(entries);
-        seed_task_list(&state, &session_id);
+        seed_task_list_echo(&state, &session_id);
         set_task_list_prefs(
             &state,
             crate::feat::preferences_actor::TaskListPreferences {
+                echo_enabled: Some(true),
                 echo_offset: Some(0),
                 echo_max_lines: None,
             },
@@ -592,7 +614,7 @@ mod tests {
             .collect();
         let (state_without, id_without) = state_with_history(entries.clone());
         let (state_with, id_with) = state_with_history(entries);
-        seed_task_list(&state_with, &id_with);
+        seed_task_list_echo(&state_with, &id_with);
 
         // When assembling both prompts.
         let g0 = state_without.read();
@@ -602,6 +624,54 @@ mod tests {
 
         // Then the echo's tokens are included in the estimate.
         assert!(with.estimated_tokens() > without.estimated_tokens());
+    }
+
+    #[rstest::rstest]
+    fn echo_disabled_by_default() {
+        // Given a session with a populated task list and enough history, but
+        // no `[task_list]` config at all (echo_enabled absent).
+        let entries: Vec<ChatEntry> = (0..12)
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
+            })
+            .collect();
+        let (state, session_id) = state_with_history(entries);
+        seed_task_list(&state, &session_id);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then no echo is injected.
+        assert_eq!(echo_position(&result.messages), None);
+    }
+
+    #[rstest::rstest]
+    fn echo_injected_when_explicitly_enabled() {
+        // Given a session with a populated task list, enough history, and
+        // `echo_enabled = true`.
+        let entries: Vec<ChatEntry> = (0..12)
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
+            })
+            .collect();
+        let (state, session_id) = state_with_history(entries);
+        seed_task_list_echo(&state, &session_id);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then the echo is injected.
+        assert!(echo_position(&result.messages).is_some());
     }
 
     #[rstest::rstest]
@@ -617,7 +687,7 @@ mod tests {
             })
             .collect();
         let (state, session_id) = state_with_history(entries);
-        seed_task_list(&state, &session_id);
+        seed_task_list_echo(&state, &session_id);
 
         // When assembling twice without mutating anything.
         let guard = state.read();

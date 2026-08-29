@@ -113,6 +113,10 @@ pub(crate) const DEFAULT_TASK_LIST_ECHO_MAX_LINES: usize = 60;
 /// even after the originating tool results are pruned.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskListPreferences {
+    /// Master switch for echo injection. Experimental: absent or `false`
+    /// disables the echo entirely. Default: `false`.
+    #[serde(default)]
+    pub echo_enabled: Option<bool>,
     /// Messages between the echo and the most recent message. `0` disables
     /// echo injection entirely. Default: 10.
     #[serde(default)]
@@ -124,6 +128,13 @@ pub struct TaskListPreferences {
 }
 
 impl TaskListPreferences {
+    /// Resolved echo master switch: `true` only when explicitly enabled.
+    /// The echo is experimental and off unless opted in.
+    #[must_use]
+    pub fn echo_enabled(&self) -> bool {
+        self.echo_enabled.unwrap_or(false)
+    }
+
     /// Resolved echo offset: the configured value or the built-in default.
     /// A resolved value of `0` disables echo injection.
     #[must_use]
@@ -351,6 +362,13 @@ impl Default for UserPreferences {
 }
 
 impl UserPreferences {
+    /// Resolved task-list echo master switch: `true` only when
+    /// `[task_list] echo_enabled = true`. Experimental — off by default.
+    #[must_use]
+    pub fn task_list_echo_enabled(&self) -> bool {
+        self.task_list.echo_enabled()
+    }
+
     /// Resolved task-list echo offset: the `[task_list] echo_offset` value or
     /// the built-in default. A resolved value of `0` disables echo injection.
     #[must_use]
@@ -643,6 +661,8 @@ mod tests {
         assert_eq!(prefs.task_list_echo_offset(), 10);
         // And the echo line cap resolves to the built-in default.
         assert_eq!(prefs.task_list_echo_max_lines(), 60);
+        // And the echo is disabled (experimental default-off).
+        assert!(!prefs.task_list_echo_enabled());
     }
 
     #[rstest::rstest]
@@ -650,8 +670,11 @@ mod tests {
         // Given preferences loaded from a jinn.toml with explicit [task_list] values.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(&path, "[task_list]\necho_offset = 5\necho_max_lines = 20\n")
-            .expect("write");
+        std::fs::write(
+            &path,
+            "[task_list]\necho_enabled = true\necho_offset = 5\necho_max_lines = 20\n",
+        )
+        .expect("write");
 
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
@@ -660,6 +683,22 @@ mod tests {
         assert_eq!(prefs.task_list_echo_offset(), 5);
         // And the explicit cap overrides the default.
         assert_eq!(prefs.task_list_echo_max_lines(), 20);
+        // And the echo is explicitly enabled.
+        assert!(prefs.task_list_echo_enabled());
+    }
+
+    #[rstest::rstest]
+    fn config_echo_disabled_when_explicitly_false() {
+        // Given preferences with echo_enabled = false.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, "[task_list]\necho_enabled = false\n").expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the echo is disabled.
+        assert!(!prefs.task_list_echo_enabled());
     }
 
     #[rstest::rstest]
