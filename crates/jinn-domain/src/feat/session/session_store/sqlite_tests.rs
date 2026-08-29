@@ -1461,3 +1461,107 @@ async fn forked_session_persists_fork_origin() {
     // And the fork still carries the parent link.
     assert_eq!(forked.parent_session(), &Some(source_id.clone()));
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn set_archived_many_round_trips_subset() {
+    // Given a store with three saved sessions.
+    let (_dir, store) = make_store().await;
+    let a = SessionId::new();
+    let b = SessionId::new();
+    let c = SessionId::new();
+    for (id, title) in [(&a, "a"), (&b, "b"), (&c, "c")] {
+        store
+            .save(&make_session(id, title))
+            .await
+            .expect("save");
+    }
+
+    // When archiving a subset (a and c) in one call.
+    store
+        .set_archived_many(&[a.clone(), c.clone()], true)
+        .await
+        .expect("set_archived_many");
+
+    // Then exactly a and c are archived.
+    let summaries = store.load_summaries().await.expect("summaries");
+    let is_archived = |id: &SessionId| {
+        summaries
+            .iter()
+            .find(|s| s.session_id == *id)
+            .expect("summary")
+            .session_state
+            == crate::feat::session::chat_session::SessionState::Archived
+    };
+    assert!(is_archived(&a));
+    assert!(!is_archived(&b));
+    assert!(is_archived(&c));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn set_archived_many_with_empty_slice_is_noop() {
+    // Given a store with one saved session.
+    let (_dir, store) = make_store().await;
+    let a = SessionId::new();
+    store.save(&make_session(&a, "a")).await.expect("save");
+
+    // When calling set_archived_many with an empty slice.
+    store
+        .set_archived_many(&[], true)
+        .await
+        .expect("set_archived_many");
+
+    // Then the session is untouched (still loaded).
+    let summaries = store.load_summaries().await.expect("summaries");
+    assert_eq!(summaries[0].session_state, crate::feat::session::chat_session::SessionState::Loaded);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn set_archived_many_false_un_archives() {
+    // Given a store with two sessions archived via set_archived_many.
+    let (_dir, store) = make_store().await;
+    let a = SessionId::new();
+    let b = SessionId::new();
+    store.save(&make_session(&a, "a")).await.expect("save");
+    store.save(&make_session(&b, "b")).await.expect("save");
+    store
+        .set_archived_many(&[a.clone(), b.clone()], true)
+        .await
+        .expect("archive");
+
+    // When un-archiving them with archived = false.
+    store
+        .set_archived_many(&[a.clone(), b.clone()], false)
+        .await
+        .expect("un-archive");
+
+    // Then both sessions are loaded again.
+    let summaries = store.load_summaries().await.expect("summaries");
+    assert!(summaries.iter().all(|s| {
+        s.session_state == crate::feat::session::chat_session::SessionState::Loaded
+    }));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn set_archived_many_ignores_unknown_ids() {
+    // Given a store with one saved session.
+    let (_dir, store) = make_store().await;
+    let a = SessionId::new();
+    store.save(&make_session(&a, "a")).await.expect("save");
+
+    // When archiving a slice containing the session and an unknown ID.
+    store
+        .set_archived_many(&[a.clone(), SessionId::new()], true)
+        .await
+        .expect("set_archived_many");
+
+    // Then the call succeeds and the known session is archived.
+    let summaries = store.load_summaries().await.expect("summaries");
+    assert_eq!(
+        summaries[0].session_state,
+        crate::feat::session::chat_session::SessionState::Archived
+    );
+}

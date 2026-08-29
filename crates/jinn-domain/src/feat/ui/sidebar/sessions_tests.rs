@@ -2156,3 +2156,416 @@ fn sidebar_unmarks_forked_sessions() {
         .expect("forked entry");
     assert!(!entry.is_subagent);
 }
+
+// ---------------------------------------------------------------------------
+// Archive tree - validator
+// ---------------------------------------------------------------------------
+
+use crate::feat::ui::sidebar::sessions::archive_tree::{
+    ArchiveTreeError, ArchiveTreePrompt, archive_tree_members,
+};
+
+/// Helper: builds a session tree of root -> child -> grandchild, plus an
+/// unrelated survivor root. All sessions get titles for lookup. Returns the
+/// state and the IDs of its members.
+fn state_with_archive_tree() -> (AppState, [crate::protocol::SessionId; 4]) {
+    let mut state = AppState::default();
+    let mut root = ChatSessionState::new();
+    root.push_entry(ChatEntry::user("tree root"));
+    root.set_title("tree root".to_owned());
+    let root_id = root.session_id().clone();
+    state.session.insert(root);
+
+    let mut child = ChatSessionState::new();
+    child.set_title("tree child".to_owned());
+    child.set_parent_session(root_id.clone());
+    let child_id = child.session_id().clone();
+    state.session.insert(child);
+
+    let mut grandchild = ChatSessionState::new();
+    grandchild.set_title("tree grandchild".to_owned());
+    grandchild.set_parent_session(child_id.clone());
+    let grandchild_id = grandchild.session_id().clone();
+    state.session.insert(grandchild);
+
+    let mut survivor = ChatSessionState::new();
+    survivor.push_entry(ChatEntry::user("survivor"));
+    survivor.set_title("survivor".to_owned());
+    let survivor_id = survivor.session_id().clone();
+    state.session.insert(survivor);
+
+    // Drop the default session if it survived under another name.
+    let default_id = state.session.active_session_id().clone();
+    if ![&root_id, &child_id, &grandchild_id, &survivor_id]
+        .iter()
+        .any(|id| **id == default_id)
+    {
+        state.session.remove(&default_id);
+    }
+
+    (state, [root_id, child_id, grandchild_id, survivor_id])
+}
+
+/// Helper: puts the sessions section into the sidebar focus stack and selects
+/// the entry with the given title.
+fn focus_sessions_and_select(state: &mut AppState, title: &str) {
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    let sessions = sorted_open_sessions(state);
+    let index = sessions
+        .iter()
+        .position(|e| entry_title(state, &e.id) == title)
+        .unwrap_or_else(|| panic!("session titled {title} not in sidebar"));
+    state.frontend.sessions_section.selected_index = Some(index);
+}
+
+#[rstest::rstest]
+fn archive_tree_members_returns_selection_and_transitive_descendants() {
+    // Given a focused sessions section with root -> child -> grandchild.
+    let (mut state, [root_id, child_id, grandchild_id, _survivor]) =
+        state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+
+    // When resolving the archive-tree members.
+    let members = archive_tree_members(&state).expect("members");
+
+    // Then the members are the root, child, and grandchild (BFS order).
+    assert_eq!(members, vec![root_id, child_id, grandchild_id]);
+}
+
+#[rstest::rstest]
+fn archive_tree_members_includes_fork_children() {
+    // Given a root whose only descendant is a fork-shaped child (parent link
+    // set, forked sessions are never marked as subagents).
+    let mut state = AppState::default();
+    let mut root = ChatSessionState::new();
+    root.push_entry(ChatEntry::user("fork root"));
+    root.set_title("fork root".to_owned());
+    let root_id = root.session_id().clone();
+    state.session.insert(root);
+
+    let mut forked = ChatSessionState::new();
+    forked.set_title("forked child".to_owned());
+    forked.set_parent_session(root_id.clone());
+    let forked_id = forked.session_id().clone();
+    state.session.insert(forked);
+    let default_id = state.session.active_session_id().clone();
+    if default_id != root_id && default_id != forked_id {
+        state.session.remove(&default_id);
+    }
+    focus_sessions_and_select(&mut state, "fork root");
+
+    // When resolving the archive-tree members.
+    let members = archive_tree_members(&state).expect("members");
+
+    // Then both the root and the fork are members.
+    assert_eq!(members, vec![root_id, forked_id]);
+}
+
+#[rstest::rstest]
+fn archive_tree_members_rejects_when_a_descendant_is_busy() {
+    // Given a tree whose grandchild is busy.
+    let (mut state, [.., grandchild_id, _survivor]) = state_with_archive_tree();
+    state
+        .session
+        .get_mut(&grandchild_id)
+        .expect("grandchild")
+        .begin_busy();
+    focus_sessions_and_select(&mut state, "tree root");
+
+    // When resolving the archive-tree members.
+    let result = archive_tree_members(&state);
+
+    // Then validation fails with SubtreeBusy (all-or-nothing).
+    assert_eq!(result, Err(ArchiveTreeError::SubtreeBusy));
+}
+
+#[rstest::rstest]
+fn archive_tree_members_rejects_when_selection_is_busy() {
+    // Given a tree whose selected root itself is busy.
+    let (mut state, [root_id, ..]) = state_with_archive_tree();
+    state
+        .session
+        .get_mut(&root_id)
+        .expect("root")
+        .begin_busy();
+    focus_sessions_and_select(&mut state, "tree root");
+
+    // When resolving the archive-tree members.
+    let result = archive_tree_members(&state);
+
+    // Then validation fails with SubtreeBusy.
+    assert_eq!(result, Err(ArchiveTreeError::SubtreeBusy));
+}
+
+#[rstest::rstest]
+fn archive_tree_members_returns_single_member_for_leaf() {
+    // Given a focused sessions section with the grandchild selected.
+    let (mut state, [.., grandchild_id, _survivor]) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree grandchild");
+
+    // When resolving the archive-tree members.
+    let members = archive_tree_members(&state).expect("members");
+
+    // Then the only member is the selection itself.
+    assert_eq!(members, vec![grandchild_id]);
+}
+
+#[rstest::rstest]
+fn archive_tree_members_rejected_when_no_selection() {
+    // Given a focused sessions section with no cursor.
+    let (mut state, _) = state_with_archive_tree();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    state.frontend.sessions_section.selected_index = None;
+
+    // When resolving the archive-tree members.
+    let result = archive_tree_members(&state);
+
+    // Then validation fails with NoSelection.
+    assert_eq!(result, Err(ArchiveTreeError::NoSelection));
+}
+
+#[rstest::rstest]
+fn archive_tree_members_rejected_when_wrong_section() {
+    // Given the sessions section is not focused.
+    let (state, _) = state_with_archive_tree();
+
+    // When resolving the archive-tree members.
+    let result = archive_tree_members(&state);
+
+    // Then validation fails with WrongSection.
+    assert_eq!(result, Err(ArchiveTreeError::WrongSection));
+}
+
+// ---------------------------------------------------------------------------
+// Archive tree - intent flow (arm, confirm, dismiss, busy flip)
+// ---------------------------------------------------------------------------
+
+use crate::feat::intent::IntentHandler;
+use crate::protocol::Intent;
+
+#[rstest::rstest]
+fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
+    // Given a focused idle subtree of three sessions.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+
+    // When handling the first SidebarSessionArchiveTree.
+    let result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+
+    // Then the confirm prompt is armed with the subtree size.
+    assert_eq!(
+        state.frontend.archive_tree_prompt,
+        Some(ArchiveTreePrompt::Confirm { count: 3 })
+    );
+    // And no commands were emitted.
+    assert!(result.message_names.is_empty());
+}
+
+#[rstest::rstest]
+fn archive_tree_arm_sets_busy_prompt_when_subtree_busy() {
+    // Given a focused subtree containing a busy grandchild.
+    let (mut state, [.., grandchild_id, _survivor]) = state_with_archive_tree();
+    state
+        .session
+        .get_mut(&grandchild_id)
+        .expect("grandchild")
+        .begin_busy();
+    focus_sessions_and_select(&mut state, "tree root");
+
+    // When handling the first SidebarSessionArchiveTree.
+    let result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+
+    // Then the busy prompt is armed.
+    assert_eq!(
+        state.frontend.archive_tree_prompt,
+        Some(ArchiveTreePrompt::Busy)
+    );
+    // And no commands were emitted.
+    assert!(result.message_names.is_empty());
+}
+
+#[rstest::rstest]
+fn archive_tree_second_press_emits_archive_command() {
+    // Given an armed confirm prompt over an idle subtree.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+
+    // When handling a second SidebarSessionArchiveTree.
+    let result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+
+    // Then the ArchiveSessionTree command is emitted.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("ArchiveSessionTree")),
+        "should emit ArchiveSessionTree: {:?}",
+        result.message_names
+    );
+    // And the prompt is cleared.
+    assert_eq!(state.frontend.archive_tree_prompt, None);
+}
+
+#[rstest::rstest]
+fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
+    // Given an armed confirm prompt whose grandchild then becomes busy.
+    let (mut state, [.., grandchild_id, _survivor]) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    state
+        .session
+        .get_mut(&grandchild_id)
+        .expect("grandchild")
+        .begin_busy();
+
+    // When handling a second SidebarSessionArchiveTree.
+    let result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+
+    // Then the prompt flipped to Busy instead of archiving.
+    assert_eq!(
+        state.frontend.archive_tree_prompt,
+        Some(ArchiveTreePrompt::Busy)
+    );
+    // And no archive command was emitted.
+    assert!(
+        !result
+            .message_names
+            .iter()
+            .any(|n| n.contains("ArchiveSessionTree")),
+        "should not emit ArchiveSessionTree: {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
+    // Given an armed confirm prompt.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+
+    // When handling a different intent (SidebarSectionNext).
+    let _result = IntentHandler::handle(&Intent::SidebarSectionNext, &mut state);
+
+    // Then the prompt is dismissed.
+    assert_eq!(state.frontend.archive_tree_prompt, None);
+}
+
+#[rstest::rstest]
+fn archive_tree_invalid_context_leaves_no_prompt() {
+    // Given the sessions section is not focused.
+    let (mut state, _) = state_with_archive_tree();
+
+    // When handling SidebarSessionArchiveTree.
+    let result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+
+    // Then no prompt is armed and no commands are emitted.
+    assert_eq!(state.frontend.archive_tree_prompt, None);
+    assert!(result.message_names.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Archive tree - prompt render
+// ---------------------------------------------------------------------------
+
+use ratatui::backend::TestBackend;
+use ratatui::Terminal;
+
+/// Helper: renders the sidebar sessions section and returns the buffer text.
+/// Width 60 so prompt strings (up to ~48 chars) render unclipped.
+fn render_sessions_area(state: &AppState) -> String {
+    let mut section = SessionsSection::new();
+    let area = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width: 60,
+        height: 20,
+    };
+    let mut terminal = Terminal::new(TestBackend::new(60, 20)).expect("terminal");
+    let mut ctx = RenderCtx::new(state);
+    terminal
+        .draw(|frame| section.render(frame, area, &mut ctx))
+        .expect("draw");
+    let buffer = terminal.backend().buffer();
+    (0..20)
+        .flat_map(|y| {
+            (0..60).map(move |x| {
+                buffer
+                    .cell((x, y))
+                    .map_or(' ', |c| c.symbol().chars().next().unwrap_or(' '))
+            })
+        })
+        .collect()
+}
+
+#[rstest::rstest]
+fn archive_tree_prompt_renders_yellow_confirm_with_count() {
+    // Given a focused selection with an armed confirm prompt of 3 sessions.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm { count: 3 });
+
+    // When rendering the sessions section.
+    let text = render_sessions_area(&state);
+
+    // Then the confirm text with the count appears.
+    assert!(
+        text.contains("Press A again to archive 3 sessions"),
+        "rendered: {text}"
+    );
+}
+
+#[rstest::rstest]
+fn archive_tree_prompt_renders_red_busy_notice() {
+    // Given a focused selection with the busy prompt showing.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
+
+    // When rendering the sessions section.
+    let text = render_sessions_area(&state);
+
+    // Then the busy notice appears.
+    assert!(
+        text.contains("Cannot archive tree while a session is busy"),
+        "rendered: {text}"
+    );
+}
+
+#[rstest::rstest]
+fn sidebar_after_archive_tree_cascade_shows_survivors_only() {
+    // Given a tree (root -> child -> grandchild) plus a survivor root, with
+    // the tree root selected and clamping in range.
+    let (mut state, [root_id, child_id, grandchild_id, survivor_id]) =
+        state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+
+    // When simulating the cascade the actor performs: remove each member
+    // with visual-parent maintenance, then reconcile the sidebar.
+    for member in [&root_id, &child_id, &grandchild_id] {
+        crate::feat::ui::sidebar::sessions::update_visual_parents_on_removal(
+            &mut state,
+            member,
+        );
+        state.session.remove(member);
+        crate::feat::ui::sidebar::sessions::reconcile_after_session_removal(&mut state);
+    }
+
+    // Then the sidebar lists only the survivor.
+    let sessions = sorted_open_sessions(&state);
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].id, survivor_id);
+
+    // And no stale visual_parents entries remain.
+    assert!(
+        state.frontend.sessions_section.visual_parents.is_empty(),
+        "visual_parents should be empty, got {:?}",
+        state.frontend.sessions_section.visual_parents
+    );
+
+    // And the cursor is valid: either None or in bounds.
+    if let Some(index) = state.frontend.sessions_section.selected_index {
+        assert!(index < sessions.len(), "cursor out of bounds: {index}");
+    }
+}
