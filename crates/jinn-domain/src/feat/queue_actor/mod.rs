@@ -232,7 +232,7 @@ impl QueueActor {
 
         let assembled = {
             let guard = self.state.read();
-            assemble_prompt(&guard, session_id, &self.counter, None)
+            assemble_prompt(&guard, session_id, &self.counter)
         };
 
         let (provider_id, model_used, reasoning_effort, endpoint_tag) =
@@ -337,7 +337,7 @@ impl QueueActor {
         }
         let assembled = {
             let guard = self.state.read();
-            assemble_prompt(&guard, session_id, &self.counter, None)
+            assemble_prompt(&guard, session_id, &self.counter)
         };
 
         let (provider_id, model_used, reasoning_effort, endpoint_tag) =

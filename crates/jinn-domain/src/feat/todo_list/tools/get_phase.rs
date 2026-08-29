@@ -144,6 +144,7 @@ mod tests {
             session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
+            task_spawns: None,
         }
     }
 

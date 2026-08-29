@@ -220,6 +220,7 @@ mod tests {
             session_cap: Some(crate::common::tcaps::mint::mint_session_cap()),
             mcp_coordinator: None,
             interactive_term: None,
+            task_spawns: None,
         }
     }
 

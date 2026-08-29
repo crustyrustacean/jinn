@@ -162,6 +162,17 @@ impl StallWatchdogActor {
                 if !matches!(phase, PhaseKind::Sending | PhaseKind::Streaming) {
                     continue;
                 }
+
+                // Subagent suspension: a session blocked on a `task` tool
+                // call is healthy but waiting on its child. Skip it (and the
+                // `active_now` bookkeeping) entirely; the stale
+                // `last_provider_activity` entry left behind self-heals via
+                // the recovered-budget reset once the tool resolves and the
+                // parent resumes.
+                if self.deps.services.task_spawns.has_in_flight(id) {
+                    continue;
+                }
+
                 active_now.push(id.clone());
 
                 let provider_ts = *session.last_provider_activity_at();

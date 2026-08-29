@@ -128,6 +128,7 @@ fn ctx_with_coordinator(
         session_cap: None,
         mcp_coordinator: Some(coordinator),
         interactive_term: None,
+        task_spawns: None,
     }
 }
 
@@ -218,6 +219,7 @@ async fn execute_fails_when_coordinator_ref_is_none() {
         session_cap: None,
         mcp_coordinator: None,
         interactive_term: None,
+        task_spawns: None,
     };
 
     // When executing.
