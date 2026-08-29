@@ -52,6 +52,10 @@ pub struct TerminalTabState {
     pub last_layout_size: (u16, u16),
 }
 
+/// Spawn/pty size used before the overlay has ever been laid out (the
+/// mirror's `last_layout_size` is `(0, 0)` until the first frame renders).
+pub const DEFAULT_PTY_SIZE: (u16, u16) = (24, 80);
+
 impl TerminalTabState {
     /// Replaces one session's mirrored screen and cursor from an update.
     pub fn apply_screen(
@@ -108,6 +112,18 @@ impl TerminalTabState {
             self.last_layout_size = (rows, cols);
         }
         changed
+    }
+
+    /// The size a new pty should be spawned at: the overlay's inner rect once
+    /// a frame has laid it out, the VT100 default before that. Never zero —
+    /// vt100's grid panics (`rows - 1` underflow) on a 0-row terminal.
+    #[must_use]
+    pub fn spawn_size(&self) -> (u16, u16) {
+        if self.last_layout_size.0 == 0 || self.last_layout_size.1 == 0 {
+            DEFAULT_PTY_SIZE
+        } else {
+            self.last_layout_size
+        }
     }
 }
 
@@ -205,5 +221,35 @@ mod tests {
 
         // Then no change is signaled.
         assert!(!second);
+    }
+
+    #[rstest::rstest]
+    fn spawn_size_falls_back_to_default_before_first_frame() {
+        // Given a default terminal state (no overlay ever laid out).
+        let state = TerminalTabState::default();
+
+        // Then the spawn size is the VT100 default, not the zeroed layout.
+        assert_eq!(state.spawn_size(), DEFAULT_PTY_SIZE);
+    }
+
+    #[rstest::rstest]
+    fn spawn_size_never_zero_after_a_zeroed_layout() {
+        // Given a state whose recorded layout size was zeroed (degenerate
+        // frame geometry).
+        let mut state = TerminalTabState::default();
+        state.record_layout_size(0, 0);
+
+        // Then the spawn size is still the VT100 default.
+        assert_eq!(state.spawn_size(), DEFAULT_PTY_SIZE);
+    }
+
+    #[rstest::rstest]
+    fn spawn_size_uses_the_laid_out_overlay_size() {
+        // Given a state with a laid-out overlay inner rect.
+        let mut state = TerminalTabState::default();
+        state.record_layout_size(30, 110);
+
+        // Then the spawn size is that rect (WYSIWYG).
+        assert_eq!(state.spawn_size(), (30, 110));
     }
 }

@@ -17,6 +17,7 @@ use crate::feat::interactive_term::protocol::command::{
     SpawnTerm, SpawnTermOutcome, TermSessionId,
 };
 use crate::feat::interactive_term::settle::default_max_wait;
+use crate::feat::interactive_term::terminal_tab_state::DEFAULT_PTY_SIZE;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
 use super::BoxedToolFuture;
@@ -167,10 +168,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     let ask_timeout = max_wait + SPAWN_ASK_MARGIN;
 
     // Spawn size: the overlay's inner rect once known (WYSIWYG); the VT100
-    // default before the first frame.
-    let size = ctx.state.as_ref().map_or((24, 80), |state| {
+    // default before the first frame. Never zero — vt100 panics on a 0-row
+    // grid (`last_layout_size` is (0, 0) until the overlay's first frame).
+    let size = ctx.state.as_ref().map_or(DEFAULT_PTY_SIZE, |state| {
         let s = state.read();
-        s.frontend.terminal.last_layout_size
+        s.frontend.terminal.spawn_size()
     });
 
     // Stream context so the coordinator's settle wait emits deltas attributed
