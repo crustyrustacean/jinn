@@ -3,9 +3,9 @@
 //! All of `text`, `keys`, and `enter` are optional: a call with none of them
 //! is a **pure screen sync** (the actor re-drains briefly and returns the
 //! current screen without writing anything to the PTY). While the user holds
-//! control (takeover), input is refused: the result reports success with the
-//! current screen plus the wait notice instructing the model to stop and
-//! wait — prompting, not enforcement.
+//! control (takeover), input is refused and the call **fails** with just the
+//! wait notice — no screen is returned (the user's terminal is theirs to
+//! read); the notice instructs the model to stop and wait.
 //!
 //! Each call blocks until the screen settles, then returns the updated
 //! rendered screen.
@@ -172,18 +172,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 screen.exited.as_ref(),
                 None,
             ),
-            SendTermOutcome::UserHasControl(screen) => {
-                let mut result = success_result(
-                    &tool_call_id,
-                    &tool_name,
-                    &session_id,
-                    &screen.screen,
-                    screen.exited.as_ref(),
-                    None,
-                );
-                result.content = format!("{USER_HAS_CONTROL_NOTICE}\n\n{}", result.content);
-                result
-            }
+            SendTermOutcome::UserHasControl => failure_result(
+                &tool_call_id,
+                &tool_name,
+                USER_HAS_CONTROL_NOTICE,
+            ),
             SendTermOutcome::UnknownSession => failure_result(
                 &tool_call_id,
                 &tool_name,

@@ -113,9 +113,10 @@ pub struct SendTermInput {
 pub enum SendTermOutcome {
     /// Input written; screen settled.
     Sent(TermScreen),
-    /// The user holds control — nothing was written; the current screen is
-    /// returned and the caller must relay the wait notice.
-    UserHasControl(TermScreen),
+    /// The user holds control — nothing was written; no screen is returned
+    /// (the user's terminal is theirs to read). The caller must fail the
+    /// tool call with the wait notice.
+    UserHasControl,
     /// The session id is unknown.
     UnknownSession,
     /// The session already exited; screen plus captured exit info.

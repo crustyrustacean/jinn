@@ -105,12 +105,14 @@ pub fn handle_handback(state: &mut AppState) -> crate::protocol::intent::IntentR
 /// Builds the model-facing message text for [`Intent::TerminalPushScreen`].
 ///
 /// Public because the wording is part of the feature's contract with the
-/// agent: it describes the screen as *shared by the user* (never "handed
-/// back", which would imply a release event, and never the user-control
-/// notice, which belongs solely to refusal paths).
+/// agent: it arrives as the user's own message, so it speaks in first
+/// person — "Here is the current terminal screen" (never "The user …",
+/// which would be confusing, and never "handed back", which would imply a
+/// release event, or the user-control notice, which belongs solely to
+/// refusal paths).
 #[must_use]
 pub fn push_screen_text(screen: &str) -> String {
-    format!("The user shared the current terminal screen:\n\n```\n{screen}\n```")
+    format!("Here is the current terminal screen:\n\n```\n{screen}\n```")
 }
 
 /// The visible screen of the active session's terminal, if any.
