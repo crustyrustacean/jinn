@@ -2531,8 +2531,8 @@ fn archive_tree_prompt_renders_red_busy_notice() {
 
 #[rstest::rstest]
 fn archive_tree_prompt_fits_unclipped_in_a_narrow_term() {
-    // Given the busy prompt showing with the sidebar rendered into an area
-    // narrower than the banner (30 cols vs the 46-col banner).
+    // Given the busy prompt showing with the sidebar narrower than the banner
+    // (30 cols vs the 46-col banner).
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
     state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
@@ -2563,16 +2563,11 @@ fn archive_tree_prompt_fits_unclipped_in_a_narrow_term() {
             .collect()
     };
 
-    // Then the full message renders, right-aligned within the area.
-    assert!(
-        text.contains("Cannot archive tree while a session is"),
-        "rendered: {text}"
-    );
-    // And the tail clipped off the narrow area is dropped, not drawn outside.
-    assert!(
-        !text.contains("s busy"),
-        "banner leaked outside the area: {text}"
-    );
+    // Then the banner is cropped from the left and the informative tail
+    // ("…a session is busy") renders, right-aligned inside the sidebar.
+    assert!(text.contains("a session is busy"), "rendered: {text}");
+    // And the cropped head never bleeds left of the sidebar area.
+    assert!(!text.contains("Cannot archive"), "rendered: {text}");
 }
 
 #[rstest::rstest]
