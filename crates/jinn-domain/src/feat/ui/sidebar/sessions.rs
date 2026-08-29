@@ -6,6 +6,7 @@
 
 pub mod activate;
 pub mod archive;
+pub mod archive_tree;
 pub mod close;
 pub mod r#continue;
 pub mod navigate;
@@ -27,6 +28,7 @@ use std::time::Duration;
 
 pub use activate::{handle_session_activate, handle_session_activate_insert};
 pub use archive::handle_session_archive;
+pub use archive_tree::ArchiveTreePrompt;
 pub use close::{
     SessionCloseError, handle_session_close, handle_session_close_with_lifecycle,
     validate_session_close,
