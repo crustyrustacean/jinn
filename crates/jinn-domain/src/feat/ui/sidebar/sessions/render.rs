@@ -187,7 +187,7 @@ fn render_close_session_prompt(frame: &mut Frame<'_>, area: Rect, visual_row: us
     let cursor_y = area.y + visual_row as u16;
     let prompt_y = cursor_y.saturating_sub(1);
     let widget = Paragraph::new(Line::from(Span::styled(
-        " Press x again to close ",
+        " Press x again to teardown and archive 1 session ",
         Style::default().fg(Color::Black).bg(Color::Yellow),
     )));
     frame.render_widget(
