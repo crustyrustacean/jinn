@@ -49,8 +49,7 @@ pub fn render_terminal_tab(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx<'_
         let b = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color))
-            .title_bottom(hints.0)
-            .title_style(Style::default().fg(hints.1));
+            .title_bottom(hints);
         let inner = b.inner(area);
         frame.render_widget(b, area);
         inner
@@ -166,17 +165,17 @@ fn render_empty(frame: &mut Frame<'_>, area: Rect, accent: ratatui::style::Color
 
 /// Builds the bottom-border hint line describing the mode's keys.
 ///
-/// View mode lists the capture toggle (from `[interactive_term]
-/// control_toggle_key`), `y` (yank screen to clipboard), and `I` (yank +
-/// push the screen to the model). Capture mode lists only the toggle —
-/// every other key types into the program, so advertising more would lie.
+/// Entries are separated by `|`; key glyphs use [`Theme::accent_action`]
+/// (the hotkey accent — same convention as the session preview's keybinds
+/// bar), descriptions use `muted_text`.
 ///
-/// The title renders in the theme's focus accent while capturing (matching
-/// the border) so the mode is visible peripherally, not just readable.
-fn bottom_border_hints(
-    ctx: &RenderCtx<'_>,
-    capturing: bool,
-) -> (ratatui::text::Line<'static>, ratatui::style::Color) {
+/// View mode lists the capture toggle (from `[interactive_term]
+/// control_toggle_key`), `<M-t>` (close the overlay), `y` (yank screen to
+/// clipboard), and `I` (yank + push the screen to the model). Capture mode
+/// lists only the toggle — every other key types into the program, so
+/// advertising more would lie.
+fn bottom_border_hints(ctx: &RenderCtx<'_>, capturing: bool) -> ratatui::text::Line<'static> {
+    let theme = &ctx.state.frontend.theme;
     let configured = ctx
         .state
         .frontend
@@ -189,36 +188,39 @@ fn bottom_border_hints(
             .unwrap_or_else(|| {
                 jinn_domain::feat::interactive_term::prefs::DEFAULT_CONTROL_TOGGLE_KEY.to_owned()
             });
-    let accent = ctx.state.frontend.theme.focus_accent;
-
-    let spans = if capturing {
+    let key_style = Style::default()
+        .fg(theme.accent_action)
+        .add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(theme.muted_text);
+    let separator = Span::styled(" | ", desc_style);
+    let entry = |key: &str, desc: &str| {
         vec![
-            Span::styled(
-                toggle,
-                Style::default().fg(accent).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" release control"),
-        ]
-    } else {
-        vec![
-            Span::styled(
-                toggle,
-                Style::default().fg(accent).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" capture  "),
-            Span::styled(
-                "y",
-                Style::default().fg(accent).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" yank  "),
-            Span::styled(
-                "I",
-                Style::default().fg(accent).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" send screen"),
+            Span::styled(key.to_owned(), key_style),
+            Span::styled(format!(" {desc}"), desc_style),
         ]
     };
-    (Line::from(spans), accent)
+
+    let entries: Vec<Vec<Span<'static>>> = if capturing {
+        vec![entry(&toggle, "release")]
+    } else {
+        vec![
+            entry(&toggle, "capture"),
+            entry("<M-t>", "toggle"),
+            entry("y", "yank"),
+            entry("I", "send screen"),
+        ]
+    };
+    let spans = {
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        for (i, e) in entries.into_iter().enumerate() {
+            if i > 0 {
+                spans.push(separator.clone());
+            }
+            spans.extend(e);
+        }
+        spans
+    };
+    Line::from(spans)
 }
 
 #[cfg(test)]
@@ -588,12 +590,16 @@ mod tests {
         let buffer = rendered_overlay_with_scope(FocusScope::TerminalView).await;
 
         // Then the bottom border advertises the mode's keys: the configured
-        // toggle (default `<c-g>`), yank, and send-screen.
+        // toggle (default `<c-g>`), overlay close, yank, and send-screen,
+        // joined by `|` separators.
         let bottom = bottom_border_text(&buffer);
         assert!(bottom.contains("<c-g>"), "bottom was: {bottom:?}");
         assert!(bottom.contains("capture"), "bottom was: {bottom:?}");
+        assert!(bottom.contains("<M-t> toggle"), "bottom was: {bottom:?}");
         assert!(bottom.contains("y yank"), "bottom was: {bottom:?}");
         assert!(bottom.contains("send screen"), "bottom was: {bottom:?}");
+        assert!(bottom.contains(" | "), "bottom was: {bottom:?}");
+        assert!(!bottom.contains("  "), "bottom was: {bottom:?}");
     }
 
     #[rstest::rstest]
@@ -651,6 +657,24 @@ mod tests {
         let bottom = bottom_border_text(&buffer);
         assert!(bottom.contains("<m-g>"), "bottom was: {bottom:?}");
         assert!(!bottom.contains("<c-g>"), "bottom was: {bottom:?}");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn hint_key_glyphs_use_the_action_accent_color() {
+        // Given the overlay open in view mode.
+        // When rendering.
+        let buffer = rendered_overlay_with_scope(FocusScope::TerminalView).await;
+
+        // Then the key glyphs (e.g. the `y` of "y yank") use accent_action,
+        // the same orange hotkey color as the session preview keybind bar,
+        // while the descriptions stay in the non-accent style.
+        let theme = jinn_domain::feat::theme::default_theme();
+        let y = buffer.area.height - 1;
+        let yank_key_x = (0..buffer.area.width - 1)
+            .find(|&x| buffer[(x, y)].symbol() == "y" && buffer[(x + 1, y)].symbol() == " ")
+            .expect("yank key glyph on the bottom border");
+        assert_eq!(buffer[(yank_key_x, y)].fg, theme.accent_action);
     }
 
     #[rstest::rstest]

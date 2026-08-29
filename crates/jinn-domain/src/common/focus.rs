@@ -66,15 +66,17 @@ impl FocusScope {
             | Self::SidebarTaskList
             | Self::SidebarMcpServers
             | Self::SidebarResize
-            | Self::TerminalView => Mode::Normal,
+            | Self::TerminalView
+            // Capture mode routes keystrokes to the pty, not the chat input,
+            // so it must not light up input-focused UI.
+            | Self::TerminalControl => Mode::Normal,
             Self::Input
             | Self::ArgInput
             | Self::RenameSessionInput
             | Self::CwdInput
             | Self::ProjectAddInput
             | Self::PrunerAccumulationInput
-            | Self::QuakeBar
-            | Self::TerminalControl => Mode::Input,
+            | Self::QuakeBar => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
         }
     }
