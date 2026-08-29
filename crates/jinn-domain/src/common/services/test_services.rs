@@ -90,6 +90,14 @@ impl SessionStore for FakeSessionStore {
         Ok(())
     }
 
+    async fn set_archived_many(
+        &self,
+        _session_ids: &[SessionId],
+        _archived: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
+
     async fn load_unarchived_summaries(
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
