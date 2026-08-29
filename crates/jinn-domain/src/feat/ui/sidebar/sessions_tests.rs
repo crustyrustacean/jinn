@@ -2502,8 +2502,8 @@ fn archive_tree_prompt_renders_yellow_confirm_with_count() {
     focus_sessions_and_select(&mut state, "tree root");
     state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm { count: 3 });
 
-    // When rendering the sessions section.
-    let text = render_sessions_area(&state);
+    // When rendering the archive-tree prompt overlay.
+    let text = render_archive_tree_prompt_overlay(&state, 60);
 
     // Then the confirm text with the count appears.
     assert!(
@@ -2519,8 +2519,8 @@ fn archive_tree_prompt_renders_red_busy_notice() {
     focus_sessions_and_select(&mut state, "tree root");
     state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
 
-    // When rendering the sessions section.
-    let text = render_sessions_area(&state);
+    // When rendering the archive-tree prompt overlay.
+    let text = render_archive_tree_prompt_overlay(&state, 60);
 
     // Then the busy notice appears.
     assert!(
@@ -2537,37 +2537,47 @@ fn archive_tree_prompt_fits_unclipped_in_a_narrow_term() {
     focus_sessions_and_select(&mut state, "tree root");
     state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
 
-    // When rendering into a 30-wide area offset from the term edge.
-    let text: String = {
-        let mut section = SessionsSection::new();
-        let area = ratatui::layout::Rect {
-            x: 2,
-            y: 0,
-            width: 30,
-            height: 6,
-        };
-        let mut terminal = Terminal::new(TestBackend::new(40, 6)).expect("terminal");
-        let ctx = RenderCtx::new(&state);
-        terminal
-            .draw(|frame| section.render(frame, area, &ctx))
-            .expect("draw");
-        let buffer = terminal.backend().buffer();
-        (0..6)
-            .flat_map(|y| {
-                (0..40).map(move |x| {
-                    buffer
-                        .cell((x, y))
-                        .map_or(' ', |c| c.symbol().chars().next().unwrap_or(' '))
-                })
-            })
-            .collect()
-    };
+    // When rendering the overlay into a 30-wide sidebar offset from the edge.
+    let text = render_archive_tree_prompt_overlay(&state, 30);
 
     // Then the banner is cropped from the left and the informative tail
     // ("…a session is busy") renders, right-aligned inside the sidebar.
     assert!(text.contains("a session is busy"), "rendered: {text}");
     // And the cropped head never bleeds left of the sidebar area.
     assert!(!text.contains("Cannot archive"), "rendered: {text}");
+}
+
+/// Helper: renders the archive-tree prompt overlay into a sidebar rect and
+/// returns the full buffer text.
+fn render_archive_tree_prompt_overlay(state: &AppState, sidebar_width: u16) -> String {
+    let (width, height) = (60, 12);
+    let sidebar_rect = ratatui::layout::Rect {
+        x: (width - sidebar_width).max(0),
+        y: 0,
+        width: sidebar_width,
+        height,
+    };
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+    let ctx = RenderCtx::new(state);
+    terminal
+        .draw(|frame| {
+            crate::feat::ui::sidebar::sessions::render_archive_tree_prompt_for_state(
+                frame,
+                sidebar_rect,
+                &ctx,
+            );
+        })
+        .expect("draw");
+    let buffer = terminal.backend().buffer();
+    (0..height)
+        .flat_map(|y| {
+            (0..width).map(move |x| {
+                buffer
+                    .cell((x, y))
+                    .map_or(' ', |c| c.symbol().chars().next().unwrap_or(' '))
+            })
+        })
+        .collect()
 }
 
 #[rstest::rstest]

@@ -196,6 +196,11 @@ fn render_base_layers(
                 rects,
             );
             chat_tab::render_chat_tab(ui_registry, frame, chat, ctx, rects);
+            jinn_domain::feat::ui::sidebar::sessions::render_archive_tree_prompt_for_state(
+                frame,
+                chat.sidebar,
+                ctx,
+            );
             jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
                 frame,
                 chat.sidebar,
