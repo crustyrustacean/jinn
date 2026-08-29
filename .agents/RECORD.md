@@ -226,3 +226,9 @@ Entries are added or amended **only with human approval**.
 - (session) Sessions carry no automation flag; identity is a persisted origin enum (user, fork, subagent), and tree structure is linked via `parent_session`.
 - (subagents) A spawned subagent's first dispatch waits — bounded by a 15-second budget — for its discovery scans (project context files, skills, prompt templates) and enabled MCP servers to settle, so the first prompt includes MCP tools and project context; the message is sent regardless once the budget expires.
 - (subagents) The sidebar's subagent marking reflects the session's origin, not the parent link; forks always get fork origin — even forks of subagent sessions.
+- (tools) The built-in `interactive_term`, `interactive_term_send`, and `interactive_term_kill` tools are the PTY interactive-terminal interface; each call blocks until screen output settles and returns the rendered screen.
+- (tools) `interactive_term` PTY sessions persist across tool calls in a coordinator actor; the spawned program's lifetime is decoupled from tool calls.
+- (tools) Agent input to an `interactive_term` session is rejected with a wait notice while the user holds control; handback steers the captured screen to the model, dispatching immediately if the session is idle.
+- (keybinds) The terminal tab opens in view mode; `i` enters control mode forwarding keys to the PTY, and the configurable `[interactive_term] handback_key` (default `<c-g>`) exits control mode.
+- (ui) The terminal tab renders the active `interactive_term` session from emulator cells, and the PTY size follows the tab's layout.
+- (tools) `interactive_term` children run with their own PTY as controlling terminal (own session/pgid), unlike the deliberately tty-less children of other tools.

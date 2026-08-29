@@ -105,11 +105,15 @@ pub fn encode_key(name: &str) -> Vec<u8> {
         "pagedown" => b"\x1b[6~",
         _ if lower.starts_with("ctrl+") || lower.starts_with("c-") => return encode_ctrl(&lower),
         _ if lower.starts_with("alt+") || lower.starts_with("m-") => return encode_alt(&lower),
-        // Single printable character, sent verbatim.
+        // Single printable character, sent verbatim (case preserved —
+        // `B` must reach a case-sensitive program as capital B).
         _ => {
-            let mut chars = lower.chars();
+            let trimmed = name.trim();
+            let mut chars = trimmed.chars();
             match (chars.next(), chars.next()) {
-                (Some(_), None) if !lower.starts_with('\\') => return lower.into_bytes(),
+                (Some(_), None) if !trimmed.starts_with('\\') => {
+                    return trimmed.as_bytes().to_vec();
+                }
                 _ => {
                     // Literal newline/escape spellings already matched above;
                     // anything else multi-char is unknown → no bytes.
@@ -272,7 +276,8 @@ mod tests {
     #[case("alt+x", b"\x1bx")]
     #[case("m-x", b"\x1bx")]
     #[case("q", b"q")]
-    #[case("A", b"a")]
+    #[case("A", b"A")]
+    #[case("a", b"a")]
     fn encode_key_maps_named_keys_to_xterm_bytes(#[case] name: &str, #[case] expected: &[u8]) {
         // Given a named key.
         // When encoding.

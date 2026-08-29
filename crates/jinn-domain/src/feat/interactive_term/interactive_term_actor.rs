@@ -740,6 +740,107 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn program_state_persists_across_separate_tool_calls() {
+        // Given a coordinator with an interactive bash session.
+        let harness = TestHarness::new().await;
+        let (actor, _root) = spawn_coordinator(&harness, TermControl::default()).await;
+        let SpawnTermOutcome::Started { session_id, .. } = actor
+            .ask(spawn_msg("bash --noprofile --norc"))
+            .await
+            .expect("spawn reply")
+        else {
+            panic!("expected Started");
+        };
+
+        // When setting a variable in one call...
+        let mut msg = send_msg(session_id.clone());
+        msg.text = Some("TERMVAR=inner-42".to_owned());
+        msg.keys = vec!["enter".to_owned()];
+        let SendTermOutcome::Sent(_) = actor.ask(msg).await.expect("send reply") else {
+            panic!("expected Sent");
+        };
+
+        // ...and reading it back in a *separate* call.
+        let mut msg = send_msg(session_id.clone());
+        msg.text = Some("echo val=$TERMVAR".to_owned());
+        msg.keys = vec!["enter".to_owned()];
+        let SendTermOutcome::Sent(screen) = actor.ask(msg).await.expect("send reply") else {
+            panic!("expected Sent");
+        };
+
+        // Then the variable survived — the same shell process served both calls.
+        assert!(
+            plain_screen(&screen.screen).contains("val=inner-42"),
+            "screen was: {:?}",
+            plain_screen(&screen.screen)
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn named_keys_drive_a_full_screen_tui_across_calls() {
+        // Given a full-screen "TUI": an alt-screen pager showing PAGE ONE /
+        // PAGE TWO depending on the last key (cursor-addressed output).
+        let tui = concat!(
+            "printf '\\033[?1049h\\033[H'; ",
+            "show() { printf '\\033[2J\\033[5;10H%s' \"$1\"; }; ",
+            "show PAGE-ONE; ",
+            "while IFS= read -rsn1 k; do ",
+            "  case \"$k\" in ",
+            "    B) show PAGE-TWO ;; ",
+            "    q) printf '\\033[?1049l'; exit 0 ;; ",
+            "  esac; ",
+            "done"
+        );
+        let harness = TestHarness::new().await;
+        let (actor, _root) = spawn_coordinator(&harness, TermControl::default()).await;
+        let SpawnTermOutcome::Started { session_id, .. } =
+            actor.ask(spawn_msg(tui)).await.expect("spawn reply")
+        else {
+            panic!("expected Started");
+        };
+
+        // When pressing the key that pages forward (printable "B").
+        let mut msg = send_msg(session_id.clone());
+        msg.text = Some("B".to_owned());
+        let SendTermOutcome::Sent(screen) = actor.ask(msg).await.expect("send reply") else {
+            panic!("expected Sent");
+        };
+
+        // Then the TUI re-rendered to page two on the returned screen.
+        assert!(
+            plain_screen(&screen.screen).contains("PAGE-TWO"),
+            "screen was: {:?}",
+            plain_screen(&screen.screen)
+        );
+        assert!(!plain_screen(&screen.screen).contains("PAGE-ONE"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn ctrl_c_key_terminates_a_reading_program() {
+        // Given a coordinator with a running `cat` (blocks on input).
+        let harness = TestHarness::new().await;
+        let (actor, _root) = spawn_coordinator(&harness, TermControl::default()).await;
+        let SpawnTermOutcome::Started { session_id, .. } =
+            actor.ask(spawn_msg("cat")).await.expect("spawn reply")
+        else {
+            panic!("expected Started");
+        };
+
+        // When sending the named key ctrl+c.
+        let mut msg = send_msg(session_id);
+        msg.keys = vec!["ctrl+c".to_owned()];
+        let SendTermOutcome::Sent(screen) = actor.ask(msg).await.expect("send reply") else {
+            panic!("expected Sent");
+        };
+
+        // Then the program exited (SIGINT reached it through the pty).
+        assert!(screen.exited.is_some(), "cat must exit on ctrl+c");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn unknown_session_send_returns_unknown() {
         // Given a coordinator with no sessions.
         let harness = TestHarness::new().await;
@@ -807,6 +908,46 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn agent_input_while_user_controls_reaches_no_process() {
+        // Given a coordinator running a program that exits after any input,
+        // with the user holding control.
+        let harness = TestHarness::new().await;
+        let control = TermControl::default();
+        let (actor, _root) = spawn_coordinator(&harness, control.clone()).await;
+        let SpawnTermOutcome::Started { session_id, .. } = actor
+            .ask(spawn_msg(
+                "printf waiting; IFS= read -rsn1 k; printf got-input; sleep 30",
+            ))
+            .await
+            .expect("spawn reply")
+        else {
+            panic!("expected Started");
+        };
+        control.set(ControlHolder::User);
+
+        // When the agent sends input.
+        let mut msg = send_msg(session_id.clone());
+        msg.text = Some("x".to_owned());
+        msg.enter = true;
+        let SendTermOutcome::UserHasControl(_) = actor.ask(msg).await.expect("send reply") else {
+            panic!("expected UserHasControl");
+        };
+
+        // Then the program never saw it (still waiting, not exited).
+        let mut sync = send_msg(session_id);
+        sync.max_wait = Duration::from_millis(600);
+        let SendTermOutcome::UserHasControl(screen) = actor.ask(sync).await.expect("sync reply")
+        else {
+            panic!("expected UserHasControl");
+        };
+        assert!(
+            !plain_screen(&screen.screen).contains("got-input"),
+            "program consumed agent input despite user control"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn in_flight_send_sees_mid_drain_takeover() {
         // Given a coordinator with a program that trickles output over a second.
         let harness = TestHarness::new().await;
@@ -845,11 +986,13 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn kill_terminates_process_and_reports_tail() {
-        // Given a coordinator with a running `cat`.
+        // Given a coordinator with a program that printed before blocking.
         let harness = TestHarness::new().await;
         let (actor, _root) = spawn_coordinator(&harness, TermControl::default()).await;
-        let SpawnTermOutcome::Started { session_id, .. } =
-            actor.ask(spawn_msg("cat")).await.expect("spawn reply")
+        let SpawnTermOutcome::Started { session_id, .. } = actor
+            .ask(spawn_msg("printf before-kill; cat"))
+            .await
+            .expect("spawn reply")
         else {
             panic!("expected Started");
         };
