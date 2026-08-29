@@ -99,8 +99,10 @@ pub fn definition() -> ToolDefinition {
                 .to_owned(),
         ),
         prompt_guidelines: vec![
+            "Prefer `bash` for one-shot commands; use this only when the program needs a full-screen TUI, cursor addressing, or incremental input.".to_owned(),
             "Each call BLOCKS until screen output settles and returns the rendered screen — call interactive_term_send afterwards to type text or press named keys (\"enter\", \"tab\", \"ctrl+c\", \"up\").".to_owned(),
             "The spawned program keeps running between calls; its state (REPL variables, vim buffers) persists. Kill the session with interactive_term_kill when finished.".to_owned(),
+            "The user may take over the terminal from the TUI. If interactive_term_send reports the user has control, stop and wait — the screen will be delivered to you when they hand it back.".to_owned(),
         ],
         parameters: serde_json::json!({
             "type": "object",
@@ -304,4 +306,66 @@ where
         pacer.abort();
     }
     result.ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StreamCtx;
+    use std::time::Duration;
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn keepalive_publishes_heartbeats_during_long_ask() {
+        // Given a recording bus and a stream context.
+        let (bus, audit) = crate::common::services::bus_service::BusService::new_recording();
+        let ctx = Some(StreamCtx {
+            session_id: crate::protocol::SessionId::new(),
+            tool_call_id: "call-1".to_owned(),
+        });
+
+        // When wrapping an ask that takes longer than two heartbeat ticks.
+        let result = super::with_keepalive(
+            Some(bus),
+            ctx,
+            Duration::from_secs(10),
+            tokio::time::sleep(Duration::from_millis(2500)),
+        )
+        .await;
+
+        // Then the ask result passes through.
+        assert!(result.is_some());
+        // And the watchdog saw at least two heartbeat outputs.
+        let beats =
+            audit.of_type::<crate::feat::tools_actor::protocol::event::ToolExecutionOutput>();
+        assert!(
+            beats.len() >= 2,
+            "expected >=2 heartbeats over 2.5s, got {}",
+            beats.len()
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn keepalive_without_session_publishes_nothing() {
+        // Given a recording bus and no stream context (no chat session).
+        let (bus, audit) = crate::common::services::bus_service::BusService::new_recording();
+
+        // When wrapping the same long ask.
+        let result = super::with_keepalive(
+            Some(bus),
+            None,
+            Duration::from_secs(10),
+            tokio::time::sleep(Duration::from_millis(1500)),
+        )
+        .await;
+
+        // Then the ask result passes through.
+        assert!(result.is_some());
+        // And no heartbeat was published.
+        assert!(
+            audit
+                .of_type::<crate::feat::tools_actor::protocol::event::ToolExecutionOutput>()
+                .is_empty()
+        );
+    }
 }

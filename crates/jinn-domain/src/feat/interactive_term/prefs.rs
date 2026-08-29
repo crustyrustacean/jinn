@@ -72,15 +72,9 @@ pub fn normalize_handback_key(raw: &str) -> Option<String> {
 pub fn validated(prefs: &InteractiveTermPrefs) -> (InteractiveTermPrefs, bool) {
     let mut corrected = prefs.clone();
     let mut changed = false;
-    if normalize_handback_key(&prefs.handback_key)
-        .is_none_or(|norm| norm != prefs.handback_key)
-    {
-        if normalize_handback_key(&prefs.handback_key).is_some() {
-            corrected.handback_key =
-                normalize_handback_key(&prefs.handback_key).unwrap_or_default();
-        } else {
-            corrected.handback_key = DEFAULT_HANDBACK_KEY.to_owned();
-        }
+    if normalize_handback_key(&prefs.handback_key).is_none_or(|norm| norm != prefs.handback_key) {
+        corrected.handback_key = normalize_handback_key(&prefs.handback_key)
+            .unwrap_or_else(|| DEFAULT_HANDBACK_KEY.to_owned());
         changed = true;
     }
     if prefs.settle_quiet_ms == 0 {
@@ -108,11 +102,7 @@ fn default_settle_max_wait_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        reason = "test code"
-    )]
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
     use super::*;
 

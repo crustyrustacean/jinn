@@ -38,7 +38,13 @@ pub struct TerminalTabState {
 
 impl TerminalTabState {
     /// Replaces the mirrored screen and cursor from a screen-update event.
-    pub fn apply_screen(&mut self, session_id: &str, screen: String, cursor: (u16, u16), cursor_hidden: bool) {
+    pub fn apply_screen(
+        &mut self,
+        session_id: &str,
+        screen: String,
+        cursor: (u16, u16),
+        cursor_hidden: bool,
+    ) {
         self.session_id = Some(session_id.to_owned());
         self.screen = screen;
         self.cursor = cursor;
@@ -69,11 +75,7 @@ impl TerminalTabState {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        reason = "test code"
-    )]
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
     use super::*;
 
@@ -121,5 +123,4 @@ mod tests {
         // Then no change is signaled.
         assert!(!second);
     }
-
 }

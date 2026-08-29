@@ -76,11 +76,15 @@ pub fn launch(
     // via the same path. The terminal handback binding comes from
     // `[interactive_term]` prefs, normalized (falls back to the default).
     let handback = jinn_domain::feat::interactive_term::prefs::normalize_handback_key(
-        &core.state.read().frontend.preferences.interactive_term.handback_key,
+        &core
+            .state
+            .read()
+            .frontend
+            .preferences
+            .interactive_term
+            .handback_key,
     )
-    .unwrap_or_else(|| {
-        jinn_domain::feat::interactive_term::prefs::DEFAULT_HANDBACK_KEY.to_owned()
-    });
+    .unwrap_or_else(|| jinn_domain::feat::interactive_term::prefs::DEFAULT_HANDBACK_KEY.to_owned());
     let keymap = keymap::init_with_handback(&handback);
     let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
 

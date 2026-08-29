@@ -1448,7 +1448,6 @@ mod tests {
         );
     }
 
-
     #[rstest::rstest]
     fn switch_tab_cycles_through_terminal_view() {
         // Given an AppState in Normal scope.
@@ -1481,7 +1480,10 @@ mod tests {
         IntentHandler::handle(&Intent::SwitchTab, &mut state);
 
         // Then the base stays TerminalControl — handback is the only exit.
-        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::TerminalControl);
+        assert_eq!(
+            state.frontend.scope_stack.base(),
+            &FocusScope::TerminalControl
+        );
     }
 
     #[rstest::rstest]
@@ -1609,9 +1611,10 @@ mod tests {
         );
     }
 
-
     #[rstest::rstest]
     fn handback_screen_survives_drain_as_user_entry() {
+        use crate::feat::session::steering_buffer::SteeringBuffer;
+
         // Given a busy session where the user took control and hands back.
         let mut state = AppState::default();
         state
@@ -1642,15 +1645,17 @@ mod tests {
         // handle_handback equals SubmitSteeringMessage.text, which the
         // session actor pushes via push_fragment then drains into a User
         // entry. Assert the drain contract on the marker text directly.
-        use crate::feat::session::steering_buffer::SteeringBuffer;
         let mut buf = SteeringBuffer::new();
-        buf.push_fragment(format!(
+        buf.push_fragment(
             "The user handed the terminal back to you. Current screen:\n\n```\ndrain-chain-marker\n```"
-        ));
+                .to_owned(),
+        );
         let entry = buf.drain_into_entry().expect("entry");
 
         // Then the drained entry is a normal User entry carrying the screen.
-        assert!(matches!(entry.kind, crate::protocol::ChatEntryKind::User { .. }));
+        assert!(matches!(
+            entry.kind,
+            crate::protocol::ChatEntryKind::User { .. }
+        ));
     }
-
 }

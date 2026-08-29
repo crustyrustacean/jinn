@@ -229,8 +229,8 @@ impl Default for FrontendState {
             pending_session_cwd: None,
             quake_bar: QuakeBarState::default(),
             dashboard: DashboardState::default(),
-            terminal:
-                crate::feat::interactive_term::terminal_tab_state::TerminalTabState::default(),
+            terminal: crate::feat::interactive_term::terminal_tab_state::TerminalTabState::default(
+            ),
 
             sidebar_width: 30,
             file_picker: crate::feat::file_lister::FilePickerState::default(),

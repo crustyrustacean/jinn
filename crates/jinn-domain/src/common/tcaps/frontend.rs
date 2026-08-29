@@ -94,7 +94,10 @@ pub trait TerminalMirrorWrite {
         cursor_hidden: bool,
     );
     /// Sets who holds control.
-    fn set_control(&mut self, holder: crate::feat::interactive_term::terminal_tab_state::TermControlHolder);
+    fn set_control(
+        &mut self,
+        holder: crate::feat::interactive_term::terminal_tab_state::TermControlHolder,
+    );
 }
 
 /// Insert / bulk-insert token counts into the entry-token cache.
@@ -148,7 +151,8 @@ impl TerminalMirrorWrite for TerminalOps<'_> {
         cursor: (u16, u16),
         cursor_hidden: bool,
     ) {
-        self.0.apply_screen(session_id, screen, cursor, cursor_hidden);
+        self.0
+            .apply_screen(session_id, screen, cursor, cursor_hidden);
     }
 
     fn set_control(

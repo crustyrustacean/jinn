@@ -92,8 +92,7 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
     );
     let is_terminal = matches!(
         wstate.frontend.scope_stack.base(),
-        jinn_domain::FocusScope::TerminalView
-            | jinn_domain::FocusScope::TerminalControl
+        jinn_domain::FocusScope::TerminalView | jinn_domain::FocusScope::TerminalControl
     );
     let pre_layout = AppFrameLayout::new(
         area,
