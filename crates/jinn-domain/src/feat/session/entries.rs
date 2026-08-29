@@ -330,6 +330,13 @@ mod tests {
         ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
             Ok(())
         }
+        async fn set_archived_many(
+            &self,
+            _session_ids: &[SessionId],
+            _archived: bool,
+        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+            Ok(())
+        }
         async fn load_unarchived_summaries(
             &self,
         ) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>>

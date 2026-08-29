@@ -208,6 +208,19 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
         Ok(())
     }
 
+    async fn set_archived_many(
+        &self,
+        session_ids: &[crate::protocol::SessionId],
+        archived: bool,
+    ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+    {
+        if archived {
+            let mut archived = self.archived.lock();
+            archived.extend(session_ids.iter().cloned());
+        }
+        Ok(())
+    }
+
     async fn load_unarchived_summaries(
         &self,
     ) -> Result<
