@@ -888,31 +888,6 @@ async fn fork_inherits_lifecycle_script_state() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn is_automated_round_trips_through_save_and_load() {
-    // Given a persisted automated session.
-    let (_dir, store) = make_store().await;
-    let session_id = SessionId::new();
-    let mut session = ChatSessionState::new();
-    session.set_session_id(session_id.clone());
-    session.set_title("Automated".to_owned());
-    session.core.is_automated = true;
-    session.core.persist = true;
-
-    // When saving and loading.
-    store.save(&session).await.expect("save");
-    let loaded = store
-        .load_session(&session_id)
-        .await
-        .expect("load")
-        .expect("should exist");
-
-    // Then both flags are preserved.
-    assert!(loaded.is_automated(), "is_automated should round-trip");
-    assert!(loaded.core.persist, "persist should round-trip");
-}
-
-#[rstest::rstest]
-#[tokio::test]
 async fn non_persistent_session_is_not_written() {
     // Given a transient (persist=false) session.
     let (_dir, store) = make_store().await;
@@ -921,7 +896,6 @@ async fn non_persistent_session_is_not_written() {
     session.set_session_id(session_id.clone());
     session.set_title("Transient".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    session.core.is_automated = true;
     session.core.persist = false;
 
     // When saving.
@@ -948,7 +922,6 @@ async fn persistent_session_is_written() {
     session.set_session_id(session_id.clone());
     session.set_title("Persistent".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    session.core.is_automated = true;
     session.core.persist = true;
 
     // When saving.
@@ -961,11 +934,7 @@ async fn persistent_session_is_written() {
         .expect("load query")
         .expect("should exist");
     assert_eq!(loaded.session_id(), &session_id);
-    // And the automated + persist flags round-trip through SQLite.
-    assert!(
-        loaded.core.is_automated,
-        "is_automated must survive save/load"
-    );
+    // And the persist flag round-trips through SQLite.
     assert!(loaded.core.persist, "persist must survive save/load");
 }
 
@@ -1084,6 +1053,60 @@ use rusqlite::params;
 /// Constructed by hand (not via `PersistableCore`) so it carries the legacy
 /// serialization that v19 must repair.
 const LEGACY_065_BLOB: &str = "{\"session_id\":\"10000000-0000-0000-0000-000000000065\",\"title\":\"Legacy 065\",\"profile\":{\"strategy\":\"sliding_window\",\"model\":\"ollama/llama3\",\"persona_name\":\"coding-assistant\",\"token_budget\":150000,\"sliding_window_size\":5},\"cwd\":\".\",\"parent_session\":null,\"blobs\":{},\"lifecycle_name\":null,\"lifecycle_args\":[],\"lifecycle_script_state\":\"nothing_ran\",\"session_state\":\"Loaded\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\",\"is_automated\":false,\"persist\":true}";
+
+/// A 0.66-shape metadata blob for the automated row (`is_automated: true`
+/// as written by the removed workflow feature).
+fn legacy_automated_blob() -> String {
+    LEGACY_065_BLOB
+        .replace(
+            "\"10000000-0000-0000-0000-000000000065\"",
+            "\"10000000-0000-0000-0000-000000000099\"",
+        )
+        .replace("\"Legacy 065\"", "\"Automated Legacy\"")
+        .replace("\"is_automated\":false", "\"is_automated\":true")
+}
+
+/// A row recorded by the removed workflow feature with `is_automated = 1`.
+/// After the automation removal, the flag no longer exists in code: the row
+/// must load as a perfectly ordinary session.
+#[rstest::rstest]
+#[tokio::test]
+async fn legacy_automated_row_loads_as_normal_session() {
+    // Given a database holding a session row flagged is_automated = 1.
+    let dir = TempDir::new().expect("temp dir");
+    let db_path = dir.path().join("sessions.db");
+    seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
+        conn.execute(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
+             lifecycle_script_state, is_automated, persist, metadata) \
+             VALUES ('10000000-0000-0000-0000-000000000099', 'Automated Legacy', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"model\":{\"single\":\"ollama/llama3\"}}', '{}', 'nothing_ran', 1, 1, ?)",
+            params![legacy_automated_blob()],
+        ).map(|_| ())
+    })
+    .await;
+
+    // When loading the session through the store.
+    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
+    let loaded = store
+        .load_session(&SessionId::from(
+            "10000000-0000-0000-0000-000000000099".to_owned(),
+        ))
+        .await
+        .expect("load_session")
+        .expect("session should exist");
+
+    // Then it loads as an ordinary session: not a child, in the Loaded state.
+    assert_eq!(
+        loaded.parent_session(),
+        &None,
+        "flag row has no parent link"
+    );
+    assert_eq!(
+        loaded.session_state(),
+        crate::feat::session::chat_session::SessionState::Loaded,
+    );
+}
 
 #[rstest::rstest]
 #[tokio::test]
@@ -1347,3 +1370,94 @@ const TINY_PNG: &[u8] = &[
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
     0x89,
 ];
+
+#[rstest::rstest]
+#[tokio::test]
+async fn legacy_blob_without_origin_loads_as_user() {
+    // Given a subagent-origin session serialized to the persisted blob shape.
+    let parent_id = SessionId::new();
+    let mut session = ChatSessionState::new_child(&parent_id, true);
+    let session_id = SessionId::new();
+    session.set_session_id(session_id.clone());
+    let blob = serde_json::to_string(
+        &crate::feat::session::session_store::sqlite::PersistableCore::from(&session.core),
+    )
+    .expect("serialize");
+
+    // When stripping the `origin` key (simulating a blob written before the
+    // field existed) and deserializing back.
+    let mut value: serde_json::Value = serde_json::from_str(&blob).expect("parse");
+    value
+        .as_object_mut()
+        .expect("blob is an object")
+        .remove("origin");
+    let stripped = serde_json::to_string(&value).expect("re-serialize");
+    let persistable: crate::feat::session::session_store::sqlite::PersistableCore =
+        serde_json::from_str(&stripped).expect("deserialize legacy blob");
+    let core = crate::feat::session::chat_session::SessionCore::from(persistable);
+
+    // Then the legacy blob loads as User.
+    assert_eq!(
+        core.origin,
+        crate::feat::session::chat_session::SessionOrigin::User
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn subagent_origin_roundtrips_through_store() {
+    // Given a store with a task-tool child session.
+    let (_dir, store) = make_store().await;
+    let parent_id = SessionId::new();
+    let session_id = SessionId::new();
+    let mut child = ChatSessionState::new_child(&parent_id, true);
+    child.set_session_id(session_id.clone());
+    child.set_title("subagent".to_owned());
+    child.push_entry(ChatEntry::user("hello"));
+    store.save(&child).await.expect("save");
+
+    // When loading it back.
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then the subagent origin survives persistence.
+    assert_eq!(
+        loaded.origin(),
+        crate::feat::session::chat_session::SessionOrigin::Subagent
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn forked_session_persists_fork_origin() {
+    // Given a store with a subagent-origin session that has 2 entries.
+    let (_dir, store) = make_store().await;
+    let parent_id = SessionId::new();
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new_child(&parent_id, true);
+    source.set_session_id(source_id.clone());
+    source.set_title("subagent".to_owned());
+    source.push_entry(ChatEntry::user("first"));
+    source.push_entry(ChatEntry::assistant("second"));
+    store.save(&source).await.expect("save source");
+
+    // When forking it at ordinal 0.
+    let forked_id = store.fork(&source_id, 0).await.expect("fork");
+
+    // Then the fork loads with Fork origin — even though its source was a
+    // subagent.
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+    assert_eq!(
+        forked.origin(),
+        crate::feat::session::chat_session::SessionOrigin::Fork
+    );
+    // And the fork still carries the parent link.
+    assert_eq!(forked.parent_session(), &Some(source_id.clone()));
+}

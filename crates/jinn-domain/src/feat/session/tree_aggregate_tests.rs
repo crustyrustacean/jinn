@@ -10,6 +10,8 @@
 
 use std::collections::HashMap;
 
+use crate::common::app_state::AppState;
+use crate::common::state::State;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::session::{FrozenTreeNode, aggregate_tree_stats, find_tree_root};
@@ -745,4 +747,94 @@ fn tree_aggregate_sums_cached_total_across_live_and_frozen() {
     assert_eq!(stats.cached_total, 1000);
     // And measured_sent sums live + frozen (1000 + 1000 = 2000).
     assert_eq!(stats.measured_sent, 2000);
+}
+
+// ---------------------------------------------------------------------------
+// Subagent rollup
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn tree_aggregate_includes_subagent_usage() {
+    // Given a parent with stats and a spawned subagent child with its own stats.
+    let parent_id = SessionId::new();
+    let child_id = SessionId::new();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(
+        parent_id.clone(),
+        make_session_with_stats(parent_id.clone(), 100, 50, Some(0.01), 2),
+    );
+    sessions.insert(
+        child_id.clone(),
+        make_session_with_stats(child_id.clone(), 400, 200, Some(0.04), 1),
+    );
+    set_parent(&mut sessions, &child_id, &parent_id);
+
+    // When aggregating from the parent.
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
+
+    // Then the subagent's usage rolls into the tree totals.
+    assert_eq!(stats.session_count, 2);
+    assert_eq!(stats.total_sent, 500);
+    assert_eq!(stats.total_received, 250);
+    assert!(stats.total_cost - 0.05 < 1e-10);
+    assert_eq!(stats.total_turns, 3);
+}
+
+#[rstest::rstest]
+fn spawned_child_crosses_tree_display_threshold() {
+    // Given a state holding an active parent and one spawned subagent child.
+    let state = State::new(AppState::default());
+    let parent_id = {
+        let snapshot = state.read();
+        snapshot.session.active_session_id().clone()
+    };
+    {
+        let mut guard = state.write_test_no_cap();
+        let child = ChatSessionState::new_child(&parent_id, true);
+        guard.session.insert(child);
+    }
+
+    // When aggregating tree stats from the active parent's context.
+    let tree = {
+        let snapshot = state.read();
+        crate::feat::session::tree_aggregate::aggregate_tree_stats(
+            snapshot.session.sessions(),
+            snapshot.session.frozen_nodes(),
+            snapshot.session.active_session_id(),
+        )
+    };
+
+    // Then the count crosses the >1 display threshold of the status bar.
+    assert!(
+        tree.session_count > 1,
+        "spawning a subagent must surface the tree stats element, got count {}",
+        tree.session_count
+    );
+}
+
+#[rstest::rstest]
+fn empty_pre_dispatch_child_contributes_zeros_but_counts() {
+    // Given a parent with stats and a freshly spawned child that has been
+    // enqueued but has produced nothing yet (no entries, no tokens).
+    let parent_id = SessionId::new();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(
+        parent_id.clone(),
+        make_session_with_stats(parent_id.clone(), 100, 50, Some(0.01), 2),
+    );
+    let child = ChatSessionState::new_child(&parent_id, true);
+    let child_id = child.session_id().clone();
+    sessions.insert(child_id, child);
+
+    // When aggregating from the parent.
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
+
+    // Then the totals are unchanged but the child counts as a session.
+    assert_eq!(stats.session_count, 2);
+    assert_eq!(stats.total_sent, 100);
+    assert_eq!(stats.total_received, 50);
+    assert!(stats.total_cost - 0.01 < 1e-10);
+    assert_eq!(stats.total_turns, 2);
 }

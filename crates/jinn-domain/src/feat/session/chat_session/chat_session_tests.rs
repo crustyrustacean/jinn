@@ -5067,22 +5067,6 @@ fn enqueue_front_puts_item_at_front_of_queue() {
 }
 
 #[rstest::rstest]
-fn is_automated_returns_real_value() {
-    // Given a session that is not automated.
-    let session = ChatSessionState::new();
-
-    // Then is_automated returns false.
-    assert!(!session.is_automated());
-
-    // Given a session marked as automated.
-    let mut wf_session = ChatSessionState::new();
-    wf_session.core.is_automated = true;
-
-    // Then is_automated returns true (not hardcoded false).
-    assert!(wf_session.is_automated());
-}
-
-#[rstest::rstest]
 fn steering_buffer_not_persisted_across_serialization() {
     // Given a session with a non-empty steering buffer.
     let mut session = ChatSessionState::new();
@@ -5790,4 +5774,29 @@ fn set_model_to_alloy_clears_endpoint_pin() {
     // Then the endpoint pin is cleared (an endpoint pin is model-specific and
     // incoherent across a rotating set).
     assert!(session.profile().endpoint.is_none());
+}
+
+#[rstest::rstest]
+#[test]
+fn default_origin_is_user() {
+    // Given a newly created session.
+    let session = ChatSessionState::new();
+
+    // Then its origin is User.
+    assert_eq!(session.origin(), SessionOrigin::User);
+}
+
+#[rstest::rstest]
+#[test]
+fn new_child_origin_is_subagent() {
+    // Given an existing parent session.
+    let parent = ChatSessionState::new();
+
+    // When creating a child via the task-tool constructor.
+    let child = ChatSessionState::new_child(&parent.session_id().clone(), true);
+
+    // Then the child's origin is Subagent.
+    // And the parent link is still set.
+    assert_eq!(child.origin(), SessionOrigin::Subagent);
+    assert!(child.parent_session().is_some());
 }

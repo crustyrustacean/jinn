@@ -111,6 +111,11 @@ pub struct Services {
 
     /// Request dump directory. `None` disables dumping (default).
     pub request_dump: RequestDumpService,
+
+    /// In-flight subagent registry: parent → child sessions spawned by the
+    /// `task` tool. Read by the stall watchdog to skip waiting parents.
+    #[debug(skip)]
+    pub task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry,
 }
 
 impl Services {
@@ -179,6 +184,7 @@ impl Services {
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
+            task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry::default(),
         }
     }
 
@@ -227,6 +233,7 @@ impl Services {
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
+            task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry::default(),
         }
     }
 }

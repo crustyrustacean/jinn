@@ -116,8 +116,8 @@ mod style_map_integration_tests {
         let theme = crate::default_theme();
         // When building the style map.
         let map = theme.style_map();
-        // Then it has one entry per Theme field (40 fields).
-        assert_eq!(map.len(), 40, "style_map should cover all Theme fields");
+        // Then it has one entry per Theme field (41 fields).
+        assert_eq!(map.len(), 41, "style_map should cover all Theme fields");
     }
 
     #[rstest::rstest]
@@ -139,6 +139,10 @@ mod style_map_integration_tests {
         assert_eq!(
             map.get("muted_text"),
             Some(&Style::default().fg(theme.muted_text))
+        );
+        assert_eq!(
+            map.get("subagent_fg"),
+            Some(&Style::default().fg(theme.subagent_fg))
         );
     }
 }
