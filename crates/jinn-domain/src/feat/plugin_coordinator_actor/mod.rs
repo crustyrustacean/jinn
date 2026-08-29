@@ -444,65 +444,85 @@ async fn handle_inbound(
             .await;
         }
         jinn_plugin_api::PluginToHost::CancelStream(msg) => {
-            let Some(session_id) = crate::protocol::SessionId::try_from_string(&msg.session_id)
-            else {
-                tracing::warn!(
-                    plugin = %name,
-                    session_id = %msg.session_id,
-                    "plugin cancel_stream dropped: unparseable session id"
-                );
-                return;
-            };
-            // A cancel for an idle session is a host-side no-op (the
-            // provider actor drops it), so duplicate sends are harmless —
-            // no dedup or debounce needed.
-            tracing::info!(
-                plugin = %name,
-                session_id = %session_id,
-                "plugin requested stream cancel"
-            );
-            bus.publish(crate::feat::provider::protocol::command::CancelStream {
-                session_id,
-            })
-            .await;
+            apply_plugin_cancel_stream(bus, name, msg).await;
         }
         jinn_plugin_api::PluginToHost::InsertSystemEntry(msg) => {
-            let Some(session_id) = crate::protocol::SessionId::try_from_string(&msg.session_id)
-            else {
-                tracing::warn!(
-                    plugin = %name,
-                    session_id = %msg.session_id,
-                    "plugin insert_system_entry dropped: unparseable session id"
-                );
-                return;
-            };
-            // Tail append: `InsertEntry { after_entry_id: None }` inserts at
-            // index 0, so the current last entry's id is required. An empty
-            // history yields `None` — the beginning *is* the tail.
-            let after_entry_id = {
-                let snapshot = state.read();
-                snapshot
-                    .try_session(&session_id)
-                    .and_then(|session| session.history().last())
-                    .map(|entry| entry.id.clone())
-            };
-            tracing::info!(
-                plugin = %name,
-                session_id = %session_id,
-                "plugin contributed system entry"
-            );
-            bus.publish(
-                crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
-                    session_id,
-                    mutations: vec![crate::feat::session::history_mutation::HistoryMutation::InsertEntry {
-                        after_entry_id,
-                        entry: crate::feat::session::chat_entry::ChatEntry::system(msg.text),
-                    }],
-                },
-            )
-            .await;
+            apply_plugin_insert_system_entry(state, bus, name, msg).await;
         }
     }
+}
+
+/// Applies a mirrored plugin cancel request: validates the session id and
+/// publishes the internal provider `CancelStream` command.
+///
+/// A cancel for an idle session is a host-side no-op (the provider actor
+/// drops it), so duplicate sends are harmless — no dedup or debounce.
+async fn apply_plugin_cancel_stream(
+    bus: &BusService,
+    plugin: &str,
+    msg: jinn_plugin_api::CancelStream,
+) {
+    let Some(session_id) = crate::protocol::SessionId::try_from_string(&msg.session_id) else {
+        tracing::warn!(
+            plugin = %plugin,
+            session_id = %msg.session_id,
+            "plugin cancel_stream dropped: unparseable session id"
+        );
+        return;
+    };
+    tracing::info!(
+        plugin = %plugin,
+        session_id = %session_id,
+        "plugin requested stream cancel"
+    );
+    bus.publish(crate::feat::provider::protocol::command::CancelStream { session_id })
+        .await;
+}
+
+/// Applies a mirrored plugin system entry: validates the session id and
+/// publishes a one-mutation `SubmitHistoryMutations` tail append.
+///
+/// `InsertEntry { after_entry_id: None }` inserts at index 0, so the
+/// current last entry's id is required; an empty history yields `None` —
+/// the beginning *is* the tail.
+async fn apply_plugin_insert_system_entry(
+    state: &State,
+    bus: &BusService,
+    plugin: &str,
+    msg: jinn_plugin_api::InsertSystemEntry,
+) {
+    let Some(session_id) = crate::protocol::SessionId::try_from_string(&msg.session_id) else {
+        tracing::warn!(
+            plugin = %plugin,
+            session_id = %msg.session_id,
+            "plugin insert_system_entry dropped: unparseable session id"
+        );
+        return;
+    };
+    let after_entry_id = {
+        let snapshot = state.read();
+        snapshot
+            .try_session(&session_id)
+            .and_then(|session| session.history().last())
+            .map(|entry| entry.id.clone())
+    };
+    tracing::info!(
+        plugin = %plugin,
+        session_id = %session_id,
+        "plugin contributed system entry"
+    );
+    bus.publish(
+        crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+            session_id,
+            mutations: vec![
+                crate::feat::session::history_mutation::HistoryMutation::InsertEntry {
+                    after_entry_id,
+                    entry: crate::feat::session::chat_entry::ChatEntry::system(msg.text),
+                },
+            ],
+        },
+    )
+    .await;
 }
 
 /// Validates one plugin citation, applying the title fallback.

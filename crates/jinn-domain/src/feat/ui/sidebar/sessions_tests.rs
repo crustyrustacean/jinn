@@ -2811,7 +2811,7 @@ fn render_archive_tree_prompt_rows(state: &AppState, sidebar_width: u16) -> Vec<
             );
         })
         .expect("draw");
-    buffer_rows(terminal, width, height)
+    buffer_rows(&terminal, width, height)
 }
 
 /// Helper: renders the sessions section then the archive-tree prompt overlay
@@ -2847,11 +2847,11 @@ fn render_sessions_with_archive_tree_prompt(state: &AppState, sidebar_width: u16
             );
         })
         .expect("draw");
-    buffer_rows(terminal, width, height)
+    buffer_rows(&terminal, width, height)
 }
 
 /// Helper: flattens a terminal's test backend into one string per row.
-fn buffer_rows(terminal: Terminal<TestBackend>, width: u16, height: u16) -> Vec<String> {
+fn buffer_rows(terminal: &Terminal<TestBackend>, width: u16, height: u16) -> Vec<String> {
     let buffer = terminal.backend().buffer();
     (0..height)
         .map(|y| {
@@ -2899,7 +2899,7 @@ fn render_sessions_with_close_prompt(state: &AppState, sidebar_width: u16) -> Ve
             );
         })
         .expect("draw");
-    buffer_rows(terminal, width, height)
+    buffer_rows(&terminal, width, height)
 }
 
 /// Helper: renders the archive-tree prompt overlay with the given sidebar

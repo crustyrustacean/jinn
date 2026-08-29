@@ -1103,9 +1103,8 @@ async fn mirrored_cancel_stream_publishes_internal_command() {
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<ProviderCancelStream>().await;
     let session_id = SessionId::new();
-    let line = format!(
-        r#"{{"v":1,"seq":2,"ts":0,"type":"cancel_stream","session_id":"{session_id}"}}"#
-    );
+    let line =
+        format!(r#"{{"v":1,"seq":2,"ts":0,"type":"cancel_stream","session_id":"{session_id}"}}"#);
     spawn_coordinator(
         &harness,
         plugins(),
@@ -1164,21 +1163,31 @@ async fn mirrored_insert_system_entry_appends_tail_entry() {
     let batches = await_recorded(&recorder, 1, WAIT).await;
 
     // Then one mutation batch appended a system entry after the tail id.
-    assert_eq!(batches.len(), 1);
+    assert_eq!(batches.len(), 1, "one SubmitHistoryMutations batch");
     assert_eq!(batches[0].session_id, session_id);
     assert_eq!(batches[0].mutations.len(), 1);
+    assert!(
+        matches!(
+            &batches[0].mutations[0],
+            crate::feat::session::history_mutation::HistoryMutation::InsertEntry { .. }
+        ),
+        "the mutation must be InsertEntry"
+    );
     let crate::feat::session::history_mutation::HistoryMutation::InsertEntry {
         after_entry_id,
         entry,
     } = &batches[0].mutations[0]
     else {
-        unreachable!("expected InsertEntry");
+        return; // proven above; satisfies the refutable-pattern lint
     };
-    assert_eq!(*after_entry_id, Some(tail_id));
-    assert!(matches!(
-        entry.kind,
-        crate::feat::session::chat_entry::ChatEntryKind::System(_)
-    ));
+    assert_eq!(*after_entry_id, Some(tail_id), "appended after the tail");
+    assert!(
+        matches!(
+            entry.kind,
+            crate::feat::session::chat_entry::ChatEntryKind::System(_)
+        ),
+        "the entry must be system-kind"
+    );
 }
 
 /// A mirror line with an unparseable session id is dropped: no publish, no
