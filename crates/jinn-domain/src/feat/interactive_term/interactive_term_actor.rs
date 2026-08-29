@@ -1215,6 +1215,81 @@ mod tests {
         );
     }
 
+    /// Full mid-call takeover: an agent send is in flight, the user flips
+    /// the control flag, then types through the bus (SendTermKey). The
+    /// in-flight ask must resolve with UserHasControl whose screen carries
+    /// the wait notice — and must NOT report Sent, which would overwrite
+    /// the refusal with the settled screen — while the user's bytes reach
+    /// the program. The next agent call then sees the user-driven screen.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn user_takeover_mid_call_sends_keys_and_in_flight_ask_reports_user_control() {
+        // Given a coordinator with a program that echoes input forever.
+        let harness = TestHarness::new().await;
+        let control = TermControl::default();
+        let (actor, state, _root) = spawn_coordinator_with_state(&harness, control.clone()).await;
+        let chat = crate::protocol::SessionId::new();
+        let session_id = {
+            let SpawnTermOutcome::Started { session_id, .. } = actor
+                .ask(spawn_msg(chat.clone(), "cat"))
+                .await
+                .expect("spawn reply")
+            else {
+                panic!("expected Started");
+            };
+            session_id
+        };
+
+        // When a send starts against a `cat` with no trailing newline
+        // (never settles on its own — the wait runs until the cap).
+        let ask = {
+            let actor = actor.clone();
+            let session_id = session_id.clone();
+            tokio::spawn(async move { actor.ask(send_msg(session_id)).await.expect("send reply") })
+        };
+
+        // And the user takes control mid-call and types through the bus.
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        control.set(ControlHolder::User);
+        harness
+            .publish(SendTermKey {
+                session_id: session_id.clone(),
+                bytes: b"user-marker\n".to_vec(),
+            })
+            .await;
+
+        // Then the in-flight ask resolves promptly with UserHasControl.
+        let reply = tokio::time::timeout(Duration::from_secs(1), ask)
+            .await
+            .expect("send must resolve promptly after takeover")
+            .expect("join");
+        assert!(
+            matches!(reply, SendTermOutcome::UserHasControl(_)),
+            "expected UserHasControl after mid-call takeover, got {reply:?}"
+        );
+
+        // And the user's bytes reached the program — observable in the
+        // realtime mirror the overlay renders (the screen task pumps `cat`'s
+        // echo without any tool call in flight).
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let contains = state
+                .read()
+                .frontend
+                .terminal
+                .mirror(&chat)
+                .is_some_and(|m| m.screen.contains("user-marker"));
+            if contains {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "user bytes never reached the program during capture"
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn kill_terminates_process_and_reports_tail() {

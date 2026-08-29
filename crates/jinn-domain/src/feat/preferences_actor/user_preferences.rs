@@ -215,7 +215,7 @@ pub struct UserPreferences {
     /// Auto-prune configuration.
     #[serde(default)]
     pub auto_prune: AutoPruneConfig,
-    /// Interactive terminal configuration (handback key, settle wait).
+    /// Interactive terminal configuration (control-toggle key, settle wait).
     #[serde(default)]
     pub interactive_term: crate::feat::interactive_term::prefs::InteractiveTermPrefs,
     /// Todo auto-steer configuration.

@@ -1,15 +1,16 @@
 //! `interactive_term` preferences — `[interactive_term]` in `jinn.toml`.
 //!
-//! Configures the takeover UI's handback key and the tool-side settle wait.
-//! Every field has a default, so the whole block is optional; unknown or
-//! unusable handback bindings fall back to the default with a warning
-//! (degrade gracefully, never brick the terminal tab).
+//! Configures the takeover UI's control-toggle key and the tool-side settle
+//! wait. Every field has a default, so the whole block is optional; unknown or
+//! unusable control-toggle bindings fall back to the default with a warning
+//! (degrade gracefully, never brick the terminal overlay).
 
 use serde::{Deserialize, Serialize};
 
-/// The default handback key binding (`<c-g>`, matching the pi agent's
-/// convention and near-unused by TUI programs).
-pub const DEFAULT_HANDBACK_KEY: &str = "<c-g>";
+/// The default control-toggle key binding (`<c-g>`, matching the pi agent's
+/// convention and near-unused by TUI programs). Toggles control mode in both
+/// directions: view → control, and control → view.
+pub const DEFAULT_CONTROL_TOGGLE_KEY: &str = "<c-g>";
 
 /// The default quiet window (ms of silence before a send call returns).
 pub const DEFAULT_SETTLE_QUIET_MS: u64 = 400;
@@ -20,10 +21,11 @@ pub const DEFAULT_SETTLE_MAX_WAIT_MS: u64 = 3000;
 /// `[interactive_term]` preferences.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InteractiveTermPrefs {
-    /// Key that exits control mode and hands the terminal back to the agent.
+    /// Key that toggles terminal control mode in both directions: enters
+    /// control mode from view mode, and exits control mode back to view mode.
     /// Notation follows the keymap (`<c-g>`, `<c-'>`, ...).
-    #[serde(default = "default_handback_key")]
-    pub handback_key: String,
+    #[serde(default = "default_control_toggle_key")]
+    pub control_toggle_key: String,
     /// Milliseconds of output silence before a blocking call returns.
     #[serde(default = "default_settle_quiet_ms")]
     pub settle_quiet_ms: u64,
@@ -36,15 +38,15 @@ pub struct InteractiveTermPrefs {
 impl Default for InteractiveTermPrefs {
     fn default() -> Self {
         Self {
-            handback_key: DEFAULT_HANDBACK_KEY.to_owned(),
+            control_toggle_key: DEFAULT_CONTROL_TOGGLE_KEY.to_owned(),
             settle_quiet_ms: DEFAULT_SETTLE_QUIET_MS,
             settle_max_wait_ms: DEFAULT_SETTLE_MAX_WAIT_MS,
         }
     }
 }
 
-/// Normalizes the configured handback binding (trimmed), or `None` when it
-/// is unusable (caller should fall back to the default).
+/// Normalizes the configured control-toggle binding (trimmed), or `None`
+/// when it is unusable (caller should fall back to the default).
 ///
 /// Any binding the keybind system accepts is allowed — single keys
 /// (`<c-g>`, `<m-g>`, `<f4>`, `'x'`) and sequences (`gg`) alike: validation
@@ -53,17 +55,17 @@ impl Default for InteractiveTermPrefs {
 /// config value accepted here is guaranteed to bind. Modifier-name case is
 /// irrelevant to parsing, so the raw spelling is returned unchanged.
 ///
-/// A plain-key handback (e.g. `g`) shadows that key inside control mode —
-/// the binding beats the forwarding catch-all — which is the user's explicit
+/// A plain-key toggle (e.g. `g`) shadows that key in both directions — the
+/// binding beats the forwarding catch-all — which is the user's explicit
 /// choice via config.
 #[must_use]
-pub fn normalize_handback_key(raw: &str) -> Option<String> {
+pub fn normalize_control_toggle_key(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
     // The leader argument only matters for `<leader>` expansions; the
-    // handback binds through the keymap's own parsing at bind time.
+    // toggle binds through the keymap's own parsing at bind time.
     let keys = ratatui_which_key::parse_key_sequence::<crate::protocol::KeyEvent>(
         trimmed,
         &<crate::protocol::KeyEvent as ratatui_which_key::Key>::space(),
@@ -84,9 +86,11 @@ pub fn normalize_handback_key(raw: &str) -> Option<String> {
 pub fn validated(prefs: &InteractiveTermPrefs) -> (InteractiveTermPrefs, bool) {
     let mut corrected = prefs.clone();
     let mut changed = false;
-    if normalize_handback_key(&prefs.handback_key).is_none_or(|norm| norm != prefs.handback_key) {
-        corrected.handback_key = normalize_handback_key(&prefs.handback_key)
-            .unwrap_or_else(|| DEFAULT_HANDBACK_KEY.to_owned());
+    if normalize_control_toggle_key(&prefs.control_toggle_key)
+        .is_none_or(|norm| norm != prefs.control_toggle_key)
+    {
+        corrected.control_toggle_key = normalize_control_toggle_key(&prefs.control_toggle_key)
+            .unwrap_or_else(|| DEFAULT_CONTROL_TOGGLE_KEY.to_owned());
         changed = true;
     }
     if prefs.settle_quiet_ms == 0 {
@@ -100,8 +104,8 @@ pub fn validated(prefs: &InteractiveTermPrefs) -> (InteractiveTermPrefs, bool) {
     (corrected, changed)
 }
 
-fn default_handback_key() -> String {
-    DEFAULT_HANDBACK_KEY.to_owned()
+fn default_control_toggle_key() -> String {
+    DEFAULT_CONTROL_TOGGLE_KEY.to_owned()
 }
 
 fn default_settle_quiet_ms() -> u64 {
@@ -130,7 +134,7 @@ mod tests {
     #[case("x")]
     fn accepts_any_keymap_parseable_binding(#[case] raw: &str) {
         // When normalizing a binding the keybind system can parse.
-        let got = normalize_handback_key(raw);
+        let got = normalize_control_toggle_key(raw);
 
         // Then it is accepted verbatim (validation matches `bind()`).
         assert_eq!(got.as_deref(), Some(raw));
@@ -142,7 +146,7 @@ mod tests {
     #[case("<junk>")]
     fn rejects_unusable_notations(#[case] raw: &str) {
         // When normalizing a binding the keybind system cannot parse.
-        let got = normalize_handback_key(raw);
+        let got = normalize_control_toggle_key(raw);
 
         // Then it is rejected.
         assert_eq!(got, None);
@@ -150,9 +154,9 @@ mod tests {
 
     #[rstest::rstest]
     fn validated_falls_back_to_default_for_bad_key() {
-        // Given prefs with an unparseable handback key.
+        // Given prefs with an unparseable control-toggle key.
         let prefs = InteractiveTermPrefs {
-            handback_key: "<junk>".to_owned(),
+            control_toggle_key: "<junk>".to_owned(),
             ..InteractiveTermPrefs::default()
         };
 
@@ -160,7 +164,7 @@ mod tests {
         let (corrected, changed) = validated(&prefs);
 
         // Then the key falls back to the default and the change is flagged.
-        assert_eq!(corrected.handback_key, DEFAULT_HANDBACK_KEY);
+        assert_eq!(corrected.control_toggle_key, DEFAULT_CONTROL_TOGGLE_KEY);
         assert!(changed);
     }
 
@@ -169,7 +173,7 @@ mod tests {
         // Given prefs with an unusual but parseable key spelling (the
         // keymap's parser is case-insensitive on modifier names).
         let prefs = InteractiveTermPrefs {
-            handback_key: "<C-G>".to_owned(),
+            control_toggle_key: "<C-G>".to_owned(),
             ..InteractiveTermPrefs::default()
         };
 
@@ -177,7 +181,7 @@ mod tests {
         let (corrected, changed) = validated(&prefs);
 
         // Then the user's spelling is kept untouched.
-        assert_eq!(corrected.handback_key, "<C-G>");
+        assert_eq!(corrected.control_toggle_key, "<C-G>");
         assert!(!changed);
     }
 
@@ -187,7 +191,7 @@ mod tests {
         let prefs = InteractiveTermPrefs {
             settle_quiet_ms: 500,
             settle_max_wait_ms: 100,
-            handback_key: DEFAULT_HANDBACK_KEY.to_owned(),
+            control_toggle_key: DEFAULT_CONTROL_TOGGLE_KEY.to_owned(),
         };
 
         // When validating.
@@ -221,5 +225,20 @@ mod tests {
 
         // Then all defaults apply.
         assert_eq!(prefs, InteractiveTermPrefs::default());
+    }
+
+    #[rstest::rstest]
+    fn serializes_renamed_field_and_roundtrips() {
+        // Given default prefs.
+        let prefs = InteractiveTermPrefs::default();
+
+        // When serializing to TOML and parsing back.
+        let raw = toml::to_string(&prefs).expect("serialize");
+        let reparsed: InteractiveTermPrefs = toml::from_str(&raw).expect("parse");
+
+        // Then the renamed field is written and survives the roundtrip.
+        assert!(raw.contains("control_toggle_key"));
+        assert!(!raw.contains("handback_key"));
+        assert_eq!(reparsed, prefs);
     }
 }
