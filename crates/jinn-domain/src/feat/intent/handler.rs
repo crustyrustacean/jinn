@@ -517,7 +517,16 @@ impl IntentHandler {
                 feat::ui::sidebar::sessions::handle_session_archive(state)
             }
             Intent::SidebarSessionArchiveTree => {
-                feat::ui::sidebar::sessions::handle_session_archive_tree_arm(state)
+                feat::ui::sidebar::sessions::handle_session_tree_action_arm(
+                    state,
+                    feat::ui::sidebar::sessions::archive_tree::TreePromptAction::Archive,
+                )
+            }
+            Intent::SidebarSessionTeardownTree => {
+                feat::ui::sidebar::sessions::handle_session_tree_action_arm(
+                    state,
+                    feat::ui::sidebar::sessions::archive_tree::TreePromptAction::TeardownAndArchive,
+                )
             }
             Intent::SidebarSessionContinue => {
                 feat::ui::sidebar::sessions::handle_session_continue(state)
@@ -836,42 +845,62 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
     Some(feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state))
 }
 
-/// Archive-tree confirmation prompt intercept.
+/// Tree-action confirmation prompt intercept (`A` archive / `X` teardown).
 ///
 /// If the archive-tree prompt is showing:
-/// - `SidebarSessionArchiveTree` re-validates the subtree: a still-idle
-///   subtree confirms (emits `ArchiveSessionTree`); a member that became busy
-///   flips the prompt to the busy notice and consumes the key; a vanished
-///   selection dismisses the prompt.
+/// - Its own arming key (`SidebarSessionArchiveTree` for an archive prompt,
+///   `SidebarSessionTeardownTree` for a teardown prompt) re-validates the
+///   subtree: a still-idle subtree confirms (emits `ArchiveSessionTree` or
+///   `TeardownSessionTree`); a member that became busy flips the prompt to
+///   the busy notice and consumes the key; a vanished selection dismisses
+///   the prompt.
 /// - Any other intent dismisses the prompt and returns `None` (fall through
 ///   to normal processing).
 ///
 /// Returns `None` if the prompt is not showing or was dismissed.
 fn try_handle_archive_tree_prompt(intent: &Intent, state: &mut AppState) -> Option<IntentResult> {
     use crate::feat::ui::sidebar::sessions::archive_tree::{
-        ArchiveTreeError, ArchiveTreePrompt, archive_tree_members,
+        ArchiveTreeError, ArchiveTreePrompt, TreePromptAction, archive_tree_members,
+        handle_session_tree_action_confirm,
     };
 
-    state.frontend.archive_tree_prompt.as_ref()?;
+    let prompt = state.frontend.archive_tree_prompt.as_ref()?;
 
-    if !matches!(intent, Intent::SidebarSessionArchiveTree) {
+    // Which tree key was pressed, if either.
+    let pressed = if matches!(intent, Intent::SidebarSessionArchiveTree) {
+        Some(TreePromptAction::Archive)
+    } else if matches!(intent, Intent::SidebarSessionTeardownTree) {
+        Some(TreePromptAction::TeardownAndArchive)
+    } else {
+        None
+    };
+
+    // Only the prompt's own arming key confirms it; any other key (including
+    // the sibling tree key) dismisses the prompt and falls through — the
+    // normal match arm then arms that key's own prompt.
+    let action = match prompt {
+        ArchiveTreePrompt::Confirm { action, .. } => *action,
+        ArchiveTreePrompt::Busy => {
+            if pressed.is_none() {
+                // Any non-tree key dismisses the busy notice too.
+                state.frontend.archive_tree_prompt = None;
+            }
+            pressed?
+        }
+    };
+    if pressed != Some(action) {
         // Any other key - dismiss prompt, fall through to normal processing.
         state.frontend.archive_tree_prompt = None;
         return None;
     }
 
-    // Second A press - re-validate in case the subtree changed between taps.
+    // Second press - re-validate in case the subtree changed between taps.
     match archive_tree_members(state) {
         Ok(members) => {
-            state.frontend.archive_tree_prompt = None;
             // The selection is always the first member of a successful
             // validation; an empty member list cannot occur.
             let root = members.first()?.clone();
-            Some(
-                feat::ui::sidebar::sessions::archive_tree::handle_session_archive_tree_confirm(
-                    state, root,
-                ),
-            )
+            Some(handle_session_tree_action_confirm(state, action, root))
         }
         Err(ArchiveTreeError::SubtreeBusy) => {
             // A member became busy between taps - consume the key and show

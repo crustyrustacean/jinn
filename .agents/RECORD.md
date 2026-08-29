@@ -229,3 +229,5 @@ Entries are added or amended **only with human approval**.
 - (session) The sidebar `A` key archives the selected session and all descendant sessions via the `parent_session` link — forks included — behind a press-again confirmation.
 - (session) Tree archive is all-or-nothing: if any member session is busy, nothing archives and a red busy popup is shown instead of the confirmation.
 - (session) Tree archive resolves descendants across memory and the session store; store-only descendants already archived are included as no-ops.
+- (session) The sidebar `X` key tears down the selected session and, on teardown success, archives the entire visible subtree (root and descendants) behind a press-again confirmation.
+- (session) Tree teardown-and-archive is all-or-nothing: a failed teardown or a busy member leaves every session open with nothing archived.

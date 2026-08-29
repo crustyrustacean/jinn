@@ -15,12 +15,14 @@ use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_closed::SessionClosed;
+use crate::feat::session::protocol::teardown_session_tree::TeardownSessionTree;
 use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 use crate::protocol::SessionId;
 
 use crate::feat::session_lifecycle::protocol::FinishSessionSetup;
 use crate::feat::session_lifecycle::protocol::command::{
     FinishSessionTeardown, PersistSession, RunSessionSetup, RunSessionTeardown, SetSessionCwd,
+    TeardownFollowUp,
 };
 use crate::feat::session_lifecycle::protocol::event::{
     SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
@@ -559,7 +561,7 @@ impl SessionPersistenceActor {
                             };
                             bus.publish(FinishSessionTeardown {
                                 session_id,
-                                close_after: false,
+                                follow_up: TeardownFollowUp::None,
                                 error,
                             })
                             .await;
@@ -569,7 +571,7 @@ impl SessionPersistenceActor {
                         let error_msg = format!("Failed to start teardown command: {report}");
                         self.publish(FinishSessionTeardown {
                             session_id,
-                            close_after: false,
+                            follow_up: TeardownFollowUp::None,
                             error: Some(error_msg),
                         })
                         .await;
@@ -700,7 +702,7 @@ impl SessionPersistenceActor {
                     crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) => {
                         // For shell teardowns: mark busy, spawn tokio task,
                         // then return immediately. The spawned task signals completion
-                        // via FinishSessionTeardown with close_after: true.
+                        // via FinishSessionTeardown with TeardownFollowUp::Close.
                         let rendered = {
                             let rendered = self.state.with_session(&self.cap, |view| -> Option<String> {
                                 use crate::feat::session_lifecycle::command_template::CommandTemplate;
@@ -764,7 +766,7 @@ impl SessionPersistenceActor {
                                     };
                                     bus.publish(FinishSessionTeardown {
                                         session_id,
-                                        close_after: true,
+                                        follow_up: TeardownFollowUp::Close,
                                         error,
                                     })
                                     .await;
@@ -775,7 +777,7 @@ impl SessionPersistenceActor {
                                     format!("Failed to start teardown command: {report}");
                                 self.publish(FinishSessionTeardown {
                                     session_id,
-                                    close_after: true,
+                                    follow_up: TeardownFollowUp::Close,
                                     error: Some(error_msg),
                                 })
                                 .await;
@@ -843,11 +845,13 @@ impl SessionPersistenceActor {
     /// Handle `FinishSessionTeardown` - completion of an async teardown shell command.
     ///
     /// Called by the spawned tokio task after the teardown shell command finishes.
-    /// Depending on `payload.close_after`:
-    /// - `false` (teardown-only, `t` key): advance lifecycle state, persist, emit events
-    /// - `true` (close-with-teardown, `x` key): archive and remove the session
+    /// Depending on `payload.follow_up`:
+    /// - `None` (teardown-only, `t` key): advance lifecycle state, persist, emit events
+    /// - `Close` (close-with-teardown, `x` key): archive and remove the session
+    /// - `CloseTree` (teardown-tree, `X` key): archive and remove the whole subtree
     ///
     /// On error, an error entry is pushed and the session returns to `Idle` phase.
+    #[expect(clippy::too_many_lines, reason = "follow-up arms read best inline")]
     pub(in crate::feat::session::session_actor) async fn handle_finish_session_teardown(
         &mut self,
         payload: &crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown,
@@ -888,94 +892,125 @@ impl SessionPersistenceActor {
         }
 
         // Teardown succeeded.
-        if payload.close_after {
-            // Close-with-teardown: advance lifecycle, then archive and remove.
-            {
-                let result = self.state.with_session(&self.cap, |view| -> Option<()> {
-                    let session = view.session.map().get_mut(&payload.session_id)?;
-                    session.advance_lifecycle_after_teardown();
-                    Some(())
-                });
-                if result.is_none() {
-                    return;
-                }
-            }
-
-            // Persist the lifecycle state change.
-            self.save_active_session(&payload.session_id).await;
-
-            // Archive + remove.
-            {
-                self.state.with_session(&self.cap, |view| {
-                    if let Some(session) = view.session.map().get_mut(&payload.session_id) {
-                        session.set_session_state(SessionState::Archived);
+        match payload.follow_up {
+            TeardownFollowUp::None => {
+                // Teardown-only: advance lifecycle, persist, push success
+                // entry, emit.
+                {
+                    let result = self.state.with_session(&self.cap, |view| -> Option<()> {
+                        let session = view.session.map().get_mut(&payload.session_id)?;
+                        session.advance_lifecycle_after_teardown();
+                        Some(())
+                    });
+                    if result.is_none() {
+                        return;
                     }
-                });
-            }
-            self.save_active_session(&payload.session_id).await;
+                }
 
-            // Snapshot stats before removing from memory.
-            {
-                let state = self.state.read();
-                if let Some(session) = state.session.get(&payload.session_id) {
-                    let frozen = crate::feat::session::snapshot_frozen_node(session);
-                    drop(state);
+                // Persist the lifecycle state change.
+                self.save_active_session(&payload.session_id).await;
+
+                // Push success entry.
+                self.publish(PushChatEntry {
+                    session_id: payload.session_id.clone(),
+                    entry: teardown_success_msg(),
+                })
+                .await;
+
+                // Emit completion event.
+                self.publish(SessionTeardownFinished {
+                    session_id: payload.session_id.clone(),
+                    error: None,
+                })
+                .await;
+            }
+            TeardownFollowUp::Close => {
+                // Close-with-teardown: advance lifecycle, then archive and
+                // remove.
+                {
+                    let result = self.state.with_session(&self.cap, |view| -> Option<()> {
+                        let session = view.session.map().get_mut(&payload.session_id)?;
+                        session.advance_lifecycle_after_teardown();
+                        Some(())
+                    });
+                    if result.is_none() {
+                        return;
+                    }
+                }
+
+                // Persist the lifecycle state change.
+                self.save_active_session(&payload.session_id).await;
+
+                // Archive + remove.
+                {
                     self.state.with_session(&self.cap, |view| {
-                        view.session.map().insert_frozen_node(frozen);
+                        if let Some(session) = view.session.map().get_mut(&payload.session_id) {
+                            session.set_session_state(SessionState::Archived);
+                        }
                     });
                 }
-            }
+                self.save_active_session(&payload.session_id).await;
 
-            let mcp_enablement = self.remove_and_replace(&payload.session_id);
+                // Snapshot stats before removing from memory.
+                {
+                    let state = self.state.read();
+                    if let Some(session) = state.session.get(&payload.session_id) {
+                        let frozen = crate::feat::session::snapshot_frozen_node(session);
+                        drop(state);
+                        self.state.with_session(&self.cap, |view| {
+                            view.session.map().insert_frozen_node(frozen);
+                        });
+                    }
+                }
 
-            // Emit events.
-            self.publish(SessionArchived {
-                session_id: payload.session_id.clone(),
-            })
-            .await;
-            self.publish(SessionClosed {
-                session_id: payload.session_id.clone(),
-            })
-            .await;
-            self.publish(SessionTeardownFinished {
-                session_id: payload.session_id.clone(),
-                error: None,
-            })
-            .await;
+                let mcp_enablement = self.remove_and_replace(&payload.session_id);
 
-            // The replacement session may carry config-seeded MCP enablement.
-            if let Some(enablement) = mcp_enablement {
-                self.publish(enablement).await;
-            }
-        } else {
-            // Teardown-only: advance lifecycle, persist, push success entry, emit.
-            {
-                let result = self.state.with_session(&self.cap, |view| -> Option<()> {
-                    let session = view.session.map().get_mut(&payload.session_id)?;
-                    session.advance_lifecycle_after_teardown();
-                    Some(())
-                });
-                if result.is_none() {
-                    return;
+                // Emit events.
+                self.publish(SessionArchived {
+                    session_id: payload.session_id.clone(),
+                })
+                .await;
+                self.publish(SessionClosed {
+                    session_id: payload.session_id.clone(),
+                })
+                .await;
+                self.publish(SessionTeardownFinished {
+                    session_id: payload.session_id.clone(),
+                    error: None,
+                })
+                .await;
+
+                // The replacement session may carry config-seeded MCP
+                // enablement.
+                if let Some(enablement) = mcp_enablement {
+                    self.publish(enablement).await;
                 }
             }
+            TeardownFollowUp::CloseTree => {
+                // Teardown-tree: advance lifecycle, persist, then archive the
+                // whole subtree. If a member became busy while the teardown
+                // script ran, `archive_tree_from_root`'s guard aborts (the
+                // root stays open, torn down).
+                {
+                    let result = self.state.with_session(&self.cap, |view| -> Option<()> {
+                        let session = view.session.map().get_mut(&payload.session_id)?;
+                        session.advance_lifecycle_after_teardown();
+                        Some(())
+                    });
+                    if result.is_none() {
+                        return;
+                    }
+                }
+                self.save_active_session(&payload.session_id).await;
 
-            // Persist the lifecycle state change.
-            self.save_active_session(&payload.session_id).await;
+                self.publish(SessionTeardownFinished {
+                    session_id: payload.session_id.clone(),
+                    error: None,
+                })
+                .await;
 
-            // Push success entry.
-            self.publish(PushChatEntry {
-                session_id: payload.session_id.clone(),
-                entry: teardown_success_msg(),
-            })
-            .await;
-
-            // Emit completion event.
-            self.publish(SessionTeardownFinished {
-                session_id: payload.session_id.clone(),
-                error: None,
-            })
-            .await;
+                self.archive_tree_from_root(&payload.session_id).await;
+            }
         }
     }
 
@@ -1070,41 +1105,238 @@ impl SessionPersistenceActor {
     /// Resolves the authoritative descendant closure from real
     /// `parent_session` links across memory and the store, then archives
     /// all-or-nothing: if any member is busy, nothing is written or removed.
-    /// For each loaded member this repeats the single-archive flow
-    /// ([`Self::handle_archive_session`]): mark archived, persist, snapshot
-    /// the frozen node, remove (with visual-parent maintenance), emit
-    /// `SessionArchived` + `SessionClosed`. Store-only members (already
-    /// archived rows under the subtree) receive no events — only the
-    /// idempotent `set_archived_many` writeback touches them.
+    /// See [`Self::archive_tree_from_root`] for the archive mechanics.
     pub(in crate::feat::session::session_actor) async fn handle_archive_session_tree(
         &self,
         payload: &ArchiveSessionTree,
     ) {
-        use crate::feat::session::chat_session::SessionState;
+        self.archive_tree_from_root(&payload.root).await;
+    }
 
-        // Step 1: resolve the authoritative closure (real parent links,
-        // memory ∪ store). Members not in memory cannot be busy.
-        let members = self.resolve_tree_closure(&payload.root).await;
+    /// TeardownSessionTree: tear down the root, then archive its subtree.
+    ///
+    /// Enforces the same all-or-nothing busy guard as the archive tree before
+    /// any script runs. The teardown runs only when the root has a pending
+    /// teardown (`SetupRan` plus a configured teardown command); otherwise the
+    /// tree archives immediately, mirroring the close-with-teardown behavior.
+    ///
+    /// Shell teardowns mark the root busy, spawn a tokio task, and return —
+    /// the spawned task signals completion via `FinishSessionTeardown` with
+    /// [`TeardownFollowUp::CloseTree`]. Builtin teardowns run inline and
+    /// archive the tree on success; on failure nothing archives.
+    #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
+    pub(in crate::feat::session::session_actor) async fn handle_teardown_session_tree(
+        &mut self,
+        payload: &TeardownSessionTree,
+    ) {
+        use crate::feat::session::chat_session::LifecycleScriptState;
 
-        // Step 2: all-or-nothing busy guard — abort leaves no side effects.
-        {
-            let state = self.state.read();
-            let any_busy = members.iter().any(|id| {
-                state.session.get(id).is_some_and(|session| {
-                    session.is_busy() || !matches!(session.phase(), PhaseKind::Idle)
-                })
-            });
-            drop(state);
-            if any_busy {
-                tracing::warn!(
-                    root = %payload.root,
-                    "archive tree aborted: a member session is busy"
-                );
-                return;
-            }
+        // All-or-nothing guard before any script runs: a busy member must not
+        // be surprised by a teardown on the root.
+        if self.guarded_tree_closure(&payload.root).await.is_none() {
+            return;
         }
 
-        // Step 3: archive each loaded member (BFS order, root first).
+        // Collect root teardown info under read lock.
+        let root_info = {
+            let state = self.state.read();
+            let Some(session) = state.session.get(&payload.root) else {
+                return;
+            };
+            let script_state = session.lifecycle_script_state();
+            let lifecycle_name = session.lifecycle_name().map(str::to_owned);
+            let lifecycle_args = session.lifecycle_args().to_vec();
+            (script_state, lifecycle_name, lifecycle_args)
+        };
+        let (script_state, lifecycle_name, lifecycle_args) = root_info;
+
+        if script_state != LifecycleScriptState::SetupRan {
+            // Nothing pending: no teardown to run — archive the tree as-is.
+            self.archive_tree_from_root(&payload.root).await;
+            return;
+        }
+
+        let Some(teardown_cmd) = lifecycle_name.as_deref().and_then(|name| {
+            let state = self.state.read();
+            state
+                .frontend
+                .preferences
+                .session_lifecycles
+                .iter()
+                .find(|l| l.name == name)
+                .and_then(|l| l.teardown.clone())
+        }) else {
+            // No teardown command configured — archive the tree as-is.
+            self.archive_tree_from_root(&payload.root).await;
+            return;
+        };
+
+        match teardown_cmd {
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) => {
+                // Mark the root busy and render the command in one lock.
+                let rendered = {
+                    let rendered = self
+                        .state
+                        .with_session(&self.cap, |view| -> Option<String> {
+                            use crate::feat::session_lifecycle::command_template::CommandTemplate;
+                            let session = view.session.map().get_mut(&payload.root)?;
+                            session.begin_busy();
+                            let template = CommandTemplate::parse(&shell_cmd);
+                            let rendered = if lifecycle_args.is_empty() {
+                                shell_cmd.clone()
+                            } else {
+                                template.render(&lifecycle_args)
+                            };
+                            Some(rendered)
+                        });
+                    let Some(rendered) = rendered else {
+                        return;
+                    };
+                    rendered
+                };
+
+                self.push_and_save(&payload.root, teardown_running_msg())
+                    .await;
+
+                let session_id = payload.root.clone();
+                let shell = self.shell.clone();
+
+                // Read the root's CWD so the teardown script runs in the
+                // inherited session dir, not jinn's process dir.
+                let cwd = {
+                    let state = self.state.read();
+                    state.session.get(&payload.root).map_or_else(
+                        || state.session.default_cwd().clone(),
+                        |s| s.cwd().to_path_buf(),
+                    )
+                };
+
+                let spawn_result =
+                    crate::feat::session_lifecycle::command_runner::spawn_teardown_command(
+                        &rendered, &shell, &cwd,
+                    );
+
+                match spawn_result {
+                    Ok((cancel_handle, join_handle)) => {
+                        self.lifecycle_child = Some(cancel_handle);
+                        let bus = self.bus().clone();
+                        let _handle = tokio::spawn(async move {
+                            let result = join_handle.await;
+                            let error = match result {
+                                Ok(Ok(())) => None,
+                                Ok(Err(report)) => {
+                                    if let Some(cmd_err) =
+                                        report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>()
+                                    {
+                                        Some(crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err))
+                                    } else {
+                                        Some(crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!(
+                                            "{report:#?}"
+                                        )))
+                                    }
+                                }
+                                Err(_) => Some("Teardown command was cancelled".to_owned()),
+                            };
+                            bus.publish(FinishSessionTeardown {
+                                session_id,
+                                follow_up: TeardownFollowUp::CloseTree,
+                                error,
+                            })
+                            .await;
+                        });
+                    }
+                    Err(report) => {
+                        let error_msg = format!("Failed to start teardown command: {report}");
+                        self.publish(FinishSessionTeardown {
+                            session_id: payload.root.clone(),
+                            follow_up: TeardownFollowUp::CloseTree,
+                            error: Some(error_msg),
+                        })
+                        .await;
+                    }
+                }
+                // Return immediately - async result handled via FinishSessionTeardown.
+            }
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
+                // Builtin teardown is synchronous - run inline.
+                let success = self
+                    .run_builtin_teardown(&payload.root, &id, &lifecycle_args)
+                    .await;
+
+                if !success {
+                    // Failure already pushed an error entry; nothing archives.
+                    self.publish(SessionTeardownFinished {
+                        session_id: payload.root.clone(),
+                        error: Some("teardown failed".to_owned()),
+                    })
+                    .await;
+                    return;
+                }
+
+                self.publish(PushChatEntry {
+                    session_id: payload.root.clone(),
+                    entry: teardown_success_msg(),
+                })
+                .await;
+
+                self.publish(SessionTeardownFinished {
+                    session_id: payload.root.clone(),
+                    error: None,
+                })
+                .await;
+
+                self.archive_tree_from_root(&payload.root).await;
+            }
+        }
+    }
+
+    /// Resolves `root`'s subtree closure and enforces the all-or-nothing busy
+    /// guard.
+    ///
+    /// Returns the members in BFS order (root first), or `None` when any
+    /// member is busy — in which case nothing has been written or removed and
+    /// the caller must abort.
+    async fn guarded_tree_closure(
+        &self,
+        root: &crate::protocol::SessionId,
+    ) -> Option<Vec<crate::protocol::SessionId>> {
+        // Resolve the authoritative closure (real parent links, memory ∪
+        // store). Members not in memory cannot be busy.
+        let members = self.resolve_tree_closure(root).await;
+
+        // All-or-nothing busy guard — an abort leaves no side effects.
+        let state = self.state.read();
+        let any_busy = members.iter().any(|id| {
+            state.session.get(id).is_some_and(|session| {
+                session.is_busy() || !matches!(session.phase(), PhaseKind::Idle)
+            })
+        });
+        drop(state);
+        if any_busy {
+            tracing::warn!(root = %root, "tree action aborted: a member session is busy");
+            return None;
+        }
+        Some(members)
+    }
+
+    /// Archives `root` and its whole resolved subtree, all-or-nothing.
+    ///
+    /// Resolves the authoritative descendant closure from real
+    /// `parent_session` links across memory and the store, aborts if any
+    /// member is busy (leaving no side effects), then archives every loaded
+    /// member in BFS order (root first): mark archived, persist, snapshot
+    /// the frozen node, remove (with visual-parent maintenance), emit
+    /// `SessionArchived` + `SessionClosed`. Store-only members (already
+    /// archived rows under the subtree) receive no events — only the
+    /// idempotent `set_archived_many` writeback touches them.
+    async fn archive_tree_from_root(&self, root: &crate::protocol::SessionId) {
+        use crate::feat::session::chat_session::SessionState;
+
+        let Some(members) = self.guarded_tree_closure(root).await else {
+            return;
+        };
+
+        // Archive each loaded member (BFS order, root first).
         for member_id in &members {
             // Skip members already removed by this cascade (the map mutates
             // as we go; a member listed twice cannot happen, but a session
@@ -1149,8 +1381,8 @@ impl SessionPersistenceActor {
             }
         }
 
-        // Step 4: store writeback for the whole closure. Idempotent for
-        // members already saved archived above; covers store-only members.
+        // Store writeback for the whole closure. Idempotent for members
+        // already saved archived above; covers store-only members.
         if let Err(error) = self
             .services
             .session_store
@@ -1158,7 +1390,7 @@ impl SessionPersistenceActor {
             .await
         {
             tracing::warn!(
-                root = %payload.root,
+                root = %root,
                 ?error,
                 "archive tree store writeback failed (memory state is consistent)"
             );
@@ -1367,15 +1599,18 @@ mod tests {
 
     use crate::feat::chat_input::protocol::command::PushChatEntry;
     use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::chat_session::LifecycleScriptState;
     use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
     use crate::feat::session::protocol::close_session::CloseSession;
     use crate::feat::session::protocol::session_archived::SessionArchived;
     use crate::feat::session::protocol::session_closed::SessionClosed;
+    use crate::feat::session::protocol::teardown_session_tree::TeardownSessionTree;
     use crate::feat::session::session_actor::SessionPersistenceActor;
     use crate::feat::session::session_summary::SessionSummary;
+    use crate::feat::session_lifecycle::builtin::LifecycleCommand;
     use crate::feat::session_lifecycle::protocol::command::{
         CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
-        RunSessionTeardown, SetSessionCwd,
+        RunSessionTeardown, SetSessionCwd, TeardownFollowUp,
     };
     use crate::feat::session_lifecycle::protocol::event::{
         SessionCwdChanged, SessionTeardownFinished,
@@ -1519,7 +1754,7 @@ mod tests {
         // Simulate async teardown failure.
         let finish = FinishSessionTeardown {
             session_id: target_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: Some("teardown failed".to_owned()),
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -1613,7 +1848,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: Some("exit code 1".to_owned()),
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -1658,7 +1893,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: Some("teardown failed".to_owned()),
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -1873,7 +2108,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: None,
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -1920,7 +2155,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: None,
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -2307,7 +2542,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: true,
+            follow_up: TeardownFollowUp::Close,
             error: Some("exit code 1".to_owned()),
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -2354,7 +2589,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: true,
+            follow_up: TeardownFollowUp::Close,
             error: Some("teardown failed".to_owned()),
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -2401,7 +2636,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: true,
+            follow_up: TeardownFollowUp::Close,
             error: None,
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -2488,7 +2723,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: false,
+            follow_up: TeardownFollowUp::None,
             error: None,
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -2538,7 +2773,7 @@ mod tests {
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
-            close_after: true,
+            follow_up: TeardownFollowUp::Close,
             error: None,
         };
         actor.handle_finish_session_teardown(&finish).await;
@@ -3243,5 +3478,294 @@ mod tests {
         let state = actor.state.read();
         assert!(!state.session.contains(&root_id));
         assert!(!state.session.contains(&child_id));
+    }
+
+    // ── Teardown tree ─────────────────────────────────────────────────────
+
+    /// Seeds a root (with one entry so it persists) whose lifecycle script
+    /// state is `script_state`, plus a child and grandchild under it, and
+    /// registers a lifecycle named `name` with the given teardown command in
+    /// preferences.
+    fn seed_teardown_tree(
+        actor: &SessionPersistenceActor,
+        script_state: crate::feat::session::chat_session::LifecycleScriptState,
+        lifecycle_name: &str,
+        teardown: Option<LifecycleCommand>,
+    ) -> (SessionId, SessionId, SessionId) {
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
+        let root = ChatSessionState::new();
+        let root_id = root.session_id().clone();
+        let child = child_session_of(&root_id);
+        let child_id = child.session_id().clone();
+        let grandchild = child_session_of(&child_id);
+        let grandchild_id = grandchild.session_id().clone();
+        seed_sessions(actor, vec![root, child, grandchild]);
+
+        let mut state = actor.state.write_test_no_cap();
+        let session = state.session.get_mut(&root_id).expect("root in map");
+        session.push_entry(ChatEntry::user("root entry"));
+        session.set_lifecycle_name(Some(lifecycle_name.to_owned()));
+        if script_state == LifecycleScriptState::SetupRan
+            || script_state == LifecycleScriptState::TeardownRan
+        {
+            session.advance_lifecycle_after_setup();
+        }
+        if script_state == LifecycleScriptState::TeardownRan {
+            session.advance_lifecycle_after_teardown();
+        }
+        state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+            name: lifecycle_name.to_owned(),
+            description: None,
+            setup: None,
+            teardown,
+        }];
+        drop(state);
+        (root_id, child_id, grandchild_id)
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn teardown_tree_runs_teardown_then_archives_all_members() {
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
+        // Given a tree whose root has a pending shell teardown.
+        let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
+        let (root_id, child_id, grandchild_id) = seed_teardown_tree(
+            &actor,
+            LifecycleScriptState::SetupRan,
+            "test",
+            Some(LifecycleCommand::Shell("true".to_owned())),
+        );
+
+        // When tearing down the tree (shell path: the actor spawns and
+        // returns; the completion arrives via FinishSessionTeardown).
+        actor
+            .handle_teardown_session_tree(&TeardownSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+        actor
+            .handle_finish_session_teardown(&FinishSessionTeardown {
+                session_id: root_id.clone(),
+                follow_up: TeardownFollowUp::CloseTree,
+                error: None,
+            })
+            .await;
+
+        // Then every member is removed from memory.
+        let state = actor.state.read();
+        assert!(!state.session.contains(&root_id));
+        assert!(!state.session.contains(&child_id));
+        assert!(!state.session.contains(&grandchild_id));
+        drop(state);
+
+        // And the store writeback covers the full closure.
+        let archived = store.archived_ids();
+        for id in [&root_id, &child_id, &grandchild_id] {
+            assert!(
+                archived.contains(id),
+                "store writeback missing {id}: {archived:?}"
+            );
+        }
+
+        // And per-member SessionArchived events were emitted.
+        for id in [&root_id, &child_id, &grandchild_id] {
+            assert!(
+                audit
+                    .of_type::<SessionArchived>()
+                    .iter()
+                    .any(|e| &e.session_id == id),
+                "expected SessionArchived for {id}"
+            );
+        }
+
+        // And the root's lifecycle advanced to TeardownRan in the last
+        // persisted snapshot.
+        let persisted = store
+            .last_saved_session(&root_id)
+            .expect("root was persisted");
+        assert_eq!(
+            persisted.lifecycle_script_state(),
+            LifecycleScriptState::TeardownRan
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn teardown_tree_skips_teardown_and_archives_when_none_pending() {
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
+        // Given a tree whose root ran setup but whose lifecycle has no
+        // teardown command.
+        let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
+        let (root_id, child_id, grandchild_id) =
+            seed_teardown_tree(&actor, LifecycleScriptState::SetupRan, "test", None);
+
+        // When tearing down the tree.
+        actor
+            .handle_teardown_session_tree(&TeardownSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+
+        // Then the whole tree is archived immediately.
+        let state = actor.state.read();
+        assert!(!state.session.contains(&root_id));
+        assert!(!state.session.contains(&child_id));
+        assert!(!state.session.contains(&grandchild_id));
+        drop(state);
+
+        // And no teardown completion event was emitted.
+        assert!(audit.of_type::<SessionTeardownFinished>().is_empty());
+
+        // And the root did not advance past SetupRan (nothing ran).
+        let archived = store.archived_ids();
+        for id in [&root_id, &child_id, &grandchild_id] {
+            assert!(archived.contains(id), "store writeback missing {id}");
+        }
+    }
+
+    #[rstest::rstest]
+    #[case(LifecycleScriptState::NothingRan)]
+    #[case(LifecycleScriptState::TeardownRan)]
+    #[tokio::test]
+    async fn teardown_tree_without_pending_teardown_archives_without_running_script(
+        #[case] script_state: LifecycleScriptState,
+    ) {
+        // Given a tree whose root has a configured teardown command but
+        // whose lifecycle state is not SetupRan (never set up, or already
+        // torn down).
+        let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
+        let (root_id, child_id, grandchild_id) = seed_teardown_tree(
+            &actor,
+            script_state,
+            "test",
+            Some(LifecycleCommand::Shell("true".to_owned())),
+        );
+
+        // When tearing down the tree.
+        actor
+            .handle_teardown_session_tree(&TeardownSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+
+        // Then the whole tree is archived immediately.
+        let state = actor.state.read();
+        assert!(!state.session.contains(&root_id));
+        assert!(!state.session.contains(&child_id));
+        assert!(!state.session.contains(&grandchild_id));
+        drop(state);
+
+        // And no teardown completion event was emitted (no script ran).
+        assert!(audit.of_type::<SessionTeardownFinished>().is_empty());
+        // And no teardown-running entry was pushed into the root's chat.
+        let running_pushed = audit.of_type::<PushChatEntry>().iter().any(|e| {
+            matches!(&e.entry.kind, ChatEntryKind::System(text) if text.contains("Running teardown script"))
+        });
+        assert!(!running_pushed, "no teardown script should have run");
+
+        // And the store writeback covers the full closure.
+        let archived = store.archived_ids();
+        for id in [&root_id, &child_id, &grandchild_id] {
+            assert!(archived.contains(id), "store writeback missing {id}");
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn teardown_failure_archives_nothing() {
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
+        // Given a tree whose root has a pending shell teardown that fails.
+        let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
+        let (root_id, child_id, grandchild_id) = seed_teardown_tree(
+            &actor,
+            LifecycleScriptState::SetupRan,
+            "test",
+            Some(LifecycleCommand::Shell("exit 1".to_owned())),
+        );
+
+        // When tearing down the tree and the script then fails.
+        actor
+            .handle_teardown_session_tree(&TeardownSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+        actor
+            .handle_finish_session_teardown(&FinishSessionTeardown {
+                session_id: root_id.clone(),
+                follow_up: TeardownFollowUp::CloseTree,
+                error: Some("exit code 1".to_owned()),
+            })
+            .await;
+
+        // Then every member remains in memory.
+        let state = actor.state.read();
+        assert!(state.session.contains(&root_id));
+        assert!(state.session.contains(&child_id));
+        assert!(state.session.contains(&grandchild_id));
+        drop(state);
+
+        // And the root received a teardown error entry.
+        let has_error = audit.of_type::<PushChatEntry>().iter().any(
+            |e| matches!(&e.entry.kind, ChatEntryKind::Error(msg) if msg.contains("exit code")),
+        );
+        assert!(has_error, "expected a teardown error entry in the root");
+
+        // And nothing was archived anywhere.
+        assert!(store.archived_ids().is_empty());
+        assert!(audit.of_type::<SessionArchived>().is_empty());
+        assert!(audit.of_type::<SessionClosed>().is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn teardown_tree_aborts_when_member_is_busy_after_teardown() {
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
+        // Given a tree whose root has a pending teardown and a grandchild
+        // that becomes busy while the script runs.
+        let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
+        let (root_id, child_id, grandchild_id) = seed_teardown_tree(
+            &actor,
+            LifecycleScriptState::SetupRan,
+            "test",
+            Some(LifecycleCommand::Shell("true".to_owned())),
+        );
+
+        // When the script finishes but a member is busy at archive time.
+        actor
+            .handle_teardown_session_tree(&TeardownSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+        actor
+            .state
+            .write_test_no_cap()
+            .session
+            .get_mut(&grandchild_id)
+            .expect("grandchild in map")
+            .begin_busy();
+        actor
+            .handle_finish_session_teardown(&FinishSessionTeardown {
+                session_id: root_id.clone(),
+                follow_up: TeardownFollowUp::CloseTree,
+                error: None,
+            })
+            .await;
+
+        // Then the archive is aborted - every member stays in memory.
+        let state = actor.state.read();
+        assert!(state.session.contains(&root_id));
+        assert!(state.session.contains(&child_id));
+        assert!(state.session.contains(&grandchild_id));
+        drop(state);
+
+        // And nothing was archived.
+        assert!(store.archived_ids().is_empty());
+        assert!(audit.of_type::<SessionArchived>().is_empty());
     }
 }
