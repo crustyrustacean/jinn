@@ -144,7 +144,7 @@ impl ContextSizeActor {
         let id_for_blocking = session_id.clone();
         let result = tokio::task::spawn_blocking(move || {
             let guard = state_clone.read();
-            assemble_prompt(&guard, &id_for_blocking, &counter, None).estimated_tokens()
+            assemble_prompt(&guard, &id_for_blocking, &counter).estimated_tokens()
         })
         .await;
 

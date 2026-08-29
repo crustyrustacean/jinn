@@ -57,6 +57,10 @@ pub struct ToolContext {
     /// every tool that doesn't need it.
     pub mcp_coordinator:
         Option<kameo::actor::ActorRef<crate::feat::mcp_coordinator_actor::McpCoordinatorActor>>,
+    /// In-flight subagent spawn registry — read by the stall watchdog to
+    /// skip sessions suspended on a `task` call, and written by the `task`
+    /// tool through its drop-guard. `None` in tests.
+    pub task_spawns: Option<crate::feat::tools_actor::task_registry::TaskSpawnRegistry>,
 }
 
 impl fmt::Debug for ToolContext {
@@ -98,6 +102,7 @@ mod tests {
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
             mcp_coordinator: None,
+            task_spawns: None,
         };
 
         // When debugging.

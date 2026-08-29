@@ -51,24 +51,6 @@ impl std::fmt::Display for SystemPrompt {
     }
 }
 
-/// Overrides for [`assemble_prompt`]. When provided, these replace the default
-/// sources for system prompt, tools, skills, and context files.
-///
-/// Used by automated sessions to control the LLM prompt independently of global state.
-#[derive(Debug, Clone, Default)]
-pub struct AssemblyOverrides {
-    /// If set, replaces the entire system prompt (all generated sections).
-    /// Pinned history entries remain conversation messages regardless.
-    pub system_prompt: Option<String>,
-    /// If set, replaces global tool definitions in both the assembled prompt's
-    /// `tool_definitions` field and the tool context block.
-    pub tool_definitions: Option<Vec<ToolDefinition>>,
-    /// If true, skip the skills block in the system prompt.
-    pub skip_skills: bool,
-    /// If true, skip context files in the env context.
-    pub skip_context_files: bool,
-}
-
 /// Fully assembled LLM prompt - everything a provider needs to make a request.
 ///
 /// Produced by [`assemble_prompt`]. Token count is computed at construction time
@@ -117,13 +99,10 @@ impl AssembledPrompt {
 ///
 /// Panics if the given `session_id` does not exist in the session map.
 #[must_use]
-#[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
-#[expect(clippy::expect_used, reason = "infallible")]
 pub fn assemble_prompt(
     state: &AppState,
     session_id: &SessionId,
     counter: &dyn TokenCounter,
-    overrides: Option<&AssemblyOverrides>,
 ) -> AssembledPrompt {
     let session = state.session(session_id);
     let cwd = session.cwd().to_path_buf();
@@ -144,78 +123,47 @@ pub fn assemble_prompt(
 
     let history = session.history();
 
-    // Apply overrides: tool definitions.
-    let mut tool_defs: Vec<ToolDefinition> = overrides
-        .and_then(|o| o.tool_definitions.clone())
-        .unwrap_or_else(|| state.context.tools_for_session(session_id));
+    let mut tool_defs: Vec<ToolDefinition> = state.context.tools_for_session(session_id);
 
     // Filter out disabled tools and server tools that don't match the active provider.
-    // Override tool_definitions are not filtered (user-provided takes priority).
     let provider_name = session.model_selection().provider_name().to_owned();
     let disabled = session.disabled_tools();
-    if overrides.is_none_or(|o| o.tool_definitions.is_none()) {
-        tool_defs.retain(|def| {
-            !disabled.contains(&def.name) && def.available_for_provider(&provider_name)
-        });
+    tool_defs
+        .retain(|def| !disabled.contains(&def.name) && def.available_for_provider(&provider_name));
+
+    // Depth-1 subagent guard: sessions with a parent link cannot spawn
+    // further subagents. Structural, so it can't be undone from the picker.
+    if session.parent_session().is_some() {
+        tool_defs.retain(|def| def.name != crate::feat::tools_actor::task::TASK_TOOL_NAME);
     }
 
-    // Apply overrides: tool context block.
-    let tool_block = if overrides.is_some_and(|o| o.tool_definitions.is_some()) {
-        let defs = overrides
-            .expect("checked")
-            .tool_definitions
-            .as_ref()
-            .expect("checked");
-        let map: BTreeMap<String, ToolDefinition> =
-            defs.iter().map(|d| (d.name.clone(), d.clone())).collect();
-        build_tool_context_block(&map)
-    } else {
-        // Filter disabled tools from the tool context block.
-        let filtered_map: BTreeMap<String, ToolDefinition> = state
-            .context
-            .tools_for_session(session_id)
-            .into_iter()
-            .filter(|def| {
-                !disabled.contains(def.name.as_str()) && def.available_for_provider(&provider_name)
-            })
-            .map(|def| (def.name.clone(), def))
-            .collect();
-        build_tool_context_block(&filtered_map)
-    };
+    let filtered_map: BTreeMap<String, ToolDefinition> = tool_defs
+        .iter()
+        .cloned()
+        .map(|def| (def.name.clone(), def))
+        .collect();
+    let tool_block = build_tool_context_block(&filtered_map);
 
-    // Apply overrides: skills block.
-    let skills_block = if overrides.is_some_and(|o| o.skip_skills) {
-        String::new()
-    } else {
-        let disabled_skills = session.disabled_skills();
-        let filtered: Vec<_> = session
-            .discovered_skills()
-            .iter()
-            .filter(|s| !disabled_skills.contains(&s.name))
-            .cloned()
-            .collect();
-        format_skills_for_prompt(&filtered, &session.loaded_skills())
-    };
+    let disabled_skills = session.disabled_skills();
+    let filtered: Vec<_> = session
+        .discovered_skills()
+        .iter()
+        .filter(|s| !disabled_skills.contains(&s.name))
+        .cloned()
+        .collect();
+    let skills_block = format_skills_for_prompt(&filtered, &session.loaded_skills());
 
-    // Apply overrides: environment sections. A system prompt override replaces
-    // every generated section; skip_context_files drops only the files section.
-    // Builders returning an empty section are omitted entirely.
-    let env_sections = if overrides.is_some_and(|o| o.system_prompt.is_some()) {
-        Vec::new()
-    } else {
-        let files = if overrides.is_some_and(|o| o.skip_context_files) {
-            &[][..]
-        } else {
-            context_files
-        };
-        vec![persona_section(persona), context_files_section(files)]
-            .into_iter()
-            .filter(|section| !section.is_empty())
-            .collect::<Vec<_>>()
+    // Compose environment sections. Builders returning an empty section are
+    // omitted entirely.
+    let env_sections = {
+        vec![
+            persona_section(persona),
+            context_files_section(context_files),
+        ]
+        .into_iter()
+        .filter(|section| !section.is_empty())
+        .collect::<Vec<_>>()
     };
-
-    // Check for system prompt override.
-    let forced_system = overrides.and_then(|o| o.system_prompt.clone());
 
     // Split and normalize history before converting any partition. Tool loops
     // are selected as units so a pinned result cannot be separated from its call.
@@ -228,10 +176,7 @@ pub fn assemble_prompt(
     // Compose the system prompt in fixed section order. Empty sections are
     // omitted entirely; the rest are joined with a blank line between them.
     // Date and cwd are unconditional - their builders always render content.
-    let system_prompt = if let Some(content) = forced_system {
-        // Override replaces all generated system sections.
-        SystemPrompt::new(content)
-    } else {
+    let system_prompt = {
         let mut system_parts: Vec<String> = Vec::new();
         system_parts.extend(env_sections);
         if let Some(block) = tool_block {
@@ -366,7 +311,7 @@ mod tests {
     use crate::protocol::{ChatEntry, SessionId};
     use jinn_provider::ServerToolType;
 
-    fn counter() -> TiktokenCounter {
+    pub(crate) fn counter() -> TiktokenCounter {
         TiktokenCounter::o200k_base()
     }
 
@@ -381,7 +326,7 @@ mod tests {
         }
     }
 
-    fn make_tool(name: &str) -> ToolDefinition {
+    pub(crate) fn make_tool(name: &str) -> ToolDefinition {
         ToolDefinition {
             name: name.to_owned(),
             description: format!("{name} tool"),
@@ -392,7 +337,7 @@ mod tests {
         }
     }
 
-    fn state_with_history(entries: Vec<ChatEntry>) -> (State, SessionId) {
+    pub(crate) fn state_with_history(entries: Vec<ChatEntry>) -> (State, SessionId) {
         let state = State::new(AppState::default());
         let session_id = {
             let mut guard = state.write_test_no_cap();
@@ -438,7 +383,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the assistant call and tool result remain adjacent in valid order.
         let tool_index = result
@@ -469,7 +414,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the malformed result is absent while neighboring user messages remain.
         let contents: Vec<&str> = result
@@ -513,7 +458,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the complete tool loop is emitted in valid order.
         let assistant_index = result.messages.iter().position(|message| {
@@ -540,7 +485,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the user, tool loop, and later user remain in original order.
         let contents: Vec<&str> = result
@@ -573,7 +518,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then both calls are declared and both results are emitted (the
         // tripwire matches ids as a set, not positionally).
@@ -621,7 +566,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the orphan tool message is dropped and the neighbors remain.
         let contents: Vec<&str> = result
@@ -653,7 +598,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the bottom pin is placed before the trailing loop's assistant,
         // never between the assistant and its result.
@@ -683,7 +628,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the system prompt contains the skill.
         let system = result.system_prompt.to_string();
@@ -701,7 +646,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the system prompt still has date and CWD from env context.
         let system = result.system_prompt.to_string();
@@ -724,7 +669,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the bottom pin appears just before the last message.
         assert!(result.messages.len() >= 2, "need at least 2 messages");
@@ -765,7 +710,7 @@ mod tests {
 
         // When assembling.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the steering entry sits at the tail of the messages.
         let last = result.messages.last().expect("has last message");
@@ -791,7 +736,7 @@ mod tests {
 
         // When assembling.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then both the pinned message and the steering message appear in the assembled prompt.
         let body = result
@@ -823,7 +768,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then no message contains the thinking text.
         let system = result.system_prompt.to_string();
@@ -854,7 +799,7 @@ mod tests {
         // When assembling the prompt.
         let counter = counter();
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter, None);
+        let result = assemble_prompt(&guard, &session_id, &counter);
 
         // Then token count is > 0 and matches manual count.
         assert!(
@@ -895,7 +840,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then tool definitions are included.
         assert_eq!(result.tool_definitions.len(), 1);
@@ -936,7 +881,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then web search is in the tool definitions AND the system prompt block.
         assert_eq!(result.tool_definitions.len(), 1);
@@ -964,7 +909,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then web search is absent from tool definitions AND the system prompt block.
         assert!(result.tool_definitions.is_empty());
@@ -991,7 +936,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the function tool is still present despite the non-openrouter model.
         assert_eq!(result.tool_definitions.len(), 1);
@@ -1015,7 +960,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the system prompt contains the context file content.
         let system = result.system_prompt.to_string();
@@ -1025,127 +970,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn assemble_prompt_with_system_prompt_override_replaces_system_message() {
-        // Given a state with skills and context files.
-        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
-        {
-            let mut guard = state.write_test_no_cap();
-            guard
-                .active_session_mut()
-                .set_discovered_skills(vec![make_skill("test-skill")]);
-            guard
-                .active_session_mut()
-                .set_discovered_context_files(vec![ContextFile {
-                    path: std::path::PathBuf::from("/project/AGENTS.md"),
-                    content: "Use Rust.".to_owned(),
-                }]);
-        }
-
-        // When assembling with system_prompt override.
-        let overrides = AssemblyOverrides {
-            system_prompt: Some("You are a workflow assistant.".to_owned()),
-            ..Default::default()
-        };
-        let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
-
-        // Then the system prompt is exactly the override - no skills, no context files.
-        let system = result.system_prompt.to_string();
-        assert_eq!(system, "You are a workflow assistant.");
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn assemble_prompt_with_tool_definitions_override_replaces_tools() {
-        // Given a state with global tools.
-        let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
-        {
-            let mut guard = state.write_test_no_cap();
-            guard
-                .context
-                .global_tool_definitions
-                .insert("global_tool".to_owned(), make_tool("global_tool"));
-        }
-
-        // When assembling with tool_definitions override.
-        let overrides = AssemblyOverrides {
-            tool_definitions: Some(vec![ToolDefinition {
-                name: "workflow_tool".to_owned(),
-                description: "A workflow tool".to_owned(),
-                parameters: serde_json::json!({"type": "object"}),
-                prompt_snippet: Some("workflow tool does things".to_owned()),
-                prompt_guidelines: vec![],
-                server_tool_type: None,
-            }]),
-            ..Default::default()
-        };
-        let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
-
-        // Then tool definitions are the override ones, not global.
-        assert_eq!(result.tool_definitions.len(), 1);
-        assert_eq!(result.tool_definitions[0].name, "workflow_tool");
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn assemble_prompt_with_skip_skills_excludes_skills_block() {
-        // Given a state with skills.
-        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
-        {
-            let mut guard = state.write_test_no_cap();
-            guard
-                .active_session_mut()
-                .set_discovered_skills(vec![make_skill("test-skill")]);
-        }
-
-        // When assembling with skip_skills.
-        let overrides = AssemblyOverrides {
-            skip_skills: true,
-            ..Default::default()
-        };
-        let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
-
-        // Then the system prompt does NOT contain the skill.
-        let system = result.system_prompt.to_string();
-        assert!(!system.contains("test-skill"));
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn assemble_prompt_with_skip_context_files_excludes_files() {
-        // Given a state with context files.
-        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
-        {
-            let mut guard = state.write_test_no_cap();
-            guard
-                .active_session_mut()
-                .set_discovered_context_files(vec![ContextFile {
-                    path: std::path::PathBuf::from("/project/AGENTS.md"),
-                    content: "Use Rust.".to_owned(),
-                }]);
-        }
-
-        // When assembling with skip_context_files.
-        let overrides = AssemblyOverrides {
-            skip_context_files: true,
-            ..Default::default()
-        };
-        let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
-
-        // Then the system prompt does NOT contain the context file content.
-        let system = result.system_prompt.to_string();
-        assert!(!system.contains("Use Rust."));
-        assert!(!system.contains("Project Context"));
-        // But still has env context (date, CWD).
-        assert!(system.contains("Current date:"));
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn assemble_prompt_with_none_overrides_is_identical_to_no_overrides() {
+    fn assemble_prompt_includes_skills_and_global_tools() {
         // Given a state with skills and tools.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
@@ -1159,15 +984,16 @@ mod tests {
                 .insert("bash".to_owned(), make_tool("bash"));
         }
 
-        // When assembling with None overrides.
+        // When assembling the prompt.
         let guard = state.read();
-        let result_none = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
-        // Then the result matches what we'd get from the original behavior.
-        let system = result_none.system_prompt.to_string();
+        // Then the system prompt contains the skill.
+        let system = result.system_prompt.to_string();
         assert!(system.contains("test-skill"));
-        assert_eq!(result_none.tool_definitions.len(), 1);
-        assert_eq!(result_none.tool_definitions[0].name, "bash");
+        // And the global tool is the only tool definition.
+        assert_eq!(result.tool_definitions.len(), 1);
+        assert_eq!(result.tool_definitions[0].name, "bash");
     }
 
     #[rstest::rstest]
@@ -1202,7 +1028,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then only enabled tools appear in tool definitions.
         let tool_names: Vec<&str> = result
@@ -1251,7 +1077,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the system prompt tool block excludes disabled tools.
         let system = result.system_prompt.to_string();
@@ -1287,7 +1113,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the system prompt skills block excludes disabled skills.
         let system = result.system_prompt.to_string();
@@ -1303,47 +1129,6 @@ mod tests {
             !system.contains("<name>web-coder</name>"),
             "disabled skill should be excluded from skills block, got: {system}"
         );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn assemble_prompt_override_tool_definitions_not_filtered_by_disabled() {
-        // Given a session with disabled tools AND an override providing specific tools.
-        let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
-        {
-            let mut guard = state.write_test_no_cap();
-            guard
-                .context
-                .global_tool_definitions
-                .insert("bash".to_owned(), make_tool("bash"));
-            // Disable bash.
-            let mut disabled = std::collections::HashSet::new();
-            disabled.insert("bash".to_owned());
-            guard
-                .session
-                .get_mut(&session_id)
-                .expect("session exists")
-                .set_disabled_tools(disabled);
-        }
-
-        // When assembling with tool_definitions override that includes bash.
-        let overrides = AssemblyOverrides {
-            tool_definitions: Some(vec![ToolDefinition {
-                name: "bash".to_owned(),
-                description: "A workflow tool".to_owned(),
-                parameters: serde_json::json!({"type": "object"}),
-                prompt_snippet: Some("workflow bash".to_owned()),
-                prompt_guidelines: vec![],
-                server_tool_type: None,
-            }]),
-            ..Default::default()
-        };
-        let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
-
-        // Then the override tools are used as-is (not filtered by disabled set).
-        assert_eq!(result.tool_definitions.len(), 1);
-        assert_eq!(result.tool_definitions[0].name, "bash");
     }
 
     #[rstest::rstest]
@@ -1367,7 +1152,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the system prompt contains the custom persona body.
         let system = result.system_prompt.to_string();
@@ -1398,7 +1183,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the system prompt contains the coding-assistant fallback.
         let system = result.system_prompt.to_string();
@@ -1419,7 +1204,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the pinned system entry rides as a [System]-prefixed User message.
         let first = &result.messages[0];
@@ -1446,7 +1231,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the pins occupy the array front in history order - nothing reserved.
         match (&result.messages[0], &result.messages[1]) {
@@ -1497,7 +1282,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then each section's marker appears after the previous section's.
         let system = result.system_prompt.to_string();
@@ -1537,7 +1322,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the last message is the user message (bottom pins are inserted before it).
         let last = result.messages.last().expect("has messages");
@@ -1577,7 +1362,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+        let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the top-pinned user message appears exactly once (not duplicated in working history).
         let user_msg_count = result
@@ -1594,6 +1379,86 @@ mod tests {
         assert_eq!(
             user_msg_count, 1,
             "top pinned user should appear exactly once, appeared {user_msg_count}"
+        );
+    }
+}
+// ---------------------------------------------------------------------------
+// Depth-1 subagent guard
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod depth1_tests {
+    use super::tests::{counter, make_tool};
+    use super::*;
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
+    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+
+    #[rstest::rstest]
+    #[test]
+    fn child_sessions_lack_task_tool() {
+        // Given a state whose context advertises the task tool, and a child
+        // session linked to a parent.
+        let state = State::new(AppState::default());
+        let parent_id = SessionId::new();
+        let child_id;
+        {
+            let mut guard = state.write_test_no_cap();
+            guard
+                .context
+                .global_tool_definitions
+                .insert(TASK_TOOL_NAME.to_owned(), make_tool(TASK_TOOL_NAME));
+            let child =
+                crate::feat::session::chat_session::ChatSessionState::new_child(&parent_id, true);
+            child_id = child.session_id().clone();
+            guard.session.insert(child);
+        }
+
+        // When assembling the prompt for the child.
+        let snapshot = state.read();
+        let result = assemble_prompt(&snapshot, &child_id, &counter());
+
+        // Then the tool definitions omit task.
+        assert!(
+            !result
+                .tool_definitions
+                .iter()
+                .any(|def| def.name == TASK_TOOL_NAME),
+            "child sessions must not see the task tool, got: {:?}",
+            result
+                .tool_definitions
+                .iter()
+                .map(|d| d.name.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn root_sessions_keep_task_tool() {
+        // Given the same context but a root session.
+        let state = State::new(AppState::default());
+        let session_id;
+        {
+            let mut guard = state.write_test_no_cap();
+            guard
+                .context
+                .global_tool_definitions
+                .insert(TASK_TOOL_NAME.to_owned(), make_tool(TASK_TOOL_NAME));
+            session_id = guard.session.active_session_id().clone();
+        }
+
+        // When assembling the prompt for the root.
+        let snapshot = state.read();
+        let result = assemble_prompt(&snapshot, &session_id, &counter());
+
+        // Then the tool definitions include task.
+        assert!(
+            result
+                .tool_definitions
+                .iter()
+                .any(|def| def.name == TASK_TOOL_NAME),
+            "root sessions keep the task tool"
         );
     }
 }

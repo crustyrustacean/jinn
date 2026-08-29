@@ -1201,13 +1201,36 @@ fn default_theme() -> crate::feat::theme::Theme {
     AppState::default().frontend.theme
 }
 
+/// Minimal entry for exercising `entry_title_style` precedence rules.
+fn style_entry(
+    is_active: bool,
+    last_entry_is_error: bool,
+    is_subagent: bool,
+) -> crate::feat::ui::sidebar::sessions::state::SessionEntry {
+    crate::feat::ui::sidebar::sessions::state::SessionEntry {
+        kind: crate::feat::ui::sidebar::sessions::state::SessionEntryKind::Session,
+        id: crate::protocol::SessionId::new(),
+        title: "Test".to_owned(),
+        is_active,
+        created_at: jiff::Timestamp::now(),
+        is_idle: true,
+        last_entry_is_error,
+        parent_id: None,
+        depth: 0,
+        ancestor_continuations: vec![],
+        is_last_child: false,
+        is_subagent,
+    }
+}
+
 #[rstest::rstest]
 fn title_style_is_red_reversed_when_error_and_selected() {
     // Given an entry with error and selected.
     let theme = default_theme();
+    let entry = style_entry(false, true, false);
 
     // When computing title style.
-    let style = entry_title_style(true, false, true, &theme);
+    let style = entry_title_style(&entry, true, &theme);
 
     // Then the style is red + reversed.
     assert_eq!(style.fg, Some(Color::Red));
@@ -1220,7 +1243,7 @@ fn title_style_is_red_when_error_not_selected() {
     let theme = default_theme();
 
     // When computing title style.
-    let style = entry_title_style(false, false, true, &theme);
+    let style = entry_title_style(&style_entry(false, true, false), false, &theme);
 
     // Then the style is red, no reversed.
     assert_eq!(style.fg, Some(Color::Red));
@@ -1233,7 +1256,7 @@ fn title_style_is_reversed_when_selected_no_error() {
     let theme = default_theme();
 
     // When computing title style.
-    let style = entry_title_style(true, false, false, &theme);
+    let style = entry_title_style(&style_entry(false, false, false), true, &theme);
 
     // Then the style is reversed, no specific fg.
     assert!(style.add_modifier.contains(Modifier::REVERSED));
@@ -1246,7 +1269,7 @@ fn title_style_is_primary_text_when_active_not_selected() {
     let theme = default_theme();
 
     // When computing title style.
-    let style = entry_title_style(false, true, false, &theme);
+    let style = entry_title_style(&style_entry(true, false, false), false, &theme);
 
     // Then the style has primary text fg.
     assert_eq!(style.fg, Some(theme.primary_text));
@@ -1258,10 +1281,48 @@ fn title_style_is_muted_text_when_inactive_not_selected() {
     let theme = default_theme();
 
     // When computing title style.
-    let style = entry_title_style(false, false, false, &theme);
+    let style = entry_title_style(&style_entry(false, false, false), false, &theme);
 
     // Then the style has muted text fg.
     assert_eq!(style.fg, Some(theme.muted_text));
+}
+
+#[rstest::rstest]
+fn title_style_uses_subagent_fg_for_subagent_when_inactive_not_selected() {
+    // Given an inactive, not selected subagent entry without error.
+    let theme = default_theme();
+
+    // When computing title style.
+    let style = entry_title_style(&style_entry(false, false, true), false, &theme);
+
+    // Then the style has the subagent fg.
+    assert_eq!(style.fg, Some(theme.subagent_fg));
+    // And it differs from a regular session's muted text.
+    assert_ne!(style.fg, Some(theme.muted_text));
+}
+
+#[rstest::rstest]
+fn title_style_uses_subagent_fg_for_active_subagent_not_selected() {
+    // Given an active, not selected subagent entry without error.
+    let theme = default_theme();
+
+    // When computing title style.
+    let style = entry_title_style(&style_entry(true, false, true), false, &theme);
+
+    // Then the style has the subagent fg rather than primary text.
+    assert_eq!(style.fg, Some(theme.subagent_fg));
+}
+
+#[rstest::rstest]
+fn title_style_stays_red_for_errored_subagent() {
+    // Given an errored, not selected subagent entry.
+    let theme = default_theme();
+
+    // When computing title style.
+    let style = entry_title_style(&style_entry(false, true, true), false, &theme);
+
+    // Then error red outranks the subagent color.
+    assert_eq!(style.fg, Some(Color::Red));
 }
 
 #[rstest::rstest]
@@ -2044,4 +2105,54 @@ fn clear_visual_parents_on_load_actually_removes_entries() {
         state.frontend.sessions_section.visual_parents.is_empty(),
         "visual_parents should be empty after clearing the loaded session's entries"
     );
+}
+
+#[rstest::rstest]
+fn sidebar_marks_only_subagent_origin() {
+    // Given a state holding a task-tool child and a plain root session.
+    let mut state = AppState::default();
+    let parent = ChatSessionState::new();
+    let child = ChatSessionState::new_child(&parent.session_id().clone(), true);
+    let child_id = child.session_id().clone();
+    state.session.insert(child);
+    let root = ChatSessionState::new();
+    let root_id = root.session_id().clone();
+    state.session.insert(root);
+
+    // When collecting open sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then only the Subagent-origin session is marked.
+    let child_entry = sessions
+        .iter()
+        .find(|e| e.id == child_id)
+        .expect("child entry");
+    assert!(child_entry.is_subagent);
+    let root_entry = sessions
+        .iter()
+        .find(|e| e.id == root_id)
+        .expect("root entry");
+    assert!(!root_entry.is_subagent);
+}
+
+#[rstest::rstest]
+fn sidebar_unmarks_forked_sessions() {
+    // Given a session with a parent link but User origin — the shape of a
+    // forked session (fork stamps Fork origin, which is never marked).
+    let mut state = AppState::default();
+    let parent = ChatSessionState::new();
+    let mut forked = ChatSessionState::new();
+    forked.set_parent_session(parent.session_id().clone());
+    let forked_id = forked.session_id().clone();
+    state.session.insert(forked);
+
+    // When collecting open sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the parent-linked session is not marked as a subagent.
+    let entry = sessions
+        .iter()
+        .find(|e| e.id == forked_id)
+        .expect("forked entry");
+    assert!(!entry.is_subagent);
 }

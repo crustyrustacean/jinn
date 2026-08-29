@@ -219,6 +219,21 @@ pub fn default_persist() -> bool {
     true
 }
 
+/// How a session came into being. Identity, not structure: a session's
+/// place in the tree is [`SessionCore::parent_session`]; its kind is
+/// this enum.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionOrigin {
+    /// Created by the user (new session, dashboard, restart restore of one).
+    #[default]
+    User,
+    /// Created by forking an existing session at an ordinal.
+    Fork,
+    /// Spawned by the `task` tool as a child of another session.
+    Subagent,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCore {
     /// Unique identifier for this session.
@@ -290,6 +305,12 @@ pub struct SessionCore {
     /// OWNER: session-actor (set during fork).
     #[serde(default)]
     pub fork_ordinal: Option<usize>,
+    /// Identity of this session's creation path. Set at construction by the
+    /// creating path (`new_child` → [`SessionOrigin::Subagent`], fork →
+    /// [`SessionOrigin::Fork`]); never mutated afterwards.
+    /// OWNER: session-actor (set at session creation).
+    #[serde(default)]
+    pub origin: SessionOrigin,
 
     /// Generic blob storage for future subsystems.
     #[serde(default)]
@@ -312,12 +333,6 @@ pub struct SessionCore {
     /// OWNER: session-actor (advances only after script success).
     #[serde(default)]
     pub lifecycle_script_state: LifecycleScriptState,
-    /// Whether this session is program-initiated (subagent, judge, etc.),
-    /// not a normal user conversation. When true, the session uses its
-    /// `assembly_overrides` instead of global defaults and is hidden from the sidebar.
-    /// OWNER: session-actor (set on creation).
-    #[serde(default)]
-    pub is_automated: bool,
 
     /// Whether this session should be persisted to disk. Default true; set
     /// false for transient automated sessions (e.g. one-shots).
@@ -330,11 +345,6 @@ pub struct SessionCore {
     /// OWNER: session-actor (set via MarkSessionInteracted command).
     #[serde(default)]
     pub has_interacted: bool,
-    /// Assembly overrides for automated sessions. When set, these replace global
-    /// defaults in `assemble_prompt`. Runtime-only - not persisted.
-    /// OWNER: session-actor (set before first message).
-    #[serde(skip)]
-    pub assembly_overrides: Option<crate::feat::context::assemble::AssemblyOverrides>,
     /// Phased task list for agent session planning.
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
@@ -381,16 +391,15 @@ impl Default for SessionCore {
             token_ledger: Vec::new(),
             parent_session: None,
             fork_ordinal: None,
+            origin: SessionOrigin::User,
 
             blobs: HashMap::new(),
             lifecycle_name: None,
             lifecycle_args: Vec::new(),
             session_state: SessionState::Loaded,
             lifecycle_script_state: LifecycleScriptState::NothingRan,
-            is_automated: false,
             persist: true,
 
-            assembly_overrides: None,
             task_list: crate::feat::todo_list::TaskList::default(),
             enabled_mcp_servers: std::collections::BTreeSet::new(),
             mcp_server_status: std::collections::BTreeMap::new(),
@@ -660,58 +669,16 @@ impl ChatSessionState {
 
     /// Create a child session: a fresh (empty-history) session linked to a parent.
     ///
-    /// Sets `parent_session`, `is_automated`, and `persist`. The caller is
-    /// responsible for inheriting the parent's model (via [`set_model`](Self::set_model))
+    /// Sets `parent_session` and `persist`. The caller is responsible for
+    /// inheriting the parent's model (via [`set_model`](Self::set_model))
     /// if desired - this constructor does not perform any state reads.
     #[must_use]
-    pub fn new_child(parent_session_id: &SessionId, automated: bool, persist: bool) -> Self {
+    pub fn new_child(parent_session_id: &SessionId, persist: bool) -> Self {
         Self {
             core: SessionCore {
                 parent_session: Some(parent_session_id.clone()),
-                is_automated: automated,
+                origin: SessionOrigin::Subagent,
                 persist,
-                ..SessionCore::default()
-            },
-            ui: SessionUi::default(),
-        }
-    }
-
-    /// Convert a cloned session into an automated child: new ID, fresh ephemeral
-    /// state, custom assembly overrides, and the given parent.
-    ///
-    /// Used when cloning a session for a one-shot
-    /// LLM request. The clone keeps its history and profile from the source;
-    /// only the identity, ephemeral state, overrides, and parent link change.
-    pub fn into_automated_clone(
-        &mut self,
-        source_session_id: &SessionId,
-        overrides: crate::feat::context::assemble::AssemblyOverrides,
-    ) {
-        self.core.session_id = SessionId::new();
-        self.core.is_automated = true;
-        self.core.ephemeral = SessionCoreEphemeral::default();
-        self.core.assembly_overrides = Some(overrides);
-        self.core.parent_session = Some(source_session_id.clone());
-    }
-
-    /// Create a fresh, history-less child session with custom assembly overrides.
-    ///
-    /// Unlike [`new_child`](Self::new_child), this constructor accepts
-    /// [`AssemblyOverrides`] so callers can supply a custom system prompt and
-    /// control skill/context-file inclusion. The session gets a new ID and empty
-    /// history. The caller sets the model (via [`set_model`](Self::set_model)).
-    #[must_use]
-    pub fn new_historyless_child(
-        parent_session_id: &SessionId,
-        persist: bool,
-        overrides: crate::feat::context::assemble::AssemblyOverrides,
-    ) -> Self {
-        Self {
-            core: SessionCore {
-                is_automated: true,
-                persist,
-                assembly_overrides: Some(overrides),
-                parent_session: Some(parent_session_id.clone()),
                 ..SessionCore::default()
             },
             ui: SessionUi::default(),
@@ -934,25 +901,9 @@ impl ChatSessionState {
         self.core.history.is_empty()
     }
 
-    /// Whether this session is program-initiated (automated), not a normal user conversation.
-    #[must_use]
-    pub fn is_automated(&self) -> bool {
-        self.core.is_automated
-    }
-
-    /// Mark this session as program-initiated (automated).
-    pub fn mark_automated(&mut self) {
-        self.core.is_automated = true;
-    }
-
     /// Whether this session should be persisted to disk.
     pub fn persist(&self) -> bool {
         self.core.persist
-    }
-
-    /// The assembly overrides for this session, if any.
-    pub fn assembly_overrides(&self) -> Option<&crate::feat::context::assemble::AssemblyOverrides> {
-        self.core.assembly_overrides.as_ref()
     }
 
     /// Mark this session as having been meaningfully interacted with by the user.
@@ -2965,6 +2916,12 @@ impl ChatSessionState {
     /// `None` for root sessions.
     pub fn fork_ordinal(&self) -> Option<usize> {
         self.core.fork_ordinal
+    }
+
+    /// How this session came into being. Identity, not structure —
+    /// see [`SessionOrigin`].
+    pub fn origin(&self) -> SessionOrigin {
+        self.core.origin
     }
 
     /// Set the fork ordinal for testing and construction.

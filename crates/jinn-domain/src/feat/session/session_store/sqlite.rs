@@ -23,7 +23,8 @@ use crate::feat::session::SessionUi;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 use crate::feat::session::chat_history::ChatHistory;
 use crate::feat::session::chat_session::{
-    ChatSessionState, LifecycleScriptState, SessionCore, SessionCoreEphemeral, SessionState,
+    ChatSessionState, LifecycleScriptState, SessionCore, SessionCoreEphemeral, SessionOrigin,
+    SessionState,
 };
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::session_summary::SessionSummary;
@@ -366,7 +367,6 @@ struct SessionRow {
     parent_session: Option<String>,
     archived: bool,
     metadata: Option<String>,
-    is_automated: bool,
     persist: bool,
 }
 
@@ -382,7 +382,6 @@ struct NewSessionRow {
     parent_session: Option<String>,
     archived: bool,
     metadata: Option<String>,
-    is_automated: bool,
 }
 
 /// A joined `entries` + `session_history` row for loading a session's entries.
@@ -440,17 +439,17 @@ struct TokenLedgerRow {
 #[async_trait]
 trait SessionDao {
     #[query(
-        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, is_automated, persist FROM sessions"
+        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, persist FROM sessions"
     )]
     async fn all_sessions(&self) -> daow::Result<Vec<SessionRow>>;
 
     #[query(
-        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, is_automated, persist FROM sessions WHERE id = ?"
+        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, persist FROM sessions WHERE id = ?"
     )]
     async fn session_by_id(&self, id: String) -> daow::Result<Option<SessionRow>>;
 
     #[query(
-        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, is_automated, persist FROM sessions WHERE archived = FALSE"
+        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, persist FROM sessions WHERE archived = FALSE"
     )]
     async fn unarchived_sessions(&self) -> daow::Result<Vec<SessionRow>>;
 
@@ -481,6 +480,10 @@ pub(crate) struct PersistableCore {
     /// `None` for root sessions.
     #[serde(default)]
     fork_ordinal: Option<usize>,
+    /// Identity of this session's creation path.
+    /// Defaults to [`SessionOrigin::User`] for blobs written by older versions.
+    #[serde(default)]
+    origin: SessionOrigin,
 
     blobs: HashMap<String, JsonValue>,
     lifecycle_name: Option<String>,
@@ -511,6 +514,7 @@ impl From<&SessionCore> for PersistableCore {
             cwd: core.cwd.clone(),
             parent_session: core.parent_session.clone(),
             fork_ordinal: core.fork_ordinal,
+            origin: core.origin,
             blobs: core.blobs.clone(),
             lifecycle_name: core.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle_args.clone(),
@@ -538,14 +542,13 @@ impl From<PersistableCore> for SessionCore {
             token_ledger: vec![],
             parent_session: core.parent_session,
             fork_ordinal: core.fork_ordinal,
+            origin: core.origin,
             blobs: core.blobs,
             lifecycle_name: core.lifecycle_name,
             lifecycle_args: core.lifecycle_args,
             session_state: SessionState::Loaded, // overridden by TryFrom<SessionLoadContext> from archived column
             lifecycle_script_state: core.lifecycle_script_state,
             ephemeral: SessionCoreEphemeral::default(),
-            is_automated: false,      // set from DB column after deserialization
-            assembly_overrides: None, // runtime-only, never persisted
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
             enabled_mcp_servers: core.enabled_mcp_servers,
@@ -561,7 +564,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
 
     #[deny(unused_variables)]
     fn try_from(session: &ChatSessionState) -> Result<Self, Self::Error> {
-        // This builds only the 9-column `sessions` ROW. SessionCore has ~25
+        // This builds only the 8-column `sessions` ROW. SessionCore has ~24
         // fields, sorted into four persistence buckets:
         //   row     — a real `sessions` column, bound in Ok(Self { .. }) below.
         //   blob    — serialized from `PersistableCore::from(&session.core)` into
@@ -588,15 +591,14 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     token_ledger: _ledger, // table (insert_token_ledger_row)
                     parent_session,    // row
                     fork_ordinal: _fork_ordinal, // blob
+                    origin: _origin,   // blob
                     blobs: _blobs,     // blob
                     lifecycle_name: _lifecycle_name, // blob
                     lifecycle_args: _lifecycle_args, // blob
                     ephemeral: _ephemeral, // runtime
                     session_state,     // row (→ archived column)
                     lifecycle_script_state: _lifecycle_script_state, // blob
-                    is_automated,      // row
                     persist: _persist, // blob
-                    assembly_overrides: _assembly_overrides, // runtime
                     has_interacted: _has_interacted, // runtime
                     task_list: _task_list, // blob
                     enabled_mcp_servers: _enabled_mcp_servers, // blob
@@ -620,7 +622,6 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     .change_context(SessionStoreError)
                     .attach("failed to serialize metadata")?,
             ),
-            is_automated: *is_automated,
         })
     }
 }
@@ -642,7 +643,6 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
         let SessionRow {
             archived,
             metadata,
-            is_automated,
             persist: _persist, // column value used by PersistableCore round-trip
             ..
         } = ctx.row;
@@ -659,9 +659,6 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             .change_context(SessionStoreError)
             .attach("failed to deserialize session metadata blob")?;
         let mut core = SessionCore::from(persistable);
-
-        // Single source of truth: is_automated column → core.is_automated
-        core.is_automated = is_automated;
 
         // Single source of truth: archived column → session_state.
         core.session_state = if archived {
@@ -707,7 +704,6 @@ fn save_in_transaction<'a>(
     let row_parent = row.parent_session.clone();
     let row_archived = row.archived;
     let row_metadata = row.metadata.clone();
-    let row_is_automated = row.is_automated;
 
     async move {
         pool.with_conn(move |conn| -> daow::Result<()> {
@@ -723,7 +719,6 @@ fn save_in_transaction<'a>(
                 &row_parent,
                 row_archived,
                 &row_metadata,
-                row_is_automated,
             )?;
 
             // Delete existing junction rows and token ledger for this session.
@@ -873,6 +868,9 @@ impl PersistableTokenRecord {
 }
 
 /// Upserts a session row (full-column; immutable columns are no-ops on re-write).
+///
+/// The legacy `is_automated` column is no longer mapped to the domain; every
+/// write sets it to false.
 #[expect(clippy::ref_option, reason = "ignore")]
 fn upsert_session_row(
     conn: &rusqlite::Connection,
@@ -883,12 +881,11 @@ fn upsert_session_row(
     parent_session: &Option<String>,
     archived: bool,
     metadata: &Option<String>,
-    is_automated: bool,
 ) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO sessions (id, title, updated_at, created_at, parent_session, archived, \
          metadata, is_automated, persist) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, FALSE, TRUE) \
          ON CONFLICT(id) DO UPDATE SET \
          title = excluded.title, \
          updated_at = excluded.updated_at, \
@@ -905,8 +902,7 @@ fn upsert_session_row(
             created_at,
             parent_session,
             archived,
-            metadata,
-            is_automated
+            metadata
         ],
     )?;
     Ok(())
@@ -1091,22 +1087,22 @@ fn fork_in_transaction(
     at_ordinal: usize,
 ) -> daow::Result<()> {
     let tx = conn.transaction()?;
-    // Load source session metadata.
-    let source_meta: Option<(Option<String>, Option<String>, bool)> = tx
+    // Load source session metadata. The legacy `is_automated` column is no
+    // longer mapped to the domain; the fork writes false for it.
+    let source_meta: Option<(Option<String>, Option<String>)> = tx
         .query_row(
-            "SELECT title, metadata, is_automated FROM sessions WHERE id = ?",
+            "SELECT title, metadata FROM sessions WHERE id = ?",
             rusqlite::params![source_str],
             |row| {
                 Ok((
                     row.get::<_, Option<String>>(0)?,
                     row.get::<_, Option<String>>(1)?,
-                    row.get::<_, bool>(2)?,
                 ))
             },
         )
         .ok();
 
-    let Some((title, metadata, is_automated)) = source_meta else {
+    let Some((title, metadata)) = source_meta else {
         return Err(daow::Error::Custom(
             "source session not found for fork".to_owned(),
         ));
@@ -1119,7 +1115,7 @@ fn fork_in_transaction(
     tx.execute(
         "INSERT INTO sessions (id, title, updated_at, created_at, parent_session, archived, \
          metadata, is_automated, persist) \
-         VALUES (?, ?, ?, ?, ?, FALSE, ?, ?, TRUE)",
+         VALUES (?, ?, ?, ?, ?, FALSE, ?, FALSE, TRUE)",
         rusqlite::params![
             new_id_str,
             title,
@@ -1127,7 +1123,6 @@ fn fork_in_transaction(
             now, // fresh created_at - it's a new session
             source_str,
             forked_metadata,
-            is_automated,
         ],
     )?;
 
@@ -1162,6 +1157,9 @@ fn fork_metadata(
     core.created_at = jiff::Timestamp::now();
     core.updated_at = jiff::Timestamp::now();
     core.fork_ordinal = Some(at_ordinal);
+    // A fork is a fork — even of a subagent session, the result is an
+    // ordinary user-visible session, never a marked subagent.
+    core.origin = SessionOrigin::Fork;
     serde_json::to_string(&core).ok()
 }
 
