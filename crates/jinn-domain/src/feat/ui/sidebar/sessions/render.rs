@@ -206,12 +206,13 @@ fn render_close_session_prompt(frame: &mut Frame<'_>, area: Rect, visual_row: us
 /// Called AFTER the main column has rendered (from `jinn-tui`'s render pass,
 /// right after the session preview), so the banner may extend left over the
 /// input box. Anchored 1 row above the sidebar cursor row and right-aligned to
-/// the sidebar's right edge; the sidebar's width caps the banner, cropping from
-/// the left (grapheme-aware) when it cannot fit. Yellow = armed confirm
-/// ("Press A again to archive N sessions"); red = blocked (a member is busy).
+/// the frame's right edge, spanning whatever width it needs — it is an
+/// overlay, not a sidebar element. Yellow = armed confirm ("Press A again to
+/// archive N sessions"); red = blocked (a member of the subtree is busy).
 pub fn render_archive_tree_prompt_for_state(
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
+    frame_area: Rect,
     ctx: &RenderCtx,
 ) {
     let state = ctx.state;
@@ -251,24 +252,24 @@ pub fn render_archive_tree_prompt_for_state(
         ),
     };
 
-    // Right-align to the sidebar's right edge; when the sidebar is narrower
-    // than the banner, crop from the LEFT (grapheme-aware, never char-indexed)
-    // so the informative tail — "…3 sessions" / "…is busy" — survives.
+    // Right-align to the frame's right edge; extend left over the main column
+    // as far as the banner needs. Clip to the frame (grapheme-aware, never
+    // char-indexed) only if the banner could not fit at all.
     let (text, prompt_x) = {
         let text_width = text.width() as u16;
-        if text_width > sidebar_rect.width {
+        if text_width > frame_area.width {
             let total = text.graphemes(true).count();
             let cropped: String = {
-                let keep = sidebar_rect.width as usize;
+                let keep = frame_area.width as usize;
                 text.graphemes(true)
                     .skip(total.saturating_sub(keep))
                     .collect()
             };
             let cropped_width = cropped.width() as u16;
-            let x = sidebar_rect.x + sidebar_rect.width.saturating_sub(cropped_width);
+            let x = frame_area.x + frame_area.width.saturating_sub(cropped_width);
             (cropped, x)
         } else {
-            let x = sidebar_rect.x + sidebar_rect.width - text_width;
+            let x = frame_area.x + frame_area.width - text_width;
             (text, x)
         }
     };

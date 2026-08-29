@@ -199,6 +199,7 @@ fn render_base_layers(
             jinn_domain::feat::ui::sidebar::sessions::render_archive_tree_prompt_for_state(
                 frame,
                 chat.sidebar,
+                frame_area,
                 ctx,
             );
             jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
