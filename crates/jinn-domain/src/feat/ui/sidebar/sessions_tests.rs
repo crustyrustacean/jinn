@@ -2675,6 +2675,39 @@ fn archive_tree_prompt_renders_red_busy_notice() {
 }
 
 #[rstest::rstest]
+fn archive_tree_prompt_anchors_above_the_cursor_row_at_top_of_list() {
+    // Given the survivor root selected — with two roots, the newest-first
+    // root sort puts the survivor at the very top row of the sessions list —
+    // and the busy prompt armed. The overlay helper must render through the
+    // Sidebar container: the production bottom-anchor lands the first entry
+    // at row 0, so a clamped sub(1) would paint the banner ON the cursor.
+    let (mut state, [.., survivor_id]) = state_with_archive_tree();
+    let survivor_title = entry_title(&state, &survivor_id);
+    focus_sessions_and_select(&mut state, &survivor_title);
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
+
+    // When rendering the sessions section followed by the overlay (the same
+    // late-overlay pass jinn-tui performs).
+    let rows = render_sessions_with_archive_tree_prompt(&state, 60);
+
+    // Then the banner renders on the row ABOVE the cursor row — never on
+    // the cursor row itself.
+    let cursor_row = rows
+        .iter()
+        .position(|row| row.contains(&survivor_title))
+        .expect("selected session row is visible");
+    let banner_row = rows
+        .iter()
+        .position(|row| row.contains("Cannot archive tree"))
+        .expect("banner is rendered");
+    assert_eq!(
+        banner_row,
+        cursor_row.saturating_sub(1),
+        "banner must sit 1 row above the cursor row"
+    );
+}
+
+#[rstest::rstest]
 fn teardown_tree_prompt_renders_teardown_confirm_text() {
     // Given a focused selection with an armed teardown confirm prompt.
     let (mut state, _) = state_with_archive_tree();
@@ -2713,8 +2746,8 @@ fn archive_tree_prompt_spans_past_the_sidebar_over_the_main_column() {
 }
 
 /// Helper: renders the archive-tree prompt overlay with the given sidebar
-/// width inside a 60-wide frame and returns the full buffer text.
-fn render_archive_tree_prompt_overlay(state: &AppState, sidebar_width: u16) -> String {
+/// width inside a 60-wide frame and returns the buffer as one string per row.
+fn render_archive_tree_prompt_rows(state: &AppState, sidebar_width: u16) -> Vec<String> {
     let (width, height) = (60, 12);
     let frame_area = ratatui::layout::Rect {
         x: 0,
@@ -2740,16 +2773,65 @@ fn render_archive_tree_prompt_overlay(state: &AppState, sidebar_width: u16) -> S
             );
         })
         .expect("draw");
+    buffer_rows(terminal, width, height)
+}
+
+/// Helper: renders the sessions section then the archive-tree prompt overlay
+/// (the same two-pass render jinn-tui performs) and returns one buffer string
+/// per row. Goes through the `Sidebar` container so the sessions section gets
+/// the same bottom-anchored sub-rect the production render gives it.
+fn render_sessions_with_archive_tree_prompt(state: &AppState, sidebar_width: u16) -> Vec<String> {
+    let (width, height) = (60, 20);
+    let frame_area = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width,
+        height,
+    };
+    let sidebar_rect = ratatui::layout::Rect {
+        x: width - sidebar_width,
+        y: 0,
+        width: sidebar_width,
+        height,
+    };
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+    let ctx = RenderCtx::new(state);
+    let mut sidebar = crate::feat::ui::sidebar::Sidebar::default();
+    sidebar.register(Box::new(SessionsSection::new()));
+    terminal
+        .draw(|frame| {
+            sidebar.render(frame, sidebar_rect, &ctx);
+            crate::feat::ui::sidebar::sessions::render_archive_tree_prompt_for_state(
+                frame,
+                sidebar_rect,
+                frame_area,
+                &ctx,
+            );
+        })
+        .expect("draw");
+    buffer_rows(terminal, width, height)
+}
+
+/// Helper: flattens a terminal's test backend into one string per row.
+fn buffer_rows(terminal: Terminal<TestBackend>, width: u16, height: u16) -> Vec<String> {
     let buffer = terminal.backend().buffer();
     (0..height)
-        .flat_map(|y| {
-            (0..width).map(move |x| {
-                buffer
-                    .cell((x, y))
-                    .map_or(' ', |c| c.symbol().chars().next().unwrap_or(' '))
-            })
+        .map(|y| {
+            (0..width)
+                .map(|x| {
+                    buffer
+                        .cell((x, y))
+                        .map_or(' ', |c| c.symbol().chars().next().unwrap_or(' '))
+                })
+                .collect()
         })
         .collect()
+}
+
+/// Helper: renders the archive-tree prompt overlay with the given sidebar
+/// width inside a 60-wide frame and returns the full buffer text.
+fn render_archive_tree_prompt_overlay(state: &AppState, sidebar_width: u16) -> String {
+    render_archive_tree_prompt_rows(state, sidebar_width).concat()
 }
 
 #[rstest::rstest]

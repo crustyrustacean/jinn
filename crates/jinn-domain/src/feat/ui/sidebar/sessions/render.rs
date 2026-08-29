@@ -237,7 +237,11 @@ pub fn render_archive_tree_prompt_for_state(
     let sessions_top_y = sidebar_rect.y + sidebar_rect.height.saturating_sub(sessions_height);
     let scroll_offset = state.frontend.sessions_section.scroll_offset;
     let visual_row = sel.saturating_sub(scroll_offset) as u16;
-    let prompt_y = sessions_top_y + visual_row.saturating_sub(1);
+    // Anchor one row ABOVE the cursor row (computed on the absolute row, so a
+    // top-of-list cursor anchors above the section's first entry — never on
+    // the cursor row itself, matching the close-session prompt).
+    let cursor_y = sessions_top_y + visual_row;
+    let prompt_y = cursor_y.saturating_sub(1);
 
     let (text, bg) = match prompt {
         ArchiveTreePrompt::Confirm { count, action } => {
