@@ -28,6 +28,7 @@ use crate::feat::ui::sidebar::sessions::archive_tree::ArchiveTreePrompt;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use entry_line::assemble_entry_line;
 use scroll_tag::render_scroll_tag;
+use unicode_width::UnicodeWidthStr;
 
 /// The open sessions sidebar section.
 ///
@@ -233,6 +234,14 @@ fn render_archive_tree_prompt(
     };
     let cursor_y = area.y + visual_row as u16;
     let prompt_y = cursor_y.saturating_sub(1);
+    // Right-align the banner so the full message fits: pin its end to the
+    // area's right edge, clamped into the area when the term is narrow.
+    let text_width = text.width() as u16;
+    let prompt_x = {
+        let unclamped_end = area.x + area.width;
+        let end = unclamped_end.min(area.x.saturating_add(text_width));
+        end.saturating_sub(text_width)
+    };
     let widget = Paragraph::new(Line::from(Span::styled(
         text,
         Style::default().fg(Color::Black).bg(bg),
@@ -240,9 +249,9 @@ fn render_archive_tree_prompt(
     frame.render_widget(
         widget,
         Rect {
-            x: area.x,
+            x: prompt_x,
             y: prompt_y,
-            width: area.width,
+            width: text_width,
             height: 1,
         },
     );
