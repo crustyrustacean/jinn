@@ -136,8 +136,12 @@ async fn handshake(host: &mut PluginHost, config: serde_json::Value) {
     let PluginToHost::Hello(hello) = hello else {
         panic!("expected Hello first, got {hello:?}");
     };
-    assert_eq!(hello.protocol_version, PROTOCOL_VERSION);
-    assert_eq!(hello.subscriptions, vec!["tool_result", "turn_end"]);
+    assert_eq!(hello.protocol_version, PROTOCOL_VERSION, "protocol version");
+    assert_eq!(
+        hello.subscriptions,
+        vec!["tool_result", "turn_end"],
+        "watchdog must subscribe to tool_result and turn_end"
+    );
     eprintln!("[e2e] handshake ok; sending Welcome");
     send(
         host,
@@ -203,7 +207,7 @@ async fn four_failing_tool_results_send_entry_then_cancel() {
     };
     assert_eq!(entry.session_id, session);
     assert!(
-        entry.text.contains("tool-call-watchdog") && entry.text.contains("4"),
+        entry.text.contains("tool-call-watchdog") && entry.text.contains('4'),
         "entry must explain the kill: {:?}",
         entry.text
     );
@@ -352,11 +356,7 @@ async fn aborted_turn_retains_the_count() {
 async fn max_failures_config_trips_early() {
     // Given the real watchdog guest, handshaken with max_failures = 2.
     let mut host = start_guest();
-    handshake(
-        &mut host,
-        serde_json::json!({ "max_failures": 2 }),
-    )
-    .await;
+    handshake(&mut host, serde_json::json!({ "max_failures": 2 })).await;
     let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
 
     // When two failures arrive.

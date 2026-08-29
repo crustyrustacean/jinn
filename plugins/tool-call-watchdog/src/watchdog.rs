@@ -55,7 +55,10 @@ impl Watchdog {
     /// increments it, and hitting the maximum produces the watchdog pair —
     /// the system entry first, then the cancel — and zeroes the counter.
     #[must_use]
-    pub fn on_tool_result(&mut self, event: &jinn_plugin_api::ToolResultEvent) -> Vec<PluginToHost> {
+    pub fn on_tool_result(
+        &mut self,
+        event: &jinn_plugin_api::ToolResultEvent,
+    ) -> Vec<PluginToHost> {
         let session = event.session_id.clone();
         if event.success {
             if let Some(count) = self.accumulators.get_mut(&session) {
@@ -76,7 +79,9 @@ impl Watchdog {
                 session_id: session.clone(),
                 text: Self::trip_text(self.max_failures, count),
             }),
-            PluginToHost::CancelStream(CancelStream { session_id: session }),
+            PluginToHost::CancelStream(CancelStream {
+                session_id: session,
+            }),
         ]
     }
 
@@ -100,7 +105,10 @@ impl Watchdog {
 
     /// Reads `max_failures` out of the free-form config value.
     fn parse_max_failures(config: &serde_json::Value) -> u8 {
-        match config.get(MAX_FAILURES_KEY).and_then(serde_json::Value::as_u64) {
+        match config
+            .get(MAX_FAILURES_KEY)
+            .and_then(serde_json::Value::as_u64)
+        {
             Some(raw) if (1..=u64::from(u8::MAX)).contains(&raw) => raw as u8,
             _ => DEFAULT_MAX_FAILURES,
         }
