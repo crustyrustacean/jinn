@@ -2530,29 +2530,35 @@ fn archive_tree_prompt_renders_red_busy_notice() {
 }
 
 #[rstest::rstest]
-fn archive_tree_prompt_fits_unclipped_in_a_narrow_term() {
-    // Given the busy prompt showing with the sidebar narrower than the banner
-    // (30 cols vs the 46-col banner).
+fn archive_tree_prompt_spans_past_the_sidebar_over_the_main_column() {
+    // Given the busy prompt showing with a narrow sidebar (30 cols) inside a
+    // 60-wide frame — the 46-col banner cannot fit in the sidebar alone.
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
     state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
 
-    // When rendering the overlay into a 30-wide sidebar offset from the edge.
+    // When rendering the overlay.
     let text = render_archive_tree_prompt_overlay(&state, 30);
 
-    // Then the banner is cropped from the left and the informative tail
-    // ("…a session is busy") renders, right-aligned inside the sidebar.
-    assert!(text.contains("a session is busy"), "rendered: {text}");
-    // And the cropped head never bleeds left of the sidebar area.
-    assert!(!text.contains("Cannot archive"), "rendered: {text}");
+    // Then the full banner renders, spanning left over the main column.
+    assert!(
+        text.contains("Cannot archive tree while a session is busy"),
+        "rendered: {text}"
+    );
 }
 
-/// Helper: renders the archive-tree prompt overlay into a sidebar rect and
-/// returns the full buffer text.
+/// Helper: renders the archive-tree prompt overlay with the given sidebar
+/// width inside a 60-wide frame and returns the full buffer text.
 fn render_archive_tree_prompt_overlay(state: &AppState, sidebar_width: u16) -> String {
     let (width, height) = (60, 12);
+    let frame_area = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width,
+        height,
+    };
     let sidebar_rect = ratatui::layout::Rect {
-        x: (width - sidebar_width).max(0),
+        x: width - sidebar_width,
         y: 0,
         width: sidebar_width,
         height,
@@ -2564,6 +2570,7 @@ fn render_archive_tree_prompt_overlay(state: &AppState, sidebar_width: u16) -> S
             crate::feat::ui::sidebar::sessions::render_archive_tree_prompt_for_state(
                 frame,
                 sidebar_rect,
+                frame_area,
                 &ctx,
             );
         })
