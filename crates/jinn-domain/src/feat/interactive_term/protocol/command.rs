@@ -136,3 +136,31 @@ pub struct SetTermControl {
 }
 
 impl crate::common::bus::BusMessage for SetTermControl {}
+
+impl crate::common::bus::BusMessage for SendTermKey {}
+
+/// Resize the active session's pty + emulator to the terminal tab's layout.
+///
+/// Published by the render layer when the terminal tab's content rect
+/// changes. Fire-and-forget; the actor clamps to sane bounds.
+#[derive(Debug, Clone)]
+pub struct ResizeTerm {
+    /// Target session (matched against the mirrored session; `None` resizes
+    /// whatever session the tab shows).
+    pub session_id: Option<TermSessionId>,
+    /// New size as `(rows, cols)`.
+    pub size: (u16, u16),
+}
+
+impl crate::common::bus::BusMessage for ResizeTerm {}
+
+/// Forward one key event's bytes to a session's pty (user control mode).
+///
+/// Fire-and-forget: keystrokes must not queue behind screen settle waits.
+#[derive(Debug, Clone)]
+pub struct SendTermKey {
+    /// Target session.
+    pub session_id: TermSessionId,
+    /// Encoded key bytes to write.
+    pub bytes: Vec<u8>,
+}

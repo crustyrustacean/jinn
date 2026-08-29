@@ -155,6 +155,84 @@ fn encode_alt(spec: &str) -> Vec<u8> {
     out
 }
 
+/// Encodes a platform [`KeyEvent`] into the bytes a pty program expects.
+///
+/// This is the user-takeover counterpart of [`encode_key`]: the terminal
+/// forwards raw key events in control mode, so encoding must match what a
+/// real terminal sends — C0 controls for Ctrl, `ESC` prefix for Alt, uppercase
+/// for Shift+letters, and standard `CSI ~` sequences for navigation keys.
+#[must_use]
+pub fn encode_key_event(event: &crate::protocol::key::KeyEvent) -> Vec<u8> {
+    use crate::protocol::key::Key;
+
+    let m = event.modifiers;
+    let byte_for_char = |c: char| -> Vec<u8> {
+        let mut bytes = c.to_string().into_bytes();
+        if m.ctrl {
+            // Ctrl produces C0 controls; letters map A..=Z & 0x1F.
+            if let Some(b) = bytes.first_mut() {
+                *b = b.to_ascii_uppercase() & 0x1f;
+            }
+        } else if m.shift {
+            for b in &mut bytes {
+                *b = b.to_ascii_uppercase();
+            }
+        }
+        if m.alt {
+            let mut out = vec![0x1b];
+            out.extend_from_slice(&bytes);
+            return out;
+        }
+        bytes
+    };
+
+    let plain: &[u8] = match event.key {
+        Key::Char(c) => return byte_for_char(c),
+        Key::Enter => b"\r",
+        Key::Esc => b"\x1b",
+        Key::Tab => b"\t",
+        Key::Backspace => b"\x7f",
+        Key::Delete => b"\x1b[3~",
+        Key::Up => b"\x1b[A",
+        Key::Down => b"\x1b[B",
+        Key::Right => b"\x1b[C",
+        Key::Left => b"\x1b[D",
+        Key::Home => b"\x1b[H",
+        Key::End => b"\x1b[F",
+        Key::PageUp => b"\x1b[5~",
+        Key::PageDown => b"\x1b[6~",
+        Key::F(n) => {
+            // F1–F4 use the short SS3 form; F5+ use `CSI n ~`.
+            return match n {
+                1 => vec![0x1b, b'O', b'P'],
+                2 => vec![0x1b, b'O', b'Q'],
+                3 => vec![0x1b, b'O', b'R'],
+                4 => vec![0x1b, b'O', b'S'],
+                _ => {
+                    // xterm codes: F5=15, F6=17, F7=18, F8=19, F9=20,
+                    // F10=21, F11=23, F12=24.
+                    let code = match n {
+                        5 => 15,
+                        6 => 17,
+                        7 => 18,
+                        8 => 19,
+                        9 => 20,
+                        10 => 21,
+                        11 => 23,
+                        12 => 24,
+                        other => u32::from(other),
+                    };
+                    let mut out = b"\x1b[".to_vec();
+                    out.extend_from_slice(code.to_string().as_bytes());
+                    out.extend_from_slice(b"~");
+                    out
+                }
+            };
+        }
+    };
+    plain.to_vec()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -294,4 +372,71 @@ mod tests {
         // Then it is exactly one quiet window after the last output.
         assert_eq!(deadline.duration_since(last), quiet);
     }
+
+    #[rstest::rstest]
+    #[case(crate::protocol::key::Key::Enter, crate::protocol::key::Modifiers::none(), &b"\r"[..])]
+    #[case(crate::protocol::key::Key::Esc, crate::protocol::key::Modifiers::none(), b"\x1b")]
+    #[case(crate::protocol::key::Key::Up, crate::protocol::key::Modifiers::none(), b"\x1b[A")]
+    #[case(crate::protocol::key::Key::F(5), crate::protocol::key::Modifiers::none(), b"\x1b[15~")]
+    #[case(crate::protocol::key::Key::F(1), crate::protocol::key::Modifiers::none(), b"\x1bOP")]
+    fn encodes_plain_keys_from_events(
+        #[case] key: crate::protocol::key::Key,
+        #[case] modifiers: crate::protocol::key::Modifiers,
+        #[case] expected: &[u8],
+    ) {
+        // Given a key event.
+        let event = crate::protocol::key::KeyEvent { key, modifiers };
+
+        // When encoding it for the pty.
+        let bytes = encode_key_event(&event);
+
+        // Then it matches the byte sequence a real terminal sends.
+        assert_eq!(bytes, expected);
+    }
+
+    #[rstest::rstest]
+    fn encodes_ctrl_char_as_c0_control() {
+        // Given Ctrl+C.
+        let event = crate::protocol::key::KeyEvent {
+            key: crate::protocol::key::Key::Char('c'),
+            modifiers: crate::protocol::key::Modifiers::ctrl(),
+        };
+
+        // When encoding it.
+        let bytes = encode_key_event(&event);
+
+        // Then it is the C0 ETX byte.
+        assert_eq!(bytes, vec![0x03]);
+    }
+
+    #[rstest::rstest]
+    fn encodes_alt_char_with_esc_prefix() {
+        // Given Alt+X.
+        let event = crate::protocol::key::KeyEvent {
+            key: crate::protocol::key::Key::Char('x'),
+            modifiers: crate::protocol::key::Modifiers::alt(),
+        };
+
+        // When encoding it.
+        let bytes = encode_key_event(&event);
+
+        // Then it is ESC followed by the key byte.
+        assert_eq!(bytes, vec![0x1b, b'x']);
+    }
+
+    #[rstest::rstest]
+    fn encodes_shift_char_as_uppercase() {
+        // Given Shift+G (already normalized to 'G' by the TUI in practice).
+        let event = crate::protocol::key::KeyEvent {
+            key: crate::protocol::key::Key::Char('g'),
+            modifiers: crate::protocol::key::Modifiers::shift(),
+        };
+
+        // When encoding it.
+        let bytes = encode_key_event(&event);
+
+        // Then the byte is uppercase.
+        assert_eq!(bytes, b"G");
+    }
+
 }

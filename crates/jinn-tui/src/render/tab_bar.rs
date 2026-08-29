@@ -1,4 +1,4 @@
-//! Tab bar — top-level strip showing `[ Chat ] [ Dashboard ]`.
+//! Tab bar — top-level strip showing `[ Chat ] [ Dashboard ] [ Terminal ]`.
 
 use jinn_domain::RenderCtx;
 use ratatui::Frame;
@@ -9,26 +9,29 @@ use ratatui::widgets::Paragraph;
 
 /// The tab labels shown left-to-right.
 ///
-/// Order must stay in sync with how `is_dashboard_active` is derived from
-/// the current `FocusScope`.
-const TAB_LABELS: [&str; 2] = ["Chat", "Dashboard"];
+/// Order must stay in sync with `active_tab_index`, which derives the active
+/// index from the current base `FocusScope`.
+const TAB_LABELS: [&str; 3] = ["Chat", "Dashboard", "Terminal"];
 
-/// Returns `true` when the dashboard tab is the active one.
-fn is_dashboard_active(ctx: &RenderCtx) -> bool {
-    matches!(
-        ctx.state.frontend.scope_stack.base(),
-        jinn_domain::FocusScope::Dashboard
-    )
+/// Returns the highlighted tab index for the current base scope.
+///
+/// Chat is `0`, Dashboard `1`, Terminal (view or control) `2`.
+fn active_tab_index(ctx: &RenderCtx) -> usize {
+    match ctx.state.frontend.scope_stack.base() {
+        jinn_domain::FocusScope::Dashboard => 1,
+        jinn_domain::FocusScope::TerminalView | jinn_domain::FocusScope::TerminalControl => 2,
+        _ => 0,
+    }
 }
 
 /// Renders the tab bar into `area`.
 pub fn render_tab_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     let theme = &ctx.state.frontend.theme;
-    let dashboard_active = is_dashboard_active(ctx);
+    let active = active_tab_index(ctx);
 
     let mut spans = Vec::new();
     for (idx, &label) in TAB_LABELS.iter().enumerate() {
-        let is_active = if dashboard_active { idx == 1 } else { idx == 0 };
+        let is_active = idx == active;
 
         let style = if is_active {
             Style::default()

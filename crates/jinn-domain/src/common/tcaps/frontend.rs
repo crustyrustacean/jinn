@@ -67,6 +67,12 @@ pub struct PersonaPickerOps<'a>(&'a mut FrontendState);
 /// Narrow write-handle to `frontend.file_picker` for the directory-lister actor.
 pub struct FilePickerOps<'a>(&'a mut FilePickerState);
 
+/// Narrow write-handle to `frontend.terminal` for the interactive-term actor.
+/// Exposes the [`TerminalMirrorWrite`] trait.
+pub struct TerminalOps<'a>(
+    &'a mut crate::feat::interactive_term::terminal_tab_state::TerminalTabState,
+);
+
 /// Narrow write-handle to `frontend.app_state` for the session-actor startup handler.
 pub struct AppStateOps<'a>(&'a mut AppStateFile);
 
@@ -75,6 +81,20 @@ pub struct AppStateOps<'a>(&'a mut AppStateFile);
 /// Append a line to the quake-bar log.
 pub trait QuakeBarLogWrite {
     fn push_log(&mut self, text: String);
+}
+
+/// Mirror terminal screen/control updates into the frontend.
+pub trait TerminalMirrorWrite {
+    /// Replaces the mirrored screen and cursor.
+    fn apply_screen(
+        &mut self,
+        session_id: &str,
+        screen: String,
+        cursor: (u16, u16),
+        cursor_hidden: bool,
+    );
+    /// Sets who holds control.
+    fn set_control(&mut self, holder: crate::feat::interactive_term::terminal_tab_state::TermControlHolder);
 }
 
 /// Insert / bulk-insert token counts into the entry-token cache.
@@ -117,6 +137,25 @@ impl PersonaPickerOps<'_> {
     /// Replace the persona picker items.
     pub fn set_items(&mut self, items: Vec<PersonaEntry>) {
         self.0.persona_picker_mut().set_items(items);
+    }
+}
+
+impl TerminalMirrorWrite for TerminalOps<'_> {
+    fn apply_screen(
+        &mut self,
+        session_id: &str,
+        screen: String,
+        cursor: (u16, u16),
+        cursor_hidden: bool,
+    ) {
+        self.0.apply_screen(session_id, screen, cursor, cursor_hidden);
+    }
+
+    fn set_control(
+        &mut self,
+        holder: crate::feat::interactive_term::terminal_tab_state::TermControlHolder,
+    ) {
+        self.0.set_control(holder);
     }
 }
 
@@ -173,6 +212,16 @@ impl State {
         let mut guard = self.write_lock();
         let app = &mut *guard;
         f(&mut DashboardOps(&mut app.frontend.dashboard))
+    }
+
+    /// Write access to the terminal-tab mirror, scoped via [`TerminalOps`].
+    pub fn with_terminal<R, F>(&self, _cap: &FrontendCap, f: F) -> R
+    where
+        F: FnOnce(&mut TerminalOps<'_>) -> R,
+    {
+        let mut guard = self.write_lock();
+        let app = &mut *guard;
+        f(&mut TerminalOps(&mut app.frontend.terminal))
     }
 
     /// Write access to the quake-bar log, scoped via [`QuakeBarOps`].
