@@ -2658,6 +2658,44 @@ fn archive_tree_prompt_renders_yellow_confirm_with_count() {
 }
 
 #[rstest::rstest]
+fn close_session_prompt_right_aligns_inside_the_frame() {
+    // Given a narrow sidebar (20 of 60 columns) with the close prompt armed
+    // on a selected session — the banner text (50 columns) cannot fit inside
+    // the sidebar.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.close_session_prompt = true;
+
+    // When rendering the section plus the late overlay.
+    let rows = render_sessions_with_close_prompt(&state, 20);
+
+    // Then the banner is rendered fully, right-aligned to the frame's right
+    // edge (extending left over the main column) — not clipped to the sidebar.
+    let banner_row = rows
+        .iter()
+        .position(|row| row.contains("Press x again to teardown"))
+        .expect("banner is rendered");
+    let row = &rows[banner_row];
+    assert!(
+        row.contains("Press x again to teardown and archive 1 session"),
+        "banner is complete, not clipped: {row}"
+    );
+    // And its right edge touches the frame's right edge.
+    let right = row.trim_end().len();
+    assert_eq!(right, 59, "banner right edge at frame column 59: {row}");
+    // And it sits one row above the cursor row.
+    let cursor_row = rows
+        .iter()
+        .position(|r| r.contains("tree root"))
+        .expect("cursor session row is visible");
+    assert_eq!(
+        banner_row,
+        cursor_row.saturating_sub(1),
+        "banner must sit 1 row above the cursor row"
+    );
+}
+
+#[rstest::rstest]
 fn archive_tree_prompt_renders_red_busy_notice() {
     // Given a focused selection with the busy prompt showing.
     let (mut state, _) = state_with_archive_tree();
@@ -2826,6 +2864,42 @@ fn buffer_rows(terminal: Terminal<TestBackend>, width: u16, height: u16) -> Vec<
                 .collect()
         })
         .collect()
+}
+
+/// Helper: renders the sessions section then the close-session prompt overlay
+/// (the same two-pass render jinn-tui performs) and returns one buffer string
+/// per row. Goes through the `Sidebar` container so the sessions section gets
+/// the same bottom-anchored sub-rect the production render gives it.
+fn render_sessions_with_close_prompt(state: &AppState, sidebar_width: u16) -> Vec<String> {
+    let (width, height) = (60, 20);
+    let frame_area = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width,
+        height,
+    };
+    let sidebar_rect = ratatui::layout::Rect {
+        x: width - sidebar_width,
+        y: 0,
+        width: sidebar_width,
+        height,
+    };
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+    let ctx = RenderCtx::new(state);
+    let mut sidebar = crate::feat::ui::sidebar::Sidebar::default();
+    sidebar.register(Box::new(SessionsSection::new()));
+    terminal
+        .draw(|frame| {
+            sidebar.render(frame, sidebar_rect, &ctx);
+            crate::feat::ui::sidebar::sessions::render_close_session_prompt_for_state(
+                frame,
+                sidebar_rect,
+                frame_area,
+                &ctx,
+            );
+        })
+        .expect("draw");
+    buffer_rows(terminal, width, height)
 }
 
 /// Helper: renders the archive-tree prompt overlay with the given sidebar
