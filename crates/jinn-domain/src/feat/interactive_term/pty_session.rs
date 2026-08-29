@@ -9,30 +9,39 @@
 //!
 //! I/O model: portable-pty's reader is a blocking fd, not an async stream, so
 //! a dedicated std thread pumps output chunks into an unbounded tokio channel.
-//! Kanal is forbidden here — the consuming actor selects over this channel and
-//! kanal has a documented double-free under `select!` cancellation (see the
-//! bash tool's reader tasks).
+//! The channel's receiver is owned by the session's **screen task** (see
+//! [`screen_task`]) — the realtime parser/publisher. Kanal is forbidden here
+//! — the consuming task selects over this channel and kanal has a documented
+//! double-free under `select!` cancellation (see the bash tool's reader
+//! tasks).
 
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::Arc;
 
 use error_stack::Report;
 use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use wherror::Error;
 
 use crate::common::process_kill::kill_process_group_by_pid;
+use crate::feat::interactive_term::screen_task::{
+    ScreenHandle, ScreenWiring, SharedTerminal, spawn_screen_task,
+};
 
 /// Sender half of a session's output channel.
 ///
-/// The pump forwards raw pty output chunks here; the receiving actor parses
-/// them into the emulator.
+/// The pump forwards raw pty output chunks here; the session's screen task
+/// parses them into the emulator.
 pub type OutputTx = tokio::sync::mpsc::UnboundedSender<Vec<u8>>;
+
+/// Receiver half of a session's output channel (owned by the screen task).
+pub type OutputRx = tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>;
 
 /// Why a pty session could not be created or driven.
 #[derive(Debug, Error)]
 #[error(debug)]
 pub enum PtyError {
-    /// `openpty` failed — no pty pair was created.
+    /// `openpty` failed �� no pty pair was created.
     OpenPty,
     /// The pty master's writer could not be taken.
     TakeWriter,
@@ -48,19 +57,8 @@ pub enum PtyError {
     Resize,
 }
 
-/// The pty size used before the terminal tab's real layout is known.
-///
-/// Once the takeover UI lands, the tab's rendered rect replaces this on
-/// spawn and on every subsequent layout change.
-#[must_use]
-pub fn default_size() -> PtySize {
-    PtySize {
-        rows: 24,
-        cols: 80,
-        pixel_width: 0,
-        pixel_height: 0,
-    }
-}
+/// Transcript ring length for new sessions (screens observed).
+pub const TRANSCRIPT_LINES: usize = 200;
 
 /// Terminal state of a session's process, captured once it exits.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,23 +90,27 @@ impl ExitInfo {
 
 /// A running child process inside its own pty.
 ///
-/// Dropping the session kills the child's whole process tree (mirroring the
-/// bash tool's `KillOnDrop`), so an aborted setup never leaks orphans.
+/// Owns the child, the pty writer, and the **screen task** that parses the
+/// program's output into the shared emulator in realtime. Dropping the
+/// session kills the child's whole process tree (mirroring the bash tool's
+/// `KillOnDrop`), so an aborted setup never leaks orphans.
 pub struct PtySession {
     child: Box<dyn Child + Send + Sync>,
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     size: PtySize,
+    /// Shared emulator + screen-version watch + the pty writer slot.
+    screen: ScreenHandle,
 }
 
 impl PtySession {
     /// Spawns `command` (shell syntax, executed via `bash -c`) inside a fresh
-    /// pty of `size`.
+    /// pty of `size`, and starts its realtime screen task.
     ///
-    /// Returns the session plus its output pump. The pump forwards raw pty
-    /// output chunks to `tx` until the child closes the pty; the receiving
-    /// actor parses them into the emulator.
+    /// The screen task (owned by the session) drains the pty output pump into
+    /// the shared emulator on a ~50 ms cadence and republishes the mirror on
+    /// change; [`PtySession::screen`] reaches the emulator and the settle
+    /// signals. `wiring` carries the bus + mirror endpoints for publication.
     ///
     /// # Errors
     ///
@@ -119,7 +121,7 @@ impl PtySession {
         command: &str,
         cwd: &Path,
         size: PtySize,
-        tx: OutputTx,
+        wiring: ScreenWiring,
     ) -> Result<(Self, ReadPump), Report<PtyError>> {
         let pair = {
             let opened = native_pty_system().openpty(size);
@@ -146,6 +148,7 @@ impl PtySession {
             })?
         };
 
+        let (tx, rx): (OutputTx, OutputRx) = tokio::sync::mpsc::unbounded_channel();
         let pump = spawn_read_pump(reader, tx)?;
 
         let mut cmd = CommandBuilder::new("bash");
@@ -176,12 +179,22 @@ impl PtySession {
         // later phase's exit watcher may hold while blocked inside `wait`).
         let killer = child.clone_killer();
 
+        let screen = new_screen_handle(size.rows, size.cols);
+        // The pty writer is shared: the coordinator writes agent input
+        // through `PtySession::write`, the screen task writes query replies.
+        screen.install_writer(Box::new(SharedWriter {
+            inner: Arc::new(parking_lot::Mutex::new(writer)),
+        }));
+        // The screen task owns the receiver from here on: parsing, query
+        // replies, and mirror publication all happen there in realtime.
+        spawn_screen_task(rx, screen.clone(), wiring);
+
         let session = Self {
             child,
             master: pair.master,
-            writer,
             killer,
             size,
+            screen,
         };
         Ok((session, pump))
     }
@@ -193,12 +206,36 @@ impl PtySession {
     /// Returns an error if the pty write fails (e.g. the child exited and the
     /// kernel dropped the line discipline).
     pub fn write(&mut self, bytes: &[u8]) -> Result<(), Report<PtyError>> {
-        let wrote = self.writer.write_all(bytes);
+        let wrote = self.screen_write(bytes);
         wrote.map_err(|err| {
             Report::new(PtyError::Write)
                 .attach("failed to write input to pty")
                 .attach(format!("pty write error: {err}"))
         })
+    }
+
+    /// Writes through the shared writer slot (see [`SharedWriter`]).
+    fn screen_write(&self, bytes: &[u8]) -> std::io::Result<()> {
+        self.screen
+            .write_all_via(bytes)
+            .map_err(|err| std::io::Error::other(err.to_string()))
+    }
+
+    /// The shared screen handle: emulator, version watch, pump-closed flag.
+    #[must_use]
+    pub fn screen(&self) -> ScreenHandle {
+        self.screen.clone()
+    }
+
+    /// The emulator grid size as `(rows, cols)`.
+    #[must_use]
+    pub fn emulator_size(&self) -> (u16, u16) {
+        self.screen.emulator_size()
+    }
+
+    /// Resizes the shared emulator grid (after the pty resize).
+    pub fn set_emulator_size(&self, rows: u16, cols: u16) {
+        self.screen.set_emulator_size(rows, cols);
     }
 
     /// Resizes the pty, notifying the child (SIGWINCH on unix).
@@ -267,6 +304,34 @@ impl PtySession {
     pub fn foreground_group(&self) -> Option<u32> {
         self.master.process_group_leader().map(|pid| pid as u32)
     }
+}
+
+/// A `Write` impl over the shared pty writer slot.
+///
+/// `Write for &mut W` delegates to the inner mutex so the same underlying
+/// writer serves both the coordinator's input writes and the screen task's
+/// query replies without either holding a lock across an await.
+struct SharedWriter {
+    inner: Arc<parking_lot::Mutex<Box<dyn Write + Send>>>,
+}
+
+impl Write for SharedWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.inner.lock().write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.lock().flush()
+    }
+}
+
+/// Creates the shared screen state for a fresh session.
+fn new_screen_handle(rows: u16, cols: u16) -> ScreenHandle {
+    let (version_tx, version_rx) = tokio::sync::watch::channel(0);
+    let shared = SharedTerminal::new(
+        crate::feat::interactive_term::Emulator::new(rows, cols, TRANSCRIPT_LINES),
+        version_tx,
+    );
+    ScreenHandle::new(shared, version_rx)
 }
 
 impl Drop for PtySession {
@@ -342,6 +407,8 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::common::services::bus_service::BusService;
+    use crate::feat::interactive_term::protocol::command::TermSessionId;
 
     /// Test timeout for child-process waits; keeps a wedged pty from hanging
     /// the suite past tokio's default 10s test timeout.
@@ -349,50 +416,53 @@ mod tests {
         Duration::from_secs(5)
     }
 
-    /// Collects pump output until `needle` appears or the channel closes.
-    async fn read_until(
-        rx: &mut tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
-        needle: &str,
-    ) -> String {
-        let deadline = tokio::time::Instant::now() + wait_timeout();
-        let mut collected = String::new();
-        loop {
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            assert!(
-                !remaining.is_zero(),
-                "timed out waiting for {needle:?}; got: {collected}"
-            );
-            match tokio::time::timeout(remaining, rx.recv()).await {
-                Ok(Some(chunk)) => collected.push_str(&String::from_utf8_lossy(&chunk)),
-                Ok(None) => return collected,
-                Err(elapsed) => {
-                    panic!("timed out after {elapsed} waiting for {needle:?}; got: {collected}")
-                }
-            }
-            if collected.contains(needle) {
-                return collected;
-            }
+    /// The spawn size used by these tests.
+    fn default_size() -> PtySize {
+        PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        }
+    }
+
+    /// Screen wiring writing into a throwaway state (no bus subscribers).
+    fn wiring() -> ScreenWiring {
+        let state = crate::common::state::State::new(crate::common::app_state::AppState::default());
+        ScreenWiring {
+            bus: BusService::new_recording().0,
+            state,
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
+            chat: crate::protocol::SessionId::new(),
+            term_id: TermSessionId("test-term".to_owned()),
         }
     }
 
     #[cfg(unix)]
     #[rstest::rstest]
     #[tokio::test]
-    async fn spawned_child_echoes_input_back_through_pump() {
+    async fn spawned_child_echoes_input_back_through_screen() {
         // Given a `cat` session in a pty (cat echoes pty line-discipline input).
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let (mut session, pump) =
-            PtySession::spawn("cat", Path::new("/tmp"), default_size(), tx).expect("spawn cat");
+            PtySession::spawn("cat", Path::new("/tmp"), default_size(), wiring()).expect("spawn cat");
 
         // When writing bytes to the pty.
         session.write(b"hello pty\n").expect("write");
 
-        // Then the child's echoed output arrives through the pump.
-        let output = read_until(&mut rx, "hello pty").await;
-        assert!(
-            output.contains("hello pty"),
-            "echoed output missing: {output}"
-        );
+        // Then the child's echoed output shows up in the shared emulator
+        // (parsed by the realtime screen task).
+        let deadline = tokio::time::Instant::now() + wait_timeout();
+        loop {
+            let contains = session.screen().lock().emulator().plain_text().contains("hello pty");
+            if contains {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "screen task never parsed the echo"
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
         // And the pty has a foreground group (the child is session leader).
         assert!(session.foreground_group().is_some(), "no foreground pgid");
 
@@ -405,10 +475,13 @@ mod tests {
     #[tokio::test]
     async fn kill_terminates_whole_group_leaving_no_orphans() {
         // Given a session running a long sleep (the whole group to kill).
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        let (mut session, pump) =
-            PtySession::spawn("sleep 65", Path::new("/tmp"), default_size(), tx)
-                .expect("spawn sleep");
+        let (mut session, pump) = PtySession::spawn(
+            "sleep 65",
+            Path::new("/tmp"),
+            default_size(),
+            wiring(),
+        )
+        .expect("spawn sleep");
         let pid = session.pid().expect("child pid");
         // And the child is its own group leader (the invariant the group kill
         // relies on) — captured before the kill, since the group ceases to
@@ -443,9 +516,13 @@ mod tests {
     #[tokio::test]
     async fn try_wait_reports_exit_code_after_natural_exit() {
         // Given a session whose command exits with a known code.
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        let (mut session, pump) =
-            PtySession::spawn("exit 7", Path::new("/tmp"), default_size(), tx).expect("spawn exit");
+        let (mut session, pump) = PtySession::spawn(
+            "exit 7",
+            Path::new("/tmp"),
+            default_size(),
+            wiring(),
+        )
+        .expect("spawn exit");
 
         // When polling until the child terminates.
         let deadline = tokio::time::Instant::now() + wait_timeout();
@@ -473,9 +550,13 @@ mod tests {
     #[tokio::test]
     async fn dropping_session_kills_child() {
         // Given a session running a long sleep.
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        let (session, _pump) = PtySession::spawn("sleep 66", Path::new("/tmp"), default_size(), tx)
-            .expect("spawn sleep");
+        let (session, _pump) = PtySession::spawn(
+            "sleep 66",
+            Path::new("/tmp"),
+            default_size(),
+            wiring(),
+        )
+        .expect("spawn sleep");
 
         // When dropping the session (the guard's whole point).
         drop(session);
@@ -500,9 +581,8 @@ mod tests {
     #[tokio::test]
     async fn resize_updates_pty_and_deduplicates_noop() {
         // Given a session at the default size.
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
         let (mut session, pump) =
-            PtySession::spawn("cat", Path::new("/tmp"), default_size(), tx).expect("spawn cat");
+            PtySession::spawn("cat", Path::new("/tmp"), default_size(), wiring()).expect("spawn cat");
 
         // When resizing to 40x120.
         let new_size = PtySize {
@@ -523,3 +603,4 @@ mod tests {
         pump.join();
     }
 }
+

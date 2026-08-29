@@ -47,8 +47,15 @@ pub struct TermScreen {
 }
 
 /// Spawn a new interactive session running `command`.
+///
+/// One terminal per chat session: a spawn for a session that already has a
+/// live terminal kills the old one first (reported in the outcome). The
+/// terminal overlay and sidebar symbol are keyed by this chat session id;
+/// the coordinator's own [`TermSessionId`] stays the model-facing handle.
 #[derive(Debug, Clone)]
 pub struct SpawnTerm {
+    /// The chat session that owns this terminal.
+    pub chat_session_id: crate::protocol::SessionId,
     /// Shell command to run (passed to `bash -c`).
     pub command: String,
     /// Working directory for the child.
@@ -68,9 +75,22 @@ pub enum SpawnTermOutcome {
         session_id: TermSessionId,
         /// The post-settle screen.
         screen: TermScreen,
+        /// Set when this spawn killed the chat session's previous terminal —
+        /// the caller must surface it so the agent knows the old program died.
+        killed_previous: Option<KilledPrevious>,
     },
     /// The command failed to spawn (e.g. binary not found).
     Failed(String),
+}
+
+/// What happened to a chat session's previous terminal when a new one took
+/// its place (one terminal per chat session).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KilledPrevious {
+    /// The killed terminal's session id.
+    pub session_id: TermSessionId,
+    /// Captured exit info from the kill.
+    pub exited: ExitInfo,
 }
 
 /// Send input to a session and wait for the screen to settle.

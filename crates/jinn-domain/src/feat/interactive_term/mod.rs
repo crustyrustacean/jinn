@@ -8,6 +8,8 @@
 //!
 //! Layout:
 //! - [`pty_session`] — PTY spawn, kill guard, output pump, resize
+//! - [`screen_task`] — the per-session realtime parser/publisher owning the
+//!   output pump and the shared emulator
 //! - [`emulator`] — terminal emulation: bytes in, rendered screen out
 //! - [`query_responder`] — replies to terminal capability queries so probing
 //!   TUIs don't hang at startup
@@ -15,9 +17,9 @@
 //!   named-key → byte encoding
 //! - [`interactive_term_actor`] — the coordinator owning sessions across
 //!   tool calls
-//! - [`takeover_intent`] — the IntentHandler arms for the terminal tab
+//! - [`takeover_intent`] — the IntentHandler arms for the terminal overlay
 //!   (take control, send key, handback + steering)
-//! - [`terminal_tab_state`] — the frontend mirror the actor writes and the
+//! - [`terminal_tab_state`] — the frontend mirrors the actor writes and the
 //!   renderer reads
 //! - [`prefs`] — `[interactive_term]` config (handback key, settle wait)
 //! - [`protocol`] — its ask messages and events
@@ -28,7 +30,10 @@ pub mod prefs;
 pub mod protocol;
 pub mod pty_session;
 pub mod query_responder;
+pub mod screen_task;
 pub mod settle;
+pub mod overlay_geometry;
+pub mod overlay_intent;
 pub mod takeover_intent;
 pub mod terminal_tab_state;
 

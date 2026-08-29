@@ -6,6 +6,7 @@
 
 pub mod activate;
 pub mod archive;
+pub mod archive_tree;
 pub mod close;
 pub mod r#continue;
 pub mod navigate;
@@ -27,6 +28,9 @@ use std::time::Duration;
 
 pub use activate::{handle_session_activate, handle_session_activate_insert};
 pub use archive::handle_session_archive;
+pub use archive_tree::{
+    ArchiveTreePrompt, handle_session_archive_tree_arm, handle_session_archive_tree_confirm,
+};
 pub use close::{
     SessionCloseError, handle_session_close, handle_session_close_with_lifecycle,
     validate_session_close,
@@ -40,6 +44,7 @@ pub use preview::{
 };
 pub use reconcile::{reconcile_after_session_removal, reconcile_split};
 pub use render::SessionsSection;
+pub use render::render_archive_tree_prompt_for_state;
 pub use state::SessionsSectionState;
 pub(crate) use state::sorted_open_sessions;
 pub use state::{clear_visual_parents_on_load, clear_visual_parents_on_load_split};

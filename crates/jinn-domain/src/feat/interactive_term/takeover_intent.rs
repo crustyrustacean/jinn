@@ -52,12 +52,21 @@ pub fn handle_send_key(
     if state.frontend.scope_stack.current() != &FocusScope::TerminalControl {
         return crate::protocol::intent::IntentResult::empty();
     }
-    let Some(session_id) = state.frontend.terminal.session_id.clone() else {
+    // The overlay targets the active chat session's terminal.
+    let chat = state.session.active_session_id().clone();
+    let Some(term_session_id) = state
+        .frontend
+        .terminal
+        .mirror(&chat)
+        .map(|mirror| mirror.term_session_id.clone())
+    else {
         return crate::protocol::intent::IntentResult::empty();
     };
     crate::protocol::intent::IntentResult::empty().with_message(
         crate::feat::interactive_term::protocol::command::SendTermKey {
-            session_id: crate::feat::interactive_term::protocol::command::TermSessionId(session_id),
+            session_id: crate::feat::interactive_term::protocol::command::TermSessionId(
+                term_session_id,
+            ),
             bytes,
         },
     )
@@ -83,7 +92,13 @@ pub fn handle_handback(state: &mut AppState) -> crate::protocol::intent::IntentR
     state.frontend.scope_stack.pop();
 
     // Steer the captured screen to the model (fenced, with instructions).
-    let screen = state.frontend.terminal.screen().to_owned();
+    let chat = state.session.active_session_id().clone();
+    let screen = state
+        .frontend
+        .terminal
+        .mirror(&chat)
+        .map(|mirror| mirror.screen.clone())
+        .unwrap_or_default();
     let text = format!(
         "The user handed the terminal back to you. Current screen:\n\n\
          ```\n{screen}\n```\n\n{USER_HAS_CONTROL_NOTICE}"

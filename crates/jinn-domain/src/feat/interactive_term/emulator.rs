@@ -172,7 +172,7 @@ impl Emulator {
 }
 
 /// A styled snapshot of the visible screen's cells.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ScreenCells {
     /// Grid height in rows.
     pub rows: u16,
@@ -192,7 +192,7 @@ impl ScreenCells {
 }
 
 /// One renderable cell of the terminal screen.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TermCell {
     /// The default cell (no contents, no styling).
     Blank,
@@ -208,7 +208,7 @@ pub enum TermCell {
 }
 
 /// Foreground, background, and attribute styling of a cell.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct CellStyle {
     /// Foreground color.
     pub fg: TermColor,
@@ -225,7 +225,9 @@ pub struct CellStyle {
 }
 
 /// Terminal color, normalized from vt100's palette.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum TermColor {
     /// Terminal default foreground/background.
     #[default]

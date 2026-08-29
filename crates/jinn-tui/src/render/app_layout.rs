@@ -162,17 +162,15 @@ pub enum AppFrameLayout {
     Chat(AppLayout),
     /// Dashboard tab layout: tab bar + full-width content only.
     Dashboard(DashboardLayout),
-    /// Terminal tab layout: same chrome-free shape as the dashboard —
-    /// tab bar + full-width content that mirrors the pty program's screen.
-    Terminal(DashboardLayout),
 }
 
 impl AppFrameLayout {
     /// Computes the layout for the given terminal area, branching on the
     /// base focus scope.
     ///
-    /// `input_lines` and `sidebar_width` are ignored in Dashboard and
-    /// Terminal modes. `max_input_height` likewise.
+    /// `input_lines` and `sidebar_width` are ignored in Dashboard mode.
+    /// `max_input_height` likewise. The terminal is an overlay and does not
+    /// participate in the frame layout.
     #[must_use]
     pub fn new(
         area: Rect,
@@ -180,12 +178,9 @@ impl AppFrameLayout {
         max_input_height: u16,
         sidebar_width: u16,
         is_dashboard: bool,
-        is_terminal: bool,
     ) -> Self {
         if is_dashboard {
             Self::Dashboard(DashboardLayout::new(area))
-        } else if is_terminal {
-            Self::Terminal(DashboardLayout::new(area))
         } else {
             Self::Chat(AppLayout::new(
                 area,
@@ -262,7 +257,7 @@ mod tests {
     fn frame_layout_dashboard_is_full_width_chat_is_chat_layout() {
         // Given an 80x24 area and chat-mode params.
         let area = Rect::new(0, 0, 80, 24);
-        let chat_via_frame = AppFrameLayout::new(area, 1, area.height / 2, 30, false, false);
+        let chat_via_frame = AppFrameLayout::new(area, 1, area.height / 2, 30, false);
         let chat_direct = AppLayout::new(area, 1, area.height / 2, 30);
 
         // When asking the chat layout from the frame, it matches the direct chat layout.
@@ -275,7 +270,7 @@ mod tests {
 
         // And the dashboard frame variant is full-width, not the chat layout.
         let AppFrameLayout::Dashboard(dash) =
-            AppFrameLayout::new(area, 1, area.height / 2, 30, true, false)
+            AppFrameLayout::new(area, 1, area.height / 2, 30, true)
         else {
             panic!("expected Dashboard layout for is_dashboard=true");
         };

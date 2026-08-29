@@ -170,6 +170,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 &session_id,
                 &screen.screen,
                 screen.exited.as_ref(),
+                None,
             ),
             SendTermOutcome::UserHasControl(screen) => {
                 let mut result = success_result(
@@ -178,6 +179,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     &session_id,
                     &screen.screen,
                     screen.exited.as_ref(),
+                    None,
                 );
                 result.content = format!("{USER_HAS_CONTROL_NOTICE}\n\n{}", result.content);
                 result
@@ -215,6 +217,7 @@ fn format_exited(
         session_id,
         &screen.screen,
         screen.exited.as_ref(),
+        None,
     );
     result.content = format!("The session has already {code}.\n\n{}", result.content);
     result

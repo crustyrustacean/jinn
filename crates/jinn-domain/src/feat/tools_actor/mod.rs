@@ -75,6 +75,8 @@ pub mod registry;
 pub mod restart_mcp;
 #[cfg(test)]
 mod restart_mcp_tests;
+#[cfg(test)]
+mod interactive_term_tests;
 pub mod save_plan;
 pub mod session_query;
 pub mod skill;

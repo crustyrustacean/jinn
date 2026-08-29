@@ -99,6 +99,14 @@ impl IntentHandler {
             return result;
         }
 
+        // Archive-tree confirmation intercept: if the prompt is showing,
+        // A (SidebarSessionArchiveTree) re-validates and confirms (or flips
+        // the prompt to the busy notice); any other intent dismisses the
+        // prompt and continues processing.
+        if let Some(result) = try_handle_archive_tree_prompt(intent, state) {
+            return result;
+        }
+
         match intent {
             Intent::InsertChar { ch }
                 if matches!(
@@ -508,6 +516,9 @@ impl IntentHandler {
             Intent::SidebarSessionArchive => {
                 feat::ui::sidebar::sessions::handle_session_archive(state)
             }
+            Intent::SidebarSessionArchiveTree => {
+                feat::ui::sidebar::sessions::handle_session_archive_tree_arm(state)
+            }
             Intent::SidebarSessionContinue => {
                 feat::ui::sidebar::sessions::handle_session_continue(state)
             }
@@ -692,22 +703,25 @@ impl IntentHandler {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
             }
 
-            // ── Dashboard / Terminal tabs ──
+            // ── Dashboard tab ──
             Intent::SwitchTab => {
-                // Tab cycle: Normal → Dashboard → TerminalView → Normal.
-                // Leaving TerminalView never drops control state; handback is
-                // explicit (Intent::TerminalHandback).
-                let new_base = match state.frontend.scope_stack.current() {
-                    crate::common::app_state::FocusScope::Dashboard => {
-                        crate::common::app_state::FocusScope::TerminalView
-                    }
+                // Tab cycle: Normal ↔ Dashboard. The terminal is an overlay
+                // (<M-t>), not a tab: switching tabs with the overlay open
+                // closes it first (Esc semantics). While the user holds
+                // control, Tab is inert — handback is the only exit.
+                match state.frontend.scope_stack.current() {
                     crate::common::app_state::FocusScope::TerminalView => {
-                        crate::common::app_state::FocusScope::Normal
+                        state.frontend.scope_stack.pop();
+                        return IntentResult::empty();
                     }
                     crate::common::app_state::FocusScope::TerminalControl => {
-                        // Tab is inert while the user holds control; handback
-                        // key is the only exit from control mode.
-                        crate::common::app_state::FocusScope::TerminalControl
+                        return IntentResult::empty();
+                    }
+                    _ => {}
+                }
+                let new_base = match state.frontend.scope_stack.base() {
+                    crate::common::app_state::FocusScope::Dashboard => {
+                        crate::common::app_state::FocusScope::Normal
                     }
                     _ => crate::common::app_state::FocusScope::Dashboard,
                 };
@@ -734,6 +748,20 @@ impl IntentHandler {
                 feat::discord::to_thread_intent::handle_to_discord_thread(state)
             }
 
+            Intent::ToggleTerminalOverlay { session_id } => {
+                crate::feat::interactive_term::overlay_intent::handle_toggle_overlay(
+                    state,
+                    session_id.as_ref(),
+                )
+            }
+            Intent::ToggleTerminalOverlayForSelected => {
+                let selected = crate::feat::interactive_term::overlay_intent::
+                    selected_sessions_sidebar_target(state);
+                crate::feat::interactive_term::overlay_intent::handle_toggle_overlay(
+                    state,
+                    selected.as_ref(),
+                )
+            }
             Intent::TerminalTakeControl => {
                 crate::feat::interactive_term::takeover_intent::handle_take_control(state)
             }
@@ -850,6 +878,61 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
     Some(feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state))
 }
 
+/// Archive-tree confirmation prompt intercept.
+///
+/// If the archive-tree prompt is showing:
+/// - `SidebarSessionArchiveTree` re-validates the subtree: a still-idle
+///   subtree confirms (emits `ArchiveSessionTree`); a member that became busy
+///   flips the prompt to the busy notice and consumes the key; a vanished
+///   selection dismisses the prompt.
+/// - Any other intent dismisses the prompt and returns `None` (fall through
+///   to normal processing).
+///
+/// Returns `None` if the prompt is not showing or was dismissed.
+fn try_handle_archive_tree_prompt(intent: &Intent, state: &mut AppState) -> Option<IntentResult> {
+    use crate::feat::ui::sidebar::sessions::archive_tree::{
+        ArchiveTreeError, ArchiveTreePrompt, archive_tree_members,
+    };
+
+    state.frontend.archive_tree_prompt.as_ref()?;
+
+    if !matches!(intent, Intent::SidebarSessionArchiveTree) {
+        // Any other key - dismiss prompt, fall through to normal processing.
+        state.frontend.archive_tree_prompt = None;
+        return None;
+    }
+
+    // Second A press - re-validate in case the subtree changed between taps.
+    match archive_tree_members(state) {
+        Ok(members) => {
+            state.frontend.archive_tree_prompt = None;
+            // The selection is always the first member of a successful
+            // validation; an empty member list cannot occur.
+            let root = members.first()?.clone();
+            Some(
+                feat::ui::sidebar::sessions::archive_tree::handle_session_archive_tree_confirm(
+                    state, root,
+                ),
+            )
+        }
+        Err(ArchiveTreeError::SubtreeBusy) => {
+            // A member became busy between taps - consume the key and show
+            // the busy notice instead (never train spam-to-force).
+            state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
+            Some(IntentResult::empty())
+        }
+        // Selection vanished between taps - dismiss and process normally.
+        Err(
+            ArchiveTreeError::WrongSection
+            | ArchiveTreeError::NoSelection
+            | ArchiveTreeError::NotASession,
+        ) => {
+            state.frontend.archive_tree_prompt = None;
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -860,6 +943,7 @@ mod tests {
         reason = "test code"
     )]
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
+    use crate::feat::interactive_term::emulator::ScreenCells;
     use crate::feat::intent::IntentHandler;
     use crate::protocol::{ChatEntry, Intent};
 
@@ -1449,39 +1533,18 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn switch_tab_cycles_through_terminal_view() {
-        // Given an AppState in Normal scope.
-        let mut state = AppState::default();
-
-        // When switching tabs three times.
-        IntentHandler::handle(&Intent::SwitchTab, &mut state);
-        let after_first = state.frontend.scope_stack.base().clone();
-        IntentHandler::handle(&Intent::SwitchTab, &mut state);
-        let after_second = state.frontend.scope_stack.base().clone();
-        IntentHandler::handle(&Intent::SwitchTab, &mut state);
-        let after_third = state.frontend.scope_stack.base().clone();
-
-        // Then the cycle is Normal → Dashboard → TerminalView → Normal.
-        assert_eq!(after_first, FocusScope::Dashboard);
-        assert_eq!(after_second, FocusScope::TerminalView);
-        assert_eq!(after_third, FocusScope::Normal);
-    }
-
-    #[rstest::rstest]
     fn switch_tab_is_inert_while_user_holds_terminal_control() {
-        // Given an AppState with the terminal-control tab as base.
+        // Given the terminal-control overlay open (user holds control).
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalControl);
+        state.frontend.scope_stack.clear_overlays();
+        state.frontend.scope_stack.push(FocusScope::TerminalControl);
 
         // When switching tabs.
         IntentHandler::handle(&Intent::SwitchTab, &mut state);
 
-        // Then the base stays TerminalControl — handback is the only exit.
+        // Then the scope stays TerminalControl — handback is the only exit.
         assert_eq!(
-            state.frontend.scope_stack.base(),
+            state.frontend.scope_stack.current(),
             &FocusScope::TerminalControl
         );
     }
@@ -1508,6 +1571,101 @@ mod tests {
             state.frontend.terminal.control,
             crate::feat::interactive_term::terminal_tab_state::TermControlHolder::User
         );
+    }
+
+    #[rstest::rstest]
+    fn toggle_opens_view_overlay_for_live_session() {
+        // Given default state whose active session has a live terminal.
+        let mut state = AppState::default();
+        let chat = state.session.active_session_id().clone();
+        state.frontend.terminal.set_live(&chat, true);
+
+        // When toggling the terminal overlay.
+        IntentHandler::handle(&Intent::ToggleTerminalOverlay { session_id: None }, &mut state);
+
+        // Then the overlay opens in view mode.
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::TerminalView);
+    }
+
+    #[rstest::rstest]
+    fn toggle_without_live_term_is_inert() {
+        // Given default state with no live terminals.
+        let mut state = AppState::default();
+
+        // When toggling the terminal overlay.
+        IntentHandler::handle(&Intent::ToggleTerminalOverlay { session_id: None }, &mut state);
+
+        // Then the scope stays Input (default scope; no overlay opened).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+    }
+
+    #[rstest::rstest]
+    fn toggle_closes_an_open_overlay() {
+        // Given an open terminal overlay (view mode).
+        let mut state = AppState::default();
+        let chat = state.session.active_session_id().clone();
+        state.frontend.terminal.set_live(&chat, true);
+        IntentHandler::handle(&Intent::ToggleTerminalOverlay { session_id: None }, &mut state);
+
+        // When toggling again.
+        IntentHandler::handle(&Intent::ToggleTerminalOverlay { session_id: None }, &mut state);
+
+        // Then the overlay closes back to the base scope (the input scope the
+        // overlay replaced does not resurrect).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn toggle_with_explicit_session_targets_that_session() {
+        // Given a state where the *selected* session (not the active one) has
+        // a live terminal.
+        let mut state = AppState::default();
+        let selected = crate::protocol::SessionId::new();
+        state.frontend.terminal.set_live(&selected, true);
+
+        // When toggling with the explicit session id.
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay {
+                session_id: Some(selected.clone()),
+            },
+            &mut state,
+        );
+
+        // Then the overlay opens.
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::TerminalView);
+    }
+
+    #[rstest::rstest]
+    fn switch_tab_reverts_to_dashboard_and_normal() {
+        // Given default (Normal) state.
+        let mut state = AppState::default();
+
+        // When switching tabs twice.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+        // Then the base is Dashboard.
+        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::Dashboard);
+
+        // When switching tabs again.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+        // Then the base is Normal (no Terminal tab in the cycle).
+        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn switch_tab_while_overlay_open_closes_it() {
+        // Given an open terminal overlay over the Normal base.
+        let mut state = AppState::default();
+        let chat = state.session.active_session_id().clone();
+        state.frontend.terminal.set_live(&chat, true);
+        IntentHandler::handle(&Intent::ToggleTerminalOverlay { session_id: None }, &mut state);
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::TerminalView);
+
+        // When switching tabs.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+
+        // Then the overlay closed (back to base, not a tab flip).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
+        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::Normal);
     }
 
     #[rstest::rstest]
@@ -1541,8 +1699,10 @@ mod tests {
             .scope_stack
             .swap_base(FocusScope::TerminalView);
         state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
             "term-1",
             "handback-screen-marker".to_owned(),
+            ScreenCells::default(),
             (0, 0),
             false,
         );
@@ -1583,8 +1743,10 @@ mod tests {
             .scope_stack
             .swap_base(FocusScope::TerminalView);
         state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
             "term-1",
             "busy-screen-marker".to_owned(),
+            ScreenCells::default(),
             (0, 0),
             false,
         );
@@ -1622,8 +1784,10 @@ mod tests {
             .scope_stack
             .swap_base(FocusScope::TerminalView);
         state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
             "term-1",
             "drain-chain-marker".to_owned(),
+            ScreenCells::default(),
             (0, 0),
             false,
         );

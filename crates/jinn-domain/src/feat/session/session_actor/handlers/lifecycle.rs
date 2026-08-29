@@ -9,11 +9,14 @@ use crate::common::actor_deps::BusPublish;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::archive_session::ArchiveSession;
+use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
+use crate::protocol::SessionId;
 
 use crate::feat::session_lifecycle::protocol::FinishSessionSetup;
 use crate::feat::session_lifecycle::protocol::command::{
@@ -23,6 +26,7 @@ use crate::feat::session_lifecycle::protocol::event::{
     SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
 use crate::protocol::ChatEntry;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::super::SessionPersistenceActor;
 
@@ -1061,6 +1065,150 @@ impl SessionPersistenceActor {
         }
     }
 
+    /// ArchiveSessionTree: archive a session and all of its descendants.
+    ///
+    /// Resolves the authoritative descendant closure from real
+    /// `parent_session` links across memory and the store, then archives
+    /// all-or-nothing: if any member is busy, nothing is written or removed.
+    /// For each loaded member this repeats the single-archive flow
+    /// ([`Self::handle_archive_session`]): mark archived, persist, snapshot
+    /// the frozen node, remove (with visual-parent maintenance), emit
+    /// `SessionArchived` + `SessionClosed`. Store-only members (already
+    /// archived rows under the subtree) receive no events — only the
+    /// idempotent `set_archived_many` writeback touches them.
+    pub(in crate::feat::session::session_actor) async fn handle_archive_session_tree(
+        &self,
+        payload: &ArchiveSessionTree,
+    ) {
+        use crate::feat::session::chat_session::SessionState;
+
+        // Step 1: resolve the authoritative closure (real parent links,
+        // memory ∪ store). Members not in memory cannot be busy.
+        let members = self.resolve_tree_closure(&payload.root).await;
+
+        // Step 2: all-or-nothing busy guard — abort leaves no side effects.
+        {
+            let state = self.state.read();
+            let any_busy = members.iter().any(|id| {
+                state.session.get(id).is_some_and(|session| {
+                    session.is_busy() || !matches!(session.phase(), PhaseKind::Idle)
+                })
+            });
+            drop(state);
+            if any_busy {
+                tracing::warn!(
+                    root = %payload.root,
+                    "archive tree aborted: a member session is busy"
+                );
+                return;
+            }
+        }
+
+        // Step 3: archive each loaded member (BFS order, root first).
+        for member_id in &members {
+            // Skip members already removed by this cascade (the map mutates
+            // as we go; a member listed twice cannot happen, but a session
+            // replaced mid-cascade might have taken a member's id — defensive).
+            if self.state.read().session.get(member_id).is_none() {
+                continue;
+            }
+
+            // Archive + persist (persist skips non-persistable sessions).
+            self.state.with_session(&self.cap, |view| {
+                if let Some(session) = view.session.map().get_mut(member_id) {
+                    session.set_session_state(SessionState::Archived);
+                }
+            });
+            self.save_active_session(member_id).await;
+
+            // Snapshot stats before removing from memory.
+            {
+                let state = self.state.read();
+                if let Some(session) = state.session.get(member_id) {
+                    let frozen = crate::feat::session::snapshot_frozen_node(session);
+                    drop(state);
+                    self.state.with_session(&self.cap, |view| {
+                        view.session.map().insert_frozen_node(frozen);
+                    });
+                }
+            }
+
+            // Remove from memory (visual-parent maintenance + replacement).
+            let mcp_enablement = self.remove_and_replace(member_id);
+
+            self.publish(SessionArchived {
+                session_id: member_id.clone(),
+            })
+            .await;
+            self.publish(SessionClosed {
+                session_id: member_id.clone(),
+            })
+            .await;
+            if let Some(enablement) = mcp_enablement {
+                self.publish(enablement).await;
+            }
+        }
+
+        // Step 4: store writeback for the whole closure. Idempotent for
+        // members already saved archived above; covers store-only members.
+        if let Err(error) = self
+            .services
+            .session_store
+            .set_archived_many(&members, true)
+            .await
+        {
+            tracing::warn!(
+                root = %payload.root,
+                ?error,
+                "archive tree store writeback failed (memory state is consistent)"
+            );
+        }
+    }
+
+    /// Resolves the descendant closure of `root` over real `parent_session`
+    /// links, merging parent links from memory and the store.
+    ///
+    /// Memory wins on conflicting links (it is authoritative for loaded
+    /// sessions). A store read failure degrades gracefully to a memory-only
+    /// closure — the visible tree is still covered.
+    ///
+    /// Returns the closure in BFS order (root first), cycle-guarded.
+    async fn resolve_tree_closure(
+        &self,
+        root: &crate::protocol::SessionId,
+    ) -> Vec<crate::protocol::SessionId> {
+        // Parent links from memory, then merge in store summaries (archived
+        // rows included) for IDs not already in memory.
+        let mut parent_of: HashMap<SessionId, Option<SessionId>> = self.parent_links_from_memory();
+        match self.services.session_store.load_summaries().await {
+            Ok(summaries) => {
+                for summary in summaries {
+                    parent_of
+                        .entry(summary.session_id)
+                        .or_insert(summary.parent_session);
+                }
+            }
+            Err(error) => {
+                tracing::warn!(
+                    root = %root,
+                    ?error,
+                    "could not read store for tree closure; using memory only"
+                );
+            }
+        }
+
+        build_closure(root, &parent_of)
+    }
+
+    /// Snapshot of `(id, parent_session)` for every loaded session.
+    fn parent_links_from_memory(&self) -> HashMap<SessionId, Option<SessionId>> {
+        self.state
+            .read()
+            .session
+            .iter()
+            .map(|(id, session)| (id.clone(), session.parent_session().clone()))
+            .collect()
+    }
     /// Remove session from HashMap, create replacement if empty, reconcile cursor.
     ///
     /// Pure state mutation helper. Does NOT emit events - callers handle
@@ -1167,6 +1315,39 @@ impl SessionPersistenceActor {
     }
 }
 
+/// Builds the descendant closure of `root` from a parent-link map.
+///
+/// Returns the closure in BFS order (root first). A visited set guards
+/// against cycles so corrupt parent chains cannot hang the caller.
+fn build_closure(
+    root: &SessionId,
+    parent_of: &HashMap<SessionId, Option<SessionId>>,
+) -> Vec<SessionId> {
+    let mut children_of: HashMap<SessionId, Vec<SessionId>> = HashMap::new();
+    for (id, parent) in parent_of {
+        if let Some(parent_id) = parent {
+            children_of
+                .entry(parent_id.clone())
+                .or_default()
+                .push(id.clone());
+        }
+    }
+
+    let mut closure: Vec<SessionId> = Vec::new();
+    let mut visited: HashSet<SessionId> = HashSet::new();
+    let mut queue: VecDeque<SessionId> = VecDeque::from([root.clone()]);
+    while let Some(id) = queue.pop_front() {
+        if !visited.insert(id.clone()) {
+            continue;
+        }
+        closure.push(id.clone());
+        if let Some(children) = children_of.get(&id) {
+            queue.extend(children.iter().cloned());
+        }
+    }
+    closure
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -1186,9 +1367,12 @@ mod tests {
 
     use crate::feat::chat_input::protocol::command::PushChatEntry;
     use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
     use crate::feat::session::protocol::close_session::CloseSession;
     use crate::feat::session::protocol::session_archived::SessionArchived;
     use crate::feat::session::protocol::session_closed::SessionClosed;
+    use crate::feat::session::session_actor::SessionPersistenceActor;
+    use crate::feat::session::session_summary::SessionSummary;
     use crate::feat::session_lifecycle::protocol::command::{
         CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
         RunSessionTeardown, SetSessionCwd,
@@ -2792,5 +2976,272 @@ mod tests {
             .collect(),
             ..Default::default()
         }
+    }
+
+    // ── Archive tree ──────────────────────────────────────────────────────
+
+    /// Builds a child session whose real parent link points at `parent_id`,
+    /// with one user entry so it is persistable.
+    fn child_session_of(parent_id: &SessionId) -> ChatSessionState {
+        let mut child = ChatSessionState::new();
+        child.set_parent_session(parent_id.clone());
+        child.push_entry(ChatEntry::user("child entry"));
+        child
+    }
+
+    /// Seeds sessions into the actor's state and returns the root's ID.
+    fn seed_sessions(
+        actor: &SessionPersistenceActor,
+        sessions: Vec<ChatSessionState>,
+    ) -> SessionId {
+        let root_id = sessions[0].session_id().clone();
+        let mut state = actor.state.write_test_no_cap();
+        for session in sessions {
+            state.session.insert(session);
+        }
+        root_id
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn archive_tree_cascades_to_all_loaded_descendants() {
+        let (actor, store, audit) = test_actor_with_store_recording(vec![]).await;
+        // Given a root with a direct child and a grandchild in memory.
+        let root = ChatSessionState::new();
+        let root_id = root.session_id().clone();
+        let child = child_session_of(&root_id);
+        let child_id = child.session_id().clone();
+        let grandchild = child_session_of(&child_id);
+        let grandchild_id = grandchild.session_id().clone();
+        seed_sessions(&actor, vec![root, child, grandchild]);
+
+        // When archiving the tree rooted at the root session.
+        actor
+            .handle_archive_session_tree(&ArchiveSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+
+        // Then every member is removed from memory.
+        let state = actor.state.read();
+        assert!(!state.session.contains(&root_id));
+        assert!(!state.session.contains(&child_id));
+        assert!(!state.session.contains(&grandchild_id));
+        drop(state);
+
+        // And the store writeback covers the full closure.
+        let archived = store.archived_ids();
+        for id in [&root_id, &child_id, &grandchild_id] {
+            assert!(
+                archived.contains(id),
+                "store writeback missing {id}: {archived:?}"
+            );
+        }
+
+        // And per-member SessionArchived + SessionClosed events were emitted.
+        for id in [&root_id, &child_id, &grandchild_id] {
+            let has_archived = audit
+                .of_type::<SessionArchived>()
+                .iter()
+                .any(|e| &e.session_id == id);
+            let has_closed = audit
+                .of_type::<SessionClosed>()
+                .iter()
+                .any(|e| &e.session_id == id);
+            assert!(has_archived, "expected SessionArchived for {id}");
+            assert!(has_closed, "expected SessionClosed for {id}");
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn archive_tree_includes_forks_of_descendants() {
+        let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
+        // Given a root whose child is a fork (fork origin, real parent link).
+        let root = ChatSessionState::new();
+        let root_id = root.session_id().clone();
+        let forked_child = child_session_of(&root_id);
+        let forked_child_id = forked_child.session_id().clone();
+        seed_sessions(&actor, vec![root, forked_child]);
+
+        // When archiving the tree.
+        actor
+            .handle_archive_session_tree(&ArchiveSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+
+        // Then the fork is archived too (origin is identity, parent is structure).
+        assert!(!actor.state.read().session.contains(&forked_child_id));
+        assert!(store.archived_ids().contains(&forked_child_id));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn archive_tree_aborts_when_any_member_is_busy() {
+        let (actor, store, audit) = test_actor_with_store_recording(vec![]).await;
+        // Given a root with an idle child and a busy grandchild.
+        let root = ChatSessionState::new();
+        let root_id = root.session_id().clone();
+        let child = child_session_of(&root_id);
+        let child_id = child.session_id().clone();
+        let grandchild = child_session_of(&child_id);
+        let grandchild_id = grandchild.session_id().clone();
+        let sessions = vec![root, child, grandchild];
+        seed_sessions(&actor, sessions);
+        actor
+            .state
+            .write_test_no_cap()
+            .session
+            .get_mut(&grandchild_id)
+            .expect("grandchild in map")
+            .begin_busy();
+
+        // When archiving the tree.
+        actor
+            .handle_archive_session_tree(&ArchiveSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+
+        // Then nothing was archived - all members remain in memory.
+        let state = actor.state.read();
+        assert!(state.session.contains(&root_id));
+        assert!(state.session.contains(&child_id));
+        assert!(state.session.contains(&grandchild_id));
+        drop(state);
+
+        // And no events or store writes were emitted.
+        assert!(store.archived_ids().is_empty());
+        assert!(audit.of_type::<SessionArchived>().is_empty());
+        assert!(audit.of_type::<SessionClosed>().is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn archive_tree_includes_store_only_descendants_as_noop() {
+        // Given a store holding an archived descendant the cascade reaches
+        // through its real parent link, and an actor with only the root
+        // loaded in memory.
+        let root = ChatSessionState::new();
+        let root_id = root.session_id().clone();
+        let archived_descendant_id = SessionId::new();
+        let summaries = vec![
+            SessionSummary {
+                session_id: root_id.clone(),
+                title: "root".to_owned(),
+                updated_at: jiff::Timestamp::now(),
+                created_at: jiff::Timestamp::now(),
+                session_state: crate::feat::session::chat_session::SessionState::Loaded,
+                parent_session: None,
+            },
+            SessionSummary {
+                session_id: archived_descendant_id.clone(),
+                title: "old archived child".to_owned(),
+                updated_at: jiff::Timestamp::now(),
+                created_at: jiff::Timestamp::now(),
+                session_state: crate::feat::session::chat_session::SessionState::Archived,
+                parent_session: Some(root_id.clone()),
+            },
+        ];
+        let (actor, store, audit) = test_actor_with_store_recording(vec![]).await;
+        store.set_summaries(summaries);
+        seed_sessions(&actor, vec![root]);
+
+        // When archiving the tree.
+        actor
+            .handle_archive_session_tree(&ArchiveSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+
+        // Then the store writeback includes the store-only descendant.
+        let archived = store.archived_ids();
+        assert!(archived.contains(&root_id));
+        assert!(archived.contains(&archived_descendant_id));
+
+        // And no SessionClosed was emitted for it (nothing was open).
+        let closed_for_descendant = audit
+            .of_type::<SessionClosed>()
+            .iter()
+            .any(|e| e.session_id == archived_descendant_id);
+        assert!(!closed_for_descendant);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn archive_tree_last_session_cascade_spawns_replacement() {
+        // Given a root with one child - archiving the tree empties the map.
+        let actor = test_actor().await;
+        let root = ChatSessionState::new();
+        let root_id = root.session_id().clone();
+        let child = child_session_of(&root_id);
+        seed_sessions(&actor, vec![root, child]);
+
+        // When archiving the tree.
+        actor
+            .handle_archive_session_tree(&ArchiveSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+
+        // Then a fresh replacement session exists (the map is never empty).
+        let state = actor.state.read();
+        assert_eq!(state.session.session_count(), 1);
+        assert_ne!(*state.session.active_session_id(), root_id);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn archive_tree_never_interacted_member_is_removed_without_store_write() {
+        // Given a root (interacted) and a never-interacted child. The child
+        // has no parent link, so it is NOT part of the tree closure; use a
+        // parented child but strip its entries via a fresh session instead:
+        // a parented child is persistable regardless of interaction, so the
+        // observable non-persistable case is the never-interacted,
+        // parentless root itself.
+        let actor = test_actor().await;
+        let root = ChatSessionState::new();
+        let root_id = root.session_id().clone();
+        assert!(!root.is_persistable(), "fresh session is not persistable");
+        seed_sessions(&actor, vec![root]);
+
+        // When archiving the tree rooted at the never-interacted session.
+        actor
+            .handle_archive_session_tree(&ArchiveSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+
+        // Then the session is removed from memory.
+        assert!(!actor.state.read().session.contains(&root_id));
+        // And a fresh replacement exists.
+        assert_eq!(actor.state.read().session.session_count(), 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn archive_tree_survives_store_summary_read_failure() {
+        // Given an actor whose store fails on summary reads, with a root and
+        // child loaded in memory.
+        let root = ChatSessionState::new();
+        let root_id = root.session_id().clone();
+        let child = child_session_of(&root_id);
+        let child_id = child.session_id().clone();
+        let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
+        store.set_fail_load_summaries(true);
+        seed_sessions(&actor, vec![root, child]);
+
+        // When archiving the tree.
+        actor
+            .handle_archive_session_tree(&ArchiveSessionTree {
+                root: root_id.clone(),
+            })
+            .await;
+
+        // Then the memory-only closure is still cascaded.
+        let state = actor.state.read();
+        assert!(!state.session.contains(&root_id));
+        assert!(!state.session.contains(&child_id));
     }
 }

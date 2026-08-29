@@ -85,11 +85,13 @@ pub trait QuakeBarLogWrite {
 
 /// Mirror terminal screen/control updates into the frontend.
 pub trait TerminalMirrorWrite {
-    /// Replaces the mirrored screen and cursor.
+    /// Replaces one chat session's mirrored screen and cursor.
     fn apply_screen(
         &mut self,
-        session_id: &str,
+        chat_session_id: &crate::protocol::SessionId,
+        term_session_id: &str,
         screen: String,
+        cells: crate::feat::interactive_term::emulator::ScreenCells,
         cursor: (u16, u16),
         cursor_hidden: bool,
     );
@@ -98,6 +100,8 @@ pub trait TerminalMirrorWrite {
         &mut self,
         holder: crate::feat::interactive_term::terminal_tab_state::TermControlHolder,
     );
+    /// Marks (or clears) a chat session's live-terminal flag.
+    fn set_live(&mut self, chat_session_id: &crate::protocol::SessionId, live: bool);
 }
 
 /// Insert / bulk-insert token counts into the entry-token cache.
@@ -146,13 +150,21 @@ impl PersonaPickerOps<'_> {
 impl TerminalMirrorWrite for TerminalOps<'_> {
     fn apply_screen(
         &mut self,
-        session_id: &str,
+        chat_session_id: &crate::protocol::SessionId,
+        term_session_id: &str,
         screen: String,
+        cells: crate::feat::interactive_term::emulator::ScreenCells,
         cursor: (u16, u16),
         cursor_hidden: bool,
     ) {
-        self.0
-            .apply_screen(session_id, screen, cursor, cursor_hidden);
+        self.0.apply_screen(
+            chat_session_id,
+            term_session_id,
+            screen,
+            cells,
+            cursor,
+            cursor_hidden,
+        );
     }
 
     fn set_control(
@@ -160,6 +172,14 @@ impl TerminalMirrorWrite for TerminalOps<'_> {
         holder: crate::feat::interactive_term::terminal_tab_state::TermControlHolder,
     ) {
         self.0.set_control(holder);
+    }
+
+    fn set_live(&mut self, chat_session_id: &crate::protocol::SessionId, live: bool) {
+        if live {
+            self.0.live_terms.insert(chat_session_id.clone());
+        } else {
+            self.0.live_terms.remove(chat_session_id);
+        }
     }
 }
 
