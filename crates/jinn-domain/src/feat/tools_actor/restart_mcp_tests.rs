@@ -127,6 +127,7 @@ fn ctx_with_coordinator(
         dispatched_at: jiff::Timestamp::now(),
         session_cap: None,
         mcp_coordinator: Some(coordinator),
+        interactive_term: None,
     }
 }
 
@@ -216,6 +217,7 @@ async fn execute_fails_when_coordinator_ref_is_none() {
         dispatched_at: jiff::Timestamp::now(),
         session_cap: None,
         mcp_coordinator: None,
+        interactive_term: None,
     };
 
     // When executing.

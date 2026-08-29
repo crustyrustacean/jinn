@@ -6,8 +6,8 @@
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 
 use super::{
-    BoxedToolFuture, bash, edit, get_time, grep, read, restart_mcp, save_plan, session_query,
-    skill, write,
+    BoxedToolFuture, bash, edit, get_time, grep, interactive_term, interactive_term_kill,
+    interactive_term_send, read, restart_mcp, save_plan, session_query, skill, write,
 };
 use crate::feat::todo_list;
 
@@ -60,6 +60,18 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
             grep::definition(),
             grep::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
+        (
+            interactive_term::definition(),
+            interactive_term::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
+        (
+            interactive_term_send::definition(),
+            interactive_term_send::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
+        (
+            interactive_term_kill::definition(),
+            interactive_term_kill::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
     ];
     entries.extend(todo_list::tools::tool_entries());
 
@@ -93,6 +105,9 @@ mod tests {
             "save_plan",
             "session_query",
             "grep",
+            "interactive_term",
+            "interactive_term_send",
+            "interactive_term_kill",
         ] {
             assert!(
                 names.contains(&required),

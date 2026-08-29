@@ -196,6 +196,7 @@ impl ActorSystemBuilder {
             bridge: bridge.clone(),
             root_supervisor: root.clone(),
             mcp_coordinator: std::sync::Arc::new(std::sync::OnceLock::new()),
+            interactive_term: std::sync::Arc::new(std::sync::OnceLock::new()),
             request_dump: jinn_domain::common::request_dump::RequestDumpService::new(dump_requests),
         };
 
@@ -483,6 +484,23 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         // Expose the coordinator ref to the tool layer (restart_mcp_server).
         // `OnceLock::set` returns Err if already set; ignore (e.g. test re-seed).
         let _ = services.mcp_coordinator.set(_mcp_coordinator.clone());
+
+        // Interactive-term coordinator: owns PTY sessions across tool calls
+        // (the `interactive_term*` tools ask it directly). Spawned with the
+        // same lifecycle shape as the MCP coordinator; the shared control
+        // flag goes to the terminal tab (takeover UI) wiring.
+        let (term_coordinator, _term_control) =
+            jinn_domain::feat::interactive_term::interactive_term_actor::spawn_interactive_term_actor(
+                jinn_domain::feat::interactive_term::interactive_term_actor::InteractiveTermActorDeps {
+                    bus: services.bus.clone(),
+                    control: jinn_domain::feat::interactive_term::interactive_term_actor::TermControl::default(),
+                    settle_quiet: std::time::Duration::from_millis(400),
+                    settle_cap: std::time::Duration::from_secs(3),
+                },
+                &root,
+            )
+            .await;
+        let _ = services.interactive_term.set(term_coordinator);
 
         // Plugin lifecycle actor: reads `[[plugin]]` entries from jinn.toml and spawns one in-process
         // WASM guest per entry. Guests are hosted directly by jinn via the

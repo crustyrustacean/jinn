@@ -179,7 +179,7 @@ pub struct GetRecorded<M> {
 }
 
 impl<M> GetRecorded<M> {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             _phantom: PhantomData,
         }
