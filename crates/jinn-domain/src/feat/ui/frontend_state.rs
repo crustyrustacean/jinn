@@ -137,7 +137,8 @@ pub struct FrontendState {
     /// subtree is streaming). OWNER: IntentHandler (set on first
     /// SidebarSessionArchiveTree, consumed on second SidebarSessionArchiveTree,
     /// dismissed on any other key).
-    pub archive_tree_prompt: Option<crate::feat::ui::sidebar::sessions::archive_tree::ArchiveTreePrompt>,
+    pub archive_tree_prompt:
+        Option<crate::feat::ui::sidebar::sessions::archive_tree::ArchiveTreePrompt>,
 
     /// All picker state - grouped for independent evolution.
     /// Use [`PickerExt`](super::picker_states::PickerExt) to access picker fields.

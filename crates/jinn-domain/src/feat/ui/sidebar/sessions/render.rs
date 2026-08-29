@@ -24,6 +24,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use throbber_widgets_tui::ThrobberState;
 
 use super::{ANIMATION_INTERVAL, MAX_VISIBLE_SESSIONS};
+use crate::feat::ui::sidebar::sessions::archive_tree::ArchiveTreePrompt;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use entry_line::assemble_entry_line;
 use scroll_tag::render_scroll_tag;
@@ -166,22 +167,16 @@ impl SidebarSection for SessionsSection {
             && section_focused
             && let Some(sel) = selected_index
         {
-            let visual_row = sel.saturating_sub(scroll_offset) as u16;
-            let cursor_y = area.y + visual_row;
-            let prompt_y = cursor_y.saturating_sub(1);
-            let prompt = Paragraph::new(Line::from(Span::styled(
-                " Press x again to close ",
-                Style::default().fg(Color::Black).bg(Color::Yellow),
-            )));
-            frame.render_widget(
-                prompt,
-                Rect {
-                    x: area.x,
-                    y: prompt_y,
-                    width: area.width,
-                    height: 1,
-                },
-            );
+            render_close_session_prompt(frame, area, sel.saturating_sub(scroll_offset));
+        }
+
+        // Archive-tree confirmation prompt - overlay 1 row above the cursor.
+        // Yellow confirms ("archive N sessions"); red blocks (a member is busy).
+        if let Some(prompt) = &state.frontend.archive_tree_prompt
+            && section_focused
+            && let Some(sel) = selected_index
+        {
+            render_archive_tree_prompt(frame, area, prompt, sel.saturating_sub(scroll_offset));
         }
     }
 
@@ -192,4 +187,63 @@ impl SidebarSection for SessionsSection {
         // entries(N).max(1) + footer(1)
         visible.max(1) + 1 // max(1) for the no-sessions placeholder line
     }
+}
+
+/// Renders the close-session confirmation prompt one row above the cursor.
+fn render_close_session_prompt(frame: &mut Frame<'_>, area: Rect, visual_row: usize) {
+    let cursor_y = area.y + visual_row as u16;
+    let prompt_y = cursor_y.saturating_sub(1);
+    let widget = Paragraph::new(Line::from(Span::styled(
+        " Press x again to close ",
+        Style::default().fg(Color::Black).bg(Color::Yellow),
+    )));
+    frame.render_widget(
+        widget,
+        Rect {
+            x: area.x,
+            y: prompt_y,
+            width: area.width,
+            height: 1,
+        },
+    );
+}
+
+/// Renders the archive-tree confirmation prompt one row above the cursor.
+///
+/// Yellow = armed confirm ("Press A again to archive N sessions"); red =
+/// blocked (a member of the subtree is busy).
+fn render_archive_tree_prompt(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    prompt: &ArchiveTreePrompt,
+    visual_row: usize,
+) {
+    let (text, bg) = match prompt {
+        ArchiveTreePrompt::Confirm { count } => (
+            format!(
+                " Press A again to archive {count} session{} ",
+                if *count == 1 { "" } else { "s" }
+            ),
+            Color::Yellow,
+        ),
+        ArchiveTreePrompt::Busy => (
+            " Cannot archive tree while a session is busy ".to_owned(),
+            Color::Red,
+        ),
+    };
+    let cursor_y = area.y + visual_row as u16;
+    let prompt_y = cursor_y.saturating_sub(1);
+    let widget = Paragraph::new(Line::from(Span::styled(
+        text,
+        Style::default().fg(Color::Black).bg(bg),
+    )));
+    frame.render_widget(
+        widget,
+        Rect {
+            x: area.x,
+            y: prompt_y,
+            width: area.width,
+            height: 1,
+        },
+    );
 }
