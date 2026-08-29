@@ -1,5 +1,9 @@
 ## 2026-08-29 Unreleased
 
+- Rework the interactive terminal UI: the terminal **tab** is replaced by a centered, colored **overlay** that updates in realtime (~50ms) even when no tool call is in flight. Toggle it with the global `<M-t>` (active session) or `T` on a selected session in the sidebar, which now marks sessions with a live terminal. The `<Tab>` cycle is back to Dashboard ↔ Normal.
+- `interactive_term` sessions are now linked to the chat session: each chat session has at most one terminal (spawning again kills the previous program and reports it), and spawning without a chat session is rejected. The PTY is sized to the overlay's inner rect and spawned in the tool context's working directory.
+- Agent key input now supports `f1`–`f12` (previously silently dropped), so programs like htop respond to function keys.
+
 - Add the `interactive_term` tools — run and drive interactive terminal programs (vim, psql, ssh, htop, REPLs) from the agent:
   - `interactive_term` spawns the program in a pseudo-terminal (with its own controlling tty, unlike the deliberately tty-less `bash` children) and returns the rendered screen once output settles.
   - `interactive_term_send` types text and presses named keys (`enter`, `ctrl+c`, arrows, ...); call with no inputs to re-sync the screen.

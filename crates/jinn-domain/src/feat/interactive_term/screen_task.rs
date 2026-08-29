@@ -83,10 +83,7 @@ impl ScreenHandle {
     /// Pairs the shared emulator state with a fresh writer slot and the
     /// version receiver.
     #[must_use]
-    pub fn new(
-        shared: SharedTerminal,
-        version: tokio::sync::watch::Receiver<u64>,
-    ) -> Self {
+    pub fn new(shared: SharedTerminal, version: tokio::sync::watch::Receiver<u64>) -> Self {
         Self {
             shared: Arc::new(Mutex::new(shared)),
             writer: Arc::new(Mutex::new(Box::new(std::io::sink()))),
@@ -191,7 +188,14 @@ impl ScreenWiring {
             .await;
         self.state.with_terminal(&self.cap, |ops| {
             use crate::common::tcaps::frontend::TerminalMirrorWrite;
-            ops.apply_screen(&self.chat, &self.term_id.0, screen, cells, cursor, cursor_hidden);
+            ops.apply_screen(
+                &self.chat,
+                &self.term_id.0,
+                screen,
+                cells,
+                cursor,
+                cursor_hidden,
+            );
         });
     }
 }
@@ -216,7 +220,7 @@ pub(crate) fn spawn_screen_task(
             // Wait for the first chunk of a burst (or idle-tick out).
             let first = match tokio::time::timeout(SCREEN_TICK, rx.recv()).await {
                 Ok(Some(chunk)) => chunk,
-                Ok(None) => break,     // pump closed: the program exited.
+                Ok(None) => break,      // pump closed: the program exited.
                 Err(_tick) => continue, // idle: nothing buffered.
             };
             let mut batch = vec![first];
@@ -241,7 +245,10 @@ pub(crate) fn spawn_screen_task(
                 previous_screen = screen.clone();
                 let (cursor, cursor_hidden) = {
                     let guard = handle.lock();
-                    (guard.emulator().cursor_position(), guard.emulator().cursor_hidden())
+                    (
+                        guard.emulator().cursor_position(),
+                        guard.emulator().cursor_hidden(),
+                    )
                 };
                 handle.lock().bump_version();
                 wiring

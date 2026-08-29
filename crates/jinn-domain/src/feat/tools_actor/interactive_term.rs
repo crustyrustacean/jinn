@@ -168,13 +168,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
     // Spawn size: the overlay's inner rect once known (WYSIWYG); the VT100
     // default before the first frame.
-    let size = ctx
-        .state
-        .as_ref()
-        .map_or((24, 80), |state| {
-            let s = state.read();
-            s.frontend.terminal.last_layout_size
-        });
+    let size = ctx.state.as_ref().map_or((24, 80), |state| {
+        let s = state.read();
+        s.frontend.terminal.last_layout_size
+    });
 
     // Stream context so the coordinator's settle wait emits deltas attributed
     // to this tool call (watchdog keepalive).

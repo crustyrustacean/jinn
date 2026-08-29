@@ -2468,34 +2468,6 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
-/// Helper: renders the sidebar sessions section and returns the buffer text.
-/// Width 60 so prompt banners fit unclipped (the busy banner is 46 cols).
-fn render_sessions_area(state: &AppState) -> String {
-    let (width, height) = (60, 20);
-    let mut section = SessionsSection::new();
-    let area = ratatui::layout::Rect {
-        x: 0,
-        y: 0,
-        width,
-        height,
-    };
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    let ctx = RenderCtx::new(state);
-    terminal
-        .draw(|frame| section.render(frame, area, &ctx))
-        .expect("draw");
-    let buffer = terminal.backend().buffer();
-    (0..height)
-        .flat_map(|y| {
-            (0..width).map(move |x| {
-                buffer
-                    .cell((x, y))
-                    .map_or(' ', |c| c.symbol().chars().next().unwrap_or(' '))
-            })
-        })
-        .collect()
-}
-
 #[rstest::rstest]
 fn archive_tree_prompt_renders_yellow_confirm_with_count() {
     // Given a focused selection with an armed confirm prompt of 3 sessions.

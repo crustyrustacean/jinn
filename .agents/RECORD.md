@@ -229,6 +229,8 @@ Entries are added or amended **only with human approval**.
 - (tools) The built-in `interactive_term`, `interactive_term_send`, and `interactive_term_kill` tools are the PTY interactive-terminal interface; each call blocks until screen output settles and returns the rendered screen.
 - (tools) `interactive_term` PTY sessions persist across tool calls in a coordinator actor; the spawned program's lifetime is decoupled from tool calls.
 - (tools) Agent input to an `interactive_term` session is rejected with a wait notice while the user holds control; handback steers the captured screen to the model, dispatching immediately if the session is idle.
-- (keybinds) The terminal tab opens in view mode; `i` enters control mode forwarding keys to the PTY, and the configurable `[interactive_term] handback_key` (default `<c-g>`) exits control mode.
-- (ui) The terminal tab renders the active `interactive_term` session from emulator cells, and the PTY size follows the tab's layout.
+- (keybinds) The terminal overlay is toggled with the global `<M-t>` key for the active session (or the `T` sidebar key on the selected session); inside the overlay `i` enters control mode forwarding keys to the PTY, and the configurable `[interactive_term] handback_key` (default `<c-g>`) exits control mode.
+- (ui) The interactive terminal renders as a centered overlay showing the active session's terminal with colors, sized to the overlay's inner rect; the `<Tab>` cycle is Dashboard ↔ Normal.
+- (tools) Each chat session has at most one interactive_term terminal: spawning again kills the previous one (reported in the result), and spawning without a chat session is rejected.
+- (ui) The sidebar marks sessions with a live interactive_term terminal with a dedicated symbol.
 - (tools) `interactive_term` children run with their own PTY as controlling terminal (own session/pgid), unlike the deliberately tty-less children of other tools.

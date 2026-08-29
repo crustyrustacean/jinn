@@ -64,10 +64,10 @@ fn render_cells(
             };
             let x = area.x + col;
             let y = area.y + row;
-            buf.cell_mut((x, y)).map(|cell| {
+            if let Some(cell) = buf.cell_mut((x, y)) {
                 cell.set_symbol(ch.encode_utf8(&mut [0u8; 4]));
                 cell.set_style(to_ratatui_style(style));
-            });
+            }
         }
     }
 }
@@ -145,17 +145,14 @@ mod tests {
             .frontend
             .scope_stack
             .swap_base(FocusScope::TerminalView);
-        state
-            .frontend
-            .terminal
-            .apply_screen(
-                state.session.active_session_id(),
-                "term-1",
-                screen.to_owned(),
-                ScreenCells::default(),
-                cursor,
-                false,
-            );
+        state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
+            "term-1",
+            screen.to_owned(),
+            ScreenCells::default(),
+            cursor,
+            false,
+        );
         state
     }
 
@@ -295,9 +292,7 @@ mod tests {
             .scope_stack
             .swap_base(FocusScope::TerminalView);
         let styled = {
-            use jinn_domain::feat::interactive_term::emulator::{
-                CellStyle, ScreenCells, TermCell,
-            };
+            use jinn_domain::feat::interactive_term::emulator::{CellStyle, ScreenCells, TermCell};
             let mut cells = vec![
                 TermCell::Styled {
                     ch: '漢',

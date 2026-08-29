@@ -108,7 +108,14 @@ struct TermSession {
 
 impl TermSession {
     /// Screen text, styled cells, cursor, and visibility from the emulator.
-    fn snapshot(&self) -> (String, crate::feat::interactive_term::emulator::ScreenCells, (u16, u16), bool) {
+    fn snapshot(
+        &self,
+    ) -> (
+        String,
+        crate::feat::interactive_term::emulator::ScreenCells,
+        (u16, u16),
+        bool,
+    ) {
         let handle = self.pty.screen();
         let guard = handle.lock();
         (
@@ -126,7 +133,11 @@ impl TermSession {
 
     /// The transcript tail (most recent screens).
     fn transcript_tail(&self, max_screens: usize) -> String {
-        self.pty.screen().lock().emulator().transcript_tail(max_screens)
+        self.pty
+            .screen()
+            .lock()
+            .emulator()
+            .transcript_tail(max_screens)
     }
 }
 
@@ -239,8 +250,8 @@ async fn wait_for_settle(
             return SettleReason::UserTookControl;
         }
         let pump_closed = handle.pump_closed();
-        let settled = (pump_closed && quiet_for >= quiet)
-            || should_settle(quiet_for, waited, quiet, cap);
+        let settled =
+            (pump_closed && quiet_for >= quiet) || should_settle(quiet_for, waited, quiet, cap);
         if settled {
             return if control.get() == ControlHolder::User {
                 SettleReason::UserTookControl
@@ -353,20 +364,13 @@ impl InteractiveTermActor {
 
         SpawnTermOutcome::Started {
             session_id,
-            screen: TermScreen {
-                screen,
-                exited,
-            },
+            screen: TermScreen { screen, exited },
             killed_previous,
         }
     }
 
     /// The per-session screen-task wiring (bus + mirror + live-flag key).
-    fn wiring(
-        &self,
-        chat: &crate::protocol::SessionId,
-        term_id: &TermSessionId,
-    ) -> ScreenWiring {
+    fn wiring(&self, chat: &crate::protocol::SessionId, term_id: &TermSessionId) -> ScreenWiring {
         ScreenWiring {
             bus: self.bus.clone(),
             state: self.state.clone(),
@@ -481,7 +485,14 @@ impl InteractiveTermActor {
         session.last_screen.clone_from(&screen);
         let term_id = session.term_id.clone();
         self.sessions.insert(chat.clone(), session);
-        self.write_mirror(&chat, &term_id, screen.clone(), cells, cursor, cursor_hidden);
+        self.write_mirror(
+            &chat,
+            &term_id,
+            screen.clone(),
+            cells,
+            cursor,
+            cursor_hidden,
+        );
 
         if self.control.get() == ControlHolder::User {
             // The user grabbed the terminal mid-call; report the takeover.
@@ -670,7 +681,14 @@ impl InteractiveTermActor {
         };
         session.last_screen = screen.clone();
         let term_id = session.term_id.clone();
-        self.write_mirror(&chat, &term_id, screen.clone(), cells.clone(), cursor, hidden);
+        self.write_mirror(
+            &chat,
+            &term_id,
+            screen.clone(),
+            cells.clone(),
+            cursor,
+            hidden,
+        );
         self.bus
             .publish(TermScreenUpdated {
                 session_id: term_id,
@@ -784,8 +802,10 @@ mod tests {
         actor: &ActorRef<InteractiveTermActor>,
         chat: &crate::protocol::SessionId,
     ) -> TermSessionId {
-        let SpawnTermOutcome::Started { session_id, .. } =
-            actor.ask(spawn_msg(chat.clone(), "cat")).await.expect("spawn reply")
+        let SpawnTermOutcome::Started { session_id, .. } = actor
+            .ask(spawn_msg(chat.clone(), "cat"))
+            .await
+            .expect("spawn reply")
         else {
             panic!("expected Started");
         };
@@ -877,7 +897,9 @@ mod tests {
 
         // Then the outcome is a session with the echoed text on screen.
         match reply {
-            SpawnTermOutcome::Started { session_id, screen, .. } => {
+            SpawnTermOutcome::Started {
+                session_id, screen, ..
+            } => {
                 assert!(plain_screen(&screen.screen).contains("hello"));
                 assert!(!session_id.0.is_empty());
             }
@@ -1062,8 +1084,10 @@ mod tests {
         let (actor, _root) = spawn_coordinator(&harness, TermControl::default()).await;
         let chat = crate::protocol::SessionId::new();
         let session_id = {
-            let SpawnTermOutcome::Started { session_id, .. } =
-                actor.ask(spawn_msg(chat, "true")).await.expect("spawn reply")
+            let SpawnTermOutcome::Started { session_id, .. } = actor
+                .ask(spawn_msg(chat, "true"))
+                .await
+                .expect("spawn reply")
             else {
                 panic!("expected Started");
             };
@@ -1239,8 +1263,10 @@ mod tests {
         let (actor, _root) = spawn_coordinator(&harness, TermControl::default()).await;
         let chat = crate::protocol::SessionId::new();
         let session_id = {
-            let SpawnTermOutcome::Started { session_id, .. } =
-                actor.ask(spawn_msg(chat, "true")).await.expect("spawn reply")
+            let SpawnTermOutcome::Started { session_id, .. } = actor
+                .ask(spawn_msg(chat, "true"))
+                .await
+                .expect("spawn reply")
             else {
                 panic!("expected Started");
             };
@@ -1523,8 +1549,10 @@ mod tests {
         let (actor, _root) = spawn_coordinator(&harness, TermControl::default()).await;
         let chat = crate::protocol::SessionId::new();
         let first = {
-            let SpawnTermOutcome::Started { session_id, .. } =
-                actor.ask(spawn_msg(chat.clone(), "sleep 31")).await.expect("spawn reply")
+            let SpawnTermOutcome::Started { session_id, .. } = actor
+                .ask(spawn_msg(chat.clone(), "sleep 31"))
+                .await
+                .expect("spawn reply")
             else {
                 panic!("expected Started");
             };
@@ -1571,7 +1599,10 @@ mod tests {
                 let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else {
                     continue;
                 };
-                let Some(state) = stat.rsplit(')').next().and_then(|rest| rest.split(' ').next())
+                let Some(state) = stat
+                    .rsplit(')')
+                    .next()
+                    .and_then(|rest| rest.split(' ').next())
                 else {
                     continue;
                 };
@@ -1613,8 +1644,7 @@ mod tests {
 
         // When spawning a terminal for session B.
         let SpawnTermOutcome::Started {
-            session_id: term_b,
-            ..
+            session_id: term_b, ..
         } = actor
             .ask(spawn_msg(chat_b.clone(), "echo from-b"))
             .await
@@ -1674,8 +1704,10 @@ mod tests {
             spawn_coordinator_with_state(&harness, TermControl::default()).await;
         let chat = crate::protocol::SessionId::new();
         let _ = {
-            let SpawnTermOutcome::Started { session_id, .. } =
-                actor.ask(spawn_msg(chat.clone(), "true")).await.expect("spawn reply")
+            let SpawnTermOutcome::Started { session_id, .. } = actor
+                .ask(spawn_msg(chat.clone(), "true"))
+                .await
+                .expect("spawn reply")
             else {
                 panic!("expected Started");
             };

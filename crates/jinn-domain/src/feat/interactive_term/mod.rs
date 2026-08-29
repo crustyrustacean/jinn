@@ -26,14 +26,14 @@
 //!
 pub mod emulator;
 pub mod interactive_term_actor;
+pub mod overlay_geometry;
+pub mod overlay_intent;
 pub mod prefs;
 pub mod protocol;
 pub mod pty_session;
 pub mod query_responder;
 pub mod screen_task;
 pub mod settle;
-pub mod overlay_geometry;
-pub mod overlay_intent;
 pub mod takeover_intent;
 pub mod terminal_tab_state;
 

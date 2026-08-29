@@ -225,9 +225,7 @@ pub struct CellStyle {
 }
 
 /// Terminal color, normalized from vt100's palette.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum TermColor {
     /// Terminal default foreground/background.
     #[default]
