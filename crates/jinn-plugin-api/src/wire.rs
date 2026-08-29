@@ -25,7 +25,15 @@ use crate::theme_def::ThemeDef;
 /// events to subscribed guests. Unknown tags are warned about and ignored
 /// (forward compatibility — a newer guest's new tags must not break an
 /// older host).
-pub const SUBSCRIPTION_KINDS: &[&str] = &["tool_call", "tool_result", "turn_end"];
+pub const SUBSCRIPTION_KINDS: &[&str] = &[
+    "tool_call",
+    "tool_result",
+    "turn_end",
+    "stream_start",
+    "stream_event",
+    "stream_end",
+    "tick",
+];
 
 /// Handshake: the first message a plugin sends after boot.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -131,6 +139,83 @@ pub struct TurnEndEvent {
     pub final_answer: bool,
 }
 
+/// Why a provider stream reached its terminal boundary.
+///
+/// Mirrors the host's internal stream-completion reasons: `ToolUse` means the
+/// stream paused so the model's tool calls can execute (the turn continues);
+/// `Finished` means a genuine final answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamEndReason {
+    /// The turn completed with a final assistant answer.
+    Finished,
+    /// The stream was canceled (user or host action).
+    Canceled,
+    /// The stream paused to execute the model's tool calls.
+    ToolUse,
+    /// The stream ended with an error.
+    Error,
+}
+
+/// Event: an LLM request was dispatched for a session.
+///
+/// Forwarded to plugins subscribed to `"stream_start"`. Arms a stall timer —
+/// the dispatch-to-first-token gap is part of stall time.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamStartEvent {
+    /// The session the request belongs to (opaque id string).
+    pub session_id: String,
+}
+
+/// Event: the in-flight provider stream produced output.
+///
+/// Forwarded to plugins subscribed to `"stream_event"`. Fires for text and
+/// thinking tokens, tool-call argument deltas, and tool-call start/complete —
+/// anything proving the stream is alive. Payloads are not forwarded; guests
+/// that need content subscribe to `"tool_call"`/`"tool_result"`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamEventPing {
+    /// The session whose stream produced output (opaque id string).
+    pub session_id: String,
+}
+
+/// Event: a provider stream reached its terminal boundary.
+///
+/// Forwarded to plugins subscribed to `"stream_end"`. Disarms a stall timer;
+/// [`StreamEndReason::ToolUse`] means the turn will continue after the tool
+/// batch (do not treat the session as done).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamEndEvent {
+    /// The session whose stream ended (opaque id string).
+    pub session_id: String,
+    /// Why the stream ended.
+    pub reason: StreamEndReason,
+}
+
+/// Event: host-generated wall-clock pulse.
+///
+/// Forwarded to plugins subscribed to `"tick"`. Guests are blocking stdin
+/// readers — they only wake when the host writes a line — so the host pushes
+/// a periodic pulse letting time-based logic run at all. `now_ms` is the
+/// host's monotonic-ish epoch clock at generation time.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TickEvent {
+    /// Unix epoch milliseconds when the tick was generated.
+    pub now_ms: u64,
+}
+
+/// Request: restart a session whose in-flight LLM stream stalled.
+///
+/// A message-style mirror of the host's internal `RetryStalledSession` bus
+/// command — same effect, public wire shape. The host-side handler validates
+/// the request (session exists, phase active, a stream genuinely in flight)
+/// and no-ops otherwise, so duplicate sends are harmless.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RestartStalledStream {
+    /// The session whose stream should be restarted (opaque id).
+    pub session_id: String,
+}
+
 /// One citation contributed by a plugin.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PluginCitation {
@@ -201,6 +286,8 @@ pub enum PluginToHost {
     CancelStream(CancelStream),
     /// Insert a system entry at the end of a session's history.
     InsertSystemEntry(InsertSystemEntry),
+    /// Restart a session's stalled in-flight LLM stream.
+    RestartStalledStream(RestartStalledStream),
 }
 
 /// Host→plugin message union (transport only).
@@ -218,4 +305,15 @@ pub enum HostToPlugin {
     ToolResultEvent(ToolResultEvent),
     /// A session turn ended (subscribed event).
     TurnEndEvent(TurnEndEvent),
+    /// An LLM request was dispatched (subscribed event).
+    #[serde(rename = "stream_start")]
+    StreamStartEvent(StreamStartEvent),
+    /// The in-flight stream produced output (subscribed event).
+    #[serde(rename = "stream_event")]
+    StreamEventPing(StreamEventPing),
+    /// A provider stream ended (subscribed event).
+    #[serde(rename = "stream_end")]
+    StreamEndEvent(StreamEndEvent),
+    /// Host-generated wall-clock pulse (subscribed event).
+    Tick(TickEvent),
 }

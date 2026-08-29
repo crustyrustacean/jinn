@@ -104,7 +104,14 @@ impl<'de> Deserialize<'de> for PluginToHostOrHostToPlugin {
         };
         if matches!(
             tag,
-            "welcome" | "tool_call_event" | "tool_result_event" | "turn_end_event"
+            "welcome"
+                | "tool_call_event"
+                | "tool_result_event"
+                | "turn_end_event"
+                | "stream_start"
+                | "stream_event"
+                | "stream_end"
+                | "tick"
         ) {
             return HostToPlugin::deserialize(value)
                 .map(Self::Host)
@@ -118,6 +125,7 @@ impl<'de> Deserialize<'de> for PluginToHostOrHostToPlugin {
                 | "push_citations"
                 | "cancel_stream"
                 | "insert_system_entry"
+                | "restart_stalled_stream"
         ) {
             return PluginToHost::deserialize(value)
                 .map(Self::Plugin)
