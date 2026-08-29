@@ -171,15 +171,6 @@ impl SidebarSection for SessionsSection {
         {
             render_close_session_prompt(frame, area, sel.saturating_sub(scroll_offset));
         }
-
-        // Archive-tree confirmation prompt - overlay 1 row above the cursor.
-        // Yellow confirms ("archive N sessions"); red blocks (a member is busy).
-        if let Some(prompt) = &state.frontend.archive_tree_prompt
-            && section_focused
-            && let Some(sel) = selected_index
-        {
-            render_archive_tree_prompt(frame, area, prompt, sel.saturating_sub(scroll_offset));
-        }
     }
 
     fn content_height(&self, ctx: &RenderCtx) -> u16 {
@@ -210,16 +201,42 @@ fn render_close_session_prompt(frame: &mut Frame<'_>, area: Rect, visual_row: us
     );
 }
 
-/// Renders the archive-tree confirmation prompt one row above the cursor.
+/// Renders the archive-tree confirmation prompt as a late overlay.
 ///
-/// Yellow = armed confirm ("Press A again to archive N sessions"); red =
-/// blocked (a member of the subtree is busy).
-fn render_archive_tree_prompt(
+/// Called AFTER the main column has rendered (from `jinn-tui`'s render pass,
+/// right after the session preview), so the banner may extend left over the
+/// input box. Anchored 1 row above the sidebar cursor row and right-aligned to
+/// the sidebar's right edge; the sidebar's width caps the banner, cropping from
+/// the left (grapheme-aware) when it cannot fit. Yellow = armed confirm
+/// ("Press A again to archive N sessions"); red = blocked (a member is busy).
+pub fn render_archive_tree_prompt_for_state(
     frame: &mut Frame<'_>,
-    area: Rect,
-    prompt: &ArchiveTreePrompt,
-    visual_row: usize,
+    sidebar_rect: Rect,
+    ctx: &RenderCtx,
 ) {
+    let state = ctx.state;
+    let Some(prompt) = &state.frontend.archive_tree_prompt else {
+        return;
+    };
+    if !state.frontend.scope_stack.is_sidebar()
+        || state.frontend.scope_stack.sidebar_section() != Some(SidebarSectionId::Sessions)
+    {
+        return;
+    }
+    let Some(sel) = state.frontend.sessions_section.selected_index else {
+        return;
+    };
+
+    // Cursor row: the sessions section is the last, bottom-anchored section.
+    let sessions_height = {
+        let entry_count = sorted_open_sessions(state).len() as u16;
+        entry_count.min(MAX_VISIBLE_SESSIONS as u16).max(1) + 1
+    };
+    let sessions_top_y = sidebar_rect.y + sidebar_rect.height.saturating_sub(sessions_height);
+    let scroll_offset = state.frontend.sessions_section.scroll_offset;
+    let visual_row = sel.saturating_sub(scroll_offset) as u16;
+    let prompt_y = sessions_top_y + visual_row.saturating_sub(1);
+
     let (text, bg) = match prompt {
         ArchiveTreePrompt::Confirm { count } => (
             format!(
@@ -233,28 +250,25 @@ fn render_archive_tree_prompt(
             Color::Red,
         ),
     };
-    let cursor_y = area.y + visual_row as u16;
-    let prompt_y = cursor_y.saturating_sub(1);
-    // Right-align the banner to the sidebar's right edge. When the sidebar is
-    // narrower than the banner, crop from the LEFT (grapheme-aware, never
-    // char-indexed) so the informative tail — "…3 sessions" / "…is busy" —
-    // survives and the banner never renders outside the sidebar column, where
-    // later-drawn main-column rows would paint over it.
+
+    // Right-align to the sidebar's right edge; when the sidebar is narrower
+    // than the banner, crop from the LEFT (grapheme-aware, never char-indexed)
+    // so the informative tail — "…3 sessions" / "…is busy" — survives.
     let (text, prompt_x) = {
         let text_width = text.width() as u16;
-        if text_width > area.width {
+        if text_width > sidebar_rect.width {
             let total = text.graphemes(true).count();
             let cropped: String = {
-                let keep = area.width as usize;
+                let keep = sidebar_rect.width as usize;
                 text.graphemes(true)
                     .skip(total.saturating_sub(keep))
                     .collect()
             };
             let cropped_width = cropped.width() as u16;
-            let x = area.x + area.width.saturating_sub(cropped_width);
+            let x = sidebar_rect.x + sidebar_rect.width.saturating_sub(cropped_width);
             (cropped, x)
         } else {
-            let x = area.x + area.width - text_width;
+            let x = sidebar_rect.x + sidebar_rect.width - text_width;
             (text, x)
         }
     };
