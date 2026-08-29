@@ -156,8 +156,8 @@ fn assemble_session_line(
     } else {
         ""
     };
-    let symbol_len = (subagent_symbol.graphemes(true).count())
-        + term_symbol.graphemes(true).count();
+    let symbol_len =
+        (subagent_symbol.graphemes(true).count()) + term_symbol.graphemes(true).count();
     let budget = max_title_len.saturating_sub(tree_len);
     let display_title = {
         let title_budget = budget.saturating_sub(symbol_len);

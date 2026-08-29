@@ -23,7 +23,12 @@ pub fn terminal_overlay_rect(area: Rect) -> Rect {
     let height = area.height.saturating_sub(VERTICAL_PADDING * 2).max(1);
     let x = area.x + (area.width.saturating_sub(width)) / 2;
     let y = area.y + (area.height.saturating_sub(height)) / 2;
-    Rect { x, y, width, height }
+    Rect {
+        x,
+        y,
+        width,
+        height,
+    }
 }
 
 /// Computes the overlay's inner rect — the pty size in `(rows, cols)` terms.

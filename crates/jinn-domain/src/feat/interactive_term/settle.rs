@@ -138,19 +138,20 @@ pub fn encode_key(name: &str) -> Vec<u8> {
         "pagedown" => b"\x1b[6~",
         _ if lower.starts_with("ctrl+") || lower.starts_with("c-") => return encode_ctrl(&lower),
         _ if lower.starts_with("alt+") || lower.starts_with("m-") => return encode_alt(&lower),
-        _ if lower.len() >= 2
-            && lower.as_bytes()[0] == b'f'
-            && lower.as_bytes()[1..].iter().all(u8::is_ascii_digit) =>
+        _ if lower.strip_prefix('f').is_some_and(|digits| {
+            !digits.is_empty() && digits.as_bytes().iter().all(u8::is_ascii_digit)
+        }) =>
         {
-            return lower
-                .as_bytes()[1..]
-                .iter()
-                .try_fold(0u32, |acc, d| {
-                    acc.checked_mul(10)
-                        .and_then(|n| n.checked_add(u32::from(d - b'0')))
-                })
-                .and_then(|n| u8::try_from(n).ok())
-                .map_or_else(Vec::new, fkey_bytes);
+            return {
+                let digits = lower.strip_prefix('f').unwrap_or_default();
+                digits
+                    .bytes()
+                    .try_fold(0u32, |acc, d| {
+                        acc.checked_mul(10)?.checked_add(u32::from(d - b'0'))
+                    })
+                    .and_then(|n| u8::try_from(n).ok())
+                    .map_or_else(Vec::new, fkey_bytes)
+            };
         }
         // Single printable character, sent verbatim (case preserved —
         // `B` must reach a case-sensitive program as capital B).

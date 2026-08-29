@@ -595,8 +595,14 @@ fn sidebar_live_term_symbol_consumes_truncation_budget() {
 
     // Then the subagent line's title is exactly one symbol-width shorter
     // than the plain line's (it carries the extra ⋄ symbol).
-    let plain_title_len: usize = plain_line.spans.last().map(|s| s.content.as_ref().graphemes(true).count()).unwrap_or(0);
-    let sub_title_len: usize = sub_line.spans.last().map(|s| s.content.as_ref().graphemes(true).count()).unwrap_or(0);
+    let plain_title_len: usize = plain_line
+        .spans
+        .last()
+        .map_or(0, |s| s.content.as_ref().graphemes(true).count());
+    let sub_title_len: usize = sub_line
+        .spans
+        .last()
+        .map_or(0, |s| s.content.as_ref().graphemes(true).count());
     let symbol_len = "⋄ ".graphemes(true).count();
     assert_eq!(
         sub_title_len,

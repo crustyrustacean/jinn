@@ -98,7 +98,10 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         wstate.frontend.scope_stack.current(),
         jinn_domain::FocusScope::TerminalView | jinn_domain::FocusScope::TerminalControl
     ) {
-        let inner = jinn_domain::feat::interactive_term::overlay_geometry::terminal_overlay_inner_rect(area);
+        let inner =
+            jinn_domain::feat::interactive_term::overlay_geometry::terminal_overlay_inner_rect(
+                area,
+            );
         let (rows, cols) = (inner.height, inner.width);
         if wstate.frontend.terminal.record_layout_size(rows, cols) {
             let closure = jinn_domain::common::bridge::Bridge::publish_closure(

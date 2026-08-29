@@ -444,7 +444,8 @@ mod tests {
     async fn spawned_child_echoes_input_back_through_screen() {
         // Given a `cat` session in a pty (cat echoes pty line-discipline input).
         let (mut session, pump) =
-            PtySession::spawn("cat", Path::new("/tmp"), default_size(), wiring()).expect("spawn cat");
+            PtySession::spawn("cat", Path::new("/tmp"), default_size(), wiring())
+                .expect("spawn cat");
 
         // When writing bytes to the pty.
         session.write(b"hello pty\n").expect("write");
@@ -453,7 +454,12 @@ mod tests {
         // (parsed by the realtime screen task).
         let deadline = tokio::time::Instant::now() + wait_timeout();
         loop {
-            let contains = session.screen().lock().emulator().plain_text().contains("hello pty");
+            let contains = session
+                .screen()
+                .lock()
+                .emulator()
+                .plain_text()
+                .contains("hello pty");
             if contains {
                 break;
             }
@@ -475,13 +481,9 @@ mod tests {
     #[tokio::test]
     async fn kill_terminates_whole_group_leaving_no_orphans() {
         // Given a session running a long sleep (the whole group to kill).
-        let (mut session, pump) = PtySession::spawn(
-            "sleep 65",
-            Path::new("/tmp"),
-            default_size(),
-            wiring(),
-        )
-        .expect("spawn sleep");
+        let (mut session, pump) =
+            PtySession::spawn("sleep 65", Path::new("/tmp"), default_size(), wiring())
+                .expect("spawn sleep");
         let pid = session.pid().expect("child pid");
         // And the child is its own group leader (the invariant the group kill
         // relies on) — captured before the kill, since the group ceases to
@@ -516,13 +518,9 @@ mod tests {
     #[tokio::test]
     async fn try_wait_reports_exit_code_after_natural_exit() {
         // Given a session whose command exits with a known code.
-        let (mut session, pump) = PtySession::spawn(
-            "exit 7",
-            Path::new("/tmp"),
-            default_size(),
-            wiring(),
-        )
-        .expect("spawn exit");
+        let (mut session, pump) =
+            PtySession::spawn("exit 7", Path::new("/tmp"), default_size(), wiring())
+                .expect("spawn exit");
 
         // When polling until the child terminates.
         let deadline = tokio::time::Instant::now() + wait_timeout();
@@ -550,13 +548,9 @@ mod tests {
     #[tokio::test]
     async fn dropping_session_kills_child() {
         // Given a session running a long sleep.
-        let (session, _pump) = PtySession::spawn(
-            "sleep 66",
-            Path::new("/tmp"),
-            default_size(),
-            wiring(),
-        )
-        .expect("spawn sleep");
+        let (session, _pump) =
+            PtySession::spawn("sleep 66", Path::new("/tmp"), default_size(), wiring())
+                .expect("spawn sleep");
 
         // When dropping the session (the guard's whole point).
         drop(session);
@@ -582,7 +576,8 @@ mod tests {
     async fn resize_updates_pty_and_deduplicates_noop() {
         // Given a session at the default size.
         let (mut session, pump) =
-            PtySession::spawn("cat", Path::new("/tmp"), default_size(), wiring()).expect("spawn cat");
+            PtySession::spawn("cat", Path::new("/tmp"), default_size(), wiring())
+                .expect("spawn cat");
 
         // When resizing to 40x120.
         let new_size = PtySize {
@@ -603,4 +598,3 @@ mod tests {
         pump.join();
     }
 }
-

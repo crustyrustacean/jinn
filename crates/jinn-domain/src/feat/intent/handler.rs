@@ -755,8 +755,10 @@ impl IntentHandler {
                 )
             }
             Intent::ToggleTerminalOverlayForSelected => {
-                let selected = crate::feat::interactive_term::overlay_intent::
-                    selected_sessions_sidebar_target(state);
+                let selected =
+                    crate::feat::interactive_term::overlay_intent::selected_sessions_sidebar_target(
+                        state,
+                    );
                 crate::feat::interactive_term::overlay_intent::handle_toggle_overlay(
                     state,
                     selected.as_ref(),
@@ -943,8 +945,8 @@ mod tests {
         reason = "test code"
     )]
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
-    use crate::feat::interactive_term::emulator::ScreenCells;
     use crate::feat::intent::IntentHandler;
+    use crate::feat::interactive_term::emulator::ScreenCells;
     use crate::protocol::{ChatEntry, Intent};
 
     #[rstest::rstest]
@@ -1581,10 +1583,16 @@ mod tests {
         state.frontend.terminal.set_live(&chat, true);
 
         // When toggling the terminal overlay.
-        IntentHandler::handle(&Intent::ToggleTerminalOverlay { session_id: None }, &mut state);
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
 
         // Then the overlay opens in view mode.
-        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::TerminalView);
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalView
+        );
     }
 
     #[rstest::rstest]
@@ -1593,7 +1601,10 @@ mod tests {
         let mut state = AppState::default();
 
         // When toggling the terminal overlay.
-        IntentHandler::handle(&Intent::ToggleTerminalOverlay { session_id: None }, &mut state);
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
 
         // Then the scope stays Input (default scope; no overlay opened).
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
@@ -1605,10 +1616,16 @@ mod tests {
         let mut state = AppState::default();
         let chat = state.session.active_session_id().clone();
         state.frontend.terminal.set_live(&chat, true);
-        IntentHandler::handle(&Intent::ToggleTerminalOverlay { session_id: None }, &mut state);
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
 
         // When toggling again.
-        IntentHandler::handle(&Intent::ToggleTerminalOverlay { session_id: None }, &mut state);
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
 
         // Then the overlay closes back to the base scope (the input scope the
         // overlay replaced does not resurrect).
@@ -1632,7 +1649,10 @@ mod tests {
         );
 
         // Then the overlay opens.
-        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::TerminalView);
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalView
+        );
     }
 
     #[rstest::rstest]
@@ -1657,8 +1677,14 @@ mod tests {
         let mut state = AppState::default();
         let chat = state.session.active_session_id().clone();
         state.frontend.terminal.set_live(&chat, true);
-        IntentHandler::handle(&Intent::ToggleTerminalOverlay { session_id: None }, &mut state);
-        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::TerminalView);
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalView
+        );
 
         // When switching tabs.
         IntentHandler::handle(&Intent::SwitchTab, &mut state);
