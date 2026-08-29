@@ -28,6 +28,9 @@ pub struct Theme {
     pub primary_text: Color,
     /// Muted/dim text (system entries, descriptions, table separators).
     pub muted_text: Color,
+    /// Subagent session title color (sidebar). Marks machine-spawned
+    /// sessions apart from user-initiated ones.
+    pub subagent_fg: Color,
     /// Error text color.
     pub error_text: Color,
 
@@ -136,6 +139,7 @@ impl Theme {
         m.insert("popup_title", Style::default().fg(self.popup_title));
         m.insert("primary_text", Style::default().fg(self.primary_text));
         m.insert("muted_text", Style::default().fg(self.muted_text));
+        m.insert("subagent_fg", Style::default().fg(self.subagent_fg));
         m.insert("error_text", Style::default().fg(self.error_text));
         m.insert("success", Style::default().fg(self.success));
         m.insert("warning", Style::default().fg(self.warning));
@@ -228,6 +232,8 @@ pub struct ThemeFile {
     pub primary_text: Option<ThemeColor>,
     #[serde(default)]
     pub muted_text: Option<ThemeColor>,
+    #[serde(default)]
+    pub subagent_fg: Option<ThemeColor>,
     #[serde(default)]
     pub error_text: Option<ThemeColor>,
 
@@ -345,6 +351,9 @@ impl ThemeFile {
             muted_text: self
                 .muted_text
                 .map_or(fallback.muted_text, crate::color::ThemeColor::inner),
+            subagent_fg: self
+                .subagent_fg
+                .map_or(fallback.subagent_fg, crate::color::ThemeColor::inner),
             error_text: self
                 .error_text
                 .map_or(fallback.error_text, crate::color::ThemeColor::inner),
@@ -479,6 +488,7 @@ impl ThemeFile {
             popup_title: Self::resolve_field(self.popup_title),
             primary_text: Self::resolve_field(self.primary_text),
             muted_text: Self::resolve_field(self.muted_text),
+            subagent_fg: Self::resolve_field(self.subagent_fg),
             error_text: Self::resolve_field(self.error_text),
             success: Self::resolve_field(self.success),
             warning: Self::resolve_field(self.warning),
@@ -537,6 +547,7 @@ mod tests {
             popup_title: None,
             primary_text: None,
             muted_text: None,
+            subagent_fg: None,
             error_text: None,
             success: None,
             warning: None,
@@ -600,6 +611,7 @@ mod tests {
             popup_title: None,
             primary_text: None,
             muted_text: None,
+            subagent_fg: None,
             error_text: None,
             success: None,
             warning: None,
@@ -671,6 +683,7 @@ mod tests {
             border_unfocused: Some(ThemeColor(Color::DarkGray)),
             primary_text: Some(ThemeColor(Color::White)),
             muted_text: Some(ThemeColor(Color::DarkGray)),
+            subagent_fg: Some(ThemeColor(Color::Rgb(152, 128, 208))),
             error_text: Some(ThemeColor(Color::Red)),
             success: Some(ThemeColor(Color::Green)),
             warning: Some(ThemeColor(Color::Yellow)),
@@ -741,6 +754,7 @@ mod tests {
             popup_title: None,
             primary_text: None,
             muted_text: None,
+            subagent_fg: None,
             error_text: None,
             success: None,
             warning: None,

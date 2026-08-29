@@ -7,12 +7,24 @@ use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition
 
 use super::{
     BoxedToolFuture, bash, edit, get_time, grep, read, restart_mcp, save_plan, session_query,
-    skill, write,
+    skill, task, write,
 };
 use crate::feat::todo_list;
 
-/// A built-in tool entry: its definition paired with its execute function.
-pub type BuiltinToolEntry = (ToolDefinition, fn(ToolCall, ToolContext) -> BoxedToolFuture);
+/// A built-in tool entry: its definition paired with its execute function,
+/// plus whether the tool manages its own deadline.
+///
+/// `self_managed_timeout` must be `true` for tools that outlive a dropped
+/// future: the dispatcher's outer timeout wrapper *aborts* its inner future
+/// on expiry, which for a tool like `task` would orphan the spawned child.
+/// A self-managed tool receives the per-call `max_duration_secs` (peeked via
+/// `extract_max_duration`) inside its `ToolContext.timeout` instead, and is
+/// responsible for enforcing (or ignoring) that budget itself.
+pub type BuiltinToolEntry = (
+    ToolDefinition,
+    fn(ToolCall, ToolContext) -> BoxedToolFuture,
+    bool,
+);
 
 /// Returns the built-in tool definitions and their execute functions.
 ///
@@ -23,42 +35,59 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
         (
             get_time::definition(),
             get_time::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             bash::definition(default_timeout_secs),
             bash::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             read::definition(),
             read::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             write::definition(),
             write::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             edit::definition(),
             edit::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             skill::definition(),
             skill::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             save_plan::definition(),
             save_plan::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             session_query::definition(),
             session_query::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
         (
             restart_mcp::definition(),
             restart_mcp::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
+        ),
+        (
+            task::definition(),
+            task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            // `task` blocks on a child session; the dispatcher's outer
+            // timeout would drop its future and orphan the child.
+            true,
         ),
         (
             grep::definition(),
             grep::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
         ),
     ];
     entries.extend(todo_list::tools::tool_entries());
@@ -76,7 +105,7 @@ mod tests {
     fn restart_mcp_server_is_registered() {
         // Given the builtin tool list.
         let tools = builtin_tools(30);
-        let names: Vec<&str> = tools.iter().map(|(d, _)| d.name.as_str()).collect();
+        let names: Vec<&str> = tools.iter().map(|(d, _, _)| d.name.as_str()).collect();
 
         // Then restart_mcp_server is present alongside the existing builtins.
         assert!(
@@ -93,6 +122,7 @@ mod tests {
             "save_plan",
             "session_query",
             "grep",
+            "task",
         ] {
             assert!(
                 names.contains(&required),

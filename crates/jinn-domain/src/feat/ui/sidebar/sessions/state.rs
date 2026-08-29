@@ -50,6 +50,9 @@ pub struct SessionEntry {
     /// Whether this entry is the last child of its parent.
     /// Used to render `└` vs `├`.
     pub is_last_child: bool,
+    /// Whether this session is a subagent spawned by the `task` tool.
+    /// Derived from the parent link; rendered as a symbol next to the title.
+    pub is_subagent: bool,
 }
 
 /// Collects all loaded sessions in tree order (DFS).
@@ -192,7 +195,6 @@ pub fn sorted_open_sessions_split(
         .iter()
         .filter(|(_, session)| {
             session.session_state() == crate::feat::session::chat_session::SessionState::Loaded
-                && !session.is_automated()
         })
         .map(|(id, session)| SessionEntry {
             kind: SessionEntryKind::Session,
@@ -209,6 +211,8 @@ pub fn sorted_open_sessions_split(
             depth: 0,
             ancestor_continuations: vec![],
             is_last_child: false,
+            is_subagent: session.origin()
+                == crate::feat::session::chat_session::SessionOrigin::Subagent,
         })
         .collect();
 

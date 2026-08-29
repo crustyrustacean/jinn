@@ -571,3 +571,86 @@ async fn watchdog_detects_stall_when_provider_activity_stale() {
         "a session with stale provider activity must reach the stall check, not be skipped by recovered→continue"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Subagent suspension
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+#[tokio::test]
+async fn watchdog_suspends_parent_with_pending_task() {
+    // Given a stalled session (stale activity, inside the stall window) that
+    // is blocked on a `task` tool call.
+    let mut wh = WatchdogHarness::new().await;
+    wh.watchdog
+        .deps
+        .services
+        .task_spawns
+        .register(wh.session_id.clone(), SessionId::new());
+    {
+        let mut s = wh.state.write_test_no_cap();
+        let session = s.session_mut(&wh.session_id);
+        session.begin_sending();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
+    }
+
+    // When the watchdog scans (repeatedly, past the retry budget).
+    wh.watchdog.scan_once().await;
+    wh.watchdog.scan_once().await;
+    wh.watchdog.scan_once().await;
+
+    // Then no retry or cancel was published for the suspended parent.
+    let retries = await_recorded(&wh.retry_recorder, 0, Duration::from_millis(200)).await;
+    let cancels = await_recorded(&wh.cancel_recorder, 0, Duration::from_millis(200)).await;
+    assert!(
+        !retries.iter().any(|r| r.session_id == wh.session_id),
+        "a parent blocked on task must not be retried"
+    );
+    assert!(
+        !cancels.iter().any(|c| c.session_id == wh.session_id),
+        "a parent blocked on task must not be cancelled"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn watchdog_resumes_stall_detection_after_task_resolves() {
+    // Given a parent whose in-flight task was registered, then resolved
+    // (unregistered) — the parent resumes streaming with stale activity.
+    let mut wh = WatchdogHarness::new().await;
+    let child_id = SessionId::new();
+    wh.watchdog
+        .deps
+        .services
+        .task_spawns
+        .register(wh.session_id.clone(), child_id.clone());
+    wh.watchdog
+        .deps
+        .services
+        .task_spawns
+        .unregister(&wh.session_id, &child_id);
+    {
+        let mut s = wh.state.write_test_no_cap();
+        let session = s.session_mut(&wh.session_id);
+        session.begin_sending();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
+    }
+
+    // When the watchdog scans.
+    wh.watchdog.scan_once().await;
+    let retries = await_recorded(&wh.retry_recorder, 1, Duration::from_millis(500)).await;
+
+    // Then the parent is treated like any other session again: stalled.
+    assert!(
+        retries.iter().any(|r| r.session_id == wh.session_id),
+        "after the task resolves, stall detection must resume"
+    );
+}
