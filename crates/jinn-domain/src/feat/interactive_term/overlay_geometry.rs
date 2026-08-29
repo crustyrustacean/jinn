@@ -1,22 +1,24 @@
 //! Terminal overlay geometry.
 //!
-//! The overlay is a centered rect over the whole frame with a small padding:
-//! two columns on each side, one row top and bottom. [`terminal_overlay_rect`]
-//! computes what the renderer draws into; [`terminal_overlay_inner_rect`]
-//! subtracts the border and hint line to give the pty size (rows/cols), so a
-//! program lays out for exactly the visible grid (WYSIWYG).
+//! The overlay is a bordered, centered rect inset from the frame by a
+//! generous padding (4 columns / 3 rows per side). [`terminal_overlay_rect`]
+//! is the bordered block the renderer draws (Clear + border, then the screen
+//! inside); [`terminal_overlay_inner_rect`] is the block's interior — the pty
+//! size in `(rows, cols)` terms, so a program lays out for exactly the
+//! visible grid (WYSIWYG). The border ring lives between the two and is
+//! never painted with program cells.
 
 use ratatui::layout::Rect;
 
-/// Horizontal padding on each side of the overlay.
-pub const HORIZONTAL_PADDING: u16 = 2;
-/// Vertical padding on the top and bottom of the overlay.
-pub const VERTICAL_PADDING: u16 = 1;
+/// Horizontal padding between the overlay and the frame edge, per side.
+pub const HORIZONTAL_PADDING: u16 = 4;
+/// Vertical padding between the overlay and the frame edge, per side.
+pub const VERTICAL_PADDING: u16 = 3;
 
-/// Computes the overlay's outer rect: centered in `area` with small padding.
+/// Computes the overlay's bordered rect: `area` inset by the padding.
 ///
-/// Always at least 1×1 so the renderer has somewhere to draw the
-/// "no session" hint on tiny terminals.
+/// This is the full block the renderer draws — border ring included. Always
+/// at least 1×1 so the renderer has somewhere to draw on tiny terminals.
 #[must_use]
 pub fn terminal_overlay_rect(area: Rect) -> Rect {
     let width = area.width.saturating_sub(HORIZONTAL_PADDING * 2).max(1);
@@ -33,14 +35,13 @@ pub fn terminal_overlay_rect(area: Rect) -> Rect {
 
 /// Computes the overlay's inner rect — the pty size in `(rows, cols)` terms.
 ///
-/// Subtracts the block border (1 cell each side) and the status/hint row
-/// from the overlay rect.
+/// Subtracts the block border (1 cell each side) from the bordered rect;
+/// the program's grid fills the interior exactly.
 #[must_use]
 pub fn terminal_overlay_inner_rect(area: Rect) -> Rect {
     let overlay = terminal_overlay_rect(area);
-    // Border: 1 cell each side; hint line: 1 row at the bottom.
     let width = overlay.width.saturating_sub(2).max(1);
-    let height = overlay.height.saturating_sub(2 + 1).max(1);
+    let height = overlay.height.saturating_sub(2).max(1);
     Rect {
         x: overlay.x + 1,
         y: overlay.y + 1,
@@ -63,24 +64,27 @@ mod tests {
         // When computing the overlay rect.
         let rect = terminal_overlay_rect(area);
 
-        // Then it is inset by the padding (2 cols / 1 row each side).
-        assert_eq!(rect.x, 2);
-        assert_eq!(rect.y, 1);
-        assert_eq!(rect.width, 76);
-        assert_eq!(rect.height, 22);
+        // Then it is inset by the padding (4 cols / 3 rows each side).
+        assert_eq!(rect.x, 4);
+        assert_eq!(rect.y, 3);
+        assert_eq!(rect.width, 72);
+        assert_eq!(rect.height, 18);
     }
 
     #[rstest::rstest]
-    fn inner_rect_subtracts_border_and_hint() {
+    fn inner_rect_subtracts_the_border_ring() {
         // Given an 80×24 frame.
         let area = Rect::new(0, 0, 80, 24);
 
         // When computing the pty-sized inner rect.
         let inner = terminal_overlay_inner_rect(area);
 
-        // Then it is the overlay minus the border and the hint row.
-        assert_eq!(inner.width, 74);
-        assert_eq!(inner.height, 19);
+        // Then it is the bordered overlay minus the border ring only — the
+        // program's grid fills the interior exactly (WYSIWYG).
+        assert_eq!(inner.x, 5);
+        assert_eq!(inner.y, 4);
+        assert_eq!(inner.width, 70);
+        assert_eq!(inner.height, 16);
     }
 
     #[rstest::rstest]

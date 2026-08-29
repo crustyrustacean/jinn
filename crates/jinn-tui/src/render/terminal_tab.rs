@@ -14,33 +14,60 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-/// Renders the active session's terminal screen into `area`.
+/// Renders the active session's terminal screen into `area` (the bordered
+/// overlay rect).
+///
+/// Clears the area first (the frame underneath is stale content, not
+/// background), draws the border ring — gray while merely viewing, the
+/// theme's focus accent while the overlay is capturing input — then paints
+/// the program's cells into the interior, which is exactly the pty size.
 pub fn render_terminal_tab(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx<'_>) {
     let terminal = &ctx.state.frontend.terminal;
     let theme = &ctx.state.frontend.theme;
 
+    // Stale frame content would otherwise bleed through Blank cells.
+    frame.render_widget(Clear, area);
+
+    let capturing = matches!(
+        ctx.state.frontend.scope_stack.current(),
+        jinn_domain::FocusScope::TerminalControl
+    );
+    let border_color = if capturing {
+        theme.focus_accent
+    } else {
+        theme.border_unfocused
+    };
+    let interior = {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(border_color));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        inner
+    };
+
     // The view shows the active chat session's mirrored terminal.
     let chat = ctx.state.session.active_session_id().clone();
     let Some(mirror) = terminal.mirror(&chat) else {
-        render_empty(frame, area, theme.focus_accent);
+        render_empty(frame, interior, theme.focus_accent);
         return;
     };
 
     if mirror.cells.cells.is_empty() {
-        render_plain_text(frame, area, &mirror.screen);
+        render_plain_text(frame, interior, &mirror.screen);
     } else {
-        render_cells(frame, area, &mirror.cells);
+        render_cells(frame, interior, &mirror.cells);
     }
 
     // Cursor: only when the program shows it (TUIs hide it while repainting)
     // and the cursor is inside the visible area.
     if !mirror.cursor_hidden {
         let (row, col) = mirror.cursor;
-        let x = area.x.saturating_add(col);
-        let y = area.y.saturating_add(row);
-        if col < area.width && row < area.height {
+        let x = interior.x.saturating_add(col);
+        let y = interior.y.saturating_add(row);
+        if col < interior.width && row < interior.height {
             frame.set_cursor_position((x, y));
         }
     }
@@ -173,12 +200,15 @@ mod tests {
             .draw(|f| render_terminal_tab(f, area, &ctx))
             .expect("draw");
 
-        // Then the buffer contains the screen text.
+        // Then the interior (inside the border) contains the screen text.
         let buffer = terminal.backend().buffer();
-        let row: String = (0..15)
-            .map(|x| buffer[(x, 0)].symbol().to_owned())
+        let row: String = (1..15)
+            .map(|x| buffer[(x, 1)].symbol().to_owned())
             .collect();
         assert!(row.contains("hello from vim"), "row was: {row:?}");
+        // And the border ring was drawn around it.
+        assert_eq!(buffer[(0, 0)].symbol(), "\u{250c}");
+        assert_eq!(buffer[(14, 0)].symbol(), "\u{2500}");
     }
 
     #[rstest::rstest]
@@ -202,10 +232,10 @@ mod tests {
             .draw(|f| render_terminal_tab(f, area, &ctx))
             .expect("draw");
 
-        // Then the buffer shows the empty-session hint.
+        // Then the buffer shows the empty-session hint inside the border.
         let buffer = terminal.backend().buffer();
-        let row: String = (0..60)
-            .map(|x| buffer[(x, 0)].symbol().to_owned())
+        let row: String = (1..60)
+            .map(|x| buffer[(x, 1)].symbol().to_owned())
             .collect();
         assert!(row.contains("no active terminal session"), "row: {row:?}");
     }
@@ -272,11 +302,11 @@ mod tests {
         // Then the styled cell carries the red bold style and the plain cell
         // carries no modifiers.
         let buffer = terminal.backend().buffer();
-        let red = buffer[(0, 0)].clone();
+        let red = buffer[(1, 1)].clone();
         assert_eq!(red.symbol(), "R");
         assert_eq!(red.fg, Color::Indexed(1));
         assert!(red.modifier.contains(ratatui::style::Modifier::BOLD));
-        let plain = buffer[(1, 0)].clone();
+        let plain = buffer[(2, 1)].clone();
         assert_eq!(plain.symbol(), "x");
         assert_eq!(plain.modifier, ratatui::style::Modifier::empty());
     }
@@ -315,7 +345,7 @@ mod tests {
         terminal
             .draw(|f| render_terminal_tab(f, area, &ctx))
             .expect("draw");
-        terminal.backend().buffer()[(0, 0)].clone()
+        terminal.backend().buffer()[(1, 1)].clone()
     }
 
     #[rstest::rstest]
@@ -426,11 +456,119 @@ mod tests {
             .draw(|f| render_terminal_tab(f, area, &ctx))
             .expect("draw");
 
-        // Then the wide glyph renders at column 0 and the spacer column was
-        // not overwritten with a symbol (skipped; buffer default remains).
+        // Then the wide glyph renders at the interior's first cell and the
+        // spacer column was not overwritten with a symbol (skipped; the
+        // cleared buffer default remains).
         let buffer = terminal.backend().buffer();
-        assert_eq!(buffer[(0, 0)].symbol(), "漢");
-        assert_eq!(buffer[(1, 0)].symbol(), " ");
+        assert_eq!(buffer[(1, 1)].symbol(), "漢");
+        assert_eq!(buffer[(2, 1)].symbol(), " ");
+    }
+
+    /// Renders the overlay for a state whose scope is `scope`, returning the
+    /// buffer, so border-color/clear cases share one setup path.
+    async fn rendered_overlay_with_scope(scope: FocusScope) -> ratatui::buffer::Buffer {
+        let mut state = AppState::default();
+        state.frontend.scope_stack.swap_base(scope);
+        {
+            let mut term = state.frontend.terminal.clone();
+            term.apply_screen(
+                state.session.active_session_id(),
+                "term-1",
+                "screen".to_owned(),
+                ScreenCells::default(),
+                (0, 0),
+                true,
+            );
+            state.frontend.terminal = term;
+        }
+        let app = crate::TuiApp::test_builder().state(state).build().await;
+
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        let area = Rect::new(0, 0, 80, 24);
+        let guard = app.core.state.read();
+        let ctx = RenderCtx::new(&guard);
+        terminal
+            .draw(|f| render_terminal_tab(f, area, &ctx))
+            .expect("draw");
+        terminal.backend().buffer().clone()
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn border_is_gray_while_viewing() {
+        // Given the overlay open in view mode (TerminalView base scope).
+        // When rendering.
+        let buffer = rendered_overlay_with_scope(FocusScope::TerminalView).await;
+        // Then the border uses the theme's unfocused (gray) color.
+        assert_eq!(
+            buffer[(0, 0)].fg,
+            jinn_domain::feat::theme::default_theme().border_unfocused
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn border_is_accent_while_capturing_input() {
+        // Given the overlay capturing input (TerminalControl base scope).
+        // When rendering.
+        let buffer = rendered_overlay_with_scope(FocusScope::TerminalControl).await;
+        // Then the border uses the theme's focus accent (yellow by default).
+        assert_eq!(
+            buffer[(0, 0)].fg,
+            jinn_domain::feat::theme::default_theme().focus_accent
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn overlay_clears_the_frame_underneath() {
+        // Given a buffer pre-painted with visible content where the overlay
+        // will draw.
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|f| {
+                use ratatui::widgets::Paragraph;
+                f.render_widget(Paragraph::new("LEAK".repeat(30)), f.area());
+            })
+            .expect("seed draw");
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        {
+            let mut term = state.frontend.terminal.clone();
+            term.apply_screen(
+                state.session.active_session_id(),
+                "term-1",
+                "".to_owned(),
+                ScreenCells::default(),
+                (0, 0),
+                true,
+            );
+            state.frontend.terminal = term;
+        }
+        let app = crate::TuiApp::test_builder().state(state).build().await;
+        let guard = app.core.state.read();
+        let ctx = RenderCtx::new(&guard);
+        let area = Rect::new(0, 0, 80, 24);
+
+        // When rendering the overlay (mirrored screen is blank).
+        terminal
+            .draw(|f| render_terminal_tab(f, area, &ctx))
+            .expect("draw");
+
+        // Then the interior shows no trace of the underlying frame.
+        let buffer = terminal.backend().buffer();
+        let interior_row: String = (1..79)
+            .map(|x| buffer[(x, 1)].symbol().to_owned())
+            .collect();
+        assert!(
+            !interior_row.contains("LEAK"),
+            "frame content leaked through: {interior_row:?}"
+        );
     }
 
     #[rstest::rstest]
@@ -466,7 +604,8 @@ mod tests {
             .draw(|f| render_terminal_tab(f, area, &ctx))
             .expect("draw");
 
-        // Then the cursor sits at (1, 3).
-        assert_eq!(terminal.backend().cursor_position(), Position::from((3, 1)));
+        // Then the cursor sits at interior (1, 3): frame coords offset by
+        // the border ring.
+        assert_eq!(terminal.backend().cursor_position(), Position::from((4, 2)));
     }
 }
