@@ -1,6 +1,7 @@
 //! Session protocol - session identity and lifecycle types.
 
 pub mod archive_session;
+pub mod archive_session_tree;
 pub mod citations_received;
 pub mod close_session;
 pub mod history_appended;
@@ -22,6 +23,7 @@ pub mod trigger_compaction;
 pub mod user_interacted;
 
 pub use archive_session::ArchiveSession;
+pub use archive_session_tree::ArchiveSessionTree;
 pub use close_session::CloseSession;
 pub use mark_session_interacted::MarkSessionInteracted;
 pub use retry_stalled_session::RetryStalledSession;

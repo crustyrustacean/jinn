@@ -508,6 +508,8 @@ impl IntentHandler {
             Intent::SidebarSessionArchive => {
                 feat::ui::sidebar::sessions::handle_session_archive(state)
             }
+            // Temporary stub — replaced by the archive-tree prompt flow (Phase 2).
+            Intent::SidebarSessionArchiveTree => IntentResult::empty(),
             Intent::SidebarSessionContinue => {
                 feat::ui::sidebar::sessions::handle_session_continue(state)
             }
