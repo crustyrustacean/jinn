@@ -22,7 +22,6 @@ use jinn_domain::{
 use ratatui::{Frame, layout::Rect};
 
 use crate::TuiApp;
-use crate::app::WhichKeyInstance;
 
 /// Renders the full application frame.
 pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
@@ -52,7 +51,6 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     render_base_layers(
         &mut app.sidebar,
         &mut app.ui_registry,
-        &mut app.which_key,
         frame,
         &ctx,
         &layout,
@@ -63,6 +61,9 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     if let Some(rect) = render_active_overlay(frame, area, &ctx, active_scope) {
         rects.push(rect);
     }
+    // The which-key help popup paints last so it sits above every overlay
+    // (e.g. the terminal overlay would otherwise obscure it in view mode).
+    which_key::render_which_key(frame, &mut app.which_key, &ctx);
 
     drop(state);
 
@@ -185,7 +186,7 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
 /// Renders the base layers for the active tab. In Chat mode: tab bar, border,
 /// sidebar, chat tab, session/task-list previews, and status bar. In Dashboard
 /// mode: tab bar and the full-width dashboard table only. The which-key popup
-/// renders in both modes.
+/// renders separately, after overlays — see the `render` entry point.
 #[expect(
     clippy::too_many_arguments,
     reason = "all inputs are single-use render pass params"
@@ -193,7 +194,6 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
 fn render_base_layers(
     sidebar: &mut Sidebar,
     ui_registry: &mut AppUiRegistry,
-    which_key: &mut WhichKeyInstance,
     frame: &mut Frame<'_>,
     ctx: &RenderCtx<'_>,
     layout: &AppFrameLayout,
@@ -245,7 +245,6 @@ fn render_base_layers(
             status_bar::render_status_bar(ui_registry, frame, chat.status_bar, ctx);
         }
     }
-    which_key::render_which_key(frame, which_key, ctx);
 }
 
 /// Renders the single popup matching the active scope, if any, and returns its

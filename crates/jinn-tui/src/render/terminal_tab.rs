@@ -23,6 +23,11 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 /// background), draws the border ring — gray while merely viewing, the
 /// theme's focus accent while the overlay is capturing input — then paints
 /// the program's cells into the interior, which is exactly the pty size.
+///
+/// The bottom border carries shortcut hints so the modes are self-describing:
+/// view mode shows the capture toggle (from `[interactive_term]
+/// control_toggle_key`), yank, and push keys; capture mode shows only the
+/// toggle (everything else types into the program).
 pub fn render_terminal_tab(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx<'_>) {
     let terminal = &ctx.state.frontend.terminal;
     let theme = &ctx.state.frontend.theme;
@@ -39,12 +44,15 @@ pub fn render_terminal_tab(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx<'_
     } else {
         theme.border_unfocused
     };
+    let hints = bottom_border_hints(ctx, capturing);
     let interior = {
-        let block = Block::default()
+        let b = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
+            .border_style(Style::default().fg(border_color))
+            .title_bottom(hints.0)
+            .title_style(Style::default().fg(hints.1));
+        let inner = b.inner(area);
+        frame.render_widget(b, area);
         inner
     };
 
@@ -154,6 +162,63 @@ fn render_empty(frame: &mut Frame<'_>, area: Rect, accent: ratatui::style::Color
         Style::default().fg(accent).add_modifier(Modifier::ITALIC),
     )));
     frame.render_widget(hint, area);
+}
+
+/// Builds the bottom-border hint line describing the mode's keys.
+///
+/// View mode lists the capture toggle (from `[interactive_term]
+/// control_toggle_key`), `y` (yank screen to clipboard), and `I` (yank +
+/// push the screen to the model). Capture mode lists only the toggle —
+/// every other key types into the program, so advertising more would lie.
+///
+/// The title renders in the theme's focus accent while capturing (matching
+/// the border) so the mode is visible peripherally, not just readable.
+fn bottom_border_hints(
+    ctx: &RenderCtx<'_>,
+    capturing: bool,
+) -> (ratatui::text::Line<'static>, ratatui::style::Color) {
+    let configured = ctx
+        .state
+        .frontend
+        .preferences
+        .interactive_term
+        .control_toggle_key
+        .clone();
+    let toggle =
+        jinn_domain::feat::interactive_term::prefs::normalize_control_toggle_key(&configured)
+            .unwrap_or_else(|| {
+                jinn_domain::feat::interactive_term::prefs::DEFAULT_CONTROL_TOGGLE_KEY.to_owned()
+            });
+    let accent = ctx.state.frontend.theme.focus_accent;
+
+    let spans = if capturing {
+        vec![
+            Span::styled(
+                toggle,
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" release control"),
+        ]
+    } else {
+        vec![
+            Span::styled(
+                toggle,
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" capture  "),
+            Span::styled(
+                "y",
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" yank  "),
+            Span::styled(
+                "I",
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" send screen"),
+        ]
+    };
+    (Line::from(spans), accent)
 }
 
 #[cfg(test)]
@@ -505,6 +570,87 @@ mod tests {
             buffer[(0, 0)].fg,
             jinn_domain::feat::theme::default_theme().border_unfocused
         );
+    }
+
+    /// Reads the bottom border row (the overlay's last row) as text.
+    fn bottom_border_text(buffer: &ratatui::buffer::Buffer) -> String {
+        let y = buffer.area.height - 1;
+        (0..buffer.area.width)
+            .map(|x| buffer[(x, y)].symbol().to_owned())
+            .collect()
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn view_mode_border_advertises_capture_yank_and_send_keys() {
+        // Given the overlay open in view mode.
+        // When rendering.
+        let buffer = rendered_overlay_with_scope(FocusScope::TerminalView).await;
+
+        // Then the bottom border advertises the mode's keys: the configured
+        // toggle (default `<c-g>`), yank, and send-screen.
+        let bottom = bottom_border_text(&buffer);
+        assert!(bottom.contains("<c-g>"), "bottom was: {bottom:?}");
+        assert!(bottom.contains("capture"), "bottom was: {bottom:?}");
+        assert!(bottom.contains("y yank"), "bottom was: {bottom:?}");
+        assert!(bottom.contains("send screen"), "bottom was: {bottom:?}");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn capture_mode_border_advertises_only_the_toggle() {
+        // Given the overlay capturing input (TerminalControl base scope).
+        // When rendering.
+        let buffer = rendered_overlay_with_scope(FocusScope::TerminalControl).await;
+
+        // Then the bottom border shows only the release hint — every other
+        // key types into the program, so advertising them would lie.
+        let bottom = bottom_border_text(&buffer);
+        assert!(bottom.contains("<c-g>"), "bottom was: {bottom:?}");
+        assert!(bottom.contains("release"), "bottom was: {bottom:?}");
+        assert!(!bottom.contains("yank"), "bottom was: {bottom:?}");
+        assert!(!bottom.contains("send screen"), "bottom was: {bottom:?}");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn border_hint_shows_a_custom_configured_toggle_key() {
+        // Given an app whose preferences configure `<m-g>` as the toggle.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
+            "term-1",
+            "screen".to_owned(),
+            ScreenCells::default(),
+            (0, 0),
+            true,
+        );
+        state
+            .frontend
+            .preferences
+            .interactive_term
+            .control_toggle_key = "<m-g>".to_owned();
+        let app = crate::TuiApp::test_builder().state(state).build().await;
+
+        // When rendering.
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        let guard = app.core.state.read();
+        let ctx = RenderCtx::new(&guard);
+        terminal
+            .draw(|f| render_terminal_tab(f, f.area(), &ctx))
+            .expect("draw");
+        let buffer = terminal.backend().buffer().clone();
+        drop(guard);
+
+        // Then the hint names the configured key, not the default.
+        let bottom = bottom_border_text(&buffer);
+        assert!(bottom.contains("<m-g>"), "bottom was: {bottom:?}");
+        assert!(!bottom.contains("<c-g>"), "bottom was: {bottom:?}");
     }
 
     #[rstest::rstest]
