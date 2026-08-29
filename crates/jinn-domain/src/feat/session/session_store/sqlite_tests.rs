@@ -1471,10 +1471,7 @@ async fn set_archived_many_round_trips_subset() {
     let b = SessionId::new();
     let c = SessionId::new();
     for (id, title) in [(&a, "a"), (&b, "b"), (&c, "c")] {
-        store
-            .save(&make_session(id, title))
-            .await
-            .expect("save");
+        store.save(&make_session(id, title)).await.expect("save");
     }
 
     // When archiving a subset (a and c) in one call.
@@ -1514,7 +1511,10 @@ async fn set_archived_many_with_empty_slice_is_noop() {
 
     // Then the session is untouched (still loaded).
     let summaries = store.load_summaries().await.expect("summaries");
-    assert_eq!(summaries[0].session_state, crate::feat::session::chat_session::SessionState::Loaded);
+    assert_eq!(
+        summaries[0].session_state,
+        crate::feat::session::chat_session::SessionState::Loaded
+    );
 }
 
 #[rstest::rstest]
@@ -1539,9 +1539,11 @@ async fn set_archived_many_false_un_archives() {
 
     // Then both sessions are loaded again.
     let summaries = store.load_summaries().await.expect("summaries");
-    assert!(summaries.iter().all(|s| {
-        s.session_state == crate::feat::session::chat_session::SessionState::Loaded
-    }));
+    assert!(
+        summaries.iter().all(|s| {
+            s.session_state == crate::feat::session::chat_session::SessionState::Loaded
+        })
+    );
 }
 
 #[rstest::rstest]

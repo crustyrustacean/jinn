@@ -2221,8 +2221,7 @@ fn focus_sessions_and_select(state: &mut AppState, title: &str) {
 #[rstest::rstest]
 fn archive_tree_members_returns_selection_and_transitive_descendants() {
     // Given a focused sessions section with root -> child -> grandchild.
-    let (mut state, [root_id, child_id, grandchild_id, _survivor]) =
-        state_with_archive_tree();
+    let (mut state, [root_id, child_id, grandchild_id, _survivor]) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
 
     // When resolving the archive-tree members.
@@ -2283,11 +2282,7 @@ fn archive_tree_members_rejects_when_a_descendant_is_busy() {
 fn archive_tree_members_rejects_when_selection_is_busy() {
     // Given a tree whose selected root itself is busy.
     let (mut state, [root_id, ..]) = state_with_archive_tree();
-    state
-        .session
-        .get_mut(&root_id)
-        .expect("root")
-        .begin_busy();
+    state.session.get_mut(&root_id).expect("root").begin_busy();
     focus_sessions_and_select(&mut state, "tree root");
 
     // When resolving the archive-tree members.
@@ -2469,8 +2464,8 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
 // Archive tree - prompt render
 // ---------------------------------------------------------------------------
 
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 
 /// Helper: renders the sidebar sessions section and returns the buffer text.
 /// Width 60 so prompt strings (up to ~48 chars) render unclipped.
@@ -2483,9 +2478,9 @@ fn render_sessions_area(state: &AppState) -> String {
         height: 20,
     };
     let mut terminal = Terminal::new(TestBackend::new(60, 20)).expect("terminal");
-    let mut ctx = RenderCtx::new(state);
+    let ctx = RenderCtx::new(state);
     terminal
-        .draw(|frame| section.render(frame, area, &mut ctx))
+        .draw(|frame| section.render(frame, area, &ctx))
         .expect("draw");
     let buffer = terminal.backend().buffer();
     (0..20)
@@ -2537,17 +2532,13 @@ fn archive_tree_prompt_renders_red_busy_notice() {
 fn sidebar_after_archive_tree_cascade_shows_survivors_only() {
     // Given a tree (root -> child -> grandchild) plus a survivor root, with
     // the tree root selected and clamping in range.
-    let (mut state, [root_id, child_id, grandchild_id, survivor_id]) =
-        state_with_archive_tree();
+    let (mut state, [root_id, child_id, grandchild_id, survivor_id]) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
 
     // When simulating the cascade the actor performs: remove each member
     // with visual-parent maintenance, then reconcile the sidebar.
     for member in [&root_id, &child_id, &grandchild_id] {
-        crate::feat::ui::sidebar::sessions::update_visual_parents_on_removal(
-            &mut state,
-            member,
-        );
+        crate::feat::ui::sidebar::sessions::update_visual_parents_on_removal(&mut state, member);
         state.session.remove(member);
         crate::feat::ui::sidebar::sessions::reconcile_after_session_removal(&mut state);
     }
