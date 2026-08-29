@@ -134,7 +134,8 @@ impl TaskListPreferences {
     /// Resolved echo tree line cap: the configured value or the default.
     #[must_use]
     pub fn echo_max_lines(&self) -> usize {
-        self.echo_max_lines.unwrap_or(DEFAULT_TASK_LIST_ECHO_MAX_LINES)
+        self.echo_max_lines
+            .unwrap_or(DEFAULT_TASK_LIST_ECHO_MAX_LINES)
     }
 }
 
@@ -649,11 +650,8 @@ mod tests {
         // Given preferences loaded from a jinn.toml with explicit [task_list] values.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            "[task_list]\necho_offset = 5\necho_max_lines = 20\n",
-        )
-        .expect("write");
+        std::fs::write(&path, "[task_list]\necho_offset = 5\necho_max_lines = 20\n")
+            .expect("write");
 
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");

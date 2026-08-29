@@ -308,11 +308,7 @@ fn insert_bottom_pins(final_messages: &mut Vec<LlmMessage>, bottom_messages: Vec
     clippy::indexing_slicing,
     reason = "insert_at is bounded by the length guards above"
 )]
-fn insert_echo_at_offset(
-    messages: &mut Vec<LlmMessage>,
-    echo: Option<LlmMessage>,
-    offset: usize,
-) {
+fn insert_echo_at_offset(messages: &mut Vec<LlmMessage>, echo: Option<LlmMessage>, offset: usize) {
     let Some(echo) = echo else {
         return;
     };
@@ -415,17 +411,24 @@ mod tests {
     fn seed_task_list(state: &State, session_id: &SessionId) {
         let mut guard = state.write_test_no_cap();
         let session = guard.session.get_mut(session_id).expect("session exists");
-        let mut list = session.task_list_mut();
+        let list = session.task_list_mut();
         let p1 = list.add_phase("Research");
         list.add_task(&p1, "First task", crate::feat::todo_list::TaskPosition::End)
             .expect("add first task");
         let p2 = list.add_phase("Build");
-        list.add_task(&p2, "Second task", crate::feat::todo_list::TaskPosition::End)
-            .expect("add second task");
+        list.add_task(
+            &p2,
+            "Second task",
+            crate::feat::todo_list::TaskPosition::End,
+        )
+        .expect("add second task");
     }
 
     /// Overwrites the session's `[task_list]` preferences.
-    fn set_task_list_prefs(state: &State, prefs: crate::feat::preferences_actor::TaskListPreferences) {
+    fn set_task_list_prefs(
+        state: &State,
+        prefs: crate::feat::preferences_actor::TaskListPreferences,
+    ) {
         let mut guard = state.write_test_no_cap();
         guard.frontend.preferences.task_list = prefs;
     }
@@ -463,7 +466,7 @@ mod tests {
         // Then exactly one echo exists, followed by exactly `echo_offset`
         // (10) messages — the configured distance to the most recent message.
         let positions: Vec<usize> = (0..result.messages.len())
-            .filter(|&i| echo_position(&result.messages[i..i + 1]).is_some())
+            .filter(|&i| echo_position(&result.messages[i..=i]).is_some())
             .collect();
         assert_eq!(positions.len(), 1, "exactly one echo");
         assert_eq!(
@@ -479,10 +482,12 @@ mod tests {
         // result) with a populated task list and an offset of 1 — so the raw
         // insertion index lands on the trailing tool result.
         let entries: Vec<ChatEntry> = (0..6)
-            .map(|i| if i % 2 == 0 {
-                ChatEntry::user(format!("u{i}"))
-            } else {
-                ChatEntry::assistant(format!("a{i}"))
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
             })
             .collect();
         let mut entries = entries;
@@ -546,10 +551,12 @@ mod tests {
         // Given a session with a populated task list and enough history, but
         // `echo_offset = 0`.
         let entries: Vec<ChatEntry> = (0..12)
-            .map(|i| if i % 2 == 0 {
-                ChatEntry::user(format!("u{i}"))
-            } else {
-                ChatEntry::assistant(format!("a{i}"))
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
             })
             .collect();
         let (state, session_id) = state_with_history(entries);
@@ -575,10 +582,12 @@ mod tests {
         // Given two identical sessions, one with a task list and one without,
         // both with history long enough for injection.
         let entries: Vec<ChatEntry> = (0..12)
-            .map(|i| if i % 2 == 0 {
-                ChatEntry::user(format!("u{i}"))
-            } else {
-                ChatEntry::assistant(format!("a{i}"))
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
             })
             .collect();
         let (state_without, id_without) = state_with_history(entries.clone());
@@ -599,10 +608,12 @@ mod tests {
     fn echo_stable_when_list_unchanged() {
         // Given a session with a populated task list and enough history.
         let entries: Vec<ChatEntry> = (0..12)
-            .map(|i| if i % 2 == 0 {
-                ChatEntry::user(format!("u{i}"))
-            } else {
-                ChatEntry::assistant(format!("a{i}"))
+            .map(|i| {
+                if i % 2 == 0 {
+                    ChatEntry::user(format!("u{i}"))
+                } else {
+                    ChatEntry::assistant(format!("a{i}"))
+                }
             })
             .collect();
         let (state, session_id) = state_with_history(entries);
