@@ -65,7 +65,7 @@ impl RequestRetryConfig {
 
 mod session;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -74,7 +74,9 @@ use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::context::assemble::SystemPrompt;
-use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
+use crate::feat::provider::protocol::command::{
+    CancelStream, SendToLlmProvider, StreamOrigin,
+};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::provider_infra::LlmServiceFactoryService;
 use crate::feat::provider_infra::StopReason;
@@ -177,6 +179,9 @@ pub struct LlmActor {
     tasks: HashMap<SessionId, tokio::task::JoinHandle<()>>,
     /// Per-session state.
     sessions: HashMap<SessionId, SessionData>,
+    /// Sessions tombstoned by a recent [`CancelStream`]. While tombstoned,
+    /// `ToolContinuation` sends are dropped; a `User` send clears it.
+    cancelled_sessions: HashSet<SessionId>,
 }
 
 impl BusPublish for LlmActor {
@@ -215,6 +220,7 @@ impl kameo::Actor for LlmActor {
             _state: args.state,
             tasks: HashMap::new(),
             sessions: HashMap::new(),
+            cancelled_sessions: HashSet::new(),
         })
     }
 }
@@ -611,6 +617,24 @@ impl LlmActor {
     /// Dispatches incoming commands to the appropriate handler.
     /// Starts an LLM streaming response for a session, aborting any existing stream.
     async fn start_stream(&mut self, payload: &SendToLlmProvider) {
+        // Cancel tombstone: a continuation arriving for a recently-cancelled
+        // session is the in-flight remnant of the tool loop losing the race
+        // against `CancelStream` — drop it silently (the `StreamCompleted(
+        // Canceled)` already ended the turn and pushed its cancel entry).
+        if payload.origin == StreamOrigin::ToolContinuation
+            && self.cancelled_sessions.contains(&payload.session_id)
+        {
+            tracing::info!(
+                session_id = ?payload.session_id,
+                "dropping tool continuation for tombstoned (cancelled) session"
+            );
+            return;
+        }
+        // A user-originated send always lifts the tombstone.
+        if payload.origin == StreamOrigin::User {
+            self.cancelled_sessions.remove(&payload.session_id);
+        }
+
         let prefs = self.deps.services.user_preferences_storage.read();
         let retry_config = prefs.request_retry.clone();
 
@@ -751,6 +775,11 @@ impl LlmActor {
 
     /// Cancels the active stream for a session and emits a completion event.
     async fn cancel_stream(&mut self, session_id: &SessionId) {
+        // Arm the tombstone before anything else so any tool-loop continuation
+        // already in flight is rejected when it arrives. Cleared by the next
+        // user-originated send.
+        self.cancelled_sessions.insert(session_id.clone());
+
         // If there's an active session, cancel any pending tool batches.
         if self.sessions.contains_key(session_id) {
             self.publish(CancelToolBatch {
@@ -976,6 +1005,7 @@ mod tests {
             _state: State::new(crate::common::app_state::AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
+            cancelled_sessions: HashSet::new(),
         }
     }
 
@@ -1184,6 +1214,7 @@ mod tests {
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            origin: StreamOrigin::User,
             dispatched_at: jiff::Timestamp::now(),
         };
 
@@ -1225,6 +1256,7 @@ mod tests {
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            origin: StreamOrigin::User,
             dispatched_at: jiff::Timestamp::now(),
         };
 
@@ -1263,6 +1295,7 @@ mod tests {
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            origin: StreamOrigin::User,
             dispatched_at: jiff::Timestamp::now(),
         };
 
@@ -1307,6 +1340,7 @@ mod tests {
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            origin: StreamOrigin::User,
             dispatched_at: jiff::Timestamp::now(),
         };
 
@@ -1355,6 +1389,136 @@ mod tests {
         );
     }
 
+    /// Builds a minimal `SendToLlmProvider` for tombstone tests.
+    fn tombstone_payload(session_id: &SessionId, origin: StreamOrigin) -> SendToLlmProvider {
+        SendToLlmProvider {
+            model_used: None,
+            reasoning_effort: None,
+            endpoint_tag: None,
+            session_id: session_id.clone(),
+            messages: vec![],
+            system_prompt: SystemPrompt::default(),
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+            origin,
+            dispatched_at: jiff::Timestamp::now(),
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_continuation_after_cancel_is_dropped() {
+        // Given a harness with an LLM actor and one queued stream response.
+        let harness = TestHarness::new().await;
+        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
+            "should never stream".to_owned(),
+        ])));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps: harness.actor_deps().await,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let recorder_tokens = harness.spawn_recorder::<StreamToken>().await;
+        let recorder_completed = harness.spawn_recorder::<StreamCompleted>().await;
+
+        let session_id = SessionId::new();
+
+        // When the session is cancelled.
+        harness
+            .publish(CancelStream {
+                session_id: session_id.clone(),
+            })
+            .await;
+        // And an in-flight tool continuation arrives afterwards.
+        harness
+            .publish(tombstone_payload(&session_id, StreamOrigin::ToolContinuation))
+            .await;
+
+        // Then the continuation is dropped: no tokens stream and no completion fires.
+        let tokens = await_recorded(&recorder_tokens, 0, std::time::Duration::from_millis(300)).await;
+        let completions =
+            await_recorded(&recorder_completed, 0, std::time::Duration::from_millis(300)).await;
+        assert!(
+            tokens.is_empty() && completions.is_empty(),
+            "cancelled session must not accept a tool continuation: tokens={tokens:?} completions={completions:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn user_send_after_cancel_clears_tombstone() {
+        // Given a harness with an LLM actor and one queued stream response.
+        let harness = TestHarness::new().await;
+        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
+            "fresh turn".to_owned(),
+        ])));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps: harness.actor_deps().await,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let recorder_completed = harness.spawn_recorder::<StreamCompleted>().await;
+
+        let session_id = SessionId::new();
+
+        // When the session is cancelled.
+        harness
+            .publish(CancelStream {
+                session_id: session_id.clone(),
+            })
+            .await;
+        // And the user then sends a new message.
+        harness
+            .publish(tombstone_payload(&session_id, StreamOrigin::User))
+            .await;
+
+        // Then the user turn streams to completion — the tombstone is lifted.
+        let completed =
+            await_recorded(&recorder_completed, 1, std::time::Duration::from_secs(5)).await;
+        let found = completed
+            .iter()
+            .any(|sc| sc.reason == StreamCompletedReason::Finished);
+        assert!(found, "user send after cancel should stream normally");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn continuation_allowed_without_cancel() {
+        // Given a harness with an LLM actor and one queued stream response.
+        let harness = TestHarness::new().await;
+        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
+            "tool loop turn".to_owned(),
+        ])));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps: harness.actor_deps().await,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let recorder_completed = harness.spawn_recorder::<StreamCompleted>().await;
+
+        let session_id = SessionId::new();
+
+        // When a tool continuation arrives with no prior cancel.
+        harness
+            .publish(tombstone_payload(&session_id, StreamOrigin::ToolContinuation))
+            .await;
+
+        // Then it streams to completion — the tool loop is unaffected.
+        let completed =
+            await_recorded(&recorder_completed, 1, std::time::Duration::from_secs(5)).await;
+        let found = completed
+            .iter()
+            .any(|sc| sc.reason == StreamCompletedReason::Finished);
+        assert!(found, "tool continuation without cancel should stream");
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn cancel_stream_via_bus_emits_completion() {
@@ -1383,6 +1547,7 @@ mod tests {
                 tool_definitions: vec![],
                 provider_id: None,
                 estimated_tokens: 0,
+                origin: StreamOrigin::User,
                 dispatched_at: jiff::Timestamp::now(),
             })
             .await;
@@ -1434,6 +1599,7 @@ mod tests {
                 tool_definitions: vec![],
                 provider_id: None,
                 estimated_tokens: 0,
+                origin: StreamOrigin::User,
                 dispatched_at: jiff::Timestamp::now(),
             })
             .await;

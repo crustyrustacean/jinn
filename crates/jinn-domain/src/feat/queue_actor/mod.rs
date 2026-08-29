@@ -31,7 +31,7 @@ use crate::common::state::State;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-use crate::feat::provider::protocol::command::SendToLlmProvider;
+use crate::feat::provider::protocol::command::{SendToLlmProvider, StreamOrigin};
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session::queue_item::QueueItem;
@@ -131,7 +131,8 @@ impl QueueActor {
 
         match item {
             QueueItem::UserMessage(entry) => {
-                self.dispatch_user_message(session_id, &entry).await;
+                self.dispatch_user_message(session_id, &entry, StreamOrigin::User)
+                    .await;
             }
             QueueItem::ToolContinuation => {
                 self.dispatch_tool_continuation(session_id).await;
@@ -166,6 +167,7 @@ impl QueueActor {
         &self,
         session_id: &SessionId,
         entry: &crate::protocol::ChatEntry,
+        origin: StreamOrigin,
     ) {
         // Vision gate: if the entry carries attachments but the active model
         // is not confirmed image-capable, push entry + error and abort dispatch
@@ -241,6 +243,7 @@ impl QueueActor {
         let estimated_tokens = assembled.estimated_tokens();
 
         self.publish(SendToLlmProvider {
+            origin,
             model_used,
             reasoning_effort,
             endpoint_tag,
@@ -310,12 +313,18 @@ impl QueueActor {
     ///
     /// See [`Self::dispatch_resume`] for the shared dispatch body.
     async fn dispatch_tool_continuation(&self, session_id: &SessionId) {
-        self.dispatch_resume(session_id, "tool continuation").await;
+        self.dispatch_resume(session_id, StreamOrigin::ToolContinuation, "tool continuation")
+            .await;
     }
 
     /// Shared dispatch body for tool-continuation and manual-resume paths:
     /// re-assemble prompt from current history and emit `SendToLlmProvider`.
-    async fn dispatch_resume(&self, session_id: &SessionId, label: &str) {
+    async fn dispatch_resume(
+        &self,
+        session_id: &SessionId,
+        origin: StreamOrigin,
+        label: &str,
+    ) {
         // Drain any pending steering fragments into history before assembly,
         // then normalize loop layout so committed loops never contain
         // interstitials before assembly.
@@ -346,6 +355,7 @@ impl QueueActor {
         let estimated_tokens = assembled.estimated_tokens();
 
         self.publish(SendToLlmProvider {
+            origin,
             model_used,
             reasoning_effort,
             endpoint_tag,
@@ -379,7 +389,7 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-    use crate::feat::provider::protocol::command::SendToLlmProvider;
+    use crate::feat::provider::protocol::command::{SendToLlmProvider, StreamOrigin};
     use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
@@ -516,7 +526,7 @@ mod tests {
         let entry = ChatEntry::user("hello");
 
         // When dispatching a user message.
-        actor.dispatch_user_message(&sid, &entry).await;
+        actor.dispatch_user_message(&sid, &entry, StreamOrigin::User).await;
 
         // Then ChatEntrySubmitted was published.
         let submitted: Vec<ChatEntrySubmitted> = audit.of_type::<ChatEntrySubmitted>();
@@ -532,7 +542,7 @@ mod tests {
         let entry = ChatEntry::user("first message here");
 
         // When dispatching the first user message.
-        actor.dispatch_user_message(&sid, &entry).await;
+        actor.dispatch_user_message(&sid, &entry, StreamOrigin::User).await;
 
         // Then the session title was set to the first line.
         let state = actor.state.read();
@@ -554,7 +564,7 @@ mod tests {
         let entry = ChatEntry::user("second message");
 
         // When dispatching a user message.
-        actor.dispatch_user_message(&sid, &entry).await;
+        actor.dispatch_user_message(&sid, &entry, StreamOrigin::User).await;
 
         // Then the title is unchanged.
         let state = actor.state.read();
@@ -571,7 +581,7 @@ mod tests {
         let entry = ChatEntry::user("hello");
 
         // When dispatching a user message.
-        actor.dispatch_user_message(&sid, &entry).await;
+        actor.dispatch_user_message(&sid, &entry, StreamOrigin::User).await;
 
         // Then the session is in Sending phase.
         let state = actor.state.read();
@@ -598,7 +608,7 @@ mod tests {
         }
 
         // When dispatching (which calls push_entry -> expand_user_entry, re-running the scan).
-        actor.dispatch_user_message(&sid, &entry).await;
+        actor.dispatch_user_message(&sid, &entry, StreamOrigin::User).await;
 
         // Then the AI-facing expanded text keeps the literal token (no file:// revert).
         let state = actor.state.read();
@@ -643,7 +653,7 @@ mod tests {
         }
 
         // When dispatching (queue drain).
-        actor.dispatch_user_message(&sid, &entry).await;
+        actor.dispatch_user_message(&sid, &entry, StreamOrigin::User).await;
 
         // Then an Error entry was pushed and no SendToLlmProvider was emitted
         // (the turn is blocked, not re-dispatched).
@@ -673,7 +683,7 @@ mod tests {
         let entry = ChatEntry::user("hello");
 
         // When dispatching a user message.
-        actor.dispatch_user_message(&sid, &entry).await;
+        actor.dispatch_user_message(&sid, &entry, StreamOrigin::User).await;
 
         // Then SendToLlmProvider has provider_id = None.
         let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
@@ -698,7 +708,7 @@ mod tests {
         let entry = ChatEntry::user("hello");
 
         // When dispatching a user message.
-        actor.dispatch_user_message(&sid, &entry).await;
+        actor.dispatch_user_message(&sid, &entry, StreamOrigin::User).await;
 
         // Then SendToLlmProvider has provider_id = Some.
         let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
@@ -769,7 +779,9 @@ mod tests {
         let sid = session_id();
 
         // When dispatching a resume.
-        actor.dispatch_resume(&sid, "manual resume").await;
+        actor
+            .dispatch_resume(&sid, StreamOrigin::User, "manual resume")
+            .await;
 
         // Then SendToLlmProvider was published.
         let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
@@ -790,7 +802,7 @@ mod tests {
         let entry = ChatEntry::user("hello");
 
         // When dispatching a user message.
-        actor.dispatch_user_message(&sid, &entry).await;
+        actor.dispatch_user_message(&sid, &entry, StreamOrigin::User).await;
 
         // Then the steering buffer was drained into history.
         let state = actor.state.read();
@@ -812,7 +824,7 @@ mod tests {
         }
 
         // When dispatching a resume.
-        actor.dispatch_resume(&sid, "resume").await;
+        actor.dispatch_resume(&sid, StreamOrigin::User, "resume").await;
 
         // Then the steering buffer was drained into history.
         let state = actor.state.read();
