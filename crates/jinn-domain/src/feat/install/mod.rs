@@ -261,6 +261,13 @@ const BUNDLED: &[Bundled] = &[
             "../../../../../res/plugins/url-citations.wasm"
         )),
     },
+    Bundled {
+        kind: Kind::Plugin,
+        relative: "tool-call-watchdog.wasm",
+        contents: BundleContents::Wasm(include_bytes!(
+            "../../../../../res/plugins/tool-call-watchdog.wasm"
+        )),
+    },
 ];
 
 /// Installs every bundled default resource into the given destinations.
