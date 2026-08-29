@@ -286,6 +286,7 @@ impl TestServices {
             bridge,
             root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
+            interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: crate::common::request_dump::RequestDumpService::default(),
         }
     }

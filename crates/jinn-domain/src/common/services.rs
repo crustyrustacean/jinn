@@ -99,6 +99,16 @@ pub struct Services {
         >,
     >,
 
+    /// Interactive-term coordinator actor ref, exposed to the tool layer
+    /// (the `interactive_term*` tools) after actor wiring spawns it.
+    pub interactive_term: Arc<
+        std::sync::OnceLock<
+            kameo::actor::ActorRef<
+                crate::feat::interactive_term::interactive_term_actor::InteractiveTermActor,
+            >,
+        >,
+    >,
+
     /// Request dump directory. `None` disables dumping (default).
     pub request_dump: RequestDumpService,
 }
@@ -167,6 +177,7 @@ impl Services {
             bridge,
             root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
+            interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
         }
     }
@@ -214,6 +225,7 @@ impl Services {
             bridge,
             root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
+            interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
         }
     }

@@ -13,8 +13,13 @@
 //!   TUIs don't hang at startup
 //! - [`settle`] — output settle detection (quiet window, hard cap) and
 //!   named-key → byte encoding
+//! - [`interactive_term_actor`] — the coordinator owning sessions across
+//!   tool calls
+//! - [`protocol`] — its ask messages and events
 //!
 pub mod emulator;
+pub mod interactive_term_actor;
+pub mod protocol;
 pub mod pty_session;
 pub mod query_responder;
 pub mod settle;
