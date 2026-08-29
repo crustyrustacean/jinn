@@ -46,6 +46,7 @@ pub use preview::{
 pub use reconcile::{reconcile_after_session_removal, reconcile_split};
 pub use render::SessionsSection;
 pub use render::render_archive_tree_prompt_for_state;
+pub use render::render_close_session_prompt_for_state;
 pub use state::SessionsSectionState;
 pub(crate) use state::sorted_open_sessions;
 pub use state::{clear_visual_parents_on_load, clear_visual_parents_on_load_split};

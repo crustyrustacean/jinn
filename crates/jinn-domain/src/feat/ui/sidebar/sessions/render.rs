@@ -13,6 +13,7 @@ mod entry_line_tests;
 
 use std::time::Instant;
 
+use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::feat::ui::sidebar::section_trait::{SidebarSection, SidebarSectionId};
 use ratatui::Frame;
@@ -163,14 +164,6 @@ impl SidebarSection for SessionsSection {
 
         let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
         frame.render_widget(widget, area);
-
-        // Close session confirmation prompt - overlay 1 row above the cursor.
-        if state.frontend.close_session_prompt
-            && section_focused
-            && let Some(sel) = selected_index
-        {
-            render_close_session_prompt(frame, area, sel.saturating_sub(scroll_offset));
-        }
     }
 
     fn content_height(&self, ctx: &RenderCtx) -> u16 {
@@ -182,23 +175,33 @@ impl SidebarSection for SessionsSection {
     }
 }
 
-/// Renders the close-session confirmation prompt one row above the cursor.
-fn render_close_session_prompt(frame: &mut Frame<'_>, area: Rect, visual_row: usize) {
-    let cursor_y = area.y + visual_row as u16;
-    let prompt_y = cursor_y.saturating_sub(1);
-    let widget = Paragraph::new(Line::from(Span::styled(
-        " Press x again to teardown and archive 1 session ",
-        Style::default().fg(Color::Black).bg(Color::Yellow),
-    )));
-    frame.render_widget(
-        widget,
-        Rect {
-            x: area.x,
-            y: prompt_y,
-            width: area.width,
-            height: 1,
-        },
-    );
+/// Renders the close-session confirmation prompt as a late overlay.
+///
+/// Called AFTER the main column has rendered (from `jinn-tui`'s render pass),
+/// so the banner may extend left over the input box. Anchored 1 row above the
+/// sidebar cursor row and right-aligned to the frame's right edge — the same
+/// geometry as the archive-tree prompt.
+pub fn render_close_session_prompt_for_state(
+    frame: &mut Frame<'_>,
+    sidebar_rect: Rect,
+    frame_area: Rect,
+    ctx: &RenderCtx,
+) {
+    let state = ctx.state;
+    if !state.frontend.close_session_prompt
+        || !state.frontend.scope_stack.is_sidebar()
+        || state.frontend.scope_stack.sidebar_section() != Some(SidebarSectionId::Sessions)
+    {
+        return;
+    }
+    if state.frontend.sessions_section.selected_index.is_none() {
+        return;
+    }
+
+    // Shared cursor-row math: see `render_sessions_cursor_y`.
+    let prompt_y = render_sessions_cursor_y(sidebar_rect, state).saturating_sub(1);
+    let text = " Press x again to teardown and archive 1 session ";
+    render_right_aligned_banner(frame, frame_area, prompt_y, text, Color::Yellow);
 }
 
 /// Renders the archive-tree confirmation prompt as a late overlay.
@@ -225,23 +228,12 @@ pub fn render_archive_tree_prompt_for_state(
     {
         return;
     }
-    let Some(sel) = state.frontend.sessions_section.selected_index else {
+    if state.frontend.sessions_section.selected_index.is_none() {
         return;
-    };
+    }
 
-    // Cursor row: the sessions section is the last, bottom-anchored section.
-    let sessions_height = {
-        let entry_count = sorted_open_sessions(state).len() as u16;
-        entry_count.min(MAX_VISIBLE_SESSIONS as u16).max(1) + 1
-    };
-    let sessions_top_y = sidebar_rect.y + sidebar_rect.height.saturating_sub(sessions_height);
-    let scroll_offset = state.frontend.sessions_section.scroll_offset;
-    let visual_row = sel.saturating_sub(scroll_offset) as u16;
-    // Anchor one row ABOVE the cursor row (computed on the absolute row, so a
-    // top-of-list cursor anchors above the section's first entry — never on
-    // the cursor row itself, matching the close-session prompt).
-    let cursor_y = sessions_top_y + visual_row;
-    let prompt_y = cursor_y.saturating_sub(1);
+    // Shared cursor-row math: see `render_sessions_cursor_y`.
+    let prompt_y = render_sessions_cursor_y(sidebar_rect, state).saturating_sub(1);
 
     let (text, bg) = match prompt {
         ArchiveTreePrompt::Confirm { count, action } => {
@@ -263,6 +255,42 @@ pub fn render_archive_tree_prompt_for_state(
         ),
     };
 
+    render_right_aligned_banner(frame, frame_area, prompt_y, &text, bg);
+}
+
+/// Computes the sidebar sessions cursor row inside the sidebar rect.
+///
+/// The sessions section is the last, bottom-anchored section of the sidebar;
+/// this resolves the cursor's absolute frame row through the same
+/// bottom-anchoring the `Sidebar` container applies when laying out sections.
+fn render_sessions_cursor_y(sidebar_rect: Rect, state: &AppState) -> u16 {
+    let sessions_height = {
+        let entry_count = sorted_open_sessions(state).len() as u16;
+        entry_count.min(MAX_VISIBLE_SESSIONS as u16).max(1) + 1
+    };
+    let sessions_top_y = sidebar_rect.y + sidebar_rect.height.saturating_sub(sessions_height);
+    let scroll_offset = state.frontend.sessions_section.scroll_offset;
+    let visual_row = state
+        .frontend
+        .sessions_section
+        .selected_index
+        .unwrap_or(0)
+        .saturating_sub(scroll_offset) as u16;
+    sessions_top_y + visual_row
+}
+
+/// Renders a one-row banner right-aligned to the frame's right edge.
+///
+/// Extends left over the main column as far as the banner needs. Clips to the
+/// frame (grapheme-aware, never char-indexed) only if the banner could not fit
+/// at all.
+fn render_right_aligned_banner(
+    frame: &mut Frame<'_>,
+    frame_area: Rect,
+    prompt_y: u16,
+    text: &str,
+    bg: Color,
+) {
     // Right-align to the frame's right edge; extend left over the main column
     // as far as the banner needs. Clip to the frame (grapheme-aware, never
     // char-indexed) only if the banner could not fit at all.
@@ -281,7 +309,7 @@ pub fn render_archive_tree_prompt_for_state(
             (cropped, x)
         } else {
             let x = frame_area.x + frame_area.width - text_width;
-            (text, x)
+            (text.to_owned(), x)
         }
     };
     let text_width = text.width() as u16;
