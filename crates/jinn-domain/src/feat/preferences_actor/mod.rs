@@ -20,8 +20,8 @@ pub use app_state_storage::{
 };
 pub use user_preferences::{
     AutoPruneConfig, CompactionConfig, InitDefaultConfigError, InitOutcome, MinimapConfig,
-    OpenrouterWebSearchConfig, RequestRetryConfig, UserPreferences, init_default_config_to,
-    preferences_path,
+    OpenrouterWebSearchConfig, RequestRetryConfig, TaskListPreferences, UserPreferences,
+    init_default_config_to, preferences_path,
 };
 pub use user_preferences_storage::{
     FilesystemUserPreferencesStorage, InMemoryUserPreferencesStorage, UserPreferencesStorageService,
