@@ -106,7 +106,7 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         if wstate.frontend.terminal.record_layout_size(rows, cols) {
             let closure = jinn_domain::common::bridge::Bridge::publish_closure(
                 jinn_domain::feat::interactive_term::protocol::command::ResizeTerm {
-                    session_id: None,
+                    chat_session_id: Some(wstate.session.active_session_id().clone()),
                     size: (rows, cols),
                 },
             );

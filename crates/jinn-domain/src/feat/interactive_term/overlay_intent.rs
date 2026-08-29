@@ -50,8 +50,12 @@ pub fn handle_toggle_overlay(
         std::clone::Clone::clone,
     );
     // A session without a live terminal has nothing to show; the overlay is
-    // never a spawn trigger.
+    // never a spawn trigger. A status hint explains the inert press.
     if !state.frontend.terminal.live_terms.contains(&target) {
+        state.frontend.status_hint = Some(
+            "that session has no live terminal — ask the agent to run `interactive_term`"
+                .to_owned(),
+        );
         return IntentResult::empty();
     }
     // If a different popup holds the top of the stack, it is replaced: the

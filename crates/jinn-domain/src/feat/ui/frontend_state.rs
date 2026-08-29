@@ -127,6 +127,12 @@ pub struct FrontendState {
     /// Global toggle (not per-session); not persisted across process restarts.
     pub audit_popup_visible: bool,
 
+    /// Transient one-line hint shown in the status bar (e.g. "that session
+    /// has no live terminal"). `None` hides it. The next intent clears it, so
+    /// it never lingers past the action that raised it.
+    /// OWNER: IntentHandler (raise); every handled intent dismisses it.
+    pub status_hint: Option<String>,
+
     /// Whether the "Press x again to confirm closure" prompt is showing.
     /// OWNER: IntentHandler (set on first SidebarSessionClose, consumed on second
     ///         SidebarSessionClose or dismissed on any other key).
@@ -225,6 +231,7 @@ impl Default for FrontendState {
             caches: FrontendCaches::default(),
             cancel_stream_prompt: false,
             audit_popup_visible: false,
+            status_hint: None,
             close_session_prompt: false,
             archive_tree_prompt: None,
             pickers: PickerStates::default(),

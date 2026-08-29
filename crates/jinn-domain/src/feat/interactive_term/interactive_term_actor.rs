@@ -641,20 +641,19 @@ impl Message<ResizeTerm> for InteractiveTermActor {
 }
 
 impl InteractiveTermActor {
-    /// Resizes the named (or only live) session's pty and emulator.
+    /// Resizes the named chat session's pty and emulator.
     ///
-    /// Sizes are clamped to a minimal usable grid; no-op when nothing is
-    /// running or the size is unchanged.
+    /// Sizes are clamped to a minimal usable grid; a message without a chat
+    /// session or naming a session with no live terminal is a no-op — the
+    /// render layer always names the session the overlay shows, and a
+    /// broadcast resize would clobber other sessions' grids.
     async fn apply_resize(&mut self, msg: ResizeTerm) {
-        // Resolve the chat session up front so the mutable borrow below
-        // stays disjoint from the mirror write at the end.
-        let chat = match &msg.session_id {
-            Some(id) => self.chat_for_term(id),
-            None => self.sessions.keys().next().cloned(),
-        };
-        let Some(chat) = chat else {
+        let Some(chat) = msg.chat_session_id else {
             return;
         };
+        if !self.sessions.contains_key(&chat) {
+            return;
+        }
         let (rows, cols) = (msg.size.0.max(2), msg.size.1.max(20));
         let Some(session) = self.sessions.get_mut(&chat) else {
             return;
@@ -1499,23 +1498,61 @@ mod tests {
         let (actor, state, _root) =
             spawn_coordinator_with_state(&harness, TermControl::default()).await;
         let chat = crate::protocol::SessionId::new();
-        let session_id = spawn_cat(&actor, &chat).await;
+        spawn_cat(&actor, &chat).await;
 
-        // When resizing to a small grid.
+        // When resizing that chat session to a small grid.
         actor
             .tell(ResizeTerm {
-                session_id: Some(session_id.clone()),
+                chat_session_id: Some(chat.clone()),
                 size: (10, 40),
             })
             .await
             .expect("resize tell");
 
-        // Give the actor a beat to process the tell.
+        // Then the session's emulator regrided to the requested size.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let guard = state.read();
+        let mirror = guard.frontend.terminal.mirror(&chat).expect("mirror");
+        assert_eq!(
+            (mirror.cells.rows, mirror.cells.cols),
+            (10, 40),
+            "named chat session must resize to the requested grid"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn resize_targets_only_the_named_chat_session() {
+        // Given a coordinator with two live terminals in different chat
+        // sessions.
+        let harness = TestHarness::new().await;
+        let (actor, state, _root) =
+            spawn_coordinator_with_state(&harness, TermControl::default()).await;
+        let chat_a = crate::protocol::SessionId::new();
+        let chat_b = crate::protocol::SessionId::new();
+        spawn_cat(&actor, &chat_a).await;
+        spawn_cat(&actor, &chat_b).await;
+
+        // When resizing only chat_a's terminal.
+        actor
+            .tell(ResizeTerm {
+                chat_session_id: Some(chat_a.clone()),
+                size: (10, 40),
+            })
+            .await
+            .expect("resize tell");
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        // Then the mirror still carries the session (no error occurred).
+        // Then chat_a regrided and chat_b kept the default grid.
         let guard = state.read();
-        assert!(guard.frontend.terminal.mirror(&chat).is_some());
+        let a = guard.frontend.terminal.mirror(&chat_a).expect("a mirror");
+        let b = guard.frontend.terminal.mirror(&chat_b).expect("b mirror");
+        assert_eq!((a.cells.rows, a.cells.cols), (10, 40));
+        assert_ne!(
+            (b.cells.rows, b.cells.cols),
+            (10, 40),
+            "an unnamed sibling session must not be regrided"
+        );
     }
 
     #[rstest::rstest]
@@ -1526,10 +1563,32 @@ mod tests {
         let (actor, _state, _root) =
             spawn_coordinator_with_state(&harness, TermControl::default()).await;
 
-        // When sending a resize.
+        // When sending a resize with no chat session named.
         let result = actor
             .tell(ResizeTerm {
-                session_id: None,
+                chat_session_id: None,
+                size: (10, 40),
+            })
+            .await;
+
+        // Then it is accepted silently (no arbitrary target).
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn resize_of_unknown_chat_session_is_noop() {
+        // Given a coordinator with a live terminal in another chat session.
+        let harness = TestHarness::new().await;
+        let (actor, _state, _root) =
+            spawn_coordinator_with_state(&harness, TermControl::default()).await;
+        let live = crate::protocol::SessionId::new();
+        spawn_cat(&actor, &live).await;
+
+        // When resizing an unknown chat session.
+        let result = actor
+            .tell(ResizeTerm {
+                chat_session_id: Some(crate::protocol::SessionId::new()),
                 size: (10, 40),
             })
             .await;
@@ -1747,7 +1806,10 @@ mod tests {
         };
 
         // When no tool call is in flight and the program prints.
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        // The screen task ticks at 50ms; a fresh print must land within ~1s
+        // (generous vs. the ~100ms AC, but tight enough to catch a
+        // regression to settle-only pumping).
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
         loop {
             let contains = state
                 .read()

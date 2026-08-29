@@ -134,7 +134,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
     use jinn_domain::common::app_state::{AppState, FocusScope};
-    use jinn_domain::feat::interactive_term::emulator::ScreenCells;
+    use jinn_domain::feat::interactive_term::emulator::{CellStyle, ScreenCells};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Position;
@@ -279,6 +279,101 @@ mod tests {
         let plain = buffer[(1, 0)].clone();
         assert_eq!(plain.symbol(), "x");
         assert_eq!(plain.modifier, ratatui::style::Modifier::empty());
+    }
+
+    /// Renders a single styled cell `ch` at (0, 0) and returns the buffer
+    /// cell, so style-mapping cases share one assertion path.
+    async fn rendered_cell_for_style(style: CellStyle) -> ratatui::buffer::Cell {
+        use jinn_domain::feat::interactive_term::emulator::{ScreenCells, TermCell};
+
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        let mut cells = vec![TermCell::Styled { ch: 'S', style }];
+        cells.resize(200, TermCell::Blank);
+        state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
+            "term-1",
+            "S".to_owned(),
+            ScreenCells {
+                rows: 24,
+                cols: 80,
+                cells,
+            },
+            (0, 0),
+            true,
+        );
+        let app = crate::TuiApp::test_builder().state(state).build().await;
+
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        let area = Rect::new(0, 0, 80, 24);
+        let guard = app.core.state.read();
+        let ctx = RenderCtx::new(&guard);
+        terminal
+            .draw(|f| render_terminal_tab(f, area, &ctx))
+            .expect("draw");
+        terminal.backend().buffer()[(0, 0)].clone()
+    }
+
+    #[rstest::rstest]
+    #[case::background(
+        CellStyle {
+            bg: TermColor::Idx(4),
+            ..CellStyle::default()
+        },
+        |cell: &ratatui::buffer::Cell| {
+            assert_eq!(cell.bg, Color::Indexed(4), "bg must map to Indexed");
+        },
+    )]
+    #[case::rgb_truecolor(
+        CellStyle {
+            fg: TermColor::Rgb(10, 200, 30),
+            ..CellStyle::default()
+        },
+        |cell: &ratatui::buffer::Cell| {
+            assert_eq!(cell.fg, Color::Rgb(10, 200, 30), "fg must map to Rgb");
+        },
+    )]
+    #[case::italic(
+        CellStyle {
+            italic: true,
+            ..CellStyle::default()
+        },
+        |cell: &ratatui::buffer::Cell| {
+            assert!(cell.modifier.contains(Modifier::ITALIC));
+        },
+    )]
+    #[case::underline(
+        CellStyle {
+            underline: true,
+            ..CellStyle::default()
+        },
+        |cell: &ratatui::buffer::Cell| {
+            assert!(cell.modifier.contains(Modifier::UNDERLINED));
+        },
+    )]
+    #[case::inverse(
+        CellStyle {
+            inverse: true,
+            ..CellStyle::default()
+        },
+        |cell: &ratatui::buffer::Cell| {
+            assert!(cell.modifier.contains(Modifier::REVERSED));
+        },
+    )]
+    #[tokio::test]
+    async fn styled_cell_attrs_map_onto_the_rendered_buffer(
+        #[case] style: CellStyle,
+        #[case] assert_style: impl Fn(&ratatui::buffer::Cell),
+    ) {
+        // Given a mirror whose single cell carries one terminal style.
+        // When the overlay renders on a test backend.
+        let cell = rendered_cell_for_style(style).await;
+        // Then the style maps to the matching ratatui color/modifier.
+        assert_style(&cell);
     }
 
     #[rstest::rstest]

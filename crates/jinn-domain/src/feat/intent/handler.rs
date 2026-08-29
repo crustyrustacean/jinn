@@ -56,6 +56,9 @@ impl IntentHandler {
     /// Returns commands and events for the actor system.
     pub fn handle(intent: &Intent, state: &mut AppState) -> IntentResult {
         state.frontend.tui_signals.clear();
+        // Status hints are transient: any fresh intent dismisses the previous
+        // one (the handler arms that raise one run after this line).
+        state.frontend.status_hint = None;
 
         // Capture active session ID before processing for diff-after check.
         let prev_active = state.session.active_session_id().clone();
@@ -1608,6 +1611,44 @@ mod tests {
 
         // Then the scope stays Input (default scope; no overlay opened).
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+    }
+
+    #[rstest::rstest]
+    fn toggle_without_live_term_sets_a_status_hint() {
+        // Given default state with no live terminals.
+        let mut state = AppState::default();
+
+        // When toggling the terminal overlay.
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
+
+        // Then no overlay opened (still the default scope).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+        // And a status hint explains the inert press.
+        assert!(
+            state
+                .frontend
+                .status_hint
+                .as_deref()
+                .is_some_and(|h| h.contains("no live terminal")),
+            "expected a no-live-terminal hint, got: {:?}",
+            state.frontend.status_hint
+        );
+    }
+
+    #[rstest::rstest]
+    fn next_intent_dismisses_a_raised_status_hint() {
+        // Given a state carrying a hint from a failed overlay toggle.
+        let mut state = AppState::default();
+        state.frontend.status_hint = Some("stale hint".to_owned());
+
+        // When handling any other intent.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+
+        // Then the hint is cleared.
+        assert!(state.frontend.status_hint.is_none());
     }
 
     #[rstest::rstest]

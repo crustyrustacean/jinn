@@ -159,15 +159,15 @@ impl crate::common::bus::BusMessage for SetTermControl {}
 
 impl crate::common::bus::BusMessage for SendTermKey {}
 
-/// Resize the active session's pty + emulator to the terminal tab's layout.
+/// Resize a session's pty + emulator to the terminal overlay's inner rect.
 ///
-/// Published by the render layer when the terminal tab's content rect
+/// Published by the render layer when the terminal overlay's inner rect
 /// changes. Fire-and-forget; the actor clamps to sane bounds.
 #[derive(Debug, Clone)]
 pub struct ResizeTerm {
-    /// Target session (matched against the mirrored session; `None` resizes
-    /// whatever session the tab shows).
-    pub session_id: Option<TermSessionId>,
+    /// The chat session whose terminal resizes. `None` is a no-op (the
+    /// render layer always names the active session; it never broadcasts).
+    pub chat_session_id: Option<crate::protocol::SessionId>,
     /// New size as `(rows, cols)`.
     pub size: (u16, u16),
 }
