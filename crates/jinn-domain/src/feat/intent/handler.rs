@@ -692,11 +692,22 @@ impl IntentHandler {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
             }
 
-            // ── Dashboard tab ──
+            // ── Dashboard / Terminal tabs ──
             Intent::SwitchTab => {
+                // Tab cycle: Normal → Dashboard → TerminalView → Normal.
+                // Leaving TerminalView never drops control state; handback is
+                // explicit (Intent::TerminalHandback).
                 let new_base = match state.frontend.scope_stack.current() {
                     crate::common::app_state::FocusScope::Dashboard => {
+                        crate::common::app_state::FocusScope::TerminalView
+                    }
+                    crate::common::app_state::FocusScope::TerminalView => {
                         crate::common::app_state::FocusScope::Normal
+                    }
+                    crate::common::app_state::FocusScope::TerminalControl => {
+                        // Tab is inert while the user holds control; handback
+                        // key is the only exit from control mode.
+                        crate::common::app_state::FocusScope::TerminalControl
                     }
                     _ => crate::common::app_state::FocusScope::Dashboard,
                 };
@@ -721,6 +732,20 @@ impl IntentHandler {
             }
             Intent::ToDiscordThread => {
                 feat::discord::to_thread_intent::handle_to_discord_thread(state)
+            }
+
+            Intent::TerminalTakeControl => {
+                crate::feat::interactive_term::takeover_intent::handle_take_control(state)
+            }
+            Intent::TerminalHandback => {
+                crate::feat::interactive_term::takeover_intent::handle_handback(state)
+            }
+            Intent::TerminalSendKey { bytes, label } => {
+                crate::feat::interactive_term::takeover_intent::handle_send_key(
+                    state,
+                    bytes.clone(),
+                    label.clone(),
+                )
             }
         }
     }
@@ -1422,4 +1447,126 @@ mod tests {
             "should not emit ActiveSessionChanged when session unchanged"
         );
     }
+
+
+    #[rstest::rstest]
+    fn switch_tab_cycles_through_terminal_view() {
+        // Given an AppState in Normal scope.
+        let mut state = AppState::default();
+
+        // When switching tabs three times.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+        let after_first = state.frontend.scope_stack.base().clone();
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+        let after_second = state.frontend.scope_stack.base().clone();
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+        let after_third = state.frontend.scope_stack.base().clone();
+
+        // Then the cycle is Normal → Dashboard → TerminalView → Normal.
+        assert_eq!(after_first, FocusScope::Dashboard);
+        assert_eq!(after_second, FocusScope::TerminalView);
+        assert_eq!(after_third, FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn switch_tab_is_inert_while_user_holds_terminal_control() {
+        // Given an AppState with the terminal-control tab as base.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalControl);
+
+        // When switching tabs.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+
+        // Then the base stays TerminalControl — handback is the only exit.
+        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::TerminalControl);
+    }
+
+    #[rstest::rstest]
+    fn take_control_pushes_control_scope_and_flags_user() {
+        // Given an AppState whose terminal tab shows a session.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+
+        // When handling TerminalTakeControl.
+        IntentHandler::handle(&Intent::TerminalTakeControl, &mut state);
+
+        // Then the scope is TerminalControl.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalControl
+        );
+        // And the mirror records the user as control holder.
+        assert_eq!(
+            state.frontend.terminal.control,
+            crate::feat::interactive_term::terminal_tab_state::TermControlHolder::User
+        );
+    }
+
+    #[rstest::rstest]
+    fn send_key_outside_control_scope_is_inert() {
+        // Given an AppState in TerminalView (no control).
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+
+        // When handling TerminalSendKey.
+        let result = IntentHandler::handle(
+            &Intent::TerminalSendKey {
+                bytes: b"a".to_vec(),
+                label: String::new(),
+            },
+            &mut state,
+        );
+
+        // Then no pty write command is published.
+        assert!(result.messages.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn handback_pops_scope_and_steers_screen() {
+        // Given an AppState where the user holds control with a screen mirror.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        state.frontend.terminal.apply_screen(
+            "term-1",
+            "handback-screen-marker".to_owned(),
+            (0, 0),
+            false,
+        );
+        IntentHandler::handle(&Intent::TerminalTakeControl, &mut state);
+
+        // When handling TerminalHandback.
+        let result = IntentHandler::handle(&Intent::TerminalHandback, &mut state);
+
+        // Then the scope pops back to TerminalView.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalView
+        );
+        // And the mirror flips back to agent control.
+        assert_eq!(
+            state.frontend.terminal.control,
+            crate::feat::interactive_term::terminal_tab_state::TermControlHolder::Agent
+        );
+        // And a steering message carrying the screen is published.
+        assert!(
+            result.message_names.iter().any(|name| {
+                name.ends_with("SubmitSteeringMessage")
+            }),
+            "handback must publish SubmitSteeringMessage; got {:?}",
+            result.message_names
+        );
+    }
+
 }

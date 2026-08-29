@@ -364,6 +364,24 @@ pub enum Intent {
     /// Move dashboard selection to the last row.
     DashboardSelectLast,
 
+    // ── Terminal tab (interactive_term takeover) ──────────────────
+    /// Take control of the active `interactive_term` session (terminal tab,
+    /// `i` key). All subsequent keys forward to the pty until handback.
+    TerminalTakeControl,
+    /// Hand the terminal back to the agent (handback key, default `<c-g>`).
+    ///
+    /// Exits control mode; the captured screen is steered to the model so it
+    /// sees the post-takeover state in both busy (steering drain) and idle
+    /// (immediate dispatch) session phases.
+    TerminalHandback,
+    /// Forward one key event to the pty while the user holds control.
+    TerminalSendKey {
+        /// Encoded bytes for the key (produced by the keymap catch_all).
+        bytes: Vec<u8>,
+        /// Human-readable key description for the hint line.
+        label: String,
+    },
+
     // ── Discord ──────────────────────────────────────────────────
     /// Continue the active session in a new Discord forum thread ("to-thread").
     ///
@@ -533,6 +551,11 @@ impl std::fmt::Display for Intent {
             Intent::DashboardSelectDown => write!(f, "dashboard select down"),
             Intent::DashboardSelectFirst => write!(f, "dashboard select first"),
             Intent::DashboardSelectLast => write!(f, "dashboard select last"),
+            Intent::TerminalTakeControl => write!(f, "terminal take control"),
+            Intent::TerminalHandback => write!(f, "terminal handback"),
+            Intent::TerminalSendKey { label, .. } => {
+                write!(f, "terminal send key ({label})")
+            }
             Intent::ToDiscordThread => write!(f, "to discord thread"),
         }
     }

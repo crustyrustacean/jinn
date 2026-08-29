@@ -97,6 +97,20 @@ fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Inte
 #[rustfmt::skip]
 #[expect(clippy::too_many_lines, reason = "exhaustive keymap bindings grow with each scope")]
 pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
+    init_with_handback(
+        jinn_domain::feat::interactive_term::prefs::DEFAULT_HANDBACK_KEY,
+    )
+}
+
+/// Builds the keymap with a configured terminal handback binding.
+///
+/// `handback` is the normalized `<c-?>` notation from
+/// `[interactive_term] handback_key` in `jinn.toml`; invalid notations
+/// degrade to no handback binding (the caller validates config earlier).
+#[must_use]
+#[rustfmt::skip]
+#[expect(clippy::too_many_lines, reason = "exhaustive keymap bindings grow with each scope")]
+pub fn init_with_handback(handback: &str) -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     let mut keymap = Keymap::new();
 
     keymap
@@ -391,6 +405,36 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("q", Intent::Quit, KeyCategory::General)
         .bind("<esc>", Intent::SwitchTab, KeyCategory::General)
         .bind("?", Intent::ToggleWhichkey, KeyCategory::General);
+    });
+
+    // TerminalView scope - watching an interactive_term session. Passive:
+    // nothing forwards to the pty; only leaving the tab or taking control.
+    keymap.scope(Scope::TerminalView, |b| {
+        b
+        .bind("<Tab>", Intent::SwitchTab, KeyCategory::General)
+        .bind("i", Intent::TerminalTakeControl, KeyCategory::General)
+        .bind("q", Intent::Quit, KeyCategory::General)
+        .bind("?", Intent::ToggleWhichkey, KeyCategory::General);
+    });
+
+    // TerminalControl scope - the user holds the pty. Every key forwards
+    // via catch_all; the handback key is bound (bindings beat catch_all)
+    // and never reaches the program.
+    keymap.scope(Scope::TerminalControl, |b| {
+        b
+        .bind(handback, Intent::TerminalHandback, KeyCategory::General)
+        .catch_all(|key: KeyEvent| {
+            let bytes =
+                jinn_domain::feat::interactive_term::settle::encode_key_event(&key);
+            if bytes.is_empty() {
+                None
+            } else {
+                Some(Intent::TerminalSendKey {
+                    bytes,
+                    label: String::new(),
+                })
+            }
+        });
     });
 
     // ArgInput scope - typing positional args for a lifecycle command.
@@ -1294,6 +1338,172 @@ mod tests {
             other => panic!("[p must be a leaf, got branch: {other:?}"),
         }
     }
+
+    #[rstest::rstest]
+    #[test]
+    fn terminal_view_scope_does_not_forward_keys() {
+        // Given a keymap queried in TerminalView scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::TerminalView);
+
+        // When pressing a printable key.
+        let g = KeyEvent {
+            key: Key::Char('g'),
+            modifiers: Modifiers::none(),
+        };
+        let intent = wk.handle_key(g);
+
+        // Then nothing fires (view mode is passive — no pty forwarding).
+        assert!(intent.is_none(), "TerminalView must not forward keys; got {intent:?}");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn terminal_view_scope_i_takes_control() {
+        // Given a keymap queried in TerminalView scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::TerminalView);
+
+        // When pressing `i`.
+        let i = KeyEvent {
+            key: Key::Char('i'),
+            modifiers: Modifiers::none(),
+        };
+        let intent = wk.handle_key(i);
+
+        // Then it resolves to TerminalTakeControl.
+        let intent = intent.expect("`i` in TerminalView must fire an intent");
+        assert!(matches!(intent, Intent::TerminalTakeControl));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn terminal_control_scope_printable_forwards_to_send_key() {
+        // Given a keymap queried in TerminalControl scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::TerminalControl);
+
+        // When pressing a printable key.
+        let a = KeyEvent {
+            key: Key::Char('a'),
+            modifiers: Modifiers::none(),
+        };
+        let intent = wk.handle_key(a);
+
+        // Then it resolves to TerminalSendKey carrying the encoded byte.
+        let intent = intent.expect("printable key in TerminalControl must forward");
+        match intent {
+            Intent::TerminalSendKey { bytes, .. } => assert_eq!(bytes, b"a"),
+            other => panic!("expected TerminalSendKey, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn terminal_control_scope_handback_key_does_not_forward() {
+        // Given a keymap queried in TerminalControl scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::TerminalControl);
+
+        // When pressing <c-g> (the handback key).
+        let ctrl_g = KeyEvent {
+            key: Key::Char('g'),
+            modifiers: Modifiers {
+                ctrl: true,
+                alt: false,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(ctrl_g);
+
+        // Then it resolves to TerminalHandback, not a pty forward — the
+        // handback key is consumed by jinn.
+        let intent = intent.expect("<c-g> in TerminalControl must fire an intent");
+        assert!(matches!(intent, Intent::TerminalHandback));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn terminal_control_scope_ctrl_c_forwards_as_control_byte() {
+        // Given a keymap queried in TerminalControl scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::TerminalControl);
+
+        // When pressing Ctrl+C.
+        let ctrl_c = KeyEvent {
+            key: Key::Char('c'),
+            modifiers: Modifiers {
+                ctrl: true,
+                alt: false,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(ctrl_c);
+
+        // Then it forwards as the C0 ETX byte (not jinn's CtrlClear).
+        let intent = intent.expect("ctrl+c in TerminalControl must forward");
+        match intent {
+            Intent::TerminalSendKey { bytes, .. } => assert_eq!(bytes, vec![0x03]),
+            other => panic!("expected TerminalSendKey, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn custom_handback_binding_is_respected() {
+        // Given a keymap built with `<c-q>` as the handback key.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init_with_handback("<c-q>");
+        let mut wk = WhichKeyInstance::new(keymap, Scope::TerminalControl);
+
+        // When pressing <c-q>.
+        let ctrl_q = KeyEvent {
+            key: Key::Char('q'),
+            modifiers: Modifiers {
+                ctrl: true,
+                alt: false,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(ctrl_q);
+
+        // Then it resolves to TerminalHandback.
+        let intent = intent.expect("configured handback key must fire an intent");
+        assert!(matches!(intent, Intent::TerminalHandback));
+
+        // When pressing <c-g> (no longer the handback key).
+        let ctrl_g = KeyEvent {
+            key: Key::Char('g'),
+            modifiers: Modifiers {
+                ctrl: true,
+                alt: false,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(ctrl_g);
+
+        // Then it forwards to the pty instead (TerminalSendKey).
+        let intent = intent.expect("former handback key must forward");
+        assert!(matches!(intent, Intent::TerminalSendKey { .. }));
+    }
+
 }
 
 #[cfg(test)]

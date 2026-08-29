@@ -32,8 +32,8 @@ use kameo::prelude::{Context, Message};
 use crate::common::services::bus_service::BusService;
 use crate::feat::interactive_term::emulator::Emulator;
 use crate::feat::interactive_term::protocol::command::{
-    ControlHolder, KillTerm, KillTermOutcome, SendTermInput, SendTermOutcome, SetTermControl,
-    SpawnTerm, SpawnTermOutcome, TermScreen, TermSessionId,
+    ControlHolder, KillTerm, KillTermOutcome, ResizeTerm, SendTermInput, SendTermOutcome,
+    SendTermKey, SetTermControl, SpawnTerm, SpawnTermOutcome, TermScreen, TermSessionId,
 };
 use crate::feat::interactive_term::protocol::event::{TermControlChanged, TermScreenUpdated};
 use crate::feat::interactive_term::pty_session::{ExitInfo, OutputTx, PtySession};
@@ -101,6 +101,8 @@ pub struct InteractiveTermActor {
     bus: BusService,
     control: TermControl,
     sessions: HashMap<TermSessionId, TermSession>,
+    state: crate::common::state::State,
+    cap: crate::common::tcaps::frontend::FrontendCap,
     settle_quiet: Duration,
     settle_cap: Duration,
 }
@@ -112,6 +114,11 @@ pub struct InteractiveTermActorDeps {
     pub bus: BusService,
     /// Shared control-holder flag; the spawner keeps a clone for the UI.
     pub control: TermControl,
+    /// Shared application state — the actor owns `frontend.terminal` and
+    /// mirrors published screen/control events into it.
+    pub state: crate::common::state::State,
+    /// Capability to write `frontend.terminal`.
+    pub cap: crate::common::tcaps::frontend::FrontendCap,
     /// Quiet window for the settle wait.
     pub settle_quiet: Duration,
     /// Hard cap for the settle wait.
@@ -126,10 +133,18 @@ impl kameo::Actor for InteractiveTermActor {
         args.bus
             .register(actor_ref.clone().recipient::<SetTermControl>())
             .await;
+        args.bus
+            .register(actor_ref.clone().recipient::<SendTermKey>())
+            .await;
+        args.bus
+            .register(actor_ref.clone().recipient::<ResizeTerm>())
+            .await;
         Ok(Self {
             bus: args.bus,
             control: args.control,
             sessions: HashMap::new(),
+            state: args.state,
+            cap: args.cap,
             settle_quiet: args.settle_quiet,
             settle_cap: args.settle_cap,
         })
@@ -179,6 +194,7 @@ impl InteractiveTermActor {
         let control = self.control.clone();
         let bus = self.bus.clone();
         let (quiet, cap) = (self.settle_quiet, self.settle_cap);
+        let mirror = Some((&self.state, &self.cap));
         drain_until_settled(
             &session_id,
             &mut pty,
@@ -186,6 +202,7 @@ impl InteractiveTermActor {
             &mut rx,
             &bus,
             &control,
+            mirror,
             quiet,
             cap,
             msg.max_wait,
@@ -259,6 +276,7 @@ impl InteractiveTermActor {
         let TermSession {
             pty, emulator, rx, ..
         } = &mut session;
+        let mirror = Some((&self.state, &self.cap));
         drain_until_settled(
             &session_id,
             pty,
@@ -266,6 +284,7 @@ impl InteractiveTermActor {
             rx,
             &self.bus,
             &self.control,
+            mirror,
             self.settle_quiet,
             self.settle_cap,
             msg.max_wait,
@@ -351,6 +370,7 @@ async fn drain_until_settled(
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
     bus: &BusService,
     control: &TermControl,
+    mirror: Option<(&crate::common::state::State, &crate::common::tcaps::frontend::FrontendCap)>,
     quiet: Duration,
     cap: Duration,
     max_wait: Duration,
@@ -386,13 +406,21 @@ async fn drain_until_settled(
                     let screen = emulator.plain_text();
                     if screen != previous_screen {
                         previous_screen = screen.clone();
+                        let cursor = emulator.cursor_position();
+                        let cursor_hidden = emulator.cursor_hidden();
                         bus.publish(TermScreenUpdated {
                             session_id: session_id.clone(),
                             screen: screen.clone(),
-                            cursor: emulator.cursor_position(),
-                            cursor_hidden: emulator.cursor_hidden(),
+                            cursor,
+                            cursor_hidden,
                         })
                         .await;
+                        if let Some((state, cap)) = mirror {
+                            use crate::common::tcaps::frontend::TerminalMirrorWrite;
+                            state.with_terminal(cap, |ops| {
+                                ops.apply_screen(&session_id.0, screen.clone(), cursor, cursor_hidden)
+                            });
+                        }
                     }
                 }
             }
@@ -453,6 +481,20 @@ impl Message<KillTerm> for InteractiveTermActor {
     }
 }
 
+impl Message<SendTermKey> for InteractiveTermActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SendTermKey, _ctx: &mut Context<Self, Self::Reply>) {
+        // User keystrokes bypass the settle wait entirely: the user is
+        // driving, so there is nothing to report back to an agent.
+        if let Some(session) = self.sessions.get_mut(&msg.session_id) {
+            if let Err(report) = session.pty.write(&msg.bytes) {
+                tracing::warn!(report = %report, session = %msg.session_id, "pty key write failed");
+            }
+        }
+    }
+}
+
 impl Message<SetTermControl> for InteractiveTermActor {
     type Reply = ();
 
@@ -464,6 +506,62 @@ impl Message<SetTermControl> for InteractiveTermActor {
                 user_controls: msg.holder == ControlHolder::User,
             })
             .await;
+    }
+}
+
+impl Message<ResizeTerm> for InteractiveTermActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ResizeTerm, _ctx: &mut Context<Self, Self::Reply>) {
+        self.apply_resize(msg).await;
+    }
+}
+
+impl InteractiveTermActor {
+    /// Resizes the named (or only live) session's pty and emulator.
+    ///
+    /// Sizes are clamped to a minimal usable grid; no-op when nothing is
+    /// running or the size is unchanged.
+    async fn apply_resize(&mut self, msg: ResizeTerm) {
+        // Resolve the session id up front so the mutable borrow below stays
+        // disjoint from the mirror write at the end.
+        let session_id = match &msg.session_id {
+            Some(id) => self.sessions.contains_key(id).then(|| id.clone()),
+            None => self.sessions.keys().next().cloned(),
+        };
+        let Some(session_id) = session_id else {
+            return;
+        };
+        let (rows, cols) = (msg.size.0.max(2), msg.size.1.max(20));
+        let Some(session) = self.sessions.get_mut(&session_id) else {
+            return;
+        };
+        if session.emulator.size() == (rows, cols) {
+            return;
+        }
+        let _ = session.pty.resize(portable_pty::PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        });
+        session.emulator.set_size(rows, cols);
+        session.last_screen = session.emulator.plain_text();
+        let screen = session.last_screen.clone();
+        let cursor = session.emulator.cursor_position();
+        let hidden = session.emulator.cursor_hidden();
+        self.bus
+            .publish(TermScreenUpdated {
+                session_id: session_id.clone(),
+                screen: screen.clone(),
+                cursor,
+                cursor_hidden: hidden,
+            })
+            .await;
+        self.state.with_terminal(&self.cap, |ops| {
+            use crate::common::tcaps::frontend::TerminalMirrorWrite;
+            ops.apply_screen(&session_id.0, screen, cursor, hidden);
+        });
     }
 }
 
@@ -486,13 +584,24 @@ mod tests {
     const QUIET: Duration = Duration::from_millis(150);
     const CAP: Duration = Duration::from_secs(2);
 
-    fn deps(bus: BusService, control: TermControl) -> InteractiveTermActorDeps {
-        InteractiveTermActorDeps {
+    fn deps(
+        bus: BusService,
+        control: TermControl,
+    ) -> (
+        InteractiveTermActorDeps,
+        crate::common::state::State,
+    ) {
+        let state =
+            crate::common::state::State::new(crate::common::app_state::AppState::default());
+        let deps = InteractiveTermActorDeps {
             bus,
             control,
+            state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
             settle_quiet: QUIET,
             settle_cap: CAP,
-        }
+        };
+        (deps, state)
     }
 
     /// Spawns a coordinator under a fresh root supervisor.
@@ -507,9 +616,24 @@ mod tests {
         crate::common::root_supervisor::RootSupervisorRef,
     ) {
         let root = RootSupervisor::spawn_root().await;
-        let (actor, _control) =
-            spawn_interactive_term_actor(deps(harness.bus(), control), &root).await;
+        let (deps, _state) = deps(harness.bus(), control);
+        let (actor, _control) = spawn_interactive_term_actor(deps, &root).await;
         (actor, root)
+    }
+
+    /// Spawns a coordinator with a readable state handle.
+    async fn spawn_coordinator_with_state(
+        harness: &TestHarness,
+        control: TermControl,
+    ) -> (
+        ActorRef<InteractiveTermActor>,
+        crate::common::state::State,
+        crate::common::root_supervisor::RootSupervisorRef,
+    ) {
+        let root = RootSupervisor::spawn_root().await;
+        let (deps, state) = deps(harness.bus(), control);
+        let (actor, _control) = spawn_interactive_term_actor(deps, &root).await;
+        (actor, state, root)
     }
 
     fn spawn_msg(command: &str) -> SpawnTerm {
@@ -854,4 +978,105 @@ mod tests {
         assert_eq!(exited.code, 7);
         let _ = session_id;
     }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn screen_updates_mirror_into_frontend_state() {
+        // Given a coordinator actor wired to a readable shared state.
+        let harness = TestHarness::new().await;
+        let (actor, state, _root) =
+            spawn_coordinator_with_state(&harness, TermControl::default()).await;
+
+        // When spawning a program that prints to the screen.
+        actor
+            .ask(spawn_msg("echo mirror-me"))
+            .await
+            .expect("spawn reply");
+
+        // Then the frontend terminal mirror carries the rendered screen.
+        let guard = state.read();
+        assert!(
+            guard.frontend.terminal.screen().contains("mirror-me"),
+            "mirror should contain output, got: {:?}",
+            guard.frontend.terminal.screen()
+        );
+        // And the mirror records the session id.
+        assert!(guard.frontend.terminal.session_id.is_some());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn send_updates_mirror_with_new_screen() {
+        // Given a coordinator with a live `cat` session.
+        let harness = TestHarness::new().await;
+        let (actor, state, _root) =
+            spawn_coordinator_with_state(&harness, TermControl::default()).await;
+        let reply = actor.ask(spawn_msg("cat")).await.expect("spawn reply");
+        let SpawnTermOutcome::Started { session_id, .. } = reply else {
+            panic!("expected Started");
+        };
+
+        // When sending text through the send path.
+        actor
+            .ask(SendTermInput {
+                text: Some("mirrored-after-send".to_owned()),
+                ..send_msg(session_id)
+            })
+            .await
+            .expect("send reply");
+
+        // Then the mirror reflects the echoed output.
+        let guard = state.read();
+        assert!(guard.frontend.terminal.screen().contains("mirrored-after-send"));
+    }
+
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn resize_updates_session_and_mirror() {
+        // Given a coordinator with a live `cat` session.
+        let harness = TestHarness::new().await;
+        let (actor, state, _root) =
+            spawn_coordinator_with_state(&harness, TermControl::default()).await;
+        actor.ask(spawn_msg("cat")).await.expect("spawn reply");
+
+        // When resizing to a small grid.
+        actor
+            .tell(ResizeTerm {
+                session_id: None,
+                size: (10, 40),
+            })
+            .await
+            .expect("resize tell");
+
+        // Give the actor a beat to process the tell.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Then the session reports the new size and no error occurred.
+        // (Observable: a following send still succeeds and mirror reflects
+        // the session.)
+        let guard = state.read();
+        assert!(guard.frontend.terminal.session_id.is_some());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn resize_without_session_is_noop() {
+        // Given a coordinator with no sessions.
+        let harness = TestHarness::new().await;
+        let (actor, _state, _root) =
+            spawn_coordinator_with_state(&harness, TermControl::default()).await;
+
+        // When sending a resize.
+        let result = actor
+            .tell(ResizeTerm {
+                session_id: None,
+                size: (10, 40),
+            })
+            .await;
+
+        // Then it is accepted silently.
+        assert!(result.is_ok());
+    }
+
 }

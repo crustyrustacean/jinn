@@ -73,8 +73,15 @@ pub fn launch(
     jinn_domain::register_all_ui_elements(&mut ui_registry);
 
     // The single keymap-bootstrap site. Production and tests reach this
-    // via the same path.
-    let keymap = keymap::init();
+    // via the same path. The terminal handback binding comes from
+    // `[interactive_term]` prefs, normalized (falls back to the default).
+    let handback = jinn_domain::feat::interactive_term::prefs::normalize_handback_key(
+        &core.state.read().frontend.preferences.interactive_term.handback_key,
+    )
+    .unwrap_or_else(|| {
+        jinn_domain::feat::interactive_term::prefs::DEFAULT_HANDBACK_KEY.to_owned()
+    });
+    let keymap = keymap::init_with_handback(&handback);
     let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
 
     Ok(TuiApp {
