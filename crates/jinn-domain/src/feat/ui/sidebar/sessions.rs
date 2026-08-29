@@ -28,7 +28,9 @@ use std::time::Duration;
 
 pub use activate::{handle_session_activate, handle_session_activate_insert};
 pub use archive::handle_session_archive;
-pub use archive_tree::ArchiveTreePrompt;
+pub use archive_tree::{
+    ArchiveTreePrompt, handle_session_archive_tree_arm, handle_session_archive_tree_confirm,
+};
 pub use close::{
     SessionCloseError, handle_session_close, handle_session_close_with_lifecycle,
     validate_session_close,
