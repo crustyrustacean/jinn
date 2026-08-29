@@ -1605,6 +1605,35 @@ mod tests {
         let intent = intent.expect("former handback key must forward");
         assert!(matches!(intent, Intent::TerminalSendKey { .. }));
     }
+
+    /// A punctuation handback key (e.g. `<c-'>`) must bind and resolve —
+    /// `normalize_handback_key` permits any single character after `c-`,
+    /// so the keymap must too.
+    #[rstest::rstest]
+    #[test]
+    fn punctuation_handback_key_resolves() {
+        // Given a keymap built with `<c-'>` as the handback key.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init_with_handback("<c-'>");
+        let mut wk = WhichKeyInstance::new(keymap, Scope::TerminalControl);
+
+        // When pressing ctrl+'.
+        let ctrl_quote = KeyEvent {
+            key: Key::Char('\''),
+            modifiers: Modifiers {
+                ctrl: true,
+                alt: false,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(ctrl_quote);
+
+        // Then it resolves to TerminalHandback.
+        let intent = intent.expect("configured punctuation handback key must fire an intent");
+        assert!(matches!(intent, Intent::TerminalHandback));
+    }
 }
 
 #[cfg(test)]

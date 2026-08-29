@@ -53,6 +53,9 @@ pub struct SessionEntry {
     /// Whether this session is a subagent spawned by the `task` tool.
     /// Derived from the parent link; rendered as a symbol next to the title.
     pub is_subagent: bool,
+    /// Whether this session has a live `interactive_term` terminal
+    /// (from `frontend.terminal.live_terms`); rendered as a symbol.
+    pub has_live_term: bool,
 }
 
 /// Collects all loaded sessions in tree order (DFS).
@@ -213,6 +216,7 @@ pub fn sorted_open_sessions_split(
             is_last_child: false,
             is_subagent: session.origin()
                 == crate::feat::session::chat_session::SessionOrigin::Subagent,
+            has_live_term: frontend.terminal.live_terms.contains(id),
         })
         .collect();
 

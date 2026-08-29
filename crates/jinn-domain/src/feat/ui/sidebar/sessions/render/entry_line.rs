@@ -128,6 +128,8 @@ pub(crate) fn assemble_entry_line(
 
 /// Glyph marking a subagent session, rendered before its title.
 const SUBAGENT_SYMBOL: &str = "⋄ ";
+/// Marks a session with a live `interactive_term` terminal.
+pub(crate) const LIVE_TERM_SYMBOL: &str = "▣ ";
 
 /// Renders a session entry line (indicator + arrow + tree + styled title).
 fn assemble_session_line(
@@ -144,12 +146,18 @@ fn assemble_session_line(
     let style = entry_title_style(entry, is_selected, theme);
     // The subagent symbol is part of the title's rendered width so the
     // truncation budget accounts for it.
-    let symbol = if entry.is_subagent {
+    let subagent_symbol = if entry.is_subagent {
         SUBAGENT_SYMBOL
     } else {
         ""
     };
-    let symbol_len = symbol.graphemes(true).count();
+    let term_symbol = if entry.has_live_term {
+        LIVE_TERM_SYMBOL
+    } else {
+        ""
+    };
+    let symbol_len = (subagent_symbol.graphemes(true).count())
+        + term_symbol.graphemes(true).count();
     let budget = max_title_len.saturating_sub(tree_len);
     let display_title = {
         let title_budget = budget.saturating_sub(symbol_len);
@@ -159,10 +167,16 @@ fn assemble_session_line(
     if !tree.is_empty() {
         spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
     }
-    if !symbol.is_empty() {
+    if !subagent_symbol.is_empty() {
         spans.push(Span::styled(
-            symbol.to_owned(),
+            subagent_symbol.to_owned(),
             Style::default().fg(theme.subagent_fg),
+        ));
+    }
+    if !term_symbol.is_empty() {
+        spans.push(Span::styled(
+            term_symbol.to_owned(),
+            Style::default().fg(theme.success),
         ));
     }
     spans.push(Span::styled(display_title, style));
