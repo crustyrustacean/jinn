@@ -49,12 +49,6 @@ impl Watchdog {
         }
     }
 
-    /// The configured maximum tolerated failures.
-    #[must_use]
-    pub fn max_failures(&self) -> u8 {
-        self.max_failures
-    }
-
     /// Records one tool result and returns the messages to push, in order.
     ///
     /// Success debits the session's counter (never below zero); failure
@@ -271,19 +265,18 @@ mod tests {
         let _ = watchdog.on_tool_result(&failure("s-1", "c1"));
         let pushes = watchdog.on_tool_result(&failure("s-1", "c2"));
 
-        // Then it tripped at 2, per the config.
+        // Then it tripped at 2, per the config — where the default of 4
+        // would still be one failure short.
         assert_eq!(pushes.len(), 2);
-        assert_eq!(watchdog.max_failures(), 2);
     }
 
     #[rstest::rstest]
-    #[case::absent(serde_json::Value::Null, 4)]
-    #[case::zero(serde_json::json!({ "max_failures": 0 }), 4)]
-    #[case::not_a_number(serde_json::json!({ "max_failures": "lots" }), 4)]
-    #[case::above_byte(serde_json::json!({ "max_failures": 300 }), 4)]
-    #[case::explicit(serde_json::json!({ "max_failures": 7 }), 7)]
-    fn config_falls_back_to_default_on_nonsense(#[case] config: serde_json::Value, #[case] expected: u8) {
-        // Given a Welcome carrying the config value.
+    #[case::absent(serde_json::Value::Null)]
+    #[case::zero(serde_json::json!({ "max_failures": 0 }))]
+    #[case::not_a_number(serde_json::json!({ "max_failures": "lots" }))]
+    #[case::above_byte(serde_json::json!({ "max_failures": 300 }))]
+    fn nonsense_config_falls_back_to_default_4(#[case] config: serde_json::Value) {
+        // Given a Welcome carrying a nonsensical config value.
         let welcome = Welcome {
             protocol_version: 1,
             plugin_id: "tool-call-watchdog".to_owned(),
@@ -293,11 +286,16 @@ mod tests {
             config,
         };
 
-        // When building the watchdog.
-        let watchdog = Watchdog::from_welcome(&welcome);
+        // When building the watchdog and feeding three failures.
+        let mut watchdog = Watchdog::from_welcome(&welcome);
+        for call in ["c1", "c2", "c3"] {
+            let _ = watchdog.on_tool_result(&failure("s-1", call));
+        }
+        let pushes = watchdog.on_tool_result(&failure("s-1", "c4"));
 
-        // Then the maximum matches the clamped/default expectation.
-        assert_eq!(watchdog.max_failures(), expected);
+        // Then it tripped on the fourth failure — the default of 4, not the
+        // (0/absent/garbage) config value.
+        assert_eq!(pushes.len(), 2);
     }
 
     #[rstest::rstest]
