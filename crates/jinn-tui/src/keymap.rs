@@ -410,10 +410,12 @@ pub fn init_with_handback(handback: &str) -> Keymap<KeyEvent, Scope, Intent, Key
     });
 
     // TerminalView scope - watching an interactive_term session. Passive:
-    // nothing forwards to the pty; only leaving the tab or taking control.
+    // nothing forwards to the pty; only leaving the overlay or taking control.
+    // `T` mirrors the sidebar's toggle so the overlay closes from inside.
     keymap.scope(Scope::TerminalView, |b| {
         b
         .bind("<Tab>", Intent::SwitchTab, KeyCategory::General)
+        .bind("T", Intent::ToggleTerminalOverlayForSelected, KeyCategory::General)
         .bind("i", Intent::TerminalTakeControl, KeyCategory::General)
         .bind("q", Intent::Quit, KeyCategory::General)
         .bind("?", Intent::ToggleWhichkey, KeyCategory::General);
@@ -689,6 +691,31 @@ mod tests {
         });
 
         // Then the selected-session overlay toggle fires (not NoOp).
+        assert!(matches!(
+            intent,
+            Some(Intent::ToggleTerminalOverlayForSelected)
+        ));
+    }
+
+    /// `T` inside the overlay resolves to the toggle (same intent as the
+    /// sidebar key), so the overlay closes from inside it.
+    #[rstest::rstest]
+    #[test]
+    fn upper_t_inside_overlay_resolves_to_the_toggle() {
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+
+        // Given the default keymap in the TerminalView scope.
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::TerminalView);
+
+        // When pressing 'T'.
+        let intent = wk.handle_key(jinn_domain::KeyEvent {
+            key: Key::Char('T'),
+            modifiers: Modifiers::none(),
+        });
+
+        // Then the overlay toggle fires.
         assert!(matches!(
             intent,
             Some(Intent::ToggleTerminalOverlayForSelected)
