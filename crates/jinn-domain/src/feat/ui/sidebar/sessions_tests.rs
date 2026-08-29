@@ -2554,6 +2554,43 @@ fn teardown_tree_other_intent_dismisses_prompt() {
 }
 
 #[rstest::rstest]
+fn busy_tree_prompt_dismisses_on_other_intent() {
+    // Given the busy notice is showing.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
+
+    // When handling a different intent (SidebarSectionNext).
+    let _result = IntentHandler::handle(&Intent::SidebarSectionNext, &mut state);
+
+    // Then the busy notice is dismissed.
+    assert_eq!(state.frontend.archive_tree_prompt, None);
+}
+
+#[rstest::rstest]
+fn busy_tree_prompt_still_confirms_on_tree_key() {
+    // Given the busy notice is showing and the subtree has become idle.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
+
+    // When handling SidebarSessionTeardownTree (the notice's own key).
+    let result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+
+    // Then the re-validation passes and the teardown-tree command is emitted.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("TeardownSessionTree")),
+        "should emit TeardownSessionTree: {:?}",
+        result.message_names
+    );
+    // And the prompt is cleared.
+    assert_eq!(state.frontend.archive_tree_prompt, None);
+}
+
+#[rstest::rstest]
 fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
     // Given an armed teardown confirm prompt.
     let (mut state, _) = state_with_archive_tree();
