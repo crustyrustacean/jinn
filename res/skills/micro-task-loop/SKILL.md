@@ -7,9 +7,7 @@ description: Straight-through phased execution for simple, low-risk plans with f
 
 A fast path for implementing simple phased plans. Trades per-phase safety checkpoints for wall-clock time: no builds, tests, or commits until every phase is done, then one verification pass and one commit. The task list tracks progress in real time.
 
-Use this only for plans where phases are unlikely to fail verification at the end. For anything with real risk of divergence, use `simple-task-loop` or `phased-task-loop` instead.
-
-## **Project commands are referenced by role** (`check`, `test`, `lint`, `format`, `commit`, `sync-trunk`, `vcs`). The project's `AGENTS.md` resolves each role to its actual command (e.g. for jinn: `test` → `just test`, `commit` → `just commit '<message>'`, `sync-trunk` → `fossil merge trunk`). When this skill says "run the project's `test` command," look up `test` in `AGENTS.md` and run that. If the project does not define a role, skip it.
+**Project commands are referenced by role** (`check`, `test`, `lint`, `format`, `commit`, `sync-trunk`, `vcs`). The project's `AGENTS.md` resolves each role to its actual command (e.g. for jinn: `test` → `just test`, `commit` → `just commit '<message>'`, `sync-trunk` → `fossil merge trunk`). When this skill says "run the project's `test` command," look up `test` in `AGENTS.md` and run that. If the project does not define a role, skip it.
 
 ## Constraints
 
@@ -74,7 +72,7 @@ Update the task list **at the moment a decision is made**, never retroactively:
 
     If you discover that a task cannot be implemented _as planned_ and there is no obvious solution that **aligns with the user request**, then STOP and explain the details to the user and ask how to proceed.
 
-3.5.  **Audit.** When the NEXT block says the phase is complete, call `todo_get_task_list` and confirm every task in the phase is `[✓]`. If any task is not `[✓]`, **STOP and audit.** You have drifted. Pick the next pending task in this phase and return to step 3. Do not run tests. Do not commit. The list must be clean before you proceed to the next phase.
+3.5. **Audit.** When the NEXT block says the phase is complete, call `todo_get_task_list` and confirm every task in the phase is `[✓]`. If any task is not `[✓]`, **STOP and audit.** You have drifted. Pick the next pending task in this phase and return to step 3. Do not run tests. Do not commit. The list must be clean before you proceed to the next phase.
 
 4.  **Go to step 1.**
 
