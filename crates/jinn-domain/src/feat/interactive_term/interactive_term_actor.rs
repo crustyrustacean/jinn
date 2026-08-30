@@ -317,7 +317,7 @@ impl InteractiveTermActor {
             },
             self.wiring(&msg.chat_session_id, &session_id),
         );
-        let (mut pty, _pump) = match spawned {
+        let (pty, _pump) = match spawned {
             Ok(pair) => pair,
             Err(report) => return SpawnTermOutcome::Failed(format!("{report:#}")),
         };
