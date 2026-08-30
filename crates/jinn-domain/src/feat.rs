@@ -45,7 +45,6 @@ pub mod session;
 pub mod session_lifecycle;
 pub mod sidebar_resize;
 pub mod skills;
-pub mod stall_watchdog_actor;
 pub mod task_list_echo;
 pub mod theme;
 pub mod todo_list;
