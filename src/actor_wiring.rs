@@ -510,6 +510,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                                 .expect("wasmtime engine construction cannot fail"),
                         ),
                     },
+                    tick_override: None,
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)

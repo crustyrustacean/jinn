@@ -55,3 +55,17 @@ pub struct PluginSubscriptions {
 }
 
 impl crate::common::bus::BusMessage for PluginSubscriptions {}
+
+/// Internal self-addressed timer pulse for the plugin coordinator.
+///
+/// The coordinator is not a bus subscriber for this message — it is told
+/// directly by a tokio interval task holding a clone of the actor ref (the
+/// task dies with the actor). Each pulse is translated into a wire
+/// [`jinn_plugin_api::TickEvent`] and forwarded to guests subscribed to
+/// `"tick"`.
+///
+/// Guests are blocking stdin readers: they only wake when the host writes a
+/// line, and during a quiet period no host event flows. Without this pulse a
+/// guest could never act on elapsed time at all.
+#[derive(Debug, Clone)]
+pub struct Tick;
