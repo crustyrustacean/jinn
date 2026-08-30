@@ -38,7 +38,10 @@ impl SessionPersistenceActor {
     ) {
         // Push the retry marker and discard partial streaming entries — but
         // only while a stream is genuinely in flight for this session.
-        let marker = ChatEntry::system("\u{21bb} LLM stream stalled, retrying\u{2026}");
+        let marker = ChatEntry::system(format!(
+            "\u{21bb} LLM stream stalled, retrying (attempt {} of {})\u{2026}",
+            payload.attempt, payload.max_restarts
+        ));
         let acted = self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming)
@@ -119,7 +122,15 @@ mod tests {
             session.core.ephemeral.stream_dispatched_at = Some(jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
-        (actor, audit, RetryStalledSession { session_id })
+        (
+            actor,
+            audit,
+            RetryStalledSession {
+                session_id,
+                attempt: 2,
+                max_restarts: 3,
+            },
+        )
     }
 
     #[rstest::rstest]
@@ -143,13 +154,16 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"));
             assert!(!has_partial, "partial assistant entry must be discarded");
-            // And a retry system marker was pushed.
+            // And a retry system marker was pushed, naming the attempt and
+            // budget reported by the watchdog.
             assert!(
                 session.core.history.iter().any(|e| matches!(
                     e.kind,
-                    ChatEntryKind::System(ref t) if t.contains("stalled")
+                    ChatEntryKind::System(ref t)
+                        if t.contains("stalled")
+                            && t.contains("attempt 2 of 3")
                 )),
-                "a retry system marker must be pushed"
+                "a retry system marker naming the attempt must be pushed"
             );
         }
         // And SendToLlmProvider was emitted to re-dispatch the turn.

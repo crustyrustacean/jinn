@@ -774,6 +774,16 @@
           "session_id": {
             "type": "string",
             "description": "The session whose stalled stream should be restarted."
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The 1-based restart attempt within the current stall lineage, as counted by the sending plugin. The host surfaces it in the chat retry marker."
+          },
+          "max_restarts": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The restart budget the sending plugin enforces, rendered in the chat retry marker as 'attempt N of M'."
           }
         },
         "additionalProperties": false
