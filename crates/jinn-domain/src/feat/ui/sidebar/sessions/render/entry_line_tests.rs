@@ -530,8 +530,8 @@ fn sidebar_shows_live_term_symbol_for_session_with_terminal() {
     let term_span = line
         .spans
         .iter()
-        .find(|s| s.content.as_ref() == "▣ ")
-        .expect("live-term line must carry the ▣ symbol");
+        .find(|s| s.content.as_ref() == "◼ ")
+        .expect("live-term line must carry the ◼ symbol");
     assert_eq!(term_span.style.fg, Some(theme.success));
 }
 
@@ -561,7 +561,7 @@ fn sidebar_omits_live_term_symbol_for_session_without_terminal() {
     // Then no span carries the live-term symbol.
     let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
     assert!(
-        !text.contains('▣'),
+        !text.contains('◼'),
         "session without a terminal must not show the symbol, got: {text}"
     );
 }
@@ -612,7 +612,7 @@ fn sidebar_live_term_symbol_consumes_truncation_budget() {
     // And both lines show the term symbol.
     for (name, line) in [("plain", &plain_line), ("sub", &sub_line)] {
         let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-        assert!(text.contains('▣'), "{name} line must show the term symbol");
+        assert!(text.contains('◼'), "{name} line must show the term symbol");
     }
 }
 
