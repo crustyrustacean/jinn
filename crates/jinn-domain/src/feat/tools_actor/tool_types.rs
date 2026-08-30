@@ -57,6 +57,15 @@ pub struct ToolContext {
     /// every tool that doesn't need it.
     pub mcp_coordinator:
         Option<kameo::actor::ActorRef<crate::feat::mcp_coordinator_actor::McpCoordinatorActor>>,
+    /// Interactive-term coordinator actor ref — `Some` only for the
+    /// `interactive_term*` tools, which `ask` the coordinator to spawn/drive
+    /// PTY sessions. Resolved from `services.interactive_term` at dispatch
+    /// time. `None` in tests and for every tool that doesn't need it.
+    pub interactive_term: Option<
+        kameo::actor::ActorRef<
+            crate::feat::interactive_term::interactive_term_actor::InteractiveTermActor,
+        >,
+    >,
     /// In-flight subagent spawn registry — read by the stall watchdog to
     /// skip sessions suspended on a `task` call, and written by the `task`
     /// tool through its drop-guard. `None` in tests.
@@ -102,6 +111,7 @@ mod tests {
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
             mcp_coordinator: None,
+            interactive_term: None,
             task_spawns: None,
         };
 

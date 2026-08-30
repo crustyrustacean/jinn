@@ -267,6 +267,9 @@ pub struct UserPreferences {
     /// Auto-prune configuration.
     #[serde(default)]
     pub auto_prune: AutoPruneConfig,
+    /// Interactive terminal configuration (control-toggle key, settle wait).
+    #[serde(default)]
+    pub interactive_term: crate::feat::interactive_term::prefs::InteractiveTermPrefs,
     /// Todo auto-steer configuration.
     #[serde(default)]
     pub todo_auto_steer: TodoAutoSteerConfig,
@@ -349,6 +352,8 @@ impl Default for UserPreferences {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            interactive_term:
+                crate::feat::interactive_term::prefs::InteractiveTermPrefs::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             task_list: TaskListPreferences::default(),
             discord: crate::feat::discord::DiscordConfig::default(),

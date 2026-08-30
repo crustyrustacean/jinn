@@ -60,6 +60,7 @@ async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -
         dispatched_at: jiff::Timestamp::now(),
         session_cap: Some(mint_session_cap()),
         mcp_coordinator: None,
+        interactive_term: None,
         task_spawns: Some(services.task_spawns.clone()),
     }
 }
