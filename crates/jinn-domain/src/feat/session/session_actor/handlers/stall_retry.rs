@@ -11,13 +11,16 @@
 use crate::common::actor_deps::BusPublish;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
-use crate::protocol::ChatEntry;
 
 use super::super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
-    /// Re-dispatch a stalled turn: discard partial streaming entries, push a
-    /// system marker, and re-send the existing history.
+    /// Re-dispatch a stalled turn: discard partial streaming entries and
+    /// re-send the existing history.
+    ///
+    /// The visible retry marker is pushed by the `stall-watchdog` plugin
+    /// (via `InsertSystemEntry`, alongside the restart request) — this
+    /// handler only performs the history surgery and re-dispatch.
     ///
     /// The guard is *in-flight-stream*, not elapsed time: the handler acts
     /// only when the phase is `Sending`/`Streaming` **and**
@@ -36,12 +39,8 @@ impl SessionPersistenceActor {
         &self,
         payload: &RetryStalledSession,
     ) {
-        // Push the retry marker and discard partial streaming entries — but
-        // only while a stream is genuinely in flight for this session.
-        let marker = ChatEntry::system(format!(
-            "\u{21bb} LLM stream stalled, retrying (attempt {} of {})\u{2026}",
-            payload.attempt, payload.max_restarts
-        ));
+        // Discard partial streaming entries — but only while a stream is
+        // genuinely in flight for this session.
         let acted = self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming)
@@ -60,7 +59,6 @@ impl SessionPersistenceActor {
                     excluded_dangling = excluded.len(),
                     "retrying stalled turn"
                 );
-                session.push_entry(marker.clone());
                 // The re-dispatch below emits a fresh `SendToLlmProvider`,
                 // which the plugin host forwards as `stream_start` — the
                 // watchdog re-arms for the new generation automatically.
@@ -154,17 +152,6 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"));
             assert!(!has_partial, "partial assistant entry must be discarded");
-            // And a retry system marker was pushed, naming the attempt and
-            // budget reported by the watchdog.
-            assert!(
-                session.core.history.iter().any(|e| matches!(
-                    e.kind,
-                    ChatEntryKind::System(ref t)
-                        if t.contains("stalled")
-                            && t.contains("attempt 2 of 3")
-                )),
-                "a retry system marker naming the attempt must be pushed"
-            );
         }
         // And SendToLlmProvider was emitted to re-dispatch the turn.
         let sent = audit.of_type::<SendToLlmProvider>();

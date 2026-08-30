@@ -162,11 +162,17 @@ fn trip(
     if stall.restarts < max_restarts {
         stall.restarts += 1;
         stall.last_event_ms = now_ms;
-        return vec![PluginToHost::RestartStalledStream(RestartStalledStream {
-            session_id: session,
-            attempt: stall.restarts,
-            max_restarts,
-        })];
+        return vec![
+            PluginToHost::InsertSystemEntry(InsertSystemEntry {
+                session_id: session.clone(),
+                text: retry_text(stall.restarts, max_restarts),
+            }),
+            PluginToHost::RestartStalledStream(RestartStalledStream {
+                session_id: session,
+                attempt: stall.restarts,
+                max_restarts,
+            }),
+        ];
     }
     stall.armed = false;
     vec![
@@ -178,6 +184,11 @@ fn trip(
             session_id: session,
         }),
     ]
+}
+
+/// The per-attempt retry marker pushed before each restart.
+fn retry_text(attempt: u32, max: u32) -> String {
+    format!("\u{21bb} LLM stream stalled, retrying (attempt {attempt} of {max})\u{2026}")
 }
 
 /// The surrender system-entry text after exhausting `max` restarts.
@@ -237,11 +248,20 @@ mod tests {
         }
     }
 
-    /// Asserts the pushes are exactly one restart for `session`.
+    /// Asserts the pushes are exactly the retry pair (marker entry, then
+    /// restart) for `session`.
     fn assert_restart(pushes: &[PluginToHost], session: &str, attempt: u32) {
-        assert_eq!(pushes.len(), 1, "expected one restart, got: {pushes:?}");
-        let PluginToHost::RestartStalledStream(restart) = &pushes[0] else {
-            panic!("expected a RestartStalledStream, got: {pushes:?}");
+        assert_eq!(pushes.len(), 2, "expected the retry pair, got: {pushes:?}");
+        let PluginToHost::InsertSystemEntry(entry) = &pushes[0] else {
+            panic!("first push must be the system entry, got: {pushes:?}");
+        };
+        assert!(
+            entry.text.contains(&format!("attempt {attempt} of")),
+            "retry marker must name the attempt, got: {:?}",
+            entry.text
+        );
+        let PluginToHost::RestartStalledStream(restart) = &pushes[1] else {
+            panic!("second push must be a RestartStalledStream, got: {pushes:?}");
         };
         assert_eq!(restart.session_id, session);
         // And the reported attempt matches the restart ordinal within the
