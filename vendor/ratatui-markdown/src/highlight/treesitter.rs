@@ -395,6 +395,7 @@ mod tests {
     use super::*;
     use ratatui::style::{Color, Modifier, Style};
 
+    #[cfg(feature = "highlight-lang-kotlin")]
     fn comment_style() -> Style {
         Style::default()
             .fg(Color::DarkGray)
@@ -402,6 +403,7 @@ mod tests {
     }
 
     // Test 1: Kotlin renders (regression) — the original crash.
+    #[cfg(feature = "highlight-lang-kotlin")]
     #[test]
     fn kotlin_renders_without_panic() {
         let hl = TreeSitterHighlighter::new();
@@ -413,6 +415,7 @@ mod tests {
     }
 
     // Test 2: Kotlin block comment recognized via corrected node name.
+    #[cfg(feature = "highlight-lang-kotlin")]
     #[test]
     fn kotlin_block_comment_styled() {
         let hl = TreeSitterHighlighter::new();
@@ -455,6 +458,7 @@ mod tests {
     }
 
     // Test 6: CMake query still valid (audit guard).
+    #[cfg(feature = "highlight-lang-cmake")]
     #[test]
     fn cmake_build_config_is_some() {
         let entry = get_lang("cmake").expect("cmake entry must exist");
@@ -462,6 +466,7 @@ mod tests {
     }
 
     // Test 7: Proto query still valid (audit guard).
+    #[cfg(feature = "highlight-lang-proto")]
     #[test]
     fn proto_build_config_is_some() {
         let entry = get_lang("proto").expect("proto entry must exist");

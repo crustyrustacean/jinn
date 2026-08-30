@@ -6,3 +6,9 @@
 # (just test, plain cargo test, rust-analyzer, CI).
 [env]
 RSTEST_TIMEOUT = "10"
+
+# Link with mold (fast ELF linker) via clang. Applies to dev, test, and
+# release link steps; cuts the final-link seconds off every build.
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-Clink-arg=-fuse-ld=mold"]

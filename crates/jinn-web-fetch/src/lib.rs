@@ -9,6 +9,18 @@ pub mod extractor;
 pub mod http_fetcher;
 pub mod stealth;
 
+/// Installs the process-wide rustls crypto provider (ring) in this crate's
+/// test binary. reqwest is built with `rustls-no-provider` (see the workspace
+/// `Cargo.toml`), so without a default provider every `reqwest::Client` panics
+/// with "No provider set" at construction. Test binaries never run `main()`.
+/// `install_default` errors on the second call; the result is deliberately
+/// ignored.
+#[cfg(test)]
+#[ctor::ctor]
+fn install_rustls_provider_for_tests() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 #[cfg(feature = "headless-chrome")]
 pub mod headless_chrome_fetcher;
 #[cfg(feature = "headless-chrome")]

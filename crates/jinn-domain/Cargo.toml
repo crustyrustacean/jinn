@@ -3,6 +3,11 @@ name = "jinn-domain"
 version.workspace = true
 edition.workspace = true
 
+[features]
+# Opt-in: compiles the full 36-grammar tree-sitter set for markdown code-block
+# highlighting instead of the curated default set (see root Cargo.toml).
+syntax-all = ["ratatui-markdown/highlight-lang-all"]
+
 [dependencies]
 # Internal deps
 jinn-provider = { workspace = true }
@@ -84,6 +89,8 @@ jinn-mcp = { workspace = true, features = ["testkit", "server-testkit"] }
 tokio = { workspace = true, features = ["test-util"] }
 jinn-common = { workspace = true, features = ["testing"] }
 trybuild = "1"
+ctor = "0.8"
+rustls = { workspace = true }
 
 
 [build-dependencies]
