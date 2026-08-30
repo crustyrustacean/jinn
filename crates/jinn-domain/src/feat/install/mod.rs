@@ -224,6 +224,13 @@ const BUNDLED: &[Bundled] = &[
     },
     Bundled {
         kind: Kind::Skill,
+        relative: "micro-task-loop/SKILL.md",
+        contents: BundleContents::Text(include_str!(
+            "../../../../../res/skills/micro-task-loop/SKILL.md"
+        )),
+    },
+    Bundled {
+        kind: Kind::Skill,
         relative: "jinn-plugin/SKILL.md",
         contents: BundleContents::Text(include_str!(
             "../../../../../res/skills/jinn-plugin/SKILL.md"
@@ -559,6 +566,32 @@ mod tests {
         );
         // And the file exists at the nested path.
         assert!(outcome.path().is_file());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_creates_micro_task_loop_skill() {
+        // Given destinations with no existing skills.
+        let (destinations, _temps) = fresh_destinations();
+
+        // When installing defaults.
+        let outcomes =
+            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
+                .expect("install");
+
+        // Then the micro-task-loop skill was created under the skills root.
+        let outcome = outcome_for(&outcomes, "micro-task-loop/SKILL.md");
+        assert!(
+            outcome.path().starts_with(&destinations.skills),
+            "skill should be under the skills root"
+        );
+        assert!(
+            matches!(outcome, InstallOutcome::Created(_)),
+            "skill should be Created"
+        );
+        // And the file exists at the nested path with non-empty contents.
+        assert!(outcome.path().is_file());
+        assert!(!std::fs::read_to_string(outcome.path()).expect("read").is_empty());
     }
 
     #[rstest::rstest]
