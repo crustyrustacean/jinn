@@ -44,12 +44,24 @@ use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::plugin::PluginConfig;
 use crate::feat::plugin_actor::{DeliverHostEvent, PluginActor, PluginActorDeps, PluginInbound};
 use crate::feat::plugin_coordinator_actor::protocol::{
-    PluginPhase, PluginStatus, PluginSubscriptions,
+    PluginPhase, PluginStatus, PluginSubscriptions, Tick,
 };
+use crate::feat::provider::protocol::command::SendToLlmProvider;
+use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
-use crate::feat::tools_actor::protocol::event::{ToolCallReceived, ToolExecutionCompleted};
+use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
+use crate::feat::tools_actor::protocol::event::{
+    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
+};
 use jinn_plugin_api::{SetPersonaEntries, SetThemeEntries};
+
+/// Wall-clock pulse interval pushed to guests subscribed to `"tick"`.
+///
+/// Bounds the guest-side stall-detection granularity: any time-based guest
+/// logic (e.g. the stall-watchdog plugin's restart timeout) fires within
+/// this interval of its threshold.
+const GUEST_TICK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Channel capacity for plugin→coordinator inbound events. Small: events are
 /// rare (handshake + contributions); a full channel means a flooding plugin,
@@ -119,6 +131,10 @@ pub struct PluginCoordinatorActorDeps {
     pub frontend_cap: crate::common::tcaps::FrontendCap,
     /// Directory context for grant resolution and wasm paths.
     pub dirs: PluginDirs,
+    /// Test seam: overrides [`GUEST_TICK_INTERVAL`] so tick forwarding is
+    /// observable in tests without real-time waits. Production passes
+    /// `None`.
+    pub tick_override: Option<std::time::Duration>,
 }
 
 impl kameo::Actor for PluginCoordinatorActor {
@@ -151,6 +167,47 @@ impl kameo::Actor for PluginCoordinatorActor {
             .bus
             .subscribe::<SessionPhaseChanged, _>(&actor_ref)
             .await;
+        args.deps
+            .services
+            .bus
+            .subscribe::<SendToLlmProvider, _>(&actor_ref)
+            .await;
+        args.deps
+            .services
+            .bus
+            .subscribe::<StreamToken, _>(&actor_ref)
+            .await;
+        args.deps
+            .services
+            .bus
+            .subscribe::<ToolUseStarted, _>(&actor_ref)
+            .await;
+        args.deps
+            .services
+            .bus
+            .subscribe::<ToolCallStreaming, _>(&actor_ref)
+            .await;
+        args.deps
+            .services
+            .bus
+            .subscribe::<StreamCompleted, _>(&actor_ref)
+            .await;
+
+        // Push a periodic tick to guests subscribed to `"tick"`: guests are
+        // blocking stdin readers and only wake when the host writes a line,
+        // so without this pulse they could never act on elapsed time. The
+        // task holds a clone of the actor ref and dies with it; the first
+        // (immediate) tick is skipped.
+        let timer_ref = actor_ref.clone();
+        tokio::spawn(async move {
+            let interval = args.tick_override.unwrap_or(GUEST_TICK_INTERVAL);
+            let mut interval = tokio::time::interval(interval);
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                let _ = timer_ref.tell(Tick).await;
+            }
+        });
 
         let actor = Self {
             deps: args.deps,
@@ -450,14 +507,7 @@ async fn handle_inbound(
             apply_plugin_insert_system_entry(state, bus, name, msg).await;
         }
         jinn_plugin_api::PluginToHost::RestartStalledStream(msg) => {
-            // No host component publishes stream-lifecycle events yet, so a
-            // restart request can never be legitimate — drop with a trace
-            // until the stream-event forwarding side exists.
-            tracing::debug!(
-                plugin = %name,
-                session_id = %msg.session_id,
-                "plugin restart_stalled_stream dropped: no stream-event source"
-            );
+            apply_plugin_restart_stalled_stream(bus, name, msg).await;
         }
     }
 }
@@ -487,6 +537,35 @@ async fn apply_plugin_cancel_stream(
     );
     bus.publish(crate::feat::provider::protocol::command::CancelStream { session_id })
         .await;
+}
+
+/// Applies a mirrored plugin restart request: validates the session id and
+/// publishes the internal session `RetryStalledSession` command.
+///
+/// The session actor's retry handler is the real guard — it restarts only
+/// when the phase is active *and* an LLM stream is genuinely in flight, and
+/// no-ops otherwise — so a stale or bogus request is harmless by
+/// construction (mirrors the cancel path's "canceling an idle session is a
+/// no-op" reasoning).
+async fn apply_plugin_restart_stalled_stream(
+    bus: &BusService,
+    plugin: &str,
+    msg: jinn_plugin_api::RestartStalledStream,
+) {
+    let Some(session_id) = crate::protocol::SessionId::try_from_string(&msg.session_id) else {
+        tracing::warn!(
+            plugin = %plugin,
+            session_id = %msg.session_id,
+            "plugin restart_stalled_stream dropped: unparseable session id"
+        );
+        return;
+    };
+    tracing::info!(
+        plugin = %plugin,
+        session_id = %session_id,
+        "plugin requested stalled-stream restart"
+    );
+    bus.publish(RetryStalledSession { session_id }).await;
 }
 
 /// Applies a mirrored plugin system entry: validates the session id and
@@ -647,6 +726,8 @@ impl Message<ToolCallReceived> for PluginCoordinatorActor {
             jinn_plugin_api::HostToPlugin::ToolCallEvent(event.clone())
         })
         .await;
+        // An assembled tool call is also proof the stream is alive.
+        stream_ping(self, &msg.session_id).await;
     }
 }
 
@@ -729,6 +810,131 @@ fn full_output_for_plugin(result: &crate::feat::tools_actor::tool_types::ToolRes
         .full_content
         .clone()
         .unwrap_or_else(|| result.content.clone())
+}
+
+impl Message<SendToLlmProvider> for PluginCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: SendToLlmProvider,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        // A generation start: the dispatch-to-first-token gap counts as
+        // stall time, so this arms the guest-side stall timer. Note the
+        // phase machine reuses `Sending` for tool-batch execution — that is
+        // *not* a stream start, and no `SendToLlmProvider` flows then.
+        let event = jinn_plugin_api::StreamStartEvent {
+            session_id: msg.session_id.to_string(),
+        };
+        self.forward_event("stream_start", || {
+            jinn_plugin_api::HostToPlugin::StreamStartEvent(event.clone())
+        })
+        .await;
+    }
+}
+
+impl Message<StreamToken> for PluginCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: StreamToken,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        stream_ping(self, &msg.session_id).await;
+    }
+}
+
+impl Message<ToolUseStarted> for PluginCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ToolUseStarted,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        stream_ping(self, &msg.session_id).await;
+    }
+}
+
+impl Message<ToolCallStreaming> for PluginCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ToolCallStreaming,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        stream_ping(self, &msg.session_id).await;
+    }
+}
+
+impl Message<StreamCompleted> for PluginCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: StreamCompleted,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        // Identity reason mapping — the wire enum mirrors the internal one.
+        let reason = match msg.reason {
+            StreamCompletedReason::Finished => jinn_plugin_api::StreamEndReason::Finished,
+            StreamCompletedReason::Canceled => jinn_plugin_api::StreamEndReason::Canceled,
+            StreamCompletedReason::ToolUse => jinn_plugin_api::StreamEndReason::ToolUse,
+            StreamCompletedReason::Error => jinn_plugin_api::StreamEndReason::Error,
+        };
+        let event = jinn_plugin_api::StreamEndEvent {
+            session_id: msg.session_id.to_string(),
+            reason,
+        };
+        self.forward_event("stream_end", || {
+            jinn_plugin_api::HostToPlugin::StreamEndEvent(event.clone())
+        })
+        .await;
+    }
+}
+
+/// Forwards one liveness ping for the session's in-flight stream.
+///
+/// The four stream-activity messages (`StreamToken`, `ToolUseStarted`,
+/// `ToolCallStreaming`, `ToolCallReceived`) all mean the same thing to a
+/// guest — the stream produced output — so they collapse into one wire
+/// event, uncoalesced: the watchdog's entire operating model is "receive
+/// things to reset the timer", and the raw feed also serves future
+/// liveness-tracking guests.
+async fn stream_ping(
+    coordinator: &PluginCoordinatorActor,
+    session_id: &crate::protocol::SessionId,
+) {
+    let event = jinn_plugin_api::StreamEventPing {
+        session_id: session_id.to_string(),
+    };
+    coordinator
+        .forward_event("stream_event", || {
+            jinn_plugin_api::HostToPlugin::StreamEventPing(event.clone())
+        })
+        .await;
+}
+
+impl Message<Tick> for PluginCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: Tick, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
+        let event = jinn_plugin_api::TickEvent {
+            now_ms: now_ms(),
+        };
+        self.forward_event("tick", || jinn_plugin_api::HostToPlugin::Tick(event.clone()))
+            .await;
+    }
+}
+
+/// Unix epoch milliseconds — the guest tick's clock.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 impl PluginCoordinatorActor {

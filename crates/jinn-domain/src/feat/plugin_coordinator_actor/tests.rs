@@ -56,7 +56,20 @@ async fn spawn_coordinator_prepared(
     script: jinn_plugin::FakeGuestScript,
     prepare: impl FnOnce(&State),
 ) -> State {
+    spawn_coordinator_prepared_with_tick(harness, plugins, script, prepare, None).await
+}
+
+/// Like [`spawn_coordinator_prepared`], overriding the guest tick interval —
+/// the seam that makes tick forwarding observable without real-time waits.
+async fn spawn_coordinator_prepared_with_tick(
+    harness: &TestHarness,
+    plugins: std::collections::BTreeMap<String, PluginConfig>,
+    script: jinn_plugin::FakeGuestScript,
+    prepare: impl FnOnce(&State),
+    tick_override: Option<Duration>,
+) -> State {
     let services = harness.services().await;
+    let tick_override_opt = tick_override;
     {
         let mut prefs = services.user_preferences_storage.read().clone();
         prefs.plugin = plugins;
@@ -85,6 +98,7 @@ async fn spawn_coordinator_prepared(
             frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
             dirs,
             fake_guest: Arc::new(std::sync::Mutex::new(Some(script))),
+            tick_override: tick_override_opt,
         },
     )
     .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -1230,4 +1244,356 @@ async fn mirror_with_bad_session_id_is_dropped() {
             .is_empty(),
         "bad-id insert must be dropped"
     );
+}
+
+// ── Stream-lifecycle forwarding (Phase 2) ────────────────────────────────────
+
+use crate::feat::provider::protocol::command::SendToLlmProvider;
+use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
+use crate::feat::tools_actor::protocol::event::{ToolCallStreaming, ToolUseStarted};
+
+/// Builds a minimal `SendToLlmProvider` via its serde shape (most fields
+/// carry `#[serde(default)]`; the tests only care about `session_id`).
+fn send_to_llm(session_id: SessionId) -> SendToLlmProvider {
+    serde_json::from_value(serde_json::json!({
+        "session_id": session_id.to_string(),
+        "messages": [],
+        "dispatched_at": jiff::Timestamp::now().to_string(),
+    }))
+    .expect("minimal SendToLlmProvider deserializes")
+}
+
+/// A `SendToLlmProvider` publish reaches a subscribed guest as `stream_start`.
+#[rstest::rstest]
+#[tokio::test]
+async fn send_to_llm_provider_is_forwarded_as_stream_start() {
+    // Given a guest subscribed to stream_start.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec!["stream_start".to_owned()],
+        },
+    )
+    .await;
+    let session_id = SessionId::new();
+
+    // When an LLM request is dispatched.
+    harness.publish(send_to_llm(session_id.clone())).await;
+
+    // Then the guest saw a stream_start event carrying the session id.
+    let events = await_recorded(&recorder, 1, WAIT).await;
+    assert!(
+        events[0].citations[0]
+            .title
+            .contains(r#""type":"stream_start""#),
+        "expected stream_start echo, got: {:?}",
+        events[0].citations[0].title
+    );
+    assert!(
+        events[0].citations[0].title.contains(&session_id.to_string()),
+        "the event must carry the session id"
+    );
+}
+
+/// Every stream-activity bus message reaches a subscribed guest as one
+/// uncoalesced `stream_event` ping.
+#[rstest::rstest]
+#[tokio::test]
+async fn stream_token_is_forwarded_as_stream_event_ping() {
+    // Given a guest subscribed to stream_event.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec!["stream_event".to_owned()],
+        },
+    )
+    .await;
+    let session_id = SessionId::new();
+
+    // When a stream token flows.
+    harness
+        .publish(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "hello".to_owned(),
+            is_thinking: false,
+            dispatched_at: jiff::Timestamp::now(),
+        })
+        .await;
+
+    // Then the guest saw a stream_event ping.
+    let events = await_recorded(&recorder, 1, WAIT).await;
+    assert!(
+        events[0].citations[0]
+            .title
+            .contains(r#""type":"stream_event""#),
+        "expected stream_event echo, got: {:?}",
+        events[0].citations[0].title
+    );
+}
+
+/// Tool-argument streaming is a liveness ping too.
+#[rstest::rstest]
+#[tokio::test]
+async fn tool_call_streaming_is_forwarded_as_stream_event_ping() {
+    // Given a guest subscribed to stream_event.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec!["stream_event".to_owned()],
+        },
+    )
+    .await;
+
+    // When tool arguments stream in.
+    harness
+        .publish(ToolCallStreaming {
+            session_id: SessionId::new(),
+            index: 0,
+            partial_json: r#"{"path":"x"}"#.to_owned(),
+        })
+        .await;
+
+    // Then the guest saw a stream_event ping.
+    let events = await_recorded(&recorder, 1, WAIT).await;
+    assert!(
+        events[0].citations[0]
+            .title
+            .contains(r#""type":"stream_event""#),
+        "expected stream_event echo, got: {:?}",
+        events[0].citations[0].title
+    );
+}
+
+/// Tool-use start is a liveness ping too.
+#[rstest::rstest]
+#[tokio::test]
+async fn tool_use_started_is_forwarded_as_stream_event_ping() {
+    // Given a guest subscribed to stream_event.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec!["stream_event".to_owned()],
+        },
+    )
+    .await;
+
+    // When a tool call starts.
+    harness
+        .publish(ToolUseStarted {
+            session_id: SessionId::new(),
+            index: 0,
+            id: "call_1".to_owned(),
+            name: "bash".to_owned(),
+            dispatched_at: jiff::Timestamp::now(),
+        })
+        .await;
+
+    // Then the guest saw a stream_event ping.
+    let events = await_recorded(&recorder, 1, WAIT).await;
+    assert!(
+        events[0].citations[0]
+            .title
+            .contains(r#""type":"stream_event""#),
+        "expected stream_event echo, got: {:?}",
+        events[0].citations[0].title
+    );
+}
+
+/// Each stream-completion reason forwards verbatim as `stream_end`.
+#[rstest::rstest]
+#[case(StreamCompletedReason::Finished, r#""reason":"finished""#)]
+#[case(StreamCompletedReason::Canceled, r#""reason":"canceled""#)]
+#[case(StreamCompletedReason::ToolUse, r#""reason":"tool_use""#)]
+#[case(StreamCompletedReason::Error, r#""reason":"error""#)]
+#[tokio::test]
+async fn stream_completed_reason_forwards_verbatim(
+    #[case] reason: StreamCompletedReason,
+    #[case] wire_reason: &str,
+) {
+    // Given a guest subscribed to stream_end.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let _state = spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec!["stream_end".to_owned()],
+        },
+    )
+    .await;
+
+    // When the stream completes with the reason.
+    harness
+        .publish(StreamCompleted {
+            session_id: SessionId::new(),
+            reason,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
+            thinking_content: None,
+            model_used: None,
+            dispatched_at: jiff::Timestamp::now(),
+        })
+        .await;
+
+    // Then the guest saw stream_end with the same reason.
+    let events = await_recorded(&recorder, 1, WAIT).await;
+    let title = &events[0].citations[0].title;
+    assert!(
+        title.contains(r#""type":"stream_end""#) && title.contains(wire_reason),
+        "expected stream_end echo with {wire_reason}, got: {title:?}"
+    );
+}
+
+/// A guest subscribed only to turn_end receives no stream-lifecycle events
+/// and no ticks — the forwarder filters by the validated subscription set.
+#[rstest::rstest]
+#[tokio::test]
+async fn unsubscribed_stream_lifecycle_events_and_ticks_are_not_forwarded() {
+    // Given a guest subscribed only to turn_end.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let _state = spawn_coordinator_prepared_with_tick(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec!["turn_end".to_owned()],
+        },
+        |_| {},
+        Some(Duration::from_millis(40)),
+    )
+    .await;
+    let session_id = SessionId::new();
+
+    // When stream activity flows and several tick intervals elapse.
+    harness.publish(send_to_llm(session_id.clone())).await;
+    harness
+        .publish(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "x".to_owned(),
+            is_thinking: false,
+            dispatched_at: jiff::Timestamp::now(),
+        })
+        .await;
+    harness
+        .publish(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
+            thinking_content: None,
+            model_used: None,
+            dispatched_at: jiff::Timestamp::now(),
+        })
+        .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Then no echo reply was published at all.
+    let echoes = await_recorded(&recorder, 0, Duration::from_millis(100)).await;
+    assert!(
+        echoes.is_empty(),
+        "unsubscribed guest must receive nothing, got {echoes:?}"
+    );
+}
+
+/// A guest subscribed to tick receives periodic TickEvents.
+#[rstest::rstest]
+#[tokio::test]
+async fn tick_events_are_forwarded_to_subscribed_guests() {
+    // Given a guest subscribed to tick and a fast tick override.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<CitationsReceived>().await;
+    let _state = spawn_coordinator_prepared_with_tick(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::SubscribedEcho {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            subscriptions: vec!["tick".to_owned()],
+        },
+        |_| {},
+        Some(Duration::from_millis(40)),
+    )
+    .await;
+
+    // When a few tick intervals elapse (fixed window — the pipeline is
+    // multi-hop: timer task → coordinator → plugin actor → guest → read
+    // pump → inbound channel → bus, so collect over a window instead of
+    // racing the first two arrivals).
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let events = await_recorded(&recorder, 0, Duration::from_millis(100)).await;
+
+    // Then multiple tick events arrived carrying epoch milliseconds.
+    assert!(events.len() >= 2, "expected periodic ticks");
+    for event in &events {
+        assert!(
+            event.citations[0].title.contains(r#""type":"tick""#),
+            "expected tick echo, got: {:?}",
+            event.citations[0].title
+        );
+        assert!(
+            event.citations[0].title.contains(r#""now_ms":"#),
+            "tick must carry now_ms, got: {:?}",
+            event.citations[0].title
+        );
+    }
+}
+
+/// A mirrored `restart_stalled_stream` line translates to the internal
+/// `RetryStalledSession` command on the bus.
+#[rstest::rstest]
+#[tokio::test]
+async fn mirrored_restart_stalled_stream_publishes_retry_command() {
+    // Given a coordinator whose guest sends one mirrored restart line for a
+    // valid session, and a recorder for the internal command.
+    let harness = TestHarness::new().await;
+    let recorder = harness
+        .spawn_recorder::<crate::feat::session::protocol::retry_stalled_session::RetryStalledSession>()
+        .await;
+    let session_id = SessionId::new();
+    let line = format!(
+        r#"{{"v":1,"seq":2,"ts":0,"type":"restart_stalled_stream","session_id":"{session_id}"}}"#
+    );
+    spawn_coordinator(
+        &harness,
+        plugins(),
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![line],
+        },
+    )
+    .await;
+
+    // When the mirror is processed.
+    let commands = await_recorded(&recorder, 1, WAIT).await;
+
+    // Then the internal RetryStalledSession carries the parsed session id.
+    assert_eq!(commands.len(), 1);
+    assert_eq!(commands[0].session_id, session_id);
 }
