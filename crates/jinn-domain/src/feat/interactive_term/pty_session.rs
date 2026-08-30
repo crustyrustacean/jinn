@@ -18,6 +18,7 @@
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use error_stack::Report;
 use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -55,7 +56,19 @@ pub enum PtyError {
     Write,
     /// Resizing the pty failed.
     Resize,
+    /// Waiting for the child's exit failed or timed out.
+    Wait,
 }
+
+/// Cadence for polling the exit-watcher's result slot.
+const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
+
+/// Upper bound for [`PtySession::exit`] — a generous window for a killed
+/// child; a naturally exiting program may legitimately exceed it.
+const EXIT_POLL_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Upper bound for [`Drop for PtySession`] reaping after a group kill.
+const DROP_REAP_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Transcript ring length for new sessions (screens observed).
 pub const TRANSCRIPT_LINES: usize = 200;
@@ -95,12 +108,84 @@ impl ExitInfo {
 /// session kills the child's whole process tree (mirroring the bash tool's
 /// `KillOnDrop`), so an aborted setup never leaks orphans.
 pub struct PtySession {
-    child: Box<dyn Child + Send + Sync>,
+    /// Exit watcher: owns the child and blocks in `wait()` so the kernel
+    /// reaps the process the moment it exits. [`Self::kill`] signals through
+    /// the split [`ChildKiller`]; [`Self::try_wait`] and [`Self::exit`]
+    /// read the watcher's shared result slot.
+    exit_watcher: Arc<ExitWatcher>,
     master: Box<dyn MasterPty + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     size: PtySize,
     /// Shared emulator + screen-version watch + the pty writer slot.
     screen: ScreenHandle,
+}
+
+/// The reaped exit status of a pty child, shared between the watcher thread
+/// and the session.
+struct ExitSlot(std::sync::Mutex<Option<ExitInfo>>);
+
+/// Owns the pty child on a dedicated thread, blocking in `wait()`.
+///
+/// `wait()` is the only portable reaping primitive: whoever holds the child
+/// must call it, or an exited child stays a zombie until the holder drops.
+/// Blocking in `wait()` reaps immediately at exit regardless of when (or
+/// whether) anything else polls, which matters because jinn runs for days
+/// and sessions outlive the programs they host. The watcher is the *sole*
+/// owner — no other code path touches the child — so the thread cannot race
+/// a concurrent `try_wait` on the same handle.
+struct ExitWatcher {
+    slot: ExitSlot,
+}
+
+impl ExitWatcher {
+    /// Takes ownership of `child` and spawns the reaping thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the watcher thread cannot be spawned (resource
+    /// exhaustion); the child handle is dropped un-reaped in that case.
+    fn start(mut child: Box<dyn Child + Send + Sync>) -> Result<Arc<Self>, Report<PtyError>> {
+        let watcher = Arc::new(Self {
+            slot: ExitSlot(std::sync::Mutex::new(None)),
+        });
+        let handle = Arc::downgrade(&watcher);
+        // The thread upgrades the handle only while publishing; when the
+        // session is dropped the upgrade fails and the thread exits, so the
+        // watcher never outlives its session.
+        std::thread::Builder::new()
+            .name("pty-exit-watcher".to_owned())
+            .spawn(move || {
+                let status = match child.wait() {
+                    Ok(status) => ExitInfo::from_status(&status),
+                    Err(err) => {
+                        tracing::warn!(err = %err, "interactive_term: child wait failed");
+                        ExitInfo {
+                            code: 0,
+                            signal: None,
+                        }
+                    }
+                };
+                if let Some(watcher) = handle.upgrade()
+                    && let Ok(mut slot) = watcher.slot.0.lock()
+                {
+                    *slot = Some(status);
+                }
+                // Releasing `child` here (thread teardown) is what actually
+                // drops the child handle after reaping.
+            })
+            .map_err(|err| {
+                Report::new(PtyError::Wait)
+                    .attach("failed to spawn pty exit watcher thread")
+                    .attach(format!("thread spawn error: {err}"))
+            })?;
+        Ok(watcher)
+    }
+
+    /// The child's exit info once reaped; `None` while still running.
+    fn exit(&self) -> Option<ExitInfo> {
+        let guard = self.slot.0.lock().ok()?;
+        guard.clone()
+    }
 }
 
 impl PtySession {
@@ -175,9 +260,12 @@ impl PtySession {
         // after the child exits.
         drop(pair.slave);
 
-        // Split off a killer so kill() never needs the child handle (which a
-        // later phase's exit watcher may hold while blocked inside `wait`).
+        // Split off a killer so kill() never needs the child handle (which
+        // the exit watcher now owns while blocked inside `wait`).
         let killer = child.clone_killer();
+        // Hand the child to the exit watcher: it blocks in `wait()` on a
+        // dedicated thread, reaping the process the instant it exits.
+        let exit_watcher = ExitWatcher::start(child)?;
 
         let screen = new_screen_handle(size.rows, size.cols);
         // The pty writer is shared: the coordinator writes agent input
@@ -190,7 +278,7 @@ impl PtySession {
         spawn_screen_task(rx, screen.clone(), wiring);
 
         let session = Self {
-            child,
+            exit_watcher,
             master: pair.master,
             killer,
             size,
@@ -264,16 +352,35 @@ impl PtySession {
         Ok(())
     }
 
-    /// Polls the child without blocking. Returns `Some` once it terminated.
+    /// Polls the reaped exit without blocking. Returns `Some` once the child
+    /// terminated (and the watcher thread has reaped it).
     #[must_use]
-    pub fn try_wait(&mut self) -> Option<ExitInfo> {
-        match self.child.try_wait() {
-            Ok(Some(status)) => Some(ExitInfo::from_status(&status)),
-            Ok(None) => None,
-            Err(err) => {
-                tracing::warn!(err = %err, "interactive_term: try_wait failed");
-                None
+    pub fn try_wait(&self) -> Option<ExitInfo> {
+        self.exit_watcher.exit()
+    }
+
+    /// The child's exit info, waiting until it terminates.
+    ///
+    /// The watcher thread has already reaped the process by this point —
+    /// this only reads the shared result — so it never blocks on kernel
+    /// `waitpid` and never leaves a zombie behind, no matter how long the
+    /// program ran or how it ended.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the watcher thread died before publishing (its
+    /// `wait` syscall failed); the child may or may not have exited.
+    pub fn exit(&self) -> Result<ExitInfo, Report<PtyError>> {
+        let deadline = Instant::now() + EXIT_POLL_TIMEOUT;
+        loop {
+            if let Some(info) = self.exit_watcher.exit() {
+                return Ok(info);
             }
+            if Instant::now() >= deadline {
+                return Err(Report::new(PtyError::Wait)
+                    .attach("child did not exit before the wait timeout"));
+            }
+            std::thread::sleep(EXIT_POLL_INTERVAL);
         }
     }
 
@@ -286,7 +393,7 @@ impl PtySession {
     /// design: kill races against an already-exited child are expected and
     /// swallowed by the platform helpers.
     pub fn kill(&mut self) {
-        if let Some(pid) = self.child.process_id() {
+        if let Some(pid) = self.pid() {
             kill_process_group_by_pid(pid);
         }
         let _ = self.killer.kill();
@@ -295,7 +402,7 @@ impl PtySession {
     /// The child's pid, if the platform exposes it.
     #[must_use]
     pub fn pid(&self) -> Option<u32> {
-        self.child.process_id()
+        self.master.process_group_leader().map(|pid| pid as u32)
     }
 
     /// The pty's foreground process group (unix), for diagnostics and tests.
@@ -339,6 +446,13 @@ impl Drop for PtySession {
         // Mirrors the bash tool's KillOnDrop: dropping a session takes the
         // child's whole tree down so a dropped session never leaks orphans.
         self.kill();
+        // The watcher reaps the killed child; give it a bounded moment so a
+        // killed session does not linger as a zombie until the watcher's own
+        // teardown. Best effort — the watcher owns reaping either way.
+        let deadline = Instant::now() + DROP_REAP_TIMEOUT;
+        while self.try_wait().is_none() && Instant::now() < deadline {
+            std::thread::sleep(EXIT_POLL_INTERVAL);
+        }
     }
 }
 
@@ -518,7 +632,7 @@ mod tests {
     #[tokio::test]
     async fn try_wait_reports_exit_code_after_natural_exit() {
         // Given a session whose command exits with a known code.
-        let (mut session, pump) =
+        let (session, pump) =
             PtySession::spawn("exit 7", Path::new("/tmp"), default_size(), wiring())
                 .expect("spawn exit");
 
@@ -596,5 +710,86 @@ mod tests {
 
         session.kill();
         pump.join();
+    }
+
+    /// `ps`-compatible zombie check: a process with state `Z` still occupies
+    /// a slot in the process table. Matches on the executable name (`comm`),
+    /// which is truncated and never carries arguments.
+    #[cfg(unix)]
+    async fn zombies_named(program: &str) -> usize {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let output = tokio::process::Command::new("ps")
+            .args(["-eo", "stat,comm"])
+            .output()
+            .await
+            .expect("ps should run");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        stdout
+            .lines()
+            .filter(|line| {
+                line.split_whitespace()
+                    .next()
+                    .is_some_and(|stat| stat.starts_with('Z'))
+                    && line
+                        .split_whitespace()
+                        .nth(1)
+                        .is_some_and(|comm| comm.contains(program))
+            })
+            .count()
+    }
+
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn self_exited_program_is_reaped_not_zombied() {
+        // Given a session whose program exits on its own right away (`exec`
+        // replaces bash, so the pty child IS the program — the reported btop
+        // zombie).
+        let (session, pump) =
+            PtySession::spawn("exec true", Path::new("/tmp"), default_size(), wiring())
+                .expect("spawn true");
+
+        // When the program terminates naturally and the watcher reaps it.
+        let deadline = tokio::time::Instant::now() + wait_timeout();
+        loop {
+            if session.try_wait().is_some() {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "watcher never reaped the exited child"
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        pump.join();
+
+        // Then no zombie for the program remains in the process table.
+        assert_eq!(
+            zombies_named("true").await,
+            0,
+            "self-exited child left a zombie"
+        );
+    }
+
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn killed_session_is_reaped_immediately_on_drop() {
+        // Given a session running a long sleep.
+        let (session, pump) =
+            PtySession::spawn("exec sleep 68", Path::new("/tmp"), default_size(), wiring())
+                .expect("spawn sleep");
+
+        // When dropping the session (kills + bounded reap in drop).
+        drop(session);
+        pump.join();
+
+        // Then the killed child is not a zombie — drop waited for the
+        // watcher to reap it.
+        assert_eq!(
+            zombies_named("sleep").await,
+            0,
+            "killed child left a zombie after drop"
+        );
     }
 }
