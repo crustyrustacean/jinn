@@ -167,6 +167,10 @@ fn is_sidebar_returns_false_when_normal() {
 #[case(FocusScope::Normal, Mode::Normal)]
 #[case(FocusScope::Input, Mode::Input)]
 #[case(FocusScope::SidebarPersona, Mode::Normal)]
+#[case(FocusScope::TerminalView, Mode::Normal)]
+// Capture mode routes keystrokes to the pty, so it must not count as
+// input mode (which would light up the chat input as focused).
+#[case(FocusScope::TerminalControl, Mode::Normal)]
 #[case(FocusScope::Picker { kind: PickerKind::Provider }, Mode::Picker)]
 fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
     // Given a FocusScope variant.

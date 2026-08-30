@@ -10,15 +10,17 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 - Which-key style keybind system with help popup
 - Quickly navigate and change things via Telescope-inspired picker:
   - Select model/provider
-  - Enable/disable skills (with preview) and tools
-- Context management
+  - Enable/disable skills (with preview), tools, and MCP servers; live per session
+- Fork a new session from any message by hitting `f`
+- Run TUI apps in a separate task that an agent can interact with
+  - You can also take control of the TUI app within `jinn` and then auto-send a screenshot to the agent.
+- Context management:
   - Background workers continually manage the context while sessions are in-progress. Changes are buffered (configurable) to take advantage of prefix cache pricing.
   - Individual chat entries can be added to or removed from context using `x`
   - Pin messages with `p` to keep them in context indefinitely
-- Fork a new session from any message by hitting `f`
-- Agent-managed task list with progress display.
-- Customizable personas
-- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these), MCP server support.
+- Agent-managed task list with progress display
+- Customizable personas for maximum agent behavior configurability (See [System Prompt](#system-prompt))
+- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these), MCP server support, subagents.
 
 ![jinn-full](doc/jinn-full.png)
 ![Model Selection](doc/model-selection.png)
@@ -122,8 +124,9 @@ To create a new feature or project:
 2. Type `#plan` (to load the planning prompt) followed by what you want to do. The agent will ask questions to clarify things that are ambiguous, and then eventually propose a plan in the chat.
 3. You can continue to refine the plan or push back on certain elements of the plan until it looks good. Once ready, send an `#approve-plan` message to approve the plan.
    - Using the `#approve-plan` prompt causes the agent to write a detailed plan that includes code samples and the reasoning behind particular choices. This helps the implementer avoid taking a shortcut like "Oh, we can just do `foo` instead" because the plan will specifically mention why `foo` was _not_ chosen.
-4. Tell the agent to use `phased-task-loop` or `simple-task-loop` skill to implement the plan. Also tell the agent to use whatever other project or language-specific skills you like using in the same prompt.
-   - `simple-task-loop` will instruct the agent to implement the plan. _It's recommended to use this for most features_.
+4. Tell the agent to use `micro-task-loop`, `simple-task-loop`, or `phased-task-loop` skill to implement the plan. Also tell the agent to use whatever other project or language-specific skills you like using in the same prompt.
+   - `micro-task-loop` runs all phases back to back with no builds, tests, or commits mid-loop; tests, lints, and a single commit happen once at the end. Use it for simple, low-risk plans where per-phase verification would just burn wall-clock time (e.g. slow builds).
+   - `simple-task-loop` verifies and commits after each phase. _It's recommended to use this for most features_.
    - `phased-task-loop` creates something similar to [ExecPlans](https://developers.openai.com/cookbook/articles/codex_exec_plans) for each phase as it implements. The agent will document how things diverged from the original plan, and then write the ExecPlan for the next phase accordingly. This will use more tokens and takes longer, but has a higher chance of success on more complex features. The ExecPlan gets generated based on the actual in-progress implementation at the start of each phase, so it can account for major changes that weren't anticipated in the initial plan. This _will_ burn through a ton of tokens!
    - You don't _have_ to use one of these skills to begin the coding loop, but it's recommended because they include instructions about periodically getting the latest code to reduce merge conflicts, and also how to properly manage the task list. The skills are SCM and language-agnostic and have been tested on `git`, `Fossil`, `Rust`, `Kotlin`, `Android`, and Shell scripts.
 5. After implementation is complete, submit a `#gap-analysis` message.

@@ -327,5 +327,7 @@ pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
 
         FocusScope::Normal => Scope::Normal,
         FocusScope::Dashboard => Scope::Dashboard,
+        FocusScope::TerminalView => Scope::TerminalView,
+        FocusScope::TerminalControl => Scope::TerminalControl,
     }
 }

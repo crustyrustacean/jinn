@@ -39,6 +39,13 @@ pub enum FocusScope {
     /// Dashboard tab — service status overview (base scope, full-width).
     Dashboard,
 
+    /// Terminal tab — viewing an `interactive_term` session (watch only; keys
+    /// are not forwarded to the pty).
+    TerminalView,
+    /// Terminal control — every key forwards to the `interactive_term` pty
+    /// except the handback key (config `[interactive_term] handback_key`).
+    TerminalControl,
+
     /// Quake bar - global overlay console. Captures all keystrokes while open.
     QuakeBar,
 
@@ -58,7 +65,11 @@ impl FocusScope {
             | Self::SidebarSessions
             | Self::SidebarTaskList
             | Self::SidebarMcpServers
-            | Self::SidebarResize => Mode::Normal,
+            | Self::SidebarResize
+            | Self::TerminalView
+            // Capture mode routes keystrokes to the pty, not the chat input,
+            // so it must not light up input-focused UI.
+            | Self::TerminalControl => Mode::Normal,
             Self::Input
             | Self::ArgInput
             | Self::RenameSessionInput
@@ -76,6 +87,8 @@ impl std::fmt::Display for FocusScope {
         match self {
             Self::Normal => write!(f, "Normal"),
             Self::Dashboard => write!(f, "Dashboard"),
+            Self::TerminalView => write!(f, "TerminalView"),
+            Self::TerminalControl => write!(f, "TerminalControl"),
             Self::Input => write!(f, "Input"),
             Self::SidebarPersona => write!(f, "SidebarPersona"),
             Self::SidebarPins => write!(f, "SidebarPins"),
