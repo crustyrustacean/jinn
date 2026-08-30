@@ -47,6 +47,11 @@ fn main() {
             }
             HostToPlugin::TurnEndEvent(e) => state.on_turn_end(&e),
             HostToPlugin::Welcome(_) | HostToPlugin::ToolCallEvent(_) => {}
+            // Not subscribed to the stream-lifecycle/tick kinds — never delivered.
+            HostToPlugin::StreamStartEvent(_)
+            | HostToPlugin::StreamEventPing(_)
+            | HostToPlugin::StreamEndEvent(_)
+            | HostToPlugin::Tick(_) => {}
         }
     }
 }

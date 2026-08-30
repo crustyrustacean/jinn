@@ -540,6 +540,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                                 .expect("wasmtime engine construction cannot fail"),
                         ),
                     },
+                    tick_override: None,
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -945,23 +946,6 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     deps: actor_deps.clone(),
                     state: state.clone(),
                     cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
-                },
-            )
-            .restart_policy(kameo::supervision::RestartPolicy::Never)
-            .spawn()
-            .await
-        );
-
-        // Stall watchdog — detects hung sessions and retries/cancels them.
-        let _stall_watchdog = spawn_tracked!(
-            &services.bus,
-            "stall-watchdog",
-            "StallWatchdogActor",
-            jinn_domain::feat::stall_watchdog_actor::StallWatchdogActor::supervise(
-                &root,
-                jinn_domain::feat::stall_watchdog_actor::StallWatchdogActorDeps {
-                    deps: actor_deps.clone(),
-                    state: state.clone(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)

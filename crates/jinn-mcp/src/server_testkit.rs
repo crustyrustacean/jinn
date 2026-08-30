@@ -54,6 +54,28 @@ impl EchoServer {
             ),
         )
     }
+
+    /// Like `echo`, but sleeps `delay_ms` first — lets downstream tests
+    /// exercise timeout ceilings without spawning a hung server.
+    fn slow_echo_tool() -> Tool {
+        Tool::new(
+            "slow_echo",
+            "Sleeps `delay_ms`, then echoes `message` back as text.",
+            Arc::new(
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "message": { "type": "string" },
+                        "delay_ms": { "type": "integer" }
+                    },
+                    "required": ["message", "delay_ms"],
+                })
+                .as_object()
+                .expect("valid object")
+                .clone(),
+            ),
+        )
+    }
 }
 
 impl ServerHandler for EchoServer {
@@ -66,7 +88,10 @@ impl ServerHandler for EchoServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult::with_all_items(vec![Self::echo_tool()]))
+        Ok(ListToolsResult::with_all_items(vec![
+            Self::echo_tool(),
+            Self::slow_echo_tool(),
+        ]))
     }
 
     async fn call_tool(
@@ -74,18 +99,37 @@ impl ServerHandler for EchoServer {
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        if request.name.as_ref() != "echo" {
-            return Err(ErrorData::method_not_found::<CallToolRequestMethod>());
+        match request.name.as_ref() {
+            "echo" => {
+                let message = request
+                    .arguments
+                    .as_ref()
+                    .and_then(|args| args.get("message"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("(no message)");
+                let result = rmcp::model::CallToolResult::success(vec![ContentBlock::text(
+                    message.to_owned(),
+                )]);
+                Ok(result.into())
+            }
+            "slow_echo" => {
+                let args = request.arguments.unwrap_or_default();
+                let message = args
+                    .get("message")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("(no message)");
+                let delay_ms = args
+                    .get("delay_ms")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                let result = rmcp::model::CallToolResult::success(vec![ContentBlock::text(
+                    message.to_owned(),
+                )]);
+                Ok(result.into())
+            }
+            _ => Err(ErrorData::method_not_found::<CallToolRequestMethod>()),
         }
-        let message = request
-            .arguments
-            .as_ref()
-            .and_then(|args| args.get("message"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("(no message)");
-        let result =
-            rmcp::model::CallToolResult::success(vec![ContentBlock::text(message.to_owned())]);
-        Ok(result.into())
     }
 }
 

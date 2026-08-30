@@ -259,8 +259,9 @@ impl kameo::message::Message<StreamCompleted> for LlmActor {
 /// Processes events from an LLM stream, emitting token/tool events via the sink.
 ///
 /// Runs until the stream terminates via a `Done`/`Error` event or stream end,
-/// always publishing `StreamCompleted` itself. Stall detection is handled at
-/// the session level by the `StallWatchdogActor`, not here.
+/// always publishing `StreamCompleted` itself. Stall detection lives in the
+/// first-party `stall-watchdog` plugin (fed stream events by the plugin
+/// coordinator), not here.
 async fn process_stream_events(
     mut stream: jinn_provider::ToolStream,
     bus: &BusService,
@@ -820,10 +821,9 @@ impl LlmActor {
 ///
 /// Builds a retrying service (for transient server errors), opens the stream,
 /// and drives `process_stream_events` until the stream terminates. Stall
-/// detection — a session that produces no chat-history mutations for a
-/// bounded window — is handled at the session level by the
-/// `StallWatchdogActor`, which treats a stall like a hard server error and
-/// re-dispatches the turn.
+/// detection — silence on an in-flight provider stream — lives in the
+/// first-party `stall-watchdog` plugin, which treats a stall like a hard
+/// server error and re-dispatches the turn.
 async fn run_stream(
     factory: LlmServiceFactoryService,
     bus: BusService,
