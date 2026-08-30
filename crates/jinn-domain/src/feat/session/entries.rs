@@ -379,6 +379,125 @@ mod tests {
         assert_eq!(entries[0].display_label(), "Test Session");
     }
 
+    /// A fake store that returns several pre-built session summaries.
+    struct ManySummariesStore {
+        summaries: Vec<SessionSummary>,
+    }
+
+    #[async_trait::async_trait]
+    impl super::super::SessionStore for ManySummariesStore {
+        fn name(&self) -> &'static str {
+            "many-summaries"
+        }
+        async fn save(
+            &self,
+            _session: &ChatSessionState,
+        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+            Ok(())
+        }
+        async fn load_summaries(
+            &self,
+        ) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>>
+        {
+            Ok(self.summaries.clone())
+        }
+        async fn load_session(
+            &self,
+            _session_id: &SessionId,
+        ) -> Result<Option<ChatSessionState>, error_stack::Report<super::super::SessionStoreError>>
+        {
+            Ok(None)
+        }
+        async fn delete(
+            &self,
+            _session_id: &SessionId,
+        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+            Ok(())
+        }
+        async fn fork(
+            &self,
+            _source_session_id: &SessionId,
+            _at_ordinal: usize,
+        ) -> Result<SessionId, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(SessionId::new())
+        }
+        async fn set_archived(
+            &self,
+            _session_id: &SessionId,
+            _archived: bool,
+        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+            Ok(())
+        }
+        async fn set_archived_many(
+            &self,
+            _session_ids: &[SessionId],
+            _archived: bool,
+        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+            Ok(())
+        }
+        async fn load_unarchived_summaries(
+            &self,
+        ) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>>
+        {
+            Ok(self.summaries.clone())
+        }
+    }
+
+    fn summary_with_project(title: &str, project: Option<std::path::PathBuf>) -> SessionSummary {
+        SessionSummary {
+            session_id: SessionId::new(),
+            title: title.to_owned(),
+            updated_at: jiff::Timestamp::now(),
+            created_at: jiff::Timestamp::now(),
+            session_state: SessionState::Loaded,
+            parent_session: None,
+            project,
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_session_entries_applies_project_column_width_across_all_entries() {
+        // Given a store returning one project-bearing summary and one without.
+        let summaries = vec![
+            summary_with_project("Short", Some(std::path::PathBuf::from("/code/jinn"))),
+            summary_with_project("Blank", None),
+        ];
+        let store = crate::feat::session::SessionStoreService::new(std::sync::Arc::new(
+            ManySummariesStore { summaries },
+        ));
+        let services = TestServices::builder().session_store(store).build();
+
+        // When loading session entries.
+        let entries = load_session_entries(&services, &default_theme()).await;
+
+        // Then every loaded entry carries the same shared project column
+        // width (the longest loaded project name, nonzero).
+        assert_eq!(entries.len(), 2);
+        assert!(entries[0].project_width > 0);
+        assert_eq!(entries[0].project_width, entries[1].project_width);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_session_entries_passes_summary_project_to_entries() {
+        // Given a store returning one project-bearing summary.
+        let summaries = vec![summary_with_project(
+            "Stamped",
+            Some(std::path::PathBuf::from("/code/jinn")),
+        )];
+        let store = crate::feat::session::SessionStoreService::new(std::sync::Arc::new(
+            ManySummariesStore { summaries },
+        ));
+        let services = TestServices::builder().session_store(store).build();
+
+        // When loading session entries.
+        let entries = load_session_entries(&services, &default_theme()).await;
+
+        // Then the entry renders the project leaf name in its project column.
+        assert_eq!(entries[0].project_display, "jinn");
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn load_session_entries_from_store_returns_entries() {
