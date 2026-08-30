@@ -71,10 +71,15 @@ impl Emulator {
     }
 
     /// Feeds raw pty output into the emulator, updating screen and transcript.
+    ///
+    /// HVP (`CSI … f`) is rewritten to CUP (`CSI … H`) first: vt100 0.15
+    /// implements CUP but silently drops HVP, and programs like btop position
+    /// every frame with the `f` form — unhandled, all output becomes one
+    /// linear wrapping stream and the screen turns to soup. The two sequences
+    /// are semantically identical (row;col, 1-based), so translation is lossless.
     pub fn feed(&mut self, bytes: &[u8]) {
-        self.parser.process(bytes);
+        self.parser.process(&normalize_hvp(bytes));
     }
-
     /// Snapshots the visible screen into the transcript ring.
     ///
     /// Called at settle time: each settle appends the latest screen state,
@@ -195,6 +200,73 @@ impl Emulator {
             .collect::<Vec<_>>()
             .join("\n── screen update ──\n")
     }
+}
+
+/// Rewrites HVP (`CSI … f`) sequences to the equivalent CUP (`CSI … H`).
+///
+/// vt100 0.15 handles `H` but not `f` (its `csi_dispatch` has no `'f'` arm),
+/// so un-rewritten positioning is dropped entirely and the program's output
+/// linear-wraps into garbage. The scanner is byte-level and allocation-light:
+/// it only copies through when it actually rewrites a sequence, and it treats
+/// a truncated CSI at the chunk boundary as plain data (sequences never split
+/// mid-stream in practice because the pump batches by read; a split would at
+/// worst degrade to today's behavior for that one sequence).
+fn normalize_hvp(bytes: &[u8]) -> Vec<u8> {
+    if !bytes.contains(&b'f') {
+        return bytes.to_vec();
+    }
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        // Find the next CSI introducer: ESC '['.
+        let Some(rel) = bytes
+            .get(i..)
+            .and_then(|rest| rest.iter().position(|&b| b == 0x1b))
+        else {
+            // No more escapes — copy the tail verbatim.
+            if let Some(tail) = bytes.get(i..) {
+                out.extend_from_slice(tail);
+            }
+            break;
+        };
+        let esc = i + rel;
+        if let Some(head) = bytes.get(i..esc) {
+            out.extend_from_slice(head);
+        }
+        if bytes.get(esc + 1) != Some(&b'[') {
+            // Not a CSI (OSC, ESC-only, …) — copy the ESC verbatim.
+            out.push(0x1b);
+            i = esc + 1;
+            continue;
+        }
+        // Scan the CSI body: parameter/intermediate bytes until a
+        // final byte (0x40..=0x7E).
+        let mut j = esc + 2;
+        let final_byte = loop {
+            match bytes.get(j) {
+                Some(&b) if (0x40..=0x7E).contains(&b) => break b,
+                // Parameter (0x30..=0x3F) or intermediate (0x20..=0x2F).
+                Some(b) if (0x20..=0x3F).contains(b) => j += 1,
+                // Truncated / malformed — treat as end of input.
+                _ => break 0,
+            }
+        };
+        let end = if final_byte == 0 { bytes.len() } else { j + 1 };
+        // The copies cannot fail: esc <= j/end <= len by construction, so
+        // fall back to copying only what is valid (identical on all inputs).
+        if final_byte == b'f' {
+            // Rewrite the final byte to the CUP form.
+            let body = bytes.get(esc..j).unwrap_or_default();
+            out.extend_from_slice(body);
+            out.push(b'H');
+        } else {
+            // Any other CSI (or truncated sequence): copy verbatim.
+            let seq = bytes.get(esc..end).unwrap_or_default();
+            out.extend_from_slice(seq);
+        }
+        i = end;
+    }
+    out
 }
 
 /// A styled snapshot of the visible screen's cells.
@@ -326,6 +398,49 @@ mod tests {
 
         // Then the cursor position is reported (0-indexed) as (3, 5).
         assert_eq!(emu.cursor_position(), (3, 5));
+    }
+
+    #[rstest::rstest]
+    fn hvp_positions_like_cup() {
+        // Given an emulator fed an HVP (`CSI … f`) cursor move — the form
+        // btop uses for every frame (vt100 0.15 has no `f` arm and would
+        // drop it, linear-wrapping the whole screen into soup).
+        let mut emu = Emulator::default();
+
+        // When the program moves the cursor to row 3, col 5 via HVP and
+        // prints.
+        emu.feed(b"\x1b[4;6fX");
+
+        // Then the X lands at the HVP target (0-indexed (3, 5)), exactly as
+        // the CUP form would have placed it.
+        let text = emu.plain_text();
+        assert_eq!(text, "\n\n\n     X", "HVP ignored: {text:?}");
+        assert_eq!(emu.cursor_position(), (3, 6));
+    }
+
+    #[rstest::rstest]
+    fn hvp_frame_renders_as_layout_not_soup() {
+        // Given an emulator fed a btop-style frame: HVP-positioned full-width
+        // rules and text fragments (the bug-report shape).
+        let mut emu = Emulator::default();
+        let frame = format!(
+            "\x1b[1;1f{}\x1b[9;1f{}\x1b[3;38fCPU 12%\x1b[24;69f0/768",
+            "\u{2500}".repeat(78),
+            "\u{2500}".repeat(78),
+        );
+
+        // When the frame is fed.
+        emu.feed(frame.as_bytes());
+
+        // Then each fragment sits on its intended row — not one wrapping line.
+        let text = emu.plain_text();
+        assert!(text.lines().count() >= 3, "collapsed to soup: {text:?}");
+        let row3 = text.lines().nth(2).unwrap_or_default().to_owned();
+        assert!(row3.contains("CPU 12%"), "row 3 wrong: {row3:?}");
+        assert!(
+            !text.contains("\u{2500}CPU"),
+            "fragments ran together: {text:?}"
+        );
     }
 
     #[rstest::rstest]
