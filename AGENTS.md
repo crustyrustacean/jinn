@@ -3,6 +3,7 @@
 This document defines the _coding conventions_, _patterns_, and _architecture_ for the `jinn` codebase.
 
 - IGNORE ALL CODE IN `vendor/` UNLESS IT'S SPECIFICALLY RELATED TO THE TASK.
+- NEVER RUN `cargo test -p <package>`. ALWAYS USE `just test` to test the code!
 
 ## 1. Overview
 
@@ -550,15 +551,15 @@ Read the `justfile` to determine what additional tooling is related to this proj
 
 Skills refer to commands by **role**; the table below resolves each role to this project's actual command.
 
-| Role         | Command                                            | Description                                                                                            |
-| ------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `vcs`        | Fossil                                             | This project uses Fossil for version control (`fossil status`, `fossil diff`, `fossil timeline`, ...). |
-| `check`      | `just check`                                       | `cargo check --workspace` — fast compilation without codegen.                                          |
-| `test`       | `just test`                                        | `cargo test --workspace` + e2e tests — **all tests must pass before committing**.                      |
-| `lint`       | `just lint`                                        | Lint checks.                                                                                           |
-| `format`     | `just fmt-fix`                                     | Apply formatting fixes.                                                                                |
-| `commit`     | `just commit '<message>'`                         | Commit changes (uses `--dotfiles` so `.agents/` is included).                                          |
-| `sync-trunk` | `fossil merge trunk`                               | Sync latest changes with your branch (resolve conflicts, re-test, commit).                             |
+| Role         | Command                   | Description                                                                                            |
+| ------------ | ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `vcs`        | Fossil                    | This project uses Fossil for version control (`fossil status`, `fossil diff`, `fossil timeline`, ...). |
+| `check`      | `just check`              | `cargo check --workspace` — fast compilation without codegen.                                          |
+| `test`       | `just test`               | `cargo test --workspace` + e2e tests — **all tests must pass before committing**.                      |
+| `lint`       | `just lint`               | Lint checks.                                                                                           |
+| `format`     | `just fmt-fix`            | Apply formatting fixes.                                                                                |
+| `commit`     | `just commit '<message>'` | Commit changes (uses `--dotfiles` so `.agents/` is included).                                          |
+| `sync-trunk` | `fossil merge trunk`      | Sync latest changes with your branch (resolve conflicts, re-test, commit).                             |
 
 ### Plan Directory
 
