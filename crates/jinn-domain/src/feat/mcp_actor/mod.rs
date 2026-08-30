@@ -694,21 +694,46 @@ impl Message<ExecuteTool> for McpActor {
         // Run the call inline. Tool calls are I/O bound and infrequent;
         // serializing per-server is acceptable. The orchestrator batches
         // concurrent calls, bounding any mailbox backlog.
-        let result = match client.call_tool(&tool_name, arguments).await {
-            Ok(mcp_result) => {
-                let success = !mcp_result.is_error.unwrap_or(false);
-                let content = format_result_content(&mcp_result);
-                build_result(
+        //
+        // The call is raced against `tool_default_timeout_secs` (the same
+        // safety ceiling builtin tools run under). Actor-routed MCP calls are
+        // otherwise unbounded: a hung server would strand the session's tool
+        // batch in `Sending` forever. On elapse the hung future is dropped
+        // with the connection left intact and a failed result is published so
+        // the pending batch self-completes. `0` disables the ceiling.
+        let timeout_secs = self.deps.services.user_preferences_storage.read().tool_default_timeout_secs;
+        let call = client.call_tool(&tool_name, arguments);
+        let result = if timeout_secs == 0 {
+            let call_result = call.await;
+            build_call_result(&tool_call, call_result, max_output_lines, max_output_bytes)
+        } else {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(timeout_secs),
+                call,
+            )
+            .await
+            {
+                Ok(call_result) => build_call_result(
                     &tool_call,
-                    &content,
-                    success,
+                    call_result,
                     max_output_lines,
                     max_output_bytes,
-                )
-            }
-            Err(report) => {
-                tracing::warn!(error = %report, "MCP tools/call failed");
-                failure_result(&tool_call, format!("MCP tool call failed: {report}"))
+                ),
+                Err(_) => {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        tool = %tool_call.name,
+                        timeout_secs,
+                        "MCP tool call exceeded the safety ceiling; failing the call"
+                    );
+                    failure_result(
+                        &tool_call,
+                        format!(
+                            "MCP tool `{}` timed out after {timeout_secs}s (tool_default_timeout_secs)",
+                            tool_call.name
+                        ),
+                    )
+                }
             }
         };
 
@@ -763,6 +788,33 @@ fn failure_result(tool_call: &ToolCall, message: impl Into<String>) -> ToolResul
         full_content: None,
         truncation: None,
         pin_position: None,
+    }
+}
+
+/// Maps a raw `tools/call` outcome to a [`ToolResult`], preserving the
+/// error-message shape of the failure path.
+fn build_call_result(
+    tool_call: &ToolCall,
+    call_result: Result<CallToolResult, error_stack::Report<McpClientError>>,
+    max_output_lines: Option<usize>,
+    max_output_bytes: Option<usize>,
+) -> ToolResult {
+    match call_result {
+        Ok(mcp_result) => {
+            let success = !mcp_result.is_error.unwrap_or(false);
+            let content = format_result_content(&mcp_result);
+            build_result(
+                tool_call,
+                &content,
+                success,
+                max_output_lines,
+                max_output_bytes,
+            )
+        }
+        Err(report) => {
+            tracing::warn!(error = %report, "MCP tools/call failed");
+            failure_result(tool_call, format!("MCP tool call failed: {report}"))
+        }
     }
 }
 
