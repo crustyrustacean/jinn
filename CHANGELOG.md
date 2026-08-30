@@ -5,9 +5,24 @@
 - Make archive/teardown confirmation banners use consistent wording.
 - Add `micro-task-loop` skill for straightforward tasks.
 - Add tool-call failure watchdog plugin.
+- Move stalled stream detection to plugin.
+  - Fixes issue where stall detection would trigger on long-running tool calls.
 - Add subagents/spawnable subtasks.
 - Add interactive TUI app driver.
 - (Experimental) Add task list reminder; disabled by default.
+
+### Stall detection
+
+Stall detection starts a timer when sending a request to a provider which resets whenever tokens are received. If the provider doesn't send tokens for a configured amount of time, then the plugin will trigger a stream restart.
+
+Stall detection can be enabled + configured in `jinn.toml`:
+
+```toml
+[plugin.stall-watchdog]
+enabled = true
+wasm = "stall-watchdog.wasm"
+config = { max_restarts = 3, timeout_secs = 30}
+```
 
 ### Tool call watchdog
 
