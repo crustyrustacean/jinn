@@ -21,6 +21,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+// Integration test binaries never run the crate's `#[cfg(test)]` lib hook, so
+// install the ring rustls provider here directly: reqwest is built with
+// `rustls-no-provider` (see the workspace `Cargo.toml`) and panics with
+// "No provider set" at `reqwest::Client` construction otherwise.
+// `install_default` errors on the second call; the result is deliberately ignored.
+#[ctor::ctor]
+fn install_rustls_provider_for_tests() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 use jinn_mcp::client::{McpClient, ServerCommand};
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{

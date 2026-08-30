@@ -87,6 +87,8 @@ jinn-mcp = { workspace = true, features = ["testkit", "server-testkit"] }
 tokio = { workspace = true, features = ["test-util"] }
 jinn-common = { workspace = true, features = ["testing"] }
 trybuild = "1"
+ctor = "0.8"
+rustls = { workspace = true }
 
 
 [build-dependencies]

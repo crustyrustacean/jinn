@@ -24,6 +24,8 @@ rstest = { workspace = true }
 serde_json = { workspace = true }
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+ctor = "0.8"
+rustls = { workspace = true }
 
 [lints]
 workspace = true

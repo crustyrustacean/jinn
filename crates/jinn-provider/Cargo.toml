@@ -23,6 +23,8 @@ parking_lot = { workspace = true }
 mockito = { workspace = true }
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+ctor = "0.8"
+rustls = { workspace = true }
 
 
 

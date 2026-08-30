@@ -564,7 +564,6 @@ mod tests {
             "precondition: the tool loop dispatched its continuation"
         );
 
-
         // And StreamCompleted(Canceled) arrives afterwards.
         let cancel = StreamCompleted {
             model_used: None,
@@ -587,8 +586,7 @@ mod tests {
         let extra = await_recorded::<SendToLlmProvider>(&recorder, 0, Duration::from_secs(1)).await;
         assert!(
             extra.iter().all(|m| m.session_id != session_id),
-            "cancel after tool-use must not trigger a second dispatch, got {:?}",
-            extra
+            "cancel after tool-use must not trigger a second dispatch, got {extra:?}"
         );
 
         // And the session settles in Idle with a single cancel entry appended.
@@ -602,12 +600,7 @@ mod tests {
         let cancelled_entries = session
             .history()
             .iter()
-            .filter(|e| {
-                matches!(
-                    e.kind,
-                    crate::protocol::ChatEntryKind::Error { .. }
-                )
-            })
+            .filter(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Error { .. }))
             .count();
         assert_eq!(
             cancelled_entries, 1,
