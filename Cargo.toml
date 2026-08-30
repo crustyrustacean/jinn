@@ -7,8 +7,9 @@ default-run = "jinn"
 repository = "https://github.com/jayson-lennon/jinn"
 
 [features]
-default = ["headless-chrome"]
-headless-chrome = ["jinn-web-fetch/headless-chrome"]
+default = []
+headless-chrome = ["jinn-web-fetch/headless-chrome", "jinn-web-search/headless-chrome"]
+syntax-all = ["jinn-domain/syntax-all"]
 
 # cargo-binstall artifact discovery. The binary is built locally and
 # pushed to GitHub releases (see `just build-release-tarball` / `just release`).
@@ -36,6 +37,12 @@ opt-level = "s"    # optimize for size
 lto = true
 codegen-units = 1
 
+[profile.dev]
+debug = 0
+
+[patch.crates-io]
+tiktoken = { path = "vendor/tiktoken" }
+
 [lib]
 path = "src/lib.rs"
 
@@ -47,7 +54,7 @@ jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-discord = { workspace = true }
 
-jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
+jinn-web-fetch = { workspace = true }
 jinn-web-search = { workspace = true }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
@@ -88,7 +95,22 @@ jinn-common = { path = "crates/jinn-common" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }
-ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest", "mermaid"] }
+ratatui-markdown = { path = "vendor/ratatui-markdown", features = [
+  "markdown",
+  "highlight",
+  "highlight-pest",
+  "mermaid",
+  "highlight-lang-rust",
+  "highlight-lang-python",
+  "highlight-lang-javascript",
+  "highlight-lang-typescript",
+  "highlight-lang-bash",
+  "highlight-lang-json",
+  "highlight-lang-toml",
+  "highlight-lang-go",
+  "highlight-lang-c",
+  "highlight-lang-cpp",
+] }
 jinn-provider = { path = "crates/jinn-provider" }
 jinn-tui = { path = "crates/jinn-tui" }
 jinn-cli = { path = "crates/jinn-cli" }
@@ -181,7 +203,13 @@ glob = "0.3"
 libc = "0.2"
 rand = "0.9"
 mockito = "1.7"
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "form", "json", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "form", "json", "stream"] }
+# Pin the rustls crypto provider to `ring`. reqwest's `rustls` feature hard-wires
+# the aws-lc-rs provider (whose sys crate compiles ~170s of C/asm per clean
+# build); `rustls-no-provider` + this explicit dep makes `ring` the crate-level
+# default provider instead. ring is already in the graph for serenity and
+# headless_chrome, so this adds no new compilation.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 scraper = "0.27"
 anstyle-lossy = "1"
 anstyle = "1"
@@ -206,8 +234,15 @@ csv = "1"
 ctrlc = "3"
 comfy-table = "7"
 # Database
-daow = "0.1.0"
-rusqlite = { version = "0.40", features = ["bundled"] }
+daow = "0.2.0"
+# `bundled` is deliberately NOT in this spec. Host-side consumers (build
+# scripts, daow's proc-macro validation) must link the system libsqlite3 — a
+# bundled build here would recompile the whole SQLite amalgamation for the
+# host on every clean build. The runtime link still gets `bundled` (a
+# self-contained binary) through daow's own `bundled` feature, which unions
+# across the target-side graph. resolver v3 keeps host and target resolution
+# separate, which is what makes this split possible.
+rusqlite = { version = "0.40", default-features = false, features = ["cache"] }
 
 # Discord bot
 poise = "0.6"

@@ -35,9 +35,9 @@ use jinn_domain::feat::browser_binary_scan::{
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_domain::feat::web_search_actor::{WebSearchActor, WebSearchActorDeps};
-use jinn_web_fetch::{
-    CleanMarkdownExtractor, HttpFetcher, MarkdownExtractor, OutputFormat, stealth::StealthSettings,
-};
+use jinn_web_fetch::{CleanMarkdownExtractor, HttpFetcher, MarkdownExtractor, OutputFormat};
+#[cfg(feature = "headless-chrome")]
+use jinn_web_fetch::stealth::StealthSettings;
 use jinn_web_search::DdgSearcher;
 
 use jinn_domain::{AppCore, State};
@@ -529,6 +529,27 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         let browser_config = user_preferences_storage.read().browser.clone();
         let web_fetch_backend = web_fetch_config.backend;
         let web_search_backend = web_search_config.backend;
+        // Browser-backed backends require the `headless-chrome` feature. When
+        // the binary is built without it, fall back to HTTP and say so — a
+        // browser preference must not be silently ignored.
+        #[cfg(not(feature = "headless-chrome"))]
+        let (web_fetch_backend, web_search_backend) = {
+            let fallback = |backend, tool| match backend {
+                WebFetchBackend::Http => backend,
+                other @ (WebFetchBackend::HeadlessChrome | WebFetchBackend::HeadedChrome) => {
+                    tracing::warn!(
+                        ?other,
+                        tool,
+                        "backend requires the headless-chrome feature (not compiled in); using http"
+                    );
+                    WebFetchBackend::Http
+                }
+            };
+            (
+                fallback(web_fetch_backend, "web-fetch"),
+                fallback(web_search_backend, "web-search"),
+            )
+        };
         tracing::info!(
             ?web_fetch_backend,
             ?web_search_backend,
@@ -566,147 +587,199 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         });
 
         // Resolve the profile base dir: explicit CLI override wins, else AppPaths.
+        #[cfg(feature = "headless-chrome")]
         let profile_base: std::path::PathBuf =
             browser_profile_override.unwrap_or_else(|| paths.browser_profile_base_dir());
+        // No browser profiles exist without the headless-chrome feature.
+        #[cfg(not(feature = "headless-chrome"))]
+        let _ = browser_profile_override;
 
         // Build one SharedBrowser per active mode. A mode is active when either tool
         // selects it. The handle is cached so both tools sharing a mode reuse it.
-        use jinn_domain::BrowserProfileMode;
-        use std::collections::HashMap;
-        let build_shared =
-            |mode: BrowserProfileMode| -> std::sync::Arc<jinn_web_fetch::SharedBrowser> {
-                let headed = matches!(mode, BrowserProfileMode::Headed);
-                let mut stealth = StealthSettings::from(&browser_config);
-                stealth.headed = headed;
-                stealth.binary_path = resolved.path.clone();
-                stealth.user_agent = resolved_user_agent.clone();
-                stealth.profile_dir = Some(profile_base.join(mode.as_str()));
-                tracing::info!(?stealth, "web tools: building shared browser for mode");
-                std::sync::Arc::new(jinn_web_fetch::SharedBrowser::new(stealth))
+        #[cfg(feature = "headless-chrome")]
+        {
+            use jinn_domain::BrowserProfileMode;
+            use std::collections::HashMap;
+            let build_shared =
+                |mode: BrowserProfileMode| -> std::sync::Arc<jinn_web_fetch::SharedBrowser> {
+                    let headed = matches!(mode, BrowserProfileMode::Headed);
+                    let mut stealth = StealthSettings::from(&browser_config);
+                    stealth.headed = headed;
+                    stealth.binary_path = resolved.path.clone();
+                    stealth.user_agent = resolved_user_agent.clone();
+                    stealth.profile_dir = Some(profile_base.join(mode.as_str()));
+                    tracing::info!(?stealth, "web tools: building shared browser for mode");
+                    std::sync::Arc::new(jinn_web_fetch::SharedBrowser::new(stealth))
+                };
+            let shared_for = |backend: WebFetchBackend| -> Option<BrowserProfileMode> {
+                match backend {
+                    WebFetchBackend::Http => None,
+                    WebFetchBackend::HeadlessChrome => Some(BrowserProfileMode::Headless),
+                    WebFetchBackend::HeadedChrome => Some(BrowserProfileMode::Headed),
+                }
             };
-        let shared_for = |backend: WebFetchBackend| -> Option<BrowserProfileMode> {
-            match backend {
-                WebFetchBackend::Http => None,
-                WebFetchBackend::HeadlessChrome => Some(BrowserProfileMode::Headless),
-                WebFetchBackend::HeadedChrome => Some(BrowserProfileMode::Headed),
+            let fetch_mode = shared_for(web_fetch_backend);
+            let search_mode = shared_for(web_search_backend);
+            let mut shared_by_mode: HashMap<
+                BrowserProfileMode,
+                std::sync::Arc<jinn_web_fetch::SharedBrowser>,
+            > = HashMap::new();
+            for mode in [fetch_mode, search_mode].into_iter().flatten() {
+                shared_by_mode
+                    .entry(mode)
+                    .or_insert_with(|| build_shared(mode));
             }
-        };
-        let fetch_mode = shared_for(web_fetch_backend);
-        let search_mode = shared_for(web_search_backend);
-        let mut shared_by_mode: HashMap<
-            BrowserProfileMode,
-            std::sync::Arc<jinn_web_fetch::SharedBrowser>,
-        > = HashMap::new();
-        for mode in [fetch_mode, search_mode].into_iter().flatten() {
-            shared_by_mode
-                .entry(mode)
-                .or_insert_with(|| build_shared(mode));
-        }
 
-        // Spawn one detached keepalive heartbeat per active SharedBrowser. Each
-        // loop polls [`SharedBrowser::probe`] inside a blocking task bounded by
-        // [`PROBE_TIMEOUT`]; a timeout or panic force-evicts so the next request
-        // lazily relaunches a fresh browser rather than hanging on a dead
-        // WebSocket. The task is detached (handle dropped) — it lives for the
-        // process lifetime and is independent of any actor lifecycle.
-        for shared in shared_by_mode.values() {
-            let shared = shared.clone();
-            tokio::spawn(async move {
-                loop {
-                    tokio::time::sleep(jinn_web_fetch::HEARTBEAT_INTERVAL).await;
-                    let probe = tokio::task::spawn_blocking({
-                        let shared = shared.clone();
-                        move || shared.probe()
-                    });
-                    match tokio::time::timeout(jinn_web_fetch::PROBE_TIMEOUT, probe).await {
-                        Ok(Ok(())) => {}
-                        // probe() returns () — it evicts internally on failure,
-                        // so an Ok is no-op here. The remaining arms cover the
-                        // wedge cases probe() can't observe on its own.
-                        Ok(Err(join_err)) => {
-                            tracing::warn!(
-                                ?join_err,
-                                "keepalive: probe task panicked, force-evicting"
-                            );
-                            shared.force_evict();
-                        }
-                        Err(_elapsed) => {
-                            tracing::warn!("keepalive: probe timed out, force-evicting");
-                            shared.force_evict();
+            // Spawn one detached keepalive heartbeat per active SharedBrowser. Each
+            // loop polls [`SharedBrowser::probe`] inside a blocking task bounded by
+            // [`PROBE_TIMEOUT`]; a timeout or panic force-evicts so the next request
+            // lazily relaunches a fresh browser rather than hanging on a dead
+            // WebSocket. The task is detached (handle dropped) — it lives for the
+            // process lifetime and is independent of any actor lifecycle.
+            for shared in shared_by_mode.values() {
+                let shared = shared.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(jinn_web_fetch::HEARTBEAT_INTERVAL).await;
+                        let probe = tokio::task::spawn_blocking({
+                            let shared = shared.clone();
+                            move || shared.probe()
+                        });
+                        match tokio::time::timeout(jinn_web_fetch::PROBE_TIMEOUT, probe).await {
+                            Ok(Ok(())) => {}
+                            // probe() returns () — it evicts internally on failure,
+                            // so an Ok is no-op here. The remaining arms cover the
+                            // wedge cases probe() can't observe on its own.
+                            Ok(Err(join_err)) => {
+                                tracing::warn!(
+                                    ?join_err,
+                                    "keepalive: probe task panicked, force-evicting"
+                                );
+                                shared.force_evict();
+                            }
+                            Err(_elapsed) => {
+                                tracing::warn!("keepalive: probe timed out, force-evicting");
+                                shared.force_evict();
+                            }
                         }
                     }
+                });
+            }
+
+            // Construct the fetcher.
+            let web_fetcher: std::sync::Arc<dyn jinn_web_fetch::WebFetcher> = match fetch_mode {
+                None => {
+                    tracing::debug!("web-fetch: using HttpFetcher backend");
+                    std::sync::Arc::new(HttpFetcher::new(extractors.clone()))
                 }
-            });
+                Some(mode) => {
+                    tracing::debug!(?mode, "web-fetch: using shared browser backend");
+                    let shared = shared_by_mode
+                        .get(&mode)
+                        .expect("shared browser built for active mode")
+                        .clone();
+                    std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::with_shared(
+                        shared,
+                        extractors.clone(),
+                    ))
+                }
+            };
+            let _web_fetch = spawn_tracked!(
+                &services.bus,
+                "web-fetch",
+                "WebFetchActor",
+                WebFetchActor::supervise(
+                    &root,
+                    WebFetchActorDeps {
+                        deps: actor_deps.clone(),
+                        web_fetcher,
+                    },
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await
+            );
+
+            // Construct the searcher.
+            let web_searcher: std::sync::Arc<dyn jinn_web_search::WebSearcher> = match search_mode
+            {
+                None => {
+                    tracing::debug!("web-search: using reqwest DdgSearcher backend");
+                    std::sync::Arc::new(DdgSearcher::with_endpoint_and_user_agent(
+                        "https://html.duckduckgo.com/html".to_owned(),
+                        resolved_user_agent.as_str(),
+                    ))
+                }
+                Some(mode) => {
+                    tracing::debug!(?mode, "web-search: using browser-backed DdgSearcher");
+                    let shared = shared_by_mode
+                        .get(&mode)
+                        .expect("shared browser built for active mode")
+                        .clone();
+                    std::sync::Arc::new(jinn_web_search::BrowserDdgSearcher::new(shared))
+                }
+            };
+            let _web_search = spawn_tracked!(
+                &services.bus,
+                "web-search",
+                "WebSearchActor",
+                WebSearchActor::supervise(
+                    &root,
+                    WebSearchActorDeps {
+                        deps: actor_deps.clone(),
+                        web_searcher,
+                        config: web_search_config,
+                    },
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await
+            );
         }
 
-        // Construct the fetcher.
-        let web_fetcher: std::sync::Arc<dyn jinn_web_fetch::WebFetcher> = match fetch_mode {
-            None => {
-                tracing::debug!("web-fetch: using HttpFetcher backend");
-                std::sync::Arc::new(HttpFetcher::new(extractors.clone()))
-            }
-            Some(mode) => {
-                tracing::debug!(?mode, "web-fetch: using shared browser backend");
-                let shared = shared_by_mode
-                    .get(&mode)
-                    .expect("shared browser built for active mode")
-                    .clone();
-                std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::with_shared(
-                    shared,
-                    extractors.clone(),
-                ))
-            }
-        };
-        let _web_fetch = spawn_tracked!(
-            &services.bus,
-            "web-fetch",
-            "WebFetchActor",
-            WebFetchActor::supervise(
-                &root,
-                WebFetchActorDeps {
-                    deps: actor_deps.clone(),
-                    web_fetcher,
-                },
-            )
-            .restart_policy(kameo::supervision::RestartPolicy::Never)
-            .spawn()
-            .await
-        );
+        // Without the headless-chrome feature both tools run on plain HTTP.
+        #[cfg(not(feature = "headless-chrome"))]
+        {
+            let web_fetcher: std::sync::Arc<dyn jinn_web_fetch::WebFetcher> =
+                std::sync::Arc::new(HttpFetcher::new(extractors.clone()));
+            let _web_fetch = spawn_tracked!(
+                &services.bus,
+                "web-fetch",
+                "WebFetchActor",
+                WebFetchActor::supervise(
+                    &root,
+                    WebFetchActorDeps {
+                        deps: actor_deps.clone(),
+                        web_fetcher,
+                    },
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await
+            );
 
-        // Construct the searcher.
-        let web_searcher: std::sync::Arc<dyn jinn_web_search::WebSearcher> = match search_mode {
-            None => {
-                tracing::debug!("web-search: using reqwest DdgSearcher backend");
+            let web_searcher: std::sync::Arc<dyn jinn_web_search::WebSearcher> =
                 std::sync::Arc::new(DdgSearcher::with_endpoint_and_user_agent(
                     "https://html.duckduckgo.com/html".to_owned(),
                     resolved_user_agent.as_str(),
-                ))
-            }
-            Some(mode) => {
-                tracing::debug!(?mode, "web-search: using browser-backed DdgSearcher");
-                let shared = shared_by_mode
-                    .get(&mode)
-                    .expect("shared browser built for active mode")
-                    .clone();
-                std::sync::Arc::new(jinn_web_search::BrowserDdgSearcher::new(shared))
-            }
-        };
-        let _web_search = spawn_tracked!(
-            &services.bus,
-            "web-search",
-            "WebSearchActor",
-            WebSearchActor::supervise(
-                &root,
-                WebSearchActorDeps {
-                    deps: actor_deps.clone(),
-                    web_searcher,
-                    config: web_search_config,
-                },
-            )
-            .restart_policy(kameo::supervision::RestartPolicy::Never)
-            .spawn()
-            .await
-        );
+                ));
+            let _web_search = spawn_tracked!(
+                &services.bus,
+                "web-search",
+                "WebSearchActor",
+                WebSearchActor::supervise(
+                    &root,
+                    WebSearchActorDeps {
+                        deps: actor_deps.clone(),
+                        web_searcher,
+                        config: web_search_config,
+                    },
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await
+            );
+        }
 
         // Prompt scan actor.
         let _prompt_scan = spawn_tracked!(
