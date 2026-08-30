@@ -3,7 +3,22 @@
 - Add `A` sidebar keybind to archive selected session and all of it's children.
 - Add `X` sidebar keybind to teardown selected session and then archive all of it's children.
 - Make archive/teardown confirmation banners use consistent wording.
+- Add tool-call failure watchdog plugin.
 - Add subagents/spawnable subtasks.
+- (Experimental) Add task list reminder; disabled by default.
+
+### Tool call watchdog
+
+This is a plugin that tracks how many tool calls have failed and automatically stops a session if a threshold is reached.
+
+```toml
+[plugin.tool-call-watchdog]
+enabled = true
+wasm = "tool-call-watchdog.wasm"
+config.max_failures = 4
+```
+
+It uses a simple accumulator that increases by 1 on every tool call failure, and decreases by 1 on every tool call success. Once `max_failures` is reached, it will stop the session and reset to 0.
 
 ### Subagents
 
