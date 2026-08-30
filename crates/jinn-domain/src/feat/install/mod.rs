@@ -275,6 +275,13 @@ const BUNDLED: &[Bundled] = &[
             "../../../../../res/plugins/tool-call-watchdog.wasm"
         )),
     },
+    Bundled {
+        kind: Kind::Plugin,
+        relative: "stall-watchdog.wasm",
+        contents: BundleContents::Wasm(include_bytes!(
+            "../../../../../res/plugins/stall-watchdog.wasm"
+        )),
+    },
 ];
 
 /// Installs every bundled default resource into the given destinations.
@@ -591,7 +598,11 @@ mod tests {
         );
         // And the file exists at the nested path with non-empty contents.
         assert!(outcome.path().is_file());
-        assert!(!std::fs::read_to_string(outcome.path()).expect("read").is_empty());
+        assert!(
+            !std::fs::read_to_string(outcome.path())
+                .expect("read")
+                .is_empty()
+        );
     }
 
     #[rstest::rstest]

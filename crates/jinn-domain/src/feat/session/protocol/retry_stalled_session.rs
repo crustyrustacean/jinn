@@ -13,28 +13,36 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Retry a session whose turn has stalled.
+//! Retry a session whose in-flight LLM stream went silent.
 //!
-//! Emitted by the [`StallWatchdogActor`](crate::feat::stall_watchdog_actor::StallWatchdogActor)
-//! when a session in `Sending`/`Streaming` has had no chat-history activity
-//! for longer than `history_stall_timeout_secs`. The handler discards any
-//! partial streaming entries, pushes a system marker, and re-dispatches the
-//! turn — mirroring the server-error retry path. A hung session is treated
-//! identically to a hard provider error.
+//! Emitted by the plugin coordinator when the first-party `stall-watchdog`
+//! plugin detects silence on a session's in-flight provider stream (mirrored
+//! from the plugin's `RestartStalledStream` wire message). The handler
+//! discards any partial streaming entries, pushes a system marker, and
+//! re-dispatches the turn — mirroring the server-error retry path. A hung
+//! stream is treated identically to a hard provider error.
 
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::SessionId;
 
-/// Command to retry a session whose turn has stalled.
+/// Command to retry a session whose in-flight stream stalled.
 ///
-/// Published by the stall watchdog only while the session's stall-retry
-/// budget is not yet exhausted. Once the budget is exceeded the watchdog
-/// publishes `CancelStream` instead.
+/// Published by the plugin coordinator on the `stall-watchdog` plugin's
+/// request. The session-actor handler restarts only when the phase is active
+/// *and* an LLM stream is genuinely in flight (`stream_dispatched_at` set) —
+/// so a stale or bogus request is a no-op by construction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetryStalledSession {
     /// The session whose turn has stalled.
     pub session_id: SessionId,
+    /// The 1-based restart attempt within the current stall lineage, as
+    /// reported by the watchdog plugin. Surfaced in the chat retry marker
+    /// so the user can see each attempt.
+    pub attempt: u32,
+    /// The restart budget the watchdog plugin enforces, rendered in the
+    /// chat retry marker as "attempt N of M".
+    pub max_restarts: u32,
 }
 
 impl crate::common::bus::BusMessage for RetryStalledSession {}

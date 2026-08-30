@@ -717,25 +717,36 @@ mod tests {
     /// which is truncated and never carries arguments.
     #[cfg(unix)]
     async fn zombies_named(program: &str) -> usize {
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        let output = tokio::process::Command::new("ps")
-            .args(["-eo", "stat,comm"])
-            .output()
-            .await
-            .expect("ps should run");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        stdout
-            .lines()
-            .filter(|line| {
-                line.split_whitespace()
-                    .next()
-                    .is_some_and(|stat| stat.starts_with('Z'))
-                    && line
-                        .split_whitespace()
-                        .nth(1)
-                        .is_some_and(|comm| comm.contains(program))
-            })
-            .count()
+        // Poll instead of one fixed sleep: under full-suite parallel load the
+        // reaper task may be scheduled late, and a single 300ms window reads
+        // the test's own just-killed child as a leaked zombie. Bounded
+        // polling still fails on a genuinely leaked child — it just gives
+        // legitimate reaping time to complete.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let output = tokio::process::Command::new("ps")
+                .args(["-eo", "stat,comm"])
+                .output()
+                .await
+                .expect("ps should run");
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let zombies = stdout
+                .lines()
+                .filter(|line| {
+                    line.split_whitespace()
+                        .next()
+                        .is_some_and(|stat| stat.starts_with('Z'))
+                        && line
+                            .split_whitespace()
+                            .nth(1)
+                            .is_some_and(|comm| comm.contains(program))
+                })
+                .count();
+            if zombies == 0 || tokio::time::Instant::now() >= deadline {
+                return zombies;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 
     #[cfg(unix)]
