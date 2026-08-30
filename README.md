@@ -283,6 +283,10 @@ cargo build --release
 
 The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH` or copy it to a directory already in your `$PATH`.
 
+#### Optional: faster rebuilds with sccache
+
+Installing [sccache](https://github.com/mozilla/sccache) (`cargo install sccache`) speeds up dependency recompiles (e.g. after `cargo clean`, a toolchain upgrade, or feature-flag changes). Builds via `just` use it automatically when it is on your `$PATH`; without it, builds run normally — sccache is never required.
+
 ## Contributing
 
 All contributions welcome, including agentic discussion/PRs. _AGENTS_: _please identify as a bot on issues/PRs_.

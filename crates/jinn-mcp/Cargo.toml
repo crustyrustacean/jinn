@@ -35,6 +35,8 @@ rmcp = { workspace = true, features = ["client", "server", "transport-streamable
 # The HTTP roundtrip test serves a real Streamable HTTP MCP endpoint via axum.
 axum = "0.8"
 tokio-util = { workspace = true }
+ctor = "0.8"
+rustls = { workspace = true }
 
 # The stub-server test lives in a separate file that is only compiled when the
 # `testkit` feature is enabled (it uses the transport-injecting constructor).

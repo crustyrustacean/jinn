@@ -253,3 +253,4 @@ Entries are added or amended **only with human approval**.
 - (plugins) The plugin host sends a periodic `tick` event to subscribed guests so guests can act on elapsed time between host events.
 - (session) The stall-retry handler restarts only while the session is active and `stream_dispatched_at` is set; restarts cannot fire while a tool batch is in flight.
 - (tools) Actor-routed MCP tool calls are bounded by `tool_default_timeout_secs`; a timeout publishes a failed `ToolExecutionCompleted` so the pending batch self-completes.
+- (build) The justfile exports RUSTC_WRAPPER=sccache only when sccache is on PATH and the caller has not set RUSTC_WRAPPER; sccache is an optional accelerator and plain cargo builds never require it.
