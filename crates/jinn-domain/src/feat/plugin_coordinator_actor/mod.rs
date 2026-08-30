@@ -565,7 +565,12 @@ async fn apply_plugin_restart_stalled_stream(
         session_id = %session_id,
         "plugin requested stalled-stream restart"
     );
-    bus.publish(RetryStalledSession { session_id }).await;
+    bus.publish(RetryStalledSession {
+        session_id,
+        attempt: msg.attempt,
+        max_restarts: msg.max_restarts,
+    })
+    .await;
 }
 
 /// Applies a mirrored plugin system entry: validates the session id and

@@ -36,6 +36,13 @@ use crate::protocol::SessionId;
 pub struct RetryStalledSession {
     /// The session whose turn has stalled.
     pub session_id: SessionId,
+    /// The 1-based restart attempt within the current stall lineage, as
+    /// reported by the watchdog plugin. Surfaced in the chat retry marker
+    /// so the user can see each attempt.
+    pub attempt: u32,
+    /// The restart budget the watchdog plugin enforces, rendered in the
+    /// chat retry marker as "attempt N of M".
+    pub max_restarts: u32,
 }
 
 impl crate::common::bus::BusMessage for RetryStalledSession {}

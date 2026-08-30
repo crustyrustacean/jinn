@@ -164,6 +164,8 @@ fn trip(
         stall.last_event_ms = now_ms;
         return vec![PluginToHost::RestartStalledStream(RestartStalledStream {
             session_id: session,
+            attempt: stall.restarts,
+            max_restarts,
         })];
     }
     stall.armed = false;
@@ -236,12 +238,15 @@ mod tests {
     }
 
     /// Asserts the pushes are exactly one restart for `session`.
-    fn assert_restart(pushes: &[PluginToHost], session: &str) {
+    fn assert_restart(pushes: &[PluginToHost], session: &str, attempt: u32) {
         assert_eq!(pushes.len(), 1, "expected one restart, got: {pushes:?}");
         let PluginToHost::RestartStalledStream(restart) = &pushes[0] else {
             panic!("expected a RestartStalledStream, got: {pushes:?}");
         };
         assert_eq!(restart.session_id, session);
+        // And the reported attempt matches the restart ordinal within the
+        // stall lineage.
+        assert_eq!(restart.attempt, attempt);
     }
 
     /// Asserts the pushes are exactly the give-up pair (entry then cancel).
@@ -286,7 +291,7 @@ mod tests {
         let pushes = watchdog.on_tick(61_000);
 
         // Then the session restarts — the silent handshake gap is covered.
-        assert_restart(&pushes, "s-1");
+        assert_restart(&pushes, "s-1", 1);
     }
 
     #[rstest::rstest]
@@ -310,7 +315,7 @@ mod tests {
         // Given a stalled stream that tripped once at t=61s.
         let mut watchdog = StallWatchdog::with_limits(60, 3);
         watchdog.on_stream_start(&start("s-1"), 1_000);
-        assert_restart(&watchdog.on_tick(61_000), "s-1");
+        assert_restart(&watchdog.on_tick(61_000), "s-1", 1);
 
         // When the next host tick arrives 4 seconds later (5s cadence).
         let pushes = watchdog.on_tick(65_000);
@@ -325,14 +330,14 @@ mod tests {
         // Given a stream that stalled and was restarted once.
         let mut watchdog = StallWatchdog::with_limits(60, 3);
         watchdog.on_stream_start(&start("s-1"), 1_000);
-        assert_restart(&watchdog.on_tick(61_000), "s-1");
+        assert_restart(&watchdog.on_tick(61_000), "s-1", 1);
 
         // When the retried stream also goes silent past the window.
         let pushes = watchdog.on_tick(121_000);
 
         // Then a second restart fires — consecutive stalls count against
         // the budget.
-        assert_restart(&pushes, "s-1");
+        assert_restart(&pushes, "s-1", 2);
     }
 
     #[rstest::rstest]
@@ -342,7 +347,7 @@ mod tests {
         let mut watchdog = StallWatchdog::with_limits(60, 3);
         watchdog.on_stream_start(&start("s-1"), 0);
         for window in 1..=3 {
-            assert_restart(&watchdog.on_tick(window * 60_000), "s-1");
+            assert_restart(&watchdog.on_tick(window * 60_000), "s-1", window as u32);
         }
 
         // When the fourth window also goes silent.
@@ -378,10 +383,10 @@ mod tests {
         // stream paused for a tool batch and re-dispatched.
         let mut watchdog = StallWatchdog::with_limits(60, 2);
         watchdog.on_stream_start(&start("s-1"), 0);
-        assert_restart(&watchdog.on_tick(60_000), "s-1");
+        assert_restart(&watchdog.on_tick(60_000), "s-1", 1);
         watchdog.on_stream_end(&end("s-1", StreamEndReason::ToolUse));
         watchdog.on_stream_start(&start("s-1"), 61_000);
-        assert_restart(&watchdog.on_tick(121_000), "s-1");
+        assert_restart(&watchdog.on_tick(121_000), "s-1", 2);
         watchdog.on_stream_end(&end("s-1", StreamEndReason::ToolUse));
         watchdog.on_stream_start(&start("s-1"), 122_000);
 
@@ -400,7 +405,7 @@ mod tests {
         // turn genuinely completed.
         let mut watchdog = StallWatchdog::with_limits(60, 2);
         watchdog.on_stream_start(&start("s-1"), 0);
-        assert_restart(&watchdog.on_tick(60_000), "s-1");
+        assert_restart(&watchdog.on_tick(60_000), "s-1", 1);
         watchdog.on_stream_end(&end("s-1", StreamEndReason::Finished));
 
         // When a fresh turn stalls past the window.
@@ -409,7 +414,7 @@ mod tests {
 
         // Then it restarts again — the completion restored the full budget
         // (a give-up pair here would mean the budget carried over).
-        assert_restart(&pushes, "s-1");
+        assert_restart(&pushes, "s-1", 1);
     }
 
     #[rstest::rstest]
@@ -449,7 +454,7 @@ mod tests {
         // the retry produce output (the retry connected).
         let mut watchdog = StallWatchdog::with_limits(60, 1);
         watchdog.on_stream_start(&start("s-1"), 0);
-        assert_restart(&watchdog.on_tick(60_000), "s-1");
+        assert_restart(&watchdog.on_tick(60_000), "s-1", 1);
         watchdog.on_stream_start(&start("s-1"), 61_000);
         watchdog.on_stream_event(&ping("s-1"), 62_000);
 
@@ -458,7 +463,7 @@ mod tests {
 
         // Then it restarts rather than giving up — the observed recovery
         // reset the consecutive-stall budget.
-        assert_restart(&pushes, "s-1");
+        assert_restart(&pushes, "s-1", 1);
     }
 
     #[rstest::rstest]
@@ -474,7 +479,7 @@ mod tests {
         let pushes = watchdog.on_tick(61_000);
 
         // Then only the silent session tripped — the pinged one stays quiet.
-        assert_restart(&pushes, "s-a");
+        assert_restart(&pushes, "s-a", 1);
     }
 
     #[rstest::rstest]
@@ -490,7 +495,7 @@ mod tests {
         // Then nothing panics and an unrelated session still trips normally.
         watchdog.on_stream_start(&start("s-1"), 0);
         let pushes = watchdog.on_tick(60_000);
-        assert_restart(&pushes, "s-1");
+        assert_restart(&pushes, "s-1", 1);
     }
 
     #[rstest::rstest]
@@ -515,7 +520,7 @@ mod tests {
         // Then the trip lands exactly at the configured window, where the
         // 60s default would still be silent.
         assert!(early.is_empty());
-        assert_restart(&on_time, "s-1");
+        assert_restart(&on_time, "s-1", 1);
     }
 
     #[rstest::rstest]
@@ -539,7 +544,7 @@ mod tests {
 
         // Then the first window restarts and the second gives up — the
         // default budget of 3 would still have restarts left.
-        assert_restart(&first, "s-1");
+        assert_restart(&first, "s-1", 1);
         assert_give_up(&second, "s-1");
     }
 
@@ -566,7 +571,7 @@ mod tests {
 
         // Then the default 60-second window is in force.
         assert!(early.is_empty());
-        assert_restart(&on_time, "s-1");
+        assert_restart(&on_time, "s-1", 1);
     }
 
     #[rstest::rstest]
@@ -594,9 +599,9 @@ mod tests {
 
         // Then the first three windows restart (default budget of 3) and the
         // fourth gives up.
-        assert_restart(&w1, "s-1");
-        assert_restart(&w2, "s-1");
-        assert_restart(&w3, "s-1");
+        assert_restart(&w1, "s-1", 1);
+        assert_restart(&w2, "s-1", 2);
+        assert_restart(&w3, "s-1", 3);
         assert_give_up(&w4, "s-1");
     }
 }

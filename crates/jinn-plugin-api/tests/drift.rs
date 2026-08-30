@@ -428,6 +428,8 @@ fn restart_stalled_stream_envelope_validates_against_schema() {
     let envelope = Envelope::for_plugin(
         PluginToHost::RestartStalledStream(RestartStalledStream {
             session_id: "s-1".to_owned(),
+            attempt: 1,
+            max_restarts: 3,
         }),
         4,
         0,
@@ -435,6 +437,29 @@ fn restart_stalled_stream_envelope_validates_against_schema() {
 
     // Then it validates against the committed schema.
     assert_valid(&envelope);
+}
+
+#[rstest::rstest]
+#[test]
+fn restart_stalled_stream_without_attempt_fields_defaults_to_first_attempt() {
+    // Given a raw restart_stalled_stream line from a legacy peer that omits
+    // the attempt fields.
+    let line = r#"{"v":1,"seq":4,"ts":0,"type":"restart_stalled_stream","session_id":"s-1"}"#;
+
+    // When it is parsed as an envelope.
+    let parsed = serde_json::from_str::<Envelope>(line).expect("legacy line parses");
+
+    // Then the attempt fields fall back to their defaults.
+    assert_eq!(
+        parsed.msg,
+        PluginToHostOrHostToPlugin::Plugin(PluginToHost::RestartStalledStream(
+            RestartStalledStream {
+                session_id: "s-1".to_owned(),
+                attempt: 1,
+                max_restarts: 3,
+            }
+        ))
+    );
 }
 
 #[rstest::rstest]
@@ -467,12 +492,15 @@ fn raw_line_with_restart_stalled_stream_tag_parses_as_plugin_direction() {
     // When deserializing it as an envelope.
     let envelope: Envelope = serde_json::from_str(line).expect("known tag parses");
 
-    // Then it routes to the Plugin direction with the payload intact.
+    // Then it routes to the Plugin direction with the payload intact — the
+    // omitted attempt fields fall back to their defaults.
     assert_eq!(
         envelope.msg,
         PluginToHostOrHostToPlugin::Plugin(PluginToHost::RestartStalledStream(
             RestartStalledStream {
                 session_id: "s-1".to_owned(),
+                attempt: 1,
+                max_restarts: 3,
             }
         ))
     );
@@ -535,6 +563,8 @@ fn new_stream_envelopes_round_trip() {
         Envelope::for_plugin(
             PluginToHost::RestartStalledStream(RestartStalledStream {
                 session_id: "s".to_owned(),
+                attempt: 2,
+                max_restarts: 3,
             }),
             5,
             1,

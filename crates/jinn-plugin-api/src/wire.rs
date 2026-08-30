@@ -214,6 +214,26 @@ pub struct TickEvent {
 pub struct RestartStalledStream {
     /// The session whose stream should be restarted (opaque id).
     pub session_id: String,
+    /// The 1-based restart attempt within the current stall lineage, as
+    /// counted by the sending plugin. The host surfaces it in the chat
+    /// retry marker. Defaults to 1 for peers that predate the field.
+    #[serde(default = "default_restart_attempt")]
+    pub attempt: u32,
+    /// The restart budget the plugin enforces, included so the host can
+    /// render "attempt N of M" in the chat retry marker. Defaults to 3
+    /// (the sending plugin's own documented default) for legacy peers.
+    #[serde(default = "default_max_restarts")]
+    pub max_restarts: u32,
+}
+
+/// Serde default for [`RestartStalledStream::attempt`].
+fn default_restart_attempt() -> u32 {
+    1
+}
+
+/// Serde default for [`RestartStalledStream::max_restarts`].
+fn default_max_restarts() -> u32 {
+    3
 }
 
 /// One citation contributed by a plugin.
