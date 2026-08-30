@@ -672,6 +672,123 @@ async fn fork_inherits_cwd_from_source() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn project_round_trips_through_save_and_load() {
+    // Given a store with a session that has a project stamp.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Project Test".to_owned());
+    session.push_entry(ChatEntry::user("hello"));
+    session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then the project is preserved.
+    assert_eq!(
+        loaded.project(),
+        Some(std::path::Path::new("/home/user/projects/jinn")),
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn project_defaults_to_none_for_legacy_rows() {
+    // Given a store with a session saved with no project (the pre-project
+    // creation shape).
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let session = make_session(&session_id, "Legacy Session");
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then the project defaults to None (blank column).
+    assert_eq!(loaded.project(), None);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fork_inherits_project_from_source() {
+    // Given a store with a session that has a project stamp.
+    let (_dir, store) = make_store().await;
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new();
+    source.set_session_id(source_id.clone());
+    source.set_title("Original".to_owned());
+    source.push_entry(ChatEntry::user("hello"));
+    source.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+    store.save(&source).await.expect("save source");
+
+    // When forking.
+    let forked_id = store.fork(&source_id, 0).await.expect("fork");
+
+    // Then the forked session inherits the source project.
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+    assert_eq!(
+        forked.project(),
+        Some(std::path::Path::new("/home/user/projects/jinn")),
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn set_cwd_does_not_alter_project() {
+    // Given a session with a project stamp.
+    let mut session = ChatSessionState::new();
+    session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+
+    // When changing the session's cwd.
+    session.set_cwd(std::path::PathBuf::from("/somewhere/else/entirely"));
+
+    // Then the project stamp is unchanged.
+    assert_eq!(
+        session.project(),
+        Some(std::path::Path::new("/home/user/projects/jinn")),
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn summary_from_store_carries_project() {
+    // Given a store with a session that has a project stamp.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Summary Project".to_owned());
+    session.push_entry(ChatEntry::user("hello"));
+    session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+    store.save(&session).await.expect("save");
+
+    // When loading summaries.
+    let summaries = store.load_summaries().await.expect("load_summaries");
+
+    // Then the summary carries the project from the metadata blob.
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(
+        summaries[0].project,
+        Some(std::path::PathBuf::from("/home/user/projects/jinn")),
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn save_updates_cwd_on_existing_session() {
     // Given a store with a saved session.
     let (_dir, store) = make_store().await;

@@ -139,9 +139,9 @@ fn reset_picker_for_open(state: &mut AppState, kind: PickerKind) {
             load_task_list_picker_entries(state);
         }
         PickerKind::Project => {
-            // Defensive: a stale override from an abandoned previous flow
-            // must never leak into a new project-picker session.
-            state.frontend.pending_session_cwd = None;
+            // Defensive: a stale stash from an abandoned previous flow must
+            // never leak into a new project-picker session.
+            state.frontend.pending_creation = None;
             state.frontend.project_picker_mut().reset();
             load_project_picker_entries(&mut state.frontend);
         }
@@ -832,18 +832,25 @@ pub(crate) fn load_project_picker_entries(
 }
 
 /// Confirms the highlighted project: stashes its dir as the pending session
-/// CWD, pops the picker, and delegates to a plain new session.
+/// creation (project stamp + starting CWD), pops the picker, and delegates to
+/// a plain new session.
 ///
 /// `Enter` path: the new session inherits nothing from the active session's
-/// CWD - it is created at the chosen project dir via the override channel.
+/// CWD - it is created at the chosen project dir via the stash.
 fn confirm_project(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.project_picker().selected_item() else {
         return IntentResult::empty();
     };
 
     // Stash the chosen dir and pop the picker before delegating, so the new
-    // session is created in Normal scope at the right CWD.
-    state.frontend.pending_session_cwd = Some(entry.path.clone());
+    // session is created in Normal scope at the right CWD. The project stamp
+    // and the starting CWD start equal here but are semantically distinct:
+    // lifecycle scripts may re-cwd the session, the project never moves.
+    state.frontend.pending_creation =
+        Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+            project_dir: entry.path.clone(),
+            starting_cwd: entry.path.clone(),
+        });
     state.frontend.scope_stack.pop();
 
     crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(state, "", &[], None)
@@ -851,16 +858,20 @@ fn confirm_project(state: &mut AppState) -> IntentResult {
 
 /// Confirms the highlighted project and chains into the lifecycle picker.
 ///
-/// `<c-enter>` path: same dir-stash + pop as `confirm_project`, but then opens
+/// `<c-enter>` path: same stash + pop as `confirm_project`, but then opens
 /// the session lifecycle picker so the user picks a recipe (and optional args).
-/// The stashed dir survives the lifecycle -> arg-input chain because every
-/// confirmation path in that chain consumes `pending_session_cwd`.
+/// The stash survives the lifecycle -> arg-input chain because every
+/// confirmation path in that chain consumes `pending_creation`.
 pub fn handle_project_lifecycle_confirm(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.project_picker().selected_item() else {
         return IntentResult::empty();
     };
 
-    state.frontend.pending_session_cwd = Some(entry.path.clone());
+    state.frontend.pending_creation =
+        Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+            project_dir: entry.path.clone(),
+            starting_cwd: entry.path.clone(),
+        });
     state.frontend.scope_stack.pop();
 
     // Re-enter the lifecycle picker. `handle_open_picker` pushes a fresh
@@ -3228,8 +3239,8 @@ mod tests {
             state.active_session().cwd(),
             std::path::Path::new("/tmp/project-a"),
         );
-        // And the pending override was consumed.
-        assert!(state.frontend.pending_session_cwd.is_none());
+        // And the stash was consumed.
+        assert!(state.frontend.pending_creation.is_none());
     }
 
     #[rstest::rstest]
@@ -3264,12 +3275,15 @@ mod tests {
                 kind: PickerKind::SessionLifecycle
             }
         ));
-        // And the chosen dir is stashed as the pending override, awaiting the
+        // And the chosen dir is stashed in a pending creation, awaiting the
         // lifecycle/args confirm chain.
-        assert_eq!(
-            state.frontend.pending_session_cwd.as_deref(),
-            Some(std::path::Path::new("/tmp/project-a")),
-        );
+        let pending = state
+            .frontend
+            .pending_creation
+            .as_ref()
+            .expect("pending creation stashed");
+        assert_eq!(pending.project_dir, std::path::Path::new("/tmp/project-a"));
+        assert_eq!(pending.starting_cwd, std::path::Path::new("/tmp/project-a"));
     }
 
     #[rstest::rstest]

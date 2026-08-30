@@ -498,6 +498,10 @@ pub(crate) struct PersistableCore {
     /// Defaults to [`SessionOrigin::User`] for blobs written by older versions.
     #[serde(default)]
     origin: SessionOrigin,
+    /// Project directory association, stamped at session creation from the
+    /// projects UI. Defaults to `None` for blobs written by older versions.
+    #[serde(default)]
+    project: Option<std::path::PathBuf>,
 
     blobs: HashMap<String, JsonValue>,
     lifecycle_name: Option<String>,
@@ -529,6 +533,7 @@ impl From<&SessionCore> for PersistableCore {
             parent_session: core.parent_session.clone(),
             fork_ordinal: core.fork_ordinal,
             origin: core.origin,
+            project: core.project.clone(),
             blobs: core.blobs.clone(),
             lifecycle_name: core.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle_args.clone(),
@@ -557,6 +562,7 @@ impl From<PersistableCore> for SessionCore {
             parent_session: core.parent_session,
             fork_ordinal: core.fork_ordinal,
             origin: core.origin,
+            project: core.project,
             blobs: core.blobs,
             lifecycle_name: core.lifecycle_name,
             lifecycle_args: core.lifecycle_args,
@@ -606,6 +612,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     parent_session,    // row
                     fork_ordinal: _fork_ordinal, // blob
                     origin: _origin,   // blob
+                    project: _project, // blob
                     blobs: _blobs,     // blob
                     lifecycle_name: _lifecycle_name, // blob
                     lifecycle_args: _lifecycle_args, // blob
@@ -1205,6 +1212,13 @@ fn fork_metadata(
 
 /// Builds a `SessionSummary` from a loaded `SessionRow`.
 fn summary_from_row(row: SessionRow) -> SessionSummary {
+    // The project association lives only in the metadata blob; parse failure
+    // (corrupt/legacy row) yields `None`, i.e. a blank project column.
+    let project = row
+        .metadata
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<PersistableCore>(json).ok())
+        .and_then(|core| core.project);
     SessionSummary {
         session_id: SessionId::from(row.id),
         title: row.title.unwrap_or_else(|| "Untitled".to_owned()),
@@ -1222,6 +1236,7 @@ fn summary_from_row(row: SessionRow) -> SessionSummary {
             SessionState::Loaded
         },
         parent_session: row.parent_session.map(SessionId::from),
+        project,
     }
 }
 
