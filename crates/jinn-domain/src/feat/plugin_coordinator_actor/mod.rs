@@ -745,6 +745,9 @@ impl Message<ToolExecutionCompleted> for PluginCoordinatorActor {
             jinn_plugin_api::HostToPlugin::ToolResultEvent(event.clone())
         })
         .await;
+        // A finished execution is also proof the turn is alive — a long
+        // tool run must not read as stream silence to liveness watchers.
+        stream_ping(self, &msg.session_id).await;
     }
 }
 

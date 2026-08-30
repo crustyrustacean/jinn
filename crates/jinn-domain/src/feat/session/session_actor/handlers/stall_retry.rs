@@ -90,6 +90,43 @@ impl SessionPersistenceActor {
         // Re-dispatch the existing history (no new user entry). This mirrors
         // `EnqueueResumeTurn`: assemble the prompt, resolve the model, transition
         // to Streaming, and emit `SendToLlmProvider`.
+        //
+        // The assembled prompt is summarized into the warn so a misretried
+        // turn is decidable from logs alone: what the retry actually sent.
+        let assembled = {
+            let guard = self.state.read();
+            crate::feat::context::assemble::assemble_prompt(
+                &guard,
+                &payload.session_id,
+                &self.counter,
+            )
+        };
+        let tail: Vec<String> = assembled
+            .messages
+            .iter()
+            .rev()
+            .take(4)
+            .rev()
+            .map(|m| match m {
+                crate::feat::provider::llm_message::LlmMessage::User { content, .. } => {
+                    format!("user({} chars)", content.chars().count())
+                }
+                crate::feat::provider::llm_message::LlmMessage::Assistant { content, .. } => {
+                    format!("assistant({} chars)", content.chars().count())
+                }
+                crate::feat::provider::llm_message::LlmMessage::Tool { name, .. } => {
+                    format!("tool({name})")
+                }
+            })
+            .collect();
+        tracing::warn!(
+            session_id = %payload.session_id,
+            attempt = payload.attempt,
+            message_count = assembled.messages.len(),
+            estimated_tokens = assembled.estimated_tokens,
+            tail = ?tail,
+            "stall retry re-dispatching turn"
+        );
         self.resolve_model_and_dispatch(&payload.session_id).await;
     }
 }
