@@ -218,6 +218,9 @@ fn build_child(
         p.disabled_skills.clone_from(&profile.disabled_skills);
     }
     child.set_cwd(parent.cwd().to_path_buf());
+    // Subagents inherit the parent's project association (stamped at the
+    // parent's creation; the child's cwd may differ but the project does not).
+    child.set_project(parent.project().map(std::path::Path::to_path_buf));
     // Home resolves fresh at creation in every other path (runtime-only,
     // not persisted); the `task` tool's ctx carries the app paths.
     child.set_home(app_home.to_path_buf());

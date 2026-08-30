@@ -81,6 +81,7 @@ pub fn validate_arg_input(state: &AppState) -> Result<(), ArgInputError> {
 /// `setup_command`, emits `Command::RunSessionSetup` for async execution.
 /// If no setup command (blank or blank-like lifecycle), creates the session
 /// with the default CWD immediately.
+#[expect(clippy::too_many_lines, reason = "single linear creation sequence")]
 pub fn handle_session_lifecycle_setup(
     state: &mut AppState,
     lifecycle_name: &str,
@@ -129,28 +130,41 @@ pub fn handle_session_lifecycle_setup(
     });
     new_session.set_lifecycle_args(args.to_vec());
 
-    // Resolve the new session's starting CWD. The precedence is:
-    //   1. explicit `cwd` override (e.g. from the project picker),
-    //   2. a pending override stashed on the frontend
+    // Resolve the new session's starting CWD and project stamp. The CWD
+    // precedence is:
+    //   1. explicit `cwd` override (e.g. scripted callers),
+    //   2. the stashed creation's starting CWD
     //      (set by the project picker then consumed here),
     //   3. inherit the active session's CWD (legacy behavior).
     //
+    // The project stamp comes only from the stashed creation - the projects UI
+    // is the sole source of a project association. The two are independent on
+    // purpose: setup scripts may re-cwd the session later, the project never
+    // moves.
+    //
     // CWD is resolved BEFORE insert/set_active — once set_active(new_id)
-    // runs below, active_session() points at this new session. The pending
-    // override is always cleared here so it never leaks into the next creation,
-    // even when an explicit `cwd` was supplied.
+    // runs below, active_session() points at this new session. The stash is
+    // always cleared here so it never leaks into the next creation, even when
+    // an explicit `cwd` was supplied.
     //
     // A scripted lifecycle's stdout output still wins as the final CWD via the
     // session actor; this only sets the starting value.
-    let starting_cwd = cwd
-        .map(std::path::Path::to_path_buf)
-        .or_else(|| state.frontend.pending_session_cwd.take())
-        .unwrap_or_else(|| state.active_session().cwd().to_path_buf());
-    // Defensively clear any residual pending override so it can never leak into
-    // the next creation (the `.take()` above is skipped when an explicit cwd
+    let (stamped_project, starting_cwd) = {
+        let pending = state.frontend.pending_creation.take();
+        let cwd_override = cwd
+            .map(std::path::Path::to_path_buf)
+            .or_else(|| pending.as_ref().map(|p| p.starting_cwd.clone()));
+        (
+            pending.map(|p| p.project_dir),
+            cwd_override.unwrap_or_else(|| state.active_session().cwd().to_path_buf()),
+        )
+    };
+    // Defensively clear any residual stash so it can never leak into the next
+    // creation (the `.take()` above is skipped only when an explicit cwd
     // overrides, so clear unconditionally here).
-    state.frontend.pending_session_cwd = None;
+    state.frontend.pending_creation = None;
     new_session.set_cwd(starting_cwd);
+    new_session.set_project(stamped_project);
 
     state.session.insert(new_session);
     state.session.set_active(new_id.clone());
@@ -490,13 +504,16 @@ mod tests {
     #[rstest::rstest]
     fn explicit_cwd_override_overrides_inherited_cwd() {
         // Given a state whose active session has a distinct CWD and a
-        // pending override stashed on the frontend (as the project picker does).
+        // pending creation stashed on the frontend (as the project picker does).
         let mut state = AppState::default();
         state
             .active_session_mut()
             .set_cwd(std::path::PathBuf::from("/tmp/active-project"));
-        state.frontend.pending_session_cwd =
-            Some(std::path::PathBuf::from("/tmp/override-project"));
+        state.frontend.pending_creation =
+            Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+                project_dir: std::path::PathBuf::from("/tmp/override-project"),
+                starting_cwd: std::path::PathBuf::from("/tmp/override-project"),
+            });
 
         // When handling SessionLifecycleSetup with an explicit cwd override.
         let _result = handle_session_lifecycle_setup(
@@ -507,37 +524,93 @@ mod tests {
         );
 
         // Then the new session's CWD is the explicit override, not the active
-        // session's CWD and not the pending override.
+        // session's CWD and not the stashed starting CWD.
         assert_eq!(
             state.active_session().cwd(),
             std::path::Path::new("/tmp/explicit-dir"),
         );
-        // And the pending override is cleared (never leaks to the next creation).
-        assert!(state.frontend.pending_session_cwd.is_none());
+        // And the stash is cleared (never leaks to the next creation).
+        assert!(state.frontend.pending_creation.is_none());
     }
 
     #[rstest::rstest]
-    fn pending_session_cwd_is_consumed_when_no_explicit_cwd_given() {
+    fn pending_creation_cwd_is_used_when_no_explicit_cwd_given() {
         // Given a state whose active session has a distinct CWD and a
-        // pending override stashed on the frontend.
+        // pending creation stashed on the frontend.
         let mut state = AppState::default();
         state
             .active_session_mut()
             .set_cwd(std::path::PathBuf::from("/tmp/active-project"));
-        state.frontend.pending_session_cwd =
-            Some(std::path::PathBuf::from("/tmp/override-project"));
+        state.frontend.pending_creation =
+            Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+                project_dir: std::path::PathBuf::from("/tmp/override-project"),
+                starting_cwd: std::path::PathBuf::from("/tmp/override-project"),
+            });
 
         // When handling SessionLifecycleSetup with no explicit cwd.
         let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
 
-        // Then the new session's CWD is the pending override, not the active
-        // session's CWD.
+        // Then the new session's CWD is the stashed starting CWD, not the
+        // active session's CWD.
         assert_eq!(
             state.active_session().cwd(),
             std::path::Path::new("/tmp/override-project"),
         );
-        // And the pending override is cleared after consumption.
-        assert!(state.frontend.pending_session_cwd.is_none());
+        // And the stash is cleared after consumption.
+        assert!(state.frontend.pending_creation.is_none());
+    }
+
+    #[rstest::rstest]
+    fn setup_stamps_project_from_pending_creation() {
+        // Given a state with a pending creation stashed from the projects UI.
+        let mut state = AppState::default();
+        state.frontend.pending_creation =
+            Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+                project_dir: std::path::PathBuf::from("/home/user/projects/jinn"),
+                starting_cwd: std::path::PathBuf::from("/home/user/projects/jinn"),
+            });
+
+        // When handling SessionLifecycleSetup.
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+
+        // Then the new active session is stamped with the stashed project.
+        assert_eq!(
+            state.active_session().project(),
+            Some(std::path::Path::new("/home/user/projects/jinn")),
+        );
+    }
+
+    #[rstest::rstest]
+    fn setup_without_pending_creation_leaves_project_none() {
+        // Given a default state with no pending creation stash.
+        let mut state = AppState::default();
+
+        // When handling SessionLifecycleSetup.
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+
+        // Then the new active session has no project association.
+        assert_eq!(state.active_session().project(), None);
+    }
+
+    #[rstest::rstest]
+    fn setup_consumes_stash_exactly_once() {
+        // Given a state that already consumed a pending creation.
+        let mut state = AppState::default();
+        state.frontend.pending_creation =
+            Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+                project_dir: std::path::PathBuf::from("/tmp/first-project"),
+                starting_cwd: std::path::PathBuf::from("/tmp/first-project"),
+            });
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+
+        // When creating a second session (the stash is now None).
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+
+        // Then the second session has no project association (no leak from
+        // the first creation).
+        assert_eq!(state.active_session().project(), None);
+        // And the stash is still clear.
+        assert!(state.frontend.pending_creation.is_none());
     }
 
     #[rstest::rstest]
@@ -1645,19 +1718,23 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn abandon_via_enter_normal_mode_clears_pending_session_cwd() {
-        // Given a state with a pending session CWD override stashed from a
+    fn abandon_via_enter_normal_mode_clears_pending_creation() {
+        // Given a state with a pending session creation stashed from a
         // project-picker confirm (midway through the lifecycle/args chain).
         let mut state = AppState::default();
         let active_cwd = state.active_session().cwd().to_path_buf();
-        state.frontend.pending_session_cwd = Some(std::path::PathBuf::from("/tmp/project-a"));
+        state.frontend.pending_creation =
+            Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+                project_dir: std::path::PathBuf::from("/tmp/project-a"),
+                starting_cwd: std::path::PathBuf::from("/tmp/project-a"),
+            });
 
         // When abandoning the chain via ESC (EnterNormalMode).
         let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
 
-        // Then the pending override is cleared so it never leaks into a future
+        // Then the stash is cleared so it never leaks into a future
         // `n`/`N`.
-        assert!(state.frontend.pending_session_cwd.is_none());
+        assert!(state.frontend.pending_creation.is_none());
         // And the active session's CWD is unchanged (no side-channel mutation).
         assert_eq!(state.active_session().cwd(), active_cwd);
     }

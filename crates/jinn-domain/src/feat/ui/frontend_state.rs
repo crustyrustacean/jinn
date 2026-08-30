@@ -53,6 +53,21 @@ impl FrontendCaches {
     }
 }
 
+/// Session creation in flight from the projects UI, stashed across the
+/// project-picker → lifecycle-picker → arg-input chain.
+///
+/// The two fields are deliberately independent: lifecycle setup scripts may
+/// re-cwd the session after creation, so the project association must not be
+/// derived from (or conflated with) the session's cwd.
+#[derive(Debug, Clone)]
+pub struct PendingSessionCreation {
+    /// Project directory the session is associated with. Stamped into the
+    /// session's project metadata at creation; never follows later cwd changes.
+    pub project_dir: std::path::PathBuf,
+    /// The new session's starting cwd (scripts may later override it).
+    pub starting_cwd: std::path::PathBuf,
+}
+
 /// Frontend / UI state.
 ///
 /// Each field is owned by exactly one actor (its authoritative writer) OR by
@@ -182,14 +197,14 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (project-add input editing, confirmation).
     pub project_add_input: ProjectAddInputState,
 
-    /// Optional CWD override for the next session creation.
+    /// Creation stash for the next session from the projects UI.
     ///
     /// Set by the project picker (`<enter>`/`<c-enter>`) so a new session can
-    /// be rooted at a chosen project directory without mutating the active
-    /// session's CWD. Consumed (and cleared) by `handle_session_lifecycle_setup`
-    /// when the new session is created.
+    /// be rooted at a chosen project directory and stamped with that project,
+    /// without mutating the active session's CWD. Consumed (and cleared) by
+    /// `handle_session_lifecycle_setup` when the new session is created.
     /// OWNER: IntentHandler (set by project picker, consumed by session creation).
-    pub pending_session_cwd: Option<std::path::PathBuf>,
+    pub pending_creation: Option<PendingSessionCreation>,
 
     /// Quake bar state - active when `FocusScope::QuakeBar` is on the scope stack.
     /// OWNER: `input` written by IntentHandler; `log` written by QuakeBarActor.
@@ -242,7 +257,7 @@ impl Default for FrontendState {
             pruner_accumulation_input: PrunerAccumulationInputState::default(),
             cwd_input: CwdInputState::default(),
             project_add_input: ProjectAddInputState::default(),
-            pending_session_cwd: None,
+            pending_creation: None,
             quake_bar: QuakeBarState::default(),
             dashboard: DashboardState::default(),
             terminal: crate::feat::interactive_term::terminal_tab_state::TerminalTabState::default(

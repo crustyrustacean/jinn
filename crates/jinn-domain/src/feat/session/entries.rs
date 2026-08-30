@@ -141,12 +141,14 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
                         theme.clone(),
                         summary.session_state,
                         summary.parent_session,
+                        summary.project,
                     )
                 })
                 .collect();
             // Tree-aware sort: whole trees move as a unit, positioned by
             // the most recent updated_at in the tree. Loaded first.
             sort_entries_tree_aware(&mut entries);
+            crate::feat::session::picker_entry::apply_project_column_width(&mut entries);
             entries
         }
         Err(e) => {
@@ -185,12 +187,14 @@ pub async fn load_session_entries_from_store(
                         theme.clone(),
                         summary.session_state,
                         summary.parent_session,
+                        summary.project,
                     )
                 })
                 .collect();
             // Tree-aware sort: whole trees move as a unit, positioned by
             // the most recent updated_at in the tree. Loaded first.
             sort_entries_tree_aware(&mut entries);
+            crate::feat::session::picker_entry::apply_project_column_width(&mut entries);
             entries
         }
         Err(e) => {
@@ -241,6 +245,7 @@ mod tests {
             default_theme(),
             SessionState::Loaded,
             None,
+            None,
         );
 
         // When calling display_label.
@@ -258,6 +263,7 @@ mod tests {
             jiff::Timestamp::now(),
             default_theme(),
             SessionState::Loaded,
+            None,
             None,
         );
 
@@ -357,6 +363,7 @@ mod tests {
             created_at: jiff::Timestamp::now(),
             session_state: SessionState::Loaded,
             parent_session: None,
+            project: None,
         };
         let store =
             crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
@@ -383,6 +390,7 @@ mod tests {
             created_at: jiff::Timestamp::now(),
             session_state: SessionState::Loaded,
             parent_session: None,
+            project: None,
         };
         let store =
             crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
@@ -407,6 +415,7 @@ mod tests {
             created_at: jiff::Timestamp::now(),
             session_state: SessionState::Loaded,
             parent_session: None,
+            project: None,
         };
         let store =
             crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
@@ -433,6 +442,7 @@ mod tests {
             created_at: jiff::Timestamp::now(),
             session_state: SessionState::Loaded,
             parent_session: None,
+            project: None,
         };
         let store =
             crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
