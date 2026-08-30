@@ -57,6 +57,7 @@ impl SessionPersistenceActor {
                     session_id = %payload.session_id,
                     removed_entries = removed,
                     excluded_dangling = excluded.len(),
+                    attempt = payload.attempt,
                     "retrying stalled turn"
                 );
                 // The re-dispatch below emits a fresh `SendToLlmProvider`,
@@ -64,6 +65,15 @@ impl SessionPersistenceActor {
                 // watchdog re-arms for the new generation automatically.
                 true
             } else {
+                // A rejection is worth one warn line: silent no-ops here
+                // cost hours when the watchdog and the session disagree
+                // about whether a stream is in flight.
+                tracing::warn!(
+                    session_id = %payload.session_id,
+                    phase = ?session.phase(),
+                    stream_in_flight = session.core.ephemeral.stream_dispatched_at.is_some(),
+                    "stalled-stream restart refused: no in-flight stream"
+                );
                 false
             }
         });

@@ -1104,8 +1104,8 @@ async fn silent_guest_reaches_dead_phase() {
 
 // ── Mirrored plugin→host requests ────────────────────────────────────────────
 
+use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::provider::protocol::command::CancelStream as ProviderCancelStream;
-use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 
 /// A mirrored `cancel_stream` line translates to the internal provider
 /// `CancelStream` command on the bus.
@@ -1137,71 +1137,45 @@ async fn mirrored_cancel_stream_publishes_internal_command() {
     assert_eq!(commands[0].session_id, session_id);
 }
 
-/// A mirrored `insert_system_entry` line translates to a
-/// `SubmitHistoryMutations` tail-append of one system entry.
+/// A mirrored `insert_system_entry` line translates to a direct
+/// `PushChatEntry` of one system entry — pushed, not queued, so the entry
+/// lands even while the session is mid-stream (a watchdog marker must be
+/// visible during the stall it reports).
 #[rstest::rstest]
 #[tokio::test]
-async fn mirrored_insert_system_entry_appends_tail_entry() {
+async fn mirrored_insert_system_entry_pushes_tail_entry() {
     // Given a coordinator whose guest sends one mirrored insert_system_entry
-    // line for a session that already has one history entry.
+    // line for a valid session.
     let harness = TestHarness::new().await;
-    let recorder = harness.spawn_recorder::<SubmitHistoryMutations>().await;
+    let recorder = harness.spawn_recorder::<PushChatEntry>().await;
     let session_id = SessionId::new();
     let line = format!(
         r#"{{"v":1,"seq":2,"ts":0,"type":"insert_system_entry","session_id":"{session_id}","text":"watchdog tripped"}}"#
     );
-    let state = spawn_coordinator_prepared(
+    spawn_coordinator(
         &harness,
         plugins(),
         jinn_plugin::FakeGuestScript::HelloThenLines {
             protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
             lines: vec![line],
         },
-        |state| {
-            let cap = crate::common::tcaps::mint::mint_session_cap();
-            state.with_session(&cap, |view| {
-                let session = view.session.map().get_or_create(&session_id);
-                session.push_entry(crate::feat::session::chat_entry::ChatEntry::error("boom"));
-            });
-        },
     )
     .await;
-    let tail_id = state
-        .read()
-        .try_session(&session_id)
-        .and_then(|session| session.history().last())
-        .map(|entry| entry.id.clone())
-        .expect("seeded entry");
 
     // When the mirror is processed.
-    let batches = await_recorded(&recorder, 1, WAIT).await;
+    let pushes = await_recorded(&recorder, 1, WAIT).await;
 
-    // Then one mutation batch appended a system entry after the tail id.
-    assert_eq!(batches.len(), 1, "one SubmitHistoryMutations batch");
-    assert_eq!(batches[0].session_id, session_id);
-    assert_eq!(batches[0].mutations.len(), 1);
+    // Then one push appended a system-kind entry to the session.
+    assert_eq!(pushes.len(), 1, "one PushChatEntry");
+    assert_eq!(pushes[0].session_id, session_id);
     assert!(
         matches!(
-            &batches[0].mutations[0],
-            crate::feat::session::history_mutation::HistoryMutation::InsertEntry { .. }
-        ),
-        "the mutation must be InsertEntry"
-    );
-    let crate::feat::session::history_mutation::HistoryMutation::InsertEntry {
-        after_entry_id,
-        entry,
-    } = &batches[0].mutations[0]
-    else {
-        return; // proven above; satisfies the refutable-pattern lint
-    };
-    assert_eq!(*after_entry_id, Some(tail_id), "appended after the tail");
-    assert!(
-        matches!(
-            entry.kind,
+            pushes[0].entry.kind,
             crate::feat::session::chat_entry::ChatEntryKind::System(_)
         ),
         "the entry must be system-kind"
     );
+    assert_eq!(pushes[0].entry.text(), "watchdog tripped");
 }
 
 /// A mirror line with an unparseable session id is dropped: no publish, no
@@ -1212,7 +1186,7 @@ async fn mirror_with_bad_session_id_is_dropped() {
     // Given a coordinator whose guest sends mirrored lines with garbage ids.
     let harness = TestHarness::new().await;
     let cancels = harness.spawn_recorder::<ProviderCancelStream>().await;
-    let mutations = harness.spawn_recorder::<SubmitHistoryMutations>().await;
+    let pushes = harness.spawn_recorder::<PushChatEntry>().await;
     spawn_coordinator(
         &harness,
         plugins(),
@@ -1239,7 +1213,7 @@ async fn mirror_with_bad_session_id_is_dropped() {
         "bad-id cancel must be dropped"
     );
     assert!(
-        await_recorded(&mutations, 0, Duration::from_millis(100))
+        await_recorded(&pushes, 0, Duration::from_millis(100))
             .await
             .is_empty(),
         "bad-id insert must be dropped"

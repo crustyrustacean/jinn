@@ -504,7 +504,7 @@ async fn handle_inbound(
             apply_plugin_cancel_stream(bus, name, msg).await;
         }
         jinn_plugin_api::PluginToHost::InsertSystemEntry(msg) => {
-            apply_plugin_insert_system_entry(state, bus, name, msg).await;
+            apply_plugin_insert_system_entry(bus, name, msg).await;
         }
         jinn_plugin_api::PluginToHost::RestartStalledStream(msg) => {
             apply_plugin_restart_stalled_stream(bus, name, msg).await;
@@ -574,13 +574,8 @@ async fn apply_plugin_restart_stalled_stream(
 }
 
 /// Applies a mirrored plugin system entry: validates the session id and
-/// publishes a one-mutation `SubmitHistoryMutations` tail append.
-///
-/// `InsertEntry { after_entry_id: None }` inserts at index 0, so the
-/// current last entry's id is required; an empty history yields `None` —
-/// the beginning *is* the tail.
+/// pushes the entry directly via `PushChatEntry`.
 async fn apply_plugin_insert_system_entry(
-    state: &State,
     bus: &BusService,
     plugin: &str,
     msg: jinn_plugin_api::InsertSystemEntry,
@@ -593,29 +588,20 @@ async fn apply_plugin_insert_system_entry(
         );
         return;
     };
-    let after_entry_id = {
-        let snapshot = state.read();
-        snapshot
-            .try_session(&session_id)
-            .and_then(|session| session.history().last())
-            .map(|entry| entry.id.clone())
-    };
     tracing::info!(
         plugin = %plugin,
         session_id = %session_id,
         "plugin contributed system entry"
     );
-    bus.publish(
-        crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
-            session_id,
-            mutations: vec![
-                crate::feat::session::history_mutation::HistoryMutation::InsertEntry {
-                    after_entry_id,
-                    entry: crate::feat::session::chat_entry::ChatEntry::system(msg.text),
-                },
-            ],
-        },
-    )
+    // Pushed, not queued: `SubmitHistoryMutations` defers non-idle sessions
+    // to the next stream completion, which would hide watchdog entries for
+    // the entire stall they exist to report. `PushChatEntry` appends
+    // immediately regardless of phase, so the marker lands while the stream
+    // is still (stuck) in flight.
+    bus.publish(crate::feat::chat_input::protocol::command::PushChatEntry {
+        session_id,
+        entry: crate::feat::session::chat_entry::ChatEntry::system(msg.text),
+    })
     .await;
 }
 
