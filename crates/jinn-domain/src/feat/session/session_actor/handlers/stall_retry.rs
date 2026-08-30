@@ -1,72 +1,79 @@
-//! Stall-retry handler — re-dispatches a turn whose history has gone silent.
+//! Stall-retry handler — re-dispatches a turn whose LLM stream went silent.
 //!
-//! See [`SessionPersistenceActor::on_retry_stalled_session`]. The stall watchdog
-//! publishes [`RetryStalledSession`](crate::feat::session::protocol::retry_stalled_session::RetryStalledSession)
-//! when a session in `Sending`/`Streaming` has had no chat-history activity for
-//! longer than `history_stall_timeout_secs`. A hung session is treated like a
-//! hard provider error: partial streaming entries are discarded and the turn is
-//! re-dispatched.
+//! See [`SessionPersistenceActor::on_retry_stalled_session`]. The
+//! `stall-watchdog` plugin detects silence on an in-flight provider stream
+//! and pushes a mirrored `RestartStalledStream`, which the plugin
+//! coordinator translates into
+//! [`RetryStalledSession`](crate::feat::session::protocol::retry_stalled_session::RetryStalledSession).
+//! A hung stream is treated like a hard provider error: partial streaming
+//! entries are discarded and the turn is re-dispatched.
 
 use crate::common::actor_deps::BusPublish;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
-use crate::protocol::ChatEntry;
 
 use super::super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
-    /// Re-dispatch a stalled turn: discard partial streaming entries, push a
-    /// system marker, and re-send the existing history.
+    /// Re-dispatch a stalled turn: discard partial streaming entries and
+    /// re-send the existing history.
     ///
-    /// Guards against a self-resolved stream: between the watchdog publishing
-    /// `RetryStalledSession` and this handler running, a token may have landed
-    /// and advanced `last_history_activity_at`. We re-check the phase (which
-    /// only a still-active turn keeps in `Sending`/`Streaming`) and, under the
-    /// write lock, that the activity timestamp is still stale before we discard
-    /// anything. A late-arriving token that bumped the timestamp causes a no-op.
+    /// The visible retry marker is pushed by the `stall-watchdog` plugin
+    /// (via `InsertSystemEntry`, alongside the restart request) — this
+    /// handler only performs the history surgery and re-dispatch.
+    ///
+    /// The guard is *in-flight-stream*, not elapsed time: the handler acts
+    /// only when the phase is `Sending`/`Streaming` **and**
+    /// `stream_dispatched_at` is set — i.e. an LLM request is genuinely in
+    /// flight. That timestamp is set at dispatch and cleared when the
+    /// generation's `StreamCompleted` is consumed, so:
+    ///
+    /// - a stream that self-resolved between the plugin's trip and this
+    ///   handler running has a `None` timestamp → no-op (the self-resolved
+    ///   race is closed by construction, not by timestamp comparison);
+    /// - a session waiting on a tool batch has a `None` timestamp (the
+    ///   generation completed with `ToolUse` before tools dispatch) → no-op:
+    ///   a restart during tool execution is structurally impossible, even if
+    ///   a guest misfires.
     pub(in crate::feat::session::session_actor) async fn on_retry_stalled_session(
         &self,
         payload: &RetryStalledSession,
     ) {
-        let timeout_secs = self
-            .services
-            .user_preferences_storage
-            .read()
-            .history_stall_timeout_secs;
-        let now = jiff::Timestamp::now();
-
-        // Push the retry marker and discard partial streaming entries — but only
-        // if the session is genuinely still stalled. A token that landed between
-        // the watchdog's publish and now makes this a no-op.
-        let marker = ChatEntry::system("\u{21bb} LLM stream stalled, retrying\u{2026}");
+        // Discard partial streaming entries — but only while a stream is
+        // genuinely in flight for this session.
         let acted = self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&payload.session_id);
-            if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming) {
-                let elapsed_secs = now
-                    .since(session.core.last_history_activity_at)
-                    .map_or(i64::MAX, |s| s.get_seconds().max(0));
-                if elapsed_secs >= timeout_secs as i64 {
-                    let removed = session.reset_streaming_entries_for_retry();
-                    // Partial tool calls left by a starved/errored stream
-                    // must be excluded from the retried request, otherwise
-                    // the next provider call carries structurally invalid
-                    // (truncated-arguments) entries. Mirrors the `Canceled`
-                    // path.
-                    let excluded = session.force_exclude_dangling_tool_calls();
-                    tracing::warn!(
-                        session_id = %payload.session_id,
-                        removed_entries = removed,
-                        excluded_dangling = excluded.len(),
-                        "retrying stalled turn"
-                    );
-                    session.push_entry(marker.clone());
-                    // `begin_streaming` re-seeds last_history_activity_at so the
-                    // watchdog's next tick starts a fresh window for this retry.
-                    true
-                } else {
-                    false
-                }
+            if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming)
+                && session.core.ephemeral.stream_dispatched_at.is_some()
+            {
+                let removed = session.reset_streaming_entries_for_retry();
+                // Partial tool calls left by a starved/errored stream
+                // must be excluded from the retried request, otherwise
+                // the next provider call carries structurally invalid
+                // (truncated-arguments) entries. Mirrors the `Canceled`
+                // path.
+                let excluded = session.force_exclude_dangling_tool_calls();
+                tracing::warn!(
+                    session_id = %payload.session_id,
+                    removed_entries = removed,
+                    excluded_dangling = excluded.len(),
+                    attempt = payload.attempt,
+                    "retrying stalled turn"
+                );
+                // The re-dispatch below emits a fresh `SendToLlmProvider`,
+                // which the plugin host forwards as `stream_start` — the
+                // watchdog re-arms for the new generation automatically.
+                true
             } else {
+                // A rejection is worth one warn line: silent no-ops here
+                // cost hours when the watchdog and the session disagree
+                // about whether a stream is in flight.
+                tracing::warn!(
+                    session_id = %payload.session_id,
+                    phase = ?session.phase(),
+                    stream_in_flight = session.core.ephemeral.stream_dispatched_at.is_some(),
+                    "stalled-stream restart refused: no in-flight stream"
+                );
                 false
             }
         });
@@ -83,6 +90,43 @@ impl SessionPersistenceActor {
         // Re-dispatch the existing history (no new user entry). This mirrors
         // `EnqueueResumeTurn`: assemble the prompt, resolve the model, transition
         // to Streaming, and emit `SendToLlmProvider`.
+        //
+        // The assembled prompt is summarized into the warn so a misretried
+        // turn is decidable from logs alone: what the retry actually sent.
+        let assembled = {
+            let guard = self.state.read();
+            crate::feat::context::assemble::assemble_prompt(
+                &guard,
+                &payload.session_id,
+                &self.counter,
+            )
+        };
+        let tail: Vec<String> = assembled
+            .messages
+            .iter()
+            .rev()
+            .take(4)
+            .rev()
+            .map(|m| match m {
+                crate::feat::provider::llm_message::LlmMessage::User { content, .. } => {
+                    format!("user({} chars)", content.chars().count())
+                }
+                crate::feat::provider::llm_message::LlmMessage::Assistant { content, .. } => {
+                    format!("assistant({} chars)", content.chars().count())
+                }
+                crate::feat::provider::llm_message::LlmMessage::Tool { name, .. } => {
+                    format!("tool({name})")
+                }
+            })
+            .collect();
+        tracing::warn!(
+            session_id = %payload.session_id,
+            attempt = payload.attempt,
+            message_count = assembled.messages.len(),
+            estimated_tokens = assembled.estimated_tokens,
+            tail = ?tail,
+            "stall retry re-dispatching turn"
+        );
         self.resolve_model_and_dispatch(&payload.session_id).await;
     }
 }
@@ -103,8 +147,10 @@ mod tests {
     use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
     use crate::feat::session::session_actor::SessionPersistenceActor;
     use crate::protocol::ChatEntryKind;
-    use std::time::Duration;
 
+    /// A session in `Streaming` with a partial assistant entry, a dangling
+    /// partial tool call slot free, and an in-flight stream generation
+    /// registered — the exact shape a stalled stream presents.
     async fn stall_setup() -> (SessionPersistenceActor, BusAudit, RetryStalledSession) {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
@@ -116,31 +162,27 @@ mod tests {
             session
                 .append_stream_token("partial", jiff::Timestamp::now())
                 .expect("append first token");
-            // Age the activity timestamp past the stall window.
-            {
-                let ts = jiff::Timestamp::now();
-                session.core.last_history_activity_at =
-                    ts.checked_sub(Duration::from_mins(2)).unwrap();
-            }
+            // Register the in-flight stream generation — the guard's source
+            // of truth.
+            session.core.ephemeral.stream_dispatched_at = Some(jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
-        // Force a tight stall window so the re-check trips.
-        {
-            let mut prefs = actor.services.user_preferences_storage.read();
-            prefs.history_stall_timeout_secs = 1;
-            actor
-                .services
-                .user_preferences_storage
-                .save(&prefs)
-                .expect("save prefs");
-        }
-        (actor, audit, RetryStalledSession { session_id })
+        (
+            actor,
+            audit,
+            RetryStalledSession {
+                session_id,
+                attempt: 2,
+                max_restarts: 3,
+            },
+        )
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn handler_discards_partial_entries_and_redispatches() {
-        // Given a stalled Streaming session holding a partial assistant entry.
+        // Given a stalled Streaming session holding a partial assistant entry
+        // and an in-flight stream generation.
         let (actor, audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
 
@@ -157,14 +199,6 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"));
             assert!(!has_partial, "partial assistant entry must be discarded");
-            // And a retry system marker was pushed.
-            assert!(
-                session.core.history.iter().any(|e| matches!(
-                    e.kind,
-                    ChatEntryKind::System(ref t) if t.contains("stalled")
-                )),
-                "a retry system marker must be pushed"
-            );
         }
         // And SendToLlmProvider was emitted to re-dispatch the turn.
         let sent = audit.of_type::<SendToLlmProvider>();
@@ -176,15 +210,16 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn handler_noops_when_timestamp_advanced_since_publish() {
-        // Given a session that self-resolved between publish and handle: its
-        // activity timestamp is now recent.
+    async fn handler_noops_when_no_stream_is_in_flight() {
+        // Given a session whose stream generation was consumed between the
+        // plugin's trip and this handler running (the self-resolved shape:
+        // `StreamCompleted` cleared `stream_dispatched_at`).
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
             let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
-            session.core.last_history_activity_at = jiff::Timestamp::now();
+            session.core.ephemeral.stream_dispatched_at = None;
         }
 
         // When the retry handler runs.
@@ -204,6 +239,39 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn handler_noops_when_session_is_idle() {
+        // Given an Idle session with a stale guard value (defensive: both a
+        // finished turn and a tool-batch wait present `None`, but the guard
+        // must not rely on phase alone either).
+        let (actor, _audit, payload) = stall_setup().await;
+        let session_id = payload.session_id.clone();
+        {
+            use crate::feat::session::phase_machine::PhaseTransitions;
+            let mut state = actor.state.write_test_no_cap();
+            let session = state.active_session_mut();
+            let _ = session
+                .core
+                .ephemeral
+                .machine
+                .on_stream_completed_finished();
+        }
+
+        // When the retry handler runs.
+        actor.on_retry_stalled_session(&payload).await;
+
+        // Then nothing was discarded: history is untouched.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            session.core.history.iter().any(|e| matches!(
+                e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"
+            )),
+            "an idle session must not be restarted"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn handler_excludes_dangling_partial_tool_call() {
         // Given a stalled Streaming session holding a partial (dangling)
         // tool call with no matching ToolResult.
@@ -217,10 +285,6 @@ mod tests {
             session
                 .append_tool_call_delta(0, "{\"command\":\"cd /mnt")
                 .expect("append partial delta");
-            // Re-age the activity timestamp past the stall window (the tool
-            // call delta bumped it to now).
-            session.core.last_history_activity_at =
-                now.checked_sub(Duration::from_mins(2)).unwrap();
         }
 
         // When the retry handler runs.
