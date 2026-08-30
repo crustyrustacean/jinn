@@ -201,7 +201,11 @@ mod tests {
             use crate::feat::session::phase_machine::PhaseTransitions;
             let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
-            let _ = session.core.ephemeral.machine.on_stream_completed_finished();
+            let _ = session
+                .core
+                .ephemeral
+                .machine
+                .on_stream_completed_finished();
         }
 
         // When the retry handler runs.

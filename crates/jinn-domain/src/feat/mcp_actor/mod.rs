@@ -701,24 +701,21 @@ impl Message<ExecuteTool> for McpActor {
         // batch in `Sending` forever. On elapse the hung future is dropped
         // with the connection left intact and a failed result is published so
         // the pending batch self-completes. `0` disables the ceiling.
-        let timeout_secs = self.deps.services.user_preferences_storage.read().tool_default_timeout_secs;
+        let timeout_secs = self
+            .deps
+            .services
+            .user_preferences_storage
+            .read()
+            .tool_default_timeout_secs;
         let call = client.call_tool(&tool_name, arguments);
         let result = if timeout_secs == 0 {
             let call_result = call.await;
             build_call_result(&tool_call, call_result, max_output_lines, max_output_bytes)
         } else {
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(timeout_secs),
-                call,
-            )
-            .await
-            {
-                Ok(call_result) => build_call_result(
-                    &tool_call,
-                    call_result,
-                    max_output_lines,
-                    max_output_bytes,
-                ),
+            match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), call).await {
+                Ok(call_result) => {
+                    build_call_result(&tool_call, call_result, max_output_lines, max_output_bytes)
+                }
                 Err(_) => {
                     tracing::warn!(
                         session_id = %session_id,

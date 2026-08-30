@@ -74,9 +74,7 @@ use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::context::assemble::SystemPrompt;
-use crate::feat::provider::protocol::command::{
-    CancelStream, SendToLlmProvider, StreamOrigin,
-};
+use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider, StreamOrigin};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::provider_infra::LlmServiceFactoryService;
 use crate::feat::provider_infra::StopReason;
@@ -1434,13 +1432,21 @@ mod tests {
             .await;
         // And an in-flight tool continuation arrives afterwards.
         harness
-            .publish(tombstone_payload(&session_id, StreamOrigin::ToolContinuation))
+            .publish(tombstone_payload(
+                &session_id,
+                StreamOrigin::ToolContinuation,
+            ))
             .await;
 
         // Then the continuation is dropped: no tokens stream and no completion fires.
-        let tokens = await_recorded(&recorder_tokens, 0, std::time::Duration::from_millis(300)).await;
-        let completions =
-            await_recorded(&recorder_completed, 0, std::time::Duration::from_millis(300)).await;
+        let tokens =
+            await_recorded(&recorder_tokens, 0, std::time::Duration::from_millis(300)).await;
+        let completions = await_recorded(
+            &recorder_completed,
+            0,
+            std::time::Duration::from_millis(300),
+        )
+        .await;
         assert!(
             tokens.is_empty() && completions.is_empty(),
             "cancelled session must not accept a tool continuation: tokens={tokens:?} completions={completions:?}"
@@ -1507,7 +1513,10 @@ mod tests {
 
         // When a tool continuation arrives with no prior cancel.
         harness
-            .publish(tombstone_payload(&session_id, StreamOrigin::ToolContinuation))
+            .publish(tombstone_payload(
+                &session_id,
+                StreamOrigin::ToolContinuation,
+            ))
             .await;
 
         // Then it streams to completion — the tool loop is unaffected.

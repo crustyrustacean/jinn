@@ -49,8 +49,8 @@ use crate::feat::plugin_coordinator_actor::protocol::{
 use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::session::phase_machine::PhaseKind;
-use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
+use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
@@ -922,11 +922,11 @@ impl Message<Tick> for PluginCoordinatorActor {
     type Reply = ();
 
     async fn handle(&mut self, _msg: Tick, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
-        let event = jinn_plugin_api::TickEvent {
-            now_ms: now_ms(),
-        };
-        self.forward_event("tick", || jinn_plugin_api::HostToPlugin::Tick(event.clone()))
-            .await;
+        let event = jinn_plugin_api::TickEvent { now_ms: now_ms() };
+        self.forward_event("tick", || {
+            jinn_plugin_api::HostToPlugin::Tick(event.clone())
+        })
+        .await;
     }
 }
 

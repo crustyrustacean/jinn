@@ -1254,7 +1254,7 @@ use crate::feat::tools_actor::protocol::event::{ToolCallStreaming, ToolUseStarte
 
 /// Builds a minimal `SendToLlmProvider` via its serde shape (most fields
 /// carry `#[serde(default)]`; the tests only care about `session_id`).
-fn send_to_llm(session_id: SessionId) -> SendToLlmProvider {
+fn send_to_llm(session_id: &SessionId) -> SendToLlmProvider {
     serde_json::from_value(serde_json::json!({
         "session_id": session_id.to_string(),
         "messages": [],
@@ -1282,7 +1282,7 @@ async fn send_to_llm_provider_is_forwarded_as_stream_start() {
     let session_id = SessionId::new();
 
     // When an LLM request is dispatched.
-    harness.publish(send_to_llm(session_id.clone())).await;
+    harness.publish(send_to_llm(&session_id)).await;
 
     // Then the guest saw a stream_start event carrying the session id.
     let events = await_recorded(&recorder, 1, WAIT).await;
@@ -1294,7 +1294,9 @@ async fn send_to_llm_provider_is_forwarded_as_stream_start() {
         events[0].citations[0].title
     );
     assert!(
-        events[0].citations[0].title.contains(&session_id.to_string()),
+        events[0].citations[0]
+            .title
+            .contains(&session_id.to_string()),
         "the event must carry the session id"
     );
 }
@@ -1488,7 +1490,7 @@ async fn unsubscribed_stream_lifecycle_events_and_ticks_are_not_forwarded() {
     let session_id = SessionId::new();
 
     // When stream activity flows and several tick intervals elapse.
-    harness.publish(send_to_llm(session_id.clone())).await;
+    harness.publish(send_to_llm(&session_id)).await;
     harness
         .publish(StreamToken {
             session_id: session_id.clone(),

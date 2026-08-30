@@ -669,8 +669,10 @@ async fn execute_tool_exceeding_timeout_yields_failed_result() {
     ));
     actor.wait_for_startup().await;
     {
-        let mut prefs = crate::feat::preferences_actor::UserPreferences::default();
-        prefs.tool_default_timeout_secs = 1;
+        let prefs = crate::feat::preferences_actor::UserPreferences {
+            tool_default_timeout_secs: 1,
+            ..Default::default()
+        };
         services
             .user_preferences_storage
             .save(&prefs)
@@ -739,8 +741,10 @@ async fn execute_tool_with_disabled_timeout_completes() {
     ));
     actor.wait_for_startup().await;
     {
-        let mut prefs = crate::feat::preferences_actor::UserPreferences::default();
-        prefs.tool_default_timeout_secs = 0;
+        let prefs = crate::feat::preferences_actor::UserPreferences {
+            tool_default_timeout_secs: 0,
+            ..Default::default()
+        };
         services
             .user_preferences_storage
             .save(&prefs)
