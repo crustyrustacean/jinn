@@ -1,3 +1,9 @@
+# sccache (optional): when installed, cargo compiles through it so dependency
+# crates are served from its cache instead of being recompiled. Builds fall
+# back to plain rustc when sccache is missing, so it is never required. A
+# caller-provided RUSTC_WRAPPER (set, or explicitly empty to disable) wins.
+export RUSTC_WRAPPER := env_var_or_default('RUSTC_WRAPPER', `command -v sccache 2>/dev/null || true`)
+
 COPYRIGHT_NAME := "Jayson Lennon"
 COPYRIGHT_YEAR := "2026"
 
