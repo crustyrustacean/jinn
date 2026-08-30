@@ -679,6 +679,10 @@ impl ChatSessionState {
     /// Sets `parent_session` and `persist`. The caller is responsible for
     /// inheriting the parent's model (via [`set_model`](Self::set_model))
     /// if desired - this constructor does not perform any state reads.
+    /// The caller is also responsible for inheriting the parent's project
+    /// stamp (via [`set_project`](Self::set_project), as `build_child` in the
+    /// task tool does) - subagent sessions carry the project association of
+    /// the session that spawned them.
     #[must_use]
     pub fn new_child(parent_session_id: &SessionId, persist: bool) -> Self {
         Self {

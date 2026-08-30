@@ -1522,6 +1522,33 @@ async fn legacy_blob_without_origin_loads_as_user() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn legacy_blob_without_project_defaults_to_none() {
+    // Given a project-stamped session serialized to the persisted blob shape.
+    let mut session = ChatSessionState::new();
+    session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+    let blob = serde_json::to_string(
+        &crate::feat::session::session_store::sqlite::PersistableCore::from(&session.core),
+    )
+    .expect("serialize");
+
+    // When stripping the `project` key (simulating a blob written before the
+    // field existed) and deserializing back.
+    let mut value: serde_json::Value = serde_json::from_str(&blob).expect("parse");
+    value
+        .as_object_mut()
+        .expect("blob is an object")
+        .remove("project");
+    let stripped = serde_json::to_string(&value).expect("re-serialize");
+    let persistable: crate::feat::session::session_store::sqlite::PersistableCore =
+        serde_json::from_str(&stripped).expect("deserialize legacy blob");
+    let core = crate::feat::session::chat_session::SessionCore::from(persistable);
+
+    // Then the legacy blob loads with no project (blank column).
+    assert_eq!(core.project, None);
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn subagent_origin_roundtrips_through_store() {
     // Given a store with a task-tool child session.
     let (_dir, store) = make_store().await;
