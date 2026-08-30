@@ -282,4 +282,41 @@ mod tests {
         // Then the estimate is text cost + 2 × flat image cost.
         assert_eq!(tokens, estimator.estimate("describe") + 765 + 765);
     }
+
+    #[rstest::rstest]
+    #[test]
+    fn patched_tiktoken_serves_o200k_base() {
+        // Given the vendored tiktoken build (o200k family only).
+
+        // When requesting the o200k_base encoding by name.
+        let enc = tiktoken::get_encoding("o200k_base");
+
+        // Then the encoder is available (jinn's only encoding).
+        assert!(enc.is_some(), "o200k_base must be available");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn patched_tiktoken_removed_encoding_is_unavailable() {
+        // Given the vendored tiktoken build (o200k family only).
+
+        // When requesting an encoding whose vocabulary is not embedded.
+        let enc = tiktoken::get_encoding("cl100k_base");
+
+        // Then no encoder is returned (removed from the binary).
+        assert!(enc.is_none(), "cl100k_base should be compiled out");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn tiktoken_counter_counts_real_bpe_tokens() {
+        // Given a TiktokenCounter over the o200k_base encoding.
+
+        // When counting a string with multiple BPE tokens.
+        let counter = TiktokenCounter::o200k_base();
+        let tokens = counter.count("hello world");
+
+        // Then the count reflects real BPE segmentation (2 tokens), not a heuristic.
+        assert_eq!(tokens, 2, "o200k_base should split 'hello world' into 2 tokens");
+    }
 }

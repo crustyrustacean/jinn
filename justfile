@@ -14,6 +14,42 @@ test:
 check:
     cargo check --workspace
 
+# Report release-binary size: bytes, section table, per-crate .text (cargo-bloat), upx size
+size-report:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    BIN=target/release/jinn
+    cargo build --release
+
+    echo "==> Binary: $BIN"
+    ls -la "$BIN" | awk '{printf "    %s bytes\n", $5}'
+    du -h "$BIN" | awk '{print "    " $1 " on disk"}'
+
+    echo '==> Section table (largest first):'
+    size -A "$BIN" | tail -n +3 | sort -k2 -n -r | head -12 | awk '{printf "    %-22s %10d bytes\n", $2, $3}' || true
+
+    if command -v cargo-bloat >/dev/null 2>&1; then
+        echo '==> Top crates by .text (cargo-bloat):'
+        cargo bloat --release -n 15 --crates 2>/dev/null | tail -n +3 || true
+    else
+        echo '    (cargo-bloat not installed; skipping per-crate breakdown)'
+    fi
+
+    if command -v upx >/dev/null 2>&1; then
+        TMP="$(mktemp)"
+        cp "$BIN" "$TMP"
+        if upx -q "$TMP" >/dev/null 2>&1; then
+            UPX_SIZE=$(stat -c %s "$TMP")
+            RAW_SIZE=$(stat -c %s "$BIN")
+            echo '==> UPX-packed estimate:'
+            awk -v r="$RAW_SIZE" -v p="$UPX_SIZE" 'BEGIN{printf "    %d bytes (%.1f%% of raw)\n", p, p*100.0/r}'
+        fi
+        rm -f "$TMP"
+    else
+        echo '    (upx not installed; skipping packed-size estimate)'
+    fi
+
 # Build every in-tree wasm plugin (needs wasm32-wasip2 target + jinn binary); see plugins/*/Cargo.toml
 build-plugins:
     #!/usr/bin/env bash
