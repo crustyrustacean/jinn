@@ -29,7 +29,6 @@ pub use crate::feat::auto_prune_worker::regex::{RegexAutoPruneConfig, RegexPrune
 pub use crate::feat::auto_prune_worker::todo_prune::TodoAutoPruneConfig;
 pub use crate::feat::auto_prune_worker::tool_age_window::ToolAgeWindowAutoPruneConfig;
 pub use crate::feat::auto_prune_worker::trivial_assistant::TrivialAssistantAutoPruneConfig;
-pub use crate::feat::auto_steer_worker::todo_steer::TodoAutoSteerConfig;
 pub use crate::feat::compaction_worker::CompactionConfig;
 pub use crate::feat::cwd_input::CwdSelectorConfig;
 pub use crate::feat::llm_actor::RequestRetryConfig;
@@ -60,58 +59,6 @@ pub(crate) const DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS: u64 = 300;
 /// Serde default function for [`UserPreferences::tool_default_timeout_secs`].
 pub(crate) fn default_tool_default_timeout_secs() -> u64 {
     DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS
-}
-
-/// Default number of messages between the task-list echo and the tail of the
-/// assembled prompt. Bounds the uncached tail window per send.
-pub(crate) const DEFAULT_TASK_LIST_ECHO_OFFSET: usize = 10;
-
-/// Default maximum rendered tree lines in the task-list echo before truncation.
-pub(crate) const DEFAULT_TASK_LIST_ECHO_MAX_LINES: usize = 60;
-
-/// Task-list echo configuration.
-///
-/// Serialized as `[task_list]` in `jinn.toml`. Controls the synthetic
-/// `[System]`-prefixed user message injected near the tail of every assembled
-/// LLM prompt, mirroring the live task list so it stays visible in context
-/// even after the originating tool results are pruned.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TaskListPreferences {
-    /// Master switch for echo injection. Experimental: absent or `false`
-    /// disables the echo entirely. Default: `false`.
-    #[serde(default)]
-    pub echo_enabled: Option<bool>,
-    /// Messages between the echo and the most recent message. `0` disables
-    /// echo injection entirely. Default: 10.
-    #[serde(default)]
-    pub echo_offset: Option<usize>,
-    /// Maximum rendered tree lines in the echo before truncation with a
-    /// pointer to the task-list tools. Default: 60.
-    #[serde(default)]
-    pub echo_max_lines: Option<usize>,
-}
-
-impl TaskListPreferences {
-    /// Resolved echo master switch: `true` only when explicitly enabled.
-    /// The echo is experimental and off unless opted in.
-    #[must_use]
-    pub fn echo_enabled(&self) -> bool {
-        self.echo_enabled.unwrap_or(false)
-    }
-
-    /// Resolved echo offset: the configured value or the built-in default.
-    /// A resolved value of `0` disables echo injection.
-    #[must_use]
-    pub fn echo_offset(&self) -> usize {
-        self.echo_offset.unwrap_or(DEFAULT_TASK_LIST_ECHO_OFFSET)
-    }
-
-    /// Resolved echo tree line cap: the configured value or the default.
-    #[must_use]
-    pub fn echo_max_lines(&self) -> usize {
-        self.echo_max_lines
-            .unwrap_or(DEFAULT_TASK_LIST_ECHO_MAX_LINES)
-    }
 }
 
 /// Errors that can occur during user preferences I/O.
@@ -234,12 +181,6 @@ pub struct UserPreferences {
     /// Interactive terminal configuration (control-toggle key, settle wait).
     #[serde(default)]
     pub interactive_term: crate::feat::interactive_term::prefs::InteractiveTermPrefs,
-    /// Todo auto-steer configuration.
-    #[serde(default)]
-    pub todo_auto_steer: TodoAutoSteerConfig,
-    /// Task-list echo configuration.
-    #[serde(default)]
-    pub task_list: TaskListPreferences,
     /// Discord bot configuration. Off by default.
     #[serde(default)]
     pub discord: crate::feat::discord::DiscordConfig,
@@ -296,34 +237,9 @@ impl Default for UserPreferences {
             auto_prune: AutoPruneConfig::default(),
             interactive_term:
                 crate::feat::interactive_term::prefs::InteractiveTermPrefs::default(),
-            todo_auto_steer: TodoAutoSteerConfig::default(),
-            task_list: TaskListPreferences::default(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
         }
-    }
-}
-
-impl UserPreferences {
-    /// Resolved task-list echo master switch: `true` only when
-    /// `[task_list] echo_enabled = true`. Experimental — off by default.
-    #[must_use]
-    pub fn task_list_echo_enabled(&self) -> bool {
-        self.task_list.echo_enabled()
-    }
-
-    /// Resolved task-list echo offset: the `[task_list] echo_offset` value or
-    /// the built-in default. A resolved value of `0` disables echo injection.
-    #[must_use]
-    pub fn task_list_echo_offset(&self) -> usize {
-        self.task_list.echo_offset()
-    }
-
-    /// Resolved task-list echo line cap: the `[task_list] echo_max_lines`
-    /// value or the built-in default.
-    #[must_use]
-    pub fn task_list_echo_max_lines(&self) -> usize {
-        self.task_list.echo_max_lines()
     }
 }
 
@@ -591,60 +507,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn config_defaults_when_keys_absent() {
-        // Given preferences loaded from a jinn.toml without a [task_list] section.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(&path, "tool_entry_max_lines = 10\n").expect("write");
-
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
-
-        // Then the echo offset resolves to the built-in default.
-        assert_eq!(prefs.task_list_echo_offset(), 10);
-        // And the echo line cap resolves to the built-in default.
-        assert_eq!(prefs.task_list_echo_max_lines(), 60);
-        // And the echo is disabled (experimental default-off).
-        assert!(!prefs.task_list_echo_enabled());
-    }
-
-    #[rstest::rstest]
-    fn config_explicit_values_override_defaults() {
-        // Given preferences loaded from a jinn.toml with explicit [task_list] values.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            "[task_list]\necho_enabled = true\necho_offset = 5\necho_max_lines = 20\n",
-        )
-        .expect("write");
-
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
-
-        // Then the explicit offset overrides the default.
-        assert_eq!(prefs.task_list_echo_offset(), 5);
-        // And the explicit cap overrides the default.
-        assert_eq!(prefs.task_list_echo_max_lines(), 20);
-        // And the echo is explicitly enabled.
-        assert!(prefs.task_list_echo_enabled());
-    }
-
-    #[rstest::rstest]
-    fn config_echo_disabled_when_explicitly_false() {
-        // Given preferences with echo_enabled = false.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(&path, "[task_list]\necho_enabled = false\n").expect("write");
-
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
-
-        // Then the echo is disabled.
-        assert!(!prefs.task_list_echo_enabled());
-    }
-
-    #[rstest::rstest]
     fn load_returns_defaults_and_creates_file_when_missing() {
         // Given a path to a nonexistent file.
         let dir = TempDir::new().expect("temp dir");
@@ -672,6 +534,29 @@ mod tests {
         // Then the file's bytes are exactly the embedded template.
         let on_disk = std::fs::read_to_string(&path).expect("read");
         assert_eq!(on_disk, DEFAULT_CONFIG);
+    }
+
+    #[rstest::rstest]
+    fn stale_removed_sections_load_as_unknown_keys() {
+        // Given a jinn.toml containing only sections for removed features,
+        // and a sibling jinn.toml that is empty.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            "[todo_auto_steer]\nenabled = true\nthreshold = 50\n\n[task_list]\necho_enabled = true\n",
+        )
+        .expect("write");
+        let empty_path = dir.path().join("empty.toml");
+        std::fs::write(&empty_path, "").expect("write");
+
+        // When loading both files.
+        let stale = load_preferences_from(&path).expect("load stale config");
+        let empty = load_preferences_from(&empty_path).expect("load empty config");
+
+        // Then both produce identical preferences (the removed sections are
+        // inert unknown keys).
+        assert_eq!(stale, empty);
     }
 
     #[rstest::rstest]

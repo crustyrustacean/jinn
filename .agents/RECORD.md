@@ -50,10 +50,8 @@ Entries are added or amended **only with human approval**.
 - (context) The assembled system prompt travels as an explicit field through dispatch and provider requests; the message array carries only chat history, and provider request builders never extract content from it.
 - (context) System-kind chat entries ride in LLM context as `[System]`-prefixed `User` messages in conversation order (when pinned or forced-include), never inside the system prompt.
 - (context) Context assembly partitions history into top, bottom, and working outgoing groups while preserving assistant tool-call/tool-result loops as atomic units.
-- (context) Context assembly can inject a synthetic `[System]`-prefixed task-list snapshot message into the assembled prompt, mirroring the live task list tree-only with no next-step line.
-- (context) Task-list echo injection is experimental and off unless `[task_list] echo_enabled = true`; it is also skipped when the task list is empty, `echo_offset` is 0, or history is at most `echo_offset` long.
-- (context) The task-list echo, when injected, is positioned `echo_offset` messages before the most recent message, snapped backward to the nearest tool-loop boundary.
-- (context) Task-list tool results include the next-step line and were deliberately left unchanged when the task-list echo was added.
+- (context) Task-list tool results include the next-step line.
+- (context) Context assembly inserts only pin and working-history messages; there is no synthetic task-list snapshot injection.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
 - (context) The `gci` isolate handler iterates tool-loop chunks (one history-editor write per chunk) through the user-source `set_context` path, then emits one `ContextOverrideChanged` per changed chunk id and persists the session.
 - (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (token stays literal, turn dispatches); only a recognizable image failing conversion hard-blocks.
@@ -69,8 +67,7 @@ Entries are added or amended **only with human approval**.
 - (history) Auto-prune respects a minimum entry age: entries at or below the age boundary are protected from pruning.
 - (history) Auto-prune skips entries that are already excluded/forced (no duplicate mutations), and a user force-include overrides a worker force-exclude.
 - (history) Auto-prune strategies exclude stale/redundant entries from LLM context; strategies include `anchor_shield`, `anchored_assistant`, `broken_edit`, `consecutive_reads`, `double_edit`, `edit_read`, `read_edit`, `min_age`, `regex`, `todo_prune`, `tool_age_window`, `trivial_assistant`.
-- (history) Auto-steer (`todo_steer`) injects a steering `User` entry at the tail only when `todo_*` tool calls exceed a threshold, with a per-session pending guard.
-- (history) Auto-steer is keyed per-session, so a pending steer in one session does not suppress another session, and it clears once the pending id appears in history.
+- (history) History workers are limited to compaction and auto-prune strategies; no auto-steer worker exists.
 - (history) History workers implement a `HistoryWorker` trait and are spawned via `actor_wiring.rs`; adding a new strategy means adding a worker file and wiring it.
 - (history) There is a per-session steering buffer for mid-turn message injection; drained steering entries become normal User entries with the default context override and are never pinned.
 - (history) Chat history is written only through the history editor API, which treats assistant tool-call/result loops as atomic chunks; entry-keyed operations expand to whole chunks with pin > user > worker precedence.
