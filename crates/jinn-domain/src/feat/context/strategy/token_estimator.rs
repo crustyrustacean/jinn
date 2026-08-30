@@ -317,6 +317,9 @@ mod tests {
         let tokens = counter.count("hello world");
 
         // Then the count reflects real BPE segmentation (2 tokens), not a heuristic.
-        assert_eq!(tokens, 2, "o200k_base should split 'hello world' into 2 tokens");
+        assert_eq!(
+            tokens, 2,
+            "o200k_base should split 'hello world' into 2 tokens"
+        );
     }
 }

@@ -14,6 +14,18 @@
 //!
 //! Foundational types are re-exported at the crate root for convenience.
 
+/// Installs the process-wide rustls crypto provider (ring) in this crate's
+/// test binary. reqwest is built with `rustls-no-provider` (see the workspace
+/// `Cargo.toml`), so without a default provider every `reqwest::Client` panics
+/// with "No provider set" at construction. Test binaries never run `main()`.
+/// `install_default` errors on the second call; the result is deliberately
+/// ignored.
+#[cfg(test)]
+#[ctor::ctor]
+fn install_rustls_provider_for_tests() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 pub mod common;
 pub mod feat;
 pub mod init;

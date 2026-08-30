@@ -35,9 +35,9 @@ use jinn_domain::feat::browser_binary_scan::{
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_domain::feat::web_search_actor::{WebSearchActor, WebSearchActorDeps};
-use jinn_web_fetch::{CleanMarkdownExtractor, HttpFetcher, MarkdownExtractor, OutputFormat};
 #[cfg(feature = "headless-chrome")]
 use jinn_web_fetch::stealth::StealthSettings;
+use jinn_web_fetch::{CleanMarkdownExtractor, HttpFetcher, MarkdownExtractor, OutputFormat};
 use jinn_web_search::DdgSearcher;
 
 use jinn_domain::{AppCore, State};
@@ -701,8 +701,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             );
 
             // Construct the searcher.
-            let web_searcher: std::sync::Arc<dyn jinn_web_search::WebSearcher> = match search_mode
-            {
+            let web_searcher: std::sync::Arc<dyn jinn_web_search::WebSearcher> = match search_mode {
                 None => {
                     tracing::debug!("web-search: using reqwest DdgSearcher backend");
                     std::sync::Arc::new(DdgSearcher::with_endpoint_and_user_agent(

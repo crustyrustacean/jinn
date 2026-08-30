@@ -10,6 +10,18 @@ pub mod client;
 pub mod tool_mapping;
 pub mod transport;
 
+/// Installs the process-wide rustls crypto provider (ring) in this crate's
+/// test binary. reqwest is built with `rustls-no-provider` (see the workspace
+/// `Cargo.toml`), so without a default provider every `reqwest::Client` panics
+/// with "No provider set" at construction. Test binaries never run `main()`.
+/// `install_default` errors on the second call; the result is deliberately
+/// ignored.
+#[cfg(test)]
+#[ctor::ctor]
+fn install_rustls_provider_for_tests() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 pub use client::{
     HalfOpenHttp, LivenessProbe, McpClient, McpClientError, McpStderrBuffer, ServerCommand,
 };

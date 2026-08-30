@@ -1051,10 +1051,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "daow"
-version = "0.1.0"
+name = "ctor"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19a2bc7627e6bad307dcd245dbd910b4f68c99b38dfecf04d18488e1684f599a"
+checksum = "352d39c2f7bef1d6ad73db6f5160efcaed66d94ef8c6c573a8410c00bf909a98"
+dependencies = [
+ "ctor-proc-macro",
+ "dtor",
+]
+
+[[package]]
+name = "ctor-proc-macro"
+version = "0.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52560adf09603e58c9a7ee1fe1dcb95a16927b17c127f0ac02d6e768a0e25bc1"
+
+[[package]]
+name = "daow"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "214be8d0da278faec3bfb5afd42f1aa98247544f39d56378bf73789606e5b77a"
 dependencies = [
  "async-trait",
  "daow-macros",
@@ -1065,9 +1081,9 @@ dependencies = [
 
 [[package]]
 name = "daow-macros"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df636362877e1dd1d5c63a00b44f02befc01f1423b2d89ff16725d1dd444d743"
+checksum = "832129c8e87880ecd755b6ea0f211c285fe5be7525e929d2d82ba10f1007af0f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1418,6 +1434,21 @@ checksum = "cd1511a7b6a56299bd043a9c167a6d2bfb37bf84a6dfceaba651168adfb43c87"
 dependencies = [
  "dtoa",
 ]
+
+[[package]]
+name = "dtor"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1057d6c64987086ff8ed0fd3fbf377a6b7d205cc7715868cd401705f715cbe4"
+dependencies = [
+ "dtor-proc-macro",
+]
+
+[[package]]
+name = "dtor-proc-macro"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f678cf4a922c215c63e0de95eb1ff08a958a81d47e485cf9da1e27bf6305cfa5"
 
 [[package]]
 name = "dyn-clone"
@@ -2497,6 +2528,7 @@ dependencies = [
  "clap",
  "clap-verbosity-flag",
  "clap_complete",
+ "ctor",
  "dirs",
  "dotenvy",
  "error-stack",
@@ -2517,6 +2549,7 @@ dependencies = [
  "ratatui-which-key",
  "reqwest 0.13.3",
  "rstest",
+ "rustls 0.23.42",
  "serde",
  "serde_json",
  "tempfile",
@@ -2590,6 +2623,7 @@ dependencies = [
  "anstyle",
  "anstyle-lossy",
  "async-trait",
+ "ctor",
  "daow",
  "dashmap 6.2.1",
  "derive_more",
@@ -2628,6 +2662,7 @@ dependencies = [
  "regex",
  "rstest",
  "rusqlite",
+ "rustls 0.23.42",
  "serde",
  "serde_json",
  "strip-ansi-escapes",
@@ -2655,12 +2690,14 @@ name = "jinn-mcp"
 version = "0.112.1"
 dependencies = [
  "axum",
+ "ctor",
  "error-stack",
  "jinn-common",
  "jinn-provider",
  "reqwest 0.13.3",
  "rmcp",
  "rstest",
+ "rustls 0.23.42",
  "serde",
  "serde_json",
  "tokio",
@@ -2711,6 +2748,7 @@ version = "0.112.1"
 dependencies = [
  "async-trait",
  "base64",
+ "ctor",
  "error-stack",
  "futures",
  "jiff",
@@ -2720,6 +2758,7 @@ dependencies = [
  "regex",
  "reqwest 0.12.28",
  "rstest",
+ "rustls 0.23.42",
  "serde",
  "serde_json",
  "tokio",
@@ -2830,12 +2869,14 @@ version = "0.112.1"
 dependencies = [
  "anyhow",
  "async-trait",
+ "ctor",
  "headless_chrome",
  "htmd",
  "mockito",
  "parking_lot",
  "reqwest 0.13.3",
  "rstest",
+ "rustls 0.23.42",
  "serde",
  "serde_json",
  "tokio",
@@ -2849,10 +2890,12 @@ name = "jinn-web-search"
 version = "0.112.1"
 dependencies = [
  "async-trait",
+ "ctor",
  "jinn-web-fetch",
  "mockito",
  "reqwest 0.13.3",
  "rstest",
+ "rustls 0.23.42",
  "scraper",
  "serde",
  "tokio",
@@ -4691,16 +4734,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rsqlite-vfs"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c51c9ae4df8a7fba42103df5c621fa3c37eccf3a3c650879e90fc48b11cc192c"
-dependencies = [
- "hashbrown 0.16.1",
- "thiserror 2.0.19",
-]
-
-[[package]]
 name = "rstest"
 version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4741,7 +4774,6 @@ dependencies = [
  "hashlink",
  "libsqlite3-sys",
  "smallvec",
- "sqlite-wasm-rs",
 ]
 
 [[package]]
@@ -5386,18 +5418,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sqlite-wasm-rs"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc3efc0da82635d7e1ced0053bbbfa8c7ab9645d0bf36ceb4f7127bb85315d75"
-dependencies = [
- "cc",
- "js-sys",
- "rsqlite-vfs",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "sse-stream"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5573,7 +5593,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",

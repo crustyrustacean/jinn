@@ -5,6 +5,10 @@ use jinn::tracing::{TracingMode, init as init_tracing};
 use jinn_cli::Cli;
 
 fn main() {
+    // TLS clients (reqwest) need a rustls provider; `rustls-no-provider` is in
+    // effect, so install ring before anything builds a client.
+    jinn::install_crypto_provider();
+
     // Load .env if present. Not fatal if missing.
     let _ = dotenvy::dotenv();
 

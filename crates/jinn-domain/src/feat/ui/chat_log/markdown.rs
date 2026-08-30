@@ -154,16 +154,17 @@ mod tests {
         let theme = crate::feat::theme::default_theme();
 
         // When rendering.
-        let lines =
-            render_code_block("python", "def greet(name):\n    return f\"hi {name}\"", &theme);
+        let lines = render_code_block(
+            "python",
+            "def greet(name):\n    return f\"hi {name}\"",
+            &theme,
+        );
 
         // Then some code text is styled beyond the plain-path color — the
         // highlighter engaged.
         let plain = plain_code_style(&theme);
         assert!(
-            code_text_spans(&lines)
-                .iter()
-                .any(|s| s.style != plain),
+            code_text_spans(&lines).iter().any(|s| s.style != plain),
             "python block should be highlighted"
         );
     }
@@ -181,9 +182,7 @@ mod tests {
         // no highlight spans leaked in, and no panic.
         let plain = plain_code_style(&theme);
         assert!(
-            code_text_spans(&lines)
-                .iter()
-                .all(|s| s.style == plain),
+            code_text_spans(&lines).iter().all(|s| s.style == plain),
             "ocaml block should render plain"
         );
         // And the code text is still present.
