@@ -212,9 +212,6 @@ Entries are added or amended **only with human approval**.
 - (ui) The sidebar has five sections — Persona, Pins, TaskList, McpServers, Sessions — with cyclic navigation.
 - (ui) The sidebar restores history position when leaving Pins, and the Sessions section is anchored to the bottom of the sidebar.
 - (ui) The chat-input autocomplete popups (`#` prompts, `/` commands, `@` attachments) anchor horizontally and vertically to the trigger token's wrapped visual line, floating directly above the cursor rather than the top of the input box.
-- (watchdog) A stall watchdog detects sessions stuck in sending, mid-tool-batch stalls, and streaming sessions with no history change, and publishes a cancel after the budget is exhausted.
-- (watchdog) An idle session is never scanned by the watchdog, and an active streaming session is never flagged.
-- (watchdog) The watchdog resets its stall counter at turn boundaries (not on activity jitter) and resets the budget when provider activity resumes; retries are suppressed within a backoff window.
 - (web) Web search runs via DuckDuckGo; browser web fetch supports concurrent requests.
 - (web) Citation collection lives in the first-party `url-citations` plugin (shape-based detection from forwarded tool call/result events); core routes `CitationsReceived` into the Sources footer when a turn reaches a final assistant answer.
 - (web) Browser-backed web tools (fetch + search) keep their Chromium process warm via a periodic heartbeat; a missed liveness probe force-evicts the handle so the next request lazily launches a fresh browser rather than hanging on a dead WebSocket.
@@ -234,7 +231,6 @@ Entries are added or amended **only with human approval**.
 - (subagents) Subagents are regular sessions spawned by the `task` tool: fresh history, linked to the parent, inheriting the parent's model, cwd, tools, skills, and MCP servers; they appear in the sidebar as children marked with a subagent symbol.
 - (subagents) The `task` tool blocks until the child session reaches Idle and forwards the child's last chat entry as its tool result; cancellations forward the cancel entry as a failure.
 - (subagents) Sessions with a parent link cannot spawn subagents — the `task` tool is excluded from their toolset (depth-1).
-- (watchdog) The stall watchdog skips sessions with a pending `task` tool call.
 - (session) Sessions carry no automation flag; identity is a persisted origin enum (user, fork, subagent), and tree structure is linked via `parent_session`.
 - (subagents) A spawned subagent's first dispatch waits for its discovery settle gate (project context files, skills, enabled MCP servers), bounded by an internal settle budget, so the first prompt includes MCP tools and project context; the message is sent regardless once the budget expires.
 - (subagents) The sidebar's subagent marking reflects the session's origin, not the parent link; forks always get fork origin — even forks of subagent sessions.
@@ -245,4 +241,8 @@ Entries are added or amended **only with human approval**.
 - (session) Tree teardown-and-archive is all-or-nothing: a failed teardown or a busy member leaves every session open with nothing archived.
 - (plugins) Plugin→host session-affecting messages are message-style mirrors of internal bus messages; the coordinator validates and translates them, and the set of implemented translations is the whitelist.
 - (plugins) The first-party tool-call-watchdog plugin detects tool-failure spirals with a per-session saturating accumulator (success −1, failure +1, configurable max, default 4) and cancels the stream via a mirrored CancelStream message with a watchdog system entry.
-- (session) CancelStream arms the LLM actor with a per-session cancel tombstone that silently drops tool-continuation dispatches until a user-originated send clears it, closing the race where an in-flight tool loop resumed after a watchdog or manual cancel.
+- (session) CancelStream arms the LLM actor with a per-session cancel tombstone that silently drops tool-continuation dispatches until a user-originated send clears it, closing the race where an in-flight tool loop resumed after a watchdog plugin or manual cancel.
+- (plugins) LLM-stall detection lives in the first-party `stall-watchdog` plugin: the host forwards stream start/event/end plus a periodic `tick`, and the plugin restarts a session whose in-flight LLM stream goes silent past its timeout, capped by a restart budget before giving up with a system entry + cancel.
+- (plugins) The plugin host sends a periodic `tick` event to subscribed guests so guests can act on elapsed time between host events.
+- (session) The stall-retry handler restarts only while the session is active and `stream_dispatched_at` is set; restarts cannot fire while a tool batch is in flight.
+- (tools) Actor-routed MCP tool calls are bounded by `tool_default_timeout_secs`; a timeout publishes a failed `ToolExecutionCompleted` so the pending batch self-completes.
