@@ -56,6 +56,9 @@ impl IntentHandler {
     /// Returns commands and events for the actor system.
     pub fn handle(intent: &Intent, state: &mut AppState) -> IntentResult {
         state.frontend.tui_signals.clear();
+        // Status hints are transient: any fresh intent dismisses the previous
+        // one (the handler arms that raise one run after this line).
+        state.frontend.status_hint = None;
 
         // Capture active session ID before processing for diff-after check.
         let prev_active = state.session.active_session_id().clone();
@@ -714,7 +717,21 @@ impl IntentHandler {
 
             // ── Dashboard tab ──
             Intent::SwitchTab => {
-                let new_base = match state.frontend.scope_stack.current() {
+                // Tab cycle: Normal ↔ Dashboard. The terminal is an overlay
+                // (<M-t>), not a tab: switching tabs with the overlay open
+                // closes it first (Esc semantics). While the user holds
+                // control, Tab is inert — handback is the only exit.
+                match state.frontend.scope_stack.current() {
+                    crate::common::app_state::FocusScope::TerminalView => {
+                        state.frontend.scope_stack.pop();
+                        return IntentResult::empty();
+                    }
+                    crate::common::app_state::FocusScope::TerminalControl => {
+                        return IntentResult::empty();
+                    }
+                    _ => {}
+                }
+                let new_base = match state.frontend.scope_stack.base() {
                     crate::common::app_state::FocusScope::Dashboard => {
                         crate::common::app_state::FocusScope::Normal
                     }
@@ -741,6 +758,42 @@ impl IntentHandler {
             }
             Intent::ToDiscordThread => {
                 feat::discord::to_thread_intent::handle_to_discord_thread(state)
+            }
+
+            Intent::ToggleTerminalOverlay { session_id } => {
+                crate::feat::interactive_term::overlay_intent::handle_toggle_overlay(
+                    state,
+                    session_id.as_ref(),
+                )
+            }
+            Intent::ToggleTerminalOverlayForSelected => {
+                let selected =
+                    crate::feat::interactive_term::overlay_intent::selected_sessions_sidebar_target(
+                        state,
+                    );
+                crate::feat::interactive_term::overlay_intent::handle_toggle_overlay(
+                    state,
+                    selected.as_ref(),
+                )
+            }
+            Intent::TerminalTakeControl => {
+                crate::feat::interactive_term::takeover_intent::handle_take_control(state)
+            }
+            Intent::TerminalHandback => {
+                crate::feat::interactive_term::takeover_intent::handle_handback(state)
+            }
+            Intent::TerminalYank => {
+                crate::feat::interactive_term::takeover_intent::handle_yank(state)
+            }
+            Intent::TerminalPushScreen => {
+                crate::feat::interactive_term::takeover_intent::handle_push_screen(state)
+            }
+            Intent::TerminalSendKey { bytes, label } => {
+                crate::feat::interactive_term::takeover_intent::handle_send_key(
+                    state,
+                    bytes.clone(),
+                    label.clone(),
+                )
             }
         }
     }
@@ -931,6 +984,7 @@ mod tests {
     )]
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use crate::feat::intent::IntentHandler;
+    use crate::feat::interactive_term::emulator::ScreenCells;
     use crate::protocol::{ChatEntry, Intent};
 
     #[rstest::rstest]
@@ -1516,5 +1570,513 @@ mod tests {
             !has_event,
             "should not emit ActiveSessionChanged when session unchanged"
         );
+    }
+
+    #[rstest::rstest]
+    fn switch_tab_is_inert_while_user_holds_terminal_control() {
+        // Given the terminal-control overlay open (user holds control).
+        let mut state = AppState::default();
+        state.frontend.scope_stack.clear_overlays();
+        state.frontend.scope_stack.push(FocusScope::TerminalControl);
+
+        // When switching tabs.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+
+        // Then the scope stays TerminalControl — handback is the only exit.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalControl
+        );
+    }
+
+    #[rstest::rstest]
+    fn take_control_pushes_control_scope_and_flags_user() {
+        // Given an AppState whose terminal tab shows a session.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+
+        // When handling TerminalTakeControl.
+        IntentHandler::handle(&Intent::TerminalTakeControl, &mut state);
+
+        // Then the scope is TerminalControl.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalControl
+        );
+        // And the mirror records the user as control holder.
+        assert_eq!(
+            state.frontend.terminal.control,
+            crate::feat::interactive_term::terminal_tab_state::TermControlHolder::User
+        );
+    }
+
+    #[rstest::rstest]
+    fn toggle_opens_view_overlay_for_live_session() {
+        // Given default state whose active session has a live terminal.
+        let mut state = AppState::default();
+        let chat = state.session.active_session_id().clone();
+        state.frontend.terminal.set_live(&chat, true);
+
+        // When toggling the terminal overlay.
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
+
+        // Then the overlay opens in view mode.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalView
+        );
+    }
+
+    #[rstest::rstest]
+    fn toggle_without_live_term_is_inert() {
+        // Given default state with no live terminals.
+        let mut state = AppState::default();
+
+        // When toggling the terminal overlay.
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
+
+        // Then the scope stays Input (default scope; no overlay opened).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+    }
+
+    #[rstest::rstest]
+    fn toggle_without_live_term_sets_a_status_hint() {
+        // Given default state with no live terminals.
+        let mut state = AppState::default();
+
+        // When toggling the terminal overlay.
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
+
+        // Then no overlay opened (still the default scope).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+        // And a status hint explains the inert press.
+        assert!(
+            state
+                .frontend
+                .status_hint
+                .as_deref()
+                .is_some_and(|h| h.contains("no live terminal")),
+            "expected a no-live-terminal hint, got: {:?}",
+            state.frontend.status_hint
+        );
+    }
+
+    #[rstest::rstest]
+    fn next_intent_dismisses_a_raised_status_hint() {
+        // Given a state carrying a hint from a failed overlay toggle.
+        let mut state = AppState::default();
+        state.frontend.status_hint = Some("stale hint".to_owned());
+
+        // When handling any other intent.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+
+        // Then the hint is cleared.
+        assert!(state.frontend.status_hint.is_none());
+    }
+
+    #[rstest::rstest]
+    fn toggle_closes_an_open_overlay() {
+        // Given an open terminal overlay (view mode).
+        let mut state = AppState::default();
+        let chat = state.session.active_session_id().clone();
+        state.frontend.terminal.set_live(&chat, true);
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
+
+        // When toggling again.
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
+
+        // Then the overlay closes back to the base scope (the input scope the
+        // overlay replaced does not resurrect).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn toggle_with_explicit_session_targets_that_session() {
+        // Given a state where the *selected* session (not the active one) has
+        // a live terminal.
+        let mut state = AppState::default();
+        let selected = crate::protocol::SessionId::new();
+        state.frontend.terminal.set_live(&selected, true);
+
+        // When toggling with the explicit session id.
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay {
+                session_id: Some(selected.clone()),
+            },
+            &mut state,
+        );
+
+        // Then the overlay opens.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalView
+        );
+    }
+
+    #[rstest::rstest]
+    fn switch_tab_reverts_to_dashboard_and_normal() {
+        // Given default (Normal) state.
+        let mut state = AppState::default();
+
+        // When switching tabs twice.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+        // Then the base is Dashboard.
+        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::Dashboard);
+
+        // When switching tabs again.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+        // Then the base is Normal (no Terminal tab in the cycle).
+        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn switch_tab_while_overlay_open_closes_it() {
+        // Given an open terminal overlay over the Normal base.
+        let mut state = AppState::default();
+        let chat = state.session.active_session_id().clone();
+        state.frontend.terminal.set_live(&chat, true);
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalView
+        );
+
+        // When switching tabs.
+        IntentHandler::handle(&Intent::SwitchTab, &mut state);
+
+        // Then the overlay closed (back to base, not a tab flip).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
+        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn send_key_outside_control_scope_is_inert() {
+        // Given an AppState in TerminalView (no control).
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+
+        // When handling TerminalSendKey.
+        let result = IntentHandler::handle(
+            &Intent::TerminalSendKey {
+                bytes: b"a".to_vec(),
+                label: String::new(),
+            },
+            &mut state,
+        );
+
+        // Then no pty write command is published.
+        assert!(result.messages.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn handback_releases_flag_pops_scope_and_sends_nothing() {
+        // Given an AppState where the user holds control with a screen mirror.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
+            "term-1",
+            "handback-screen-marker".to_owned(),
+            ScreenCells::default(),
+            (0, 0),
+            false,
+        );
+        IntentHandler::handle(&Intent::TerminalTakeControl, &mut state);
+
+        // When handling TerminalHandback.
+        let result = IntentHandler::handle(&Intent::TerminalHandback, &mut state);
+
+        // Then the scope pops back to TerminalView.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalView
+        );
+        // And the mirror flips back to agent control.
+        assert_eq!(
+            state.frontend.terminal.control,
+            crate::feat::interactive_term::terminal_tab_state::TermControlHolder::Agent
+        );
+        // And no message is published to the model (release is silent; `I` pushes).
+        assert!(
+            result.messages.is_empty(),
+            "handback must not message the model; got {:?}",
+            result.message_names
+        );
+        // And the status hint advertises the push key.
+        assert!(
+            state
+                .frontend
+                .status_hint
+                .as_deref()
+                .is_some_and(|h| h.contains('I')),
+            "handback hint must advertise I; got {:?}",
+            state.frontend.status_hint
+        );
+    }
+
+    #[rstest::rstest]
+    fn push_screen_when_idle_enqueues_user_message() {
+        // Given an AppState in the TerminalView overlay with a screen mirror,
+        // and the session is idle.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
+            "term-1",
+            "idle-screen-marker".to_owned(),
+            ScreenCells::default(),
+            (0, 0),
+            false,
+        );
+
+        // When handling TerminalPushScreen.
+        let result = IntentHandler::handle(&Intent::TerminalPushScreen, &mut state);
+
+        // Then an enqueue message is published (idle dispatch path).
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|name| name.ends_with("EnqueueUserMessage")),
+            "idle push must publish EnqueueUserMessage; got {:?}",
+            result.message_names
+        );
+    }
+
+    #[rstest::rstest]
+    fn push_screen_while_busy_steers_via_buffer() {
+        // Given an AppState in the TerminalView overlay with a screen mirror,
+        // while the session is mid-turn (Streaming).
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
+            "term-1",
+            "busy-screen-marker".to_owned(),
+            ScreenCells::default(),
+            (0, 0),
+            false,
+        );
+        {
+            let sid = state.session.active_session_id().clone();
+            if let Some(session) = state.session.get_mut(&sid) {
+                session.begin_streaming();
+            }
+        }
+
+        // When handling TerminalPushScreen.
+        let result = IntentHandler::handle(&Intent::TerminalPushScreen, &mut state);
+
+        // Then a steering message is published (buffer drains at next
+        // dispatch-resume).
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|name| name.ends_with("SubmitSteeringMessage")),
+            "busy push must publish SubmitSteeringMessage; got {:?}",
+            result.message_names
+        );
+    }
+
+    #[rstest::rstest]
+    fn push_screen_yanks_the_screen_text() {
+        // Given an AppState in the TerminalView overlay with a screen mirror.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
+            "term-1",
+            "yank-and-push-marker".to_owned(),
+            ScreenCells::default(),
+            (0, 0),
+            false,
+        );
+
+        // When handling TerminalPushScreen.
+        IntentHandler::handle(&Intent::TerminalPushScreen, &mut state);
+
+        // Then the screen text was also staged for the clipboard.
+        assert_eq!(
+            state.frontend.tui_signals.yank_text.as_deref(),
+            Some("yank-and-push-marker"),
+            "push must also yank (I = yank + push)"
+        );
+    }
+
+    #[rstest::rstest]
+    fn yank_stages_screen_text_and_sets_line_count_hint() {
+        // Given an AppState in the TerminalView overlay with a multi-line mirror.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+        state.frontend.terminal.apply_screen(
+            state.session.active_session_id(),
+            "term-1",
+            "line one\nline two\nline three".to_owned(),
+            ScreenCells::default(),
+            (0, 0),
+            false,
+        );
+
+        // When handling TerminalYank.
+        IntentHandler::handle(&Intent::TerminalYank, &mut state);
+
+        // Then the screen text was staged for the clipboard.
+        assert_eq!(
+            state.frontend.tui_signals.yank_text.as_deref(),
+            Some("line one\nline two\nline three")
+        );
+        // And the status hint reports the copied line count.
+        assert!(
+            state
+                .frontend
+                .status_hint
+                .as_deref()
+                .is_some_and(|h| h.contains('3')),
+            "yank hint must report the line count; got {:?}",
+            state.frontend.status_hint
+        );
+    }
+
+    #[rstest::rstest]
+    fn yank_without_live_terminal_sets_a_hint_and_stages_nothing() {
+        // Given an AppState in the TerminalView overlay with no mirror.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+
+        // When handling TerminalYank.
+        IntentHandler::handle(&Intent::TerminalYank, &mut state);
+
+        // Then nothing was staged for the clipboard.
+        assert!(state.frontend.tui_signals.yank_text.is_none());
+        // And a status hint explains the inert press.
+        assert!(
+            state
+                .frontend
+                .status_hint
+                .as_deref()
+                .is_some_and(|h| h.contains("no live terminal")),
+            "expected a no-live-terminal hint, got: {:?}",
+            state.frontend.status_hint
+        );
+    }
+
+    #[rstest::rstest]
+    fn push_screen_wording_speaks_as_the_user_not_about_them() {
+        // Given a captured screen.
+        let screen = "shared-marker";
+
+        // When building the push message text.
+        let text = crate::feat::interactive_term::takeover_intent::push_screen_text(screen);
+
+        // Then the text opens with the first-person screen offer.
+        assert!(text.contains("Here is the current terminal screen"));
+        assert!(text.contains(screen));
+        // And it never speaks about the user in third person, never claims
+        // a handback, and never embeds the refusal note.
+        assert!(!text.contains("The user"));
+        assert!(!text.contains("handed"));
+        assert!(
+            !text
+                .contains(crate::feat::tools_actor::interactive_term_send::USER_HAS_CONTROL_NOTICE),
+            "push wording must not embed the user-control notice"
+        );
+    }
+
+    #[rstest::rstest]
+    fn close_overlay_from_view_leaves_control_with_agent() {
+        // Given an AppState with the overlay open in view mode (agent holds
+        // control; the user never took it).
+        let mut state = AppState::default();
+        state.frontend.terminal.control =
+            crate::feat::interactive_term::terminal_tab_state::TermControlHolder::Agent;
+        let chat = state.session.active_session_id().clone();
+        state.frontend.terminal.set_live(&chat, true);
+        state
+            .frontend
+            .scope_stack
+            .swap_base(FocusScope::TerminalView);
+
+        // When toggling the overlay closed.
+        IntentHandler::handle(
+            &Intent::ToggleTerminalOverlay { session_id: None },
+            &mut state,
+        );
+
+        // Then the overlay closed (pop on a base-only stack is a no-op, so
+        // the view scope remains as the base) and the control flag stayed
+        // Agent.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::TerminalView
+        );
+        assert_eq!(
+            state.frontend.terminal.control,
+            crate::feat::interactive_term::terminal_tab_state::TermControlHolder::Agent,
+            "closing from view must never strand control on User"
+        );
+    }
+
+    #[rstest::rstest]
+    fn handback_screen_survives_drain_as_user_entry() {
+        use crate::feat::session::steering_buffer::SteeringBuffer;
+
+        // Given the push message text for a captured screen.
+        let text =
+            crate::feat::interactive_term::takeover_intent::push_screen_text("drain-chain-marker");
+
+        // When routing the text through the steering buffer and draining it
+        // (the session actor's busy-path behavior).
+        let mut buf = SteeringBuffer::new();
+        buf.push_fragment(text);
+        let entry = buf.drain_into_entry().expect("entry");
+
+        // Then the drained entry is a normal User entry carrying the screen.
+        assert!(matches!(
+            entry.kind,
+            crate::protocol::ChatEntryKind::User { .. }
+        ));
     }
 }

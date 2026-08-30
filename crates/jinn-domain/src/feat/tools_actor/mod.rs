@@ -66,6 +66,11 @@ pub mod edit;
 pub mod get_time;
 pub mod grep;
 pub(crate) mod input_bounds;
+pub mod interactive_term;
+pub mod interactive_term_kill;
+pub mod interactive_term_send;
+#[cfg(test)]
+mod interactive_term_tests;
 pub mod protocol;
 pub mod read;
 pub mod registry;
@@ -580,6 +585,7 @@ impl ToolOrchestratorActor {
             dispatched_at,
             session_cap: Some(self.session_cap),
             mcp_coordinator: self.services.mcp_coordinator.get().cloned(),
+            interactive_term: self.services.interactive_term.get().cloned(),
             task_spawns: Some(self.services.task_spawns.clone()),
         }
     }
@@ -1104,6 +1110,7 @@ mod timeout_tests {
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
             mcp_coordinator: None,
+            interactive_term: None,
             task_spawns: None,
         }
     }
@@ -1355,6 +1362,7 @@ mod panic_safety_tests {
                 dispatched_at: jiff::Timestamp::now(),
                 session_cap: None,
                 mcp_coordinator: None,
+                interactive_term: None,
                 task_spawns: None,
             },
         ))

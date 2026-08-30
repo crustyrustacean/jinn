@@ -196,6 +196,7 @@ impl ActorSystemBuilder {
             bridge: bridge.clone(),
             root_supervisor: root.clone(),
             mcp_coordinator: std::sync::Arc::new(std::sync::OnceLock::new()),
+            interactive_term: std::sync::Arc::new(std::sync::OnceLock::new()),
             request_dump: jinn_domain::common::request_dump::RequestDumpService::new(dump_requests),
             task_spawns: jinn_domain::feat::tools_actor::task_registry::TaskSpawnRegistry::default(
             ),
@@ -485,6 +486,35 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         // Expose the coordinator ref to the tool layer (restart_mcp_server).
         // `OnceLock::set` returns Err if already set; ignore (e.g. test re-seed).
         let _ = services.mcp_coordinator.set(_mcp_coordinator.clone());
+
+        // Interactive-term coordinator: owns PTY sessions across tool calls
+        // (the `interactive_term*` tools ask it directly). Spawned with the
+        // same lifecycle shape as the MCP coordinator; the shared control
+        // flag goes to the terminal tab (takeover UI) wiring.
+        let term_control =
+            jinn_domain::feat::interactive_term::interactive_term_actor::TermControl::default();
+        let (term_coordinator, _control) =
+            jinn_domain::feat::interactive_term::interactive_term_actor::spawn_interactive_term_actor(
+                jinn_domain::feat::interactive_term::interactive_term_actor::InteractiveTermActorDeps {
+                    bus: services.bus.clone(),
+                    control: term_control.clone(),
+                    state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
+                    settle_quiet: std::time::Duration::from_millis(
+                        state.read().frontend.preferences.interactive_term.settle_quiet_ms,
+                    ),
+                    settle_cap: std::time::Duration::from_millis(
+                        state.read().frontend.preferences.interactive_term.settle_max_wait_ms,
+                    ),
+                },
+                &root,
+            )
+            .await;
+        let _ = services.interactive_term.set(term_coordinator);
+        // Install the shared flag for the IntentHandler's takeover intents
+        // (synchronous flips that in-flight tool calls observe mid-drain).
+        let _ =
+            jinn_domain::feat::interactive_term::takeover_intent::TERM_CONTROL.set(term_control);
 
         // Plugin lifecycle actor: reads `[[plugin]]` entries from jinn.toml and spawns one in-process
         // WASM guest per entry. Guests are hosted directly by jinn via the
