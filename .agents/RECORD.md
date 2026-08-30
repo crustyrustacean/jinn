@@ -160,7 +160,6 @@ Entries are added or amended **only with human approval**.
 - (skills) Skill supplementals live in spec-standard scripts/, references/, and assets/ directories beside SKILL.md; the `<available_skills>` block and skill tool result each surface the skill's absolute base_dir so the agent can resolve relative links in a skill body without derivation.
 - (skills) The `skill` tool loads a skill's body by name from the discovered set and returns the body in the tool result; loading an already-loaded skill returns "already loaded" instead of reloading.
 - (skills) The `skill` tool loads project-local skills from their discovered file path and refuses disabled or nonexistent skills.
-- (skills) Two skills ship by default: `phased-task-loop` and `simple-task-loop`.
 - (skills) The skill picker's rendered markdown previews are cached in an app-lifetime cache keyed by (body content hash, width); skill rescans and session lifecycle events never invalidate it.
 - (skills) The skill preview cache is cleared only on theme change (via FrontendCaches::invalidate_all); its memory usage is unbounded by design.
 - (storage) Sessions and chat history persist to a SQLite database (`sessions.db` under the data dir).
@@ -234,9 +233,17 @@ Entries are added or amended **only with human approval**.
 - (session) Sessions carry no automation flag; identity is a persisted origin enum (user, fork, subagent), and tree structure is linked via `parent_session`.
 - (subagents) A spawned subagent's first dispatch waits for its discovery settle gate (project context files, skills, enabled MCP servers), bounded by an internal settle budget, so the first prompt includes MCP tools and project context; the message is sent regardless once the budget expires.
 - (subagents) The sidebar's subagent marking reflects the session's origin, not the parent link; forks always get fork origin — even forks of subagent sessions.
-- (session) The sidebar `A` key archives the selected session and all descendant sessions via the `parent_session` link — forks included — behind a press-again confirmation.
-- (session) Tree archive is all-or-nothing: if any member session is busy, nothing archives and a red busy popup is shown instead of the confirmation.
-- (session) Tree archive resolves descendants across memory and the session store; store-only descendants already archived are included as no-ops.
+- (tools) The built-in `interactive_term`, `interactive_term_send`, and `interactive_term_kill` tools are the PTY interactive-terminal interface; each call blocks until screen output settles and returns the rendered screen.
+- (tools) `interactive_term` PTY sessions persist across tool calls in a coordinator actor; the spawned program's lifetime is decoupled from tool calls.
+- (tools) Agent input to an `interactive_term` session fails the tool call with only the wait notice while the user holds control — no screen is returned; that notice appears nowhere else — leaving control never messages the model.
+- (keybinds) The terminal overlay is toggled with the `<M-t>` key for the active session in every scope except the overlay itself (or the `T` sidebar key on the selected session, which closes it from view mode); inside the overlay the configurable `[interactive_term] control_toggle_key` (default `<c-g>`; any keybind-notation key or sequence, e.g. `<m-g>`) toggles control mode in both directions, and in control mode every other key forwards to the PTY; view mode binds `<M-t>` (close the overlay), `y` (yank the screen to the clipboard), and `I` (yank and push the screen to the model as "Here is the current terminal screen:").
+- (ui) The interactive terminal renders as a centered overlay showing the active session's terminal with colors, sized to the overlay's inner rect; the `<Tab>` cycle is Dashboard ↔ Normal.
+- (tools) A tool call in flight when the user takes terminal control resolves with the wait notice instead of writing input; the user's keys reach the program through the same actor and the next agent call sees the user-driven screen.
+- (tools) Each chat session has at most one interactive_term terminal: spawning again kills the previous one (reported in the result), and spawning without a chat session is rejected.
+- (ui) The sidebar marks sessions with a live interactive_term terminal with a dedicated symbol.
+- (tools) interactive_term sessions stream screen updates to the overlay and mirror in realtime (~50ms tick) even when no tool call is in flight; tool calls settle against the same screen-version stream instead of draining the pump.
+- (tools) interactive_term_send named keys include "f1"–"f12" (SS3/CSI function-key bytes), encoded by the same table as the TUI's key events; agent f-keys were previously silently dropped.
+- (tools) `interactive_term` children run with their own PTY as controlling terminal (own session/pgid), unlike the deliberately tty-less children of other tools.
 - (session) The sidebar `X` key tears down the selected session and, on teardown success, archives the entire visible subtree (root and descendants) behind a press-again confirmation.
 - (session) Tree teardown-and-archive is all-or-nothing: a failed teardown or a busy member leaves every session open with nothing archived.
 - (plugins) Plugin→host session-affecting messages are message-style mirrors of internal bus messages; the coordinator validates and translates them, and the set of implemented translations is the whitelist.

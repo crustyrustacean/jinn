@@ -39,6 +39,26 @@ fn render_shows_no_model_selected_when_unset() {
 }
 
 #[rstest::rstest]
+fn render_shows_status_hint_instead_of_model_when_set() {
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state.frontend.status_hint = Some("that session has no live terminal".to_owned());
+    let (mut terminal, area) = setup_term(60, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 60);
+    // Then the hint replaces the model display.
+    assert!(row.contains("no live terminal"), "row: {row}");
+    // And the model is not shown while a hint is up.
+    assert!(!row.contains("no model selected"), "row: {row}");
+}
+
+#[rstest::rstest]
 fn render_shows_provider_and_model() {
     let mut element = StatusBarElement;
     let mut state = AppState::default();
