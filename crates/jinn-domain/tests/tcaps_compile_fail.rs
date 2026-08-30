@@ -7,6 +7,7 @@
 //! Each fixture under `tests/ui/` is a `.rs` file that must fail to compile,
 //! paired with a `.stderr` capturing the expected compiler output.
 
+// disabled for performance reasons
 // #[test]
 // fn tcaps_compile_fail() {
 //     let t = trybuild::TestCases::new();

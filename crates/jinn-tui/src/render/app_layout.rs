@@ -165,11 +165,12 @@ pub enum AppFrameLayout {
 }
 
 impl AppFrameLayout {
-    /// Computes the layout for the given terminal area, branching on
-    /// `is_dashboard` (which is `scope_stack.base() == FocusScope::Dashboard`).
+    /// Computes the layout for the given terminal area, branching on the
+    /// base focus scope.
     ///
     /// `input_lines` and `sidebar_width` are ignored in Dashboard mode.
-    /// `max_input_height` is ignored in Dashboard mode.
+    /// `max_input_height` likewise. The terminal is an overlay and does not
+    /// participate in the frame layout.
     #[must_use]
     pub fn new(
         area: Rect,
