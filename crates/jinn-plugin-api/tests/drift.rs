@@ -19,9 +19,9 @@ use std::collections::BTreeMap;
 
 use jinn_plugin_api::{
     CancelStream, Envelope, HostToPlugin, InsertSystemEntry, PersonaDef, PluginCitation,
-    PluginToHost, PluginToHostOrHostToPlugin, PushCitations, RestartStalledStream,
-    THEME_COLOR_SLOTS, ThemeDef, StreamEndEvent, StreamEndReason, StreamEventPing,
-    StreamStartEvent, TickEvent, ToolCallEvent, ToolResultEvent, TurnEndEvent, Welcome,
+    PluginToHost, PluginToHostOrHostToPlugin, PushCitations, RestartStalledStream, StreamEndEvent,
+    StreamEndReason, StreamEventPing, StreamStartEvent, THEME_COLOR_SLOTS, ThemeDef, TickEvent,
+    ToolCallEvent, ToolResultEvent, TurnEndEvent, Welcome,
 };
 
 /// Compiles the committed schema file for validation.
