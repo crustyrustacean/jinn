@@ -644,3 +644,133 @@ async fn http_teardown_kills_and_reaps_still_alive_child() {
         "teardown should kill + reap the still-alive child, no zombie"
     );
 }
+
+/// An MCP call that outlives `tool_default_timeout_secs` is failed with a
+/// timeout message and a `ToolExecutionCompleted` is still published — the
+/// pending batch self-completes instead of stranding in `Sending` forever.
+#[rstest::rstest]
+#[tokio::test]
+async fn execute_tool_exceeding_timeout_yields_failed_result() {
+    // Given an McpActor wired to the stub server and a tight 1-second ceiling.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+    let session_id = SessionId::new();
+    let services = harness.services().await;
+
+    let client = spawn_stub_client().await;
+    let actor = McpActor::spawn(McpActorDeps::with_client(
+        ActorDeps {
+            services: services.clone(),
+        },
+        session_id.clone(),
+        SERVER_NAME.to_owned(),
+        stub_config(),
+        client,
+    ));
+    actor.wait_for_startup().await;
+    {
+        let prefs = crate::feat::preferences_actor::UserPreferences {
+            tool_default_timeout_secs: 1,
+            ..Default::default()
+        };
+        services
+            .user_preferences_storage
+            .save(&prefs)
+            .expect("save prefs");
+    }
+
+    // When calling slow_echo with a 5-second delay.
+    let tool_call = ToolCall {
+        id: "tc_slow".to_owned(),
+        name: "mcp__stub__slow_echo".to_owned(),
+        arguments: r#"{"message": "late", "delay_ms": 5000}"#.to_owned(),
+    };
+    harness
+        .publish(ExecuteTool {
+            session_id: session_id.clone(),
+            tool_call,
+            dispatched_at: jiff::Timestamp::now(),
+            max_output_lines: None,
+            max_output_bytes: None,
+        })
+        .await;
+
+    // Then the result arrives around the ceiling (well before the 5s delay).
+    let messages = tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            let got = await_recorded(&recorder, 1, Duration::from_secs(4)).await;
+            if got
+                .first()
+                .is_some_and(|m| m.result.tool_call_id == "tc_slow")
+            {
+                return got;
+            }
+        }
+    })
+    .await
+    .expect("result must arrive before the tool's own delay elapses");
+    let result = &messages[0].result;
+    assert!(!result.success, "timeout must fail the call: {result:?}");
+    assert!(
+        result.content.contains("timed out"),
+        "timeout message must be surfaced to the model: {}",
+        result.content
+    );
+}
+
+/// `tool_default_timeout_secs = 0` disables the ceiling: a call slower than
+/// any default completes successfully rather than being failed.
+#[rstest::rstest]
+#[tokio::test]
+async fn execute_tool_with_disabled_timeout_completes() {
+    // Given an McpActor wired to the stub server and the ceiling disabled.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+    let session_id = SessionId::new();
+    let services = harness.services().await;
+
+    let client = spawn_stub_client().await;
+    let actor = McpActor::spawn(McpActorDeps::with_client(
+        ActorDeps {
+            services: services.clone(),
+        },
+        session_id.clone(),
+        SERVER_NAME.to_owned(),
+        stub_config(),
+        client,
+    ));
+    actor.wait_for_startup().await;
+    {
+        let prefs = crate::feat::preferences_actor::UserPreferences {
+            tool_default_timeout_secs: 0,
+            ..Default::default()
+        };
+        services
+            .user_preferences_storage
+            .save(&prefs)
+            .expect("save prefs");
+    }
+
+    // When calling slow_echo with a 1.5-second delay.
+    let tool_call = ToolCall {
+        id: "tc_unbounded".to_owned(),
+        name: "mcp__stub__slow_echo".to_owned(),
+        arguments: r#"{"message": "patient", "delay_ms": 1500}"#.to_owned(),
+    };
+    harness
+        .publish(ExecuteTool {
+            session_id: session_id.clone(),
+            tool_call,
+            dispatched_at: jiff::Timestamp::now(),
+            max_output_lines: None,
+            max_output_bytes: None,
+        })
+        .await;
+
+    // Then the result arrives carrying the echoed text, not a timeout.
+    let messages = await_recorded(&recorder, 1, Duration::from_secs(6)).await;
+    assert_eq!(messages.len(), 1, "got: {messages:?}");
+    let result = &messages[0].result;
+    assert!(result.success, "disabled ceiling must not fail: {result:?}");
+    assert_eq!(result.content, "patient");
+}

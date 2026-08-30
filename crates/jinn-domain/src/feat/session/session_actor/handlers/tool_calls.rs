@@ -584,9 +584,10 @@ mod tests {
         // completion must not re-enter the tool loop. (The recorder drains on
         // read, so this observes only post-cancel traffic.)
         let extra = await_recorded::<SendToLlmProvider>(&recorder, 0, Duration::from_secs(1)).await;
-        assert!(extra.iter().all(|m| m.session_id != session_id));
-        // Then no FURTHER SendToLlmProvider was dispatched beyond the
-        // in-flight call; a failure here means Canceled re-entered the loop.
+        assert!(
+            extra.iter().all(|m| m.session_id != session_id),
+            "cancel after tool-use must not trigger a second dispatch, got {extra:?}"
+        );
 
         // And the session settles in Idle with a single cancel entry appended.
         let s = state.read();

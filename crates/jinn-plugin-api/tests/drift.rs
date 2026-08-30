@@ -19,7 +19,8 @@ use std::collections::BTreeMap;
 
 use jinn_plugin_api::{
     CancelStream, Envelope, HostToPlugin, InsertSystemEntry, PersonaDef, PluginCitation,
-    PluginToHost, PluginToHostOrHostToPlugin, PushCitations, THEME_COLOR_SLOTS, ThemeDef,
+    PluginToHost, PluginToHostOrHostToPlugin, PushCitations, RestartStalledStream, StreamEndEvent,
+    StreamEndReason, StreamEventPing, StreamStartEvent, THEME_COLOR_SLOTS, ThemeDef, TickEvent,
     ToolCallEvent, ToolResultEvent, TurnEndEvent, Welcome,
 };
 
@@ -353,6 +354,231 @@ fn raw_line_with_insert_system_entry_tag_parses_as_plugin_direction() {
             text: "watchdog".to_owned(),
         }))
     );
+}
+
+#[rstest::rstest]
+#[test]
+fn stream_start_event_envelope_validates_against_schema() {
+    // Given a StreamStartEvent envelope.
+    let envelope = Envelope::for_host(
+        HostToPlugin::StreamStartEvent(StreamStartEvent {
+            session_id: "s-1".to_owned(),
+        }),
+        0,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[rstest::rstest]
+#[test]
+fn stream_event_ping_envelope_validates_against_schema() {
+    // Given a StreamEventPing envelope.
+    let envelope = Envelope::for_host(
+        HostToPlugin::StreamEventPing(StreamEventPing {
+            session_id: "s-1".to_owned(),
+        }),
+        1,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[rstest::rstest]
+#[test]
+fn stream_end_event_envelope_validates_against_schema() {
+    // Given a StreamEndEvent envelope.
+    let envelope = Envelope::for_host(
+        HostToPlugin::StreamEndEvent(StreamEndEvent {
+            session_id: "s-1".to_owned(),
+            reason: StreamEndReason::ToolUse,
+        }),
+        2,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[rstest::rstest]
+#[test]
+fn tick_event_envelope_validates_against_schema() {
+    // Given a TickEvent envelope.
+    let envelope = Envelope::for_host(
+        HostToPlugin::Tick(TickEvent {
+            now_ms: 1_700_000_000_000,
+        }),
+        3,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[rstest::rstest]
+#[test]
+fn restart_stalled_stream_envelope_validates_against_schema() {
+    // Given a RestartStalledStream envelope.
+    let envelope = Envelope::for_plugin(
+        PluginToHost::RestartStalledStream(RestartStalledStream {
+            session_id: "s-1".to_owned(),
+            attempt: 1,
+            max_restarts: 3,
+        }),
+        4,
+        0,
+    );
+
+    // Then it validates against the committed schema.
+    assert_valid(&envelope);
+}
+
+#[rstest::rstest]
+#[test]
+fn restart_stalled_stream_without_attempt_fields_defaults_to_first_attempt() {
+    // Given a raw restart_stalled_stream line from a legacy peer that omits
+    // the attempt fields.
+    let line = r#"{"v":1,"seq":4,"ts":0,"type":"restart_stalled_stream","session_id":"s-1"}"#;
+
+    // When it is parsed as an envelope.
+    let parsed = serde_json::from_str::<Envelope>(line).expect("legacy line parses");
+
+    // Then the attempt fields fall back to their defaults.
+    assert_eq!(
+        parsed.msg,
+        PluginToHostOrHostToPlugin::Plugin(PluginToHost::RestartStalledStream(
+            RestartStalledStream {
+                session_id: "s-1".to_owned(),
+                attempt: 1,
+                max_restarts: 3,
+            }
+        ))
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn raw_line_with_stream_event_tag_parses_as_host_direction() {
+    // Given a raw wire line carrying the stream_event tag.
+    let line = r#"{"v":1,"seq":0,"ts":0,"type":"stream_event","session_id":"s-1"}"#;
+
+    // When deserializing it as an envelope.
+    let envelope: Envelope = serde_json::from_str(line).expect("known tag parses");
+
+    // Then it routes to the Host direction with the payload intact —
+    // proving the envelope host-side tag-dispatch list was extended (an
+    // omitted tag would silently degrade this to Unknown and the plugin
+    // would never wake).
+    assert_eq!(
+        envelope.msg,
+        PluginToHostOrHostToPlugin::Host(HostToPlugin::StreamEventPing(StreamEventPing {
+            session_id: "s-1".to_owned(),
+        }))
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn raw_line_with_restart_stalled_stream_tag_parses_as_plugin_direction() {
+    // Given a raw wire line carrying the restart_stalled_stream tag.
+    let line = r#"{"v":1,"seq":9,"ts":0,"type":"restart_stalled_stream","session_id":"s-1"}"#;
+
+    // When deserializing it as an envelope.
+    let envelope: Envelope = serde_json::from_str(line).expect("known tag parses");
+
+    // Then it routes to the Plugin direction with the payload intact — the
+    // omitted attempt fields fall back to their defaults.
+    assert_eq!(
+        envelope.msg,
+        PluginToHostOrHostToPlugin::Plugin(PluginToHost::RestartStalledStream(
+            RestartStalledStream {
+                session_id: "s-1".to_owned(),
+                attempt: 1,
+                max_restarts: 3,
+            }
+        ))
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn stream_end_reason_round_trips_snake_case() {
+    // Given every declared stream end reason.
+    for (reason, wire) in [
+        (StreamEndReason::Finished, "\"finished\""),
+        (StreamEndReason::Canceled, "\"canceled\""),
+        (StreamEndReason::ToolUse, "\"tool_use\""),
+        (StreamEndReason::Error, "\"error\""),
+    ] {
+        // When round-tripping it through its wire string.
+        let json = serde_json::to_string(&reason).expect("serialize");
+        let back: StreamEndReason = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the wire form is snake_case and the round-trip is lossless.
+        assert_eq!(json, wire);
+        assert_eq!(back, reason);
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn new_stream_envelopes_round_trip() {
+    // Given each new wire message.
+    let envelopes = vec![
+        Envelope::for_host(
+            HostToPlugin::StreamStartEvent(StreamStartEvent {
+                session_id: "s".to_owned(),
+            }),
+            1,
+            1,
+        ),
+        Envelope::for_host(
+            HostToPlugin::StreamEventPing(StreamEventPing {
+                session_id: "s".to_owned(),
+            }),
+            2,
+            1,
+        ),
+        Envelope::for_host(
+            HostToPlugin::StreamEndEvent(StreamEndEvent {
+                session_id: "s".to_owned(),
+                reason: StreamEndReason::Finished,
+            }),
+            3,
+            1,
+        ),
+        Envelope::for_host(
+            HostToPlugin::Tick(TickEvent {
+                now_ms: 1_700_000_000_000,
+            }),
+            4,
+            1,
+        ),
+        Envelope::for_plugin(
+            PluginToHost::RestartStalledStream(RestartStalledStream {
+                session_id: "s".to_owned(),
+                attempt: 2,
+                max_restarts: 3,
+            }),
+            5,
+            1,
+        ),
+    ];
+
+    // When round-tripping each through a JSON string.
+    for envelope in envelopes {
+        let json = serde_json::to_string(&envelope).expect("serialize");
+        let back: Envelope = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it is unchanged.
+        assert_eq!(envelope, back);
+    }
 }
 
 #[rstest::rstest]

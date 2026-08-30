@@ -31,6 +31,7 @@ pub use persona_def::PersonaDef;
 pub use theme_def::{THEME_COLOR_SLOTS, ThemeColorSlot, ThemeDef};
 pub use wire::{
     CancelStream, Hello, HostToPlugin, InsertSystemEntry, PluginCitation, PluginToHost,
-    PushCitations, SUBSCRIPTION_KINDS, SetPersonaEntries, SetThemeEntries, ToolCallEvent,
+    PushCitations, RestartStalledStream, SUBSCRIPTION_KINDS, SetPersonaEntries, SetThemeEntries,
+    StreamEndEvent, StreamEndReason, StreamEventPing, StreamStartEvent, TickEvent, ToolCallEvent,
     ToolResultEvent, TurnEndEvent, Welcome,
 };

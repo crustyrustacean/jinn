@@ -152,6 +152,11 @@ fn main() {
                 }
             }
             HostToPlugin::Welcome(_) => {}
+            // Not subscribed to the stream-lifecycle/tick kinds — never delivered.
+            HostToPlugin::StreamStartEvent(_)
+            | HostToPlugin::StreamEventPing(_)
+            | HostToPlugin::StreamEndEvent(_)
+            | HostToPlugin::Tick(_) => {}
         }
     }
 }
