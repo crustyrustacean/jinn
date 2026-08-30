@@ -1,4 +1,4 @@
-## (development; unreleased) v0.113.0
+## 2026-08-29 v0.113.0
 
 - Add `A` sidebar keybind to archive selected session and all of it's children.
 - Add `X` sidebar keybind to teardown selected session and then archive all of it's children.
