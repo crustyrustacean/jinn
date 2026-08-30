@@ -8,6 +8,7 @@ pub mod picker;
 pub mod selection_highlight;
 pub mod status_bar;
 pub mod tab_bar;
+pub mod terminal_tab;
 
 pub mod too_small;
 pub mod which_key;
@@ -21,7 +22,6 @@ use jinn_domain::{
 use ratatui::{Frame, layout::Rect};
 
 use crate::TuiApp;
-use crate::app::WhichKeyInstance;
 
 /// Renders the full application frame.
 pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
@@ -51,7 +51,6 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     render_base_layers(
         &mut app.sidebar,
         &mut app.ui_registry,
-        &mut app.which_key,
         frame,
         &ctx,
         &layout,
@@ -62,6 +61,9 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     if let Some(rect) = render_active_overlay(frame, area, &ctx, active_scope) {
         rects.push(rect);
     }
+    // The which-key help popup paints last so it sits above every overlay
+    // (e.g. the terminal overlay would otherwise obscure it in view mode).
+    which_key::render_which_key(frame, &mut app.which_key, &ctx);
 
     drop(state);
 
@@ -91,6 +93,27 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         wstate.frontend.sidebar_width,
         is_dashboard,
     );
+    // The terminal overlay's inner rect sizes the pty (WYSIWYG). Computed
+    // every frame while open; deduped by the mirror, sent through the bridge.
+    if matches!(
+        wstate.frontend.scope_stack.current(),
+        jinn_domain::FocusScope::TerminalView | jinn_domain::FocusScope::TerminalControl
+    ) {
+        let inner =
+            jinn_domain::feat::interactive_term::overlay_geometry::terminal_overlay_inner_rect(
+                area,
+            );
+        let (rows, cols) = (inner.height, inner.width);
+        if wstate.frontend.terminal.record_layout_size(rows, cols) {
+            let closure = jinn_domain::common::bridge::Bridge::publish_closure(
+                jinn_domain::feat::interactive_term::protocol::command::ResizeTerm {
+                    chat_session_id: Some(wstate.session.active_session_id().clone()),
+                    size: (rows, cols),
+                },
+            );
+            let _ = app.core.bridge.send(closure);
+        }
+    }
     match &pre_layout {
         AppFrameLayout::Dashboard(dash) => {
             wstate.frontend.dashboard.clamp_scroll(dash.content.height);
@@ -163,7 +186,7 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
 /// Renders the base layers for the active tab. In Chat mode: tab bar, border,
 /// sidebar, chat tab, session/task-list previews, and status bar. In Dashboard
 /// mode: tab bar and the full-width dashboard table only. The which-key popup
-/// renders in both modes.
+/// renders separately, after overlays — see the `render` entry point.
 #[expect(
     clippy::too_many_arguments,
     reason = "all inputs are single-use render pass params"
@@ -171,7 +194,6 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
 fn render_base_layers(
     sidebar: &mut Sidebar,
     ui_registry: &mut AppUiRegistry,
-    which_key: &mut WhichKeyInstance,
     frame: &mut Frame<'_>,
     ctx: &RenderCtx<'_>,
     layout: &AppFrameLayout,
@@ -223,7 +245,6 @@ fn render_base_layers(
             status_bar::render_status_bar(ui_registry, frame, chat.status_bar, ctx);
         }
     }
-    which_key::render_which_key(frame, which_key, ctx);
 }
 
 /// Renders the single popup matching the active scope, if any, and returns its
@@ -266,6 +287,12 @@ fn render_active_overlay(
                 frame, area, ctx,
             );
             Some(jinn_domain::feat::project_add_input::render::project_add_input_popup_rect(area))
+        }
+        FocusScope::TerminalView | FocusScope::TerminalControl => {
+            let overlay_rect =
+                jinn_domain::feat::interactive_term::overlay_geometry::terminal_overlay_rect(area);
+            crate::render::terminal_tab::render_terminal_tab(frame, overlay_rect, ctx);
+            Some(overlay_rect)
         }
         FocusScope::QuakeBar => {
             let quake_area = ratatui::layout::Rect {

@@ -63,6 +63,10 @@ pub enum Scope {
     CwdInput,
     /// Dashboard tab — service status overview.
     Dashboard,
+    /// Terminal tab — viewing an `interactive_term` session (passive).
+    TerminalView,
+    /// Terminal control — keys forward to the pty; handback key exits.
+    TerminalControl,
     /// Project-add input mode - typing a directory path to register a project.
     ProjectAddInput,
     /// Pruner accumulation threshold input mode - numeric input for the KV-cache gate.
@@ -101,6 +105,8 @@ impl std::fmt::Display for Scope {
             Self::PickerPlugin => write!(f, "Picker(plugin)"),
             Self::Input => write!(f, "Input"),
             Self::Dashboard => write!(f, "Dashboard"),
+            Self::TerminalView => write!(f, "TerminalView"),
+            Self::TerminalControl => write!(f, "TerminalControl"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
