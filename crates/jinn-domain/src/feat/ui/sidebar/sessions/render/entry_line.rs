@@ -129,7 +129,7 @@ pub(crate) fn assemble_entry_line(
 /// Glyph marking a subagent session, rendered before its title.
 const SUBAGENT_SYMBOL: &str = "⋄ ";
 /// Marks a session with a live `interactive_term` terminal.
-pub(crate) const LIVE_TERM_SYMBOL: &str = "▣ ";
+pub(crate) const LIVE_TERM_SYMBOL: &str = "◼ ";
 
 /// Renders a session entry line (indicator + arrow + tree + styled title).
 fn assemble_session_line(
