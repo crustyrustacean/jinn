@@ -10,15 +10,17 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 - Which-key style keybind system with help popup
 - Quickly navigate and change things via Telescope-inspired picker:
   - Select model/provider
-  - Enable/disable skills (with preview) and tools
-- Context management
+  - Enable/disable skills (with preview), tools, and MCP servers; live per session
+- Fork a new session from any message by hitting `f`
+- Run TUI apps in a separate task that an agent can interact with
+  - You can also take control of the TUI app within `jinn` and then auto-send a screenshot to the agent.
+- Context management:
   - Background workers continually manage the context while sessions are in-progress. Changes are buffered (configurable) to take advantage of prefix cache pricing.
   - Individual chat entries can be added to or removed from context using `x`
   - Pin messages with `p` to keep them in context indefinitely
-- Fork a new session from any message by hitting `f`
-- Agent-managed task list with progress display.
-- Customizable personas
-- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these), MCP server support.
+- Agent-managed task list with progress display
+- Customizable personas for maximum agent behavior configurability (See [System Prompt](#system-prompt))
+- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these), MCP server support, subagents.
 
 ![jinn-full](doc/jinn-full.png)
 ![Model Selection](doc/model-selection.png)

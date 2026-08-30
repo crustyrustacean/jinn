@@ -3,8 +3,10 @@
 - Add `A` sidebar keybind to archive selected session and all of it's children.
 - Add `X` sidebar keybind to teardown selected session and then archive all of it's children.
 - Make archive/teardown confirmation banners use consistent wording.
+- Add `micro-task-loop` skill for straightforward tasks.
 - Add tool-call failure watchdog plugin.
 - Add subagents/spawnable subtasks.
+- Add interactive TUI app driver.
 - (Experimental) Add task list reminder; disabled by default.
 
 ### Tool call watchdog
@@ -25,6 +27,26 @@ It uses a simple accumulator that increases by 1 on every tool call failure, and
 Subagents can be spawned using a new `task` tool and will appear in _purple text_ as a child session in the sidebar. The max depth is set to 1 prevent runaway cascading subagents.
 
 Subagent sessions are regular sessions that you can load to view their progress, steer, or cancel whenever desired. Once the subagent session returns to an IDLE state, the last message in the session (regardless of what it is) is sent back to the parent as a tool result. This makes it impossible to introduce a broken program state by manually working with a subagent since it's just a parent session calling a tool and waiting for the result.
+
+### Interactive TUI app driver
+
+New tools make interactive terminal applications available to agents. Ask an agent to run an app "interactively" in order to launch in an interactive context. One app per session is supported (use subagents for multiple apps).
+
+When an interactive application is running, there will be a green box displayed in the session sidebar. Interactive apps run on dedicated tasks continuously until they either exit or are replaced with a different interactive app. It's possible for you to manually work with the interactive app whenever you want. Note that an interactive app only supports one input stream at a time. If you are working with an interactive application and the agent tries to send keystrokes, the tool call will fail and the agent will be instructed to wait for you to finish.
+
+Keybinds:
+
+- `<m-t>`: toggle app display
+- `<c-g>`: toggle app control
+- `y`: yank a screenshot of the application
+- `I`: send a screenshot to the agent
+
+The key to toggle input capture for the app can be defined in `jinn.toml`:
+
+```toml
+[interactive_term]
+control_toggle_key = "<m-g>"    # alt+g
+```
 
 ## 2026-08-27 v0.112.1
 
