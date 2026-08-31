@@ -6,6 +6,14 @@
 //! resolves manifest vs flag precedence and passes the effective values in.
 //! Installation takes effect on the next jinn start: plugins spawn at app
 //! boot.
+//!
+//! Two registration policies live here:
+//! - [`register_plugin`] — **replace**: the entry is always rewritten from
+//!   the manifest. This is the plugin-author loop (`jinn plugin install`,
+//!   `jinn plugin add`), where manifest edits should propagate.
+//! - [`register_plugin_if_absent`] — **add-only**: existing entries are
+//!   never touched. This is the user-facing seeding path (`jinn install`,
+//!   `jinn plugin install-builtins`), which must never clobber user config.
 
 use std::path::{Path, PathBuf};
 
@@ -134,6 +142,54 @@ pub fn register_plugin(
     storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
 ) -> Result<bool, Report<PluginInstallError>> {
     register_entry(name, manifest.grants.clone(), manifest.http, storage)
+}
+
+/// Builds the `[plugin.<name>]` entry a manifest calls for:
+/// manifest-declared grants and http, entry enabled, no user config.
+pub(crate) fn manifest_entry(
+    name: &str,
+    manifest: &crate::feat::plugin::manifest::PluginManifest,
+) -> PluginConfig {
+    PluginConfig {
+        wasm: format!("{name}.wasm"),
+        grants: manifest.grants.clone(),
+        http: manifest.http,
+        config: None,
+        enabled: true,
+    }
+}
+
+/// Writes the `[plugin.<name>]` entry into preferences storage **only when
+/// absent** — the add-only counterpart to [`register_plugin`].
+///
+/// Returns whether a new entry was written. An existing entry is never
+/// modified: the user's `enabled`, `config`, and hand-edited grants always
+/// win over the manifest defaults. Builtin plugin seeding uses this so that
+/// `jinn install` and `jinn plugin install-builtins` can never destroy
+/// user configuration.
+///
+/// # Errors
+///
+/// Returns [`Report<PluginInstallError::WriteConfig>`] if preferences
+/// cannot be reloaded or saved.
+pub fn register_plugin_if_absent(
+    name: &str,
+    manifest: &crate::feat::plugin::manifest::PluginManifest,
+    storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
+) -> Result<bool, Report<PluginInstallError>> {
+    let mut prefs = storage
+        .reload()
+        .change_context(PluginInstallError::WriteConfig)?;
+    if prefs.plugin.contains_key(name) {
+        return Ok(false);
+    }
+    prefs
+        .plugin
+        .insert(name.to_owned(), manifest_entry(name, manifest));
+    storage
+        .save(&prefs)
+        .change_context(PluginInstallError::WriteConfig)?;
+    Ok(true)
 }
 
 fn register_entry(
@@ -346,5 +402,79 @@ mod tests {
         assert_eq!(report.current_context(), &PluginInstallError::InvalidName);
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // Given preferences with no entry for the plugin.
+    // When registering add-only from a manifest.
+    // Then the entry is written with manifest grants/http and true is returned.
+    #[rstest::rstest]
+    #[test]
+    fn register_plugin_if_absent_writes_missing_entry() {
+        // Given an empty storage and a manifest declaring a grant + http.
+        let storage = InMemoryUserPreferencesStorage::default();
+        let manifest = crate::feat::plugin::manifest::PluginManifest {
+            name: None,
+            grants: vec![crate::feat::plugin::PluginPathGrant {
+                path: "<config_dir>/themes".to_owned(),
+                writable: false,
+            }],
+            http: true,
+        };
+
+        // When registering add-only.
+        let written =
+            register_plugin_if_absent("my-plugin", &manifest, &storage).expect("register");
+
+        // Then the entry exists with the manifest-declared values.
+        assert!(written, "a missing entry must be written");
+        let prefs = storage.reload().expect("reload");
+        let entry = prefs.plugin.get("my-plugin").expect("entry present");
+        assert_eq!(entry.wasm, "my-plugin.wasm");
+        assert_eq!(entry.grants, manifest.grants);
+        assert!(entry.http);
+        assert!(entry.enabled);
+    }
+
+    // Given preferences already holding a hand-edited entry.
+    // When registering add-only.
+    // Then nothing is written and the existing entry survives byte-equal.
+    #[rstest::rstest]
+    #[test]
+    fn register_plugin_if_absent_preserves_existing_entry() {
+        // Given storage pre-seeded with a user-customized entry.
+        use crate::feat::preferences_actor::user_preferences::UserPreferences;
+        let storage = InMemoryUserPreferencesStorage::default();
+        let original = crate::feat::plugin::PluginConfig {
+            wasm: "my-plugin.wasm".to_owned(),
+            grants: vec![crate::feat::plugin::PluginPathGrant {
+                path: "/somewhere/custom".to_owned(),
+                writable: true,
+            }],
+            http: false,
+            config: Some(toml::Value::String("user tuned".to_owned())),
+            enabled: false,
+        };
+        let prefs = UserPreferences {
+            plugin: std::iter::once(("my-plugin".to_owned(), original.clone())).collect(),
+            ..UserPreferences::default()
+        };
+        storage.save(&prefs).expect("seed");
+
+        // When registering add-only with a different manifest.
+        let manifest = crate::feat::plugin::manifest::PluginManifest {
+            name: None,
+            grants: vec![crate::feat::plugin::PluginPathGrant {
+                path: "<config_dir>/themes".to_owned(),
+                writable: false,
+            }],
+            http: true,
+        };
+        let written =
+            register_plugin_if_absent("my-plugin", &manifest, &storage).expect("register");
+
+        // Then no write happened and the user's entry is untouched.
+        assert!(!written, "an existing entry must not be rewritten");
+        let prefs = storage.reload().expect("reload");
+        assert_eq!(prefs.plugin.get("my-plugin"), Some(&original));
     }
 }
