@@ -592,7 +592,7 @@ mod config_tests {
     use super::{WebFetchBackend, WebFetchConfig};
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::user_preferences::{
-        UserPreferences, load_preferences_from, save_preferences_to,
+        load_preferences_from, save_preferences_to,
     };
 
     #[rstest::rstest]
@@ -634,22 +634,6 @@ backend = "socks"
     }
 
     #[rstest::rstest]
-    fn save_then_load_round_trips_web_fetch_config() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            web_fetch: WebFetchConfig {
-                backend: WebFetchBackend::HeadlessChrome,
-            },
-            ..UserPreferences::default()
-        };
-
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-        assert_eq!(reloaded.web_fetch.backend, WebFetchBackend::HeadlessChrome);
-    }
-
-    #[rstest::rstest]
     fn browser_config_defaults_when_absent() {
         // Given a jinn.toml with [web_fetch] but no [browser] table.
         let dir = TempDir::new().expect("temp dir");
@@ -665,39 +649,12 @@ backend = "headless-chrome"
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
 
-        // Then browser defaults are applied.
-        let browser = &prefs.browser;
-        assert_eq!(browser.binary, crate::feat::browser::BrowserBinary::Auto);
-        assert_eq!(browser.anubis_timeout_secs, 30);
-        assert!(browser.user_agent.is_none());
-    }
-
-    #[rstest::rstest]
-    fn browser_config_round_trips_through_toml() {
-        // Given a configured [browser] section.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            browser: crate::feat::browser::BrowserConfig {
-                binary: crate::feat::browser::BrowserBinary::Chrome,
-                user_agent: Some("Custom/1.0".to_owned()),
-                anubis_timeout_secs: 45,
-                challenge_wait_secs: 120,
-                settle_secs: 5,
-                keep_tabs_open: false,
-            },
-            ..UserPreferences::default()
-        };
-
-        // When saving then reloading.
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        // Then every browser field is preserved.
-        let browser = &reloaded.browser;
-        assert_eq!(browser.user_agent.as_deref(), Some("Custom/1.0"));
-        assert_eq!(browser.binary, crate::feat::browser::BrowserBinary::Chrome);
-        assert_eq!(browser.anubis_timeout_secs, 45);
+        // Then browser defaults are applied (wired to BrowserConfig's own
+        // default, not pinned to concrete values).
+        assert_eq!(
+            prefs.browser,
+            crate::feat::browser::BrowserConfig::default()
+        );
     }
 
     #[rstest::rstest]

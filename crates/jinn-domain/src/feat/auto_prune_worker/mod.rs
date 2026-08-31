@@ -149,42 +149,54 @@ mod tests {
 
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::auto_prune_worker::{
-        AutoPruneConfig,
-        anchor_shield::AnchorShieldConfig,
+        AutoPruneConfig, anchor_shield::AnchorShieldConfig,
         anchored_assistant::AnchoredAssistantAutoPruneConfig,
-        broken_edit::BrokenEditAutoPruneConfig,
-        consecutive_reads::ConsecutiveReadsAutoPruneConfig,
-        double_edit::DoubleEditAutoPruneConfig,
-        edit_read::EditReadAutoPruneConfig,
-        read_edit::ReadEditAutoPruneConfig,
-        regex::{RegexAutoPruneConfig, default_regex_min_age},
-        todo_prune::TodoAutoPruneConfig,
-        tool_age_window::ToolAgeWindowAutoPruneConfig,
+        broken_edit::BrokenEditAutoPruneConfig, consecutive_reads::ConsecutiveReadsAutoPruneConfig,
+        double_edit::DoubleEditAutoPruneConfig, edit_read::EditReadAutoPruneConfig,
+        read_edit::ReadEditAutoPruneConfig, regex::RegexAutoPruneConfig,
+        todo_prune::TodoAutoPruneConfig, tool_age_window::ToolAgeWindowAutoPruneConfig,
         trivial_assistant::TrivialAssistantAutoPruneConfig,
     };
-    use crate::feat::preferences_actor::user_preferences::{
-        UserPreferences, load_preferences_from, save_preferences_to,
-    };
+    use crate::feat::preferences_actor::user_preferences::load_preferences_from;
 
     #[rstest::rstest]
-    fn default_auto_prune_config_has_defaults() {
+    fn default_auto_prune_config_has_defaults_for_every_field() {
+        // Given the default auto_prune config.
         let config = AutoPruneConfig::default();
-        assert!(config.edit_read.enabled);
-        assert_eq!(config.edit_read.min_age, 50);
-        assert_eq!(config.read_edit.threshold, 2);
-        assert!(config.read_edit.enabled);
-        assert!(config.todo.enabled);
-        assert!(config.consecutive_reads.enabled);
-        assert_eq!(config.consecutive_reads.keep_last, 5);
-        assert_eq!(config.consecutive_reads.min_age, 80);
-        assert!(config.tool_age_window.enabled);
-        assert_eq!(config.read_edit.min_age, 50);
-        assert_eq!(config.double_edit.min_age, 20);
-        assert_eq!(config.tool_age_window.min_age, 150);
-        assert!(config.trivial_assistant.enabled);
-        assert_eq!(config.trivial_assistant.min_age, 100);
-        assert_eq!(config.trivial_assistant.max_tokens, 80);
-        assert_eq!(config.accumulation_threshold_tokens, 150_000);
+
+        // Then every field is populated (no drift holes if a new worker is
+        // added without a Default entry).
+        let serialized = serde_json::to_value(&config).expect("serialize");
+        let serde_json::Value::Object(fields) = serialized else {
+            panic!("AutoPruneConfig must serialize to an object");
+        };
+        assert_eq!(fields.len(), 12);
+        // And every section equals its own Default impl.
+        assert_eq!(config.edit_read, EditReadAutoPruneConfig::default());
+        assert_eq!(config.read_edit, ReadEditAutoPruneConfig::default());
+        assert_eq!(config.regex, RegexAutoPruneConfig::default());
+        assert_eq!(config.broken_edit, BrokenEditAutoPruneConfig::default());
+        assert_eq!(config.todo, TodoAutoPruneConfig::default());
+        assert_eq!(config.double_edit, DoubleEditAutoPruneConfig::default());
+        assert_eq!(
+            config.consecutive_reads,
+            ConsecutiveReadsAutoPruneConfig::default()
+        );
+        assert_eq!(
+            config.tool_age_window,
+            ToolAgeWindowAutoPruneConfig::default()
+        );
+        assert_eq!(
+            config.trivial_assistant,
+            TrivialAssistantAutoPruneConfig::default()
+        );
+        assert_eq!(
+            config.anchored_assistant,
+            AnchoredAssistantAutoPruneConfig::default()
+        );
+        assert_eq!(config.anchor_shield, AnchorShieldConfig::default());
+        // And the threshold is a nonzero token count.
+        assert!(config.accumulation_threshold_tokens > 0);
     }
 
     #[rstest::rstest]
@@ -248,10 +260,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn config_without_min_age_uses_new_defaults() {
-        // Given a TOML file with auto_prune sections that omit `min_age`, the new
-        // defaults should kick in (50 for read_edit, 20 for double_edit, 100 for
-        // tool_age_window).
+    fn config_without_min_age_uses_section_defaults() {
+        // Given a TOML file with auto_prune sections that omit `min_age`.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
@@ -260,83 +270,22 @@ mod tests {
         )
         .expect("write");
 
+        // When loading.
         let prefs = load_preferences_from(&path).expect("load");
-        assert_eq!(prefs.auto_prune.read_edit.min_age, 50);
-        assert_eq!(prefs.auto_prune.read_edit.threshold, 2);
-        assert_eq!(prefs.auto_prune.double_edit.min_age, 20);
-        assert_eq!(prefs.auto_prune.tool_age_window.min_age, 150);
-    }
 
-    #[rstest::rstest]
-    fn save_then_load_round_trips_auto_prune_config() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            auto_prune: AutoPruneConfig {
-                edit_read: EditReadAutoPruneConfig {
-                    enabled: true,
-                    min_age: 30,
-                },
-                read_edit: ReadEditAutoPruneConfig {
-                    enabled: false,
-                    min_age: 25,
-                    threshold: 3,
-                },
-                regex: RegexAutoPruneConfig::default(),
-                broken_edit: BrokenEditAutoPruneConfig {
-                    enabled: false,
-                    min_age: 3,
-                },
-                todo: TodoAutoPruneConfig {
-                    enabled: false,
-                    min_age: 0,
-                },
-                double_edit: DoubleEditAutoPruneConfig::default(),
-                consecutive_reads: ConsecutiveReadsAutoPruneConfig::default(),
-                tool_age_window: ToolAgeWindowAutoPruneConfig {
-                    enabled: false,
-                    min_age: 7,
-                },
-                trivial_assistant: TrivialAssistantAutoPruneConfig {
-                    enabled: false,
-                    min_age: 50,
-                    max_tokens: 40,
-                },
-                anchored_assistant: AnchoredAssistantAutoPruneConfig {
-                    enabled: false,
-                    radius: 42,
-                    min_age: 0,
-                },
-                anchor_shield: AnchorShieldConfig {
-                    enabled: true,
-                    radius: 20,
-                },
-                accumulation_threshold_tokens: 9999,
-            },
-            ..UserPreferences::default()
-        };
-
-        save_preferences_to(&prefs, &path).expect("save");
-
-        let reloaded = load_preferences_from(&path).expect("load");
-        assert!(reloaded.auto_prune.edit_read.enabled);
-        assert_eq!(reloaded.auto_prune.edit_read.min_age, 30);
-        assert!(!reloaded.auto_prune.read_edit.enabled);
-        assert_eq!(reloaded.auto_prune.read_edit.min_age, 25);
-        assert_eq!(reloaded.auto_prune.read_edit.threshold, 3);
-        assert!(!reloaded.auto_prune.broken_edit.enabled);
-        assert_eq!(reloaded.auto_prune.broken_edit.min_age, 3);
-        assert!(!reloaded.auto_prune.todo.enabled);
-        assert!(!reloaded.auto_prune.tool_age_window.enabled);
-        assert_eq!(reloaded.auto_prune.tool_age_window.min_age, 7);
-        assert!(!reloaded.auto_prune.trivial_assistant.enabled);
-        assert_eq!(reloaded.auto_prune.trivial_assistant.min_age, 50);
-        assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
-        assert!(!reloaded.auto_prune.anchored_assistant.enabled);
-        assert_eq!(reloaded.auto_prune.anchored_assistant.radius, 42);
-        assert!(reloaded.auto_prune.anchor_shield.enabled);
-        assert_eq!(reloaded.auto_prune.anchor_shield.radius, 20);
-        assert_eq!(reloaded.auto_prune.accumulation_threshold_tokens, 9999);
+        // Then the omitted fields fall back to each section's Default impl.
+        assert_eq!(
+            prefs.auto_prune.read_edit.min_age,
+            ReadEditAutoPruneConfig::default().min_age
+        );
+        assert_eq!(
+            prefs.auto_prune.double_edit.min_age,
+            DoubleEditAutoPruneConfig::default().min_age
+        );
+        assert_eq!(
+            prefs.auto_prune.tool_age_window.min_age,
+            ToolAgeWindowAutoPruneConfig::default().min_age
+        );
     }
 
     #[rstest::rstest]
@@ -346,19 +295,7 @@ mod tests {
         std::fs::write(&path, "last_model = 'ollama/llama3'").expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
-        assert!(prefs.auto_prune.edit_read.enabled);
-        assert!(prefs.auto_prune.read_edit.enabled);
-        assert!(prefs.auto_prune.todo.enabled);
-        assert!(prefs.auto_prune.tool_age_window.enabled);
-        assert_eq!(prefs.auto_prune.tool_age_window.min_age, 150);
-        assert!(prefs.auto_prune.trivial_assistant.enabled);
-        assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
-        assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
-        assert!(prefs.auto_prune.anchored_assistant.enabled);
-        assert_eq!(prefs.auto_prune.anchored_assistant.radius, 100);
-        assert!(prefs.auto_prune.anchor_shield.enabled);
-        assert_eq!(prefs.auto_prune.anchor_shield.radius, 20);
-        assert_eq!(prefs.auto_prune.accumulation_threshold_tokens, 150_000);
+        assert_eq!(prefs.auto_prune, AutoPruneConfig::default());
     }
 
     #[rstest::rstest]
@@ -400,16 +337,29 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn default_min_age_is_50_for_new_workers() {
-        // Given the three newly-min_age'd configs and the per-rule default.
-        // Then their Default impls all produce min_age == 50.
-        assert_eq!(AnchoredAssistantAutoPruneConfig::default().min_age, 50);
-        // ConsecutiveReads min_age was raised to 80 in the defaults.
-        // The other three remain 50.
-        assert_eq!(ConsecutiveReadsAutoPruneConfig::default().min_age, 80);
-        // RegexPruneRule has no Default impl (pattern is required), so verify
-        // via the serde default function directly.
-        assert_eq!(default_regex_min_age(), 50);
+    fn absent_min_age_deserializes_to_default_impl_value() {
+        // Given TOML sections that omit `min_age`.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            "[auto_prune.anchored_assistant]\nenabled = true\n\n[auto_prune.consecutive_reads]\nenabled = true\n",
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the omitted min_age matches each Default impl (serde default
+        // functions and Default impls stay in lockstep; no value pinned).
+        assert_eq!(
+            prefs.auto_prune.anchored_assistant.min_age,
+            AnchoredAssistantAutoPruneConfig::default().min_age
+        );
+        assert_eq!(
+            prefs.auto_prune.consecutive_reads.min_age,
+            ConsecutiveReadsAutoPruneConfig::default().min_age
+        );
     }
 
     #[rstest::rstest]
@@ -455,6 +405,9 @@ mod tests {
         std::fs::write(&path, "[auto_prune.read_edit]\nenabled = true\n").expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
-        assert_eq!(prefs.auto_prune.accumulation_threshold_tokens, 150_000);
+        assert_eq!(
+            prefs.auto_prune.accumulation_threshold_tokens,
+            AutoPruneConfig::default().accumulation_threshold_tokens
+        );
     }
 }

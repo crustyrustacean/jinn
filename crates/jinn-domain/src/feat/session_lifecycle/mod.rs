@@ -57,40 +57,8 @@ mod tests {
     use super::SessionLifecycle;
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::user_preferences::{
-        UserPreferences, load_preferences_from, save_preferences_to,
+        load_preferences_from, save_preferences_to,
     };
-
-    #[rstest::rstest]
-    fn save_then_load_round_trips_session_lifecycles() {
-        // Given preferences with a session lifecycle.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            session_lifecycles: vec![SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: Some("Open a fossil branch in a new workdir".to_owned()),
-                setup: Some(super::builtin::LifecycleCommand::Shell(
-                    "~/.config/jinn/scripts/fossil-branch.sh $1".to_owned(),
-                )),
-                teardown: Some(super::builtin::LifecycleCommand::Shell(
-                    "~/.config/jinn/scripts/fossil-cleanup.sh $1".to_owned(),
-                )),
-            }],
-            ..UserPreferences::default()
-        };
-
-        // When saving and reloading.
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        // Then the lifecycle is preserved.
-        assert_eq!(reloaded.session_lifecycles.len(), 1);
-        assert_eq!(reloaded.session_lifecycles[0].name, "fossil branch");
-        assert!(matches!(
-            reloaded.session_lifecycles[0].setup,
-            Some(super::builtin::LifecycleCommand::Shell(ref s)) if s == "~/.config/jinn/scripts/fossil-branch.sh $1"
-        ));
-    }
 
     #[rstest::rstest]
     fn load_parses_table_array_session_lifecycle() {

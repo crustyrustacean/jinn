@@ -230,34 +230,17 @@ mod tests {
 
     #[rstest::rstest]
     fn in_memory_save_then_load_round_trips() {
-        // Given an InMemoryConfigStorage with a config.
+        // Given an InMemoryConfigStorage and the fully-specified fixture
+        // (visible through the storage boundary).
         let storage = InMemoryConfigStorage::new();
-        let config = ProvidersConfig {
-            providers: BTreeMap::from([(
-                "ollama".to_owned(),
-                ProviderEntry {
-                    backend: "ollama".to_owned(),
-                    models: vec!["llama3".to_owned()],
-                    base_url: None,
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                    context_length: None,
-                    model_info: Vec::new(),
-                },
-            )]),
-            aliases: vec![],
-            default_provider: Some("ollama".to_owned()),
-        };
+        let config = crate::config::tests::explicit_providers_config();
 
         // When saving and reloading.
         storage.save(&config).expect("save");
         let reloaded = storage.load().expect("load");
 
         // Then the round-tripped config matches.
-        assert_eq!(reloaded.providers.len(), 1);
-        assert!(reloaded.providers.contains_key("ollama"));
-        assert_eq!(reloaded.default_provider.as_deref(), Some("ollama"));
+        assert_eq!(reloaded, config);
     }
 
     #[rstest::rstest]
@@ -309,37 +292,20 @@ mod tests {
 
     #[rstest::rstest]
     fn filesystem_save_then_load_round_trips() {
-        // Given a FilesystemConfigStorage in a temp dir.
+        // Given a FilesystemConfigStorage in a temp dir and the
+        // fully-specified fixture.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let storage = FilesystemConfigStorage::new(path);
 
-        let config = ProvidersConfig {
-            providers: BTreeMap::from([(
-                "ollama".to_owned(),
-                ProviderEntry {
-                    backend: "ollama".to_owned(),
-                    models: vec!["llama3".to_owned()],
-                    base_url: None,
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                    context_length: None,
-                    model_info: Vec::new(),
-                },
-            )]),
-            aliases: vec![],
-            default_provider: Some("ollama".to_owned()),
-        };
+        let config = crate::config::tests::explicit_providers_config();
 
         // When saving and reloading.
         storage.save(&config).expect("save");
         let reloaded = storage.load().expect("load");
 
-        // Then the round-tripped config matches.
-        assert_eq!(reloaded.providers.len(), 1);
-        assert!(reloaded.providers.contains_key("ollama"));
-        assert_eq!(reloaded.default_provider.as_deref(), Some("ollama"));
+        // Then the round-tripped config matches, every field intact.
+        assert_eq!(reloaded, config);
     }
 
     #[rstest::rstest]
