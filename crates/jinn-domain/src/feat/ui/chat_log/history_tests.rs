@@ -1224,7 +1224,7 @@ fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
 }
 
 #[rstest::rstest]
-fn render_annotation_entry_shows_source_title_and_url() {
+fn render_annotation_entry_collapsed_by_default_shows_hint() {
     // Given a ChatLogElement with an annotation entry carrying one citation.
     use jinn_provider::UrlCitation;
     let mut element = ChatLogElement::new();
@@ -1238,6 +1238,57 @@ fn render_annotation_entry_shows_source_title_and_url() {
                 start_index: None,
                 end_index: None,
             }]));
+        s
+    };
+
+    let (mut terminal, area) = setup_term(60, 10);
+
+    // When rendering with no expand toggle.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the header and expand hint appear in the rendered output.
+    let text = buffer_text(terminal.backend().buffer());
+    assert!(
+        text.contains("Sources (1)"),
+        "collapsed header should render: {text:?}"
+    );
+    assert!(
+        text.contains("(e to expand)"),
+        "collapsed hint should render: {text:?}"
+    );
+    // And the citation title and URL are hidden.
+    assert!(
+        !text.contains("Source A"),
+        "collapsed block should hide citation titles: {text:?}"
+    );
+    assert!(
+        !text.contains("https://example.com/a"),
+        "collapsed block should hide citation urls: {text:?}"
+    );
+}
+
+#[rstest::rstest]
+fn render_annotation_entry_expanded_shows_source_title_and_url() {
+    // Given a ChatLogElement with an expanded annotation entry carrying one citation.
+    use jinn_provider::UrlCitation;
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = AppState::default();
+        let entry = ChatEntry::annotation(vec![UrlCitation {
+            url: "https://example.com/a".to_owned(),
+            title: "Source A".to_owned(),
+            content: None,
+            start_index: None,
+            end_index: None,
+        }]);
+        let entry_id = entry.id.clone();
+        s.active_session_mut().push_entry(entry);
+        s.active_session_mut().toggle_expand_entry(entry_id);
         s
     };
 
@@ -1260,5 +1311,10 @@ fn render_annotation_entry_shows_source_title_and_url() {
     assert!(
         text.contains("https://example.com/a"),
         "citation url should render: {text:?}"
+    );
+    // And the expand hint is gone.
+    assert!(
+        !text.contains("e to expand"),
+        "expanded block should not show the hint: {text:?}"
     );
 }
