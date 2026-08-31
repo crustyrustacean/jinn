@@ -255,13 +255,13 @@ Note: `jinn` is officially supported for Linux. Windows and Mac users will need 
 - Personas
 - Themes
 
-These are all baked into the binary and can be installed using `jinn install` _after_ you install `jinn`. Except for the WASM plugins, the install content is all user-editable and can be changed/deleted freely. Note that I recommend using `jinn install --overwrite` to get the latest copies on program updates, but this will overwrite any changes you have made. Keep this in mind if you change the defaults.
+These are all baked into the binary and can be installed using `jinn install` _after_ you install `jinn`. Except for the WASM plugins, the install content is all user-editable and can be changed/deleted freely. Note that I recommend using `jinn install --force` to get the latest copies on program updates, but this will overwrite any changes you have made. Keep this in mind if you change the defaults.
 
 ### cargo-binstall (recommended)
 
 ```sh
 cargo binstall --git https://github.com/jayson-lennon/jinn --locked jinn
-jinn install --overwrite   # update plugins and builtin prompts
+jinn install --force   # update plugins and builtin prompts
 ```
 
 ### Build from source
@@ -278,7 +278,7 @@ jinn install --overwrite   # update plugins and builtin prompts
 git clone https://github.com/jayson-lennon/jinn.git
 cd jinn
 cargo build --release
-./target/release/jinn install --overwrite
+./target/release/jinn install --force
 ```
 
 The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH` or copy it to a directory already in your `$PATH`.
