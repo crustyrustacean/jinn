@@ -55,7 +55,7 @@ pub use trivial_assistant::TrivialAssistantAutoPruneWorker;
 
 /// Default accumulation threshold (in tokens) at which buffered pruner
 /// context-override mutations flush.
-const DEFAULT_ACCUMULATION_THRESHOLD_TOKENS: u32 = 10_000;
+const DEFAULT_ACCUMULATION_THRESHOLD_TOKENS: u32 = 150_000;
 
 /// Serde default for [`AutoPruneConfig::accumulation_threshold_tokens`].
 fn default_accumulation_threshold_tokens() -> u32 {
@@ -184,7 +184,7 @@ mod tests {
         assert!(config.trivial_assistant.enabled);
         assert_eq!(config.trivial_assistant.min_age, 100);
         assert_eq!(config.trivial_assistant.max_tokens, 80);
-        assert_eq!(config.accumulation_threshold_tokens, 10_000);
+        assert_eq!(config.accumulation_threshold_tokens, 150_000);
     }
 
     #[rstest::rstest]
@@ -358,7 +358,7 @@ mod tests {
         assert_eq!(prefs.auto_prune.anchored_assistant.radius, 100);
         assert!(prefs.auto_prune.anchor_shield.enabled);
         assert_eq!(prefs.auto_prune.anchor_shield.radius, 20);
-        assert_eq!(prefs.auto_prune.accumulation_threshold_tokens, 10_000);
+        assert_eq!(prefs.auto_prune.accumulation_threshold_tokens, 150_000);
     }
 
     #[rstest::rstest]
@@ -455,6 +455,6 @@ mod tests {
         std::fs::write(&path, "[auto_prune.read_edit]\nenabled = true\n").expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
-        assert_eq!(prefs.auto_prune.accumulation_threshold_tokens, 10_000);
+        assert_eq!(prefs.auto_prune.accumulation_threshold_tokens, 150_000);
     }
 }

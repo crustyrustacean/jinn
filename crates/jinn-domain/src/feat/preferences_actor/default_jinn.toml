@@ -309,7 +309,7 @@ max_tokens = 2000
 # Token threshold for accumulating pruner context-override mutations before applying them.
 # Mutations are held until their deduplicated token total reaches this value, reducing
 # server-side KV-cache rebuilds from frequent small prunes. Default: 10000.
-accumulation_threshold_tokens = 10000
+accumulation_threshold_tokens = 150000
 
 # ---------------------------------------------------------------------------
 # Prunes "edit" and "write" tool calls+results for a file if it is subsequently
