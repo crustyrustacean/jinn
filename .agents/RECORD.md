@@ -255,4 +255,5 @@ Entries are added or amended **only with human approval**.
 - (ui) The session picker renders rows as three columns — date, project name (blank when unset), session name — and its filter matches only the session name.
 - (plugins) `jinn plugin install-builtins` overwrites all builtin plugin payloads and writes `[plugin.<name>]` entries only for plugins missing from `jinn.toml`.
 - (plugins) Builtin seeding registration is add-only: existing `[plugin.<name>]` entries are never modified or removed by `jinn install` or `jinn plugin install-builtins`.
+- (ui) Annotation (Sources) entries render collapsed by default — header plus a muted expand hint — and toggle via the shared `e` expand keybind, like tool entries and compaction blocks.
 - (testing) Default config templates (default_jinn.toml, default_providers.toml) are independent of code defaults: tests guarantee they parse, document every config key, contain no dead keys, and their marked examples uncomment into a valid config.

@@ -5,6 +5,8 @@
 - Remove experimental "todo auto steer"
 - Remove customized linker config for Linux builds
 - Change default pruner accumulation threshold to 150k
+- `jinn install --force` will no longer overwrite `jinn.toml`
+- URL sources are now collapsed by default. Press `e` keybind to toggle collapsed/expanded citations.
 
 ## 2026-08-29 v0.113.0
 
