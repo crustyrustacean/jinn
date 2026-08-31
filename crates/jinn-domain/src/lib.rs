@@ -97,8 +97,13 @@ pub use feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePre
 pub use feat::preferences_actor::protocol::event::PreferencesUpdated;
 pub use feat::preferences_actor::{InitOutcome, init_default_config_to, preferences_path};
 
-// Re-export install (default resource seeding).
-pub use feat::install::{Destinations, InstallError, InstallOutcome, install_defaults_to};
+// Re-export install (default resource seeding + builtin plugin registration).
+pub use feat::install::{
+    BuiltinPluginInstall, Destinations, InstallError, InstallOutcome, InstallReport,
+    JinnTomlOutcome, install_builtin_plugins_to, install_defaults_to,
+};
+// Re-export plugin registration policies (replace vs add-only).
+pub use feat::plugin::install::register_plugin_if_absent;
 
 // Re-export persona types
 pub use feat::persona::{Persona, PersonaEntry};
