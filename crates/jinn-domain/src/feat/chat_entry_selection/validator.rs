@@ -44,14 +44,14 @@ pub fn validate_yank_selected(state: &AppState) -> Result<(), YankSelectedError>
 pub enum ExpandEntryError {
     /// No chat entry is currently selected.
     NoSelection,
-    /// The selected entry is not expandable (not a tool entry or compaction).
+    /// The selected entry is not expandable (not a tool entry, annotation, or compaction).
     NotExpandable,
 }
 
 /// Validates the ExpandToolEntry intent.
 ///
 /// Returns an error if no entry is selected or the selected entry is not expandable
-/// (tool call, tool result, or compaction).
+/// (tool call, tool result, compaction, or annotation).
 ///
 /// # Errors
 ///
@@ -66,6 +66,7 @@ pub fn validate_expand_tool_entry(state: &AppState) -> Result<(), ExpandEntryErr
         crate::protocol::ChatEntryKind::ToolCall { .. }
             | crate::protocol::ChatEntryKind::ToolResult { .. }
             | crate::protocol::ChatEntryKind::Compaction { .. }
+            | crate::protocol::ChatEntryKind::Annotation { .. }
     ) {
         return Err(ExpandEntryError::NotExpandable);
     }
@@ -570,6 +571,28 @@ mod tests {
         let result = validate_expand_tool_entry(&state);
 
         // Then it succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn expand_tool_entry_succeeds_with_selected_annotation() {
+        // Given a state with a selected annotation entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::annotation(vec![jinn_provider::UrlCitation {
+                url: "https://example.com/a".to_owned(),
+                title: "Source A".to_owned(),
+                content: None,
+                start_index: None,
+                end_index: None,
+            }]));
+        state.active_session_mut().select_next_entry();
+
+        // When validating expand tool entry.
+        let result = validate_expand_tool_entry(&state);
+
+        // Then it succeeds (annotations are expandable).
         assert!(result.is_ok());
     }
 

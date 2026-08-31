@@ -14,7 +14,8 @@ pub struct RenderContext {
     pub content_width: u16,
     /// Whether this entry is currently selected by the cursor.
     pub is_selected: bool,
-    /// Whether this tool result entry is expanded (show all lines).
+    /// Whether this entry is expanded (show full content instead of the
+    /// collapsed summary — tool results and annotations).
     pub is_expanded: bool,
     /// Maximum lines before truncating tool entries (tool calls and tool results).
     pub tool_entry_max_lines: u16,
