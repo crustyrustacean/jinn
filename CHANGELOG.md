@@ -4,6 +4,7 @@
 - Remove experimental task reminder
 - Remove experimental "todo auto steer"
 - Remove customized linker config for Linux builds
+- Change default pruner accumulation threshold to 150k
 
 ## 2026-08-29 v0.113.0
 
