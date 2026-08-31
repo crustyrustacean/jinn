@@ -5,6 +5,24 @@
 //! text, `include_bytes!` for wasm payloads), so the binary is self-contained.
 //! Plugin payloads carry their embedded `[package.metadata.jinn]` manifest;
 //! registration grants flow from it — never guessed.
+//!
+//! Two builtin-installation entry points live here, sharing one catalogue
+//! ([`BUNDLED`]) but with distinct user-facing contracts:
+//!
+//! - [`install_defaults_to`] (`jinn install`) — a pure seeder. Payload files
+//!   follow skip/`--force` rules; `jinn.toml` is written **exactly once**,
+//!   only when it does not exist (all builtin entries in a single save). An
+//!   existing file is never read or modified — even with `--force` — so user
+//!   edits survive and a malformed file never fails the install.
+//! - [`install_builtin_plugins_to`] (`jinn plugin install-builtins`) — the
+//!   registrar. Payloads are always overwritten (rebuild/ship loop);
+//!   `[plugin.<name>]` entries are written only when missing, so existing
+//!   user config is never touched. Fails fast on a malformed `jinn.toml`
+//!   before writing any payload.
+//!
+//! Both seed with **add-only** registration ([`register_plugin_if_absent`]
+//! semantics); replace-style registration remains the plugin-author loop in
+//! `jinn plugin install` / `jinn plugin add`.
 
 use std::path::{Path, PathBuf};
 
@@ -116,6 +134,36 @@ impl InstallOutcome {
 #[derive(Debug, Error)]
 #[error(debug)]
 pub struct InstallError;
+
+/// The result of a full default install.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallReport {
+    /// Per-resource outcomes in [`BUNDLED`] order (deterministic).
+    pub outcomes: Vec<InstallOutcome>,
+    /// Outcome for the user preferences file itself.
+    pub jinn_toml: JinnTomlOutcome,
+}
+
+/// Outcome for `jinn.toml` during a default install.
+///
+/// `jinn install` writes the file exactly once — only when it does not
+/// exist. An existing file is never read or modified, even under `--force`:
+/// the user's `enabled`, `config`, and hand-edited grants always win.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JinnTomlOutcome {
+    /// The file did not exist and was created this run with all builtin
+    /// `[plugin.<name>]` entries in a single write.
+    Created(PathBuf),
+    /// The file already existed and was never read or modified this run.
+    Untouched(PathBuf),
+}
+
+/// A bundled plugin payload written this run, with the manifest extracted
+/// from its bytes — the input for `jinn.toml` registration.
+struct InstalledPlugin {
+    name: String,
+    manifest: crate::feat::plugin::manifest::PluginManifest,
+}
 
 /// The compile-time catalogue of bundled defaults.
 ///
@@ -295,27 +343,58 @@ const BUNDLED: &[Bundled] = &[
 /// Parents are created unconditionally before each write so a missing config
 /// tree never surfaces as a "directory does not exist" write error.
 ///
-/// Outcomes are returned in [`BUNDLED`] order (deterministic).
+/// **`jinn.toml` is written exactly once — only when it does not exist.**
+/// On a fresh machine, all builtin `[plugin.<name>]` entries are registered
+/// in a single save. If the file already exists it is never read, patched,
+/// or registered against — even with `overwrite` — so a malformed `jinn.toml`
+/// never fails the install, and a payload installed while the file exists is
+/// left **unregistered**; the caller surfaces this via
+/// [`JinnTomlOutcome::Untouched`] and can point users at
+/// `jinn plugin install-builtins`.
+///
+/// Outcomes are returned in [`BUNDLED`] order (deterministic), alongside the
+/// `jinn.toml` outcome.
 ///
 /// # Errors
 ///
-/// Returns [`Report<InstallError>`] if directory creation, file writing,
-/// or plugin registration fails. A bundled wasm payload whose embedded
-/// manifest is missing or corrupt fails loudly.
+/// Returns [`Report<InstallError>`] if directory creation or file writing
+/// fails, or if preferences cannot be saved on the fresh-create path. A
+/// bundled wasm payload whose embedded manifest is missing or corrupt fails
+/// loudly.
 pub fn install_defaults_to(
     destinations: &Destinations,
     overwrite: bool,
+    prefs_path: &Path,
     storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
-) -> Result<Vec<InstallOutcome>, Report<InstallError>> {
-    BUNDLED
+) -> Result<InstallReport, Report<InstallError>> {
+    // The existence gate MUST run before any storage call:
+    // `FilesystemUserPreferencesStorage::reload()` auto-creates `jinn.toml`
+    // when missing, which would silently turn a fresh install into an
+    // "existing file" install.
+    let prefs_existed = prefs_path.exists();
+
+    let mut installed: Vec<InstalledPlugin> = Vec::new();
+    let outcomes: Vec<InstallOutcome> = BUNDLED
         .iter()
         .map(|resource| match &resource.contents {
             BundleContents::Text(text) => install_text(resource, text, destinations, overwrite),
             BundleContents::Wasm(wasm) => {
-                install_plugin(resource, wasm, destinations, overwrite, storage)
+                install_plugin(resource, wasm, destinations, overwrite, &mut installed)
             }
         })
-        .collect()
+        .collect::<Result<Vec<_>, Report<InstallError>>>()?;
+
+    let jinn_toml = if prefs_existed {
+        JinnTomlOutcome::Untouched(prefs_path.to_path_buf())
+    } else {
+        register_all_builtins(prefs_path, storage, &installed)?;
+        JinnTomlOutcome::Created(prefs_path.to_path_buf())
+    };
+
+    Ok(InstallReport {
+        outcomes,
+        jinn_toml,
+    })
 }
 
 /// Installs a single bundled text resource, returning its outcome.
@@ -337,16 +416,21 @@ fn install_text(
     Ok(final_outcome(destination, existed))
 }
 
-/// Installs a single bundled wasm plugin: payload write plus the
-/// `[plugin.<name>]` registration in `jinn.toml` via the preferences
-/// storage. Grants and http come from the artifact's embedded manifest —
-/// never guessed.
+/// Installs a single bundled wasm plugin payload — file write only, no
+/// `jinn.toml` registration.
+///
+/// Grants and http come from the artifact's embedded manifest — never
+/// guessed. The extracted manifest is pushed onto `installed` so the caller
+/// can register the plugin afterwards (see [`register_all_builtins`]).
+///
+/// A payload that already exists and `!overwrite` skips *before* manifest
+/// extraction, so a corrupt bundled payload never breaks a skipping install.
 fn install_plugin(
     resource: &Bundled,
     wasm: &[u8],
     destinations: &Destinations,
     overwrite: bool,
-    storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
+    installed: &mut Vec<InstalledPlugin>,
 ) -> Result<InstallOutcome, Report<InstallError>> {
     use crate::feat::plugin::manifest::extract_manifest;
 
@@ -368,10 +452,129 @@ fn install_plugin(
     let name = manifest.name.clone().unwrap_or_else(|| stem.to_owned());
 
     write_resource(&destination, wasm)?;
-    crate::feat::plugin::install::register_plugin(&name, &manifest, storage)
-        .change_context(InstallError)?;
+    installed.push(InstalledPlugin { name, manifest });
 
     Ok(final_outcome(destination, existed))
+}
+
+/// Registers every plugin installed this run in one reload+save cycle.
+///
+/// Used only on the fresh-create path (`jinn.toml` did not exist), so the
+/// file is written exactly once and entries cannot clobber anything.
+fn register_all_builtins(
+    prefs_path: &Path,
+    storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
+    installed: &[InstalledPlugin],
+) -> Result<(), Report<InstallError>> {
+    use crate::feat::plugin::install::manifest_entry;
+
+    let mut prefs = storage
+        .reload()
+        .change_context(InstallError)
+        .attach("failed to load preferences for builtin plugin registration")?;
+    for plugin in installed {
+        prefs.plugin.insert(
+            plugin.name.clone(),
+            manifest_entry(&plugin.name, &plugin.manifest),
+        );
+    }
+    storage
+        .save(&prefs)
+        .change_context(InstallError)
+        .attach("failed to write jinn.toml with builtin plugin entries")
+        .attach(format!("path: {}", prefs_path.display()))
+}
+
+/// One builtin plugin installed by [`install_builtin_plugins_to`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuiltinPluginInstall {
+    /// The plugin name — manifest name or payload file stem.
+    pub name: String,
+    /// The payload outcome — [`InstallOutcome::Created`] or
+    /// [`InstallOutcome::Overwritten`]; never `Skipped`, because
+    /// `install-builtins` always overwrites payloads.
+    pub payload: InstallOutcome,
+    /// Whether a new `[plugin.<name>]` entry was written to `jinn.toml`.
+    /// `false` when an entry already existed (never modified — add-only).
+    pub entry_registered: bool,
+}
+
+/// Installs (overwrites) all bundled builtin plugin payloads and registers
+/// any builtin missing from `jinn.toml`.
+///
+/// The user-facing registrar for builtin plugins:
+/// - **Payloads are always overwritten** — this command exists for the
+///   rebuild/ship loop; stale payloads are the failure mode it fixes.
+/// - **Registration is add-only** — a `[plugin.<name>]` entry is written
+///   only when absent, so existing `enabled`, `config`, and hand-edited
+///   grants are never modified.
+/// - **Fails fast on a malformed `jinn.toml`**: preferences are reloaded
+///   before any payload is written, so a parse failure aborts the whole
+///   command with zero side effects. (A missing file is fine — reload
+///   auto-creates the comment-rich template on disk.)
+///
+/// Payloads land in `plugins_dir` (created as needed); outcomes are
+/// returned in [`BUNDLED`] order.
+///
+/// # Errors
+///
+/// Returns [`Report<InstallError>`] if the initial preferences reload
+/// fails (malformed `jinn.toml`), a payload's embedded manifest is missing
+/// or corrupt, a payload write fails, or entry registration fails.
+pub fn install_builtin_plugins_to(
+    plugins_dir: &Path,
+    storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
+) -> Result<Vec<BuiltinPluginInstall>, Report<InstallError>> {
+    // Fail fast before any side effect: a malformed jinn.toml must not
+    // leave half-installed payloads on disk.
+    storage
+        .reload()
+        .change_context(InstallError)
+        .attach("failed to read jinn.toml — fix or remove it, then retry")?;
+
+    BUNDLED
+        .iter()
+        .filter_map(|resource| match &resource.contents {
+            BundleContents::Wasm(wasm) => Some((resource, wasm)),
+            BundleContents::Text(_) => None,
+        })
+        .map(|(resource, wasm)| install_builtin_plugin(plugins_dir, storage, resource, wasm))
+        .collect()
+}
+
+/// Installs one builtin plugin: overwrite the payload, add-only register.
+fn install_builtin_plugin(
+    plugins_dir: &Path,
+    storage: &dyn crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage,
+    resource: &Bundled,
+    wasm: &[u8],
+) -> Result<BuiltinPluginInstall, Report<InstallError>> {
+    use crate::feat::plugin::install::register_plugin_if_absent;
+    use crate::feat::plugin::manifest::extract_manifest;
+
+    // A bundled payload without a parseable manifest is a stale or corrupt
+    // build — fail loudly rather than installing a payload jinn cannot
+    // authorize.
+    let manifest = extract_manifest(wasm).change_context(InstallError)?;
+    let stem = resource
+        .relative
+        .strip_suffix(".wasm")
+        .unwrap_or(resource.relative);
+    let name = manifest.name.clone().unwrap_or_else(|| stem.to_owned());
+
+    let destination = plugins_dir.join(resource.relative);
+    let existed = destination.exists();
+    write_resource(&destination, wasm)?;
+    let payload = final_outcome(destination, existed);
+
+    let entry_registered =
+        register_plugin_if_absent(&name, &manifest, storage).change_context(InstallError)?;
+
+    Ok(BuiltinPluginInstall {
+        name,
+        payload,
+        entry_registered,
+    })
 }
 
 /// Writes `bytes` to `destination`, creating parent directories first.
@@ -413,9 +616,9 @@ mod tests {
     };
     use tempfile::TempDir;
 
-    /// Builds a [`Destinations`] rooted at five distinct temp dirs and returns
-    /// them alongside the temps (which must outlive the destinations).
-    fn fresh_destinations() -> (Destinations, [TempDir; 5]) {
+    /// Builds a [`Destinations`] rooted at five distinct temp dirs. The
+    /// returned temps must outlive the destinations.
+    fn fresh_destinations() -> (Destinations, Vec<TempDir>) {
         let themes = TempDir::new().unwrap();
         let personas = TempDir::new().unwrap();
         let prompts = TempDir::new().unwrap();
@@ -428,7 +631,49 @@ mod tests {
             skills.path().to_path_buf(),
             plugins.path().to_path_buf(),
         );
-        (destinations, [themes, personas, prompts, skills, plugins])
+        let temps = vec![themes, personas, prompts, skills, plugins];
+        (destinations, temps)
+    }
+
+    /// An install environment: fresh destinations plus a prefs file path that
+    /// does **not** exist yet (inside its own temp dir), backed by the real
+    /// filesystem storage so the auto-create/patch semantics the existence
+    /// gate depends on are exercised end to end.
+    struct TestEnv {
+        destinations: Destinations,
+        prefs_path: std::path::PathBuf,
+        storage: crate::feat::preferences_actor::user_preferences_storage::FilesystemUserPreferencesStorage,
+        _temps: Vec<TempDir>,
+    }
+
+    impl TestEnv {
+        fn fresh() -> Self {
+            let (destinations, mut temps) = fresh_destinations();
+            let prefs_dir = TempDir::new().unwrap();
+            let prefs_path = prefs_dir.path().join("jinn.toml");
+            temps.push(prefs_dir);
+            Self {
+                destinations,
+                storage: crate::feat::preferences_actor::user_preferences_storage::
+                    FilesystemUserPreferencesStorage::new(prefs_path.clone()),
+                prefs_path,
+                _temps: temps,
+            }
+        }
+
+        fn run(&self, overwrite: bool) -> InstallReport {
+            install_defaults_to(
+                &self.destinations,
+                overwrite,
+                &self.prefs_path,
+                &self.storage,
+            )
+            .expect("install")
+        }
+
+        fn plugins_dir(&self) -> &Path {
+            &self.destinations.plugins
+        }
     }
 
     /// Locates the outcome for a specific resource relative path.
@@ -443,15 +688,13 @@ mod tests {
     #[test]
     fn install_creates_theme_when_absent() {
         // Given destinations with no existing themes.
-        let (destinations, _temps) = fresh_destinations();
+        let env = TestEnv::fresh();
 
         // When installing defaults.
-        let outcomes =
-            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-                .expect("install");
+        let report = env.run(false);
 
         // Then the `default.toml` theme was created.
-        let outcome = outcome_for(&outcomes, "default.toml");
+        let outcome = outcome_for(&report.outcomes, "default.toml");
         assert!(
             matches!(outcome, InstallOutcome::Created(_)),
             "default.toml should be Created"
@@ -465,18 +708,16 @@ mod tests {
     #[test]
     fn install_skips_theme_when_present() {
         // Given a destinations dir where `default.toml` already exists.
-        let (destinations, _temps) = fresh_destinations();
-        let existing = destinations.themes.join("default.toml");
-        std::fs::create_dir_all(destinations.themes.clone()).unwrap();
+        let env = TestEnv::fresh();
+        let existing = env.destinations.themes.join("default.toml");
+        std::fs::create_dir_all(env.destinations.themes.clone()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
         // When installing defaults.
-        let outcomes =
-            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-                .expect("install");
+        let report = env.run(false);
 
         // Then `default.toml` is skipped (not overwritten).
-        let outcome = outcome_for(&outcomes, "default.toml");
+        let outcome = outcome_for(&report.outcomes, "default.toml");
         assert!(
             matches!(outcome, InstallOutcome::Skipped(_)),
             "default.toml should be Skipped"
@@ -495,6 +736,7 @@ mod tests {
         let prompts = TempDir::new().unwrap();
         let skills = TempDir::new().unwrap();
         let plugins = TempDir::new().unwrap();
+        let prefs_dir = TempDir::new().unwrap();
         // Non-existent subdirs under each temp root.
         let destinations = Destinations::new(
             themes.path().join("themes"),
@@ -503,10 +745,15 @@ mod tests {
             skills.path().join("skills"),
             plugins.path().join("plugins"),
         );
+        let prefs_path = prefs_dir.path().join("nested").join("jinn.toml");
 
         // When installing defaults.
-        let result =
-            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new());
+        let result = install_defaults_to(
+            &destinations,
+            false,
+            &prefs_path,
+            &InMemoryUserPreferencesStorage::new(),
+        );
 
         // Then it succeeds (parents created) rather than erroring.
         assert!(result.is_ok(), "install should create missing parents");
@@ -516,17 +763,15 @@ mod tests {
     #[test]
     fn install_creates_persona() {
         // Given destinations with no existing personas.
-        let (destinations, _temps) = fresh_destinations();
+        let env = TestEnv::fresh();
 
         // When installing defaults.
-        let outcomes =
-            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-                .expect("install");
+        let report = env.run(false);
 
         // Then `general.md` lands under the personas root.
-        let outcome = outcome_for(&outcomes, "general.md");
+        let outcome = outcome_for(&report.outcomes, "general.md");
         assert!(
-            outcome.path().starts_with(&destinations.personas),
+            outcome.path().starts_with(&env.destinations.personas),
             "persona should be under the personas root"
         );
         assert!(
@@ -539,17 +784,15 @@ mod tests {
     #[test]
     fn install_creates_prompt() {
         // Given destinations with no existing prompts.
-        let (destinations, _temps) = fresh_destinations();
+        let env = TestEnv::fresh();
 
         // When installing defaults.
-        let outcomes =
-            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-                .expect("install");
+        let report = env.run(false);
 
         // Then `plan.md` lands under the prompts root.
-        let outcome = outcome_for(&outcomes, "plan.md");
+        let outcome = outcome_for(&report.outcomes, "plan.md");
         assert!(
-            outcome.path().starts_with(&destinations.prompts),
+            outcome.path().starts_with(&env.destinations.prompts),
             "prompt should be under the prompts root"
         );
     }
@@ -558,15 +801,13 @@ mod tests {
     #[test]
     fn install_preserves_skill_subdir() {
         // Given destinations with no existing skills.
-        let (destinations, _temps) = fresh_destinations();
+        let env = TestEnv::fresh();
 
         // When installing defaults.
-        let outcomes =
-            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-                .expect("install");
+        let report = env.run(false);
 
         // Then the nested skill keeps its `<name>/SKILL.md` structure.
-        let outcome = outcome_for(&outcomes, "phased-task-loop/SKILL.md");
+        let outcome = outcome_for(&report.outcomes, "phased-task-loop/SKILL.md");
         assert!(
             matches!(outcome, InstallOutcome::Created(_)),
             "skill should be Created"
@@ -579,17 +820,15 @@ mod tests {
     #[test]
     fn install_creates_micro_task_loop_skill() {
         // Given destinations with no existing skills.
-        let (destinations, _temps) = fresh_destinations();
+        let env = TestEnv::fresh();
 
         // When installing defaults.
-        let outcomes =
-            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-                .expect("install");
+        let report = env.run(false);
 
         // Then the micro-task-loop skill was created under the skills root.
-        let outcome = outcome_for(&outcomes, "micro-task-loop/SKILL.md");
+        let outcome = outcome_for(&report.outcomes, "micro-task-loop/SKILL.md");
         assert!(
-            outcome.path().starts_with(&destinations.skills),
+            outcome.path().starts_with(&env.destinations.skills),
             "skill should be under the skills root"
         );
         assert!(
@@ -609,17 +848,15 @@ mod tests {
     #[test]
     fn install_creates_plugin_payload_when_absent() {
         // Given destinations with no existing plugins.
-        let (destinations, _temps) = fresh_destinations();
+        let env = TestEnv::fresh();
 
         // When installing defaults.
-        let outcomes =
-            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-                .expect("install");
+        let report = env.run(false);
 
         // Then the theme-loader payload was created under the plugins root.
-        let outcome = outcome_for(&outcomes, "theme-loader.wasm");
+        let outcome = outcome_for(&report.outcomes, "theme-loader.wasm");
         assert!(
-            outcome.path().starts_with(&destinations.plugins),
+            outcome.path().starts_with(env.plugins_dir()),
             "plugin payload should be under the plugins root"
         );
         assert!(
@@ -635,14 +872,13 @@ mod tests {
     #[test]
     fn install_registers_plugin_entry_with_manifest_grants() {
         // Given fresh destinations and in-memory preferences storage.
-        let (destinations, _temps) = fresh_destinations();
-        let storage = InMemoryUserPreferencesStorage::new();
+        let env = TestEnv::fresh();
 
         // When installing defaults.
-        install_defaults_to(&destinations, false, &storage).expect("install");
+        env.run(false);
 
         // Then the theme-loader entry carries the manifest-declared grant.
-        let prefs = storage.reload().expect("reload");
+        let prefs = env.storage.reload().expect("reload");
         let entry = prefs
             .plugin
             .get("theme-loader")
@@ -664,48 +900,49 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn install_skips_existing_plugin_without_force() {
-        // Given a plugins dir where theme-loader.wasm already exists.
-        let (destinations, _temps) = fresh_destinations();
-        let storage = InMemoryUserPreferencesStorage::new();
-        let existing = destinations.plugins.join("theme-loader.wasm");
-        std::fs::create_dir_all(destinations.plugins.clone()).unwrap();
+        // Given a plugins dir where theme-loader.wasm already exists, and a
+        // jinn.toml that does NOT exist.
+        let env = TestEnv::fresh();
+        let existing = env.plugins_dir().join("theme-loader.wasm");
+        std::fs::create_dir_all(env.plugins_dir()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
         // When installing defaults without force.
-        let outcomes = install_defaults_to(&destinations, false, &storage).expect("install");
+        let report = env.run(false);
 
         // Then the theme-loader payload is reported Skipped.
-        let outcome = outcome_for(&outcomes, "theme-loader.wasm");
+        let outcome = outcome_for(&report.outcomes, "theme-loader.wasm");
         assert!(
             matches!(outcome, InstallOutcome::Skipped(_)),
             "existing plugin payload should be Skipped"
         );
         // And no [plugin.theme-loader] entry was written (skip covers config too).
-        let prefs = storage.reload().expect("reload");
+        let prefs = env.storage.reload().expect("reload");
         assert!(!prefs.plugin.contains_key("theme-loader"));
     }
 
     #[rstest::rstest]
     #[test]
     fn install_force_overwrites_existing_plugin_payload_and_entry() {
-        // Given a plugins dir where theme-loader.wasm already exists.
-        let (destinations, _temps) = fresh_destinations();
-        let storage = InMemoryUserPreferencesStorage::new();
-        let existing = destinations.plugins.join("theme-loader.wasm");
-        std::fs::create_dir_all(destinations.plugins.clone()).unwrap();
+        // Given a plugins dir where theme-loader.wasm already exists, and a
+        // jinn.toml that does NOT exist.
+        let env = TestEnv::fresh();
+        let existing = env.plugins_dir().join("theme-loader.wasm");
+        std::fs::create_dir_all(env.plugins_dir()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
         // When installing defaults with force.
-        let outcomes = install_defaults_to(&destinations, true, &storage).expect("install");
+        let report = env.run(true);
 
         // Then the theme-loader payload is reported Overwritten.
-        let outcome = outcome_for(&outcomes, "theme-loader.wasm");
+        let outcome = outcome_for(&report.outcomes, "theme-loader.wasm");
         assert!(
             matches!(outcome, InstallOutcome::Overwritten(_)),
             "existing plugin payload should be Overwritten"
         );
-        // And the entry was written with the manifest-declared grant.
-        let prefs = storage.reload().expect("reload");
+        // And the entry was written with the manifest-declared grant (the file
+        // did not exist, so this run created it).
+        let prefs = env.storage.reload().expect("reload");
         assert!(prefs.plugin.get("theme-loader").is_some_and(|e| {
             e.grants
                 .first()
@@ -718,7 +955,7 @@ mod tests {
     fn install_plugin_fails_when_wasm_bytes_lack_manifest() {
         // Given fresh destinations and a payload with no embedded manifest.
         // (A bare, invalid-wasm byte sequence — not a jinn-built artifact.)
-        let (destinations, _temps) = fresh_destinations();
+        let env = TestEnv::fresh();
 
         // When installing a non-manifest payload through the plugin path.
         let result = install_plugin(
@@ -728,9 +965,9 @@ mod tests {
                 contents: BundleContents::Wasm(b"\0asm-bogus-payload"),
             },
             b"\0asm-bogus-payload",
-            &destinations,
+            &env.destinations,
             false,
-            &InMemoryUserPreferencesStorage::new(),
+            &mut Vec::new(),
         );
 
         // Then the install fails loudly (nothing written, nothing registered).
@@ -741,21 +978,24 @@ mod tests {
     #[test]
     fn install_is_idempotent() {
         // Given a fresh set of destinations.
-        let (destinations, _temps) = fresh_destinations();
+        let env = TestEnv::fresh();
 
         // When running install a second time (after a first full run).
-        install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-            .expect("first install");
-        let second =
-            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-                .expect("second install");
+        env.run(false);
+        let second = env.run(false);
 
         // Then every outcome is Skipped and nothing reports Created.
         assert!(
             second
+                .outcomes
                 .iter()
                 .all(|o| matches!(o, InstallOutcome::Skipped(_))),
             "second run must skip everything"
+        );
+        // And jinn.toml is reported untouched on the second run.
+        assert!(
+            matches!(second.jinn_toml, JinnTomlOutcome::Untouched(_)),
+            "second run must not rewrite jinn.toml"
         );
     }
 
@@ -763,38 +1003,34 @@ mod tests {
     #[test]
     fn install_outcomes_include_full_paths() {
         // Given a fresh set of destinations.
-        let (destinations, _temps) = fresh_destinations();
+        let env = TestEnv::fresh();
 
         // When installing defaults.
-        let outcomes =
-            install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-                .expect("install");
+        let report = env.run(false);
 
         // Then every outcome path is absolute (full path for the CLI to print).
         assert!(
-            outcomes.iter().all(|o| o.path().is_absolute()),
+            report.outcomes.iter().all(|o| o.path().is_absolute()),
             "every outcome must carry an absolute path"
         );
         // And the count matches the bundled catalogue size.
-        assert_eq!(outcomes.len(), BUNDLED.len());
+        assert_eq!(report.outcomes.len(), BUNDLED.len());
     }
 
     #[rstest::rstest]
     #[test]
     fn install_overwrites_theme_when_force() {
         // Given a destinations dir where `default.toml` already exists.
-        let (destinations, _temps) = fresh_destinations();
-        let existing = destinations.themes.join("default.toml");
-        std::fs::create_dir_all(destinations.themes.clone()).unwrap();
+        let env = TestEnv::fresh();
+        let existing = env.destinations.themes.join("default.toml");
+        std::fs::create_dir_all(env.destinations.themes.clone()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
         // When installing defaults with overwrite enabled.
-        let outcomes =
-            install_defaults_to(&destinations, true, &InMemoryUserPreferencesStorage::new())
-                .expect("install");
+        let report = env.run(true);
 
         // Then `default.toml` is reported as overwritten (not skipped).
-        let outcome = outcome_for(&outcomes, "default.toml");
+        let outcome = outcome_for(&report.outcomes, "default.toml");
         assert!(
             matches!(outcome, InstallOutcome::Overwritten(_)),
             "default.toml should be Overwritten"
@@ -806,19 +1042,17 @@ mod tests {
     fn install_force_replaces_with_bundled_contents() {
         // Given a destinations dir where `default.toml` holds stale contents,
         // and a second destinations dir installed fresh to capture the bundled bytes.
-        let (destinations, _temps) = fresh_destinations();
-        let (bundled, _bundled_temps) = fresh_destinations();
-        let existing = destinations.themes.join("default.toml");
-        std::fs::create_dir_all(destinations.themes.clone()).unwrap();
+        let env = TestEnv::fresh();
+        let bundled_env = TestEnv::fresh();
+        let existing = env.destinations.themes.join("default.toml");
+        std::fs::create_dir_all(env.destinations.themes.clone()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
-        install_defaults_to(&bundled, false, &InMemoryUserPreferencesStorage::new())
-            .expect("capture bundled contents");
-        let bundled_default = bundled.themes.join("default.toml");
+        bundled_env.run(false);
+        let bundled_default = bundled_env.destinations.themes.join("default.toml");
         let expected = std::fs::read_to_string(&bundled_default).expect("read bundled");
 
         // When installing with overwrite enabled.
-        install_defaults_to(&destinations, true, &InMemoryUserPreferencesStorage::new())
-            .expect("install");
+        env.run(true);
 
         // Then the overwritten file matches the bundled contents, not the stale value.
         let contents = std::fs::read_to_string(&existing).expect("read");
@@ -829,22 +1063,134 @@ mod tests {
     #[test]
     fn install_idempotent_under_force() {
         // Given a fully-installed destinations dir (files already match the bundled bytes).
-        let (destinations, _temps) = fresh_destinations();
-        install_defaults_to(&destinations, false, &InMemoryUserPreferencesStorage::new())
-            .expect("first install");
+        let env = TestEnv::fresh();
+        env.run(false);
 
         // When installing again with overwrite enabled.
-        let second =
-            install_defaults_to(&destinations, true, &InMemoryUserPreferencesStorage::new())
-                .expect("force install");
+        let second = env.run(true);
 
         // Then every outcome is Overwritten — overwrite rewrites unconditionally,
         // with no content-diff short-circuit that would report Skipped.
         assert!(
             second
+                .outcomes
                 .iter()
                 .all(|o| matches!(o, InstallOutcome::Overwritten(_))),
             "force run must overwrite everything, even unchanged files"
+        );
+        // And jinn.toml remains untouched even under force.
+        assert!(
+            matches!(second.jinn_toml, JinnTomlOutcome::Untouched(_)),
+            "force must never rewrite an existing jinn.toml"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_creates_jinn_toml_once_on_fresh_env() {
+        // Given a fresh environment with no jinn.toml.
+        let env = TestEnv::fresh();
+        assert!(!env.prefs_path.exists());
+
+        // When installing defaults.
+        let report = env.run(false);
+
+        // Then jinn.toml is reported Created.
+        assert_eq!(
+            report.jinn_toml,
+            JinnTomlOutcome::Created(env.prefs_path.clone())
+        );
+        // And every builtin plugin entry is registered.
+        let prefs = env.storage.reload().expect("reload");
+        for name in [
+            "persona-loader",
+            "theme-loader",
+            "url-citations",
+            "tool-call-watchdog",
+            "stall-watchdog",
+        ] {
+            assert!(prefs.plugin.contains_key(name), "{name} must be registered");
+        }
+        // And the file exists on disk.
+        assert!(env.prefs_path.exists(), "jinn.toml must be created on disk");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_reports_untouched_jinn_toml_when_file_exists() {
+        // Given an environment where jinn.toml already exists (even malformed).
+        let env = TestEnv::fresh();
+        if let Some(parent) = env.prefs_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&env.prefs_path, "NOT [valid toml").unwrap();
+
+        // When installing defaults.
+        let report = env.run(false);
+
+        // Then jinn.toml is reported Untouched.
+        assert_eq!(
+            report.jinn_toml,
+            JinnTomlOutcome::Untouched(env.prefs_path.clone())
+        );
+        // And the malformed file is left byte-identical — which is itself the
+        // proof that nothing was registered (a reload-based assertion is
+        // impossible: the file does not parse).
+        let on_disk = std::fs::read_to_string(&env.prefs_path).expect("read");
+        assert_eq!(on_disk, "NOT [valid toml");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_force_leaves_existing_jinn_toml_byte_identical() {
+        // Given an environment where jinn.toml exists with a user customization
+        // and the theme-loader payload already exists on disk.
+        let env = TestEnv::fresh();
+        if let Some(parent) = env.prefs_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let original = "# my edits\n[plugin.theme-loader]\nenabled = false\n";
+        std::fs::write(&env.prefs_path, original).unwrap();
+        let existing = env.plugins_dir().join("theme-loader.wasm");
+        std::fs::create_dir_all(env.plugins_dir()).unwrap();
+        std::fs::write(&existing, "PRE-EXISTING").unwrap();
+
+        // When installing defaults with force.
+        let report = env.run(true);
+
+        // Then jinn.toml is Untouched and byte-identical on disk.
+        assert_eq!(
+            report.jinn_toml,
+            JinnTomlOutcome::Untouched(env.prefs_path.clone())
+        );
+        let on_disk = std::fs::read_to_string(&env.prefs_path).expect("read");
+        assert_eq!(on_disk, original);
+        // And plugin payloads were still overwritten.
+        let theme_outcome = outcome_for(&report.outcomes, "theme-loader.wasm");
+        assert!(
+            matches!(theme_outcome, InstallOutcome::Overwritten(_)),
+            "payloads must still follow --force"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_fresh_env_registers_enabled_default_entries() {
+        // Given a fresh environment.
+        let env = TestEnv::fresh();
+
+        // When installing defaults.
+        env.run(false);
+
+        // Then every registered builtin entry is enabled with no user config.
+        let prefs = env.storage.reload().expect("reload");
+        assert_eq!(prefs.plugin.len(), 5, "all five builtins registered");
+        assert!(
+            prefs
+                .plugin
+                .values()
+                .all(|e| e.enabled && e.config.is_none()),
+            "fresh entries must be enabled with no config"
         );
     }
 }
