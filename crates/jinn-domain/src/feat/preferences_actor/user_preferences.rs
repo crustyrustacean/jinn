@@ -37,6 +37,7 @@ pub use crate::feat::session_lifecycle::SessionLifecycle;
 pub use crate::feat::tools_actor::OpenrouterWebSearchConfig;
 pub use crate::feat::ui::MinimapConfig;
 pub use crate::feat::web_fetch_actor::{WebFetchBackend, WebFetchConfig};
+pub use crate::feat::web_search_actor::WebSearchBackend;
 pub use crate::feat::web_search_actor::WebSearchConfig;
 // BrowserConfig + BrowserBackend + BrowserBinary live in their own module;
 // re-exported here so the historical `user_preferences::*` import path works.
@@ -120,6 +121,7 @@ pub struct UserPreferences {
     /// These are purely user-curated (no auto-tracking); the user adds/removes
     /// entries explicitly. See [`ProjectConfig`].
     #[serde(default)]
+    #[serde(rename = "project")]
     pub projects: Vec<ProjectConfig>,
 
     /// Configured MCP servers, keyed by name — `[mcp_server.<name>]` in
@@ -474,7 +476,7 @@ fn rewrite_legacy_aliases(root: &mut toml_edit::Table) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #![allow(
         clippy::expect_used,
         clippy::panic,
@@ -487,13 +489,202 @@ mod tests {
 
     use super::*;
 
-    #[rstest::rstest]
-    fn default_tool_timeout_is_300_seconds() {
-        // Given the global default timeout constant.
-        // Then it is 300 seconds.
-        assert_eq!(DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS, 300);
-        // And the serde default function agrees.
-        assert_eq!(default_tool_default_timeout_secs(), 300);
+    /// A fully-specified [`UserPreferences`] with every field set explicitly
+    /// (no `..Default::default()`). Serves two purposes: the input for the
+    /// consolidated round-trip tests, and the schema fixture the template
+    /// completeness check enumerates (`jinn-common`'s `template_check`
+    /// walks its serialized key paths, `None` included).
+    ///
+    /// Sentinel values deliberately differ from the current built-in
+    /// defaults wherever the type admits a different value, so a serde bug
+    /// that silently drops a field and falls back to the default still
+    /// fails the equality assertion.
+    ///
+    /// Collection fields carry at least one entry each so that entry-shape
+    /// keys (`mcp_server.*.headers`, `session_lifecycle.*.setup_command`,
+    /// ...) are part of the documented schema.
+    #[must_use]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "a fully-specified fixture is intentionally exhaustive; no ..default() escapes"
+    )]
+    pub(crate) fn explicit_user_preferences() -> UserPreferences {
+        let plugin_config = {
+            let mut cfg = toml::map::Map::new();
+            cfg.insert(
+                "scope".to_owned(),
+                toml::Value::String("read-only".to_owned()),
+            );
+            cfg
+        };
+        let auto_prune = AutoPruneConfig {
+            edit_read: EditReadAutoPruneConfig {
+                enabled: false,
+                min_age: 7,
+            },
+            read_edit: ReadEditAutoPruneConfig {
+                enabled: false,
+                min_age: 9,
+                threshold: 4,
+            },
+            regex: RegexAutoPruneConfig {
+                enabled: false,
+                rules: vec![RegexPruneRule {
+                    pattern: "fixture-pattern".to_owned(),
+                    tool_name: "fixture-tool".to_owned(),
+                    keep_last: 3,
+                    min_age: 11,
+                }],
+            },
+            broken_edit: BrokenEditAutoPruneConfig {
+                enabled: false,
+                min_age: 2,
+            },
+            todo: TodoAutoPruneConfig {
+                enabled: false,
+                min_age: 3,
+            },
+            double_edit: DoubleEditAutoPruneConfig {
+                enabled: false,
+                max_file_edits: 1,
+                min_age: 4,
+            },
+            consecutive_reads: ConsecutiveReadsAutoPruneConfig {
+                enabled: false,
+                keep_last: 2,
+                min_age: 5,
+            },
+            tool_age_window: ToolAgeWindowAutoPruneConfig {
+                enabled: false,
+                min_age: 6,
+            },
+            trivial_assistant: TrivialAssistantAutoPruneConfig {
+                enabled: false,
+                min_age: 8,
+                max_tokens: 10,
+            },
+            anchored_assistant: AnchoredAssistantAutoPruneConfig {
+                enabled: false,
+                radius: 12,
+                min_age: 13,
+            },
+            anchor_shield: AnchorShieldConfig {
+                enabled: false,
+                radius: 14,
+            },
+            accumulation_threshold_tokens: 17,
+        };
+        UserPreferences {
+            tool_entry_max_lines: Some(9),
+            min_collapse_count: Some(7),
+            disabled_tools: ["fixture-tool-a".to_owned(), "fixture-tool-b".to_owned()]
+                .into_iter()
+                .collect(),
+            disabled_skills: ["fixture-skill".to_owned()].into_iter().collect(),
+            session_lifecycles: vec![SessionLifecycle {
+                name: "fixture lifecycle".to_owned(),
+                description: Some("fixture description".to_owned()),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "echo fixture-setup".to_owned(),
+                    ),
+                ),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "echo fixture-teardown".to_owned(),
+                    ),
+                ),
+            }],
+            projects: vec![ProjectConfig {
+                path: "/tmp/fixture-project".into(),
+            }],
+            mcp_server: [(
+                "fixture-server".to_owned(),
+                crate::feat::mcp::McpServerConfig {
+                    command: Some("fixture-command".to_owned()),
+                    args: vec!["--fixture-flag".to_owned()],
+                    transport: crate::feat::mcp::TransportKind::RemoteHttp,
+                    url: Some("http://fixture.invalid/mcp".to_owned()),
+                    auto_enable: true,
+                    headers: [("X-Fixture-Header".to_owned(), "fixture-value".to_owned())]
+                        .into_iter()
+                        .collect(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+            plugin: [(
+                "fixture-plugin".to_owned(),
+                crate::feat::plugin::PluginConfig {
+                    wasm: "fixture-plugin.wasm".to_owned(),
+                    grants: vec![crate::feat::plugin::PluginPathGrant {
+                        path: "<data_dir>/fixture:w".to_owned(),
+                        writable: true,
+                    }],
+                    http: true,
+                    config: Some(toml::Value::Table(plugin_config)),
+                    enabled: false,
+                },
+            )]
+            .into_iter()
+            .collect(),
+            max_tool_output_lines: Some(901),
+            max_tool_output_bytes: Some(902),
+            compaction: CompactionConfig {
+                model: Some("fixture/compaction-model".to_owned()),
+                threshold: 0.31,
+                reserve_tokens: 3100,
+                fallback_context_window: 31000,
+            },
+            request_retry: RequestRetryConfig {
+                max_retries: 9,
+                base_delay_secs: 3,
+                max_delay_secs: 90,
+            },
+            web_fetch: WebFetchConfig {
+                backend: WebFetchBackend::Http,
+            },
+            web_search: WebSearchConfig {
+                backend: WebSearchBackend::HeadlessChrome,
+                max_results: 21,
+                region: "fixture-region".to_owned(),
+                safe_search: false,
+            },
+            browser: BrowserConfig {
+                binary: BrowserBinary::Chromium,
+                user_agent: Some("fixture-agent/1.0".to_owned()),
+                anubis_timeout_secs: 33,
+                challenge_wait_secs: 130,
+                settle_secs: 6,
+                keep_tabs_open: true,
+            },
+            openrouter_web_search: OpenrouterWebSearchConfig {
+                engine: Some("firecrawl".to_owned()),
+                max_results: Some(23),
+                max_total_results: Some(27),
+                search_context_size: Some("low".to_owned()),
+                allowed_domains: Some(vec!["fixture.example".to_owned()]),
+                excluded_domains: Some(vec!["blocked.example".to_owned()]),
+            },
+            cwd_selector: CwdSelectorConfig {
+                command: "fixture-cwd-selector {path}".to_owned(),
+            },
+            minimap: MinimapConfig { max_tokens: 2900 },
+            auto_prune,
+            interactive_term: crate::feat::interactive_term::prefs::InteractiveTermPrefs {
+                control_toggle_key: "<c-t>".to_owned(),
+                settle_quiet_ms: 410,
+                settle_max_wait_ms: 3100,
+            },
+            discord: crate::feat::discord::DiscordConfig {
+                enabled: true,
+                bot_token: Some("fixture-token".to_owned()),
+                guild_id: Some("111".to_owned()),
+                forum_channel: Some("222".to_owned()),
+                authorized_users: vec!["333".to_owned()],
+            },
+            tool_default_timeout_secs: 301,
+        }
     }
 
     #[rstest::rstest]
@@ -586,20 +777,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn default_config_template_round_trips_to_user_preferences_default() {
-        // Given the shipped default_jinn.toml template.
-        // When checking it against UserPreferences::default().
-        let result = crate::common::default_config_check::check_default_round_trips_to_default::<
-            UserPreferences,
-        >(DEFAULT_CONFIG);
-
-        // Then the template deserializes to the inherent default with no drift.
-        assert!(
-            result.is_ok(),
-            "default_jinn.toml has drifted from UserPreferences::default(): {result:?}",
-        );
-    }
-    #[rstest::rstest]
     fn init_writes_template_when_missing() {
         // Given a path to a nonexistent file.
         let dir = TempDir::new().expect("temp dir");
@@ -649,49 +826,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn save_then_load_round_trips() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            tool_entry_max_lines: Some(10),
-            session_lifecycles: vec![],
-            ..UserPreferences::default()
-        };
-
-        // When saving and reloading.
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        // Then the round-tripped data matches.
-        assert_eq!(reloaded.tool_entry_max_lines, Some(10));
-    }
-
-    #[rstest::rstest]
-    fn browser_config_round_trips_through_jinn_toml() {
-        // Given a non-default [browser] config.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            browser: BrowserConfig {
-                binary: BrowserBinary::Chromium,
-                user_agent: Some("test-agent/1.0".to_owned()),
-                anubis_timeout_secs: 60,
-                challenge_wait_secs: 120,
-                settle_secs: 5,
-                keep_tabs_open: false,
-            },
-            ..UserPreferences::default()
-        };
-
-        // When saving and reloading.
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        // Then the [browser] fields round-trip exactly.
-        assert_eq!(reloaded.browser, prefs.browser);
-    }
-
-    #[rstest::rstest]
     fn load_parses_toml_content() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
@@ -704,7 +838,7 @@ mod tests {
 
     #[rstest::rstest]
     fn load_handles_empty_file() {
-        // Given an empty TOML file.
+        // Given an empty TOML file (all keys at their defaults).
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, "").expect("write");
@@ -712,9 +846,30 @@ mod tests {
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
 
-        // Then defaults are returned (all fields None).
+        // Then the lifecycle/recipe entries ship with the default template
+        // but an empty file has none: compare against a default with those
+        // lists cleared rather than pinning any default literal.
+        let expected = {
+            let mut prefs = UserPreferences::default();
+            prefs.session_lifecycles.clear();
+            prefs
+        };
+        assert_eq!(prefs, expected);
+    }
 
-        assert!(prefs.tool_entry_max_lines.is_none());
+    #[rstest::rstest]
+    fn explicit_preferences_save_then_load_round_trips() {
+        // Given a fully-specified preferences fixture.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = explicit_user_preferences();
+
+        // When saving and reloading.
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then every field survives the round-trip exactly.
+        assert_eq!(reloaded, prefs);
     }
 
     #[rstest::rstest]
@@ -735,36 +890,18 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn save_then_load_round_trips_tool_entry_max_lines() {
-        // Given preferences with a tool_entry_max_lines override.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            tool_entry_max_lines: Some(10),
-            session_lifecycles: vec![],
-            ..UserPreferences::default()
-        };
-
-        // When saving and reloading.
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        // Then the round-tripped value matches.
-        assert_eq!(reloaded.tool_entry_max_lines, Some(10));
-    }
-
-    #[rstest::rstest]
-    fn default_preferences_has_git_worktree_lifecycle() {
+    fn default_preferences_lifecycles_are_nonempty_with_setup_commands() {
         // Given default preferences.
         let prefs = UserPreferences::default();
 
-        // Then session_lifecycles contains the git worktree lifecycle.
-        let worktree = prefs
-            .session_lifecycles
-            .iter()
-            .find(|l| l.name == "git worktree")
-            .expect("git worktree lifecycle present");
-        assert!(worktree.setup.is_some());
+        // Then the Default impl ships at least one lifecycle, and every
+        // shipped lifecycle has a setup command (usable out of the box).
+        assert!(!prefs.session_lifecycles.is_empty());
+        // And each lifecycle is named and has setup wired.
+        for lifecycle in &prefs.session_lifecycles {
+            assert!(!lifecycle.name.is_empty());
+            assert!(lifecycle.setup.is_some());
+        }
     }
 
     #[rstest::rstest]
@@ -777,24 +914,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn save_then_load_round_trips_min_collapse_count() {
-        // Given preferences with a min_collapse_count override.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            min_collapse_count: Some(5),
-            ..UserPreferences::default()
-        };
-
-        // When saving and reloading.
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        // Then the round-tripped value matches.
-        assert_eq!(reloaded.min_collapse_count, Some(5));
-    }
-
-    #[rstest::rstest]
     fn default_preferences_has_empty_disablement_sets() {
         // Given default preferences.
         let prefs = UserPreferences::default();
@@ -803,30 +922,6 @@ mod tests {
         assert!(prefs.disabled_tools.is_empty());
         // And no skills are disabled by default.
         assert!(prefs.disabled_skills.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn disabled_tools_and_skills_round_trip_through_save_load() {
-        // Given preferences with disabled tool/skill defaults configured.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            disabled_tools: ["bash", "mcp__excalimate__draw"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
-            disabled_skills: ["phased-task-loop"].into_iter().map(String::from).collect(),
-            ..UserPreferences::default()
-        };
-
-        // When saving and reloading.
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        // Then both disablement sets survive the round-trip exactly.
-        assert_eq!(reloaded.disabled_tools, prefs.disabled_tools);
-        // And the skill set too.
-        assert_eq!(reloaded.disabled_skills, prefs.disabled_skills);
     }
 
     #[rstest::rstest]
@@ -1118,114 +1213,40 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn default_preferences_has_headless_chrome_web_fetch() {
+    fn default_preferences_wire_web_fetch_to_backend_default() {
         let prefs = UserPreferences::default();
-        assert_eq!(prefs.web_fetch.backend, WebFetchBackend::HeadlessChrome);
+        assert_eq!(prefs.web_fetch.backend, WebFetchConfig::default().backend);
     }
 
     #[rstest::rstest]
-    fn default_preferences_has_default_openrouter_web_search() {
+    fn default_preferences_wire_openrouter_web_search_to_section_default() {
         let prefs = UserPreferences::default();
-        assert_eq!(prefs.openrouter_web_search.engine.as_deref(), Some("exa"));
-        assert!(prefs.openrouter_web_search.max_results.is_none());
-        assert!(prefs.openrouter_web_search.max_total_results.is_none());
-        assert!(prefs.openrouter_web_search.search_context_size.is_none());
-        assert!(prefs.openrouter_web_search.allowed_domains.is_none());
-        assert!(prefs.openrouter_web_search.excluded_domains.is_none());
+        assert_eq!(
+            prefs.openrouter_web_search,
+            OpenrouterWebSearchConfig::default()
+        );
     }
     #[rstest::rstest]
-    fn default_preferences_has_default_web_search_config() {
+    fn default_preferences_wire_web_search_to_section_default() {
         // Given default preferences.
         let prefs = UserPreferences::default();
 
-        // Then web_search config uses defaults.
-        assert_eq!(prefs.web_search.max_results, 10);
-        assert_eq!(prefs.web_search.region, "wt-wt");
-        assert!(prefs.web_search.safe_search);
+        // Then the web_search section equals its own default.
+        assert_eq!(prefs.web_search, WebSearchConfig::default());
     }
     #[rstest::rstest]
-    fn default_preferences_has_default_minimap_config() {
+    fn default_preferences_wire_minimap_to_section_default() {
         // Given default preferences.
         let prefs = UserPreferences::default();
 
-        // Then minimap config uses defaults.
-        assert_eq!(prefs.minimap.max_tokens, 2000);
+        // Then the minimap section equals its own default.
+        assert_eq!(prefs.minimap, MinimapConfig::default());
     }
 
     #[rstest::rstest]
-    fn default_preferences_has_default_auto_prune_config() {
+    fn default_preferences_wire_auto_prune_to_section_default() {
         let prefs = UserPreferences::default();
-        assert!(prefs.auto_prune.read_edit.enabled);
-        assert!(prefs.auto_prune.edit_read.enabled);
-        assert!(prefs.auto_prune.todo.enabled);
-        assert!(prefs.auto_prune.consecutive_reads.enabled);
-        assert!(prefs.auto_prune.tool_age_window.enabled);
-        assert!(prefs.auto_prune.trivial_assistant.enabled);
-        assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
-        assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
-    }
-
-    #[rstest::rstest]
-    fn mcp_server_config_round_trips_through_toml() {
-        // Given a server config with command + args.
-        let server = crate::feat::mcp::McpServerConfig {
-            command: Some("npx".to_owned()),
-            args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
-            ..Default::default()
-        };
-
-        // When serializing and deserializing.
-        let s = toml::to_string(&server).expect("serialize");
-        let back: crate::feat::mcp::McpServerConfig = toml::from_str(&s).expect("deserialize");
-
-        // Then the fields are preserved.
-        assert_eq!(back.command.as_deref(), Some("npx"));
-        assert_eq!(back.args, vec!["@excalimate/mcp-server", "--stdio"]);
-    }
-
-    #[rstest::rstest]
-    fn mcp_server_map_round_trips_through_preferences() {
-        // Given preferences with two configured servers.
-        let prefs = UserPreferences {
-            mcp_server: [
-                (
-                    "excalimate".to_owned(),
-                    crate::feat::mcp::McpServerConfig {
-                        command: Some("npx".to_owned()),
-                        args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "filesystem".to_owned(),
-                    crate::feat::mcp::McpServerConfig {
-                        command: Some("node".to_owned()),
-                        args: vec!["fs-server.js".to_owned()],
-                        ..Default::default()
-                    },
-                ),
-            ]
-            .into_iter()
-            .collect(),
-            ..UserPreferences::default()
-        };
-
-        // When saving and reloading through the patcher.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        // Then both servers survive the round-trip.
-        assert_eq!(reloaded.mcp_server.len(), 2);
-        assert_eq!(
-            reloaded.mcp_server["excalimate"].command.as_deref(),
-            Some("npx")
-        );
-        assert_eq!(
-            reloaded.mcp_server["filesystem"].command.as_deref(),
-            Some("node")
-        );
+        assert_eq!(prefs.auto_prune, AutoPruneConfig::default());
     }
 
     #[rstest::rstest]
@@ -1266,53 +1287,6 @@ args = ["@excalimate/mcp-server", "--stdio"]
             on_disk.contains("# this comment must survive"),
             "user comment was wiped by the patcher: {on_disk}"
         );
-    }
-
-    #[rstest::rstest]
-    fn mcp_server_headers_sub_table_round_trips_preserving_comments() {
-        // Given an existing jinn.toml whose MCP server entry declares a
-        // headers sub-table under a user comment.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"[mcp_server.remote]
-transport = "remote_http"
-url = "http://localhost:3001/mcp"
-
-# auth header config must survive edits
-[mcp_server.remote.headers]
-Authorization = "Bearer ${MY_KEY}"
-"#,
-        )
-        .expect("write");
-
-        // When loading and saving unchanged.
-        let prefs = load_preferences_from(&path).expect("load");
-        assert_eq!(
-            prefs.mcp_server["remote"]
-                .headers
-                .get("Authorization")
-                .map(String::as_str),
-            Some("Bearer ${MY_KEY}"),
-            "pre-existing headers must load"
-        );
-        save_preferences_to(&prefs, &path).expect("save");
-
-        // Then the headers sub-table survives on disk.
-        let on_disk = std::fs::read_to_string(&path).expect("read");
-        assert!(
-            on_disk.contains("Authorization = \"Bearer ${MY_KEY}\""),
-            "headers must round-trip through the patcher: {on_disk}"
-        );
-        // And the user's comment above it survives too.
-        assert!(
-            on_disk.contains("# auth header config must survive edits"),
-            "comment above the headers table was wiped: {on_disk}"
-        );
-        // And the result still parses back identically.
-        let reloaded = load_preferences_from(&path).expect("reload");
-        assert_eq!(reloaded.mcp_server, prefs.mcp_server);
     }
 
     #[rstest::rstest]

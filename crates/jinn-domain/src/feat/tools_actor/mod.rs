@@ -955,51 +955,7 @@ mod openrouter_web_search_config_tests {
 
     use super::OpenrouterWebSearchConfig;
     use crate::common::app_info::PREFS_FILE_NAME;
-    use crate::feat::preferences_actor::user_preferences::{
-        UserPreferences, load_preferences_from, save_preferences_to,
-    };
-
-    #[rstest::rstest]
-    fn save_then_load_round_trips_openrouter_web_search_config() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            openrouter_web_search: OpenrouterWebSearchConfig {
-                engine: Some("exa".to_owned()),
-                max_results: Some(10),
-                max_total_results: Some(50),
-                search_context_size: Some("high".to_owned()),
-                allowed_domains: Some(vec!["arxiv.org".to_owned()]),
-                excluded_domains: Some(vec!["reddit.com".to_owned()]),
-            },
-            ..UserPreferences::default()
-        };
-
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        assert_eq!(
-            reloaded.openrouter_web_search.engine.as_deref(),
-            Some("exa")
-        );
-        assert_eq!(reloaded.openrouter_web_search.max_results, Some(10));
-        assert_eq!(reloaded.openrouter_web_search.max_total_results, Some(50));
-        assert_eq!(
-            reloaded
-                .openrouter_web_search
-                .search_context_size
-                .as_deref(),
-            Some("high")
-        );
-        assert_eq!(
-            reloaded.openrouter_web_search.allowed_domains,
-            Some(vec!["arxiv.org".to_owned()])
-        );
-        assert_eq!(
-            reloaded.openrouter_web_search.excluded_domains,
-            Some(vec!["reddit.com".to_owned()])
-        );
-    }
+    use crate::feat::preferences_actor::user_preferences::load_preferences_from;
 
     #[rstest::rstest]
     fn load_parses_openrouter_web_search_config() {

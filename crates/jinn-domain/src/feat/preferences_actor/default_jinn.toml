@@ -3,9 +3,39 @@
 # This file is auto-generated on first run. Comments are preserved across
 # saves, so feel free to annotate values that you have customized.
 #
-# Defaults reflect `UserPreferences::default()` exactly; a unit test in
-# `user_preferences.rs` (round-trip equality) guards against drift.
+# Everything active below reflects the built-in defaults. Optional features
+# ship as commented examples — lines ending in "(uncomment below to activate)"
+# mark a block you can uncomment as-is. A test suite guarantees every example
+# activates cleanly and that every supported key is documented here.
 
+# ---------------------------------------------------------------------------
+# General settings (top-level keys — must stay above any [section] header)
+# ---------------------------------------------------------------------------
+
+# Default execution timeout (seconds) for all builtin tool calls.
+# Acts as a safety ceiling so a hung tool never stalls the turn
+# indefinitely. Bash calls can override this per-call via the
+# `max_duration_secs` tool argument.
+tool_default_timeout_secs = 300
+
+# Optional display and output tuning.
+# (uncomment below to activate)
+# tool_entry_max_lines = 12
+# min_collapse_count = 5
+# max_tool_output_lines = 2000
+# max_tool_output_bytes = 51200
+# disabled_tools = ["bash", "mcp__excalimate__draw"]
+# disabled_skills = ["phased-task-loop"]
+
+# `tool_entry_max_lines` caps how many lines of a tool call/result render in
+# the chat log before truncation. `min_collapse_count` is the smallest number
+# of contiguous excluded entries that collapse into a summary line.
+# `max_tool_output_lines` / `max_tool_output_bytes` truncate captured tool
+# output before the model ever sees it. `disabled_tools` / `disabled_skills`
+# start NEW sessions with those names disabled (bare tool names or full MCP
+# namespaces like "mcp__excalimate__draw"; entries that match nothing are
+# harmless). Toggles inside a session override the disablement lists
+# per-session and never write back here.
 
 # ---------------------------------------------------------------------------
 # Session lifecycle commands
@@ -24,6 +54,7 @@
 # If the `teardown_command` 
 #
 # Fossil SCM example
+# (uncomment below to activate)
 # [[session_lifecycle]]
 # name = "fossil branch quickfix"
 # description = "Open a new checkout + branch"
@@ -67,6 +98,7 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 #
 # Add one block per directory. Duplicates are ignored.
 #
+# (uncomment below to activate)
 # [[project]]
 # path = "~/code/jinn"
 
@@ -101,17 +133,14 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 #                remote host, or as a system service.
 #
 # stdio example (transport omitted — it's the default)
+# (uncomment below to activate)
 # [mcp_server.excalimate]
 # command = "npx"
 # args = ["@excalimate/mcp-server", "--stdio"]
-#
-# Start this server already enabled in every NEW session (no picker visit
-# needed). Default is false. Toggle state is remembered per-session; this
-# flag never re-applies to existing sessions.
 # auto_enable = false
 #
 # local_http example (jinn allocates the port, <port> is expanded)
-# [mcp_server.excalimate]
+# [mcp_server.excalimate_http]
 # command = "npx"
 # args = ["@excalimate/mcp-server", "--port", "<port>", "--host", "<ip>"]
 # transport = "local_http"
@@ -133,22 +162,6 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # X-Api-Key = "${OTHER_KEY}"
 
 # ---------------------------------------------------------------------------
-# Default-disabled tools and skills
-# ---------------------------------------------------------------------------
-# Tools and skills are enabled by default; list names here to start NEW
-# sessions with them disabled. Bare names for built-ins ("bash", "save_plan")
-# or full namespaces for MCP tools ("mcp__excalimate__draw"). Skills are
-# disabled by their exact name ("phased-task-loop").
-#
-# Entries that match nothing are harmless, so listings stay valid across jinn
-# versions. These defaults apply only at session creation — toggles inside a
-# session override them per-session (and persist with the session) without
-# writing back here.
-#
-# disabled_tools = []
-# disabled_skills = []
-
-# ---------------------------------------------------------------------------
 # Plugins — WASM components jinn runs in-process (sandboxed guests). Each
 # entry names a .wasm file plus the directories it may access; jinn grants
 # nothing else. Grants and http normally come from the plugin's own
@@ -160,20 +173,21 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 #
 # Path templates: <config_dir>, <data_dir>, <plugin_data_dir>.
 # ---------------------------------------------------------------------------
+# (uncomment below to activate)
 # [plugin.my-plugin]
-# wasm = "my-plugin.wasm"           # relative to <data_dir>/plugins/
-# http = false                      # allow wasi:http network requests
-# grants = [
-#   "<config_dir>/themes",          # read-only
-#   "<data_dir>/notes:w",           # :w marks a grant writable
-# ]
+# wasm = "my-plugin.wasm"
+# http = false
+# grants = ["<config_dir>/themes", "<data_dir>/notes:w"]
 # config = { any = "toml passed through to the guest" }
-# enabled = true                    # false skips the plugin entirely
-
-
+# enabled = true
 
 # Compaction command + auto compaction.
 [compaction]
+# Provider/model used for compaction summarization (e.g.
+# "anthropic/claude-sonnet-4-20250514"). Falls back to the session model
+# when unset or unavailable.
+# (uncomment below to activate)
+# model = "openrouter/anthropic/claude-sonnet-4-20250514"
 # Automatically compact the conversation when the used context window exceeds
 # this usage percentage. Recommend no higher than 0.85 to account for drift in
 # token calculations between models and providers (jinn applies a single token
@@ -186,20 +200,12 @@ reserve_tokens = 20000
 # Fallback context window size (in tokens) when the provider does not report one.
 fallback_context_window = 150000
 
-
-
 # Policy for retrying failed provider requests.
 [request_retry]
 # Retry the request this amount of times before aborting.
 max_retries = 5
 base_delay_secs = 2
 max_delay_secs = 60
-
-# Default execution timeout (seconds) for all builtin tool calls.
-# Acts as a safety ceiling so a hung tool never stalls the turn
-# indefinitely. Bash calls can override this per-call via the
-# `max_duration_secs` tool argument.
-tool_default_timeout_secs = 300
 
 # web-fetch tool.
 [web_fetch]
@@ -232,15 +238,25 @@ backend = "headless-chrome"
 #   "chromium" - use the bundled / auto-discovered Chromium.
 binary = "auto"
 
-# Optional explicit user-agent override. When commented out, an OS-matched
-# Chrome user agent is derived from the detected binary version at startup.
-# Applies to BOTH the browser backends AND the "http" backend (so web-search
-# over HTTP also sends a current, realistic user agent instead of a stale one).
-# user_agent = "Mozilla/5.0 ... Chrome/138.0.0.0 Safari/537.36"
-
 # Seconds to wait for an interstitial challenge (Anubis PoW, Cloudflare) to
 # clear before giving up. Only used by the browser backends.
 anubis_timeout_secs = 30
+
+# Optional browser overrides.
+# (uncomment below to activate)
+# user_agent = "Mozilla/5.0 ... Chrome/138.0.0.0 Safari/537.36"
+# challenge_wait_secs = 120
+# settle_secs = 5
+# keep_tabs_open = false
+
+# `user_agent` overrides the OS-matched Chrome user agent derived from the
+# detected binary version. Applies to BOTH the browser backends AND the
+# "http" backend (so web-search over HTTP also sends a current, realistic
+# user agent instead of a stale one). `challenge_wait_secs` is how long a
+# headed browser waits for a human to solve a bot challenge; `settle_secs`
+# lets a slow single-page app finish rendering before the challenge
+# fallback judges the page; `keep_tabs_open = true` leaves browser tabs
+# open after a fetch so you can inspect what the site served.
 
 # Web search via DuckDuckGo (provider-independent). Unlike
 # [openrouter_web_search] below, this works with any provider (zai,
@@ -270,6 +286,20 @@ safe_search = true
 # - "auto"
 engine = "exa"
 
+# Optional OpenRouter web-search tuning.
+# (uncomment below to activate)
+# max_results = 5
+# max_total_results = 20
+# search_context_size = "medium"
+# allowed_domains = ["example.com", "docs.example.com"]
+# excluded_domains = ["pinterest.com"]
+
+# `max_results` caps results per search call (1-25); `max_total_results`
+# caps results across all searches in one request. `search_context_size`
+# is "low", "medium", or "high" (how much context the engine retrieves;
+# unset lets OpenRouter pick adaptively). `allowed_domains` /
+# `excluded_domains` restrict results to (or away from) the listed domains.
+
 # Discord bot frontend.
 #
 # When enabled, the TUI process also starts a Discord bot that drives the same
@@ -280,8 +310,10 @@ engine = "exa"
 #
 # To enable, uncomment and fill in a token (or set DISCORD_BOT_TOKEN in your
 # env), and set enabled = true.
+# (uncomment below to activate)
 # [discord]
 # enabled = true              # Whether the Discord bot is active.
+# bot_token = "your-token"    # Or set DISCORD_BOT_TOKEN in your environment.
 # guild_id = "123"            # Discord guild (server) ID the bot operates in.
 # forum_channel = "456"       # Forum channel where the bot creates session threads.
 # authorized_users = ["789"]  # Users allowed to interact with the bot.
@@ -297,6 +329,19 @@ command = "find -L {path} -type d 2>/dev/null | fzf --no-multi"
 [minimap]
 #  Messages `max_tokens` or higher will always be the lightest color.
 max_tokens = 2000
+
+# Interactive terminal panes.
+# (uncomment below to activate)
+# [interactive_term]
+# control_toggle_key = "<c-g>"
+# settle_quiet_ms = 400
+# settle_max_wait_ms = 3000
+
+# `control_toggle_key` toggles terminal control mode in both directions
+# (notation follows the keymap). `settle_quiet_ms` is how many milliseconds
+# of output silence a blocking call waits for before returning;
+# `settle_max_wait_ms` is the hard cap on any single settle wait, for
+# programs that never stop repainting (htop, btop).
 
 # ---------------------------------------------------------------------------
 # Auto-prune rules
@@ -368,6 +413,9 @@ min_age = 10
 # All todo/task list tool calls return the entire list. This pruner keeps only the most recent todo call.
 [auto_prune.todo]
 enabled = true
+# Don't trigger until this many messages/tool calls have elapsed.
+# (uncomment below to activate)
+# min_age = 50
 
 # ---------------------------------------------------------------------------
 # Prunes old edit and write tool calls + tool results.
@@ -440,6 +488,10 @@ min_age = 100
 enabled = true
 # Candidate message must be at least this old before prune-eligible.
 min_age = 50
+# Deprecated: the radius is now sourced from anchor_shield.radius below.
+# Kept for backward compatibility; uncommenting has no effect.
+# (uncomment below to activate)
+# radius = 100
 
 # ---------------------------------------------------------------------------
 # Protects Assistant, Tool Calls, and Tool Result entries around user messages
