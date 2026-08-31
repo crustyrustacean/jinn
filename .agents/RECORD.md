@@ -257,3 +257,4 @@ Entries are added or amended **only with human approval**.
 - (plugins) Builtin seeding registration is add-only: existing `[plugin.<name>]` entries are never modified or removed by `jinn install` or `jinn plugin install-builtins`.
 - (ui) Annotation (Sources) entries render collapsed by default — header plus a muted expand hint — and toggle via the shared `e` expand keybind, like tool entries and compaction blocks.
 - (testing) Default config templates (default_jinn.toml, default_providers.toml) are independent of code defaults: tests guarantee they parse, document every config key, contain no dead keys, and their marked examples uncomment into a valid config.
+- (prompts) Shipped prompts live in `res/prompts`, are embedded at compile time via the `BUNDLED` install catalogue, and `jinn install` seeds them to the user prompts dir, skipping files that already exist unless `--force`.
