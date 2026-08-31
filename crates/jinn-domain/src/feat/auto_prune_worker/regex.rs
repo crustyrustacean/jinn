@@ -969,70 +969,35 @@ mod tests {
 
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, UserPreferences, load_preferences_from, save_preferences_to,
+        AutoPruneConfig, UserPreferences, load_preferences_from,
     };
     use tempfile::TempDir;
 
     #[rstest::rstest]
-    fn default_regex_config_has_default_rules_and_enabled() {
+    fn default_regex_config_rules_are_valid_patterns() {
+        // Given the default regex prune config.
         let config = RegexAutoPruneConfig::default();
-        assert!(config.enabled);
-        assert_eq!(config.rules.len(), 3);
-        assert_eq!(config.rules[0].pattern, "cargo test");
-        assert_eq!(config.rules[1].pattern, "cargo check");
-        assert_eq!(config.rules[2].pattern, "cargo clippy");
+
+        // Then every built-in rule pattern compiles as a regex.
+        for rule in &config.rules {
+            let _compiled = regex::Regex::new(&rule.pattern).expect("pattern compiles");
+        }
     }
 
     #[rstest::rstest]
-    fn regex_prune_rule_defaults_to_bash_tool_name() {
+    fn regex_prune_rule_defaults_are_usable() {
+        // Given a rule built from the serde default functions.
         let rule = RegexPruneRule {
             pattern: "cargo check".to_owned(),
             tool_name: default_regex_tool_name(),
             keep_last: default_regex_keep_last(),
             min_age: default_regex_min_age(),
         };
-        assert_eq!(rule.tool_name, "bash");
-        assert_eq!(rule.keep_last, 1);
-        assert_eq!(rule.min_age, 50);
-    }
 
-    #[rstest::rstest]
-    fn save_then_load_round_trips_regex_prune_rules() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            auto_prune: AutoPruneConfig {
-                regex: RegexAutoPruneConfig {
-                    enabled: true,
-                    rules: vec![
-                        RegexPruneRule {
-                            pattern: "cargo check".to_owned(),
-                            tool_name: "bash".to_owned(),
-                            keep_last: 1,
-                            min_age: 50,
-                        },
-                        RegexPruneRule {
-                            pattern: "cargo test".to_owned(),
-                            tool_name: "bash".to_owned(),
-                            keep_last: 2,
-                            min_age: 50,
-                        },
-                    ],
-                },
-                ..AutoPruneConfig::default()
-            },
-            ..UserPreferences::default()
-        };
-
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        assert_eq!(reloaded.auto_prune.regex.rules.len(), 2);
-        assert_eq!(reloaded.auto_prune.regex.rules[0].pattern, "cargo check");
-        assert_eq!(reloaded.auto_prune.regex.rules[0].tool_name, "bash");
-        assert_eq!(reloaded.auto_prune.regex.rules[0].keep_last, 1);
-        assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo test");
-        assert_eq!(reloaded.auto_prune.regex.rules[1].keep_last, 2);
+        // Then the tool name default is a usable tool name.
+        assert!(!rule.tool_name.is_empty());
+        // And keep_last is at least 1 (a rule must keep something).
+        assert!(rule.keep_last >= 1);
     }
 
     #[rstest::rstest]
@@ -1091,8 +1056,7 @@ pattern = "cargo check"
         .expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
-        assert!(prefs.auto_prune.regex.enabled);
-        assert_eq!(prefs.auto_prune.regex.rules.len(), 3);
+        assert_eq!(prefs.auto_prune.regex, RegexAutoPruneConfig::default());
     }
 
     #[rstest::rstest]

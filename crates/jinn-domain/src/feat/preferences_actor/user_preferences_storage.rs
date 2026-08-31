@@ -240,7 +240,6 @@ mod tests {
     )]
     use super::*;
     use crate::common::app_info::PREFS_FILE_NAME;
-    use crate::feat::project::ProjectConfig;
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
@@ -256,20 +255,17 @@ mod tests {
 
     #[rstest::rstest]
     fn in_memory_save_then_load_round_trips() {
-        // Given an InMemoryUserPreferencesStorage.
+        // Given an InMemoryUserPreferencesStorage and the fully-specified
+        // fixture (visible through the storage boundary).
         let storage = InMemoryUserPreferencesStorage::new();
-        let prefs = UserPreferences {
-            tool_entry_max_lines: Some(42),
-            session_lifecycles: vec![],
-            ..UserPreferences::default()
-        };
+        let prefs = super::super::user_preferences::tests::explicit_user_preferences();
 
         // When saving and reloading.
         storage.save(&prefs).expect("save");
         let reloaded = storage.reload().expect("reload");
 
         // Then the round-tripped data matches.
-        assert_eq!(reloaded.tool_entry_max_lines, Some(42));
+        assert_eq!(reloaded, prefs);
     }
 
     #[rstest::rstest]
@@ -296,32 +292,20 @@ mod tests {
 
     #[rstest::rstest]
     fn filesystem_save_then_load_round_trips() {
-        // Given a FilesystemUserPreferencesStorage in a temp dir.
+        // Given a FilesystemUserPreferencesStorage in a temp dir and the
+        // fully-specified fixture.
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let storage = FilesystemUserPreferencesStorage::new(path);
 
-        let prefs = UserPreferences {
-            tool_entry_max_lines: Some(42),
-            session_lifecycles: vec![],
-            projects: vec![ProjectConfig {
-                path: PathBuf::from("/tmp/proj-a"),
-            }],
-            ..UserPreferences::default()
-        };
+        let prefs = super::super::user_preferences::tests::explicit_user_preferences();
 
         // When saving and reloading.
         storage.save(&prefs).expect("save");
         let reloaded = storage.reload().expect("reload");
 
-        // Then the round-tripped data matches (including [[project]] array).
-        assert_eq!(reloaded.tool_entry_max_lines, Some(42));
-        assert_eq!(
-            reloaded.projects,
-            vec![ProjectConfig {
-                path: PathBuf::from("/tmp/proj-a"),
-            }]
-        );
+        // Then the round-tripped data matches, every field intact.
+        assert_eq!(reloaded, prefs);
     }
 
     #[rstest::rstest]
