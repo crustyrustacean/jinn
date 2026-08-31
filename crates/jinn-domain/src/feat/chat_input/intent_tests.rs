@@ -655,17 +655,21 @@ fn enter_normal_mode_returns_to_normal_scope() {
 }
 
 #[rstest::rstest]
-fn enter_normal_mode_clears_pending_session_cwd() {
-    // Given a state with a stale pending session CWD override.
+fn enter_normal_mode_clears_pending_creation() {
+    // Given a state with a stale pending session creation stash.
     let mut state = AppState::default();
-    state.frontend.pending_session_cwd = Some(std::path::PathBuf::from("/tmp/stale"));
+    state.frontend.pending_creation =
+        Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+            project_dir: std::path::PathBuf::from("/tmp/stale"),
+            starting_cwd: std::path::PathBuf::from("/tmp/stale"),
+        });
 
     // When handling EnterNormalMode (ESC from the project/lifecycle chain).
     let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
 
-    // Then the pending override is cleared so it never leaks into a future
-    // session creation.
-    assert!(state.frontend.pending_session_cwd.is_none());
+    // Then the stash is cleared so it never leaks into a future session
+    // creation.
+    assert!(state.frontend.pending_creation.is_none());
 }
 
 #[rstest::rstest]

@@ -251,3 +251,5 @@ Entries are added or amended **only with human approval**.
 - (session) The stall-retry handler restarts only while the session is active and `stream_dispatched_at` is set; restarts cannot fire while a tool batch is in flight.
 - (tools) Actor-routed MCP tool calls are bounded by `tool_default_timeout_secs`; a timeout publishes a failed `ToolExecutionCompleted` so the pending batch self-completes.
 - (build) The justfile exports RUSTC_WRAPPER=sccache only when sccache is on PATH and the caller has not set RUSTC_WRAPPER; sccache is an optional accelerator and plain cargo builds never require it.
+- (session) A session optionally carries a project association (a directory path) stamped only when the user picks a project at creation (the TUI projects UI or Discord /new, both backed by the curated `[[project]]` list); it persists in the session metadata blob, is inherited by forks and subagents, and never follows cwd changes.
+- (ui) The session picker renders rows as three columns — date, project name (blank when unset), session name — and its filter matches only the session name.

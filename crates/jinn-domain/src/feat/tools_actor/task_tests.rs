@@ -253,6 +253,42 @@ async fn task_spawns_child_linked_and_inheriting() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn task_child_inherits_parent_project() {
+    // Given a parent session stamped with a project.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    {
+        let mut w = state.write_test_no_cap();
+        let parent = w.session.get_mut(&parent_id).expect("parent seeded");
+        parent.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+    }
+    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+
+    // When executing a task call and finishing the child.
+    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    let servers = parent_servers();
+    settle_child_discovery(&harness.bus(), &child_id, &servers).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // Then the child inherits the parent's project association.
+    let snapshot = state.read();
+    let child = snapshot
+        .session
+        .get(&child_id)
+        .expect("child present in state");
+    assert_eq!(
+        child.project(),
+        Some(std::path::Path::new("/home/user/projects/jinn")),
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn task_publishes_session_created_then_enqueue_user_message() {
     // Given a parent session and recorders on the bus.
     let harness = TestHarness::new().await;

@@ -38,6 +38,11 @@ pub struct SessionSummary {
     /// for sessions created before parent tracking was added.
     #[serde(default)]
     pub parent_session: Option<SessionId>,
+    /// Project directory association, stamped at session creation from the
+    /// projects UI. Defaults to `None` for sessions created before project
+    /// tracking was added (or never created via the projects UI).
+    #[serde(default)]
+    pub project: Option<std::path::PathBuf>,
 }
 
 fn default_title() -> String {
