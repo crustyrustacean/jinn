@@ -125,7 +125,7 @@ Entries are added or amended **only with human approval**.
 - (plugins) Plugin `Hello` subscriptions negotiate host→guest events (`tool_call`, `tool_result`, `turn_end`); the host forwards matching bus events to subscribed guests and validates `PushCitations` contributions before publishing.
 - (plugins) `url-citations` is a first-party plugin seeded enabled by default; a dead or missing instance means no Sources footer, never a startup failure.
 - (plugins) First-party plugin names carry no jinn-/plugin padding: the themes plugin is `theme-loader` and the personas plugin is `persona-loader`.
-- (plugins) First-party plugins ship as prebuilt wasm embedded in the jinn binary; `jinn install` copies them into the plugins dir and registers them in `jinn.toml` with their manifest-declared grants. Artifacts are refreshed into `res/plugins/` by `just refresh-plugins` (run by `just release`).
+- (plugins) First-party plugins ship as prebuilt wasm embedded in the jinn binary; `jinn install` copies them into the plugins dir and registers them in `jinn.toml` only when `jinn.toml` does not yet exist — an existing `jinn.toml` is never modified by `jinn install`, even with `--force`. Artifacts are refreshed into `res/plugins/` by `just refresh-plugins` (run by `just release`).
 - (plugins) The plugin picker (`<leader>sP`) is a read-only list of loaded plugins (name + phase) snapshot from the contribution cache at open time; plugins are managed outside jinn and cannot be toggled from within.
 - (plugins) A plugin guest that closes stdout cleanly after the handshake ends in phase `Done` (run-to-completion loaders; contributions stay cached); `Dead` is reserved for spawn/handshake failure, traps, and abrupt pipe loss.
 - (persona) Personas are markdown templates with TOML frontmatter; the persona picker (`<leader>se`) switches the active session persona.
@@ -253,4 +253,6 @@ Entries are added or amended **only with human approval**.
 - (build) The justfile exports RUSTC_WRAPPER=sccache only when sccache is on PATH and the caller has not set RUSTC_WRAPPER; sccache is an optional accelerator and plain cargo builds never require it.
 - (session) A session optionally carries a project association (a directory path) stamped only when the user picks a project at creation (the TUI projects UI or Discord /new, both backed by the curated `[[project]]` list); it persists in the session metadata blob, is inherited by forks and subagents, and never follows cwd changes.
 - (ui) The session picker renders rows as three columns — date, project name (blank when unset), session name — and its filter matches only the session name.
+- (plugins) `jinn plugin install-builtins` overwrites all builtin plugin payloads and writes `[plugin.<name>]` entries only for plugins missing from `jinn.toml`.
+- (plugins) Builtin seeding registration is add-only: existing `[plugin.<name>]` entries are never modified or removed by `jinn install` or `jinn plugin install-builtins`.
 - (ui) Annotation (Sources) entries render collapsed by default — header plus a muted expand hint — and toggle via the shared `e` expand keybind, like tool entries and compaction blocks.

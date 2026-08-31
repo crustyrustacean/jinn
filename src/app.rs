@@ -321,6 +321,52 @@ impl App {
                     run_install(&resolved, &artifact)?;
                     return Ok(());
                 }
+                // `install-builtins` overwrites every builtin plugin payload
+                // and registers only entries missing from jinn.toml. It needs
+                // no DB and runs before actor wiring, so it dispatches here.
+                PluginCommands::InstallBuiltins => {
+                    use jinn_domain::{
+                        AppPaths, BuiltinPluginInstall, FilesystemUserPreferencesStorage,
+                        InstallOutcome, install_builtin_plugins_to,
+                    };
+
+                    let app_paths = AppPaths::default();
+                    let storage = FilesystemUserPreferencesStorage::default_path();
+                    match install_builtin_plugins_to(&app_paths.plugins_dir(), &storage) {
+                        Ok(installs) => {
+                            for BuiltinPluginInstall {
+                                name,
+                                payload,
+                                entry_registered,
+                            } in installs
+                            {
+                                match &payload {
+                                    InstallOutcome::Created(path) => {
+                                        println!("Installed {}", path.display());
+                                    }
+                                    InstallOutcome::Overwritten(path) => {
+                                        println!("Overwrote {}", path.display());
+                                    }
+                                    InstallOutcome::Skipped(path) => {
+                                        println!("Already present, skipped {}", path.display());
+                                    }
+                                }
+                                if entry_registered {
+                                    println!("Registered {name}");
+                                } else {
+                                    println!("Already registered, skipped {name}");
+                                }
+                            }
+                            println!("Restart jinn to activate plugins.");
+                            return Ok(());
+                        }
+                        Err(report) => {
+                            eprintln!("error: failed to install builtin plugins:");
+                            eprintln!("  {report:?}");
+                            return Err(report.change_context(AppError));
+                        }
+                    }
+                }
             }
         }
         // `install` seeds default resources into user dirs. Like `config`, it
@@ -328,7 +374,10 @@ impl App {
         // so it dispatches before the session store is opened.
         if let Some(Commands::Install { force }) = &cli.command {
             use jinn_domain::feat::preferences_actor::FilesystemUserPreferencesStorage;
-            use jinn_domain::{AppPaths, Destinations, InstallOutcome, install_defaults_to};
+            use jinn_domain::{
+                AppPaths, Destinations, InstallOutcome, InstallReport, JinnTomlOutcome,
+                install_defaults_to,
+            };
 
             let app_paths = AppPaths::default();
             let storage = FilesystemUserPreferencesStorage::default_path();
@@ -339,8 +388,12 @@ impl App {
                 app_paths.skills_dir(),
                 app_paths.plugins_dir(),
             );
-            match install_defaults_to(&destinations, *force, &storage) {
-                Ok(outcomes) => {
+            match install_defaults_to(&destinations, *force, storage.path(), &storage) {
+                Ok(report) => {
+                    let InstallReport {
+                        outcomes,
+                        jinn_toml,
+                    } = report;
                     let mut plugins_touched = false;
                     for outcome in outcomes {
                         match &outcome {
@@ -360,7 +413,20 @@ impl App {
                             plugins_touched = true;
                         }
                     }
+                    match &jinn_toml {
+                        JinnTomlOutcome::Created(path) => {
+                            println!("Created {}", path.display());
+                        }
+                        JinnTomlOutcome::Untouched(path) => {
+                            println!("Already present, skipped {}", path.display());
+                        }
+                    }
                     if plugins_touched {
+                        if matches!(jinn_toml, JinnTomlOutcome::Untouched(_)) {
+                            println!(
+                                "note: payloads installed while jinn.toml exists are not registered; run \"jinn plugin install-builtins\" to add any missing [plugin.<name>] entries"
+                            );
+                        }
                         println!("Restart jinn to activate plugins.");
                     }
                     return Ok(());
