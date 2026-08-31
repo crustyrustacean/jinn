@@ -311,6 +311,12 @@ pub struct SessionCore {
     /// OWNER: session-actor (set at session creation).
     #[serde(default)]
     pub origin: SessionOrigin,
+    /// Project directory this session is associated with. Stamped once at
+    /// session creation from the projects UI; never follows later `cwd`
+    /// changes. `None` means the session has no project association.
+    /// OWNER: IntentHandler (set at session creation).
+    #[serde(default)]
+    pub project: Option<std::path::PathBuf>,
 
     /// Generic blob storage for future subsystems.
     #[serde(default)]
@@ -392,6 +398,7 @@ impl Default for SessionCore {
             parent_session: None,
             fork_ordinal: None,
             origin: SessionOrigin::User,
+            project: None,
 
             blobs: HashMap::new(),
             lifecycle_name: None,
@@ -672,6 +679,10 @@ impl ChatSessionState {
     /// Sets `parent_session` and `persist`. The caller is responsible for
     /// inheriting the parent's model (via [`set_model`](Self::set_model))
     /// if desired - this constructor does not perform any state reads.
+    /// The caller is also responsible for inheriting the parent's project
+    /// stamp (via [`set_project`](Self::set_project), as `build_child` in the
+    /// task tool does) - subagent sessions carry the project association of
+    /// the session that spawned them.
     #[must_use]
     pub fn new_child(parent_session_id: &SessionId, persist: bool) -> Self {
         Self {
@@ -2842,6 +2853,18 @@ impl ChatSessionState {
     /// Sets this session's working directory.
     pub fn set_cwd(&mut self, cwd: std::path::PathBuf) {
         self.core.cwd = cwd;
+    }
+
+    /// Returns the project directory this session is associated with, if any.
+    pub fn project(&self) -> Option<&std::path::Path> {
+        self.core.project.as_deref()
+    }
+
+    /// Stamps the session's project association. Callers are the projects UI
+    /// flow (at session creation) and subagent spawning (inheriting the
+    /// parent's stamp); the stamp never follows later cwd changes.
+    pub fn set_project(&mut self, project: Option<std::path::PathBuf>) {
+        self.core.project = project;
     }
 
     /// Sets this session's home directory for resolving `@~/path` references.

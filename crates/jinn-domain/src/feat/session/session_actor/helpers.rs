@@ -116,6 +116,7 @@ impl PopulatedFakeStore {
                 created_at: *s.created_at(),
                 session_state: crate::feat::session::chat_session::SessionState::Loaded,
                 parent_session: s.parent_session().clone(),
+                project: s.project().map(std::path::Path::to_path_buf),
             })
             .collect();
         Self {

@@ -3369,6 +3369,7 @@ mod tests {
                 created_at: jiff::Timestamp::now(),
                 session_state: crate::feat::session::chat_session::SessionState::Loaded,
                 parent_session: None,
+                project: None,
             },
             SessionSummary {
                 session_id: archived_descendant_id.clone(),
@@ -3377,6 +3378,7 @@ mod tests {
                 created_at: jiff::Timestamp::now(),
                 session_state: crate::feat::session::chat_session::SessionState::Archived,
                 parent_session: Some(root_id.clone()),
+                project: None,
             },
         ];
         let (actor, store, audit) = test_actor_with_store_recording(vec![]).await;
