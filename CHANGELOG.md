@@ -1,3 +1,10 @@
+## (development; unreleased) v0.114.0
+
+- Add project + date info to session picker
+- Remove experimental task reminder
+- Remove experimental "todo auto steer"
+- Remove customized linker config for Linux builds
+
 ## 2026-08-29 v0.113.0
 
 - Add `A` sidebar keybind to archive selected session and all of it's children.
