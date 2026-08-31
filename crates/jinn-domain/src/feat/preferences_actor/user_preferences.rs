@@ -46,10 +46,10 @@ pub use crate::feat::browser::{BrowserBackend, BrowserBinary, BrowserConfig};
 /// Canonical default `jinn.toml` embedded at compile time.
 ///
 /// Used both to auto-create the file on first run and to back the
-/// `jinn config init` subcommand. A round-trip equality test in this
-/// module's test suite asserts that this string deserializes to
-/// exactly `UserPreferences::default()`, which is the CI gate that
-/// prevents the shipped template from drifting from the struct.
+/// `jinn config init` subcommand. The template is independent of the
+/// struct's default values; `template_validation_tests` guarantees it
+/// parses, documents every config key, and activates into a valid
+/// config.
 pub(crate) const DEFAULT_CONFIG: &str = include_str!("default_jinn.toml");
 /// Default execution timeout (seconds) for all tool calls.
 ///
@@ -120,8 +120,7 @@ pub struct UserPreferences {
     /// Curated project directories shown in the project picker.
     /// These are purely user-curated (no auto-tracking); the user adds/removes
     /// entries explicitly. See [`ProjectConfig`].
-    #[serde(default)]
-    #[serde(rename = "project")]
+    #[serde(default, rename = "project", alias = "projects")]
     pub projects: Vec<ProjectConfig>,
 
     /// Configured MCP servers, keyed by name — `[mcp_server.<name>]` in
@@ -1329,5 +1328,36 @@ http = false
         );
         let reparsed = load_preferences_from(&path).expect("reparse");
         assert_eq!(reparsed.auto_prune.broken_edit.min_age, 10);
+    }
+
+    #[rstest::rstest]
+    fn load_accepts_legacy_projects_key() {
+        // Given a jinn.toml written by an older jinn that serialized the
+        // projects list under its Rust field name `projects`.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, "[[projects]]\npath = \"~/code/legacy\"\n").expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the legacy entries deserialize through the alias.
+        assert_eq!(prefs.projects.len(), 1);
+        assert_eq!(prefs.projects[0].path.to_string_lossy(), "~/code/legacy");
+    }
+
+    #[rstest::rstest]
+    fn load_accepts_canonical_project_key() {
+        // Given a jinn.toml using the documented canonical [[project]] key.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, "[[project]]\npath = \"~/code/current\"\n").expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the entry deserializes.
+        assert_eq!(prefs.projects.len(), 1);
+        assert_eq!(prefs.projects[0].path.to_string_lossy(), "~/code/current");
     }
 }

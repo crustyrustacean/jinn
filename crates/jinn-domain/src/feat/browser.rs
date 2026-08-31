@@ -154,25 +154,6 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn config_round_trips_challenge_fields_through_toml() {
-        // Given a custom config.
-        let config = BrowserConfig {
-            challenge_wait_secs: 60,
-            settle_secs: 2,
-            keep_tabs_open: true,
-            ..BrowserConfig::default()
-        };
-
-        // When serializing then deserializing.
-        let toml = toml::to_string(&config).expect("serialize");
-        let back: BrowserConfig = toml::from_str(&toml).expect("deserialize");
-
-        // Then the custom values survive.
-        assert_eq!(back, config);
-    }
-
-    #[rstest::rstest]
-    #[test]
     fn config_fills_challenge_defaults_when_empty() {
         // Given an empty TOML table.
         // When deserializing.

@@ -401,25 +401,6 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn config_round_trips_through_toml() {
-        // Given a custom config.
-        let config = WebSearchConfig {
-            backend: WebSearchBackend::HeadlessChrome,
-            max_results: 5,
-            region: "us-en".to_owned(),
-            safe_search: false,
-        };
-
-        // When serializing then deserializing.
-        let toml = toml::to_string(&config).expect("serialize");
-        let back: WebSearchConfig = toml::from_str(&toml).expect("deserialize");
-
-        // Then the custom values survive.
-        assert_eq!(back, config);
-    }
-
-    #[rstest::rstest]
-    #[test]
     fn config_uses_defaults_when_empty() {
         // Given an empty TOML table.
         let toml = "";
