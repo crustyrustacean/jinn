@@ -255,6 +255,11 @@ const BUNDLED: &[Bundled] = &[
         relative: "plan.md",
         contents: BundleContents::Text(include_str!("../../../../../res/prompts/plan.md")),
     },
+    Bundled {
+        kind: Kind::Prompt,
+        relative: "research.md",
+        contents: BundleContents::Text(include_str!("../../../../../res/prompts/research.md")),
+    },
     // --- skills (preserve nested subdir structure) ---
     Bundled {
         kind: Kind::Skill,
@@ -794,6 +799,28 @@ mod tests {
         assert!(
             outcome.path().starts_with(&env.destinations.prompts),
             "prompt should be under the prompts root"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_creates_research_prompt() {
+        // Given destinations with no existing prompts.
+        let env = TestEnv::fresh();
+
+        // When installing defaults.
+        let report = env.run(false);
+
+        // Then `research.md` lands under the prompts root.
+        let outcome = outcome_for(&report.outcomes, "research.md");
+        assert!(
+            outcome.path().starts_with(&env.destinations.prompts),
+            "prompt should be under the prompts root"
+        );
+        // And it reports Created.
+        assert!(
+            matches!(outcome, InstallOutcome::Created(_)),
+            "research.md should be Created"
         );
     }
 
