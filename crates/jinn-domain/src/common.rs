@@ -12,7 +12,6 @@ mod app_state_tests;
 pub mod bridge;
 pub mod bus;
 pub mod core;
-pub mod default_config_check;
 pub mod focus;
 pub mod frontmatter;
 pub mod line_input;

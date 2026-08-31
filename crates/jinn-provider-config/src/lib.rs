@@ -26,6 +26,8 @@ mod sample;
 mod service;
 mod service_wrapper;
 mod stream_event;
+#[cfg(test)]
+mod template_validation_tests;
 
 pub use api_keys::ApiKeys;
 pub use api_keys_service::ApiKeysService;

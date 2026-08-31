@@ -226,19 +226,4 @@ mod tests {
         // Then all defaults apply.
         assert_eq!(prefs, InteractiveTermPrefs::default());
     }
-
-    #[rstest::rstest]
-    fn serializes_renamed_field_and_roundtrips() {
-        // Given default prefs.
-        let prefs = InteractiveTermPrefs::default();
-
-        // When serializing to TOML and parsing back.
-        let raw = toml::to_string(&prefs).expect("serialize");
-        let reparsed: InteractiveTermPrefs = toml::from_str(&raw).expect("parse");
-
-        // Then the renamed field is written and survives the roundtrip.
-        assert!(raw.contains("control_toggle_key"));
-        assert!(!raw.contains("handback_key"));
-        assert_eq!(reparsed, prefs);
-    }
 }

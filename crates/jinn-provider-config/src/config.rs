@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use wherror::Error;
 
 /// Default provider configuration template, embedded at compile time.
-const DEFAULT_CONFIG: &str = include_str!("default_providers.toml");
+pub(crate) const DEFAULT_CONFIG: &str = include_str!("default_providers.toml");
 
 /// Errors that can occur during config I/O or parsing.
 #[derive(Debug, Error)]
@@ -31,7 +31,7 @@ pub enum ConfigError {
 }
 
 /// Root of `providers.toml`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProvidersConfig {
     /// User-defined provider entries, keyed by provider name.
     /// The map key is the provider's identity (`ProviderId` source) and
@@ -46,7 +46,7 @@ pub struct ProvidersConfig {
 }
 
 /// A single configured provider.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderEntry {
     /// Backend type string, parsed via `LLMBackend::from_str`.
     /// E.g. `"openrouter"`, `"ollama"`, `"openai"`.
@@ -91,7 +91,7 @@ pub struct ProviderEntry {
 /// Each entry overrides the provider-block defaults for a single model id.
 /// Fields left unset inherit the block-level values, then API-discovered
 /// cache data, then models.dev reference data.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelInfoEntry {
     /// Model id — must match an entry in the same provider's `models` list.
     pub id: String,
@@ -110,7 +110,7 @@ pub struct ModelInfoEntry {
 }
 
 /// A named alias for a provider entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AliasEntry {
     /// Short name shown in the picker.
     pub name: String,
@@ -349,7 +349,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #![allow(
         clippy::expect_used,
         clippy::panic,
@@ -357,11 +357,50 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use std::collections::BTreeMap;
 
     use tempfile::TempDir;
 
     use super::*;
+
+    /// A fully-specified [`ProvidersConfig`] with every field set explicitly
+    /// (no `..Default::default()`, no unset `Option`s). Serves two purposes:
+    /// the input for the consolidated round-trip tests, and the schema
+    /// fixture the template completeness check enumerates (`jinn-common`'s
+    /// `template_check` walks its serialized key paths, `None` included).
+    ///
+    /// Sentinel values deliberately differ from anything the template
+    /// ships, so a serde bug that silently drops a field still fails the
+    /// equality assertion.
+    #[must_use]
+    pub(crate) fn explicit_providers_config() -> ProvidersConfig {
+        ProvidersConfig {
+            providers: [(
+                "fixture-provider".to_owned(),
+                ProviderEntry {
+                    backend: "fixture-backend".to_owned(),
+                    models: vec!["fixture/model-a".to_owned(), "fixture/model-b".to_owned()],
+                    base_url: Some("http://fixture.invalid/v1".to_owned()),
+                    api_key_env: Some("FIXTURE_API_KEY".to_owned()),
+                    requires_key: false,
+                    extra_body: Some(serde_json::json!({ "fixture_option": true })),
+                    context_length: Some(123_456),
+                    model_info: vec![ModelInfoEntry {
+                        id: "fixture/model-b".to_owned(),
+                        context_length: Some(654_321),
+                        input_modalities: Some(vec!["text".to_owned(), "image".to_owned()]),
+                        extra_body: Some(serde_json::json!({ "model_fixture": 1 })),
+                    }],
+                },
+            )]
+            .into_iter()
+            .collect(),
+            aliases: vec![AliasEntry {
+                name: "fixture-alias".to_owned(),
+                target: "fixture-provider/fixture/model-a".to_owned(),
+            }],
+            default_provider: Some("fixture-provider/fixture/model-a".to_owned()),
+        }
+    }
 
     /// A minimal provider entry with every optional field unset.
     fn entry(backend: &str, models: &[&str]) -> ProviderEntry {
@@ -660,29 +699,18 @@ tool_stream = true"#;
     }
 
     #[rstest::rstest]
-    fn round_trip_preserves_extra_body() {
-        // Given a config with extra_body.
-        let mut zai = entry("zai", &["glm-5.1"]);
-        zai.extra_body = Some(serde_json::json!({"enable_thinking": true}));
-        let config = ProvidersConfig {
-            providers: BTreeMap::from([("zai".to_owned(), zai)]),
-            aliases: vec![],
-            default_provider: None,
-        };
-
+    fn explicit_providers_save_then_load_round_trips() {
+        // Given a fully-specified providers config fixture.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
+        let config = explicit_providers_config();
 
         // When saving and reloading.
         save_config_to(&config, &path).expect("save");
-        let reloaded = load_config_from(&path).expect("reload");
+        let reloaded = load_config_from(&path).expect("load");
 
-        // Then extra_body is preserved.
-        let extra = reloaded.providers["zai"]
-            .extra_body
-            .as_ref()
-            .expect("extra_body");
-        assert_eq!(extra["enable_thinking"], true);
+        // Then every field survives the round-trip exactly.
+        assert_eq!(reloaded, config);
     }
 
     #[rstest::rstest]
@@ -994,41 +1022,6 @@ input_modalities = ["text", "image"]"#;
             Some(vec!["text".to_owned(), "image".to_owned()])
         );
         assert!(info[0].extra_body.is_none());
-    }
-
-    #[rstest::rstest]
-    fn round_trip_preserves_model_info() {
-        // Given a config with a model_info entry.
-        let mut ollama = entry("ollama", &["llama3"]);
-        ollama.model_info = vec![ModelInfoEntry {
-            id: "llama3".to_owned(),
-            context_length: Some(8192),
-            input_modalities: Some(vec!["text".to_owned(), "image".to_owned()]),
-            extra_body: Some(serde_json::json!({"num_ctx": 8192})),
-        }];
-        let config = ProvidersConfig {
-            providers: BTreeMap::from([("ollama".to_owned(), ollama)]),
-            aliases: vec![],
-            default_provider: None,
-        };
-
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("providers.toml");
-
-        // When saving and reloading.
-        save_config_to(&config, &path).expect("save");
-        let reloaded = load_config_from(&path).expect("reload");
-
-        // Then the model_info entry round-trips with all fields.
-        let info = &reloaded.providers["ollama"].model_info;
-        assert_eq!(info.len(), 1);
-        assert_eq!(info[0].id, "llama3");
-        assert_eq!(info[0].context_length, Some(8192));
-        assert_eq!(
-            info[0].input_modalities,
-            Some(vec!["text".to_owned(), "image".to_owned()])
-        );
-        assert_eq!(info[0].extra_body.as_ref().expect("extra")["num_ctx"], 8192);
     }
 
     #[rstest::rstest]

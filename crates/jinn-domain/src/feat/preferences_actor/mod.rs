@@ -13,6 +13,8 @@ pub mod app_state_storage;
 )]
 pub mod preferences_actor;
 pub mod protocol;
+#[cfg(test)]
+mod template_validation_tests;
 pub mod user_preferences;
 pub mod user_preferences_storage;
 pub use app_state_storage::{

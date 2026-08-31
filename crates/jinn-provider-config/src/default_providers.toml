@@ -2,6 +2,10 @@
 # Configure the providers you want to use.
 # The active provider can be changed at runtime via the picker UI.
 #
+# TOML has no way back to the root after a [table] header, so root-level
+# keys (`default_provider`, `[[aliases]]`) must be written at the TOP of
+# this file — uncomment the marked examples below to use them.
+#
 # API keys are never stored here — reference env var names instead.
 # For providers that don't require a key (Ollama, LMStudio), set requires_key = false.
 # Each provider is a map-keyed table: [providers.<name>]. The table name IS the
@@ -9,10 +13,33 @@
 # of the key path, so [providers.zai.extra_body] unambiguously belongs to zai.
 # Need different settings for the same backend? Add another table with a unique name.
 
+# Optional per-provider fields (shown on openrouter; valid on any block):
+#   base_url      - override the API endpoint (required for LMStudio-class
+#                   local servers; the ollama/lmstudio blocks below set it).
+#   context_length - manual context-window override in tokens for ALL models
+#                   under this block; takes precedence over API-discovered
+#                   values.
+# The provider/model that opens on launch (as shown in the picker).
+# (uncomment below to activate)
+# default_provider = "openrouter/openai/gpt-oss-120b"
+
+# Aliases are short picker names for a specific provider/model.
+# (uncomment below to activate)
+# [[aliases]]
+# name = "fast"
+# target = "ollama/llama3"
+#
+# [[aliases]]
+# name = "smart"
+# target = "openrouter/openai/gpt-oss-120b"
+
 [providers.openrouter]
 backend = "openrouter"
 api_key_env = "OPENROUTER_API_KEY"
 models = ["openai/gpt-oss-120b", "anthropic/claude-sonnet-4-20250514", "google/gemini-2.5-flash"]
+# (uncomment below to activate)
+# base_url = "https://openrouter.ai/api/v1"
+# context_length = 200000
 
 [providers.openai]
 backend = "openai"
@@ -30,6 +57,7 @@ requires_key = false
 base_url = "http://localhost:11434"
 models = ["llama3", "codellama"]
 
+# (uncomment below to activate)
 # Per-model metadata overrides ([[providers.<name>.model_info]]).
 # Each entry overrides the provider block for a single model id.
 # Fields left unset fall back to: provider block → API-discovered cache → models.dev.
@@ -109,15 +137,3 @@ models = ["glm-4.5-air", "glm-4.7", "glm-4.7-flash", "glm-5", "glm-5-turbo", "gl
 enable_thinking = true
 tool_stream = true
 
-# [[aliases]]
-# name = "fast"
-# target = "ollama/llama3"
-#
-# [[aliases]]
-# name = "smart"
-# target = "openrouter/openai/gpt-oss-120b"
-
-# [[alloys]]
-# name = "balanced"
-# models = ["openrouter/anthropic/claude-sonnet-4-20250514", "openrouter/google/gemini-2.5-flash"]
-# strategy = "round_robin"

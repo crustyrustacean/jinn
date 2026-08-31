@@ -10,4 +10,5 @@
 pub mod app_info;
 pub mod app_paths;
 pub mod process_isolation;
+pub mod template_check;
 pub mod toml_patch;
