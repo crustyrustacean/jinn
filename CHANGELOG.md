@@ -7,6 +7,7 @@
 - Change default pruner accumulation threshold to 150k
 - `jinn install --force` will no longer overwrite `jinn.toml`
 - URL sources are now collapsed by default. Press `e` keybind to toggle collapsed/expanded citations.
+- (Dev note): `jinn.toml` configuration round-trip tests now use hard-coded values instead of defaults. This allows updating the values of default `jinn.toml` without causing test failures.
 
 ## 2026-08-29 v0.113.0
 
