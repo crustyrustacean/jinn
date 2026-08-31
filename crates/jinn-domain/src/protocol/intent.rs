@@ -247,7 +247,7 @@ pub enum Intent {
     ChatEntryJumpPrevPinned,
     /// Pin the currently selected chat entry.
     ChatEntryPinSelected,
-    /// Toggle expand/collapse of the selected tool entry (tool call or tool result).
+    /// Toggle expand/collapse of the selected tool entry (tool call, tool result, or annotation).
     ExpandToolEntry,
     /// Toggle visibility of the audit popup for the currently selected chat entry.
     ToggleAuditPopup,

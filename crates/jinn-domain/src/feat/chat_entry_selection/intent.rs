@@ -220,7 +220,7 @@ pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
     }
 }
 
-/// Toggles expand/collapse of the selected tool entry (tool call or tool result).
+/// Toggles expand/collapse of the selected tool entry (tool call, tool result, or annotation).
 pub fn handle_expand_tool_entry(state: &mut AppState) -> IntentResult {
     if validator::validate_expand_tool_entry(state).is_err() {
         return IntentResult::empty();
@@ -716,6 +716,55 @@ mod tests {
                 "output",
                 ToolResultStatus::Success,
             ));
+        state.active_session_mut().select_next_entry();
+        let entry_id = state.active_session().selected_entry_id().unwrap().clone();
+        state
+            .active_session_mut()
+            .toggle_expand_entry(entry_id.clone());
+
+        // When handling expand tool entry again.
+        handle_expand_tool_entry(&mut state);
+
+        // Then the entry is collapsed.
+        assert!(!state.active_session().is_entry_expanded(&entry_id));
+    }
+
+    #[rstest::rstest]
+    fn expand_annotation_entry_toggles_expanded_state() {
+        // Given a state with a selected annotation entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::annotation(vec![jinn_provider::UrlCitation {
+                url: "https://example.com/a".to_owned(),
+                title: "Source A".to_owned(),
+                content: None,
+                start_index: None,
+                end_index: None,
+            }]));
+        state.active_session_mut().select_next_entry();
+        let entry_id = state.active_session().selected_entry_id().unwrap().clone();
+
+        // When handling expand tool entry.
+        let _result = handle_expand_tool_entry(&mut state);
+
+        // Then the entry is expanded.
+        assert!(state.active_session().is_entry_expanded(&entry_id));
+    }
+
+    #[rstest::rstest]
+    fn expand_annotation_entry_toggles_back_to_collapsed() {
+        // Given a state with an expanded annotation entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::annotation(vec![jinn_provider::UrlCitation {
+                url: "https://example.com/a".to_owned(),
+                title: "Source A".to_owned(),
+                content: None,
+                start_index: None,
+                end_index: None,
+            }]));
         state.active_session_mut().select_next_entry();
         let entry_id = state.active_session().selected_entry_id().unwrap().clone();
         state
