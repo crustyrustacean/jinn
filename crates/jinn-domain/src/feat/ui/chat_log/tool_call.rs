@@ -32,6 +32,8 @@ const WAITING_TEXT: &str = "Waiting for subagent session to complete";
 /// Render a tool call entry to visual lines.
 ///
 /// Dispatches to the appropriate sub-function based on tool name and context.
+/// The waiting line uses the same [`jinn_theme::Theme::subagent_fg`] purple as
+/// the sidebar's subagent session markings.
 pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let mut lines = if name == "bash" {
         to_lines_bash(arguments, ctx)
@@ -46,7 +48,7 @@ pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'s
     if ctx.is_waiting_on_subagent {
         lines.push(Line::from(Span::styled(
             truncate_to_width(WAITING_TEXT, ctx.content_width as usize),
-            Style::default().fg(ctx.theme.focus_accent),
+            Style::default().fg(ctx.theme.subagent_fg),
         )));
     }
 
