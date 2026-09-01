@@ -56,9 +56,7 @@ size-report:
         echo '    (upx not installed; skipping packed-size estimate)'
     fi
 
-# Build + install every in-tree plugin via `jinn plugin add` (one command per
-# plugin: build to wasm, embed manifest, register in jinn.toml). Interleaved
-# per plugin, so a failing build aborts before later plugins install.
+# Build + install every in-tree plugin via `jinn plugin add` (interleaved per plugin; aborts at first failure)
 install-plugins:
     #!/usr/bin/env bash
     set -euo pipefail
