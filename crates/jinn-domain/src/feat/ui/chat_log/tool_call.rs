@@ -33,6 +33,9 @@ use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
 /// Status line shown under a `task` call whose subagent session is running.
 const WAITING_TEXT: &str = "Waiting for subagent session to complete";
 
+/// Hint appended to the waiting and outcome lines — the enter-key affordance.
+pub(crate) const ENTER_HINT: &str = " · press enter to open";
+
 /// Render a tool call entry to visual lines.
 ///
 /// Dispatches to the appropriate sub-function based on tool name and context.
@@ -69,8 +72,9 @@ fn to_lines_task(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'
     repaint_task_block(&mut lines, ctx);
 
     if ctx.is_waiting_on_subagent {
+        let full = format!("{WAITING_TEXT}{ENTER_HINT}");
         let mut waiting = Line::from(Span::styled(
-            truncate_to_width(WAITING_TEXT, ctx.content_width as usize),
+            truncate_to_width(&full, ctx.content_width as usize),
             Style::default()
                 .fg(ctx.theme.subagent_fg)
                 .bg(ctx.theme.subagent_bg),
