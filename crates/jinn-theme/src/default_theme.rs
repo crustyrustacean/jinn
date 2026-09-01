@@ -45,6 +45,7 @@ mod tests {
             ("primary_text", theme.primary_text),
             ("muted_text", theme.muted_text),
             ("subagent_fg", theme.subagent_fg),
+            ("subagent_bg", theme.subagent_bg),
             ("error_text", theme.error_text),
             ("success", theme.success),
             ("warning", theme.warning),

@@ -12,6 +12,7 @@ sidebar_resize_accent = "green"
 primary_text = [220, 220, 220]
 muted_text = [116, 116, 116]
 subagent_fg = [152, 128, 208]
+subagent_bg = [70, 58, 105]
 error_text = "red"
 
 # Status
