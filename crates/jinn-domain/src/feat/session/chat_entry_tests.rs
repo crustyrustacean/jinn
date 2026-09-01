@@ -8,6 +8,7 @@
 
 use super::chat_entry::*;
 use super::tool_result_status::ToolResultStatus;
+use crate::protocol::SessionId;
 
 #[rstest::rstest]
 fn chat_entry_id_is_unique() {
@@ -123,6 +124,7 @@ fn tool_call_entry_has_tool_call_kind() {
             id: "call_123".to_owned(),
             name: "echo".to_owned(),
             arguments: r#"{"input":"hi"}"#.to_owned(),
+            child_session: None,
         }
     );
 }
@@ -1179,4 +1181,75 @@ fn yank_text_strips_ansi_escapes() {
 
     // Then the escape sequences are removed.
     assert_eq!(yanked, "Error: boom");
+}
+
+#[rstest::rstest]
+fn task_tool_call_with_child_session_roundtrips_through_serde() {
+    // Given a task ToolCall entry linked to a child session.
+    let child = SessionId::new();
+    let mut entry = ChatEntry::tool_call(
+        "call_1",
+        crate::feat::tools_actor::task::TASK_TOOL_NAME,
+        "{}",
+    );
+    let ChatEntryKind::ToolCall { child_session, .. } = &mut entry.kind else {
+        panic!("expected ToolCall kind");
+    };
+    *child_session = Some(child.clone());
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the roundtrip preserves the child session link.
+    let ChatEntryKind::ToolCall { child_session, .. } = back.kind else {
+        panic!("expected ToolCall kind");
+    };
+    assert_eq!(child_session, Some(child));
+}
+
+#[rstest::rstest]
+fn tool_call_without_child_session_key_deserializes_to_none() {
+    // Given JSON of a pre-link persisted session's tool call entry.
+    let json = r#"{
+        "id": "019c6a2e-0000-7000-8000-000000000001",
+        "timing": {"Instant": {"at": "2026-01-01T00:00:00Z"}},
+        "kind": {
+            "ToolCall": {
+                "id": "call_1",
+                "name": "bash",
+                "arguments": "{}"
+            }
+        },
+        "pin_position": null,
+        "context_override": "default",
+        "context_history": []
+    }"#;
+
+    // When deserializing.
+    let back: ChatEntry = serde_json::from_str(json).expect("deserialize");
+
+    // Then the link is None.
+    let ChatEntryKind::ToolCall { child_session, .. } = back.kind else {
+        panic!("expected ToolCall kind");
+    };
+    assert_eq!(child_session, None);
+}
+
+#[rstest::rstest]
+fn tool_call_without_link_omits_child_session_key() {
+    // Given a task ToolCall entry with no link.
+    let entry = ChatEntry::tool_call(
+        "call_1",
+        crate::feat::tools_actor::task::TASK_TOOL_NAME,
+        "{}",
+    );
+
+    // When serializing.
+    let json = serde_json::to_string(&entry.kind).expect("serialize");
+    let v: serde_json::Value = serde_json::from_str(&json).expect("parse");
+
+    // Then the JSON omits the child_session key.
+    let data = v.get("ToolCall").expect("ToolCall key");
+    assert!(data.get("child_session").is_none());
 }

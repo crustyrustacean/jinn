@@ -1439,16 +1439,23 @@ impl ChatSessionState {
     ///
     /// Searches recent history for a `ToolCall` entry matching the given ID.
     /// If not found (shouldn't happen in normal flow), pushes a new entry.
+    /// Preserves any existing `child_session` link on the entry — only the
+    /// streamed-partial fields are finalized here.
     pub fn finalize_tool_call(&mut self, id: &str, name: &str, arguments: &str) {
         let finalized = self
             .edit_history()
             .with_last_matching_mut(
                 |entry| matches!(&entry.kind, ChatEntryKind::ToolCall { .. }),
                 |entry| {
+                    let child_session = match &entry.kind {
+                        ChatEntryKind::ToolCall { child_session, .. } => child_session.clone(),
+                        _ => None,
+                    };
                     entry.kind = ChatEntryKind::ToolCall {
                         id: id.to_owned(),
                         name: name.to_owned(),
                         arguments: arguments.to_owned(),
+                        child_session,
                     };
                     entry.timing.finish();
                 },

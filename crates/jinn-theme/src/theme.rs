@@ -31,6 +31,7 @@ pub struct Theme {
     /// Subagent session title color (sidebar). Marks machine-spawned
     /// sessions apart from user-initiated ones.
     pub subagent_fg: Color,
+    pub subagent_bg: Color,
     /// Error text color.
     pub error_text: Color,
 
@@ -65,6 +66,9 @@ pub struct Theme {
     pub compaction_block_bg: Color,
     /// Tool result truncation indicator foreground.
     pub truncation_fg: Color,
+    /// Subagent band background — the padding rows above and below `task`
+    /// tool calls and their results, marking the subagent card. A dark,
+    /// low-contrast purple so status tints stay readable inside the card.
 
     // Picker
     /// Picker active item marker color (the `>` prefix).
@@ -140,6 +144,7 @@ impl Theme {
         m.insert("primary_text", Style::default().fg(self.primary_text));
         m.insert("muted_text", Style::default().fg(self.muted_text));
         m.insert("subagent_fg", Style::default().fg(self.subagent_fg));
+        m.insert("subagent_bg", Style::default().bg(self.subagent_bg));
         m.insert("error_text", Style::default().fg(self.error_text));
         m.insert("success", Style::default().fg(self.success));
         m.insert("warning", Style::default().fg(self.warning));
@@ -234,6 +239,9 @@ pub struct ThemeFile {
     pub muted_text: Option<ThemeColor>,
     #[serde(default)]
     pub subagent_fg: Option<ThemeColor>,
+    /// Subagent block background shown on `task` tool calls and their results.
+    #[serde(default)]
+    pub subagent_bg: Option<ThemeColor>,
     #[serde(default)]
     pub error_text: Option<ThemeColor>,
 
@@ -266,7 +274,6 @@ pub struct ThemeFile {
     pub compaction_block_bg: Option<ThemeColor>,
     #[serde(default)]
     pub truncation_fg: Option<ThemeColor>,
-
     #[serde(default)]
     pub picker_active_marker: Option<ThemeColor>,
     #[serde(default)]
@@ -354,6 +361,9 @@ impl ThemeFile {
             subagent_fg: self
                 .subagent_fg
                 .map_or(fallback.subagent_fg, crate::color::ThemeColor::inner),
+            subagent_bg: self
+                .subagent_bg
+                .map_or(fallback.subagent_bg, crate::color::ThemeColor::inner),
             error_text: self
                 .error_text
                 .map_or(fallback.error_text, crate::color::ThemeColor::inner),
@@ -489,6 +499,7 @@ impl ThemeFile {
             primary_text: Self::resolve_field(self.primary_text),
             muted_text: Self::resolve_field(self.muted_text),
             subagent_fg: Self::resolve_field(self.subagent_fg),
+            subagent_bg: Self::resolve_field(self.subagent_bg),
             error_text: Self::resolve_field(self.error_text),
             success: Self::resolve_field(self.success),
             warning: Self::resolve_field(self.warning),
@@ -548,6 +559,7 @@ mod tests {
             primary_text: None,
             muted_text: None,
             subagent_fg: None,
+            subagent_bg: None,
             error_text: None,
             success: None,
             warning: None,
@@ -612,6 +624,7 @@ mod tests {
             primary_text: None,
             muted_text: None,
             subagent_fg: None,
+            subagent_bg: None,
             error_text: None,
             success: None,
             warning: None,
@@ -684,6 +697,7 @@ mod tests {
             primary_text: Some(ThemeColor(Color::White)),
             muted_text: Some(ThemeColor(Color::DarkGray)),
             subagent_fg: Some(ThemeColor(Color::Rgb(152, 128, 208))),
+            subagent_bg: Some(ThemeColor(Color::Rgb(70, 58, 105))),
             error_text: Some(ThemeColor(Color::Red)),
             success: Some(ThemeColor(Color::Green)),
             warning: Some(ThemeColor(Color::Yellow)),
@@ -734,6 +748,14 @@ mod tests {
         );
         assert_eq!(original.resolve().gutter_bg, restored.resolve().gutter_bg);
         assert_eq!(
+            original.resolve().subagent_fg,
+            restored.resolve().subagent_fg
+        );
+        assert_eq!(
+            original.resolve().subagent_bg,
+            restored.resolve().subagent_bg
+        );
+        assert_eq!(
             original.resolve().input_mode_queue,
             restored.resolve().input_mode_queue
         );
@@ -755,6 +777,7 @@ mod tests {
             primary_text: None,
             muted_text: None,
             subagent_fg: None,
+            subagent_bg: None,
             error_text: None,
             success: None,
             warning: None,

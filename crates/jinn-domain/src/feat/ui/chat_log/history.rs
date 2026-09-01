@@ -32,8 +32,10 @@ use std::sync::Arc;
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::theme::Theme;
+use crate::feat::tools_actor::task::TASK_TOOL_NAME;
 use crate::protocol::{ChatEntry, ChatEntryKind};
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -56,6 +58,22 @@ use viewport::ScrollState;
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 // alternatives: |❚┃╏⣿𜺏░▒▓
 const GUTTER_STR: &str = "𜺏 ";
+
+/// Hash of the status-derived render inputs that change an entry's rendered
+/// lines without changing its content fingerprint (paired tool-result
+/// background tint, streaming flag, subagent-waiting line). Used as the
+/// render-variant component of the entry line cache key so the cache
+/// invalidates when any of them flips.
+fn render_variant(
+    paired_status: Option<ToolResultStatus>,
+    is_streaming: bool,
+    is_waiting_on_subagent: bool,
+) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (paired_status, is_streaming, is_waiting_on_subagent).hash(&mut hasher);
+    hasher.finish()
+}
 
 /// Display element for the full conversation history.
 #[derive(Debug, Default)]
@@ -271,7 +289,19 @@ impl<'a> HistoryRender<'a> {
                         .expect("hist_idx from visual_items");
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
 
-                    if let Some(hit) = cache.get(entry, is_expanded, self.content_width) {
+                    // Variant hash covers status-derived look inputs; a
+                    // changed variant forces a re-render even when the
+                    // entry's content fingerprint is unchanged.
+                    let variant = render_variant(
+                        self.paired_status_for_entry(entry),
+                        matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
+                            && self
+                                .state
+                                .active_session()
+                                .is_tool_call_streaming(&entry.id),
+                        self.is_task_waiting(entry),
+                    );
+                    if let Some(hit) = cache.get(entry, is_expanded, variant, self.content_width) {
                         let start = wrapped_cursor;
                         let end = wrapped_cursor + hit.wrapped_count;
                         self.entry_line_ranges.push((start, end));
@@ -293,6 +323,9 @@ impl<'a> HistoryRender<'a> {
                                 .state
                                 .active_session()
                                 .is_tool_call_streaming(&entry.id);
+                        let is_waiting_on_subagent = self.is_task_waiting(entry);
+                        let variant =
+                            render_variant(paired_status, is_streaming, is_waiting_on_subagent);
                         let ctx = RenderContext {
                             content_width: self.content_width,
                             is_selected,
@@ -301,6 +334,7 @@ impl<'a> HistoryRender<'a> {
                             theme: self.theme.clone(),
                             paired_status,
                             is_streaming,
+                            is_waiting_on_subagent,
                         };
                         let lines = entry_to_lines(entry, &ctx);
                         let wrapped_count: u16 = if self.content_width == 0 {
@@ -313,6 +347,7 @@ impl<'a> HistoryRender<'a> {
                         cache.insert_with_lines(
                             entry,
                             is_expanded,
+                            variant,
                             self.content_width,
                             wrapped_count,
                             Arc::new(lines.clone()),
@@ -346,6 +381,38 @@ impl<'a> HistoryRender<'a> {
             ChatEntryKind::ToolResult { status, .. } => Some(*status),
             _ => None,
         }
+    }
+
+    /// Whether this entry is a `task` tool call still awaiting its result
+    /// while its linked child session is loaded in memory and actively
+    /// running (sending or streaming).
+    ///
+    /// Drives the "Waiting for subagent session to complete" render line.
+    fn is_task_waiting(&self, entry: &ChatEntry) -> bool {
+        let ChatEntryKind::ToolCall {
+            id,
+            name,
+            child_session,
+            ..
+        } = &entry.kind
+        else {
+            return false;
+        };
+        if name != TASK_TOOL_NAME {
+            return false;
+        }
+        // No paired result yet: a pending entry exists only before the tool
+        // starts executing, so any status here means the result has landed.
+        if self.tool_result_statuses.contains_key(id) {
+            return false;
+        }
+        let Some(child_id) = child_session else {
+            return false;
+        };
+        let Some(child) = self.state.session.get(child_id) else {
+            return false;
+        };
+        matches!(child.phase(), PhaseKind::Sending | PhaseKind::Streaming)
     }
 
     // -----------------------------------------------------------------------
@@ -447,6 +514,7 @@ impl<'a> HistoryRender<'a> {
                                 .state
                                 .active_session()
                                 .is_tool_call_streaming(&entry.id);
+                        let is_waiting_on_subagent = self.is_task_waiting(entry);
                         let ctx = RenderContext {
                             content_width: self.content_width,
                             is_selected,
@@ -455,6 +523,7 @@ impl<'a> HistoryRender<'a> {
                             theme: self.theme.clone(),
                             paired_status,
                             is_streaming,
+                            is_waiting_on_subagent,
                         };
                         entry_to_lines(entry, &ctx)
                     };

@@ -9,6 +9,7 @@ pub mod archive;
 pub mod archive_tree;
 pub mod close;
 pub mod r#continue;
+pub mod load_subagent;
 pub mod navigate;
 pub mod preview;
 pub mod reconcile;
@@ -37,6 +38,9 @@ pub use close::{
     validate_session_close,
 };
 pub use r#continue::handle_session_continue;
+pub use load_subagent::{
+    LoadSubagentError, handle_load_subagent_session, validate_load_subagent_session,
+};
 
 pub use navigate::{navigate, receive_cursor, scroll_to_cursor, scroll_to_cursor_split};
 pub use preview::{

@@ -185,6 +185,12 @@ pub enum Intent {
     SidebarSectionPrev,
     /// Activate the selected session (switch to it).
     SidebarSessionConfirm,
+    /// Open the child subagent session linked to the selected `task` tool
+    /// call (Normal `<enter>`). Resolves the selection at handling time;
+    /// loads the child from disk when it is not in memory. No-op when
+    /// nothing is selected, the selection is not a `task` call, or the
+    /// call carries no link.
+    LoadSubagentSession,
     /// Activate the selected session and enter Insert mode.
     SidebarConfirmInsert,
     /// Unpin the selected pinned entry.
@@ -502,6 +508,7 @@ impl std::fmt::Display for Intent {
             Intent::SidebarSectionNext => write!(f, "cursor to next section"),
             Intent::SidebarSectionPrev => write!(f, "cursor to previous section"),
             Intent::SidebarSessionConfirm => write!(f, "activate session"),
+            Intent::LoadSubagentSession => write!(f, "open subagent session"),
             Intent::SidebarConfirmInsert => write!(f, "activate session -> insert mode"),
             Intent::PinsUnpin => write!(f, "unpin entry"),
             Intent::PinsPinTop => write!(f, "pin to top position"),

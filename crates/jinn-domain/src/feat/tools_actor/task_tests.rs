@@ -390,6 +390,100 @@ async fn task_publishes_session_created_then_enqueue_user_message() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn task_stamps_spawned_child_session_on_parent_tool_call() {
+    // Given a parent session whose history holds the tool call being executed.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    {
+        let mut w = state.write_test_no_cap();
+        let parent = w.session.get_mut(&parent_id).expect("parent seeded");
+        parent.push_entry(ChatEntry::tool_call(
+            "tc_task_1",
+            crate::feat::tools_actor::task::TASK_TOOL_NAME,
+            r#"{"prompt": "Explore."}"#,
+        ));
+    }
+    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+
+    // When executing the task call and finishing the child.
+    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // Then the parent's tool call entry carries the spawned child session.
+    let snapshot = state.read();
+    let parent = snapshot
+        .session
+        .get(&parent_id)
+        .expect("parent present in state");
+    let entry = parent
+        .history()
+        .iter()
+        .find(
+            |entry| matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_task_1"),
+        )
+        .expect("stamped tool call entry");
+    let ChatEntryKind::ToolCall { child_session, .. } = &entry.kind else {
+        panic!("expected ToolCall kind");
+    };
+    assert_eq!(child_session, &Some(child_id));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_stamp_leaves_unrelated_tool_call_entries_untouched() {
+    // Given a parent session holding the executed call and an unrelated call.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    {
+        let mut w = state.write_test_no_cap();
+        let parent = w.session.get_mut(&parent_id).expect("parent seeded");
+        parent.push_entry(ChatEntry::tool_call(
+            "tc_task_1",
+            crate::feat::tools_actor::task::TASK_TOOL_NAME,
+            r#"{"prompt": "Explore."}"#,
+        ));
+        parent.push_entry(ChatEntry::tool_call(
+            "tc_other",
+            "read",
+            r#"{"path": "a.rs"}"#,
+        ));
+    }
+    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+
+    // When executing the task call and finishing the child.
+    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    settle_child_discovery(&harness.bus(), &created[0].session_id, &parent_servers()).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &created[0].session_id, "Done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // Then the unrelated entry still has no child session link.
+    let snapshot = state.read();
+    let parent = snapshot
+        .session
+        .get(&parent_id)
+        .expect("parent present in state");
+    let entry = parent
+        .history()
+        .iter()
+        .find(|entry| matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_other"))
+        .expect("unrelated tool call entry");
+    let ChatEntryKind::ToolCall { child_session, .. } = &entry.kind else {
+        panic!("expected ToolCall kind");
+    };
+    assert_eq!(child_session, &None);
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn task_rejects_an_empty_prompt_with_a_legible_result() {
     // Given a parent session.
     let harness = TestHarness::new().await;

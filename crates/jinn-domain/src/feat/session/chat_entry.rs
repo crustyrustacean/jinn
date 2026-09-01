@@ -6,6 +6,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
+use crate::protocol::SessionId;
 
 /// A unique identifier for a [`ChatEntry`].
 ///
@@ -262,6 +263,10 @@ pub enum ChatEntryKind {
         name: String,
         /// The JSON arguments string.
         arguments: String,
+        /// The child session this call spawned (`task` tool only; `None`
+        /// otherwise). Persisted with the entry so the link survives
+        /// restarts; serde-defaulted so pre-link sessions round-trip.
+        child_session: Option<SessionId>,
     },
     /// The result of executing a tool call.
     ToolResult {
@@ -503,6 +508,7 @@ impl ChatEntry {
                 id: id.into(),
                 name: name.into(),
                 arguments: arguments.into(),
+                child_session: None,
             },
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -1063,12 +1069,15 @@ impl Serialize for ChatEntryKind {
                 id,
                 name,
                 arguments,
+                child_session,
             } => {
                 #[derive(Serialize)]
                 struct ToolCallData {
                     id: String,
                     name: String,
                     arguments: String,
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    child_session: Option<SessionId>,
                 }
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry(
@@ -1077,6 +1086,7 @@ impl Serialize for ChatEntryKind {
                         id: id.clone(),
                         name: name.clone(),
                         arguments: arguments.clone(),
+                        child_session: child_session.clone(),
                     },
                 )?;
                 map.end()
@@ -1245,12 +1255,15 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             id: String,
                             name: String,
                             arguments: String,
+                            #[serde(default)]
+                            child_session: Option<SessionId>,
                         }
                         let data: ToolCallData = map.next_value()?;
                         Ok(ChatEntryKind::ToolCall {
                             id: data.id,
                             name: data.name,
                             arguments: data.arguments,
+                            child_session: data.child_session,
                         })
                     }
                     "ToolResult" => {
