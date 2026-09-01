@@ -1,4 +1,4 @@
-## (development; unreleased) v0.115.0
+## 2026-09-01 v0.115.0
 
 - Add "research" prompt. Similar to the planning prompt: use `#research <the thing you want to research>` and the agent will guide you through it. Recommend using a third-party search service via MCP to avoid automated blocking.
 - Session picker now shows tree relationships by titles (same format as the session sidebar)
@@ -8,6 +8,7 @@
 - Subagent sessions can now also be accessed straight from the tool call+tool result chat entry.
 - Subagent invocations now use purple in the chat history.
 - Update "gap-analysis" prompt to provide a list of recommendations.
+- A previous change introduced `project` as an alias for `projects` in `jinn.toml`, which caused duplicate key errors. This has been fixed. The correct key for project configuration is `projects`.
 
 ## 2026-08-31 v0.114.0
 
