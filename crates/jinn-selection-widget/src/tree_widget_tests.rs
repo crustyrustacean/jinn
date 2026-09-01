@@ -194,7 +194,8 @@ fn widget_renders_title() {
 #[rstest::rstest]
 #[test]
 fn widget_passes_child_entries_the_computed_connector() {
-    // Given a tree (root Alpha → child Bravo) whose items embed the handed prefix.
+    // Given a tree (root Alpha → single child Bravo) whose items embed the
+    // handed prefix.
     let items = vec![
         embedding_item("a", None, "Alpha"),
         embedding_item("b", Some("a"), "Bravo"),
@@ -204,11 +205,61 @@ fn widget_passes_child_entries_the_computed_connector() {
     // When rendering.
     let buffer = render_to_buffer(&state);
 
-    // Then the child row shows the connector embedded between brackets.
+    // Then the child row shows exactly the own-level connector, with no
+    // root-level continuation segment before it.
     let content = buffer_to_string(&buffer);
     assert!(
-        content.contains("└─ >Bravo") || content.contains("├─ >Bravo"),
-        "expected child row to embed the handed connector, got:\n{content}"
+        content.contains("<└─ >Bravo"),
+        "expected child row to embed exactly `└─ `, got:\n{content}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn widget_passes_children_with_siblings_a_tee_connector() {
+    // Given a tree with root Alpha and children Bravo, Charlie.
+    let items = vec![
+        embedding_item("a", None, "Alpha"),
+        embedding_item("b", Some("a"), "Bravo"),
+        embedding_item("c", Some("a"), "Charlie"),
+    ];
+    let state = TreePickerState::with_items(items);
+
+    // When rendering.
+    let buffer = render_to_buffer(&state);
+
+    // Then the non-last child gets `├─ ` and the last child gets `└─ `.
+    let content = buffer_to_string(&buffer);
+    assert!(
+        content.contains("<├─ >Bravo"),
+        "expected non-last child to embed `├─ `, got:\n{content}"
+    );
+    assert!(
+        content.contains("<└─ >Charlie"),
+        "expected last child to embed `└─ `, got:\n{content}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn widget_passes_grandchildren_a_blank_root_segment() {
+    // Given a tree three levels deep: Alpha → Bravo → Charlie.
+    let items = vec![
+        embedding_item("a", None, "Alpha"),
+        embedding_item("b", Some("a"), "Bravo"),
+        embedding_item("c", Some("b"), "Charlie"),
+    ];
+    let state = TreePickerState::with_items(items);
+
+    // When rendering.
+    let buffer = render_to_buffer(&state);
+
+    // Then the grandchild embeds one blank segment for the root level plus
+    // its own connector (no `│` through the root column).
+    let content = buffer_to_string(&buffer);
+    assert!(
+        content.contains("<   └─ >Charlie"),
+        "expected grandchild to embed `   └─ `, got:\n{content}"
     );
 }
 
