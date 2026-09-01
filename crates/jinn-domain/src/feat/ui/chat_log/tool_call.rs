@@ -13,6 +13,10 @@
 //! - **Finalized + Expanded** (`ctx.is_expanded`): Full arguments with
 //!   newlines rendered, no truncation.
 //!
+//! A `task` tool call still awaiting its result while its linked child
+//! session runs (`ctx.is_waiting_on_subagent`) renders an additional muted
+//! status line beneath the call.
+//!
 //! Background color is determined by the paired tool result's status:
 //! no background while pending, green on success, red on failure.
 
@@ -22,21 +26,31 @@ use ratatui::text::{Line, Span};
 
 use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
 
+/// Status line shown under a `task` call whose subagent session is running.
+const WAITING_TEXT: &str = "Waiting for subagent session to complete";
+
 /// Render a tool call entry to visual lines.
 ///
 /// Dispatches to the appropriate sub-function based on tool name and context.
 pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
-    if name == "bash" {
-        return to_lines_bash(arguments, ctx);
-    }
-
-    if ctx.is_streaming {
+    let mut lines = if name == "bash" {
+        to_lines_bash(arguments, ctx)
+    } else if ctx.is_streaming {
         to_lines_streaming(name, arguments, ctx)
     } else if ctx.is_expanded {
         to_lines_expanded(name, arguments, ctx)
     } else {
         to_lines_collapsed(name, arguments, ctx)
+    };
+
+    if ctx.is_waiting_on_subagent {
+        lines.push(Line::from(Span::styled(
+            truncate_to_width(WAITING_TEXT, ctx.content_width as usize),
+            Style::default().fg(ctx.theme.focus_accent),
+        )));
     }
+
+    lines
 }
 
 /// Bash tool call: single line `$ <command>`, truncated to content width.
@@ -225,6 +239,7 @@ mod tests {
             theme: crate::feat::theme::default_theme(),
             paired_status: None,
             is_streaming: false,
+            is_waiting_on_subagent: false,
         }
     }
 
@@ -237,6 +252,7 @@ mod tests {
             theme: crate::feat::theme::default_theme(),
             paired_status: status,
             is_streaming: false,
+            is_waiting_on_subagent: false,
         }
     }
 
@@ -249,6 +265,7 @@ mod tests {
             theme: crate::feat::theme::default_theme(),
             paired_status: None,
             is_streaming: true,
+            is_waiting_on_subagent: false,
         }
     }
 
@@ -261,6 +278,7 @@ mod tests {
             theme: crate::feat::theme::default_theme(),
             paired_status: None,
             is_streaming: false,
+            is_waiting_on_subagent: false,
         }
     }
 
@@ -574,6 +592,7 @@ mod tests {
             theme: crate::feat::theme::default_theme(),
             paired_status: None,
             is_streaming: false,
+            is_waiting_on_subagent: false,
         };
         let long_cmd = "a".repeat(100);
 
