@@ -30,8 +30,11 @@ use crate::protocol::SessionId;
 ///
 /// Published by the plugin coordinator on the `stall-watchdog` plugin's
 /// request. The session-actor handler restarts only when the phase is active
-/// *and* an LLM stream is genuinely in flight (`stream_dispatched_at` set) —
-/// so a stale or bogus request is a no-op by construction.
+/// *and* an LLM stream is genuinely in flight — the session actor arms the
+/// `stream_dispatched_at` guard when it receives the generation's own
+/// `SendToLlmProvider` dispatch (single write point, so any dispatch path
+/// counts) and `StreamCompleted` clears it — making a stale or bogus request
+/// a no-op by construction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetryStalledSession {
     /// The session whose turn has stalled.
