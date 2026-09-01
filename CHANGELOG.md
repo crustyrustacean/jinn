@@ -1,4 +1,9 @@
-## (development; unreleased) v0.114.0
+## (development; unreleased) v0.115.0
+
+- Add "research" prompt. Similar to the planning prompt: use `#research <the thing you want to research>` and the agent will guide you through it. Recommend using a third-party search service via MCP to avoid automated blocking.
+- Session picker now shows tree relationships by titles (same format as the session sidebar)
+
+## 2026-08-31 v0.114.0
 
 - Add project + date info to session picker
 - Remove experimental task reminder
