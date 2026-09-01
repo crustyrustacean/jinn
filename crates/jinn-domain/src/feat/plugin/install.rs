@@ -477,4 +477,46 @@ mod tests {
         let prefs = storage.reload().expect("reload");
         assert_eq!(prefs.plugin.get("my-plugin"), Some(&original));
     }
+
+    // Given a jinn.toml poisoned with a legacy [[project]] block next to a
+    // canonical [[projects]] key (reload() would fail a naive loader).
+    // When installing a plugin (reload + save through the filesystem storage).
+    // Then the install succeeds and the config on disk is healed + registered.
+    #[rstest::rstest]
+    #[test]
+    fn plugin_add_heals_poisoned_config() {
+        use crate::feat::preferences_actor::user_preferences_storage::FilesystemUserPreferencesStorage;
+
+        // Given a poisoned jinn.toml in a temp dir.
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let path = dir.path().join("jinn.toml");
+        std::fs::write(
+            &path,
+            "# user banner\n[[project]]\npath = \"~/code/legacy\"\n\n[[projects]]\npath = \"~/code/current\"\n",
+        )
+        .expect("write");
+        let storage = FilesystemUserPreferencesStorage::new(path.clone());
+
+        // And a minimal wasm payload to install.
+        let base = dir.path().join("payload");
+        std::fs::create_dir_all(&base).expect("mkdir");
+        let wasm = base.join("fix-plugin.wasm");
+        std::fs::write(&wasm, b"mock wasm").expect("write");
+
+        // When installing (the reload-save cycle `jinn plugin add` runs).
+        let outcome = install(&wasm, "fix-plugin", &base, vec![], false, &storage)
+            .expect("install against poisoned config must succeed");
+
+        // Then the install succeeded.
+        assert!(matches!(outcome, PluginInstallOutcome::Installed { .. }));
+        // And the config on disk is healed: no legacy [[project]] key.
+        let on_disk = std::fs::read_to_string(&path).expect("read config");
+        assert!(
+            !on_disk.contains("[[project]]"),
+            "poison not healed on disk: {on_disk}"
+        );
+        // And the plugin entry was registered.
+        let prefs = storage.reload().expect("reload");
+        assert!(prefs.plugin.contains_key("fix-plugin"));
+    }
 }

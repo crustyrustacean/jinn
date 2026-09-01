@@ -56,6 +56,34 @@ size-report:
         echo '    (upx not installed; skipping packed-size estimate)'
     fi
 
+# Build + install every in-tree plugin via `jinn plugin add` (interleaved per plugin; aborts at first failure)
+install-plugins:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo "Error: cargo is not installed." >&2; exit 1
+    fi
+    if ! rustup target list --installed 2>/dev/null | grep -q 'wasm32-wasip2'; then
+        echo "Error: wasm32-wasip2 target not installed." >&2
+        echo "  Run: rustup target add wasm32-wasip2" >&2
+        exit 1
+    fi
+
+    echo '==> Ensuring jinn binary'
+    [ -x target/release/jinn ] || cargo build --release -p jinn
+
+    shopt -s nullglob
+    manifests=(plugins/*/Cargo.toml)
+    if [ ${#manifests[@]} -eq 0 ]; then
+        echo "No plugins found under plugins/" >&2; exit 1
+    fi
+    for manifest in "${manifests[@]}"; do
+        dir="$(dirname "$manifest")"
+        echo "==> Installing $dir"
+        target/release/jinn plugin add "$dir"
+    done
+
 # Build every in-tree wasm plugin (needs wasm32-wasip2 target + jinn binary); see plugins/*/Cargo.toml
 build-plugins:
     #!/usr/bin/env bash
@@ -82,19 +110,6 @@ build-plugins:
         dir="$(dirname "$manifest")"
         echo "==> Building $dir"
         target/release/jinn plugin build "$dir"
-    done
-
-# Build every in-tree plugin and install it via `jinn plugin add` (manifest-embedded grants/http)
-install-plugins: build-plugins
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    shopt -s nullglob
-    manifests=(plugins/*/Cargo.toml)
-    for manifest in "${manifests[@]}"; do
-        dir="$(dirname "$manifest")"
-        echo "==> Installing $dir"
-        target/release/jinn plugin add "$dir"
     done
 
 # Rebuild plugins and copy artifacts into res/plugins/ (embedded payloads; run before `just release`)
