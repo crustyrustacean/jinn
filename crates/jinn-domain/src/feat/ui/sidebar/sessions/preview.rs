@@ -421,6 +421,7 @@ fn build_preview_lines(
         theme: theme.clone(),
         paired_status: None,
         is_streaming: false,
+        is_waiting_on_subagent: false,
     };
 
     let mut all_lines = Vec::new();

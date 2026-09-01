@@ -212,6 +212,7 @@ fn prune_backward(
                 name,
                 arguments,
                 id,
+                ..
             } if is_modify_tool(name)
                 && extract_path_from_arguments(arguments).is_some_and(|p| p == read_path) =>
             {

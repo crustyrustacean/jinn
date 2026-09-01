@@ -157,6 +157,7 @@ fn collect_read_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Vec<Read
                 name,
                 arguments,
                 id,
+                ..
             } if name == "read" => {
                 let Some(path) = extract_path_from_arguments(arguments) else {
                     continue;

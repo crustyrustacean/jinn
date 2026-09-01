@@ -167,6 +167,7 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
                     name,
                     arguments,
                     id,
+                    ..
                 } if name == "read" => {
                     let Some(path) = extract_path_from_arguments(arguments) else {
                         continue;

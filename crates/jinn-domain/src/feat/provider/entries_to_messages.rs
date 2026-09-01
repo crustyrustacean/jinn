@@ -112,6 +112,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                 id,
                 name,
                 arguments,
+                ..
             } => {
                 let tool_call = ToolCall {
                     id: id.clone(),

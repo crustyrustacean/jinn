@@ -6,7 +6,10 @@
 //! `Vec<Line>` is reused in Pass 2 - skipping both parsing and rendering.
 //!
 //! The cache is invalidated on content changes (streaming tokens),
-//! expand/collapse toggles, and content width changes (terminal resize).
+//! expand/collapse toggles, content width changes (terminal resize), and
+//! render-variant changes (status-derived look that alters the rendered lines
+//! without touching the entry's content — e.g. a paired tool result landing
+//! or a subagent's running state flipping).
 //! Theme changes are handled centrally by [`FrontendCaches::invalidate_all`]
 //! which calls [`EntryLineCache::clear`] directly.
 
@@ -24,6 +27,9 @@ pub struct CachedEntryCount {
     pub fingerprint: u64,
     /// Whether the entry was expanded when this count was computed.
     pub is_expanded: bool,
+    /// Hash of the status-derived render inputs (paired result status,
+    /// streaming flag, subagent-waiting flag) at compute time.
+    pub variant: u64,
     /// The wrapped line count for this entry.
     pub wrapped_count: u16,
     /// Pre-rendered lines for this entry, if available.
@@ -84,11 +90,13 @@ impl EntryLineCache {
     /// - No cache entry exists for this ID (new entry).
     /// - The entry's fingerprint has changed (content changed during streaming).
     /// - The entry's expanded state has changed (expand/collapse toggle).
+    /// - The entry's render variant has changed (status-derived look changed).
     /// - The content width has changed (terminal resize).
     pub fn get(
         &mut self,
         entry: &ChatEntry,
         is_expanded: bool,
+        variant: u64,
         content_width: u16,
     ) -> Option<CacheHit> {
         // If content width changed, clear everything.
@@ -99,7 +107,9 @@ impl EntryLineCache {
         }
 
         let cached = self.entries.get(&entry.id)?;
-        (cached.fingerprint == entry.content_fingerprint() && cached.is_expanded == is_expanded)
+        (cached.fingerprint == entry.content_fingerprint()
+            && cached.is_expanded == is_expanded
+            && cached.variant == variant)
             .then(|| CacheHit {
                 wrapped_count: cached.wrapped_count,
                 lines: cached.lines.clone(),
@@ -111,6 +121,7 @@ impl EntryLineCache {
         &mut self,
         entry: &ChatEntry,
         is_expanded: bool,
+        variant: u64,
         content_width: u16,
         wrapped_count: u16,
     ) {
@@ -120,6 +131,7 @@ impl EntryLineCache {
             CachedEntryCount {
                 fingerprint: entry.content_fingerprint(),
                 is_expanded,
+                variant,
                 wrapped_count,
                 lines: None,
             },
@@ -135,6 +147,7 @@ impl EntryLineCache {
         &mut self,
         entry: &ChatEntry,
         is_expanded: bool,
+        variant: u64,
         content_width: u16,
         wrapped_count: u16,
         lines: Arc<Vec<Line<'static>>>,
@@ -145,6 +158,7 @@ impl EntryLineCache {
             CachedEntryCount {
                 fingerprint: entry.content_fingerprint(),
                 is_expanded,
+                variant,
                 wrapped_count,
                 lines: Some(lines),
             },
@@ -201,10 +215,10 @@ mod tests {
         // Given an entry and a cache with its count.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 80, 5);
+        cache.insert(&entry, false, 0, 80, 5);
 
         // When looking up the same entry.
-        let result = cache.get(&entry, false, 80);
+        let result = cache.get(&entry, false, 0, 80);
 
         // Then the cached count is returned.
         assert_eq!(result.map(|h| h.wrapped_count), Some(5));
@@ -217,7 +231,7 @@ mod tests {
         let entry = ChatEntry::assistant("hello");
 
         // When looking up an uncached entry.
-        let result = cache.get(&entry, false, 80);
+        let result = cache.get(&entry, false, 0, 80);
 
         // Then None is returned.
         assert!(result.is_none());
@@ -228,7 +242,7 @@ mod tests {
         // Given a cache with an entry's count.
         let mut cache = EntryLineCache::new();
         let mut entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 80, 5);
+        cache.insert(&entry, false, 0, 80, 5);
 
         // When the entry's content changes.
         if let crate::protocol::ChatEntryKind::Assistant(ref mut text) = entry.kind {
@@ -236,7 +250,7 @@ mod tests {
         }
 
         // Then the cache misses (fingerprint mismatch).
-        let result = cache.get(&entry, false, 80);
+        let result = cache.get(&entry, false, 0, 80);
         assert!(result.is_none());
     }
 
@@ -245,10 +259,10 @@ mod tests {
         // Given a cache with an entry at is_expanded=false.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 80, 5);
+        cache.insert(&entry, false, 0, 80, 5);
 
         // When looking up with is_expanded=true.
-        let result = cache.get(&entry, true, 80);
+        let result = cache.get(&entry, true, 0, 80);
 
         // Then the cache misses.
         assert!(result.is_none());
@@ -259,10 +273,10 @@ mod tests {
         // Given a cache with entries at width 80.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 80, 5);
+        cache.insert(&entry, false, 0, 80, 5);
 
         // When looking up at width 100.
-        let result = cache.get(&entry, false, 100);
+        let result = cache.get(&entry, false, 0, 100);
 
         // Then the cache misses (and is cleared).
         assert!(result.is_none());
@@ -275,16 +289,16 @@ mod tests {
         let mut cache = EntryLineCache::new();
         let entry1 = ChatEntry::assistant("hello");
         let entry2 = ChatEntry::assistant("world");
-        cache.insert(&entry1, false, 80, 3);
-        cache.insert(&entry2, false, 80, 5);
+        cache.insert(&entry1, false, 0, 80, 3);
+        cache.insert(&entry2, false, 0, 80, 5);
 
         // When invalidating entry1.
         cache.invalidate_entry(&entry1.id);
 
         // Then entry1 is gone but entry2 remains.
-        assert!(cache.get(&entry1, false, 80).is_none());
+        assert!(cache.get(&entry1, false, 0, 80).is_none());
         assert_eq!(
-            cache.get(&entry2, false, 80).map(|h| h.wrapped_count),
+            cache.get(&entry2, false, 0, 80).map(|h| h.wrapped_count),
             Some(5)
         );
     }
@@ -293,7 +307,7 @@ mod tests {
     fn clear_removes_all_entries() {
         // Given a cache with entries.
         let mut cache = EntryLineCache::new();
-        cache.insert(&ChatEntry::assistant("hello"), false, 80, 3);
+        cache.insert(&ChatEntry::assistant("hello"), false, 0, 80, 3);
 
         // When clearing.
         cache.clear();
@@ -340,10 +354,10 @@ mod tests {
         // Given a cache with a pending ToolResult entry.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::tool_result("id", "bash", "", ToolResultStatus::Pending);
-        cache.insert(&entry, false, 80, 5);
+        cache.insert(&entry, false, 0, 80, 5);
 
         // When looking up the pending entry with unchanged content.
-        let result = cache.get(&entry, false, 80);
+        let result = cache.get(&entry, false, 0, 80);
 
         // Then the cached count is returned (pending entries are cacheable).
         assert_eq!(result.map(|h| h.wrapped_count), Some(5));
@@ -354,7 +368,7 @@ mod tests {
         // Given a cache with a pending ToolResult entry.
         let mut cache = EntryLineCache::new();
         let mut entry = ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Pending);
-        cache.insert(&entry, false, 80, 5);
+        cache.insert(&entry, false, 0, 80, 5);
 
         // When the entry's content changes (simulating tool output growth).
         if let ChatEntryKind::ToolResult {
@@ -364,7 +378,7 @@ mod tests {
             content.push_str(" more");
         }
 
-        let result = cache.get(&entry, false, 80);
+        let result = cache.get(&entry, false, 0, 80);
 
         // Then the cache misses (fingerprint mismatch).
         assert!(result.is_none());
@@ -376,10 +390,10 @@ mod tests {
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
         let lines = Arc::new(vec![Line::from("hello")]);
-        cache.insert_with_lines(&entry, false, 80, 1, lines.clone());
+        cache.insert_with_lines(&entry, false, 0, 80, 1, lines.clone());
 
         // When looking up the same entry.
-        let result = cache.get(&entry, false, 80);
+        let result = cache.get(&entry, false, 0, 80);
 
         // Then the cached lines are returned.
         let hit = result.expect("should be a cache hit");
@@ -393,14 +407,42 @@ mod tests {
         // Given an entry inserted via insert() (no lines).
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 80, 5);
+        cache.insert(&entry, false, 0, 80, 5);
 
         // When looking up the same entry.
-        let result = cache.get(&entry, false, 80);
+        let result = cache.get(&entry, false, 0, 80);
 
         // Then the count is returned but lines is None.
         let hit = result.expect("should be a cache hit");
         assert_eq!(hit.wrapped_count, 5);
         assert!(hit.lines.is_none());
+    }
+
+    #[rstest::rstest]
+    fn cache_hit_when_variant_unchanged() {
+        // Given a cache with an entry under variant 7.
+        let mut cache = EntryLineCache::new();
+        let entry = ChatEntry::assistant("hello");
+        cache.insert(&entry, false, 7, 80, 5);
+
+        // When looking up with the same variant.
+        let result = cache.get(&entry, false, 7, 80);
+
+        // Then the cached count is returned.
+        assert_eq!(result.map(|h| h.wrapped_count), Some(5));
+    }
+
+    #[rstest::rstest]
+    fn cache_miss_when_variant_changes() {
+        // Given a cache with an entry under variant 7.
+        let mut cache = EntryLineCache::new();
+        let entry = ChatEntry::assistant("hello");
+        cache.insert(&entry, false, 7, 80, 5);
+
+        // When looking up with a different variant.
+        let result = cache.get(&entry, false, 8, 80);
+
+        // Then the cache misses.
+        assert!(result.is_none());
     }
 }

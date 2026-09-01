@@ -102,6 +102,7 @@ mod tests {
             theme: default_theme(),
             paired_status: None,
             is_streaming: false,
+            is_waiting_on_subagent: false,
         };
 
         // When rendering.
@@ -132,6 +133,7 @@ mod tests {
             theme: default_theme(),
             paired_status: None,
             is_streaming: false,
+            is_waiting_on_subagent: false,
         };
 
         // When rendering.
@@ -161,6 +163,7 @@ mod tests {
             theme: default_theme(),
             paired_status: None,
             is_streaming: false,
+            is_waiting_on_subagent: false,
         };
         let citations = [
             citation("Source A", "https://example.com/a"),
@@ -190,6 +193,7 @@ mod tests {
             theme: default_theme(),
             paired_status: None,
             is_streaming: false,
+            is_waiting_on_subagent: false,
         };
         let theme = default_theme();
 
