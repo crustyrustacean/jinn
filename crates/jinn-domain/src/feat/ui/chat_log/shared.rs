@@ -72,21 +72,6 @@ pub fn pad_line_to_width(line: &mut Line<'static>, width: u16, bg_style: Style) 
     }
 }
 
-/// Build the subagent marker row — four `⋄` diamonds in
-/// [`Theme::subagent_fg`].
-///
-/// Task entries frame a subagent block: the `task` tool call carries a marker
-/// above it, its result carries one below. The subagent identity channel
-/// (purple markers) stays separate from the tool status channel
-/// (pending/success/failure content backgrounds).
-#[must_use]
-pub fn subagent_marker(theme: &Theme) -> Line<'static> {
-    Line::from(Span::styled(
-        crate::feat::ui::chat_log::tool_call::MARKER_TEXT,
-        Style::default().fg(theme.subagent_fg),
-    ))
-}
-
 /// Which sides of an entry to pad with a blank line.
 ///
 /// Controls where visual spacing is added around a chat entry.
@@ -189,7 +174,7 @@ mod tests {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
-    use super::{Pad, multiline_styled, pad_entry, pad_entry_with, strip_ansi, subagent_marker};
+    use super::{Pad, multiline_styled, pad_entry, pad_entry_with, strip_ansi};
 
     #[rstest::rstest]
     fn pad_entry_both_adds_blank_line_above_and_below() {
@@ -342,26 +327,5 @@ mod tests {
         // Then there is exactly one content line.
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].spans[0].content, "hello");
-    }
-
-    #[rstest::rstest]
-    fn subagent_marker_is_four_diamonds_in_subagent_fg() {
-        // Given the default theme.
-        let theme = crate::feat::theme::default_theme();
-
-        // When building a marker row.
-        let marker = subagent_marker(&theme);
-
-        // Then the marker is the diamond text in the subagent foreground,
-        // with no background.
-        let text: String = marker.spans.iter().map(|s| s.content.clone()).collect();
-        assert_eq!(text, "\u{22c4}\u{22c4}\u{22c4}\u{22c4}");
-        assert!(
-            marker
-                .spans
-                .iter()
-                .all(|s| s.style.fg == Some(theme.subagent_fg))
-        );
-        assert!(marker.spans.iter().all(|s| s.style.bg.is_none()));
     }
 }

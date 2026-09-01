@@ -11,8 +11,8 @@
 //!
 //! Background color is determined by `ctx.paired_status`: no background for
 //! pending, green for success, red for failure. Task results (tool name
-//! `task`) additionally carry a purple `⋄⋄⋄⋄` marker row below, closing the
-//! subagent block opened by their tool call.
+//! `task`) render on the light purple subagent block background, closed by a
+//! status row — green "Subagent task finished" or red "Subagent task failed".
 //!
 //! Collapsed format:
 //! ```text
@@ -27,10 +27,16 @@ use crate::feat::skills::loaded_skill_summary_label;
 use crate::feat::tools_actor::task::TASK_TOOL_NAME;
 use crate::feat::tools_actor::truncation::format_size;
 use jinn_provider::tool_types::TruncationMeta;
-use ratatui::style::Style;
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_line_to_width, subagent_marker, truncate_to_width};
+use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
+
+/// Text shown on the outcome row of a successful task result.
+const FINISHED_TEXT: &str = "Subagent task finished";
+
+/// Text shown on the outcome row of a failed task result.
+const FAILED_TEXT: &str = "Subagent task failed";
 
 pub fn to_lines(
     name: &str,
@@ -40,17 +46,35 @@ pub fn to_lines(
     is_alert: bool,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
-    let is_task = name == TASK_TOOL_NAME;
+    if name == TASK_TOOL_NAME {
+        return to_lines_task(content, status, truncation, is_alert, ctx);
+    }
 
     // Loaded skills are pinned as `<skill name="X" ...>` XML.
     // Show a clean single-line summary instead of the raw XML body.
     if name == "skill" {
-        let mut lines = skill_summary_lines(content, ctx);
-        if is_task {
-            lines.push(subagent_marker(&ctx.theme));
-        }
-        return lines;
+        return skill_summary_lines(content, ctx);
     }
+    let _ = status;
+    if is_alert {
+        return alert_lines(content, ctx);
+    }
+    if ctx.is_expanded {
+        return to_lines_expanded(content, truncation, ctx);
+    }
+    to_lines_collapsed(content, truncation, ctx)
+}
+
+/// Task result: content on the subagent block background, closed by a
+/// full-width status row — green "Subagent task finished" or red "Subagent
+/// task failed" — with white text.
+fn to_lines_task(
+    content: &str,
+    status: ToolResultStatus,
+    truncation: Option<&TruncationMeta>,
+    is_alert: bool,
+    ctx: &RenderContext,
+) -> Vec<Line<'static>> {
     let _ = status;
     let mut lines = if is_alert {
         alert_lines(content, ctx)
@@ -60,11 +84,54 @@ pub fn to_lines(
         to_lines_collapsed(content, truncation, ctx)
     };
 
-    if is_task {
-        lines.push(subagent_marker(&ctx.theme));
-    }
+    lines.push(task_status_row(ctx.paired_status, ctx));
 
+    repaint_task_block(&mut lines, ctx);
     lines
+}
+
+/// Build the subagent outcome row: full-width status background with white
+/// bold text. Pending/unpaired results show the purple block background.
+fn task_status_row(paired: Option<ToolResultStatus>, ctx: &RenderContext) -> Line<'static> {
+    let width = ctx.content_width as usize;
+    let (text, bg) = match paired {
+        Some(ToolResultStatus::Success) => (FINISHED_TEXT, ctx.theme.tool_success_bg),
+        Some(ToolResultStatus::Failure) => (FAILED_TEXT, ctx.theme.tool_failure_bg),
+        Some(ToolResultStatus::Pending) | None => {
+            return Line::from(Span::styled(
+                " ".repeat(width),
+                Style::default().bg(ctx.theme.subagent_bg),
+            ));
+        }
+    };
+    let text = truncate_to_width(text, width);
+    let padded = format!("{text}{}", " ".repeat(width.saturating_sub(text.len())));
+    Line::from(Span::styled(
+        padded,
+        Style::default()
+            .fg(Color::White)
+            .bg(bg)
+            .add_modifier(Modifier::BOLD),
+    ))
+}
+
+/// Restyle task-entry lines onto the subagent block background, preserving
+/// the status row's own colors (it carries the outcome).
+fn repaint_task_block(lines: &mut [Line<'static>], ctx: &RenderContext) {
+    let style = Style::default()
+        .fg(ctx.theme.primary_text)
+        .bg(ctx.theme.subagent_bg);
+    let pad_style = Style::default().bg(ctx.theme.subagent_bg);
+    let last = lines.len().saturating_sub(1);
+    for (i, line) in lines.iter_mut().enumerate() {
+        if i == last {
+            continue;
+        }
+        for span in &mut line.spans {
+            span.style = style;
+        }
+        pad_line_to_width(line, ctx.content_width, pad_style);
+    }
 }
 
 /// Render a pending alert (e.g. a detected bot challenge) as an unmissable
@@ -279,7 +346,6 @@ mod tests {
     use super::*;
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::ui::chat_log::shared::RenderContext;
-    use crate::feat::ui::chat_log::tool_call::MARKER_TEXT;
 
     fn render_context(max_lines: u16, is_expanded: bool) -> RenderContext {
         RenderContext {
@@ -1076,78 +1142,88 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn task_result_carries_purple_marker_row_below() {
-        // Given a successful task tool result.
+    fn successful_task_result_shows_finished_status_row() {
+        // Given a task tool result paired with success.
         let ctx = render_context_with_status(Some(ToolResultStatus::Success));
         let theme = ctx.theme.clone();
 
         // When converting to lines.
         let lines = to_lines(
             TASK_TOOL_NAME,
-            "child finished",
+            "child output",
             ToolResultStatus::Success,
             None,
             false,
             &ctx,
         );
 
-        // Then the last line is the diamond marker row in subagent_fg.
-        let marker = lines.last().expect("lines");
-        let text: String = marker.spans.iter().map(|s| s.content.clone()).collect();
-        assert_eq!(text, MARKER_TEXT);
-        assert!(
-            marker
-                .spans
-                .iter()
-                .all(|s| s.style.fg == Some(theme.subagent_fg)),
-            "marker should use subagent_fg"
-        );
-        // And the content line precedes it, keeping the status background.
-        assert_eq!(lines.len(), 2);
+        // Then the content line renders on subagent_bg.
         assert!(
             lines[0]
                 .spans
                 .iter()
-                .any(|s| s.style.bg == Some(theme.tool_success_bg)),
-            "content line should keep the success bg"
+                .all(|s| s.style.bg == Some(theme.subagent_bg)),
+            "task result content should render on subagent_bg"
         );
+
+        // And the status row reads "Subagent task finished" on success bg
+        // with white text.
+        let status = lines.last().expect("lines");
+        let text: String = status.spans.iter().map(|s| s.content.clone()).collect();
+        assert!(
+            text.contains("Subagent task finished"),
+            "status row text mismatch: {text}"
+        );
+        assert!(
+            status
+                .spans
+                .iter()
+                .all(|s| s.style.bg == Some(theme.tool_success_bg)
+                    && s.style.fg == Some(Color::White)),
+            "status row should be white on success bg"
+        );
+        // And the row is padded to the full content width.
+        assert_eq!(status.width(), ctx.content_width as usize);
     }
 
     #[rstest::rstest]
-    fn task_result_keeps_marker_when_failed() {
-        // Given a task tool result paired with a failure status.
+    fn failed_task_result_shows_failed_status_row() {
+        // Given a task tool result paired with failure.
         let ctx = render_context_with_status(Some(ToolResultStatus::Failure));
         let theme = ctx.theme.clone();
 
         // When converting to lines.
         let lines = to_lines(
             TASK_TOOL_NAME,
-            "child errored",
+            "child error",
             ToolResultStatus::Failure,
             None,
             false,
             &ctx,
         );
 
-        // Then the last line is still the purple marker row.
-        let marker = lines.last().expect("lines");
-        let text: String = marker.spans.iter().map(|s| s.content.clone()).collect();
-        assert_eq!(text, MARKER_TEXT);
-
-        // And the content line carries the failure background.
+        // Then the status row reads "Subagent task failed" on failure bg.
+        let status = lines.last().expect("lines");
+        let text: String = status.spans.iter().map(|s| s.content.clone()).collect();
         assert!(
-            lines[0]
+            text.contains("Subagent task failed"),
+            "status row text mismatch: {text}"
+        );
+        assert!(
+            status
                 .spans
                 .iter()
-                .any(|s| s.style.bg == Some(theme.tool_failure_bg)),
-            "failed task result content should have failure bg"
+                .all(|s| s.style.bg == Some(theme.tool_failure_bg)
+                    && s.style.fg == Some(Color::White)),
+            "status row should be white on failure bg"
         );
     }
 
     #[rstest::rstest]
-    fn task_result_pending_keeps_marker() {
-        // Given a pending task tool result.
+    fn pending_task_result_status_row_uses_block_background() {
+        // Given a task tool result without a paired status yet.
         let ctx = render_context(5, false);
+        let theme = ctx.theme.clone();
 
         // When converting to lines.
         let lines = to_lines(
@@ -1159,22 +1235,26 @@ mod tests {
             &ctx,
         );
 
-        // Then the marker row is present.
-        let marker = lines.last().expect("lines");
-        let text: String = marker.spans.iter().map(|s| s.content.clone()).collect();
-        assert_eq!(text, MARKER_TEXT);
-
-        // And the content line has no status background.
+        // Then the status row is a blank row on subagent_bg — no outcome yet.
+        let status = lines.last().expect("lines");
+        let text: String = status.spans.iter().map(|s| s.content.clone()).collect();
         assert!(
-            lines[0].spans.iter().all(|s| s.style.bg.is_none()),
-            "pending task result content should have no status bg"
+            text.trim().is_empty(),
+            "pending row should be blank: {text}"
+        );
+        assert!(
+            status
+                .spans
+                .iter()
+                .all(|s| s.style.bg == Some(theme.subagent_bg)),
+            "pending status row should use subagent_bg"
         );
     }
 
     #[rstest::rstest]
-    fn non_task_result_has_no_marker() {
+    fn non_task_result_has_no_status_row_or_block() {
         // Given a non-task tool result with a success background.
-        let ctx = render_context(5, false);
+        let ctx = render_context_with_status(Some(ToolResultStatus::Success));
         let theme = ctx.theme.clone();
 
         // When converting to lines.
@@ -1187,15 +1267,18 @@ mod tests {
             &ctx,
         );
 
-        // Then no line uses the subagent foreground color.
-        let has_marker = lines.iter().any(|l| {
-            l.spans
-                .iter()
-                .any(|s| s.style.fg == Some(theme.subagent_fg))
-        });
+        // Then no line uses subagent_bg or the outcome texts.
+        let all_text: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.clone()))
+            .collect();
+        assert!(!all_text.contains("Subagent task"));
         assert!(
-            !has_marker,
-            "non-task result should have no subagent marker"
+            !lines.iter().any(|l| l
+                .spans
+                .iter()
+                .any(|s| s.style.bg == Some(theme.subagent_bg))),
+            "non-task result should not use subagent_bg"
         );
     }
 }
