@@ -11,12 +11,6 @@ Identify any gaps in the implementation versus the approved spec/plan and discus
 - Expected features from the plan/discussion
 - Whether those features were implemented
 
-For all gaps identified:
-
-- Include the acceptance criteria/feature identifier from the table
-- BRIEFLY Explain _why_ the gap exists
-- Propose a fix
-
 ## Record reconciliation
 
 If the spec/plan included "Record Updates", then you should also **confirm accuracy against the actual implementation**. Read `.agents/RECORD.md` if it exists. The implementer writes Record updates at the end of implementation (via the "Update the Record" task), so by the time you check, the Record should already reflect this work.
@@ -27,3 +21,13 @@ If the spec/plan included "Record Updates", then you should also **confirm accur
 - If the work established a new high-level fact that has no entry yet, propose a verbatim entry following the record's format rules.
 - Do not flag cosmetic or unrelated edits; only surface entries whose stated behavior diverged or was newly established.
   </instructions>
+
+## Recommendations
+
+At the end of the response, create a listing for all gaps identified:
+
+- Include the acceptance criteria/feature identifier from the table
+- BRIEFLY Explain _why_ the gap exists
+- Propose a fix
+
+After, create a _brief_ bulleted list of recommendations for how to proceed.
