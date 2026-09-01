@@ -14,17 +14,21 @@
 //!   newlines rendered, no truncation.
 //!
 //! A `task` tool call still awaiting its result while its linked child
-//! session runs (`ctx.is_waiting_on_subagent`) renders an additional muted
-//! status line beneath the call.
+//! session runs (`ctx.is_waiting_on_subagent`) renders an additional status
+//! line beneath the call, purple text on the subagent band background.
+//!
+//! Task calls (tool name `task`) are framed by full-width subagent band
+//! rows above and below, visually pairing them with their results.
 //!
 //! Background color is determined by the paired tool result's status:
 //! no background while pending, green on success, red on failure.
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
+use crate::feat::tools_actor::task::TASK_TOOL_NAME;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
+use super::shared::{RenderContext, pad_line_to_width, subagent_band, truncate_to_width};
 
 /// Status line shown under a `task` call whose subagent session is running.
 const WAITING_TEXT: &str = "Waiting for subagent session to complete";
@@ -32,9 +36,13 @@ const WAITING_TEXT: &str = "Waiting for subagent session to complete";
 /// Render a tool call entry to visual lines.
 ///
 /// Dispatches to the appropriate sub-function based on tool name and context.
-/// The waiting line uses the same [`jinn_theme::Theme::subagent_fg`] purple as
-/// the sidebar's subagent session markings.
+///
+/// `task` calls are framed by full-width [`subagent_band`] rows above and
+/// below their content (the subagent identity channel), and the waiting line
+/// uses [`jinn_theme::Theme::subagent_fg`] — the same purple as the sidebar's
+/// subagent session markings. All other tools render unchanged.
 pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
+    let is_task = name == TASK_TOOL_NAME;
     let mut lines = if name == "bash" {
         to_lines_bash(arguments, ctx)
     } else if ctx.is_streaming {
@@ -48,8 +56,16 @@ pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'s
     if ctx.is_waiting_on_subagent {
         lines.push(Line::from(Span::styled(
             truncate_to_width(WAITING_TEXT, ctx.content_width as usize),
-            Style::default().fg(ctx.theme.subagent_fg),
+            Style::default()
+                .fg(ctx.theme.subagent_fg)
+                .bg(ctx.theme.subagent_bg),
         )));
+    }
+
+    if is_task {
+        lines.insert(0, subagent_band(&ctx.theme, ctx.content_width));
+        let band = subagent_band(&ctx.theme, ctx.content_width);
+        lines.push(band);
     }
 
     lines
@@ -230,6 +246,7 @@ mod tests {
     )]
     use super::*;
     use crate::feat::session::tool_result_status::ToolResultStatus;
+    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
     use crate::feat::ui::chat_log::shared::RenderContext;
 
     fn render_context(max_lines: u16, is_expanded: bool) -> RenderContext {
@@ -626,5 +643,91 @@ mod tests {
             .iter()
             .any(|s| s.style.fg == Some(theme.primary_text));
         assert!(has_fg, "tool call should use primary_text foreground");
+    }
+
+    #[rstest::rstest]
+    fn task_call_is_framed_by_subagent_bands() {
+        // Given a task tool call.
+        let ctx = render_context(6, false);
+        let theme = ctx.theme.clone();
+
+        // When converting to lines.
+        let lines = to_lines(TASK_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
+
+        // Then the first and last lines are blank bands on subagent_bg.
+        for band in [lines.first().expect("lines"), lines.last().expect("lines")] {
+            assert_eq!(band.width(), ctx.content_width as usize);
+            assert!(
+                band.spans
+                    .iter()
+                    .all(|s| s.content.trim().is_empty() && s.style.bg == Some(theme.subagent_bg)),
+                "bands should be blank with subagent_bg: {band:?}"
+            );
+        }
+        // And the interior line count is 1 (the call line) plus 2 bands.
+        assert_eq!(lines.len(), 3);
+    }
+
+    #[rstest::rstest]
+    fn non_task_call_has_no_bands() {
+        // Given a non-task tool call.
+        let ctx = render_context(6, false);
+        let theme = ctx.theme.clone();
+
+        // When converting to lines.
+        let lines = to_lines("read", r#"{"path":"a.rs"}"#, &ctx);
+
+        // Then no line is a blank band on subagent_bg.
+        let has_band = lines.iter().any(|l| {
+            l.spans
+                .iter()
+                .any(|s| s.style.bg == Some(theme.subagent_bg))
+        });
+        assert!(!has_band, "non-task call should have no subagent bands");
+    }
+
+    #[rstest::rstest]
+    fn waiting_line_on_task_call_sits_on_subagent_bg() {
+        // Given a waiting task call.
+        let mut ctx = render_context(6, false);
+        ctx.is_waiting_on_subagent = true;
+        let theme = ctx.theme.clone();
+
+        // When converting to lines.
+        let lines = to_lines(TASK_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
+
+        // Then the waiting line (second-to-last, below the bottom band) uses
+        // subagent_fg on subagent_bg.
+        let waiting = &lines[lines.len() - 2];
+        let text: String = waiting.spans.iter().map(|s| s.content.clone()).collect();
+        assert!(text.contains(WAITING_TEXT), "expected waiting line: {text}");
+        assert!(
+            waiting
+                .spans
+                .iter()
+                .all(|s| s.style.bg == Some(theme.subagent_bg)
+                    && s.style.fg == Some(theme.subagent_fg)),
+            "waiting line should be subagent_fg on subagent_bg"
+        );
+    }
+
+    #[rstest::rstest]
+    fn streaming_task_call_keeps_bands() {
+        // Given a streaming task call.
+        let ctx = streaming_context(6);
+        let theme = ctx.theme.clone();
+
+        // When converting to lines.
+        let lines = to_lines(TASK_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
+
+        // Then the first line is a band on subagent_bg.
+        assert_eq!(lines.first().expect("lines").width(), 80);
+        assert!(
+            lines.iter().any(|l| l
+                .spans
+                .iter()
+                .any(|s| s.style.bg == Some(theme.subagent_bg))),
+            "streaming task call should carry subagent bands"
+        );
     }
 }

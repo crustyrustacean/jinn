@@ -1538,3 +1538,171 @@ fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
         "waiting line should disappear once the child is Idle: {buffer:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Subagent bands
+// ---------------------------------------------------------------------------
+
+/// Every cell of a rendered row, from the content column onward.
+fn content_row(
+    buffer: &ratatui::buffer::Buffer,
+    area_x: u16,
+    y: u16,
+) -> Vec<ratatui::buffer::Cell> {
+    (area_x..buffer.area.width)
+        .filter_map(|x| buffer.cell((x, y)).cloned())
+        .collect()
+}
+
+#[rstest::rstest]
+fn task_call_entry_is_framed_by_purple_bands() {
+    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+
+    // Given a session containing only a pending task call.
+    let mut element = ChatLogElement::new();
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_call("tc_band", TASK_TOOL_NAME, "{}"));
+    let theme = crate::feat::theme::default_theme();
+
+    let (mut terminal, area) = setup_term(80, 12);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the entry occupies 3 rows: band, call line, band — with the band
+    // rows fully painted in the subagent background across the content column.
+    let buffer = terminal.backend().buffer().clone();
+    let content_x = area.x + GUTTER_WIDTH;
+    let band_rows: Vec<Vec<ratatui::buffer::Cell>> = (area.y..area.bottom())
+        .map(|y| content_row(&buffer, content_x, y))
+        .filter(|row| {
+            row.iter().all(|cell| cell.symbol().trim().is_empty())
+                && row.len() > 4
+                && row
+                    .iter()
+                    .filter(|cell| cell.style().bg.is_some())
+                    .all(|cell| cell.style().bg == Some(theme.subagent_bg))
+                && row.iter().any(|cell| cell.style().bg.is_some())
+        })
+        .collect();
+    assert_eq!(
+        band_rows.len(),
+        2,
+        "expected exactly 2 purple band rows, got {band_rows:?}"
+    );
+    // And the two band rows are consecutive (top and bottom of the entry).
+    let band_y: Vec<u16> = (area.y..area.bottom())
+        .filter(|&y| {
+            let row = content_row(&buffer, content_x, y);
+            row.iter()
+                .any(|cell| cell.style().bg == Some(theme.subagent_bg))
+        })
+        .collect();
+    assert_eq!(
+        band_y,
+        vec![band_y[0], band_y[0] + 2],
+        "bands should sandwich the call line"
+    );
+}
+
+#[rstest::rstest]
+fn non_task_call_entry_has_no_purple_bands() {
+    // Given a session containing a non-task tool call.
+    let mut element = ChatLogElement::new();
+    let mut state = AppState::default();
+    state.active_session_mut().push_entry(ChatEntry::tool_call(
+        "tc_plain",
+        "read",
+        r#"{"path":"a.rs"}"#,
+    ));
+    let theme = crate::feat::theme::default_theme();
+
+    let (mut terminal, area) = setup_term(80, 12);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then no row carries the subagent band background.
+    let buffer = terminal.backend().buffer();
+    let content_x = area.x + GUTTER_WIDTH;
+    let has_band = (area.y..area.bottom()).any(|y| {
+        content_row(buffer, content_x, y)
+            .iter()
+            .any(|cell| cell.style().bg == Some(theme.subagent_bg))
+    });
+    assert!(!has_band, "non-task call should render no purple bands");
+}
+
+#[rstest::rstest]
+fn task_call_and_result_bands_form_one_card() {
+    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+
+    // Given a task call with its completed success result.
+    let mut element = ChatLogElement::new();
+    let mut state = AppState::default();
+    {
+        let s = state.active_session_mut();
+        s.push_entry(ChatEntry::tool_call("tc_card", TASK_TOOL_NAME, "{}"));
+        s.push_entry(ChatEntry::tool_result(
+            "tc_card",
+            TASK_TOOL_NAME,
+            "done",
+            ToolResultStatus::Success,
+        ));
+    }
+    let theme = crate::feat::theme::default_theme();
+
+    let (mut terminal, area) = setup_term(80, 12);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the rows are: band, call, band, band, result(green), band — the
+    // middle double band reads as the card's spine between call and result.
+    let buffer = terminal.backend().buffer().clone();
+    let content_x = area.x + GUTTER_WIDTH;
+    let band_y: Vec<u16> = (area.y..area.bottom())
+        .filter(|&y| {
+            content_row(&buffer, content_x, y)
+                .iter()
+                .any(|cell| cell.style().bg == Some(theme.subagent_bg))
+        })
+        .collect();
+    assert_eq!(
+        band_y.len(),
+        4,
+        "expected 4 band rows (2 per entry): {band_y:?}"
+    );
+    // And two of them are adjacent (bottom band of call + top band of result).
+    let has_adjacent_pair = band_y.windows(2).any(|w| w[1] == w[0] + 1);
+    assert!(
+        has_adjacent_pair,
+        "call bottom band and result top band should be adjacent: {band_y:?}"
+    );
+    // And the result's content row carries the success background.
+    let success_y = band_y[1] + 2;
+    let result_row = content_row(&buffer, content_x, success_y);
+    assert!(
+        result_row
+            .iter()
+            .any(|cell| cell.style().bg == Some(theme.tool_success_bg)),
+        "result row should have success bg"
+    );
+}
