@@ -818,6 +818,7 @@ fn begin_tool_call_creates_entry_with_empty_arguments() {
             id: "call_1".to_owned(),
             name: "echo".to_owned(),
             arguments: String::new(),
+            child_session: None,
         }
     );
 }
@@ -844,6 +845,7 @@ fn append_tool_call_delta_accumulates_arguments() {
             id: "call_1".to_owned(),
             name: "echo".to_owned(),
             arguments: r#"{"input":"hello"}"#.to_owned(),
+            child_session: None,
         }
     );
 }
@@ -868,6 +870,7 @@ fn finalize_tool_call_overwrites_arguments() {
             id: "call_1".to_owned(),
             name: "echo".to_owned(),
             arguments: r#"{"input":"world"}"#.to_owned(),
+            child_session: None,
         }
     );
 }
@@ -889,6 +892,7 @@ fn finalize_tool_call_pushes_new_entry_when_not_found() {
             id: "call_99".to_owned(),
             name: "echo".to_owned(),
             arguments: r#"{"input":"hi"}"#.to_owned(),
+            child_session: None,
         }
     );
 }
@@ -910,6 +914,7 @@ fn first_tool_call_tracks_arguments() {
             id: "call_1".to_owned(),
             name: "echo".to_owned(),
             arguments: r#"{"a":1}"#.to_owned(),
+            child_session: None,
         }
     );
 }
@@ -933,6 +938,7 @@ fn second_tool_call_tracks_independent_arguments() {
             id: "call_2".to_owned(),
             name: "get_time".to_owned(),
             arguments: "{}".to_owned(),
+            child_session: None,
         }
     );
 }

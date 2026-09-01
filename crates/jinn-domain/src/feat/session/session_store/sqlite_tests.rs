@@ -454,7 +454,7 @@ async fn all_entry_kinds_round_trip() {
         matches!(&loaded.history()[5].kind, ChatEntryKind::Thinking(t) if t == "thinking text")
     );
     assert!(
-        matches!(&loaded.history()[6].kind, ChatEntryKind::ToolCall { id, name, arguments } if id == "call_1" && name == "bash" && arguments == "{\"cmd\": true}")
+        matches!(&loaded.history()[6].kind, ChatEntryKind::ToolCall { id, name, arguments, .. } if id == "call_1" && name == "bash" && arguments == "{\"cmd\": true}")
     );
     assert!(
         matches!(&loaded.history()[7].kind, ChatEntryKind::ToolResult { id, name, content, status, .. } if id == "call_1" && name == "bash" && content == "ok" && *status == ToolResultStatus::Success)
