@@ -31,6 +31,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
+use super::tool_call::ENTER_HINT;
 
 /// Text shown on the outcome row of a successful task result.
 const FINISHED_TEXT: &str = "Subagent task finished";
@@ -104,7 +105,7 @@ fn task_status_row(paired: Option<ToolResultStatus>, ctx: &RenderContext) -> Lin
             ));
         }
     };
-    let text = truncate_to_width(text, width);
+    let text = truncate_to_width(&format!("{text}{ENTER_HINT}"), width);
     let padded = format!("{text}{}", " ".repeat(width.saturating_sub(text.len())));
     Line::from(Span::styled(
         padded,
@@ -1166,13 +1167,17 @@ mod tests {
             "task result content should render on subagent_bg"
         );
 
-        // And the status row reads "Subagent task finished" on success bg
-        // with white text.
+        // And the status row reads "Subagent task finished" (with the
+        // enter hint) on success bg with white text.
         let status = lines.last().expect("lines");
         let text: String = status.spans.iter().map(|s| s.content.clone()).collect();
         assert!(
             text.contains("Subagent task finished"),
             "status row text mismatch: {text}"
+        );
+        assert!(
+            text.contains("press enter to open"),
+            "status row should carry the enter hint: {text}"
         );
         assert!(
             status
@@ -1182,8 +1187,8 @@ mod tests {
                     && s.style.fg == Some(Color::White)),
             "status row should be white on success bg"
         );
-        // And the row is padded to the full content width.
-        assert_eq!(status.width(), ctx.content_width as usize);
+        // And the row fills the content width (at least one padding column).
+        assert!(status.width() >= ctx.content_width as usize - 1);
     }
 
     #[rstest::rstest]

@@ -1,10 +1,10 @@
-//! Opens the child subagent session linked to the selected `task` tool call.
+//! Opens the child subagent session linked to the selected `task` entry.
 //!
-//! Normal-mode `<enter>` on a selected `task` tool-call entry activates the
-//! child session it spawned: switching to it when it is already in memory,
-//! or requesting a disk load through the standard session-load path when it
-//! is not. Anything else — no selection, a non-`task` entry, a call without
-//! a link — is a no-op.
+//! Normal-mode `<enter>` on a selected `task` tool call **or its result**
+//! activates the child session that call spawned: switching to it when it is
+//! already in memory, or requesting a disk load through the standard
+//! session-load path when it is not. Anything else — no selection, a
+//! non-`task` entry, a task without a link — is a no-op.
 
 use crate::common::app_state::AppState;
 use crate::feat::session::chat_entry::ChatEntryKind;
@@ -18,43 +18,48 @@ use wherror::Error;
 pub enum LoadSubagentError {
     /// Nothing is selected in the chat history.
     NoSelection,
-    /// The selected entry is not a tool call.
+    /// The selected entry is not a `task` tool call or its result.
     NotTaskCall,
-    /// The selected `task` call carries no child-session link.
+    /// The selected `task` call/result carries no child-session link.
     NoChildLink,
 }
 
-/// Resolves the child session linked to the selected `task` tool call.
+/// Resolves the child session linked to the selected `task` entry.
+///
+/// Accepts both halves of the task pair — the tool call and its result.
 ///
 /// # Errors
 ///
 /// Returns [`LoadSubagentError::NoSelection`] when nothing is selected,
 /// [`LoadSubagentError::NotTaskCall`] when the selection is not a `task`
-/// tool call, and [`LoadSubagentError::NoChildLink`] when the call predates
-/// link stamping or otherwise carries no link.
+/// tool call or result, and [`LoadSubagentError::NoChildLink`] when the
+/// selection predates link stamping or otherwise carries no link.
 pub fn validate_load_subagent_session(state: &AppState) -> Result<SessionId, LoadSubagentError> {
     let entry = state
         .active_session()
         .selected_entry()
         .ok_or(LoadSubagentError::NoSelection)?;
 
-    let ChatEntryKind::ToolCall {
-        name,
-        child_session,
-        ..
-    } = &entry.kind
-    else {
-        return Err(LoadSubagentError::NotTaskCall);
+    let call_id = match &entry.kind {
+        ChatEntryKind::ToolCall { id, name, .. } if name == TASK_TOOL_NAME => id,
+        ChatEntryKind::ToolResult { id, name, .. } if name == TASK_TOOL_NAME => id,
+        _ => return Err(LoadSubagentError::NotTaskCall),
     };
 
-    if name != TASK_TOOL_NAME {
-        return Err(LoadSubagentError::NotTaskCall);
-    }
-
-    child_session.clone().ok_or(LoadSubagentError::NoChildLink)
+    let history = state.active_session().history();
+    history
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            ChatEntryKind::ToolCall {
+                id, child_session, ..
+            } if id == call_id => child_session.clone(),
+            _ => None,
+        })
+        .ok_or(LoadSubagentError::NoChildLink)
 }
 
-/// Opens the selected `task` call's child session.
+/// Opens the selected `task` call's or result's child session.
 ///
 /// Loads the child from disk through the standard `SessionLoadRequested`
 /// path when it is not in memory (the load flow unarchives and emits
@@ -163,11 +168,81 @@ mod tests {
         assert!(matches!(result, Err(LoadSubagentError::NoChildLink)));
     }
 
+    /// Builds the success result paired with a `task` call entry.
+    fn task_result_entry(call_id: &str) -> ChatEntry {
+        ChatEntry::tool_result(
+            call_id,
+            TASK_TOOL_NAME,
+            "child output",
+            crate::feat::session::tool_result_status::ToolResultStatus::Success,
+        )
+    }
+
+    #[rstest::rstest]
+    fn validate_rejects_task_result_without_link() {
+        // Given a selected task result whose call carries no link.
+        let mut state = AppState::default();
+        {
+            let s = state.active_session_mut();
+            s.push_entry(task_call_entry(None));
+            s.push_entry(task_result_entry("tc_load_test"));
+            s.select_prev_entry();
+        }
+
+        // When validating.
+        let result = validate_load_subagent_session(&state);
+
+        // Then validation fails with NoChildLink.
+        assert!(matches!(result, Err(LoadSubagentError::NoChildLink)));
+    }
+
+    #[rstest::rstest]
+    fn validate_rejects_non_task_result_selection() {
+        // Given a selected non-task tool result.
+        let mut state = AppState::default();
+        {
+            let s = state.active_session_mut();
+            s.push_entry(ChatEntry::tool_call("tc_read", "read", "{}"));
+            s.push_entry(ChatEntry::tool_result(
+                "tc_read",
+                "read",
+                "out",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ));
+            s.select_prev_entry();
+        }
+
+        // When validating.
+        let result = validate_load_subagent_session(&state);
+
+        // Then validation fails with NotTaskCall.
+        assert!(matches!(result, Err(LoadSubagentError::NotTaskCall)));
+    }
+
     #[rstest::rstest]
     fn validate_resolves_linked_task_call_to_child_id() {
         // Given a selected task call linked to a child session.
         let child_id = SessionId::new();
         let state = state_with_selected(task_call_entry(Some(child_id.clone())));
+
+        // When validating.
+        let result = validate_load_subagent_session(&state);
+
+        // Then validation resolves to the child session id.
+        assert_eq!(result.expect("should resolve"), child_id);
+    }
+
+    #[rstest::rstest]
+    fn validate_resolves_linked_task_result_via_paired_call() {
+        // Given a selected task result whose call is linked to a child.
+        let child_id = SessionId::new();
+        let mut state = AppState::default();
+        {
+            let s = state.active_session_mut();
+            s.push_entry(task_call_entry(Some(child_id.clone())));
+            s.push_entry(task_result_entry("tc_load_test"));
+            s.select_prev_entry();
+        }
 
         // When validating.
         let result = validate_load_subagent_session(&state);
