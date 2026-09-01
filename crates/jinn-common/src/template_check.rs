@@ -266,7 +266,7 @@ pub fn normalize_paths(
 ///
 /// Patterns may contain `*` for already-masked segments. Deliberately
 /// *excludes* array-of-tables collections (`aliases`, `session_lifecycle`,
-// `project`, `auto_prune.regex.rules`): their entry names are field values,
+// `projects`, `auto_prune.regex.rules`): their entry names are field values,
 /// not path segments, so masking them would desynchronize the two sides.
 fn collection_patterns() -> &'static Vec<Vec<String>> {
     static PATTERNS: OnceLock<Vec<Vec<String>>> = OnceLock::new();

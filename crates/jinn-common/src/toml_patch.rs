@@ -174,16 +174,107 @@ fn apply_table_inner(
         let mut child_path = path.to_vec();
         child_path.push(key.clone());
         if target.contains_key(key) {
+            // A structured new value coerces an inline item (scalar, inline
+            // array, inline table) into header form (`[key]` / `[[key]]`).
+            // toml_edit renders key decor INSIDE the header, so the key's
+            // leading comment must first be lifted off — otherwise the
+            // document is rendered corrupt (`[# comment\nkey ]`) — and is
+            // re-attached to the header once the coercion is done.
+            let salvaged = if coerces_to_header(child_value, target.get(key), registry, &child_path)
+            {
+                take_key_decor_prefix(target, key)
+            } else {
+                None
+            };
+
             let child_item: &mut Item =
                 target.get_mut(key).ok_or(PatchError::InternalInvariant {
                     what: "just checked contains_key",
                 })?;
             apply_value(child_value, child_item, registry, &child_path)?;
+
+            if let Some(prefix) = salvaged {
+                reattach_key_prefix(target, key, prefix);
+            }
         } else {
             target.insert(key.as_str(), value_to_item(child_value));
         }
     }
     Ok(())
+}
+
+/// Whether applying `new` over the existing item coerces it from inline
+/// form to header form (`[key]` / `[[key]]`).
+///
+/// Tables coerce whenever the existing item is not already header-form.
+/// Arrays coerce only for registered array keys — an unregistered array
+/// is replaced wholesale and stays inline (`key = [...]`), where key
+/// decor renders harmlessly before the `=`.
+fn coerces_to_header(
+    new: &toml::Value,
+    existing: Option<&Item>,
+    registry: &KeyRegistry,
+    path: &[String],
+) -> bool {
+    let Some(existing) = existing else {
+        return false;
+    };
+    if existing.is_table() || existing.is_array_of_tables() {
+        return false;
+    }
+    match new {
+        toml::Value::Table(_) => true,
+        toml::Value::Array(_) => registry.lookup(path).is_some(),
+        _ => false,
+    }
+}
+
+/// Reads and clears a key's leaf-decor prefix, returning it (usually the
+/// comment block above the key). The suffix — the space between the key
+/// and `=` — is left in place: it renders harmlessly in `key = value`
+/// form, and clearing it would visibly tighten the user's spacing on the
+/// many keys that get salvaged without a comment.
+fn take_key_decor_prefix(table: &mut Table, key: &str) -> Option<String> {
+    let mut key_mut = table.key_mut(key)?;
+    let decor = key_mut.leaf_decor_mut();
+    let prefix = decor
+        .prefix()
+        .and_then(|raw| raw.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    decor.set_prefix("");
+    (!prefix.is_empty()).then_some(prefix)
+}
+
+/// Reads an item's value-decor prefix — the whitespace between `=` and
+/// the value (`k = v`) — without mutating the item. Used to restore that
+/// whitespace when a replacement value is written into the item.
+fn item_value_decor_prefix(item: Option<&Item>) -> Option<String> {
+    match item? {
+        Item::Value(v) => v
+            .decor()
+            .prefix()
+            .and_then(|raw| raw.as_str().map(str::to_owned)),
+        _ => None,
+    }
+}
+
+/// Re-attaches a salvaged key-decor prefix to the header-form item now
+/// stored at `key` — matching where a parsed `# comment
+/// [[key]]` header carries it: on the table's decor, or on the first AoT
+/// element's decor. Silently dropped if the final shape renders elsewhere
+/// (only comment position is lost, never validity).
+fn reattach_key_prefix(table: &mut Table, key: &str, prefix: String) {
+    let Some(item) = table.get_mut(key) else {
+        return;
+    };
+    let decor = match item {
+        Item::Table(t) => Some(t.decor_mut()),
+        Item::ArrayOfTables(a) => a.iter_mut().next().map(Table::decor_mut),
+        _ => None,
+    };
+    if let Some(decor) = decor {
+        decor.set_prefix(prefix);
+    }
 }
 
 fn apply_value(
@@ -253,12 +344,18 @@ fn apply_array(
     if let Some(key_field) = key_field {
         apply_array_of_tables_by_key(new, target, key_field, registry, path)
     } else {
-        // Wholesale replace.
+        // Wholesale replace; preserve the `= v` whitespace the old value
+        // carried so the rendered line keeps its spacing.
+        let ws = item_value_decor_prefix(Some(target));
         let mut new_array = toml_edit::Array::new();
         for v in new {
             new_array.push(value_to_value_edit(v));
         }
-        *target = Item::Value(Value::Array(new_array));
+        let mut replacement = Value::Array(new_array);
+        if let Some(ws) = ws {
+            replacement.decor_mut().set_prefix(ws);
+        }
+        *target = Item::Value(replacement);
         Ok(())
     }
 }
@@ -276,6 +373,18 @@ fn apply_array_of_tables_by_key(
     apply_in_place_updates(array, &new_by_key, key_field, registry, path)?;
     remove_unmatched_entries(array, &matched);
     append_new_entries(array, &new_keys_in_order, &new_by_key, key_field);
+
+    // An empty registered array serializes as an inline `key = []` (see
+    // `value_to_item`), but an empty ArrayOfTables renders as NOTHING —
+    // the key would vanish from the document and the next save would
+    // re-insert it inline (an oscillation across saves). Collapse the
+    // array back to inline form. The value decor prefix " " renders as
+    // the space before `[]`; without it toml_edit renders `key =[]`.
+    if array.is_empty() {
+        let mut replacement = Value::Array(toml_edit::Array::new());
+        replacement.decor_mut().set_prefix(" ");
+        *target = Item::Value(replacement);
+    }
     Ok(())
 }
 

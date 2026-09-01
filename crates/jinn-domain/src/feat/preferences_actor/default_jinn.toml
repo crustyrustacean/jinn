@@ -99,7 +99,7 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # Add one block per directory. Duplicates are ignored.
 #
 # (uncomment below to activate)
-# [[project]]
+# [[projects]]
 # path = "~/code/jinn"
 
 
