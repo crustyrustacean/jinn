@@ -72,19 +72,18 @@ pub fn pad_line_to_width(line: &mut Line<'static>, width: u16, bg_style: Style) 
     }
 }
 
-/// Build a full-width subagent band row — one padding line of
-/// [`Theme::subagent_bg`] background.
+/// Build the subagent marker row — four `⋄` diamonds in
+/// [`Theme::subagent_fg`].
 ///
-/// Task entries (`task` tool calls and their results) are framed by one band
-/// above and one below. The task call's bottom band and the result's top band
-/// render adjacently, reading as a single card around call + result. The
-/// subagent identity channel (purple band) is deliberately separate from the
-/// tool status channel (pending/success/failure content backgrounds).
+/// Task entries frame a subagent block: the `task` tool call carries a marker
+/// above it, its result carries one below. The subagent identity channel
+/// (purple markers) stays separate from the tool status channel
+/// (pending/success/failure content backgrounds).
 #[must_use]
-pub fn subagent_band(theme: &Theme, content_width: u16) -> Line<'static> {
+pub fn subagent_marker(theme: &Theme) -> Line<'static> {
     Line::from(Span::styled(
-        " ".repeat(content_width as usize),
-        Style::default().bg(theme.subagent_bg),
+        crate::feat::ui::chat_log::tool_call::MARKER_TEXT,
+        Style::default().fg(theme.subagent_fg),
     ))
 }
 
@@ -190,7 +189,7 @@ mod tests {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
-    use super::{Pad, multiline_styled, pad_entry, pad_entry_with, strip_ansi, subagent_band};
+    use super::{Pad, multiline_styled, pad_entry, pad_entry_with, strip_ansi, subagent_marker};
 
     #[rstest::rstest]
     fn pad_entry_both_adds_blank_line_above_and_below() {
@@ -346,20 +345,23 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn subagent_band_spans_content_width_with_subagent_bg() {
-        // Given a theme and a content width.
+    fn subagent_marker_is_four_diamonds_in_subagent_fg() {
+        // Given the default theme.
         let theme = crate::feat::theme::default_theme();
 
-        // When building a band.
-        let band = subagent_band(&theme, 40);
+        // When building a marker row.
+        let marker = subagent_marker(&theme);
 
-        // Then the band is all spaces with the subagent background.
-        assert_eq!(band.width(), 40);
+        // Then the marker is the diamond text in the subagent foreground,
+        // with no background.
+        let text: String = marker.spans.iter().map(|s| s.content.clone()).collect();
+        assert_eq!(text, "\u{22c4}\u{22c4}\u{22c4}\u{22c4}");
         assert!(
-            band.spans
+            marker
+                .spans
                 .iter()
-                .all(|s| s.content.trim().is_empty() && s.style.bg == Some(theme.subagent_bg)),
-            "band should be blank with subagent_bg"
+                .all(|s| s.style.fg == Some(theme.subagent_fg))
         );
+        assert!(marker.spans.iter().all(|s| s.style.bg.is_none()));
     }
 }
