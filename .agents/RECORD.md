@@ -224,7 +224,8 @@ Entries are added or amended **only with human approval**.
 - (testing) just lint rejects bare #[test]/#[tokio::test] attributes without an accompanying rstest attribute.
 - (discord) Inbound Discord input — plain messages and every slash command — is accepted only from user IDs listed in `[discord].authorized_users`; an empty or missing list authorizes nobody (deny by default).
 - (discord) Unauthorized slash-command use gets an ephemeral refusal; unauthorized plain messages are silently dropped.
-- (subagents) Subagents are regular sessions spawned by the `task` tool: fresh history, linked to the parent, inheriting the parent's model, cwd, tools, skills, and MCP servers; they appear in the sidebar as children marked with a subagent symbol.
+- (subagents) Subagents are regular sessions spawned by the `task` tool: fresh history, linked to the parent, inheriting the parent's model, cwd, tools, skills, MCP servers, and a snapshot of the parent's task list; they appear in the sidebar as children marked with a subagent symbol.
+- (subagents) A subagent's task-list mutations do not propagate to its parent's list; parent and child own independent copies after spawn.
 - (subagents) The `task` tool blocks until the child session reaches Idle and forwards the child's last chat entry as its tool result; cancellations forward the cancel entry as a failure.
 - (subagents) Sessions with a parent link cannot spawn subagents — the `task` tool is excluded from their toolset (depth-1).
 - (session) Sessions carry no automation flag; identity is a persisted origin enum (user, fork, subagent), and tree structure is linked via `parent_session`.
@@ -235,6 +236,7 @@ Entries are added or amended **only with human approval**.
 - (subagents) Enter on a selected `task` tool call activates its linked child session, loading it from the store if needed; archived children unarchive via the standard load path.
 - (ui) The chat-log line-count cache key includes a render variant (paired tool-result status, streaming, subagent-waiting) so tool entries re-render on status transitions.
 - (tools) The built-in `interactive_term`, `interactive_term_send`, and `interactive_term_kill` tools are the PTY interactive-terminal interface; each call blocks until screen output settles and returns the rendered screen.
+- (tools) The `todo_set_list` tool accepts an empty `phases` array to clear the session's task list entirely.
 - (tools) `interactive_term` PTY sessions persist across tool calls in a coordinator actor; the spawned program's lifetime is decoupled from tool calls.
 - (tools) Agent input to an `interactive_term` session fails the tool call with only the wait notice while the user holds control — no screen is returned; that notice appears nowhere else — leaving control never messages the model.
 - (keybinds) The terminal overlay is toggled with the `<M-t>` key for the active session in every scope except the overlay itself (or the `T` sidebar key on the selected session, which closes it from view mode); inside the overlay the configurable `[interactive_term] control_toggle_key` (default `<c-g>`; any keybind-notation key or sequence, e.g. `<m-g>`) toggles control mode in both directions, and in control mode every other key forwards to the PTY; view mode binds `<M-t>` (close the overlay), `y` (yank the screen to the clipboard), and `I` (yank and push the screen to the model as "Here is the current terminal screen:").
@@ -264,3 +266,4 @@ Entries are added or amended **only with human approval**.
 - (ui) Annotation (Sources) entries render collapsed by default — header plus a muted expand hint — and toggle via the shared `e` expand keybind, like tool entries and compaction blocks.
 - (testing) Default config templates (default_jinn.toml, default_providers.toml) are independent of code defaults: tests guarantee they parse, document every config key, contain no dead keys, and their marked examples uncomment into a valid config.
 - (prompts) Shipped prompts live in `res/prompts`, are embedded at compile time via the `BUNDLED` install catalogue, and `jinn install` seeds them to the user prompts dir, skipping files that already exist unless `--force`.
+- (ui) The quake bar's session section shows both the currently-applied auto-prune token total and the pending accumulation total; the applied total derives from entry context-history at render time, excluding compaction and user-sourced excludes.

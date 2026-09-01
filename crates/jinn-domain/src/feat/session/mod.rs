@@ -30,6 +30,7 @@ pub mod phase_machine;
 pub mod picker_entry;
 pub mod profile;
 pub mod protocol;
+pub mod prune_report;
 pub mod queue_item;
 pub mod render;
 pub mod session_actor;
