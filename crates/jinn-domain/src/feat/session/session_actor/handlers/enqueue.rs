@@ -502,7 +502,9 @@ impl SessionPersistenceActor {
                 let old_phase = session.phase();
                 let dispatched_at = jiff::Timestamp::now();
                 session.begin_streaming();
-                session.core.ephemeral.stream_dispatched_at = Some(dispatched_at);
+                // The in-flight-stream guard is armed by the actor's own
+                // `SendToLlmProvider` subscription (stall_retry.rs) — the
+                // single write point, so this path doesn't set it inline.
                 session.push_token_record(TokenRecord {
                     model_used: model_used.clone(),
                     timestamp: dispatched_at,
