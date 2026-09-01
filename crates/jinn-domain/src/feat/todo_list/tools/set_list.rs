@@ -25,7 +25,8 @@ pub fn definition() -> ToolDefinition {
         description: "Replace the entire task list with a new one. \
             Accepts an ordered list of phases, each containing an ordered list of task \
             descriptions. All existing phases and tasks are discarded. All new tasks are \
-            created with Pending status. Use this when you have a complete plan ready \
+            created with Pending status. Pass an empty phases array to clear the task \
+            list entirely. Use this when you have a complete plan ready \
             to materialize."
             .to_owned(),
         prompt_snippet: Some("Create a new task list".to_owned()),
@@ -35,13 +36,15 @@ pub fn definition() -> ToolDefinition {
                 .to_owned(),
             "Each phase must have a description. Tasks within a phase are optional.".to_owned(),
             "To preserve existing phases, read the current list first and include them.".to_owned(),
+            "Pass an empty phases array ({\"phases\": []}) to clear the task list entirely."
+                .to_owned(),
         ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
                 "phases": {
                     "type": "array",
-                    "description": "Ordered list of phases. Each phase has a description and an optional list of task descriptions.",
+                    "description": "Ordered list of phases. Each phase has a description and an optional list of task descriptions. An empty array clears the task list.",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -57,8 +60,7 @@ pub fn definition() -> ToolDefinition {
                         },
                         "required": ["description"],
                         "additionalProperties": false
-                    },
-                    "minItems": 1
+                    }
                 }
             },
             "required": ["phases"],
@@ -93,11 +95,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return tool_error(call, "'phases' must be an array");
         };
 
-        if phases_arr.is_empty() {
-            return tool_error(call, "'phases' must not be empty");
-        }
-
-        // Parse into (description, task_descriptions) tuples.
+        // Parse into (description, task_descriptions) tuples. An empty array is
+        // valid — it means "clear the task list entirely" — so no per-phase
+        // parsing happens and `phase_data` stays empty.
         let mut phase_data: Vec<(String, Vec<String>)> = Vec::new();
         for (i, phase_val) in phases_arr.iter().enumerate() {
             let desc = match phase_val.get("description").and_then(|v| v.as_str()) {
@@ -129,6 +129,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let result = state.with_session(session_cap, |view| {
             let session = view.session.map().get_unchecked_mut(&session_id);
             let list = session.task_list_mut();
+            if phase_data.is_empty() {
+                list.clear();
+                return Ok("Task list cleared.".to_owned());
+            }
             match list.set_from_descriptions(phase_data) {
                 Ok(()) => {
                     let next_block = list.render_next_block();
@@ -294,22 +298,84 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn set_list_errors_on_empty_phases() {
+    fn set_list_with_empty_phases_clears_list() {
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({ "phases": [] }).to_string(),
         };
-        let ctx = make_context(Some(state), Some(session_id));
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
         let result = execute(call, ctx);
         let result = futures::executor::block_on(result);
-        assert!(!result.success);
+        assert!(result.success, "expected success: {:?}", result.content);
         assert!(
-            result.content.contains("must not be empty"),
-            "expected empty error, got: {:?}",
+            result.content.contains("Task list cleared"),
+            "expected clear message, got: {:?}",
             result.content
         );
+
+        // And the session's task list is empty.
+        let snapshot = state.read();
+        let session = snapshot.session.get(&session_id).expect("session present");
+        assert!(session.task_list().is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_clear_on_already_empty_succeeds() {
+        let app = AppState::default();
+        let state = State::new(app);
+        let session_id = {
+            let r = state.read();
+            r.session.active_session_id().clone()
+        };
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_set_list".to_owned(),
+            arguments: serde_json::json!({ "phases": [] }).to_string(),
+        };
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success, "expected success: {:?}", result.content);
+
+        // And the list is still empty.
+        let snapshot = state.read();
+        let session = snapshot.session.get(&session_id).expect("session present");
+        assert!(session.task_list().is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn set_list_clear_publishes_task_list_updated() {
+        // Given a session with an existing list and a recorder on the bus.
+        let harness = crate::common::bus::test_harness::TestHarness::new().await;
+        let (state, session_id) = setup_with_existing_list();
+        let recorder = harness
+            .spawn_recorder::<crate::feat::session::protocol::task_list_updated::TaskListUpdated>()
+            .await;
+        let mut ctx = make_context(Some(state), Some(session_id.clone()));
+        ctx.bus = Some(harness.bus());
+
+        // When clearing the list via the tool.
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_set_list".to_owned(),
+            arguments: serde_json::json!({ "phases": [] }).to_string(),
+        };
+        let result = execute(call, ctx).await;
+        assert!(result.success, "expected success: {:?}", result.content);
+
+        // Then exactly one TaskListUpdated event is published for the session.
+        let events = crate::common::bus::test_harness::await_recorded(
+            &recorder,
+            1,
+            std::time::Duration::from_secs(5),
+        )
+        .await;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].session_id, session_id);
     }
 
     #[rstest::rstest]
