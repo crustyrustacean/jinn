@@ -372,14 +372,9 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
         // streaming the call); a missing entry is a defensive no-op.
         if let Some(parent) = map.get_mut(&parent_id) {
             parent.edit_history().with_last_matching_mut(
+                |entry| matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == &call.id),
                 |entry| {
-                    matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == &call.id)
-                },
-                |entry| {
-                    if let ChatEntryKind::ToolCall {
-                        child_session, ..
-                    } = &mut entry.kind
-                    {
+                    if let ChatEntryKind::ToolCall { child_session, .. } = &mut entry.kind {
                         *child_session = Some(child_id.clone());
                     }
                 },

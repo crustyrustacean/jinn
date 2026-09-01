@@ -212,6 +212,8 @@ pub fn init_with_control_toggle(control_toggle: &str) -> Keymap<KeyEvent, Scope,
             .bind("F", Intent::NewSessionFromEntry, KeyCategory::ChatHistory)
             // Yank (copy) selected entry to clipboard
             .bind("y", Intent::YankSelectedEntry, KeyCategory::ChatHistory)
+            // Open the selected task call's subagent session
+            .bind("<enter>", Intent::LoadSubagentSession, KeyCategory::ChatHistory)
             // Jump to next/previous compaction summary entry
             .describe_group_with_category("]", "next", KeyCategory::ChatHistory)
             .describe_group_with_category("[", "previous", KeyCategory::ChatHistory)
@@ -2263,6 +2265,33 @@ mod leak_check {
         assert!(
             matches!(intent, Some(jinn_domain::Intent::SkillLoadSelected)),
             "<c-l> in PickerSkill should fire SkillLoadSelected; got {intent:?}",
+        );
+    }
+
+    /// Normal-mode <enter> opens the selected task call's subagent session.
+    /// Also guards against accidental rebinding: nothing else may claim
+    /// <enter> in the Normal scope.
+    #[rstest::rstest]
+    #[test]
+    fn enter_in_normal_scope_fires_load_subagent_session() {
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+
+        // Given the default keymap queried in the Normal scope.
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);
+
+        // When pressing <enter>.
+        let enter = jinn_domain::KeyEvent {
+            key: Key::Enter,
+            modifiers: Modifiers::none(),
+        };
+        let intent = wk.handle_key(enter);
+
+        // Then it resolves to LoadSubagentSession.
+        assert!(
+            matches!(intent, Some(jinn_domain::Intent::LoadSubagentSession)),
+            "<enter> in Normal scope should fire LoadSubagentSession; got {intent:?}",
         );
     }
 }

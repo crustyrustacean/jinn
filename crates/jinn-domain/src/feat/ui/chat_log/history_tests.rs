@@ -1337,21 +1337,16 @@ fn task_waiting_fixture(
     let entry = ChatEntry::tool_call(call_id, TASK_TOOL_NAME, r#"{"prompt": "hi"}"#);
     let entry = {
         let mut e = entry;
-        if let Some(child) = &child_id {
-            if let ChatEntryKind::ToolCall {
-                child_session, ..
-            } = &mut e.kind
-            {
-                *child_session = Some(child.clone());
-            }
+        if let Some(child) = &child_id
+            && let ChatEntryKind::ToolCall { child_session, .. } = &mut e.kind
+        {
+            *child_session = Some(child.clone());
         }
         e
     };
     state.active_session_mut().push_entry(entry);
     if let (Some(child), Some(phase)) = (child_id, child_phase) {
-        let child_session = state
-            .session
-            .get_or_create(&child);
+        let child_session = state.session.get_or_create(&child);
         match phase {
             crate::feat::session::phase_machine::PhaseKind::Sending => {
                 child_session.begin_sending();
@@ -1402,9 +1397,11 @@ fn waiting_line_absent_for_non_task_tool_call() {
     // Given a pending non-task tool call entry.
     let mut element = ChatLogElement::new();
     let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .push_entry(ChatEntry::tool_call("tc_read", "read", r#"{"path": "a.rs"}"#));
+    state.active_session_mut().push_entry(ChatEntry::tool_call(
+        "tc_read",
+        "read",
+        r#"{"path": "a.rs"}"#,
+    ));
 
     let (mut terminal, area) = setup_term(80, 12);
 
@@ -1472,10 +1469,7 @@ fn waiting_line_absent_when_child_not_in_memory() {
         let entry = {
             use crate::feat::session::chat_entry::ChatEntryKind;
             let mut e = entry;
-            if let ChatEntryKind::ToolCall {
-                child_session, ..
-            } = &mut e.kind
-            {
+            if let ChatEntryKind::ToolCall { child_session, .. } = &mut e.kind {
                 *child_session = Some(crate::protocol::SessionId::new());
             }
             e
@@ -1504,8 +1498,6 @@ fn waiting_line_absent_when_child_not_in_memory() {
 
 #[rstest::rstest]
 fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
-    use crate::protocol::SessionId as _;
-
     // Given a rendered pending task call whose linked child is running.
     let mut element = ChatLogElement::new();
     let child_id = crate::protocol::SessionId::new();

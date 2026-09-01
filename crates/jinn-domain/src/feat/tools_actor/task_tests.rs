@@ -350,9 +350,9 @@ async fn task_stamps_spawned_child_session_on_parent_tool_call() {
     let entry = parent
         .history()
         .iter()
-        .find(|entry| {
-            matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_task_1")
-        })
+        .find(
+            |entry| matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_task_1"),
+        )
         .expect("stamped tool call entry");
     let ChatEntryKind::ToolCall { child_session, .. } = &entry.kind else {
         panic!("expected ToolCall kind");
@@ -374,7 +374,11 @@ async fn task_stamp_leaves_unrelated_tool_call_entries_untouched() {
             crate::feat::tools_actor::task::TASK_TOOL_NAME,
             r#"{"prompt": "Explore."}"#,
         ));
-        parent.push_entry(ChatEntry::tool_call("tc_other", "read", r#"{"path": "a.rs"}"#));
+        parent.push_entry(ChatEntry::tool_call(
+            "tc_other",
+            "read",
+            r#"{"path": "a.rs"}"#,
+        ));
     }
     let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
@@ -396,9 +400,7 @@ async fn task_stamp_leaves_unrelated_tool_call_entries_untouched() {
     let entry = parent
         .history()
         .iter()
-        .find(|entry| {
-            matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_other")
-        })
+        .find(|entry| matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_other"))
         .expect("unrelated tool call entry");
     let ChatEntryKind::ToolCall { child_session, .. } = &entry.kind else {
         panic!("expected ToolCall kind");

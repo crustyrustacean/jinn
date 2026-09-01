@@ -538,6 +538,9 @@ impl IntentHandler {
             Intent::SidebarSessionConfirm => {
                 feat::ui::sidebar::sessions::handle_session_activate(state)
             }
+            Intent::LoadSubagentSession => {
+                feat::ui::sidebar::sessions::handle_load_subagent_session(state)
+            }
             Intent::SidebarConfirmInsert => {
                 feat::ui::sidebar::sessions::handle_session_activate_insert(state)
             }

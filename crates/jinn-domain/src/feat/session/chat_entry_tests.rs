@@ -1192,10 +1192,7 @@ fn task_tool_call_with_child_session_roundtrips_through_serde() {
         crate::feat::tools_actor::task::TASK_TOOL_NAME,
         "{}",
     );
-    let ChatEntryKind::ToolCall {
-        child_session, ..
-    } = &mut entry.kind
-    else {
+    let ChatEntryKind::ToolCall { child_session, .. } = &mut entry.kind else {
         panic!("expected ToolCall kind");
     };
     *child_session = Some(child.clone());
