@@ -26,12 +26,16 @@ pub(crate) const PROMPT: &str = "> ";
 /// For non-root entries, constructs non-compacted 3-char-wide segments:
 /// - For each ancestor level: `│  ` if continuing, `   ` if not
 /// - For the entry's own level: `├─ ` if has younger siblings, `└─ ` if last child
+///
+/// `ancestor_continuations[0]` is the root-level slot and is always skipped:
+/// roots occupy the leftmost column, so no continuation line is drawn through
+/// them (mirrors the sidebar's `entry_line` renderer).
 pub fn tree_prefix(entry: &VisibleEntry) -> String {
     if entry.depth == 0 {
         return String::new();
     }
     let mut prefix = String::with_capacity(entry.depth * 3);
-    for &continues in &entry.ancestor_continuations {
+    for &continues in entry.ancestor_continuations.get(1..).unwrap_or(&[]) {
         prefix.push_str(if continues { "│  " } else { "   " });
     }
     prefix.push_str(if entry.is_last_child {
