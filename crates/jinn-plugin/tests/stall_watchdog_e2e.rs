@@ -33,7 +33,10 @@ use jinn_plugin_api::{
 };
 
 /// Where the committed artifact lives, relative to this crate.
-const WASM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../res/plugins/stall-watchdog.wasm");
+const WASM: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../res/plugins/stall-watchdog.wasm"
+);
 
 /// Overall per-step timeout.
 const WAIT: Duration = Duration::from_secs(10);
@@ -351,7 +354,11 @@ async fn stream_ping_resets_the_silence_window() {
     let PluginToHost::InsertSystemEntry(entry) = pushed else {
         panic!("expected the marker entry after the reset window, got {pushed:?}");
     };
-    assert!(entry.text.contains("attempt 1 of 2"), "got: {:?}", entry.text);
+    assert!(
+        entry.text.contains("attempt 1 of 2"),
+        "got: {:?}",
+        entry.text
+    );
     let pushed = read_via_split(&mut reader).await;
     assert!(matches!(pushed, PluginToHost::RestartStalledStream(_)));
 

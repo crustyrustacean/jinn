@@ -411,7 +411,7 @@ impl Message<RetryStalledSession> for SessionPersistenceActor {
 impl Message<SendToLlmProvider> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: SendToLlmProvider, _ctx: &mut Context<Self, Self::Reply>) {
-        self.on_send_to_llm_provider(&msg).await;
+        self.on_send_to_llm_provider(&msg);
     }
 }
 

@@ -29,7 +29,7 @@ impl SessionPersistenceActor {
     /// A second dispatch for the same session simply overwrites the guard:
     /// newest generation wins (the LLM actor aborts the superseded task),
     /// matching the stale-completion drop semantics.
-    pub(in crate::feat::session::session_actor) async fn on_send_to_llm_provider(
+    pub(in crate::feat::session::session_actor) fn on_send_to_llm_provider(
         &self,
         payload: &SendToLlmProvider,
     ) {
@@ -216,7 +216,10 @@ mod tests {
     /// A `SendToLlmProvider` dispatch for `session_id` at `dispatched_at`,
     /// built by deserializing the minimal payload shape (mirrors production:
     /// most fields default).
-    fn dispatch_payload(session_id: &SessionId, dispatched_at: jiff::Timestamp) -> SendToLlmProvider {
+    fn dispatch_payload(
+        session_id: &SessionId,
+        dispatched_at: jiff::Timestamp,
+    ) -> SendToLlmProvider {
         serde_json::from_value(serde_json::json!({
             "session_id": session_id.to_string(),
             "messages": [],
@@ -367,7 +370,7 @@ mod tests {
         let payload = dispatch_payload(&session_id, dispatched_at);
 
         // When the dispatch command reaches the session actor.
-        actor.on_send_to_llm_provider(&payload).await;
+        actor.on_send_to_llm_provider(&payload);
 
         // Then the session's in-flight-stream guard is armed at the command's
         // dispatch timestamp.
@@ -389,9 +392,7 @@ mod tests {
         let (actor, audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         let first_dispatch = jiff::Timestamp::now();
-        actor
-            .on_send_to_llm_provider(&dispatch_payload(&session_id, first_dispatch))
-            .await;
+        actor.on_send_to_llm_provider(&dispatch_payload(&session_id, first_dispatch));
 
         // When the retry handler runs.
         actor.on_retry_stalled_session(&payload).await;
