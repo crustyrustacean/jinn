@@ -230,6 +230,10 @@ Entries are added or amended **only with human approval**.
 - (session) Sessions carry no automation flag; identity is a persisted origin enum (user, fork, subagent), and tree structure is linked via `parent_session`.
 - (subagents) A spawned subagent's first dispatch waits for its discovery settle gate (project context files, skills, enabled MCP servers), bounded by an internal settle budget, so the first prompt includes MCP tools and project context; the message is sent regardless once the budget expires.
 - (subagents) The sidebar's subagent marking reflects the session's origin, not the parent link; forks always get fork origin — even forks of subagent sessions.
+- (subagents) A `task` tool-call entry carries an optional persisted link to the child session it spawned.
+- (subagents) A `task` tool call awaiting its result renders a "Waiting for subagent session to complete" line beneath the call.
+- (subagents) Enter on a selected `task` tool call activates its linked child session, loading it from the store if needed; archived children unarchive via the standard load path.
+- (ui) The chat-log line-count cache key includes a render variant (paired tool-result status, streaming, subagent-waiting) so tool entries re-render on status transitions.
 - (tools) The built-in `interactive_term`, `interactive_term_send`, and `interactive_term_kill` tools are the PTY interactive-terminal interface; each call blocks until screen output settles and returns the rendered screen.
 - (tools) `interactive_term` PTY sessions persist across tool calls in a coordinator actor; the spawned program's lifetime is decoupled from tool calls.
 - (tools) Agent input to an `interactive_term` session fails the tool call with only the wait notice while the user holds control — no screen is returned; that notice appears nowhere else — leaving control never messages the model.
