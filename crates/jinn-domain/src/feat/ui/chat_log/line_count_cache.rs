@@ -110,10 +110,10 @@ impl EntryLineCache {
         (cached.fingerprint == entry.content_fingerprint()
             && cached.is_expanded == is_expanded
             && cached.variant == variant)
-        .then(|| CacheHit {
-            wrapped_count: cached.wrapped_count,
-            lines: cached.lines.clone(),
-        })
+            .then(|| CacheHit {
+                wrapped_count: cached.wrapped_count,
+                lines: cached.lines.clone(),
+            })
     }
 
     /// Store a wrapped line count for an entry (without rendered lines).

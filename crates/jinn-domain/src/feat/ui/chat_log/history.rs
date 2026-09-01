@@ -69,8 +69,8 @@ fn render_variant(
     is_streaming: bool,
     is_waiting_on_subagent: bool,
 ) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
     use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
     (paired_status, is_streaming, is_waiting_on_subagent).hash(&mut hasher);
     hasher.finish()
 }
@@ -324,7 +324,8 @@ impl<'a> HistoryRender<'a> {
                                 .active_session()
                                 .is_tool_call_streaming(&entry.id);
                         let is_waiting_on_subagent = self.is_task_waiting(entry);
-                        let variant = render_variant(paired_status, is_streaming, is_waiting_on_subagent);
+                        let variant =
+                            render_variant(paired_status, is_streaming, is_waiting_on_subagent);
                         let ctx = RenderContext {
                             content_width: self.content_width,
                             is_selected,
@@ -408,13 +409,10 @@ impl<'a> HistoryRender<'a> {
         let Some(child_id) = child_session else {
             return false;
         };
-        let Some(child) = self.state.session.get(&child_id) else {
+        let Some(child) = self.state.session.get(child_id) else {
             return false;
         };
-        matches!(
-            child.phase(),
-            PhaseKind::Sending | PhaseKind::Streaming
-        )
+        matches!(child.phase(), PhaseKind::Sending | PhaseKind::Streaming)
     }
 
     // -----------------------------------------------------------------------
