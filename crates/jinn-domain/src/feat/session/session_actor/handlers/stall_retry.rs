@@ -9,10 +9,42 @@
 //! entries are discarded and the turn is re-dispatched.
 
 use crate::common::actor_deps::BusPublish;
+use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
 
 use super::super::SessionPersistenceActor;
+
+impl SessionPersistenceActor {
+    /// Arm the in-flight-stream guard when an LLM dispatch reaches the actor.
+    ///
+    /// This is the guard's **single write point**: every `SendToLlmProvider`
+    /// publisher (user message, queued/steered dispatch, direct dispatch,
+    /// tool-loop continuation, stall retry) flows through the bus, so receipt
+    /// here covers all dispatch paths — present and future. The stored
+    /// timestamp is the same one the LLM actor embeds in downstream stream
+    /// events, which is exactly what the stale-generation drop in
+    /// `apply_stream_completion` compares against.
+    ///
+    /// A second dispatch for the same session simply overwrites the guard:
+    /// newest generation wins (the LLM actor aborts the superseded task),
+    /// matching the stale-completion drop semantics.
+    pub(in crate::feat::session::session_actor) fn on_send_to_llm_provider(
+        &self,
+        payload: &SendToLlmProvider,
+    ) {
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&payload.session_id);
+            session.core.ephemeral.stream_dispatched_at = Some(payload.dispatched_at);
+        });
+        tracing::debug!(
+            session_id = %payload.session_id,
+            dispatched_at = %payload.dispatched_at,
+            origin = ?payload.origin,
+            "in-flight-stream guard armed at dispatch receipt"
+        );
+    }
+}
 
 impl SessionPersistenceActor {
     /// Re-dispatch a stalled turn: discard partial streaming entries and
@@ -25,8 +57,10 @@ impl SessionPersistenceActor {
     /// The guard is *in-flight-stream*, not elapsed time: the handler acts
     /// only when the phase is `Sending`/`Streaming` **and**
     /// `stream_dispatched_at` is set — i.e. an LLM request is genuinely in
-    /// flight. That timestamp is set at dispatch and cleared when the
-    /// generation's `StreamCompleted` is consumed, so:
+    /// flight. That timestamp is armed by the session actor's own
+    /// `SendToLlmProvider` subscription ([`Self::on_send_to_llm_provider`] —
+    /// the single write point, covering every dispatch path) and cleared when
+    /// the generation's `StreamCompleted` is consumed, so:
     ///
     /// - a stream that self-resolved between the plugin's trip and this
     ///   handler running has a `None` timestamp → no-op (the self-resolved
@@ -147,6 +181,7 @@ mod tests {
     use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
     use crate::feat::session::session_actor::SessionPersistenceActor;
     use crate::protocol::ChatEntryKind;
+    use crate::protocol::SessionId;
 
     /// A session in `Streaming` with a partial assistant entry, a dangling
     /// partial tool call slot free, and an in-flight stream generation
@@ -176,6 +211,21 @@ mod tests {
                 max_restarts: 3,
             },
         )
+    }
+
+    /// A `SendToLlmProvider` dispatch for `session_id` at `dispatched_at`,
+    /// built by deserializing the minimal payload shape (mirrors production:
+    /// most fields default).
+    fn dispatch_payload(
+        session_id: &SessionId,
+        dispatched_at: jiff::Timestamp,
+    ) -> SendToLlmProvider {
+        serde_json::from_value(serde_json::json!({
+            "session_id": session_id.to_string(),
+            "messages": [],
+            "dispatched_at": dispatched_at.to_string(),
+        }))
+        .expect("minimal SendToLlmProvider deserializes")
     }
 
     #[rstest::rstest]
@@ -304,6 +354,72 @@ mod tests {
         assert!(
             !has_active_partial,
             "dangling partial tool call must be excluded from the retried request"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn dispatch_command_arms_the_stall_guard() {
+        // Given a session actor with no in-flight stream for the active session.
+        let (actor, _audit) = test_actor_recording().await;
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+        let dispatched_at = jiff::Timestamp::now();
+        let payload = dispatch_payload(&session_id, dispatched_at);
+
+        // When the dispatch command reaches the session actor.
+        actor.on_send_to_llm_provider(&payload);
+
+        // Then the session's in-flight-stream guard is armed at the command's
+        // dispatch timestamp.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(
+            session.core.ephemeral.stream_dispatched_at,
+            Some(dispatched_at),
+            "SendToLlmProvider receipt must arm the in-flight-stream guard"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn retry_after_dispatch_receipt_acts() {
+        // Given a Streaming session whose in-flight-stream guard was armed the
+        // way production arms it — by the session actor receiving the turn's
+        // `SendToLlmProvider` dispatch (any publisher path).
+        let (actor, audit, payload) = stall_setup().await;
+        let session_id = payload.session_id.clone();
+        let first_dispatch = jiff::Timestamp::now();
+        actor.on_send_to_llm_provider(&dispatch_payload(&session_id, first_dispatch));
+
+        // When the retry handler runs.
+        actor.on_retry_stalled_session(&payload).await;
+
+        // Then a fresh `SendToLlmProvider` re-dispatch was published (the
+        // arming receipt is a direct handler call in this test, so only the
+        // retry's re-dispatch appears in the audit), carrying a newer
+        // timestamp than the original generation's.
+        let re_dispatched = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(
+            re_dispatched.len(),
+            1,
+            "retry must re-publish exactly one fresh dispatch"
+        );
+        let fresh = &re_dispatched[0];
+        assert!(
+            fresh.dispatched_at > first_dispatch,
+            "the retry's re-dispatch must carry a fresh dispatch timestamp"
+        );
+        // And the partial assistant entry was discarded.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            !session.core.history.iter().any(|e| matches!(
+                e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"
+            )),
+            "retry after dispatch receipt must discard partial entries"
         );
     }
 }
