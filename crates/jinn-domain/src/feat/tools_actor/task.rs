@@ -363,7 +363,28 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     // the session up by id — insertion must precede publication or they
     // would each `get_or_create` a bare session over the real child.
     state.with_session(&session_cap, |view| {
-        view.session.map().insert(child);
+        let map = view.session.map();
+        map.insert(child);
+        // Stamp the parent's tool-call entry with the child link. The UI
+        // reads the entry to offer "open subagent session" and to show the
+        // waiting line. The tool-call entry exists by the time this future
+        // runs (the executor only starts after the provider finished
+        // streaming the call); a missing entry is a defensive no-op.
+        if let Some(parent) = map.get_mut(&parent_id) {
+            parent.edit_history().with_last_matching_mut(
+                |entry| {
+                    matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == &call.id)
+                },
+                |entry| {
+                    if let ChatEntryKind::ToolCall {
+                        child_session, ..
+                    } = &mut entry.kind
+                    {
+                        *child_session = Some(child_id.clone());
+                    }
+                },
+            );
+        }
     });
 
     // Register the in-flight pair before blocking so the stall watchdog sees
