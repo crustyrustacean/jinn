@@ -10,7 +10,9 @@
 //! **Expanded:** shows all output lines without truncation.
 //!
 //! Background color is determined by `ctx.paired_status`: no background for
-//! pending, green for success, red for failure.
+//! pending, green for success, red for failure. Task results (tool name
+//! `task`) are additionally framed by full-width subagent band rows above and
+//! below, visually pairing them with their tool call.
 //!
 //! Collapsed format:
 //! ```text
@@ -22,12 +24,13 @@
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::skills::loaded_skill_summary_label;
+use crate::feat::tools_actor::task::TASK_TOOL_NAME;
 use crate::feat::tools_actor::truncation::format_size;
 use jinn_provider::tool_types::TruncationMeta;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
+use super::shared::{RenderContext, pad_line_to_width, subagent_band, truncate_to_width};
 
 pub fn to_lines(
     name: &str,
@@ -37,19 +40,35 @@ pub fn to_lines(
     is_alert: bool,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
+    let is_task = name == TASK_TOOL_NAME;
+
     // Loaded skills are pinned as `<skill name="X" ...>` XML.
     // Show a clean single-line summary instead of the raw XML body.
     if name == "skill" {
-        return skill_summary_lines(content, ctx);
+        let mut lines = skill_summary_lines(content, ctx);
+        if is_task {
+            lines.insert(0, subagent_band(&ctx.theme, ctx.content_width));
+            let band = subagent_band(&ctx.theme, ctx.content_width);
+            lines.push(band);
+        }
+        return lines;
     }
     let _ = status;
-    if is_alert {
+    let mut lines = if is_alert {
         alert_lines(content, ctx)
     } else if ctx.is_expanded {
         to_lines_expanded(content, truncation, ctx)
     } else {
         to_lines_collapsed(content, truncation, ctx)
+    };
+
+    if is_task {
+        lines.insert(0, subagent_band(&ctx.theme, ctx.content_width));
+        let band = subagent_band(&ctx.theme, ctx.content_width);
+        lines.push(band);
     }
+
+    lines
 }
 
 /// Render a pending alert (e.g. a detected bot challenge) as an unmissable
@@ -1057,5 +1076,128 @@ mod tests {
             "line width {width} should be at least {}",
             ctx.content_width
         );
+    }
+
+    #[rstest::rstest]
+    fn task_result_is_framed_by_subagent_bands() {
+        // Given a successful task tool result.
+        let ctx = render_context(5, false);
+        let theme = ctx.theme.clone();
+
+        // When converting to lines.
+        let lines = to_lines(
+            TASK_TOOL_NAME,
+            "child finished",
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
+
+        // Then the first and last lines are blank bands on subagent_bg.
+        for band in [lines.first().expect("lines"), lines.last().expect("lines")] {
+            assert_eq!(band.width(), ctx.content_width as usize);
+            assert!(
+                band.spans
+                    .iter()
+                    .all(|s| s.content.trim().is_empty() && s.style.bg == Some(theme.subagent_bg)),
+                "bands should be blank with subagent_bg: {band:?}"
+            );
+        }
+        // And the interior is the single content line.
+        assert_eq!(lines.len(), 3);
+    }
+
+    #[rstest::rstest]
+    fn task_result_keeps_bands_when_failed() {
+        // Given a task tool result paired with a failure status.
+        let ctx = render_context_with_status(Some(ToolResultStatus::Failure));
+        let theme = ctx.theme.clone();
+
+        // When converting to lines.
+        let lines = to_lines(
+            TASK_TOOL_NAME,
+            "child errored",
+            ToolResultStatus::Failure,
+            None,
+            false,
+            &ctx,
+        );
+
+        // Then the bands still carry subagent_bg.
+        assert!(
+            lines.iter().any(|l| l
+                .spans
+                .iter()
+                .any(|s| s.style.bg == Some(theme.subagent_bg))),
+            "failed task result should keep subagent bands"
+        );
+
+        // And the content line carries the failure background.
+        let content = &lines[1];
+        assert!(
+            content
+                .spans
+                .iter()
+                .any(|s| s.style.bg == Some(theme.tool_failure_bg)),
+            "failed task result content should have failure bg"
+        );
+    }
+
+    #[rstest::rstest]
+    fn task_result_pending_keeps_bands_without_status_bg() {
+        // Given a pending task tool result.
+        let ctx = render_context(5, false);
+        let theme = ctx.theme.clone();
+
+        // When converting to lines.
+        let lines = to_lines(
+            TASK_TOOL_NAME,
+            "running",
+            ToolResultStatus::Pending,
+            None,
+            false,
+            &ctx,
+        );
+
+        // Then the bands carry subagent_bg.
+        assert!(
+            lines.iter().any(|l| l
+                .spans
+                .iter()
+                .any(|s| s.style.bg == Some(theme.subagent_bg))),
+            "pending task result should keep subagent bands"
+        );
+
+        // And the content line has no status background.
+        assert!(
+            lines[1].spans.iter().all(|s| s.style.bg.is_none()),
+            "pending task result content should have no status bg"
+        );
+    }
+
+    #[rstest::rstest]
+    fn non_task_result_has_no_bands() {
+        // Given a non-task tool result with a success background.
+        let ctx = render_context(5, false);
+        let theme = ctx.theme.clone();
+
+        // When converting to lines.
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Success,
+            None,
+            false,
+            &ctx,
+        );
+
+        // Then no line carries the subagent band background.
+        let has_band = lines.iter().any(|l| {
+            l.spans
+                .iter()
+                .any(|s| s.style.bg == Some(theme.subagent_bg))
+        });
+        assert!(!has_band, "non-task result should have no subagent bands");
     }
 }

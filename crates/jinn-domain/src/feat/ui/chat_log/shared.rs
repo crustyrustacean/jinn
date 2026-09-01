@@ -72,6 +72,22 @@ pub fn pad_line_to_width(line: &mut Line<'static>, width: u16, bg_style: Style) 
     }
 }
 
+/// Build a full-width subagent band row — one padding line of
+/// [`Theme::subagent_bg`] background.
+///
+/// Task entries (`task` tool calls and their results) are framed by one band
+/// above and one below. The task call's bottom band and the result's top band
+/// render adjacently, reading as a single card around call + result. The
+/// subagent identity channel (purple band) is deliberately separate from the
+/// tool status channel (pending/success/failure content backgrounds).
+#[must_use]
+pub fn subagent_band(theme: &Theme, content_width: u16) -> Line<'static> {
+    Line::from(Span::styled(
+        " ".repeat(content_width as usize),
+        Style::default().bg(theme.subagent_bg),
+    ))
+}
+
 /// Which sides of an entry to pad with a blank line.
 ///
 /// Controls where visual spacing is added around a chat entry.
@@ -174,7 +190,7 @@ mod tests {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
-    use super::{Pad, multiline_styled, pad_entry, pad_entry_with, strip_ansi};
+    use super::{Pad, multiline_styled, pad_entry, pad_entry_with, strip_ansi, subagent_band};
 
     #[rstest::rstest]
     fn pad_entry_both_adds_blank_line_above_and_below() {
@@ -327,5 +343,23 @@ mod tests {
         // Then there is exactly one content line.
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].spans[0].content, "hello");
+    }
+
+    #[rstest::rstest]
+    fn subagent_band_spans_content_width_with_subagent_bg() {
+        // Given a theme and a content width.
+        let theme = crate::feat::theme::default_theme();
+
+        // When building a band.
+        let band = subagent_band(&theme, 40);
+
+        // Then the band is all spaces with the subagent background.
+        assert_eq!(band.width(), 40);
+        assert!(
+            band.spans
+                .iter()
+                .all(|s| s.content.trim().is_empty() && s.style.bg == Some(theme.subagent_bg)),
+            "band should be blank with subagent_bg"
+        );
     }
 }

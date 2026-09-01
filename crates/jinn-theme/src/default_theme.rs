@@ -60,6 +60,7 @@ mod tests {
             ("challenge_alert_fg", theme.challenge_alert_fg),
             ("compaction_block_bg", theme.compaction_block_bg),
             ("truncation_fg", theme.truncation_fg),
+            ("subagent_bg", theme.subagent_bg),
             ("picker_active_marker", theme.picker_active_marker),
             ("picker_selected_bg", theme.picker_selected_bg),
             ("picker_highlight_bg", theme.picker_highlight_bg),

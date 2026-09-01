@@ -65,6 +65,10 @@ pub struct Theme {
     pub compaction_block_bg: Color,
     /// Tool result truncation indicator foreground.
     pub truncation_fg: Color,
+    /// Subagent band background — the padding rows above and below `task`
+    /// tool calls and their results, marking the subagent card. A dark,
+    /// low-contrast purple so status tints stay readable inside the card.
+    pub subagent_bg: Color,
 
     // Picker
     /// Picker active item marker color (the `>` prefix).
@@ -167,6 +171,7 @@ impl Theme {
             Style::default().fg(self.compaction_block_bg),
         );
         m.insert("truncation_fg", Style::default().fg(self.truncation_fg));
+        m.insert("subagent_bg", Style::default().fg(self.subagent_bg));
         m.insert(
             "picker_active_marker",
             Style::default().fg(self.picker_active_marker),
@@ -266,6 +271,8 @@ pub struct ThemeFile {
     pub compaction_block_bg: Option<ThemeColor>,
     #[serde(default)]
     pub truncation_fg: Option<ThemeColor>,
+    #[serde(default)]
+    pub subagent_bg: Option<ThemeColor>,
 
     #[serde(default)]
     pub picker_active_marker: Option<ThemeColor>,
@@ -354,6 +361,9 @@ impl ThemeFile {
             subagent_fg: self
                 .subagent_fg
                 .map_or(fallback.subagent_fg, crate::color::ThemeColor::inner),
+            subagent_bg: self
+                .subagent_bg
+                .map_or(fallback.subagent_bg, crate::color::ThemeColor::inner),
             error_text: self
                 .error_text
                 .map_or(fallback.error_text, crate::color::ThemeColor::inner),
@@ -489,6 +499,7 @@ impl ThemeFile {
             primary_text: Self::resolve_field(self.primary_text),
             muted_text: Self::resolve_field(self.muted_text),
             subagent_fg: Self::resolve_field(self.subagent_fg),
+            subagent_bg: Self::resolve_field(self.subagent_bg),
             error_text: Self::resolve_field(self.error_text),
             success: Self::resolve_field(self.success),
             warning: Self::resolve_field(self.warning),
@@ -548,6 +559,7 @@ mod tests {
             primary_text: None,
             muted_text: None,
             subagent_fg: None,
+            subagent_bg: None,
             error_text: None,
             success: None,
             warning: None,
@@ -612,6 +624,7 @@ mod tests {
             primary_text: None,
             muted_text: None,
             subagent_fg: None,
+            subagent_bg: None,
             error_text: None,
             success: None,
             warning: None,
@@ -684,6 +697,7 @@ mod tests {
             primary_text: Some(ThemeColor(Color::White)),
             muted_text: Some(ThemeColor(Color::DarkGray)),
             subagent_fg: Some(ThemeColor(Color::Rgb(152, 128, 208))),
+            subagent_bg: Some(ThemeColor(Color::Rgb(45, 38, 64))),
             error_text: Some(ThemeColor(Color::Red)),
             success: Some(ThemeColor(Color::Green)),
             warning: Some(ThemeColor(Color::Yellow)),
@@ -734,6 +748,10 @@ mod tests {
         );
         assert_eq!(original.resolve().gutter_bg, restored.resolve().gutter_bg);
         assert_eq!(
+            original.resolve().subagent_bg,
+            restored.resolve().subagent_bg
+        );
+        assert_eq!(
             original.resolve().input_mode_queue,
             restored.resolve().input_mode_queue
         );
@@ -755,6 +773,7 @@ mod tests {
             primary_text: None,
             muted_text: None,
             subagent_fg: None,
+            subagent_bg: None,
             error_text: None,
             success: None,
             warning: None,
