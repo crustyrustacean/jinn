@@ -1540,7 +1540,7 @@ fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
 }
 
 // ---------------------------------------------------------------------------
-// Subagent bands
+// Subagent markers
 // ---------------------------------------------------------------------------
 
 /// Every cell of a rendered row, from the content column onward.
@@ -1554,8 +1554,26 @@ fn content_row(
         .collect()
 }
 
+/// Whether a rendered row is exactly the purple diamond marker row.
+fn is_marker_row(
+    buffer: &ratatui::buffer::Buffer,
+    area_x: u16,
+    y: u16,
+    fg: ratatui::style::Color,
+) -> bool {
+    let cells: Vec<ratatui::buffer::Cell> = (area_x..buffer.area.width)
+        .filter_map(|x| buffer.cell((x, y)).cloned())
+        .collect();
+    let non_blank: Vec<&ratatui::buffer::Cell> = cells
+        .iter()
+        .filter(|c| !c.symbol().trim().is_empty())
+        .collect();
+    let text: String = non_blank.iter().map(|c| c.symbol().to_owned()).collect();
+    text == "\u{22c4}\u{22c4}\u{22c4}\u{22c4}" && non_blank.iter().all(|c| c.style().fg == Some(fg))
+}
+
 #[rstest::rstest]
-fn task_call_entry_is_framed_by_purple_bands() {
+fn task_call_entry_carries_marker_row_above() {
     use crate::feat::tools_actor::task::TASK_TOOL_NAME;
 
     // Given a session containing only a pending task call.
@@ -1563,7 +1581,7 @@ fn task_call_entry_is_framed_by_purple_bands() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .push_entry(ChatEntry::tool_call("tc_band", TASK_TOOL_NAME, "{}"));
+        .push_entry(ChatEntry::tool_call("tc_marker", TASK_TOOL_NAME, "{}"));
     let theme = crate::feat::theme::default_theme();
 
     let (mut terminal, area) = setup_term(80, 12);
@@ -1576,44 +1594,24 @@ fn task_call_entry_is_framed_by_purple_bands() {
         })
         .unwrap();
 
-    // Then the entry occupies 3 rows: band, call line, band — with the band
-    // rows fully painted in the subagent background across the content column.
+    // Then the buffer contains exactly one marker row, above the call text.
     let buffer = terminal.backend().buffer().clone();
     let content_x = area.x + GUTTER_WIDTH;
-    let band_rows: Vec<Vec<ratatui::buffer::Cell>> = (area.y..area.bottom())
-        .map(|y| content_row(&buffer, content_x, y))
-        .filter(|row| {
-            row.iter().all(|cell| cell.symbol().trim().is_empty())
-                && row.len() > 4
-                && row
-                    .iter()
-                    .filter(|cell| cell.style().bg.is_some())
-                    .all(|cell| cell.style().bg == Some(theme.subagent_bg))
-                && row.iter().any(|cell| cell.style().bg.is_some())
-        })
+    let marker_rows: Vec<u16> = (area.y..area.bottom())
+        .filter(|&y| is_marker_row(&buffer, content_x, y, theme.subagent_fg))
         .collect();
-    assert_eq!(
-        band_rows.len(),
-        2,
-        "expected exactly 2 purple band rows, got {band_rows:?}"
-    );
-    // And the two band rows are consecutive (top and bottom of the entry).
-    let band_y: Vec<u16> = (area.y..area.bottom())
-        .filter(|&y| {
-            let row = content_row(&buffer, content_x, y);
-            row.iter()
-                .any(|cell| cell.style().bg == Some(theme.subagent_bg))
-        })
-        .collect();
-    assert_eq!(
-        band_y,
-        vec![band_y[0], band_y[0] + 2],
-        "bands should sandwich the call line"
+    assert_eq!(marker_rows.len(), 1, "expected one marker row");
+    // And the call text sits directly below the marker.
+    let call_row = content_row(&buffer, content_x, marker_rows[0] + 1);
+    let text: String = call_row.iter().map(|c| c.symbol().to_owned()).collect();
+    assert!(
+        text.contains("task"),
+        "call text should follow the marker row, got: {text}"
     );
 }
 
 #[rstest::rstest]
-fn non_task_call_entry_has_no_purple_bands() {
+fn non_task_call_entry_has_no_marker_row() {
     // Given a session containing a non-task tool call.
     let mut element = ChatLogElement::new();
     let mut state = AppState::default();
@@ -1634,19 +1632,16 @@ fn non_task_call_entry_has_no_purple_bands() {
         })
         .unwrap();
 
-    // Then no row carries the subagent band background.
+    // Then no marker row is rendered.
     let buffer = terminal.backend().buffer();
     let content_x = area.x + GUTTER_WIDTH;
-    let has_band = (area.y..area.bottom()).any(|y| {
-        content_row(buffer, content_x, y)
-            .iter()
-            .any(|cell| cell.style().bg == Some(theme.subagent_bg))
-    });
-    assert!(!has_band, "non-task call should render no purple bands");
+    let has_marker =
+        (area.y..area.bottom()).any(|y| is_marker_row(buffer, content_x, y, theme.subagent_fg));
+    assert!(!has_marker, "non-task call should render no marker row");
 }
 
 #[rstest::rstest]
-fn task_call_and_result_bands_form_one_card() {
+fn task_result_entry_carries_marker_row_below() {
     use crate::feat::tools_actor::task::TASK_TOOL_NAME;
 
     // Given a task call with its completed success result.
@@ -1654,9 +1649,9 @@ fn task_call_and_result_bands_form_one_card() {
     let mut state = AppState::default();
     {
         let s = state.active_session_mut();
-        s.push_entry(ChatEntry::tool_call("tc_card", TASK_TOOL_NAME, "{}"));
+        s.push_entry(ChatEntry::tool_call("tc_close", TASK_TOOL_NAME, "{}"));
         s.push_entry(ChatEntry::tool_result(
-            "tc_card",
+            "tc_close",
             TASK_TOOL_NAME,
             "done",
             ToolResultStatus::Success,
@@ -1674,35 +1669,19 @@ fn task_call_and_result_bands_form_one_card() {
         })
         .unwrap();
 
-    // Then the rows are: band, call, band, band, result(green), band — the
-    // middle double band reads as the card's spine between call and result.
+    // Then the buffer contains exactly two marker rows (call opener + result closer).
     let buffer = terminal.backend().buffer().clone();
     let content_x = area.x + GUTTER_WIDTH;
-    let band_y: Vec<u16> = (area.y..area.bottom())
-        .filter(|&y| {
-            content_row(&buffer, content_x, y)
-                .iter()
-                .any(|cell| cell.style().bg == Some(theme.subagent_bg))
-        })
+    let marker_rows: Vec<u16> = (area.y..area.bottom())
+        .filter(|&y| is_marker_row(&buffer, content_x, y, theme.subagent_fg))
         .collect();
-    assert_eq!(
-        band_y.len(),
-        4,
-        "expected 4 band rows (2 per entry): {band_y:?}"
-    );
-    // And two of them are adjacent (bottom band of call + top band of result).
-    let has_adjacent_pair = band_y.windows(2).any(|w| w[1] == w[0] + 1);
-    assert!(
-        has_adjacent_pair,
-        "call bottom band and result top band should be adjacent: {band_y:?}"
-    );
-    // And the result's content row carries the success background.
-    let success_y = band_y[1] + 2;
-    let result_row = content_row(&buffer, content_x, success_y);
+    assert_eq!(marker_rows.len(), 2, "expected opener and closer markers");
+    // And the closer sits below the green result row.
+    let result_row = content_row(&buffer, content_x, marker_rows[1] - 1);
     assert!(
         result_row
             .iter()
-            .any(|cell| cell.style().bg == Some(theme.tool_success_bg)),
-        "result row should have success bg"
+            .any(|c| c.style().bg == Some(theme.tool_success_bg)),
+        "result row should sit above the closing marker"
     );
 }

@@ -15,10 +15,10 @@
 //!
 //! A `task` tool call still awaiting its result while its linked child
 //! session runs (`ctx.is_waiting_on_subagent`) renders an additional status
-//! line beneath the call, purple text on the subagent band background.
+//! line beneath the call, in the subagent purple.
 //!
-//! Task calls (tool name `task`) are framed by full-width subagent band
-//! rows above and below, visually pairing them with their results.
+//! Task calls (tool name `task`) carry a purple `⋄⋄⋄⋄` marker row above,
+//! marking the start of the subagent block.
 //!
 //! Background color is determined by the paired tool result's status:
 //! no background while pending, green on success, red on failure.
@@ -28,19 +28,21 @@ use crate::feat::tools_actor::task::TASK_TOOL_NAME;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_line_to_width, subagent_band, truncate_to_width};
+use super::shared::{RenderContext, pad_line_to_width, subagent_marker, truncate_to_width};
 
 /// Status line shown under a `task` call whose subagent session is running.
 const WAITING_TEXT: &str = "Waiting for subagent session to complete";
+
+/// Marker row rendered above a `task` tool call — four purple diamonds.
+pub(crate) const MARKER_TEXT: &str = "⋄⋄⋄⋄";
 
 /// Render a tool call entry to visual lines.
 ///
 /// Dispatches to the appropriate sub-function based on tool name and context.
 ///
-/// `task` calls are framed by full-width [`subagent_band`] rows above and
-/// below their content (the subagent identity channel), and the waiting line
-/// uses [`jinn_theme::Theme::subagent_fg`] — the same purple as the sidebar's
-/// subagent session markings. All other tools render unchanged.
+/// A `task` call carries a [`subagent_marker`] row above it, and the waiting
+/// line uses [`jinn_theme::Theme::subagent_fg`] — the same purple as the
+/// sidebar's subagent session markings. All other tools render unchanged.
 pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let is_task = name == TASK_TOOL_NAME;
     let mut lines = if name == "bash" {
@@ -56,16 +58,12 @@ pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'s
     if ctx.is_waiting_on_subagent {
         lines.push(Line::from(Span::styled(
             truncate_to_width(WAITING_TEXT, ctx.content_width as usize),
-            Style::default()
-                .fg(ctx.theme.subagent_fg)
-                .bg(ctx.theme.subagent_bg),
+            Style::default().fg(ctx.theme.subagent_fg),
         )));
     }
 
     if is_task {
-        lines.insert(0, subagent_band(&ctx.theme, ctx.content_width));
-        let band = subagent_band(&ctx.theme, ctx.content_width);
-        lines.push(band);
+        lines.insert(0, subagent_marker(&ctx.theme));
     }
 
     lines
@@ -646,7 +644,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn task_call_is_framed_by_subagent_bands() {
+    fn task_call_carries_purple_marker_row_above() {
         // Given a task tool call.
         let ctx = render_context(6, false);
         let theme = ctx.theme.clone();
@@ -654,22 +652,24 @@ mod tests {
         // When converting to lines.
         let lines = to_lines(TASK_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
 
-        // Then the first and last lines are blank bands on subagent_bg.
-        for band in [lines.first().expect("lines"), lines.last().expect("lines")] {
-            assert_eq!(band.width(), ctx.content_width as usize);
-            assert!(
-                band.spans
-                    .iter()
-                    .all(|s| s.content.trim().is_empty() && s.style.bg == Some(theme.subagent_bg)),
-                "bands should be blank with subagent_bg: {band:?}"
-            );
-        }
-        // And the interior line count is 1 (the call line) plus 2 bands.
-        assert_eq!(lines.len(), 3);
+        // Then the first line is the diamond marker row in subagent_fg.
+        let marker = lines.first().expect("lines");
+        let text: String = marker.spans.iter().map(|s| s.content.clone()).collect();
+        assert_eq!(text, MARKER_TEXT);
+        assert!(
+            marker
+                .spans
+                .iter()
+                .all(|s| s.style.fg == Some(theme.subagent_fg)),
+            "marker should use subagent_fg"
+        );
+        // And the call line follows, with no background.
+        assert_eq!(lines.len(), 2);
+        assert!(lines[1].spans.iter().all(|s| s.style.bg.is_none()));
     }
 
     #[rstest::rstest]
-    fn non_task_call_has_no_bands() {
+    fn non_task_call_has_no_marker() {
         // Given a non-task tool call.
         let ctx = render_context(6, false);
         let theme = ctx.theme.clone();
@@ -677,17 +677,17 @@ mod tests {
         // When converting to lines.
         let lines = to_lines("read", r#"{"path":"a.rs"}"#, &ctx);
 
-        // Then no line is a blank band on subagent_bg.
-        let has_band = lines.iter().any(|l| {
+        // Then no line uses the subagent foreground color.
+        let has_marker = lines.iter().any(|l| {
             l.spans
                 .iter()
-                .any(|s| s.style.bg == Some(theme.subagent_bg))
+                .any(|s| s.style.fg == Some(theme.subagent_fg))
         });
-        assert!(!has_band, "non-task call should have no subagent bands");
+        assert!(!has_marker, "non-task call should have no subagent marker");
     }
 
     #[rstest::rstest]
-    fn waiting_line_on_task_call_sits_on_subagent_bg() {
+    fn waiting_line_on_task_call_is_purple_text_only() {
         // Given a waiting task call.
         let mut ctx = render_context(6, false);
         ctx.is_waiting_on_subagent = true;
@@ -696,23 +696,21 @@ mod tests {
         // When converting to lines.
         let lines = to_lines(TASK_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
 
-        // Then the waiting line (second-to-last, below the bottom band) uses
-        // subagent_fg on subagent_bg.
-        let waiting = &lines[lines.len() - 2];
+        // Then the waiting line (last line) is purple text with no background.
+        let waiting = lines.last().expect("lines");
         let text: String = waiting.spans.iter().map(|s| s.content.clone()).collect();
         assert!(text.contains(WAITING_TEXT), "expected waiting line: {text}");
         assert!(
             waiting
                 .spans
                 .iter()
-                .all(|s| s.style.bg == Some(theme.subagent_bg)
-                    && s.style.fg == Some(theme.subagent_fg)),
-            "waiting line should be subagent_fg on subagent_bg"
+                .all(|s| s.style.fg == Some(theme.subagent_fg) && s.style.bg.is_none()),
+            "waiting line should be subagent_fg with no background"
         );
     }
 
     #[rstest::rstest]
-    fn streaming_task_call_keeps_bands() {
+    fn streaming_task_call_keeps_marker() {
         // Given a streaming task call.
         let ctx = streaming_context(6);
         let theme = ctx.theme.clone();
@@ -720,14 +718,14 @@ mod tests {
         // When converting to lines.
         let lines = to_lines(TASK_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
 
-        // Then the first line is a band on subagent_bg.
-        assert_eq!(lines.first().expect("lines").width(), 80);
+        // Then the first line is the marker row in subagent_fg.
+        let marker = lines.first().expect("lines");
         assert!(
-            lines.iter().any(|l| l
+            marker
                 .spans
                 .iter()
-                .any(|s| s.style.bg == Some(theme.subagent_bg))),
-            "streaming task call should carry subagent bands"
+                .all(|s| s.style.fg == Some(theme.subagent_fg)),
+            "streaming task call should keep its subagent marker"
         );
     }
 }

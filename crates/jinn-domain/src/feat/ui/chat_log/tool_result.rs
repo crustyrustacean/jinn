@@ -11,8 +11,8 @@
 //!
 //! Background color is determined by `ctx.paired_status`: no background for
 //! pending, green for success, red for failure. Task results (tool name
-//! `task`) are additionally framed by full-width subagent band rows above and
-//! below, visually pairing them with their tool call.
+//! `task`) additionally carry a purple `⋄⋄⋄⋄` marker row below, closing the
+//! subagent block opened by their tool call.
 //!
 //! Collapsed format:
 //! ```text
@@ -30,7 +30,7 @@ use jinn_provider::tool_types::TruncationMeta;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_line_to_width, subagent_band, truncate_to_width};
+use super::shared::{RenderContext, pad_line_to_width, subagent_marker, truncate_to_width};
 
 pub fn to_lines(
     name: &str,
@@ -47,9 +47,7 @@ pub fn to_lines(
     if name == "skill" {
         let mut lines = skill_summary_lines(content, ctx);
         if is_task {
-            lines.insert(0, subagent_band(&ctx.theme, ctx.content_width));
-            let band = subagent_band(&ctx.theme, ctx.content_width);
-            lines.push(band);
+            lines.push(subagent_marker(&ctx.theme));
         }
         return lines;
     }
@@ -63,9 +61,7 @@ pub fn to_lines(
     };
 
     if is_task {
-        lines.insert(0, subagent_band(&ctx.theme, ctx.content_width));
-        let band = subagent_band(&ctx.theme, ctx.content_width);
-        lines.push(band);
+        lines.push(subagent_marker(&ctx.theme));
     }
 
     lines
@@ -283,6 +279,7 @@ mod tests {
     use super::*;
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::ui::chat_log::shared::RenderContext;
+    use crate::feat::ui::chat_log::tool_call::MARKER_TEXT;
 
     fn render_context(max_lines: u16, is_expanded: bool) -> RenderContext {
         RenderContext {
@@ -1079,9 +1076,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn task_result_is_framed_by_subagent_bands() {
+    fn task_result_carries_purple_marker_row_below() {
         // Given a successful task tool result.
-        let ctx = render_context(5, false);
+        let ctx = render_context_with_status(Some(ToolResultStatus::Success));
         let theme = ctx.theme.clone();
 
         // When converting to lines.
@@ -1094,22 +1091,30 @@ mod tests {
             &ctx,
         );
 
-        // Then the first and last lines are blank bands on subagent_bg.
-        for band in [lines.first().expect("lines"), lines.last().expect("lines")] {
-            assert_eq!(band.width(), ctx.content_width as usize);
-            assert!(
-                band.spans
-                    .iter()
-                    .all(|s| s.content.trim().is_empty() && s.style.bg == Some(theme.subagent_bg)),
-                "bands should be blank with subagent_bg: {band:?}"
-            );
-        }
-        // And the interior is the single content line.
-        assert_eq!(lines.len(), 3);
+        // Then the last line is the diamond marker row in subagent_fg.
+        let marker = lines.last().expect("lines");
+        let text: String = marker.spans.iter().map(|s| s.content.clone()).collect();
+        assert_eq!(text, MARKER_TEXT);
+        assert!(
+            marker
+                .spans
+                .iter()
+                .all(|s| s.style.fg == Some(theme.subagent_fg)),
+            "marker should use subagent_fg"
+        );
+        // And the content line precedes it, keeping the status background.
+        assert_eq!(lines.len(), 2);
+        assert!(
+            lines[0]
+                .spans
+                .iter()
+                .any(|s| s.style.bg == Some(theme.tool_success_bg)),
+            "content line should keep the success bg"
+        );
     }
 
     #[rstest::rstest]
-    fn task_result_keeps_bands_when_failed() {
+    fn task_result_keeps_marker_when_failed() {
         // Given a task tool result paired with a failure status.
         let ctx = render_context_with_status(Some(ToolResultStatus::Failure));
         let theme = ctx.theme.clone();
@@ -1124,19 +1129,14 @@ mod tests {
             &ctx,
         );
 
-        // Then the bands still carry subagent_bg.
-        assert!(
-            lines.iter().any(|l| l
-                .spans
-                .iter()
-                .any(|s| s.style.bg == Some(theme.subagent_bg))),
-            "failed task result should keep subagent bands"
-        );
+        // Then the last line is still the purple marker row.
+        let marker = lines.last().expect("lines");
+        let text: String = marker.spans.iter().map(|s| s.content.clone()).collect();
+        assert_eq!(text, MARKER_TEXT);
 
         // And the content line carries the failure background.
-        let content = &lines[1];
         assert!(
-            content
+            lines[0]
                 .spans
                 .iter()
                 .any(|s| s.style.bg == Some(theme.tool_failure_bg)),
@@ -1145,10 +1145,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn task_result_pending_keeps_bands_without_status_bg() {
+    fn task_result_pending_keeps_marker() {
         // Given a pending task tool result.
         let ctx = render_context(5, false);
-        let theme = ctx.theme.clone();
 
         // When converting to lines.
         let lines = to_lines(
@@ -1160,24 +1159,20 @@ mod tests {
             &ctx,
         );
 
-        // Then the bands carry subagent_bg.
-        assert!(
-            lines.iter().any(|l| l
-                .spans
-                .iter()
-                .any(|s| s.style.bg == Some(theme.subagent_bg))),
-            "pending task result should keep subagent bands"
-        );
+        // Then the marker row is present.
+        let marker = lines.last().expect("lines");
+        let text: String = marker.spans.iter().map(|s| s.content.clone()).collect();
+        assert_eq!(text, MARKER_TEXT);
 
         // And the content line has no status background.
         assert!(
-            lines[1].spans.iter().all(|s| s.style.bg.is_none()),
+            lines[0].spans.iter().all(|s| s.style.bg.is_none()),
             "pending task result content should have no status bg"
         );
     }
 
     #[rstest::rstest]
-    fn non_task_result_has_no_bands() {
+    fn non_task_result_has_no_marker() {
         // Given a non-task tool result with a success background.
         let ctx = render_context(5, false);
         let theme = ctx.theme.clone();
@@ -1192,12 +1187,15 @@ mod tests {
             &ctx,
         );
 
-        // Then no line carries the subagent band background.
-        let has_band = lines.iter().any(|l| {
+        // Then no line uses the subagent foreground color.
+        let has_marker = lines.iter().any(|l| {
             l.spans
                 .iter()
-                .any(|s| s.style.bg == Some(theme.subagent_bg))
+                .any(|s| s.style.fg == Some(theme.subagent_fg))
         });
-        assert!(!has_band, "non-task result should have no subagent bands");
+        assert!(
+            !has_marker,
+            "non-task result should have no subagent marker"
+        );
     }
 }
