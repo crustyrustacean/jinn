@@ -1318,3 +1318,231 @@ fn render_annotation_entry_expanded_shows_source_title_and_url() {
         "expanded block should not show the hint: {text:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Subagent waiting line
+// ---------------------------------------------------------------------------
+
+/// Seeds a `task` tool call entry (linked to `child_id` when given) plus an
+/// optional child session in the given phase.
+fn task_waiting_fixture(
+    child_id: Option<crate::protocol::SessionId>,
+    child_phase: Option<crate::feat::session::phase_machine::PhaseKind>,
+) -> AppState {
+    use crate::feat::session::chat_entry::ChatEntryKind;
+    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+
+    let mut state = AppState::default();
+    let call_id = "tc_task_render";
+    let entry = ChatEntry::tool_call(call_id, TASK_TOOL_NAME, r#"{"prompt": "hi"}"#);
+    let entry = {
+        let mut e = entry;
+        if let Some(child) = &child_id {
+            if let ChatEntryKind::ToolCall {
+                child_session, ..
+            } = &mut e.kind
+            {
+                *child_session = Some(child.clone());
+            }
+        }
+        e
+    };
+    state.active_session_mut().push_entry(entry);
+    if let (Some(child), Some(phase)) = (child_id, child_phase) {
+        let child_session = state
+            .session
+            .get_or_create(&child);
+        match phase {
+            crate::feat::session::phase_machine::PhaseKind::Sending => {
+                child_session.begin_sending();
+            }
+            crate::feat::session::phase_machine::PhaseKind::Streaming => {
+                child_session.begin_sending();
+                child_session.begin_streaming();
+            }
+            _ => {}
+        }
+    }
+    state
+}
+
+fn buffer_contains(buffer: &ratatui::buffer::Buffer, needle: &str) -> bool {
+    buffer_text(buffer).contains(needle)
+}
+
+#[rstest::rstest]
+fn waiting_line_renders_for_pending_task_call_with_running_child() {
+    use crate::feat::session::phase_machine::PhaseKind;
+
+    // Given a pending task call linked to an in-memory child in Sending phase.
+    let mut element = ChatLogElement::new();
+    let child_id = crate::protocol::SessionId::new();
+    let state = task_waiting_fixture(Some(child_id), Some(PhaseKind::Sending));
+
+    let (mut terminal, area) = setup_term(80, 12);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the waiting line is visible.
+    let buffer = terminal.backend().buffer();
+    assert!(
+        buffer_contains(buffer, "Waiting for subagent session to complete"),
+        "waiting line should render: {buffer:?}"
+    );
+}
+
+#[rstest::rstest]
+fn waiting_line_absent_for_non_task_tool_call() {
+    // Given a pending non-task tool call entry.
+    let mut element = ChatLogElement::new();
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_call("tc_read", "read", r#"{"path": "a.rs"}"#));
+
+    let (mut terminal, area) = setup_term(80, 12);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then no waiting line is rendered.
+    let buffer = terminal.backend().buffer();
+    assert!(
+        !buffer_contains(buffer, "Waiting for subagent session"),
+        "non-task call should not show a waiting line: {buffer:?}"
+    );
+}
+
+#[rstest::rstest]
+fn waiting_line_absent_when_task_call_has_paired_result() {
+    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+
+    // Given a task call with its completed (paired) result.
+    let mut element = ChatLogElement::new();
+    let mut state = AppState::default();
+    {
+        let s = state.active_session_mut();
+        s.push_entry(ChatEntry::tool_call("tc_done", TASK_TOOL_NAME, "{}"));
+        s.push_entry(ChatEntry::tool_result(
+            "tc_done",
+            TASK_TOOL_NAME,
+            "done",
+            ToolResultStatus::Success,
+        ));
+    }
+
+    let (mut terminal, area) = setup_term(80, 12);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then no waiting line is rendered.
+    let buffer = terminal.backend().buffer();
+    assert!(
+        !buffer_contains(buffer, "Waiting for subagent session"),
+        "completed task call should not show a waiting line: {buffer:?}"
+    );
+}
+
+#[rstest::rstest]
+fn waiting_line_absent_when_child_not_in_memory() {
+    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+
+    // Given a linked task call whose child session is not loaded.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = AppState::default();
+        let entry = ChatEntry::tool_call("tc_orphan", TASK_TOOL_NAME, "{}");
+        let entry = {
+            use crate::feat::session::chat_entry::ChatEntryKind;
+            let mut e = entry;
+            if let ChatEntryKind::ToolCall {
+                child_session, ..
+            } = &mut e.kind
+            {
+                *child_session = Some(crate::protocol::SessionId::new());
+            }
+            e
+        };
+        s.active_session_mut().push_entry(entry);
+        s
+    };
+
+    let (mut terminal, area) = setup_term(80, 12);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then no waiting line is rendered.
+    let buffer = terminal.backend().buffer();
+    assert!(
+        !buffer_contains(buffer, "Waiting for subagent session"),
+        "unloaded child should not show a waiting line: {buffer:?}"
+    );
+}
+
+#[rstest::rstest]
+fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
+    use crate::protocol::SessionId as _;
+
+    // Given a rendered pending task call whose linked child is running.
+    let mut element = ChatLogElement::new();
+    let child_id = crate::protocol::SessionId::new();
+    let mut state = task_waiting_fixture(
+        Some(child_id.clone()),
+        Some(crate::feat::session::phase_machine::PhaseKind::Streaming),
+    );
+
+    let (mut terminal, area) = setup_term(80, 12);
+
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    assert!(
+        buffer_contains(terminal.backend().buffer(), "Waiting for subagent session"),
+        "waiting line should render while child streams"
+    );
+
+    // When the child finishes (Idle) and the render re-runs with no cache
+    // invalidation.
+    let child = state.session.get_mut(&child_id).expect("child");
+    child.finish_streaming(false, jiff::Timestamp::now());
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the waiting line is gone — the render variant change alone
+    // invalidated the cached lines.
+    let buffer = terminal.backend().buffer();
+    assert!(
+        !buffer_contains(buffer, "Waiting for subagent session"),
+        "waiting line should disappear once the child is Idle: {buffer:?}"
+    );
+}

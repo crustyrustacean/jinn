@@ -141,6 +141,7 @@ mod tests {
             theme: crate::feat::theme::default_theme(),
             paired_status: None,
             is_streaming: false,
+            is_waiting_on_subagent: false,
         }
     }
 
