@@ -3,13 +3,13 @@
 //! [`TreePickerWidget`] renders a telescope-style popup overlay: a bordered block containing
 //! a filter input row with a real cursor, a horizontal separator, scrollable result rows
 //! with tree prefixes, and an optional footer. Each result row is rendered via
-//! [`TreeItem::render_row`], with tree connector spans prepended based on the
-//! [`VisibleEntry`] metadata.
+//! [`TreeItem::render_row_with_tree`], which receives the tree connector string and
+//! style computed from the [`VisibleEntry`] metadata and decides its placement.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::tree_item::TreeItem;
@@ -207,21 +207,10 @@ where
                     continue;
                 };
 
-                let content_line = if ranges.is_empty() {
-                    item.render_row(is_selected)
-                } else {
-                    item.render_row_with_highlight(is_selected, &ranges)
-                };
-
-                // Prepend tree prefix span.
                 let prefix = tree_prefix(entry);
-                if prefix.is_empty() {
-                    result_lines.push(content_line);
-                } else {
-                    let mut spans = vec![Span::styled(prefix, prefix_style)];
-                    spans.extend(content_line.spans);
-                    result_lines.push(Line::from(spans));
-                }
+                let content_line =
+                    item.render_row_with_tree(is_selected, &ranges, &prefix, prefix_style);
+                result_lines.push(content_line);
             } else {
                 // Empty row to maintain fixed height.
                 result_lines.push(Line::from(""));

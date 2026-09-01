@@ -8,6 +8,7 @@ use crate::feat::theme::Theme;
 use crate::protocol::SessionId;
 use jinn_selection_widget::TreeItem;
 use jinn_selection_widget::highlight_text_with_bg;
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
@@ -115,16 +116,7 @@ impl TreeItem for SessionTreeEntry {
     }
 
     fn render_row(&self, is_selected: bool) -> Line<'static> {
-        render_session_row(
-            &self.title,
-            &self.updated_at,
-            &self.project_display,
-            self.project_width,
-            is_selected,
-            &[],
-            &self.theme,
-            self.session_state,
-        )
+        self.render_row_impl(is_selected, &[], "", Style::default())
     }
 
     fn render_row_with_highlight(
@@ -132,73 +124,85 @@ impl TreeItem for SessionTreeEntry {
         is_selected: bool,
         match_indices: &[Range<usize>],
     ) -> Line<'static> {
-        render_session_row(
-            &self.title,
-            &self.updated_at,
-            &self.project_display,
-            self.project_width,
-            is_selected,
-            match_indices,
-            &self.theme,
-            self.session_state,
-        )
+        self.render_row_impl(is_selected, match_indices, "", Style::default())
+    }
+
+    fn render_row_with_tree(
+        &self,
+        is_selected: bool,
+        match_ranges: &[Range<usize>],
+        tree_prefix: &str,
+        tree_style: Style,
+    ) -> Line<'static> {
+        self.render_row_impl(is_selected, match_ranges, tree_prefix, tree_style)
     }
 }
 
-/// Renders a session picker row as three columns: date, project, title.
+/// Renders a session picker row: date, project, then the title with an
+/// optional tree connector placed directly before the title text.
 ///
-/// Match indices are byte offsets into `title` (the `display_label`) and are
-/// only ever applied to the title spans, never the date or project columns.
-/// Format: `{YYYY-MM-DD HH:MM}  {project:<width}  {title}`. Archived sessions
-/// use dimmed styling to visually distinguish them from loaded sessions.
-fn render_session_row(
-    title: &str,
-    updated_at: &jiff::Timestamp,
-    project_display: &str,
-    project_width: usize,
-    is_selected: bool,
-    match_indices: &[Range<usize>],
-    theme: &Theme,
-    session_state: SessionState,
-) -> Line<'static> {
-    let base_style = if session_state == SessionState::Archived {
-        dim_style(is_selected, theme)
-    } else {
-        selected_style(is_selected, theme)
-    };
+/// Match indices are byte offsets into the title (the `display_label`) and are
+/// only ever applied to the title spans, never the date, project, or connector
+/// spans. Format: `{YYYY-MM-DD HH:MM}  {project:<width}  [{connector}]{title}`.
+/// Archived sessions use dimmed styling to visually distinguish them from
+/// loaded sessions.
+impl SessionTreeEntry {
+    fn render_row_impl(
+        &self,
+        is_selected: bool,
+        match_indices: &[Range<usize>],
+        tree_prefix: &str,
+        tree_style: Style,
+    ) -> Line<'static> {
+        let base_style = if self.session_state == SessionState::Archived {
+            dim_style(is_selected, &self.theme)
+        } else {
+            selected_style(is_selected, &self.theme)
+        };
 
-    let meta_style = dim_style(is_selected, theme);
+        let meta_style = dim_style(is_selected, &self.theme);
 
-    let datetime = updated_at.to_zoned(jiff::tz::TimeZone::UTC).datetime();
-    let date_str = format!(
-        "{:04}-{:02}-{:02} {:02}:{:02}",
-        datetime.year(),
-        datetime.month() as u8,
-        datetime.day(),
-        datetime.hour(),
-        datetime.minute(),
-    );
+        let datetime = self.updated_at.to_zoned(jiff::tz::TimeZone::UTC).datetime();
+        let date_str = format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}",
+            datetime.year(),
+            datetime.month() as u8,
+            datetime.day(),
+            datetime.hour(),
+            datetime.minute(),
+        );
 
-    // Pad by display width (unicode-width), never by chars or bytes.
-    let pad = project_width.saturating_sub(project_display.width());
-    let mut project_padded = String::with_capacity(project_display.len() + pad);
-    project_padded.push_str(project_display);
-    project_padded.extend(std::iter::repeat_n(' ', pad));
+        // Pad by display width (unicode-width), never by chars or bytes.
+        let pad = self
+            .project_width
+            .saturating_sub(self.project_display.width());
+        let mut project_padded = String::with_capacity(self.project_display.len() + pad);
+        project_padded.push_str(&self.project_display);
+        project_padded.extend(std::iter::repeat_n(' ', pad));
 
-    let title_spans = if match_indices.is_empty() {
-        vec![Span::styled(title.to_owned(), base_style)]
-    } else {
-        highlight_text_with_bg(title, base_style, match_indices, theme.picker_highlight_bg)
-    };
+        let title_spans = if match_indices.is_empty() {
+            vec![Span::styled(self.title.clone(), base_style)]
+        } else {
+            highlight_text_with_bg(
+                &self.title,
+                base_style,
+                match_indices,
+                self.theme.picker_highlight_bg,
+            )
+        };
 
-    let mut spans = vec![
-        Span::styled(date_str, meta_style),
-        Span::styled("  ".to_owned(), base_style),
-        Span::styled(project_padded, meta_style),
-        Span::styled("  ".to_owned(), base_style),
-    ];
-    spans.extend(title_spans);
-    Line::from(spans)
+        let mut spans = vec![
+            Span::styled(date_str, meta_style),
+            Span::styled("  ".to_owned(), base_style),
+            Span::styled(project_padded, meta_style),
+            Span::styled("  ".to_owned(), base_style),
+        ];
+        if !tree_prefix.is_empty() {
+            spans.push(Span::styled(tree_prefix.to_owned(), tree_style));
+        }
+        spans.extend(title_spans);
+        Line::from(spans)
+    }
 }
 
 #[cfg(test)]
@@ -484,5 +488,106 @@ mod tests {
             row.spans[4].style.bg,
             Some(default_theme().picker_highlight_bg)
         );
+    }
+
+    #[rstest::rstest]
+    fn child_row_places_connector_directly_before_title_span() {
+        // Given a session tree entry.
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "Fix bug".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            None,
+            None,
+        );
+        let tree_style = Style::default();
+
+        // When rendering with a tree connector (as the widget hands children).
+        let row = entry.render_row_with_tree(false, &[], "└─ ", tree_style);
+
+        // Then the connector span sits immediately before the title span.
+        assert_eq!(row.spans.len(), 6);
+        assert_eq!(row.spans[4].content, "└─ ");
+        assert_eq!(row.spans[4].style, tree_style);
+        assert_eq!(row.spans[5].content, "Fix bug");
+    }
+
+    #[rstest::rstest]
+    fn root_row_renders_without_connector_span() {
+        // Given a session tree entry.
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "Root Chat".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            None,
+            None,
+        );
+
+        // When rendering with an empty tree connector (as the widget hands roots).
+        let row = entry.render_row_with_tree(false, &[], "", Style::default());
+
+        // Then the row shape is unchanged: date, gap, project, gap, title.
+        assert_eq!(row.spans.len(), 5);
+        assert_eq!(row.spans[4].content, "Root Chat");
+    }
+
+    #[rstest::rstest]
+    fn highlight_lands_only_on_title_text_after_connector() {
+        // Given an entry with a project column applied.
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "Fix bug".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            None,
+            Some(std::path::PathBuf::from("/code/jinn")),
+        );
+        let mut entries = vec![entry];
+        apply_project_column_width(&mut entries);
+
+        // When rendering with a connector and a match covering "Fix"
+        // (bytes 0..3 of the bare title).
+        let row = entries[0].render_row_with_tree(
+            false,
+            std::slice::from_ref(&(0..3)),
+            "├─ ",
+            Style::default(),
+        );
+
+        // Then the date, project, and connector spans carry no highlight.
+        assert_eq!(row.spans[0].style.bg, None);
+        assert_eq!(row.spans[2].style.bg, None);
+        assert_eq!(row.spans[4].style.bg, None);
+        // And the first title span carries the highlight background.
+        assert_eq!(
+            row.spans[5].style.bg,
+            Some(default_theme().picker_highlight_bg)
+        );
+    }
+
+    #[rstest::rstest]
+    fn display_label_excludes_tree_connectors() {
+        // Given a session tree entry.
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "Fix bug".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            None,
+            None,
+        );
+
+        // When reading the display label used for fuzzy matching.
+        let label = entry.display_label();
+
+        // Then it is the bare title with no tree glyphs.
+        assert_eq!(label, "Fix bug");
+        assert!(!label.contains('├') && !label.contains('└') && !label.contains('│'));
     }
 }
