@@ -7,7 +7,8 @@
 
 use std::ops::Range;
 
-use ratatui::text::Line;
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
 
 /// An item that can be displayed and selected in a tree-structured picker.
 ///
@@ -43,8 +44,9 @@ pub trait TreeItem: std::fmt::Debug + 'static {
     /// Renders this item as a styled line for display in the picker.
     ///
     /// `is_selected` indicates whether this row is currently highlighted.
-    /// The tree prefix is prepended by the widget ��� renderers should NOT
-    /// include tree connectors.
+    /// This renders the bare row content; tree connector placement is decided
+    /// in [`render_row_with_tree`](Self::render_row_with_tree). Renderers
+    /// should NOT include tree connectors.
     fn render_row(&self, is_selected: bool) -> Line<'static>;
 
     /// Renders this item with fuzzy match highlighting.
@@ -58,4 +60,34 @@ pub trait TreeItem: std::fmt::Debug + 'static {
         is_selected: bool,
         match_indices: &[Range<usize>],
     ) -> Line<'static>;
+
+    /// Renders this item with tree connector placement decided by the item.
+    ///
+    /// `tree_prefix` is the pre-computed connector string for the item's
+    /// position in the visible tree (empty for roots). `tree_style` is the
+    /// style the widget uses for connector glyphs. `match_ranges` are the
+    /// fuzzy-match byte ranges within [`display_label`](Self::display_label)
+    /// (empty when no filter is active).
+    ///
+    /// The default implementation reproduces the historical widget behavior:
+    /// prepend the styled connector before the row content.
+    fn render_row_with_tree(
+        &self,
+        is_selected: bool,
+        match_ranges: &[Range<usize>],
+        tree_prefix: &str,
+        tree_style: Style,
+    ) -> Line<'static> {
+        let content = if match_ranges.is_empty() {
+            self.render_row(is_selected)
+        } else {
+            self.render_row_with_highlight(is_selected, match_ranges)
+        };
+        if tree_prefix.is_empty() {
+            return content;
+        }
+        let mut spans = vec![Span::styled(tree_prefix.to_owned(), tree_style)];
+        spans.extend(content.spans);
+        Line::from(spans)
+    }
 }
