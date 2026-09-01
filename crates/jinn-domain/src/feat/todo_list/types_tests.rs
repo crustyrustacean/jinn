@@ -749,6 +749,30 @@ fn set_from_descriptions_errors_on_empty() {
 }
 
 // ---------------------------------------------------------------------------
+// clear
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+#[test]
+fn clear_empties_all_phases() {
+    // Given a task list with multiple phases and tasks.
+    let mut list = TaskList::new();
+    list.set_from_descriptions(vec![
+        ("Research".to_owned(), vec!["Read docs".to_owned()]),
+        ("Build".to_owned(), vec!["Write code".to_owned()]),
+    ])
+    .unwrap();
+
+    // When clearing the list.
+    list.clear();
+
+    // Then no phases remain.
+    assert!(list.is_empty());
+    // And the phase slice is empty.
+    assert!(list.phases().is_empty());
+}
+
+// ---------------------------------------------------------------------------
 // cancel_task
 // ---------------------------------------------------------------------------
 

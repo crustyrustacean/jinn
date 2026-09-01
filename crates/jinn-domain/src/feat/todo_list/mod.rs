@@ -701,6 +701,14 @@ impl TaskList {
         Ok(())
     }
 
+    /// Clears the entire task list — removes all phases and tasks.
+    ///
+    /// Used by `todo_set_list` when the model supplies an empty `phases` array
+    /// (a subagent discarding an inherited list it doesn't need).
+    pub fn clear(&mut self) {
+        self.phases.clear();
+    }
+
     /// Returns the phase with the given ID, if it exists.
     pub fn get_phase(&self, phase_id: &PhaseId) -> Option<&Phase> {
         self.phases.iter().find(|p| &p.id == phase_id)

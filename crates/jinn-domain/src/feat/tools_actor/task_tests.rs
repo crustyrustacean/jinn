@@ -27,6 +27,7 @@ use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
+use crate::feat::todo_list::TaskPosition;
 use crate::feat::tools_actor::task::execute;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolResult};
 use crate::protocol::SessionId;
@@ -285,6 +286,79 @@ async fn task_child_inherits_parent_project() {
         child.project(),
         Some(std::path::Path::new("/home/user/projects/jinn")),
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_child_inherits_parent_task_list() {
+    // Given a parent session with a seeded task list.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    {
+        let mut w = state.write_test_no_cap();
+        let parent = w.session.get_mut(&parent_id).expect("parent seeded");
+        let list = parent.task_list_mut();
+        let p1 = list.add_phase("Research");
+        list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+        let p2 = list.add_phase("Build");
+        list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
+    }
+    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+
+    // When executing a task call and finishing the child.
+    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    let servers = parent_servers();
+    settle_child_discovery(&harness.bus(), &child_id, &servers).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // Then the child's task list equals the parent's list at spawn time.
+    let snapshot = state.read();
+    let parent = snapshot.session.get(&parent_id).expect("parent present");
+    let child = snapshot.session.get(&child_id).expect("child present");
+    assert_eq!(child.task_list(), parent.task_list());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_child_task_list_is_independent_after_spawn() {
+    // Given a parent session with a seeded task list and a spawned child that
+    // inherited it.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    {
+        let mut w = state.write_test_no_cap();
+        let parent = w.session.get_mut(&parent_id).expect("parent seeded");
+        let list = parent.task_list_mut();
+        let p1 = list.add_phase("Research");
+        list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    }
+    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    let servers = parent_servers();
+    settle_child_discovery(&harness.bus(), &child_id, &servers).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // When mutating the parent's list after spawn.
+    {
+        let mut w = state.write_test_no_cap();
+        let parent = w.session.get_mut(&parent_id).expect("parent present");
+        parent.task_list_mut().clear();
+    }
+
+    // Then the child's list still holds the spawn-time snapshot.
+    let snapshot = state.read();
+    let child = snapshot.session.get(&child_id).expect("child present");
+    assert!(!child.task_list().is_empty());
 }
 
 #[rstest::rstest]

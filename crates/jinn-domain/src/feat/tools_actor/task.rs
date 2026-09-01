@@ -66,7 +66,8 @@ pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: TASK_TOOL_NAME.to_owned(),
         description: "Delegate a task to a fresh subagent session and block until it finishes. \
-            Spawns a new session inheriting your model, cwd, tools, skills, and MCP servers — \
+            Spawns a new session inheriting your model, cwd, tools, skills, MCP servers, and a \
+            snapshot of your current task list — \
             but with empty history: it sees only the prompt you give it. When its session goes \
             idle, its final chat entry is returned as this tool's result. \
             \
@@ -101,6 +102,11 @@ pub fn definition() -> ToolDefinition {
             "Write the prompt as a complete brief: goal, constraints, and whether to \
             research or make changes. Include a description so the user can follow along \
             in the sidebar."
+                .to_owned(),
+            "The subagent inherits a snapshot of your task list as of spawn and owns that \
+            copy — its todo mutations never propagate back to you; reconcile your own list \
+            from its result. If it doesn't need the list, it can clear it with an empty \
+            todo_set_list."
                 .to_owned(),
         ],
         parameters: serde_json::json!({
@@ -225,6 +231,10 @@ fn build_child(
     // not persisted); the `task` tool's ctx carries the app paths.
     child.set_home(app_home.to_path_buf());
     child.set_enabled_mcp_servers(parent.enabled_mcp_servers().clone());
+    // Snapshot the parent's task list into the child: parent and child own
+    // fully independent copies after spawn — child mutations never propagate
+    // back to the parent.
+    *child.task_list_mut() = parent.task_list().clone();
     let title = args
         .description
         .clone()
