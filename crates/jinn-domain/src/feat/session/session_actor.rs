@@ -38,7 +38,7 @@ use crate::feat::context::protocol::command::{
 };
 use crate::feat::context::protocol::event::{ChatEntryPinChanged, PersonasLoaded};
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-use crate::feat::provider::protocol::command::SendMessage;
+use crate::feat::provider::protocol::command::{SendMessage, SendToLlmProvider};
 use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, StreamCompleted, StreamToken,
 };
@@ -157,6 +157,11 @@ impl Actor for SessionPersistenceActor {
         bus.subscribe::<SubmitHistoryMutations, _>(&actor_ref).await;
         bus.subscribe::<MarkSessionInteracted, _>(&actor_ref).await;
         bus.subscribe::<RetryStalledSession, _>(&actor_ref).await;
+
+        // The actor arms the in-flight-stream guard on dispatch receipt —
+        // the single write point covering every `SendToLlmProvider`
+        // publisher (user, queued/steered, direct, tool-loop, stall-retry).
+        bus.subscribe::<SendToLlmProvider, _>(&actor_ref).await;
 
         // Context-related subscriptions.
         bus.subscribe::<PinChatEntry, _>(&actor_ref).await;
@@ -400,6 +405,13 @@ impl Message<RetryStalledSession> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: RetryStalledSession, _ctx: &mut Context<Self, Self::Reply>) {
         self.on_retry_stalled_session(&msg).await;
+    }
+}
+
+impl Message<SendToLlmProvider> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SendToLlmProvider, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_send_to_llm_provider(&msg).await;
     }
 }
 
