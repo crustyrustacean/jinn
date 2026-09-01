@@ -2,6 +2,8 @@
 
 - Add "research" prompt. Similar to the planning prompt: use `#research <the thing you want to research>` and the agent will guide you through it. Recommend using a third-party search service via MCP to avoid automated blocking.
 - Session picker now shows tree relationships by titles (same format as the session sidebar)
+- Fix stall restart handling. Should now properly restart a stream.
+- Add total number of tokens pruned to the Quake bar session status area.
 
 ## 2026-08-31 v0.114.0
 
