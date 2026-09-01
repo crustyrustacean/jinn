@@ -27,7 +27,7 @@ use crate::feat::skills::loaded_skill_summary_label;
 use crate::feat::tools_actor::task::TASK_TOOL_NAME;
 use crate::feat::tools_actor::truncation::format_size;
 use jinn_provider::tool_types::TruncationMeta;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
 use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
@@ -92,7 +92,7 @@ fn to_lines_task(
 }
 
 /// Build the subagent outcome row: full-width status background with white
-/// bold text. Pending/unpaired results show the purple block background.
+/// text. Pending/unpaired results show the purple block background.
 fn task_status_row(paired: Option<ToolResultStatus>, ctx: &RenderContext) -> Line<'static> {
     let width = ctx.content_width as usize;
     let (text, bg) = match paired {
@@ -109,10 +109,7 @@ fn task_status_row(paired: Option<ToolResultStatus>, ctx: &RenderContext) -> Lin
     let padded = format!("{text}{}", " ".repeat(width.saturating_sub(text.len())));
     Line::from(Span::styled(
         padded,
-        Style::default()
-            .fg(Color::White)
-            .bg(bg)
-            .add_modifier(Modifier::BOLD),
+        Style::default().fg(Color::White).bg(bg),
     ))
 }
 
