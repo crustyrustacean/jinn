@@ -4,6 +4,10 @@
 - Session picker now shows tree relationships by titles (same format as the session sidebar)
 - Fix stall restart handling. Should now properly restart a stream.
 - Add total number of tokens pruned to the Quake bar session status area.
+- Subagents now inherit a copy of the parent task list. The task lists are distinct, so changes will not impact child/parent sessions.
+- Subagent sessions can now also be accessed straight from the tool call+tool result chat entry.
+- Subagent invocations now use purple in the chat history.
+- Update "gap-analysis" prompt to provide a list of recommendations.
 
 ## 2026-08-31 v0.114.0
 
