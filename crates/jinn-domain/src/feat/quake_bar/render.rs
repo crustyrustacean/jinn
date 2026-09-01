@@ -8,6 +8,7 @@
 //! Layout, top to bottom:
 //! - header: centered "Session" (left half) `|` "Global" (right half),
 //!   `=` separators in muted text
+//! - session data row: applied auto-prune token total
 //! - session data row: count of entries queued for prune
 //! - bright divider
 //! - command log (0..20 rows, viewport capped at 10)
@@ -18,6 +19,7 @@
 //! - input row: `> {text}` with a yellow `>` (focus accent)
 //! - bright divider
 
+use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -35,11 +37,11 @@ use super::state::QuakeBarState;
 const DIVIDER_LIGHTEN_FACTOR: f32 = 2.0;
 
 /// Fixed rows that are always present regardless of log size:
-/// header, session data (prune pending), lifecycle data, bright divider,
-/// muted divider, input.
+/// header, session data (prune pruned), session data (prune pending),
+/// lifecycle data, bright divider, muted divider, input.
 /// (The bottom bright divider was removed — the background color
 /// contrast alone separates the bar from content below.)
-const FIXED_ROWS: u16 = 6;
+const FIXED_ROWS: u16 = 7;
 
 /// Maximum rows the command log viewport can occupy, regardless of
 /// terminal height. Capping the viewport (rather than letting it grow
@@ -103,6 +105,11 @@ pub fn render_quake_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         single_row(quake_area, y),
     );
     y += 1;
+
+    // Session data row: tokens of applied auto-prune (ForcedExclude,
+    // worker-sourced, non-compaction) exclusions, derived from entry
+    // context-history at render time.
+    y = render_pruned_row(frame, quake_area, y, state, bg, theme.primary_text);
 
     // Lifecycle data row: which lifecycle owns the active session, plus its
     // script-progression state. Blank-lifecycle sessions show "<none>".
@@ -178,6 +185,36 @@ fn render_header(
     let line = header_line(area.width, primary, muted, bg);
     frame.render_widget(
         Paragraph::new(line).style(Style::default().bg(bg)),
+        single_row(area, y),
+    );
+    y + 1
+}
+
+/// Renders the applied auto-prune totals row, returning the y of the next row.
+///
+/// The totals derive from entry context-history at render time: only entries
+/// currently `ForcedExclude` via a non-compaction worker count.
+fn render_pruned_row(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    y: u16,
+    state: &AppState,
+    bg: Color,
+    primary: Color,
+) -> u16 {
+    let report = {
+        let cache = state.frontend.caches.entry_token_cache.read();
+        crate::feat::session::prune_report::prune_report(state.active_session().history(), &cache)
+    };
+    let data = Line::from(Span::styled(
+        format!(
+            "Prune ctx pruned: {} tok ({} entries)",
+            report.tokens, report.entries
+        ),
+        Style::default().fg(primary).bg(bg),
+    ));
+    frame.render_widget(
+        Paragraph::new(data).style(Style::default().bg(bg)),
         single_row(area, y),
     );
     y + 1
@@ -285,6 +322,8 @@ mod tests {
 
     use super::*;
     use crate::common::app_state::{AppState, FocusScope};
+    use crate::feat::session::chat_entry::{ChangeSource, ContextOverride};
+    use crate::protocol::ChatEntry;
     use jinn_testutil::setup_term;
 
     fn quake_state_with_log(lines: &[&str]) -> AppState {
@@ -395,6 +434,45 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    fn session_row_shows_pruned_prune_tokens() {
+        // Given a quake-bar state whose active session has a worker-pruned
+        // entry with a cached token count.
+        let mut state = quake_state_with_log(&[]);
+        let mut entry = ChatEntry::user("big");
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Worker {
+                name: "edit_read".to_owned(),
+            },
+        );
+        let mut cache = state.frontend.caches.entry_token_cache.write();
+        cache.insert(entry.id.clone(), 1000);
+        drop(cache);
+        state.active_session_mut().push_entry(entry);
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                let ctx = RenderCtx::new(&state);
+                render_quake_bar(frame, area, &ctx);
+            })
+            .unwrap();
+
+        // Then the row under the pending row shows the pruned totals.
+        let buffer = terminal.backend().buffer().clone();
+        let data_y = area.y + 2;
+        let symbols: String = (area.x..area.x + area.width)
+            .filter_map(|x| buffer.cell((x, data_y)).map(|c| c.symbol().to_owned()))
+            .collect();
+        assert!(
+            symbols.contains("Prune ctx pruned: 1000 tok (1 entries)"),
+            "session data row should show the applied-prune totals, got: {symbols}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
     fn lifecycle_row_shows_none_for_blank_session() {
         // Given a quake-bar state with a blank-lifecycle active session.
         let state = quake_state_with_log(&[]);
@@ -410,7 +488,7 @@ mod tests {
 
         // Then the lifecycle row contains "<none>".
         let buffer = terminal.backend().buffer().clone();
-        let lifecycle_y = area.y + 2;
+        let lifecycle_y = area.y + 3;
         let symbols: String = (area.x..area.x + area.width)
             .filter_map(|x| buffer.cell((x, lifecycle_y)).map(|c| c.symbol().to_owned()))
             .collect();
@@ -444,7 +522,7 @@ mod tests {
 
         // Then the lifecycle row contains "fossil branch (setup_ran)".
         let buffer = terminal.backend().buffer().clone();
-        let lifecycle_y = area.y + 2;
+        let lifecycle_y = area.y + 3;
         let symbols: String = (area.x..area.x + area.width)
             .filter_map(|x| buffer.cell((x, lifecycle_y)).map(|c| c.symbol().to_owned()))
             .collect();
@@ -471,7 +549,7 @@ mod tests {
 
         // Then the lifecycle row cells use primary_text foreground on quake_bar_bg.
         let buffer = terminal.backend().buffer().clone();
-        let lifecycle_y = area.y + 2;
+        let lifecycle_y = area.y + 3;
         let primary = state.frontend.theme.primary_text;
         let bg = state.frontend.theme.quake_bar_bg;
         let found = (area.x..area.x + area.width).any(|x| {
@@ -502,8 +580,8 @@ mod tests {
         // Then the ">" prefix cell uses focus_accent.
         let buffer = terminal.backend().buffer().clone();
         let focus = state.frontend.theme.focus_accent;
-        // The input row sits after header(1)+data(1)+lifecycle(1)+bright(1)+log(0)+muted(1) = 5 rows.
-        let input_y = area.y + 5;
+        // The input row sits after header(1)+pruned(1)+pending(1)+lifecycle(1)+bright(1)+log(0)+muted(1) = 6 rows.
+        let input_y = area.y + 6;
         let prefix_cell = buffer.cell((area.x, input_y)).expect("prefix cell");
         assert_eq!(prefix_cell.symbol(), ">");
         assert_eq!(
@@ -532,7 +610,7 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let bg = state.frontend.theme.quake_bar_bg;
         let expected_bright = crate::feat::theme::contrast::lighten(bg, DIVIDER_LIGHTEN_FACTOR);
-        let bright_y = area.y + 3;
+        let bright_y = area.y + 4;
         let cell = buffer.cell((area.x + 5, bright_y)).expect("divider cell");
         assert_eq!(
             cell.style().fg,
@@ -559,7 +637,7 @@ mod tests {
         // Then the muted divider (row 3, no log) uses muted_text foreground.
         let buffer = terminal.backend().buffer().clone();
         let muted = state.frontend.theme.muted_text;
-        let muted_y = area.y + 4;
+        let muted_y = area.y + 5;
         let cell = buffer.cell((area.x, muted_y)).expect("divider cell");
         assert_eq!(
             cell.style().fg,
@@ -620,7 +698,7 @@ mod tests {
 
         // Then the log row (row 4) contains the logged text.
         let buffer = terminal.backend().buffer().clone();
-        let log_y = area.y + 4;
+        let log_y = area.y + 5;
         let symbols: String = (area.x..area.x + area.width)
             .filter_map(|x| buffer.cell((x, log_y)).map(|c| c.symbol().to_owned()))
             .collect();
@@ -638,7 +716,7 @@ mod tests {
         for i in 0..20 {
             state.frontend.quake_bar.log.push(format!("line-{i}"));
         }
-        // Short terminal so the log viewport (height 12 - FIXED_ROWS 6 = 6)
+        // Short terminal so the log viewport (height 12 - FIXED_ROWS 7 = 5)
         // is smaller than the 20-line log, making scroll observable.
         let (mut terminal, area) = setup_term(80, 12);
 
@@ -650,9 +728,9 @@ mod tests {
             })
             .unwrap();
         let before = terminal.backend().buffer().clone();
-        // Last log row = header(1) + data(1) + lifecycle(1) + bright divider(1) + (viewport-1).
+        // Last log row = header(1) + pruned(1) + pending(1) + lifecycle(1) + bright divider(1) + (viewport-1).
         let log_rows = (area.height.saturating_sub(FIXED_ROWS)) as usize;
-        let last_log_y = area.y + 4 + log_rows.saturating_sub(1) as u16;
+        let last_log_y = area.y + 5 + log_rows.saturating_sub(1) as u16;
         let newest_before: String = (area.x..area.x + area.width)
             .filter_map(|x| before.cell((x, last_log_y)).map(|c| c.symbol().to_owned()))
             .collect();
