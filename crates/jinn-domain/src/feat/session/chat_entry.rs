@@ -220,6 +220,18 @@ pub struct ChatEntry {
     /// `#[serde(default)]` - no schema migration is required.
     #[serde(default)]
     pub context_history: Vec<ContextChangeEvent>,
+
+    /// Estimated token count of this entry's content (tiktoken, o200k_base).
+    ///
+    /// Content-derived and context-independent: it does NOT change when the
+    /// entry is excluded from LLM context. `None` means not yet computed; the
+    /// token count actor fills it in memory and the next session persist saves
+    /// it. Persisted in `entries.token_count` (v25).
+    ///
+    /// OWNER comment: token-count-actor (fills `None` counts),
+    ///        session-actor (bulk DB restore via `restore_history`).
+    #[serde(default)]
+    pub token_count: Option<u32>,
 }
 
 /// The kind of chat entry.
@@ -355,6 +367,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -406,6 +419,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -422,6 +436,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -438,6 +453,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -454,6 +470,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -474,6 +491,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -490,6 +508,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -513,6 +532,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -540,6 +560,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -556,6 +577,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -589,6 +611,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -611,6 +634,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
 
@@ -666,6 +690,7 @@ impl ChatEntry {
             pin_position,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         }
     }
     /// Set the context override, recording a [`ContextChangeEvent`] if and only if
@@ -713,6 +738,24 @@ impl ChatEntry {
         // loading, where the `context_override` value reflects an already-applied
         // state (not a new transition).
         self.context_override = value;
+    }
+
+    /// Restores the persisted token count on this entry without recomputing it.
+    ///
+    /// This is intended for use only when restoring state from persistent
+    /// storage: the stored count is a fact about the entry's (immutable)
+    /// content, not a new transition. `None` (the column was NULL) leaves the
+    /// field unset for the token count actor to fill.
+    ///
+    /// # Why not just write the field?
+    ///
+    /// The count is derived from entry content, so the only legitimate writers
+    /// are the token count actor (compute) and DB loading (restore). Routing
+    /// the restore path through a named method keeps those two apart.
+    pub(crate) fn restore_token_count(&mut self, count: Option<u32>) {
+        // No audit trail: DB-restore-only path, mirroring
+        // `restore_context_override`.
+        self.token_count = count;
     }
     /// Read-only access to the current context override.
     ///

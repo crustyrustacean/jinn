@@ -140,7 +140,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(rows.len(), 25);
+        assert_eq!(rows.len(), 26);
         assert_eq!(rows[0].0, 0);
         assert_eq!(rows[0].1, "create_initial_schema");
         assert_eq!(rows[1].0, 1);
@@ -199,7 +199,7 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(count, 25);
+        assert_eq!(count, 26);
     }
 
     /// Verifies that each migration guard uses `<` not `<=`.
@@ -224,7 +224,7 @@ mod tests {
                 panic!("re-run at target_version={target_version} should succeed: {e:?}")
             });
 
-            // Verify no duplicate rows: exactly 25 migration rows total.
+            // Verify no duplicate rows: exactly 26 migration rows total.
             let count: i64 = pool
                 .with_conn(|conn| {
                     conn.query_row("SELECT COUNT(*) AS count FROM _migrations", [], |r| {
@@ -235,8 +235,8 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                count, 25,
-                "at target_version={target_version}: expected 25 migration rows, no duplicates"
+                count, 26,
+                "at target_version={target_version}: expected 26 migration rows, no duplicates"
             );
         }
     }

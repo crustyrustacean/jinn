@@ -552,6 +552,7 @@ fn compaction_entry_produces_user_message_with_summary() {
         pin_position: None,
         context_override: crate::protocol::ContextOverride::Default,
         context_history: Vec::new(),
+        token_count: None,
     }];
 
     // When converting to messages.
@@ -666,6 +667,7 @@ fn message_order_after_compaction() {
             pin_position: None,
             context_override: crate::protocol::ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         },
         ChatEntry::user("new question"),
         ChatEntry::assistant("new answer"),
@@ -1314,6 +1316,7 @@ fn compaction_entry(summary: &str) -> ChatEntry {
         pin_position: None,
         context_override: crate::protocol::ContextOverride::Default,
         context_history: Vec::new(),
+        token_count: None,
     }
 }
 

@@ -18,12 +18,10 @@ use crate::feat::dashboard::DashboardState;
 use crate::feat::file_lister::FilePickerState;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
-use crate::feat::session::entry_token_cache::EntryTokenCache;
 use crate::feat::skills::Skill;
 use crate::feat::theme::Theme;
 use crate::feat::ui::frontend_state::FrontendState;
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::ChatEntryId;
 
 // ── The cap ──────────────────────────────────────────────────────────────────
 
@@ -52,10 +50,6 @@ pub struct DashboardOps<'a>(&'a mut DashboardState);
 /// Narrow write-handle to `frontend.quake_bar` for the quake-bar actor.
 /// Exposes the [`QuakeBarLogWrite`] trait.
 pub struct QuakeBarOps<'a>(&'a mut crate::feat::quake_bar::state::QuakeBarState);
-
-/// Narrow write-handle to the token-cache `RwLock` for the token-count actor.
-/// Exposes the [`TokenCountWrite`] trait.
-pub struct TokenCacheOps<'a>(&'a mut parking_lot::RwLock<EntryTokenCache>);
 
 /// Narrow write-handle to the skills picker + preview cache for the skills
 /// actor.
@@ -102,12 +96,6 @@ pub trait TerminalMirrorWrite {
     );
     /// Marks (or clears) a chat session's live-terminal flag.
     fn set_live(&mut self, chat_session_id: &crate::protocol::SessionId, live: bool);
-}
-
-/// Insert / bulk-insert token counts into the entry-token cache.
-pub trait TokenCountWrite {
-    fn insert(&mut self, id: ChatEntryId, count: u32);
-    fn bulk_insert<I: IntoIterator<Item = (ChatEntryId, u32)>>(&mut self, entries: I);
 }
 
 // ── Inherent accessors on the Ops newtypes ──────────────────────────────────
@@ -205,15 +193,6 @@ impl QuakeBarLogWrite for QuakeBarOps<'_> {
     }
 }
 
-impl TokenCountWrite for TokenCacheOps<'_> {
-    fn insert(&mut self, id: ChatEntryId, count: u32) {
-        self.0.write().insert(id, count);
-    }
-    fn bulk_insert<I: IntoIterator<Item = (ChatEntryId, u32)>>(&mut self, entries: I) {
-        self.0.write().bulk_insert(entries);
-    }
-}
-
 // ── Projection methods ──────────────────────────────────────────────────────
 
 impl State {
@@ -256,18 +235,6 @@ impl State {
         let mut guard = self.write_lock();
         let app = &mut *guard;
         f(&mut QuakeBarOps(&mut app.frontend.quake_bar))
-    }
-
-    /// Write access to the entry-token cache, scoped via [`TokenCacheOps`].
-    pub fn with_entry_token_cache<R, F>(&self, _cap: &FrontendCap, f: F) -> R
-    where
-        F: FnOnce(&mut TokenCacheOps<'_>) -> R,
-    {
-        let mut guard = self.write_lock();
-        let app = &mut *guard;
-        f(&mut TokenCacheOps(
-            &mut app.frontend.caches.entry_token_cache,
-        ))
     }
 
     /// Write access to the skills picker, scoped via [`SkillPickerOps`].

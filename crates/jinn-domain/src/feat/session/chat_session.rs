@@ -729,6 +729,27 @@ impl ChatSessionState {
         &self.core.history
     }
 
+    /// Fills the persisted token count for entries that don't have one yet.
+    ///
+    /// A token count is a content-derived fact about the (immutable) entry
+    /// text, so entries whose count is already `Some` are never recomputed.
+    /// Entry ids not present in `counts` (or not in this history) are skipped.
+    ///
+    /// Returns the number of entries filled.
+    pub fn fill_missing_token_counts(&mut self, counts: &HashMap<ChatEntryId, u32>) -> usize {
+        let mut filled = 0;
+        for entry in self.core.history.iter_mut() {
+            if entry.token_count.is_some() {
+                continue;
+            }
+            if let Some(count) = counts.get(&entry.id) {
+                entry.token_count = Some(*count);
+                filled += 1;
+            }
+        }
+        filled
+    }
+
     /// Mark entries at the given indices as ignored.
     ///
     /// Used by the compaction actor to mark entries that have been summarized.

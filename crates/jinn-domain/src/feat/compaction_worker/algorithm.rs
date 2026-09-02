@@ -286,6 +286,7 @@ mod tests {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            token_count: None,
         };
 
         // Then only User and System are valid openers.
@@ -356,6 +357,7 @@ mod tests {
                 pin_position: None,
                 context_override: ContextOverride::Default,
                 context_history: Vec::new(),
+                token_count: None,
             },
             ChatEntry::user("world"),
         ];

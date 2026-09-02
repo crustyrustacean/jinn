@@ -1,4 +1,4 @@
-//! The migration runner and individual migrations (v0..=v22).
+//! The migration runner and individual migrations (v0..=v25).
 //!
 //! Ported verbatim from jinn-domain's `migrator.rs` so the schema crate is the
 //! single source of truth. Three mechanical changes from the original:
@@ -22,7 +22,7 @@ use crate::SchemaMigrationError;
 ///
 /// `run_pending` skips `BEGIN` when the DB is already at this version, so an
 /// up-to-date database pays no transaction cost on startup.
-const LATEST_VERSION: i32 = 24;
+const LATEST_VERSION: i32 = 25;
 
 /// Runs all pending migrations in order, atomically.
 ///
@@ -312,6 +312,15 @@ fn apply_migration_chain(
         );
         migrate_v24(conn)?;
         record_version(conn, 24, "add_token_ledger_prompt_cached_columns")?;
+    }
+    if current < 25 {
+        tracing::debug!(
+            version = 25,
+            name = "add_entries_token_count_column",
+            "applying migration"
+        );
+        migrate_v25(conn)?;
+        record_version(conn, 25, "add_entries_token_count_column")?;
     }
     Ok(())
 }
@@ -1139,6 +1148,28 @@ pub fn migrate_v24(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
     Ok(())
 }
 
+/// v25: Add the persisted per-entry token count column to `entries`.
+///
+/// Adds `token_count` — the content-derived tiktoken estimate for the entry,
+/// stored so large sessions don't re-tokenize their whole history on every
+/// load. Nullable: pre-v25 rows load as `NULL` (= "not yet computed") and are
+/// filled lazily by the token count actor, then saved on the next persist.
+pub fn migrate_v25(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    let sql = "ALTER TABLE entries ADD COLUMN token_count INTEGER";
+    // Idempotent: ignore "duplicate column" error if migration runs twice.
+    match conn.execute(sql, []) {
+        Ok(_) => {}
+        Err(rusqlite::Error::SqliteFailure(_, Some(msg)))
+            if msg.contains("duplicate column name") => {}
+        Err(e) => {
+            return Err(e)
+                .change_context(SchemaMigrationError)
+                .attach("v25: add token_count column to entries");
+        }
+    }
+    Ok(())
+}
+
 /// Rewrites the `session_id` and `parent_session` string values inside the
 /// `sessions.metadata` JSON blob, stripping a leading `s-` where present.
 ///
@@ -1386,6 +1417,14 @@ pub fn apply_migrations_inner(conn: &mut rusqlite::Connection, target: i32) {
         migrate_v23(conn).expect("v23");
         record_version(conn, 23, "strip_s_prefix_from_session_ids").expect("record v23");
     }
+    if target >= 24 {
+        migrate_v24(conn).expect("v24");
+        record_version(conn, 24, "add_token_ledger_prompt_cached_columns").expect("record v24");
+    }
+    if target >= 25 {
+        migrate_v25(conn).expect("v25");
+        record_version(conn, 25, "add_entries_token_count_column").expect("record v25");
+    }
 }
 
 /// Test-only: applies migrations up to (and including) `target` on a held
@@ -1411,7 +1450,7 @@ pub fn apply_up_to_no_fk(conn: &mut rusqlite::Connection, target: i32) {
 pub mod testing {
     pub use super::{
         apply_migrations_inner, bootstrap_tracking_table, migrate_v10, migrate_v15, migrate_v16,
-        migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22, migrate_v23,
+        migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22, migrate_v23, migrate_v25,
         record_version,
     };
 }

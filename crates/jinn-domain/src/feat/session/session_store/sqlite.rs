@@ -232,7 +232,8 @@ impl SessionStore for SqliteSessionStore {
                  entries.context_history AS context_history, \
                  session_history.pin_position AS pin_position, \
                  session_history.ignored AS ignored, \
-                 session_history.context_override AS context_override \
+                 session_history.context_override AS context_override, \
+                 entries.token_count AS token_count \
                  FROM entries \
                  INNER JOIN session_history ON entries.id = session_history.entry_id \
                  WHERE session_history.session_id = ? \
@@ -406,6 +407,7 @@ struct JoinedEntry {
     timing: String,
     kind: String,
     context_history: String,
+    token_count: Option<i64>,
     pin_position: Option<String>,
     ignored: bool,
     context_override: String,
@@ -418,6 +420,7 @@ impl FromRow for JoinedEntry {
             timing: row.get("timing")?,
             kind: row.get("kind")?,
             context_history: row.get("context_history")?,
+            token_count: row.get("token_count")?,
             pin_position: row.get("pin_position")?,
             ignored: row.get("ignored")?,
             context_override: row.get("context_override")?,
@@ -835,6 +838,7 @@ struct PersistableEntry {
     pin_position: Option<String>,
     ignored: bool,
     context_override: String,
+    token_count: Option<i64>,
     attachments: Vec<Attachment>,
 }
 
@@ -858,6 +862,7 @@ impl PersistableEntry {
             pin_position,
             ignored: entry.ignored(),
             context_override,
+            token_count: entry.token_count.map(i64::from),
             attachments,
         }
     }
@@ -937,16 +942,20 @@ fn insert_entry_and_junction(
 ) -> rusqlite::Result<()> {
     // Insert entry. On conflict (entry shared across sessions), update
     // context_history since it mutates after first insertion via
-    // `apply_context_override`.
+    // `apply_context_override`. `token_count` keeps the already-stored value
+    // when the incoming one is NULL — a session saved before its actor
+    // computed the count must not erase a count another session persisted.
     conn.execute(
-        "INSERT INTO entries (id, timing, kind, context_history) \
-         VALUES (?, ?, ?, ?) \
-         ON CONFLICT(id) DO UPDATE SET context_history = excluded.context_history",
+        "INSERT INTO entries (id, timing, kind, context_history, token_count) \
+         VALUES (?, ?, ?, ?, ?) \
+         ON CONFLICT(id) DO UPDATE SET context_history = excluded.context_history, \
+         token_count = COALESCE(excluded.token_count, entries.token_count)",
         rusqlite::params![
             entry.entry_id,
             entry.timing,
             entry.kind,
-            entry.context_history
+            entry.context_history,
+            entry.token_count
         ],
     )?;
 
@@ -1298,6 +1307,11 @@ fn entry_from_joined(joined: JoinedEntry, attachments: Vec<Attachment>) -> ChatE
             }
         });
     chat_entry.restore_context_override(override_value);
+
+    // Restore the persisted token count (NULL or corrupt-negative → None →
+    // computed lazily by the token count actor). Content-derived fact —
+    // restored, not recomputed.
+    chat_entry.restore_token_count(joined.token_count.and_then(|t| u32::try_from(t).ok()));
 
     // Restore audit trail. Empty array (default) loads as Vec::new().
     // Corrupt JSON falls back to empty with a warning.

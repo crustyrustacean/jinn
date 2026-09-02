@@ -202,10 +202,7 @@ fn render_pruned_row(
     bg: Color,
     primary: Color,
 ) -> u16 {
-    let report = {
-        let cache = state.frontend.caches.entry_token_cache.read();
-        crate::feat::session::prune_report::prune_report(state.active_session().history(), &cache)
-    };
+    let report = crate::feat::session::prune_report::prune_report(state.active_session().history());
     let data = Line::from(Span::styled(
         format!(
             "Prune ctx pruned: {} tok ({} entries)",
@@ -436,7 +433,7 @@ mod tests {
     #[test]
     fn session_row_shows_pruned_prune_tokens() {
         // Given a quake-bar state whose active session has a worker-pruned
-        // entry with a cached token count.
+        // entry with a computed token count.
         let mut state = quake_state_with_log(&[]);
         let mut entry = ChatEntry::user("big");
         entry.apply_context_override(
@@ -445,9 +442,7 @@ mod tests {
                 name: "edit_read".to_owned(),
             },
         );
-        let mut cache = state.frontend.caches.entry_token_cache.write();
-        cache.insert(entry.id.clone(), 1000);
-        drop(cache);
+        entry.token_count = Some(1000);
         state.active_session_mut().push_entry(entry);
         let (mut terminal, area) = setup_term(80, 24);
 

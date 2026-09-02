@@ -87,7 +87,7 @@ impl MinimapVisibility for VisualItem {
 struct VisibleEntry {
     /// Visual-item index.
     vi_index: usize,
-    /// Cached tiktoken token count, if available.
+    /// Persisted token count, if computed.
     token_count: Option<u32>,
 }
 
@@ -97,8 +97,6 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
     let session = state.active_session();
     let history = session.history();
     let items = session.visual_items();
-
-    let token_cache = state.frontend.caches.entry_token_cache.read();
 
     items
         .iter()
@@ -121,7 +119,7 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
                     VisualItem::CollapsedIgnoredBlock { .. } => None,
                     VisualItem::Entry(hist_idx) => {
                         let entry = history.get(*hist_idx).expect("hist_idx from visual_items");
-                        token_cache.get(&entry.id)
+                        entry.token_count
                     }
                 }
             };
@@ -290,14 +288,13 @@ fn compute_tokens_below(state: &AppState, start: usize) -> Option<u32> {
 fn compute_token_sum_in_range(state: &AppState, start: usize, end: usize) -> Option<u32> {
     let session = state.active_session();
     let history = session.history();
-    let token_cache = state.frontend.caches.entry_token_cache.read();
 
     let end = end.min(history.len());
     let start = start.min(end);
     let mut sum: u32 = 0;
     for entry in history.get(start..end).unwrap_or(&[]) {
         if entry.is_in_context()
-            && let Some(count) = token_cache.get(&entry.id)
+            && let Some(count) = entry.token_count
         {
             sum = sum.saturating_add(count);
         }
@@ -603,17 +600,11 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn single_entry_with_cache_shows_block_at_midpoint() {
+    fn single_entry_with_count_shows_block_at_midpoint() {
         let mut state = AppState::default();
-        let entry = ChatEntry::user("hello world");
-        let entry_id = entry.id.clone();
+        let mut entry = ChatEntry::user("hello world");
+        entry.token_count = Some(50);
         state.active_session_mut().push_entry(entry);
-        state
-            .frontend
-            .caches
-            .entry_token_cache
-            .write()
-            .insert(entry_id, 50);
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
         assert!(arrow.is_some());
         assert!(rows[5].contains('\u{2588}'), "expected block at midpoint");
@@ -741,23 +732,17 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn in_context_entry_with_cache_shows_block() {
+    fn in_context_entry_with_count_shows_block() {
         let mut state = AppState::default();
-        let entry = ChatEntry::user("hello world this is a test");
-        let entry_id = entry.id.clone();
+        let mut entry = ChatEntry::user("hello world this is a test");
+        entry.token_count = Some(500);
         state.active_session_mut().push_entry(entry);
-        state
-            .frontend
-            .caches
-            .entry_token_cache
-            .write()
-            .insert(entry_id, 500);
         let (_, rows) = render_to_buffer(&state, 1, 10);
         assert_eq!(rows[5].chars().filter(|&c| c == '\u{2588}').count(), 1);
     }
 
     #[rstest::rstest]
-    fn entry_without_cache_shows_space() {
+    fn entry_without_count_shows_space() {
         let mut state = AppState::default();
         state
             .active_session_mut()
@@ -899,15 +884,9 @@ mod tests {
     fn tokens_above_and_below_for_single_entry() {
         // Single in-context entry selected: both sides are empty.
         let mut state = AppState::default();
-        let entry = ChatEntry::user("hello");
-        let entry_id = entry.id.clone();
+        let mut entry = ChatEntry::user("hello");
+        entry.token_count = Some(100);
         state.active_session_mut().push_entry(entry);
-        state
-            .frontend
-            .caches
-            .entry_token_cache
-            .write()
-            .insert(entry_id, 100);
         setup_visual_items(&state);
         let items = state.active_session().visual_items();
         let history_len = state.active_session().history().len();
@@ -924,17 +903,12 @@ mod tests {
         // Two entries: [thinking (excluded), user (in-context, selected)].
         // Above-skipped because thinking is not in context; below-empty.
         let mut state = AppState::default();
-        let thinking = ChatEntry::thinking("reasoning");
-        let user = ChatEntry::user("hello");
-        let user_id = user.id.clone();
+        let mut thinking = ChatEntry::thinking("reasoning");
+        thinking.token_count = Some(7);
+        let mut user = ChatEntry::user("hello");
+        user.token_count = Some(200);
         state.active_session_mut().push_entry(thinking);
         state.active_session_mut().push_entry(user);
-        state
-            .frontend
-            .caches
-            .entry_token_cache
-            .write()
-            .insert(user_id, 200);
         setup_visual_items(&state);
         let items = state.active_session().visual_items();
         let history_len = state.active_session().history().len();
@@ -953,21 +927,15 @@ mod tests {
     fn tokens_above_excludes_cursor_tokens_below_sums_after_cursor() {
         // Three in-context entries [user100, assistant200, user300].
         let mut state = AppState::default();
-        let e1 = ChatEntry::user("a");
-        let e2 = ChatEntry::assistant("b");
-        let e3 = ChatEntry::user("c");
-        let id1 = e1.id.clone();
-        let id2 = e2.id.clone();
-        let id3 = e3.id.clone();
+        let mut e1 = ChatEntry::user("a");
+        e1.token_count = Some(100);
+        let mut e2 = ChatEntry::assistant("b");
+        e2.token_count = Some(200);
+        let mut e3 = ChatEntry::user("c");
+        e3.token_count = Some(300);
         state.active_session_mut().push_entry(e1);
         state.active_session_mut().push_entry(e2);
         state.active_session_mut().push_entry(e3);
-        state
-            .frontend
-            .caches
-            .entry_token_cache
-            .write()
-            .bulk_insert([(id1, 100), (id2, 200), (id3, 300)]);
         setup_visual_items(&state);
         let items = state.active_session().visual_items();
         let history_len = state.active_session().history().len();
@@ -995,7 +963,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn tokens_above_and_below_are_zero_when_no_cached_counts() {
+    fn tokens_above_and_below_are_zero_when_no_counts_computed() {
         let mut state = AppState::default();
         state
             .active_session_mut()
@@ -1023,6 +991,7 @@ mod tests {
         // 4=user(200), 5=user(300). Cursor sits on the collapsed block covering
         // indices 1..4.
         let mut state = AppState::default();
+        let counts = [100u32, 50, 60, 70, 200, 300];
         let entries: Vec<ChatEntry> = vec![
             ChatEntry::user("first"),
             ChatEntry::thinking("t1"),
@@ -1030,24 +999,17 @@ mod tests {
             ChatEntry::thinking("t3"),
             ChatEntry::user("second"),
             ChatEntry::user("third"),
-        ];
-        let ids: Vec<_> = entries.iter().map(|e| e.id.clone()).collect();
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut entry)| {
+            entry.token_count = Some(counts[i]);
+            entry
+        })
+        .collect();
         for entry in entries {
             state.active_session_mut().push_entry(entry);
         }
-        state
-            .frontend
-            .caches
-            .entry_token_cache
-            .write()
-            .bulk_insert([
-                (ids[0].clone(), 100),
-                (ids[1].clone(), 50),
-                (ids[2].clone(), 60),
-                (ids[3].clone(), 70),
-                (ids[4].clone(), 200),
-                (ids[5].clone(), 300),
-            ]);
 
         // Manually install visual items with a collapsed block.
         let items = vec![
@@ -1218,22 +1180,10 @@ mod tests {
     fn no_cursor_falls_back_to_last_visual_item() {
         let mut state = AppState::default();
         for i in 0..3 {
-            let entry = ChatEntry::user(format!("msg {i}"));
+            let mut entry = ChatEntry::user(format!("msg {i}"));
+            entry.token_count = Some((i as u32 + 1) * 100);
             state.active_session_mut().push_entry(entry);
         }
-        let cache_pairs: Vec<_> = state
-            .active_session()
-            .history()
-            .iter()
-            .enumerate()
-            .map(|(i, e)| (e.id.clone(), (i as u32 + 1) * 100))
-            .collect();
-        state
-            .frontend
-            .caches
-            .entry_token_cache
-            .write()
-            .bulk_insert(cache_pairs);
         // Deliberately do NOT call set_selected_entry_index.
         let (arrow, _rows) = render_to_buffer(&state, 1, 10);
         let arrow = arrow.expect("arrow should render even without cursor");

@@ -1711,3 +1711,79 @@ async fn set_archived_many_ignores_unknown_ids() {
         crate::feat::session::chat_session::SessionState::Archived
     );
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn token_count_round_trips_through_store() {
+    // Given a session with entries carrying mixed token counts.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Token Counts".to_owned());
+
+    session.push_entry(ChatEntry::user("counted"));
+    session.push_entry(ChatEntry::assistant("not counted yet"));
+
+    let mut counted = ChatEntry::user("pre-computed");
+    counted.token_count = Some(1234);
+    session.push_entry(counted);
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then persisted counts are restored and missing counts stay None.
+    assert_eq!(loaded.history().len(), 3);
+    assert_eq!(loaded.history()[0].token_count, None);
+    assert_eq!(loaded.history()[1].token_count, None);
+    assert_eq!(loaded.history()[2].token_count, Some(1234));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn saving_entry_with_uncomputed_count_preserves_persisted_count() {
+    // Given a shared entry whose count another session already persisted.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    let shared = ChatEntry::user("shared entry");
+    let shared_id = shared.id.clone();
+    session.push_entry(shared);
+    store.save(&session).await.expect("first save");
+
+    // (Seed a persisted count directly, as if another session's save had.)
+    store
+        .pool()
+        .execute(
+            "UPDATE entries SET token_count = 77 WHERE id = ?",
+            vec![Box::new(shared_id.to_string())],
+        )
+        .await
+        .expect("seed persisted count");
+
+    // When saving a second session sharing the same entry, but with the
+    // count not yet computed in memory.
+    let other_id = SessionId::new();
+    let mut other = ChatSessionState::new();
+    other.set_session_id(other_id.clone());
+    other.push_entry({
+        let mut clone = ChatEntry::user("shared entry");
+        clone.id = shared_id.clone();
+        clone
+    });
+    store.save(&other).await.expect("second save");
+
+    // Then the previously persisted count is not clobbered by the NULL.
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+    assert_eq!(loaded.history()[0].token_count, Some(77));
+}
