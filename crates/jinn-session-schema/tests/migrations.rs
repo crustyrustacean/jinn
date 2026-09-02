@@ -2,7 +2,7 @@
 
 use jinn_session_schema::run_migrations;
 
-/// `_migrations` tracking row at v24.
+/// `_migrations` tracking row at v25.
 #[rstest::rstest]
 #[test]
 fn fresh_database_has_all_tables_and_v21() {
@@ -46,11 +46,11 @@ fn fresh_database_has_all_tables_and_v21() {
         "entry_blobs table missing: {tables:?}"
     );
 
-    // And the highest recorded migration version is 24.
+    // And the highest recorded migration version is 25.
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
         .expect("query version");
-    assert_eq!(version, 24, "migration version");
+    assert_eq!(version, 25, "migration version");
 
     // And token_ledger has the v24 prompt/cache columns.
     let columns: Vec<String> = conn
@@ -236,4 +236,70 @@ fn v23_strips_s_prefix_from_all_session_id_locations() {
         blob.contains(&format!("\"parent_session\":\"{PARENT}\"")),
         "blob parent_session should be bare, got: {blob}"
     );
+}
+
+/// v25 adds the nullable `entries.token_count` column. Legacy rows (pre-v25)
+/// read back as NULL, which the domain maps to "not yet computed".
+#[rstest::rstest]
+#[test]
+#[cfg(feature = "testing")]
+fn v25_adds_nullable_token_count_column_to_entries() {
+    use jinn_session_schema::testing::{apply_migrations_inner, bootstrap_tracking_table};
+
+    // Given a DB migrated only to v24, seeded with one entry.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+    bootstrap_tracking_table(&mut conn).expect("bootstrap");
+    apply_migrations_inner(&mut conn, 24);
+    conn.execute(
+        "INSERT INTO entries (id, timing, kind) VALUES ('e-1', '2024-01-01T00:00:00Z', '{}')",
+        [],
+    )
+    .expect("insert entry");
+
+    // When running the pending migrations (v25).
+    run_migrations(&mut conn).expect("run pending migrations");
+
+    // Then the token_count column exists, is NULL for the legacy row, and
+    // accepts non-NULL counts.
+    let columns: Vec<(String, String)> = conn
+        .prepare("PRAGMA table_info(entries)")
+        .expect("prepare")
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        })
+        .expect("query")
+        .map(|r| r.expect("row"))
+        .collect();
+    let token_count = columns
+        .iter()
+        .find(|(name, _)| name == "token_count")
+        .expect("entries.token_count column missing");
+    assert_eq!(
+        token_count.1.to_uppercase(),
+        "INTEGER",
+        "token_count must be INTEGER, got: {token_count:?}"
+    );
+
+    let stored: Option<Option<i64>> = conn
+        .query_row(
+            "SELECT token_count FROM entries WHERE id = 'e-1'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("select legacy row");
+    assert!(
+        stored.is_none(),
+        "legacy row's token_count must read back as NULL"
+    );
+
+    conn.execute("UPDATE entries SET token_count = 42 WHERE id = 'e-1'", [])
+        .expect("set token count");
+    let after: i64 = conn
+        .query_row(
+            "SELECT token_count FROM entries WHERE id = 'e-1'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("select updated row");
+    assert_eq!(after, 42);
 }

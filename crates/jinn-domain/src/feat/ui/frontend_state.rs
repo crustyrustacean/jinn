@@ -34,9 +34,6 @@ pub use crate::feat::ui::sidebar::task_list_section::TaskListSectionState;
 pub struct FrontendCaches {
     /// Cached wrapped line counts and rendered lines per chat entry.
     pub entry_line_cache: RwLock<crate::feat::ui::chat_log::line_count_cache::EntryLineCache>,
-    /// Cached token counts per chat entry (tiktoken-based).
-    /// Populated by the token count actor, read by the minimap render pipeline.
-    pub entry_token_cache: RwLock<crate::feat::session::entry_token_cache::EntryTokenCache>,
     /// Cached rendered lines for skill-preview popups.
     pub skill_preview_cache: RwLock<crate::feat::skills::skill_preview_cache::SkillPreviewCache>,
     /// Cached rendered lines for session preview popups.

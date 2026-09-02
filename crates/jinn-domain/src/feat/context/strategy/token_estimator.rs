@@ -22,16 +22,35 @@ pub trait TokenEstimator: Send + Sync {
     fn name(&self) -> &'static str;
 }
 
-/// Estimate the token count for a single chat entry's text content.
+/// Estimate the token count for a single chat entry's contribution to LLM context.
 ///
 /// Uses the same fields that `entries_to_messages` would convert to LLM messages.
 /// Entries not in context (per `is_in_context()`) contribute 0 tokens.
+///
+/// Budget-facing view: context *membership* gates the result, not entry content.
+/// For the context-independent per-entry count persisted on `ChatEntry`, use
+/// [`estimate_entry_content_tokens`].
 pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) -> usize {
     // Entries not in context contribute 0 tokens.
     if !entry.is_in_context() {
         return 0;
     }
+    estimate_entry_content_tokens(estimator, entry)
+}
 
+/// Estimate the token count of a chat entry's content, independent of context state.
+///
+/// Same per-kind shaping as [`estimate_entry_tokens`] (estimator prefixes, image
+/// attachment cost) but with no `is_in_context` short-circuit: an entry excluded
+/// from the assembled prompt still counts its text. This is the function behind
+/// the persisted `ChatEntry::token_count` field — the count is a fact about the
+/// entry's immutable content, so it never depends on context membership.
+///
+/// Kind-level exclusions are preserved verbatim: `Annotation` and `Transient`
+/// shape their text the same as any other kind here; the `Error` arm still
+/// keys off `context_override` because the override changes the content's
+/// framing, not its context membership.
+pub fn estimate_entry_content_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) -> usize {
     match &entry.kind {
         ChatEntryKind::User {
             expanded,
@@ -281,6 +300,30 @@ mod tests {
 
         // Then the estimate is text cost + 2 × flat image cost.
         assert_eq!(tokens, estimator.estimate("describe") + 765 + 765);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn content_estimator_counts_excluded_entry_but_budget_estimator_returns_zero() {
+        // Given a user entry force-excluded from context.
+        let estimator = ByteLenEstimator;
+        let mut entry = ChatEntry::user("some excluded text");
+        entry.apply_context_override(
+            crate::protocol::ContextOverride::ForcedExclude,
+            crate::protocol::ChangeSource::User,
+        );
+
+        // When estimating the entry's content tokens.
+        let content = estimate_entry_content_tokens(&estimator, &entry);
+
+        // Then the content count reflects the text despite exclusion.
+        assert!(
+            content > 0,
+            "content count must ignore context membership, got {content}"
+        );
+
+        // And the budget-facing estimator still returns 0 for the same entry.
+        assert_eq!(estimate_entry_tokens(&estimator, &entry), 0);
     }
 
     #[rstest::rstest]

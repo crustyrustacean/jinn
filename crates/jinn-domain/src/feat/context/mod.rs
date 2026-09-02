@@ -42,5 +42,6 @@ pub mod strategy;
 pub mod tool_prompt;
 
 pub use strategy::token_estimator::{
-    CharRatioEstimator, TokenEstimator, estimate_entry_tokens, estimate_tool_schema_tokens,
+    CharRatioEstimator, TokenEstimator, estimate_entry_content_tokens, estimate_entry_tokens,
+    estimate_tool_schema_tokens,
 };

@@ -9,7 +9,6 @@
 //! automatically and pending, un-flushed prunes never appear).
 
 use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ContextOverride};
-use crate::feat::session::entry_token_cache::EntryTokenCache;
 
 /// The `HistoryWorker::name` of the compaction worker.
 ///
@@ -21,8 +20,8 @@ const COMPACTION_WORKER_NAME: &str = "compaction";
 /// Result of scanning history for currently-applied auto-pruner exclusions.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PruneReport {
-    /// Sum of cached token counts over counted entries (lower bound when
-    /// counts are missing).
+    /// Sum of persisted token counts over counted entries (lower bound when
+    /// counts are not yet computed).
     pub tokens: u64,
     /// Number of counted entries.
     pub entries: usize,
@@ -33,21 +32,17 @@ pub struct PruneReport {
 /// An entry is counted iff its override is still
 /// [`ContextOverride::ForcedExclude`] and its most recent
 /// `context_history` event came from a `ChangeSource::Worker` other than
-/// compaction. Missing token-cache counts contribute zero tokens but the
-/// entry still counts, so `tokens` is a lower bound. Entries whose prune is
-/// still buffered in the mutation accumulator are not applied yet and are
+/// compaction. Entries whose token count is not yet computed contribute zero
+/// tokens but still count, so `tokens` is a lower bound. Entries whose prune
+/// is still buffered in the mutation accumulator are not applied yet and are
 /// never counted.
-pub fn prune_report(history: &[ChatEntry], token_cache: &EntryTokenCache) -> PruneReport {
-    let tokens = history
-        .iter()
-        .filter(|entry| is_pruned_by_worker(entry))
-        .map(|entry| u64::from(token_cache.get(&entry.id).unwrap_or(0)))
+pub fn prune_report(history: &[ChatEntry]) -> PruneReport {
+    let counted = history.iter().filter(|entry| is_pruned_by_worker(entry));
+    let tokens = counted
+        .clone()
+        .map(|entry| u64::from(entry.token_count.unwrap_or(0)))
         .sum();
-
-    let entries = history
-        .iter()
-        .filter(|entry| is_pruned_by_worker(entry))
-        .count();
+    let entries = counted.count();
 
     PruneReport { tokens, entries }
 }
@@ -96,14 +91,13 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn counts_worker_excluded_entry_tokens() {
-        // Given a worker-excluded entry with a cached token count.
+        // Given a worker-excluded entry with a persisted token count.
         let mut entry = ChatEntry::user("big tool output");
         worker_prune(&mut entry);
-        let mut cache = EntryTokenCache::default();
-        cache.insert(entry.id.clone(), 300);
+        entry.token_count = Some(300);
 
         // When computing the prune report.
-        let report = prune_report(std::slice::from_ref(&entry), &cache);
+        let report = prune_report(std::slice::from_ref(&entry));
 
         // Then the entry's tokens are counted.
         assert_eq!(report.tokens, 300);
@@ -122,11 +116,10 @@ mod tests {
                 name: COMPACTION_WORKER_NAME.to_owned(),
             },
         );
-        let mut cache = EntryTokenCache::default();
-        cache.insert(entry.id.clone(), 300);
+        entry.token_count = Some(300);
 
         // When computing the prune report.
-        let report = prune_report(std::slice::from_ref(&entry), &cache);
+        let report = prune_report(std::slice::from_ref(&entry));
 
         // Then the compaction exclude is not counted.
         assert_eq!(report.tokens, 0);
@@ -139,11 +132,10 @@ mod tests {
         // Given a user-excluded entry.
         let mut entry = ChatEntry::user("user ignored this");
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
-        let mut cache = EntryTokenCache::default();
-        cache.insert(entry.id.clone(), 300);
+        entry.token_count = Some(300);
 
         // When computing the prune report.
-        let report = prune_report(std::slice::from_ref(&entry), &cache);
+        let report = prune_report(std::slice::from_ref(&entry));
 
         // Then the user exclude is not counted.
         assert_eq!(report.tokens, 0);
@@ -157,11 +149,10 @@ mod tests {
         let mut entry = ChatEntry::user("brought back");
         worker_prune(&mut entry);
         entry.apply_context_override(ContextOverride::ForcedInclude, ChangeSource::User);
-        let mut cache = EntryTokenCache::default();
-        cache.insert(entry.id.clone(), 300);
+        entry.token_count = Some(300);
 
         // When computing the prune report.
-        let report = prune_report(std::slice::from_ref(&entry), &cache);
+        let report = prune_report(std::slice::from_ref(&entry));
 
         // Then the re-included entry is not counted.
         assert_eq!(report.tokens, 0);
@@ -184,9 +175,8 @@ mod tests {
             300,
         );
 
-        // When computing the prune report from history and the token cache.
-        let cache = EntryTokenCache::default();
-        let report = prune_report(std::slice::from_ref(&entry), &cache);
+        // When computing the prune report from history.
+        let report = prune_report(std::slice::from_ref(&entry));
 
         // Then the pending-only prune is not counted — the accumulator is
         // invisible to the derivation.
@@ -197,13 +187,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn missing_token_count_contributes_zero_but_entry_counts() {
-        // Given a worker-excluded entry with no cached token count.
+        // Given a worker-excluded entry whose count is not yet computed.
         let mut entry = ChatEntry::user("uncounted");
         worker_prune(&mut entry);
-        let cache = EntryTokenCache::default();
 
         // When computing the prune report.
-        let report = prune_report(std::slice::from_ref(&entry), &cache);
+        let report = prune_report(std::slice::from_ref(&entry));
 
         // Then the tokens are a lower bound (0).
         assert_eq!(report.tokens, 0);
@@ -214,11 +203,8 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn empty_history_yields_zero_report() {
-        // Given no history and an empty cache.
-        let cache = EntryTokenCache::default();
-
-        // When computing the prune report.
-        let report = prune_report(&[], &cache);
+        // Given no history.
+        let report = prune_report(&[]);
 
         // Then both totals are zero.
         assert_eq!(report.tokens, 0);
@@ -229,13 +215,12 @@ mod tests {
     #[test]
     fn unattributed_exclude_not_counted() {
         // Given a ForcedExclude entry with an empty context-history audit trail.
-        let entry = ChatEntry::user("restored without audit")
+        let mut entry = ChatEntry::user("restored without audit")
             .with_context_override(ContextOverride::ForcedExclude);
-        let mut cache = EntryTokenCache::default();
-        cache.insert(entry.id.clone(), 300);
+        entry.token_count = Some(300);
 
         // When computing the prune report.
-        let report = prune_report(std::slice::from_ref(&entry), &cache);
+        let report = prune_report(std::slice::from_ref(&entry));
 
         // Then the unattributed exclude is not counted.
         assert_eq!(report.tokens, 0);

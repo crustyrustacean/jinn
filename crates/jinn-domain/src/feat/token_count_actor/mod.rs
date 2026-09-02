@@ -1,18 +1,23 @@
 //! Token count actor — computes tiktoken-based counts for chat entries.
 //!
-//! Subscribes to [`HistoryAppended`] and [`SessionLoadCompleted`] to
-//! asynchronously compute per-entry token counts and write them to the
-//! [`EntryTokenCache`] in `FrontendCaches`. The minimap render pipeline
-//! reads the cache synchronously during rendering.
+//! Subscribes to [`HistoryAppended`] and [`SessionLoadCompleted`] to compute
+//! per-entry token counts and fill them into the entries themselves, in
+//! memory. A count is a content-derived fact about the (immutable) entry
+//! text, so only entries whose count is not yet computed are tokenized; the
+//! filled counts persist as a side effect of the regular session-snapshot
+//! persist path (`entries.token_count` column). No separate cache exists —
+//! the field on the entry is the single source of truth.
+
+use std::collections::HashMap;
 
 use kameo::actor::ActorRef;
 use kameo::prelude::{Context, Message};
 
 use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
-use crate::feat::context::protocol::event::ContextOverrideChanged;
+use crate::common::tcaps::session::SessionCap;
 use crate::feat::context::strategy::token_estimator::{
-    TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_tokens,
+    TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_content_tokens,
 };
 use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
@@ -24,25 +29,25 @@ pub struct TokenCountActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
-    /// Authority to write the entry token cache.
-    pub cap: crate::common::tcaps::frontend::FrontendCap,
+    /// Authority to write computed counts into sessions.
+    pub session_cap: SessionCap,
 }
 
 /// The token count actor.
 ///
-/// Computes tiktoken-based token counts for chat entries and caches them
-/// in `FrontendCaches::entry_token_cache`. Runs asynchronously so the
-/// render pipeline is never blocked by tiktoken computation.
+/// Computes tiktoken-based token counts for chat entries and fills them into
+/// `ChatEntry::token_count` in memory. Runs asynchronously so the render
+/// pipeline is never blocked by tiktoken computation.
 pub struct TokenCountActor {
     state: State,
     counter: TiktokenCounter,
-    cap: crate::common::tcaps::frontend::FrontendCap,
+    session_cap: SessionCap,
 }
 
 /// Thin adapter that implements [`TokenEstimator`] by delegating to
 /// [`TiktokenCounter::count()`]. This bridges the gap between the
 /// `TokenCounter` trait (which `TiktokenCounter` implements) and the
-/// `TokenEstimator` trait (which `estimate_entry_tokens` requires).
+/// `TokenEstimator` trait (which `estimate_entry_content_tokens` requires).
 struct TiktokenEstimator(TiktokenCounter);
 
 impl TokenEstimator for TiktokenEstimator {
@@ -70,7 +75,7 @@ impl kameo::Actor for TokenCountActor {
         Ok(Self {
             state: args.state,
             counter: TiktokenCounter::o200k_base(),
-            cap: args.cap,
+            session_cap: args.session_cap,
         })
     }
 }
@@ -91,132 +96,68 @@ impl Message<SessionLoadCompleted> for TokenCountActor {
     }
 }
 
-impl Message<ContextOverrideChanged> for TokenCountActor {
-    type Reply = ();
-
-    async fn handle(&mut self, msg: ContextOverrideChanged, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_context_override_changed(&msg.session_id, &msg.entry_id);
-    }
-}
-
 impl TokenCountActor {
-    /// Handle a [`HistoryAppended`] event.
-    ///
-    /// Computes tiktoken counts for any entries in the active session's
-    /// history that are not already in the cache.
-    fn handle_history_appended(&self, _session_id: &crate::protocol::SessionId) {
-        let new_counts = {
-            let state = self.state.read();
-            let session = state.active_session();
-            let history = session.history();
-
-            let cache = state.frontend.caches.entry_token_cache.read();
-            let estimator = TiktokenEstimator(self.counter);
-
-            let mut counts = Vec::new();
-            for entry in history {
-                if cache.contains(&entry.id) {
-                    continue;
-                }
-                let tokens = estimate_entry_tokens(&estimator, entry);
-                counts.push((entry.id.clone(), tokens as u32));
-            }
-            counts
-        };
-
-        if !new_counts.is_empty() {
-            self.state.with_entry_token_cache(&self.cap, |ops| {
-                use crate::common::tcaps::frontend::TokenCountWrite;
-                ops.bulk_insert(new_counts);
-            });
-        }
-    }
-
-    /// Handle a [`SessionLoadCompleted`] command.
-    ///
-    /// Batch-computes tiktoken counts for all entries in the loaded session
-    /// that are not already in the cache.
-    fn handle_session_load_completed(&self, session: &crate::feat::session::ChatSessionState) {
-        let new_counts = {
-            let state = self.state.read();
-            let cache = state.frontend.caches.entry_token_cache.read();
-            let estimator = TiktokenEstimator(self.counter);
-
-            let mut counts = Vec::new();
-            for entry in session.history() {
-                if cache.contains(&entry.id) {
-                    continue;
-                }
-                let tokens = estimate_entry_tokens(&estimator, entry);
-                counts.push((entry.id.clone(), tokens as u32));
-            }
-            counts
-        };
-
-        if !new_counts.is_empty() {
-            self.state.with_entry_token_cache(&self.cap, |ops| {
-                use crate::common::tcaps::frontend::TokenCountWrite;
-                ops.bulk_insert(new_counts);
-            });
-        }
-    }
-
-    /// Handle a [`ContextOverrideChanged`] event.
-    ///
-    /// Recomputes the token count for the entry if it is now in context
-    /// but the cached value is 0 or missing. This handles the case where
-    /// an entry was excluded by a pruner, cached at 0, then re-inserted
-    /// by the user.
-    fn handle_context_override_changed(
-        &self,
-        session_id: &crate::protocol::SessionId,
-        entry_id: &crate::protocol::ChatEntryId,
-    ) {
-        let should_recompute = {
+    /// Handles a [`HistoryAppended`] event by computing counts for the active
+    /// session's entries that don't have one yet, filling them in memory.
+    fn handle_history_appended(&self, session_id: &crate::protocol::SessionId) {
+        let counts = {
             let state = self.state.read();
             let Some(session) = state.try_session(session_id) else {
                 return;
             };
-            let Some(idx) = session.find_entry_index_by_id(entry_id) else {
-                return;
-            };
-            let Some(entry) = session.history().get(idx) else {
-                return;
-            };
-
-            if !entry.is_in_context() {
-                return;
-            }
-
-            let cache = state.frontend.caches.entry_token_cache.read();
-            matches!(cache.get(&entry.id), None | Some(0))
+            self.compute_missing_counts(session.history())
         };
 
-        if !should_recompute {
+        if counts.is_empty() {
             return;
         }
+        self.fill_counts(session_id, &counts);
+    }
 
-        let tokens = {
-            let state = self.state.read();
-            let Some(session) = state.try_session(session_id) else {
-                return;
-            };
-            let Some(idx) = session.find_entry_index_by_id(entry_id) else {
-                return;
-            };
-            let Some(entry) = session.history().get(idx) else {
-                return;
-            };
-            let estimator = TiktokenEstimator(self.counter);
-            estimate_entry_tokens(&estimator, entry) as u32
-        };
-
-        if tokens > 0 {
-            self.state.with_entry_token_cache(&self.cap, |ops| {
-                use crate::common::tcaps::frontend::TokenCountWrite;
-                ops.insert(entry_id.clone(), tokens);
-            });
+    /// Handles a [`SessionLoadCompleted`] command by computing counts for the
+    /// loaded session's entries that don't have one yet, filling them in
+    /// memory. The session was inserted into state before this event was
+    /// emitted, so the fill lands on the live session.
+    fn handle_session_load_completed(&self, session: &crate::feat::session::ChatSessionState) {
+        let counts = self.compute_missing_counts(session.history());
+        if counts.is_empty() {
+            return;
         }
+        let session_id = session.session_id().clone();
+        self.fill_counts(&session_id, &counts);
+    }
+
+    /// Computes counts for history entries whose count is not yet computed.
+    ///
+    /// Content-derived: entries already carrying a count are skipped — their
+    /// text is immutable, so recomputing could only produce the same value.
+    fn compute_missing_counts(
+        &self,
+        history: &[crate::protocol::ChatEntry],
+    ) -> HashMap<crate::protocol::ChatEntryId, u32> {
+        let estimator = TiktokenEstimator(self.counter);
+        let mut counts = HashMap::new();
+        for entry in history {
+            if entry.token_count.is_some() {
+                continue;
+            }
+            let tokens = estimate_entry_content_tokens(&estimator, entry);
+            counts.insert(entry.id.clone(), tokens as u32);
+        }
+        counts
+    }
+
+    /// Fills computed counts into the named session's entries.
+    fn fill_counts(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        counts: &HashMap<crate::protocol::ChatEntryId, u32>,
+    ) {
+        self.state.with_session(&self.session_cap, |view| {
+            if let Some(session) = view.session.map().get_mut(session_id) {
+                session.fill_missing_token_counts(counts);
+            }
+        });
     }
 }
 
@@ -231,98 +172,96 @@ mod tests {
     )]
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
+    use crate::common::tcaps::mint::mint_session_cap;
+    use crate::feat::context::strategy::token_estimator::estimate_entry_tokens;
+    use crate::feat::session::ChatSessionState;
+    use crate::feat::session::chat_entry::ChatEntry;
+
+    fn actor_for(state: &State) -> TokenCountActor {
+        TokenCountActor {
+            state: state.clone(),
+            counter: TiktokenCounter::o200k_base(),
+            session_cap: mint_session_cap(),
+        }
+    }
 
     #[rstest::rstest]
-    fn history_appended_computes_count_for_new_entry() {
-        // Given a state with one user entry and an empty cache.
+    fn history_appended_fills_count_for_entry_without_one() {
+        // Given a state with one user entry whose count is not yet computed.
         let mut app_state = AppState::default();
         app_state
             .active_session_mut()
             .push_entry(ChatEntry::user("hello world"));
         let state = State::new(app_state);
-
-        let actor = TokenCountActor {
-            state: state.clone(),
-            counter: TiktokenCounter::o200k_base(),
-            cap: crate::common::tcaps::mint::mint_frontend_cap(),
-        };
+        let actor = actor_for(&state);
 
         // When handling HistoryAppended.
         let session_id = state.read().session.active_session_id().clone();
         actor.handle_history_appended(&session_id);
 
-        // Then the cache has a count for the entry.
-        let entry_id = state.read().active_session().history()[0].id.clone();
-        let state_guard = state.read();
-        let cache = state_guard.frontend.caches.entry_token_cache.read();
-        let count = cache.get(&entry_id);
-        assert!(count.is_some(), "entry should have a cached token count");
-        assert!(
-            count.unwrap() > 0,
-            "token count should be positive for non-empty text"
+        // Then the entry's count was filled in memory.
+        let guard = state.read();
+        let entry = guard.try_session(&session_id).expect("session");
+        let count = entry.history()[0].token_count;
+        drop(guard);
+        assert!(count.is_some(), "entry should have a computed token count");
+        // And it matches direct tiktoken counting.
+        assert_eq!(
+            usize::try_from(count.expect("checked is_some")).expect("token counts fit usize"),
+            TiktokenCounter::o200k_base().count("hello world"),
         );
     }
 
     #[rstest::rstest]
-    fn history_appended_skips_already_cached() {
-        // Given a state with one entry already in the cache.
+    fn history_appended_skips_entry_with_existing_count() {
+        // Given a state with one entry already carrying a count.
         let mut app_state = AppState::default();
         app_state
             .active_session_mut()
             .push_entry(ChatEntry::user("hello world"));
-        let entry_id = app_state.active_session().history()[0].id.clone();
-
-        // Pre-populate the cache.
         app_state
-            .frontend
-            .caches
-            .entry_token_cache
-            .write()
-            .insert(entry_id.clone(), 42);
-
+            .active_session_mut()
+            .edit_history()
+            .with_entry_at_mut(0, |e| e.token_count = Some(42));
         let state = State::new(app_state);
-        let actor = TokenCountActor {
-            state: state.clone(),
-            counter: TiktokenCounter::o200k_base(),
-            cap: crate::common::tcaps::mint::mint_frontend_cap(),
-        };
+        let actor = actor_for(&state);
 
         // When handling HistoryAppended.
         let session_id = state.read().session.active_session_id().clone();
         actor.handle_history_appended(&session_id);
 
-        // Then the cached count is unchanged (not re-computed).
-        let state_guard = state.read();
-        let cache = state_guard.frontend.caches.entry_token_cache.read();
-        assert_eq!(cache.get(&entry_id), Some(42));
+        // Then the existing count is unchanged (not re-computed).
+        let guard = state.read();
+        let entry = guard.try_session(&session_id).expect("session");
+        assert_eq!(entry.history()[0].token_count, Some(42));
     }
 
     #[rstest::rstest]
-    fn session_load_batch_computes_all_entries() {
-        // Given a loaded session with 5 entries.
-        let mut loaded_session = crate::feat::session::ChatSessionState::new();
+    fn session_load_batch_fills_all_entries_missing_counts() {
+        // Given a loaded session with 5 entries and no computed counts.
+        let mut loaded_session = ChatSessionState::new();
         for i in 0..5 {
             loaded_session.push_entry(ChatEntry::user(format!("message {i}")));
         }
 
-        let state = State::new(AppState::default());
-        let actor = TokenCountActor {
-            state: state.clone(),
-            counter: TiktokenCounter::o200k_base(),
-            cap: crate::common::tcaps::mint::mint_frontend_cap(),
-        };
+        // And the session is already inserted into state (the load path
+        // inserts before emitting SessionLoadCompleted).
+        let mut app_state = AppState::default();
+        app_state.session.insert(loaded_session.clone());
+        let state = State::new(app_state);
+        let actor = actor_for(&state);
 
         // When handling SessionLoadCompleted.
         actor.handle_session_load_completed(&loaded_session);
 
-        // Then all 5 entries have cached counts.
-        let state_guard = state.read();
-        let cache = state_guard.frontend.caches.entry_token_cache.read();
-        for entry in loaded_session.history() {
+        // Then all 5 entries in the live session have counts.
+        let session_id = loaded_session.session_id().clone();
+        let guard = state.read();
+        let live = guard.try_session(&session_id).expect("session");
+        for entry in live.history() {
             assert!(
-                cache.contains(&entry.id),
-                "entry {:?} should be cached",
+                entry.token_count.is_some(),
+                "entry {:?} should have a computed count",
                 entry.id
             );
         }
@@ -335,133 +274,32 @@ mod tests {
         let text = "hello world";
         let expected = counter.count(text);
 
-        // When computing via the adapter.
+        // When computing via the content estimator adapter.
         let estimator = TiktokenEstimator(counter);
         let entry = ChatEntry::user(text);
-        let actual = estimate_entry_tokens(&estimator, &entry);
+        let actual = estimate_entry_content_tokens(&estimator, &entry);
 
         // Then the count matches direct tiktoken counting.
         assert_eq!(actual, expected);
     }
 
     #[rstest::rstest]
-    fn context_override_changed_recomputes_stale_zero_count() {
-        // Given a state with one user entry that was excluded and cached at 0.
-        let mut app_state = AppState::default();
-        app_state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello world"));
-        let entry_id = app_state.active_session().history()[0].id.clone();
-        app_state
-            .frontend
-            .caches
-            .entry_token_cache
-            .write()
-            .insert(entry_id.clone(), 0);
-
-        let state = State::new(app_state);
-        let actor = TokenCountActor {
-            state: state.clone(),
-            counter: TiktokenCounter::o200k_base(),
-            cap: crate::common::tcaps::mint::mint_frontend_cap(),
-        };
-
-        // When handling ContextOverrideChanged.
-        let session_id = state.read().session.active_session_id().clone();
-        actor.handle_context_override_changed(&session_id, &entry_id);
-
-        // Then the cache now has a nonzero count.
-        let state_guard = state.read();
-        let cache = state_guard.frontend.caches.entry_token_cache.read();
-        let count = cache.get(&entry_id);
-        assert_eq!(count, Some(2));
-    }
-
-    #[rstest::rstest]
-    fn context_override_changed_noop_for_nonzero_cache() {
-        // Given a state with one user entry already cached at 500.
-        let mut app_state = AppState::default();
-        app_state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello world"));
-        let entry_id = app_state.active_session().history()[0].id.clone();
-        app_state
-            .frontend
-            .caches
-            .entry_token_cache
-            .write()
-            .insert(entry_id.clone(), 500);
-
-        let state = State::new(app_state);
-        let actor = TokenCountActor {
-            state: state.clone(),
-            counter: TiktokenCounter::o200k_base(),
-            cap: crate::common::tcaps::mint::mint_frontend_cap(),
-        };
-
-        // When handling ContextOverrideChanged.
-        let session_id = state.read().session.active_session_id().clone();
-        actor.handle_context_override_changed(&session_id, &entry_id);
-
-        // Then the cached count is unchanged.
-        let state_guard = state.read();
-        let cache = state_guard.frontend.caches.entry_token_cache.read();
-        assert_eq!(cache.get(&entry_id), Some(500));
-    }
-
-    #[rstest::rstest]
-    fn context_override_changed_noop_when_excluded() {
-        // Given a state with one user entry that is ForcedExclude.
-        let mut app_state = AppState::default();
+    fn content_estimator_counts_excluded_entry_nonzero() {
+        // Given a ForcedExclude user entry.
         let mut entry = ChatEntry::user("hello world");
-        entry.context_override = ContextOverride::ForcedExclude;
-        app_state.active_session_mut().push_entry(entry);
-        let entry_id = app_state.active_session().history()[0].id.clone();
-        // No cache entry — should still be noop because entry is excluded.
+        entry.apply_context_override(
+            crate::protocol::ContextOverride::ForcedExclude,
+            crate::protocol::ChangeSource::User,
+        );
 
-        let state = State::new(app_state);
-        let actor = TokenCountActor {
-            state: state.clone(),
-            counter: TiktokenCounter::o200k_base(),
-            cap: crate::common::tcaps::mint::mint_frontend_cap(),
-        };
+        // When estimating with the content estimator.
+        let estimator = TiktokenEstimator(TiktokenCounter::o200k_base());
+        let content = estimate_entry_content_tokens(&estimator, &entry);
 
-        // When handling ContextOverrideChanged.
-        let session_id = state.read().session.active_session_id().clone();
-        actor.handle_context_override_changed(&session_id, &entry_id);
-
-        // Then no cache entry was created.
-        let state_guard = state.read();
-        let cache = state_guard.frontend.caches.entry_token_cache.read();
-        assert_eq!(cache.get(&entry_id), None);
-    }
-
-    #[rstest::rstest]
-    fn context_override_changed_recomputes_missing_cache_entry() {
-        // Given a state with one user entry that has no cache entry.
-        let mut app_state = AppState::default();
-        app_state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello world"));
-        let entry_id = app_state.active_session().history()[0].id.clone();
-        // Entry is in context (Default) but has never been cached.
-
-        let state = State::new(app_state);
-        let actor = TokenCountActor {
-            state: state.clone(),
-            counter: TiktokenCounter::o200k_base(),
-            cap: crate::common::tcaps::mint::mint_frontend_cap(),
-        };
-
-        // When handling ContextOverrideChanged.
-        let session_id = state.read().session.active_session_id().clone();
-        actor.handle_context_override_changed(&session_id, &entry_id);
-
-        // Then the cache now has a nonzero count.
-        let state_guard = state.read();
-        let cache = state_guard.frontend.caches.entry_token_cache.read();
-        let count = cache.get(&entry_id);
-        assert_eq!(count, Some(2));
+        // Then the count reflects the text despite exclusion.
+        assert!(content > 0, "content count must ignore context membership");
+        // And the budget-facing estimator still returns 0 for it.
+        assert_eq!(estimate_entry_tokens(&estimator, &entry), 0);
     }
 
     #[rstest::rstest]
@@ -477,43 +315,29 @@ mod tests {
             .active_session_mut()
             .push_entry(ChatEntry::tool_call("call_1", "write", &arguments));
 
-        // Verify the entry actually has the full arguments.
-        let entry = &app_state.active_session().history()[0];
-        if let ChatEntryKind::ToolCall {
-            arguments: ref args,
-            ..
-        } = entry.kind
-        {
-            assert_eq!(args.len(), arguments.len());
-        }
-
         let state = State::new(app_state);
-        let actor = TokenCountActor {
-            state: state.clone(),
-            counter: TiktokenCounter::o200k_base(),
-            cap: crate::common::tcaps::mint::mint_frontend_cap(),
-        };
+        let actor = actor_for(&state);
 
         // When handling HistoryAppended.
         let session_id = state.read().session.active_session_id().clone();
         actor.handle_history_appended(&session_id);
 
-        // Then the cached count should be close to the direct count.
-        let entry_id = state.read().active_session().history()[0].id.clone();
-        let state_guard = state.read();
-        let cache = state_guard.frontend.caches.entry_token_cache.read();
-        let count = cache.get(&entry_id).expect("entry should be cached");
+        // Then the filled count should be close to the direct count.
+        let guard = state.read();
+        let entry = guard.try_session(&session_id).expect("session");
+        let count =
+            usize::try_from(entry.history()[0].token_count.expect("count filled")).unwrap_or(0);
         let tool_name_tokens = counter.count("write");
         let expected_min = direct_count + tool_name_tokens;
         assert!(
-            count as usize > expected_min / 2,
+            count > expected_min / 2,
             "expected count > {} (half of {}), got {}",
             expected_min / 2,
             expected_min,
             count
         );
         assert!(
-            count as usize > 500,
+            count > 500,
             "expected count > 500 for large tool call, got {count}"
         );
     }

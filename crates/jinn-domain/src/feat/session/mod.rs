@@ -11,7 +11,6 @@ pub mod session_summary;
 
 pub mod chat_entry;
 pub mod entry_timing;
-pub(crate) mod entry_token_cache;
 
 #[cfg(test)]
 mod chat_entry_tests;

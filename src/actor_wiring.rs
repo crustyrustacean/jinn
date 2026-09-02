@@ -945,7 +945,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::token_count_actor::TokenCountActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
-                    cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
+                    session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
