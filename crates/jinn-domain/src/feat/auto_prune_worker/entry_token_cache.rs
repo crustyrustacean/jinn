@@ -14,12 +14,12 @@
 //!
 //! # Naming
 //!
-//! Named `HistoryWorkerChatEntryTokenCache` (deliberately long) to avoid
-//! collision with the frontend-owned [`EntryTokenCache`] in
-//! `crate::feat::session::entry_token_cache`. The two caches are
-//! independent: workers use this one; the UI uses the existing one.
+//! Named `HistoryWorkerChatEntryTokenCache` (deliberately long) to
+//! distinguish it from the persisted `token_count` field on [`ChatEntry`]:
+//! workers use this memoization cache for their evaluation passes, while
+//! the entry field is the durable per-entry count.
 //!
-//! [`EntryTokenCache`]: crate::feat::session::entry_token_cache::EntryTokenCache
+//! [`ChatEntry`]: crate::feat::session::chat_entry::ChatEntry
 //! [`ChatEntryId`]: crate::feat::session::chat_entry::ChatEntryId
 //! [`SessionClosed`]: crate::feat::session::protocol::session_closed::SessionClosed
 
