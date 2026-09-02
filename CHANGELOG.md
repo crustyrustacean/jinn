@@ -1,3 +1,7 @@
+## 2026-09-02 v0.115.1
+
+- Number of pruned token display from v0.115.0 now persists across restarts and session reloads.
+
 ## 2026-09-01 v0.115.0
 
 - Add "research" prompt. Similar to the planning prompt: use `#research <the thing you want to research>` and the agent will guide you through it. Recommend using a third-party search service via MCP to avoid automated blocking.
