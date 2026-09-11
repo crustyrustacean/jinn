@@ -7,7 +7,6 @@
 
 use crate::feat::session_search::TranscriptWindow;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
-use crate::feat::tools_actor::truncation::{TruncatedBy, TruncationMeta};
 
 use std::fmt::Write as _;
 

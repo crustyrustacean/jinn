@@ -121,13 +121,35 @@ impl SessionStoreService {
         self.svc.load_unarchived_summaries().await
     }
 
-    /// Recomputes FTS rows for every dirty session (search index maintenance).
+    /// Returns the ids of all sessions with pending (dirty) FTS reindex work.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    pub async fn dirty_session_ids(&self) -> Result<Vec<SessionId>, Report<SessionStoreError>> {
+        self.svc.dirty_session_ids().await
+    }
+
+    /// Recomputes one session's FTS rows and clears its dirty marker
+    /// (search index maintenance).
     ///
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if any read or write fails.
-    pub async fn reindex_dirty_sessions(&self) -> Result<usize, Report<SessionStoreError>> {
-        self.svc.reindex_dirty_sessions().await
+    pub async fn reindex_session(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<(), Report<SessionStoreError>> {
+        self.svc.reindex_session(session_id).await
+    }
+
+    /// Returns how many sessions have pending (dirty) FTS reindex work.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    pub async fn pending_dirty_count(&self) -> Result<usize, Report<SessionStoreError>> {
+        self.svc.pending_dirty_count().await
     }
 
     /// Run an FTS query over the search index.

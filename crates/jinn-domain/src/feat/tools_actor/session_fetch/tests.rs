@@ -103,7 +103,18 @@ impl SessionStore for StubStore {
         Ok(())
     }
 
-    async fn reindex_dirty_sessions(&self) -> Result<usize, Report<SessionStoreError>> {
+    async fn dirty_session_ids(&self) -> Result<Vec<SessionId>, Report<SessionStoreError>> {
+        Ok(Vec::new())
+    }
+
+    async fn reindex_session(
+        &self,
+        _session_id: &SessionId,
+    ) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
+
+    async fn pending_dirty_count(&self) -> Result<usize, Report<SessionStoreError>> {
         Ok(0)
     }
 

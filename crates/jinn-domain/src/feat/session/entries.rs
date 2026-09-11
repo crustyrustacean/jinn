@@ -350,7 +350,20 @@ mod tests {
             Ok(vec![self.summary.clone()])
         }
 
-        async fn reindex_dirty_sessions(
+        async fn dirty_session_ids(
+            &self,
+        ) -> Result<Vec<SessionId>, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(Vec::new())
+        }
+
+        async fn reindex_session(
+            &self,
+            _session_id: &SessionId,
+        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+            Ok(())
+        }
+
+        async fn pending_dirty_count(
             &self,
         ) -> Result<usize, error_stack::Report<super::super::SessionStoreError>> {
             Ok(0)
@@ -485,7 +498,20 @@ mod tests {
             Ok(self.summaries.clone())
         }
 
-        async fn reindex_dirty_sessions(
+        async fn dirty_session_ids(
+            &self,
+        ) -> Result<Vec<SessionId>, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(Vec::new())
+        }
+
+        async fn reindex_session(
+            &self,
+            _session_id: &SessionId,
+        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+            Ok(())
+        }
+
+        async fn pending_dirty_count(
             &self,
         ) -> Result<usize, error_stack::Report<super::super::SessionStoreError>> {
             Ok(0)
