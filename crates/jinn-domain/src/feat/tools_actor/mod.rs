@@ -78,6 +78,7 @@ pub mod restart_mcp;
 #[cfg(test)]
 mod restart_mcp_tests;
 pub mod save_plan;
+pub mod session_fetch;
 pub mod session_search;
 pub mod skill;
 pub mod task;
