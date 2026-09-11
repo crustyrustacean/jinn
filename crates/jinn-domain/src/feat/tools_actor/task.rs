@@ -58,7 +58,8 @@ use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition
 use crate::protocol::SessionId;
 
 /// The `task` tool's registration name, shared by the registry and the
-/// depth-1 assembly filter.
+/// suppression sites: subagent spawn stamps it into the child's
+/// `disabled_tools`, fork strips it from the fork's set.
 pub const TASK_TOOL_NAME: &str = "task";
 
 /// Returns the tool definition for `task`.
@@ -221,6 +222,11 @@ fn build_child(
         p.reasoning_effort = profile.reasoning_effort;
         p.endpoint.clone_from(&profile.endpoint);
         p.disabled_tools.clone_from(&profile.disabled_tools);
+        // Subagents cannot spawn further subagents unless re-enabled via the
+        // tool picker; the stamp is per-session, so the picker reflects it.
+        // Unconditional: even a re-enabled subagent's child starts suppressed.
+        p.disabled_tools
+            .insert(crate::feat::tools_actor::task::TASK_TOOL_NAME.to_owned());
         p.disabled_skills.clone_from(&profile.disabled_skills);
     }
     child.set_cwd(parent.cwd().to_path_buf());
