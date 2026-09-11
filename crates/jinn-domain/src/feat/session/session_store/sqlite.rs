@@ -353,8 +353,19 @@ impl SessionStore for SqliteSessionStore {
         Ok(rows.into_iter().map(summary_from_row).collect())
     }
 
-    async fn reindex_dirty_sessions(&self) -> Result<usize, Report<SessionStoreError>> {
-        reindex_dirty_sessions(&self.pool).await
+    async fn dirty_session_ids(&self) -> Result<Vec<SessionId>, Report<SessionStoreError>> {
+        dirty_session_ids(&self.pool).await
+    }
+
+    async fn reindex_session(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<(), Report<SessionStoreError>> {
+        reindex_session(&self.pool, session_id).await
+    }
+
+    async fn pending_dirty_count(&self) -> Result<usize, Report<SessionStoreError>> {
+        pending_dirty_count(&self.pool).await
     }
 
     async fn search(
@@ -1505,44 +1516,66 @@ impl FromRow for RawIndexedEntry {
     }
 }
 
-/// Recomputes FTS rows for every dirty session and clears their markers.
+/// Returns the ids of all sessions with pending (dirty) FTS reindex work.
 ///
-/// Per session: fetch the raw entry rows, parse them off the async runtime
-/// (kind JSON can be large), then in one transaction delete + rebuild the
-/// session's `session_fts` rows and clear the `fts_dirty` marker. If new
-/// writes land between the fetch and the transaction, the `sessions` UPDATE
-/// trigger re-marks the session dirty and the next drain fixes it.
-///
-/// One failing session never blocks the rest of the drain: it is logged,
-/// left dirty (durable pending work), and the loop moves on. The return
-/// value counts only successful reindexes.
-async fn reindex_dirty_sessions(pool: &Pool) -> Result<usize, Report<SessionStoreError>> {
+/// Rows whose stored id cannot be parsed as a [`SessionId`] are skipped with
+/// a warning: a corrupt marker must not poison the batch, and it could never
+/// be reindexed anyway. [`pending_dirty_count`] counts those rows — the two
+/// primitives intentionally disagree on corrupt markers so the dashboard can
+/// surface them as permanently pending.
+async fn dirty_session_ids(pool: &Pool) -> Result<Vec<SessionId>, Report<SessionStoreError>> {
     let dirty: Vec<String> = pool
         .query_all("SELECT session_id AS session_id FROM fts_dirty", vec![])
         .await
         .change_context(SessionStoreError)
         .attach("failed to read dirty session markers")?;
 
-    let mut reindexed = 0usize;
-    for session_id in dirty {
-        match reindex_one_session(pool, &session_id).await {
-            Ok(()) => reindexed += 1,
-            Err(report) => {
+    Ok(dirty
+        .into_iter()
+        .filter_map(|id_str| match SessionId::try_from_string(&id_str) {
+            Some(id) => Some(id),
+            None => {
                 tracing::warn!(
-                    session_id = %session_id,
-                    error = ?report,
-                    "FTS reindex failed for session; leaving it dirty for the next drain"
+                    raw_id = %id_str,
+                    "skipping unparseable FTS dirty marker"
                 );
+                None
             }
-        }
-    }
-    Ok(reindexed)
+        })
+        .collect())
+}
+
+/// Counts all `fts_dirty` marker rows, including corrupt (unparseable) ones —
+/// the number reflects the true size of the pending queue.
+async fn pending_dirty_count(pool: &Pool) -> Result<usize, Report<SessionStoreError>> {
+    let total: Option<i64> = pool
+        .query_one("SELECT COUNT(*) AS total FROM fts_dirty", vec![])
+        .await
+        .change_context(SessionStoreError)
+        .attach("failed to count dirty session markers")?;
+    Ok(total.unwrap_or(0) as usize)
 }
 
 /// Reindexes one session: fetch → parse (blocking) → rebuild in a tx.
+///
+/// Per the "dirty = recompute from scratch" rule, the session's `session_fts`
+/// rows are deleted and rebuilt from the live tables, then the `fts_dirty`
+/// marker is cleared. If new writes land between the fetch and the
+/// transaction, the `sessions` UPDATE trigger re-marks the session dirty and
+/// the next drain fixes it. For a session deleted since being marked, the
+/// live set is empty, so stale FTS rows are removed and the marker clears —
+/// a no-op rebuild, not an error.
+async fn reindex_session(
+    pool: &Pool,
+    session_id: &SessionId,
+) -> Result<(), Report<SessionStoreError>> {
+    reindex_one_session(pool, session_id.to_string()).await
+}
+
+/// The reindex body, string-typed at the SQL boundary.
 async fn reindex_one_session(
     pool: &Pool,
-    session_id: &str,
+    session_id: String,
 ) -> Result<(), Report<SessionStoreError>> {
     let raw: Vec<RawIndexedEntry> = pool
         .query_all(
@@ -1551,22 +1584,23 @@ async fn reindex_one_session(
              INNER JOIN session_history ON entries.id = session_history.entry_id \
              WHERE session_history.session_id = ? \
              ORDER BY session_history.ordinal ASC",
-            vec![Box::new(session_id.to_owned())],
+            vec![Box::new(session_id.clone())],
         )
         .await
         .change_context(SessionStoreError)
         .attach("failed to read entries for reindex")?;
 
     // Kind JSON parsing can be heavy (full_content tool outputs) — keep it
-    // off the async runtime.
-    let session_id_owned = session_id.to_owned();
-    let parsed =
-        tokio::task::spawn_blocking(move || parse_searchable_rows(&session_id_owned, &raw))
+    // off the async runtime. `raw` moves in; `session_id` is cloned for the
+    // closure because the tx stage below needs it too.
+    let parsed = {
+        let session_id = session_id.clone();
+        tokio::task::spawn_blocking(move || parse_searchable_rows(&session_id, &raw))
             .await
             .change_context(SessionStoreError)
-            .attach("reindex parse task panicked")?;
+            .attach("reindex parse task panicked")?
+    };
 
-    let session_id_owned = session_id.to_owned();
     pool.with_conn(move |conn| -> daow::Result<()> {
         let tx = conn.transaction()?;
         // "Dirty = recompute from scratch": drop this session's rows, then
@@ -1574,7 +1608,7 @@ async fn reindex_one_session(
         // so stale rows are removed and the marker clears below.
         tx.execute(
             "DELETE FROM session_fts WHERE session_id = ?",
-            rusqlite::params![&session_id_owned],
+            rusqlite::params![&session_id],
         )?;
         for entry in &parsed {
             tx.execute(
@@ -1583,7 +1617,7 @@ async fn reindex_one_session(
                 rusqlite::params![
                     entry.body,
                     entry.role.as_str(),
-                    &session_id_owned,
+                    &session_id,
                     entry.entry_id,
                     entry.entry_ts
                 ],
@@ -1591,7 +1625,7 @@ async fn reindex_one_session(
         }
         tx.execute(
             "DELETE FROM fts_dirty WHERE session_id = ?",
-            rusqlite::params![&session_id_owned],
+            rusqlite::params![&session_id],
         )?;
         tx.commit()?;
         Ok(())

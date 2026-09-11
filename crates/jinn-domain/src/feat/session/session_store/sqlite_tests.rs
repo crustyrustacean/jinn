@@ -1803,6 +1803,21 @@ fn make_two_entry_session(id: &SessionId, title: &str) -> ChatSessionState {
     session
 }
 
+/// Drains the dirty set using the store primitives — the same loop the
+/// search-index actor runs. Returns the number of sessions reindexed.
+///
+/// Store tests only exercise the store layer; batch isolation and progress
+/// reporting belong to the actor and are covered there.
+async fn drain(
+    store: &SqliteSessionStore,
+) -> Result<usize, error_stack::Report<crate::feat::session::session_store::SessionStoreError>> {
+    let ids = store.dirty_session_ids().await?;
+    for id in &ids {
+        store.reindex_session(id).await?;
+    }
+    Ok(ids.len())
+}
+
 #[rstest::rstest]
 #[tokio::test]
 async fn save_marks_session_dirty_and_reindex_indexes_it() {
@@ -1815,7 +1830,7 @@ async fn save_marks_session_dirty_and_reindex_indexes_it() {
         .expect("save");
 
     // When reindexing the dirty set and searching for the needle.
-    let reindexed = store.reindex_dirty_sessions().await.expect("reindex");
+    let reindexed = drain(&store).await.expect("reindex");
     let outcome = store
         .search(crate::feat::session_search::SearchParams {
             query: "needle".to_owned(),
@@ -1833,7 +1848,7 @@ async fn save_marks_session_dirty_and_reindex_indexes_it() {
     assert_eq!(outcome.total_matches, 2);
     assert_eq!(outcome.hits.len(), 2);
     // And the marker is cleared: a second drain finds nothing to do.
-    let second = store.reindex_dirty_sessions().await.expect("reindex 2");
+    let second = drain(&store).await.expect("reindex 2");
     assert_eq!(second, 0);
 }
 
@@ -1851,7 +1866,7 @@ async fn reindex_honors_default_field_visibility_via_roles() {
         ToolResultStatus::Success,
     ));
     store.save(&session).await.expect("save");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
 
     // When searching without a role filter.
     let all = store
@@ -1865,7 +1880,7 @@ async fn reindex_honors_default_field_visibility_via_roles() {
         })
         .await
         .expect("search");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
     let tool_only = store
         .search(crate::feat::session_search::SearchParams {
             query: "needle".to_owned(),
@@ -1895,11 +1910,11 @@ async fn reindex_clears_rows_of_deleted_sessions() {
         .save(&make_two_entry_session(&session_id, "doomed"))
         .await
         .expect("save");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
 
     // When deleting the session, marking it dirty, and reindexing.
     store.delete(&session_id).await.expect("delete");
-    let reindexed = store.reindex_dirty_sessions().await.expect("reindex");
+    let reindexed = drain(&store).await.expect("reindex");
 
     // Then the deletion marked it dirty, and its rows are gone.
     assert_eq!(reindexed, 1);
@@ -1932,7 +1947,7 @@ async fn search_reports_per_session_rollup() {
         .save(&make_two_entry_session(&b, "beta"))
         .await
         .expect("save b");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
 
     // When searching without scope restriction.
     let outcome = store
@@ -1966,7 +1981,7 @@ async fn search_limits_hits_but_reports_full_totals() {
         .save(&make_two_entry_session(&session_id, "capped"))
         .await
         .expect("save");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
 
     // When searching with a limit of 1.
     let outcome = store
@@ -2002,7 +2017,7 @@ async fn search_filters_by_session_ids() {
         .save(&make_two_entry_session(&b, "beta"))
         .await
         .expect("save b");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
 
     // When searching restricted to session b.
     let outcome = store
@@ -2032,7 +2047,7 @@ async fn search_surfaces_fts_syntax_errors_verbatim() {
         .save(&make_two_entry_session(&session_id, "syntax"))
         .await
         .expect("save");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
 
     // When running a syntactically invalid MATCH query.
     let result = store
@@ -2065,7 +2080,7 @@ async fn search_dates_filter_on_entry_timestamps() {
         .save(&make_two_entry_session(&session_id, "dated"))
         .await
         .expect("save");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
 
     let until_long_ago = jiff::Timestamp::now() - jiff::Span::new().hours(25);
 
@@ -2097,7 +2112,7 @@ async fn search_snippets_are_single_line_with_match_markers() {
     session.set_title("snippets".to_owned());
     session.push_entry(ChatEntry::assistant("first line\nneedle on its\nown line"));
     store.save(&session).await.expect("save");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
 
     // When searching for the needle.
     let outcome = store
@@ -2140,7 +2155,7 @@ async fn search_flags_ignored_entries_as_excluded() {
             .with_context_override(crate::protocol::ContextOverride::ForcedExclude),
     );
     store.save(&session).await.expect("save");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
 
     // When searching.
     let outcome = store
@@ -2179,7 +2194,7 @@ async fn search_does_not_flag_pinned_entries_as_excluded() {
     session
         .push_entry(ChatEntry::user("pinned needle").with_pin(crate::protocol::PinPosition::Top));
     store.save(&session).await.expect("save");
-    store.reindex_dirty_sessions().await.expect("reindex");
+    drain(&store).await.expect("reindex");
 
     // When searching.
     let outcome = store
@@ -2351,111 +2366,96 @@ async fn fetch_tail_marks_excluded_entries() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn drain_continues_after_one_session_fails_to_reindex() {
-    // Given a store with three dirty sessions and a tripwire trigger that
-    // aborts the FTS rebuild for one specific session.
+async fn dirty_session_ids_returns_saved_sessions() {
+    // Given a store with two saved sessions (saves seed dirty markers).
     let (_dir, store) = make_store().await;
-    let good_a = SessionId::new();
-    let poisoned = SessionId::new();
-    let good_b = SessionId::new();
-    for id in [&good_a, &poisoned, &good_b] {
-        store
-            .save(&make_two_entry_session(id, "tripwire"))
-            .await
-            .expect("save");
-    }
-    let poisoned_id = poisoned.to_string();
-    let create_sql = format!(
-        "CREATE TRIGGER reindex_tripwire BEFORE DELETE ON fts_dirty \
-         FOR EACH ROW WHEN OLD.session_id = '{poisoned_id}' \
-         BEGIN SELECT RAISE(ABORT, 'tripwire'); END;"
-    );
+    let a = SessionId::new();
+    let b = SessionId::new();
     store
-        .pool()
-        .with_conn(move |conn| conn.execute(&create_sql, []).map_err(daow::Error::from))
+        .save(&make_two_entry_session(&a, "a"))
         .await
-        .expect("create tripwire");
-
-    // When draining the dirty set.
-    let reindexed = store.reindex_dirty_sessions().await.expect("drain");
-
-    // Then the drain did not fail: two sessions reindexed around the
-    // poisoned one.
-    assert_eq!(reindexed, 2);
-
-    // And both good sessions are searchable.
-    let outcome = store
-        .search(crate::feat::session_search::SearchParams {
-            query: "zephyr".to_owned(),
-            session_ids: Vec::new(),
-            roles: Vec::new(),
-            since: None,
-            until: None,
-            limit: 50,
-        })
+        .expect("save");
+    store
+        .save(&make_two_entry_session(&b, "b"))
         .await
-        .expect("search");
-    let hit_sessions: std::collections::HashSet<&str> =
-        outcome.hits.iter().map(|h| h.session_id.as_str()).collect();
-    assert_eq!(hit_sessions.len(), 2);
-    assert!(!hit_sessions.contains(poisoned.to_string().as_str()));
+        .expect("save");
+
+    // When reading the dirty ids.
+    let mut ids = store.dirty_session_ids().await.expect("dirty ids");
+    let mut expected = vec![a, b];
+    ids.sort();
+    expected.sort();
+
+    // Then both saved sessions are pending.
+    assert_eq!(ids, expected);
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn failed_session_stays_dirty_and_recovers_on_next_drain() {
-    // Given a poisoned session (tripwire aborts its rebuild) alongside a
-    // good one, already drained once with the tripwire in place.
+async fn pending_dirty_count_tracks_markers() {
+    // Given a store with one saved session.
     let (_dir, store) = make_store().await;
-    let poisoned = SessionId::new();
+    let id = SessionId::new();
     store
-        .save(&make_two_entry_session(&poisoned, "tripwire"))
+        .save(&make_two_entry_session(&id, "counted"))
         .await
         .expect("save");
-    let poisoned_id = poisoned.to_string();
-    let create_sql = format!(
-        "CREATE TRIGGER reindex_tripwire BEFORE DELETE ON fts_dirty \
-         FOR EACH ROW WHEN OLD.session_id = '{poisoned_id}' \
-         BEGIN SELECT RAISE(ABORT, 'tripwire'); END;"
-    );
+
+    // When reading the pending count before and after a drain.
+    let before = store.pending_dirty_count().await.expect("count");
+    drain(&store).await.expect("drain");
+    let after = store.pending_dirty_count().await.expect("count");
+
+    // Then the save left one pending session and the drain cleared it.
+    assert_eq!(before, 1);
+    assert_eq!(after, 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dirty_session_ids_skips_unparseable_marker() {
+    // Given a store whose dirty table holds a corrupt (unparseable) id.
+    let (_dir, store) = make_store().await;
     store
         .pool()
-        .with_conn(move |conn| conn.execute(&create_sql, []).map_err(daow::Error::from))
+        .with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO fts_dirty(session_id) VALUES ('not-a-uuid')",
+                [],
+            )
+            .map_err(daow::Error::from)
+        })
         .await
-        .expect("create tripwire");
-    store.reindex_dirty_sessions().await.expect("first drain");
+        .expect("insert corrupt marker");
 
-    // When checking the dirty set, the failed session is still pending.
-    let still_dirty: Vec<String> = store
-        .pool()
-        .query_all("SELECT session_id AS session_id FROM fts_dirty", vec![])
-        .await
-        .expect("read dirty");
-    assert_eq!(still_dirty, vec![poisoned.to_string()]);
+    // When reading the dirty ids.
+    let ids = store.dirty_session_ids().await.expect("dirty ids");
 
-    // When the tripwire is removed (fault clears) and the next drain runs.
+    // Then the corrupt marker is not returned (it could never be reindexed).
+    assert!(ids.is_empty());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn pending_dirty_count_includes_unparseable_marker() {
+    // Given a store whose dirty table holds a corrupt (unparseable) id.
+    let (_dir, store) = make_store().await;
     store
         .pool()
-        .with_conn(move |conn| {
-            conn.execute("DROP TRIGGER reindex_tripwire", [])
-                .map_err(daow::Error::from)
+        .with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO fts_dirty(session_id) VALUES ('not-a-uuid')",
+                [],
+            )
+            .map_err(daow::Error::from)
         })
         .await
-        .expect("drop tripwire");
-    let reindexed = store.reindex_dirty_sessions().await.expect("second drain");
+        .expect("insert corrupt marker");
 
-    // Then the session recovers: reindexed, marker cleared, searchable.
-    assert_eq!(reindexed, 1);
-    let outcome = store
-        .search(crate::feat::session_search::SearchParams {
-            query: "zephyr".to_owned(),
-            session_ids: Vec::new(),
-            roles: Vec::new(),
-            since: None,
-            until: None,
-            limit: 10,
-        })
-        .await
-        .expect("search");
-    assert_eq!(outcome.total_matches, 2);
+    // When reading the pending count.
+    let count = store.pending_dirty_count().await.expect("count");
+
+    // Then the corrupt marker is counted — the queue size reflects reality so
+    // the dashboard can surface the stuck row instead of hiding it.
+    assert_eq!(count, 1);
 }

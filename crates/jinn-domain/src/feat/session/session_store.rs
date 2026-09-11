@@ -138,21 +138,46 @@ pub trait SessionStore: Send + Sync + 'static {
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>>;
 
-    /// Recompute FTS index rows for every dirty session.
+    /// Returns the ids of all sessions with pending (dirty) FTS reindex work.
     ///
     /// Dirty sessions are recorded in the `fts_dirty` table by triggers on
-    /// `sessions`. For each one, the session's `session_fts` rows are deleted
-    /// and rebuilt from the live `entries`/`session_history` tables, then the
-    /// marker is cleared — "dirty = recompute this session from scratch". A
-    /// session deleted between mark and reindex has no live rows, so its stale
-    /// FTS rows are removed and its marker cleared. Returns the number of
-    /// sessions reindexed.
+    /// `sessions`. Rows whose stored id cannot be parsed as a [`SessionId`]
+    /// are skipped (with a warning) — a corrupt marker must not poison the
+    /// batch, and it could never be reindexed anyway.
     ///
     /// # Errors
     ///
-    /// Returns [`SessionStoreError`] if any read or write fails. A failed
-    /// session's marker remains set, so the next call retries it.
-    async fn reindex_dirty_sessions(&self) -> Result<usize, Report<SessionStoreError>>;
+    /// Returns [`SessionStoreError`] if the read fails.
+    async fn dirty_session_ids(&self) -> Result<Vec<SessionId>, Report<SessionStoreError>>;
+
+    /// Recompute one session's FTS index rows and clear its dirty marker.
+    ///
+    /// The session's `session_fts` rows are deleted and rebuilt from the live
+    /// `entries`/`session_history` tables — "dirty = recompute this session
+    /// from scratch". A session deleted since being marked has no live rows,
+    /// so this removes its stale FTS rows and clears the marker (a no-op
+    /// rebuild, not an error). A failed session's marker remains set, so the
+    /// next call retries it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if any read or write fails.
+    async fn reindex_session(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<(), Report<SessionStoreError>>;
+
+    /// Returns how many sessions currently have pending (dirty) FTS reindex
+    /// work.
+    ///
+    /// Unlike [`SessionStore::dirty_session_ids`], this counts every marker
+    /// row — including ones whose stored id cannot be parsed — so the number
+    /// reflects the true size of the pending queue.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    async fn pending_dirty_count(&self) -> Result<usize, Report<SessionStoreError>>;
 
     /// Run an FTS query over the index.
     ///

@@ -257,7 +257,24 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
         Ok(self.summaries.lock().clone())
     }
 
-    async fn reindex_dirty_sessions(
+    async fn dirty_session_ids(
+        &self,
+    ) -> Result<
+        Vec<crate::protocol::SessionId>,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(Vec::new())
+    }
+
+    async fn reindex_session(
+        &self,
+        _session_id: &crate::protocol::SessionId,
+    ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+    {
+        Ok(())
+    }
+
+    async fn pending_dirty_count(
         &self,
     ) -> Result<usize, error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
     {

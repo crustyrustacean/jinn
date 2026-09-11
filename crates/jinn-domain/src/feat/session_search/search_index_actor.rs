@@ -3,19 +3,30 @@
 //! Owns no `AppState` fields — its writes go to the database (the
 //! `session_fts` index table), not to shared state. Dirty sessions are
 //! recorded by triggers on the `sessions` table (schema v26); this actor
-//! drains them: once at startup (backfill after an upgrade) and then on a
-//! fixed interval. Search results may trail the newest saves by one interval;
-//! the agent's own current-turn entries are in its context regardless.
+//! drives the drain itself: once at startup (backfill after an upgrade),
+//! then on a fixed interval, reindexing one session per loop iteration and
+//! publishing the remaining pending count to the `search-index` dashboard
+//! row after every index operation. Search results may trail the newest
+//! saves by one interval; the agent's own current-turn entries are in its
+//! context regardless.
 
 use std::time::Duration;
 
 use kameo::actor::{ActorRef, Spawn};
 use kameo::prelude::{Context, Message};
 
-use crate::common::actor_deps::ActorDeps;
+use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::services::bus_service::BusService;
 
 /// How often the actor drains the dirty set in production.
 pub const REINDEX_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Dashboard row this actor publishes reindex progress under. Must match the
+/// `spawn_tracked!` registration name in `actor_wiring.rs` — a mismatch would
+/// silently publish into a row that doesn't exist. The row's name,
+/// description, and lifecycle columns stay owned by the wiring/lifecycle
+/// events; this actor only fills the status message.
+pub const SEARCH_INDEX_ROW_NAME: &str = "search-index";
 
 /// Dependencies for [`SearchIndexActor`].
 #[derive(Clone)]
@@ -53,6 +64,12 @@ impl kameo::Actor for SearchIndexActor {
     }
 }
 
+impl BusPublish for SearchIndexActor {
+    fn bus(&self) -> &BusService {
+        &self.deps.services.bus
+    }
+}
+
 /// A self-addressed tick that triggers one drain and schedules the next.
 #[derive(Debug)]
 pub struct ReindexTick;
@@ -74,24 +91,49 @@ impl Message<ReindexTick> for SearchIndexActor {
 }
 
 impl SearchIndexActor {
-    /// Drains the dirty set once. Log-and-continue: a failed drain leaves the
-    /// markers set (durable pending work) and the next tick retries.
+    /// Drains the dirty set one session at a time, publishing dashboard
+    /// progress after every index operation. Log-and-continue: a failed
+    /// session is left dirty (durable pending work) and never blocks the
+    /// rest of the batch. An empty batch publishes once too, so the row
+    /// reads "index up to date" as soon as the actor is idle.
     async fn drain_once(&self) {
-        match self
-            .deps
-            .services
-            .session_store
-            .reindex_dirty_sessions()
-            .await
-        {
-            Ok(0) => {}
-            Ok(count) => {
-                tracing::debug!(sessions = count, "FTS reindex drained dirty sessions");
+        let Ok(ids) = self.deps.services.session_store.dirty_session_ids().await else {
+            tracing::warn!("failed to read dirty session markers; will retry next tick");
+            return;
+        };
+        for id in &ids {
+            match self.deps.services.session_store.reindex_session(id).await {
+                Ok(()) => tracing::debug!(session_id = %id, "FTS reindexed session"),
+                Err(report) => tracing::warn!(
+                    session_id = %id,
+                    error = ?report,
+                    "FTS reindex failed; leaving marker dirty for the next drain"
+                ),
             }
-            Err(report) => {
-                tracing::warn!(error = ?report, "FTS reindex drain failed; will retry next tick");
-            }
+            self.publish_progress().await;
         }
+        if ids.is_empty() {
+            self.publish_progress().await;
+        }
+    }
+
+    /// Publishes the live remaining pending count to the `search-index`
+    /// dashboard row: "N sessions pending", or "index up to date" once the
+    /// queue drains. A failed count publishes nothing — the previous message
+    /// stays up and the next session's publish retries.
+    async fn publish_progress(&self) {
+        let status = match self.deps.services.session_store.pending_dirty_count().await {
+            Ok(0) => "index up to date".to_owned(),
+            Ok(n) => format!("{n} sessions pending"),
+            Err(_) => return,
+        };
+        self.publish(crate::feat::dashboard::ServiceStatusUpdate {
+            name: SEARCH_INDEX_ROW_NAME.to_owned(),
+            description: None,
+            lifecycle: None,
+            status_message: Some(status),
+        })
+        .await;
     }
 }
 
