@@ -200,17 +200,17 @@ impl IntentHandler {
         // against the handler's own borrows (`ActionCtx`): it writes
         // the same `&mut AppState` guard — never a second lock — and
         // resolves slice cells through the same registry.
-        if let Intent::Dynamic(dynamic) = intent {
-            if let Some(mut result) = routes.action_for(
+        if let Intent::Dynamic(dynamic) = intent
+            && let Some(mut result) = routes.action_for(
                 dynamic,
                 crate::common::slices::key_routes::ActionCtx { state, slices },
-            ) {
-                // Scope transitions apply before the messages publish so
-                // a slice that opens itself is on the stack before any
-                // bus subscriber could observe a message.
-                apply_scope_signal(&mut result, state);
-                return result;
-            }
+            )
+        {
+            // Scope transitions apply before the messages publish so a
+            // slice that opens itself is on the stack before any bus
+            // subscriber could observe a message.
+            apply_scope_signal(&mut result, state);
+            return result;
         }
 
         // Slice input hooks: the active dynamic scope's synchronous
