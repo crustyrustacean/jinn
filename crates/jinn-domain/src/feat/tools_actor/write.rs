@@ -177,6 +177,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         }
     }
 
@@ -326,6 +327,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
 
         let call = ToolCall {
@@ -873,6 +875,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
 
         let call = ToolCall {
@@ -917,6 +920,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
 
         let call = ToolCall {
