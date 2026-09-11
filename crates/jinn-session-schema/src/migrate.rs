@@ -323,7 +323,11 @@ fn apply_migration_chain(
         record_version(conn, 25, "add_entries_token_count_column")?;
     }
     if current < 26 {
-        tracing::debug!(version = 26, name = "add_fts_search_index", "applying migration");
+        tracing::debug!(
+            version = 26,
+            name = "add_fts_search_index",
+            "applying migration"
+        );
         migrate_v26(conn)?;
         record_version(conn, 26, "add_fts_search_index")?;
     }

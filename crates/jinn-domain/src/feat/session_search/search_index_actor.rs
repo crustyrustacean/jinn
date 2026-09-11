@@ -43,8 +43,9 @@ impl kameo::Actor for SearchIndexActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         // Kick the first drain immediately (startup backfill), then keep the
-        // tick alive by rescheduling from the handler itself.
-        actor_ref.tell(ReindexTick).send().await.ok();
+        // tick alive by rescheduling from the handler itself. A failed send
+        // only means the actor is already stopping.
+        let _ = actor_ref.tell(ReindexTick).send().await;
         Ok(Self {
             deps: args.deps,
             interval: args.interval,
@@ -67,7 +68,7 @@ impl Message<ReindexTick> for SearchIndexActor {
         let actor_ref = ctx.actor_ref().clone();
         tokio::spawn(async move {
             tokio::time::sleep(interval).await;
-            actor_ref.tell(ReindexTick).send().await.ok();
+            let _ = actor_ref.tell(ReindexTick).send().await;
         });
     }
 }

@@ -7,7 +7,9 @@
 
 use crate::feat::session_search::TranscriptWindow;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
-use crate::feat::tools_actor::truncation::{TruncationMeta, TruncatedBy};
+use crate::feat::tools_actor::truncation::{TruncatedBy, TruncationMeta};
+
+use std::fmt::Write as _;
 
 use super::BoxedToolFuture;
 
@@ -74,10 +76,7 @@ pub fn definition() -> ToolDefinition {
 #[derive(Debug)]
 enum FetchMode {
     /// Anchored read around a specific entry.
-    Anchored {
-        entry_id: String,
-        context: usize,
-    },
+    Anchored { entry_id: String, context: usize },
     /// Tail read of the last N entries.
     Tail { limit: usize },
 }
@@ -107,10 +106,7 @@ fn parse_args(raw: &str) -> Result<(Option<String>, FetchMode), String> {
                 }
             };
             let context = usize::try_from(context).unwrap_or(usize::MAX);
-            FetchMode::Anchored {
-                entry_id,
-                context,
-            }
+            FetchMode::Anchored { entry_id, context }
         }
         None => {
             let limit = match args.get("limit") {
@@ -146,8 +142,10 @@ fn format_window(window: &TranscriptWindow) -> String {
     let title = window.title.as_deref().unwrap_or("Untitled Session");
     let first = window.entries.first().map_or(0, |e| e.ordinal);
     let last = window.entries.last().map_or(0, |e| e.ordinal);
-    let mut out = format!(
-        "session \"{title}\" ({}) — entries {first}–{last} of {}\n",
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "session \"{title}\" ({}) — entries {first}–{last} of {}",
         window.session_id, window.total_entries
     );
 
@@ -157,7 +155,12 @@ fn format_window(window: &TranscriptWindow) -> String {
         if let Some(prev) = prev_ordinal
             && item.ordinal > prev + 1
         {
-            out.push_str(&format!("[{}] … {} entries not shown …\n", prev + 1, item.ordinal - prev - 1));
+            let _ = writeln!(
+                out,
+                "[{}] … {} entries not shown …",
+                prev + 1,
+                item.ordinal - prev - 1
+            );
         }
         prev_ordinal = Some(item.ordinal);
 
@@ -168,14 +171,15 @@ fn format_window(window: &TranscriptWindow) -> String {
         };
         let text = item.entry.text();
         let (rendered, note) = elide_entry_text(&text);
-        out.push_str(&format!(
-            "[{}] {}{}: {rendered}\n",
+        let _ = writeln!(
+            out,
+            "[{}] {}{}: {rendered}",
             item.ordinal,
             item.entry.kind_str(),
             flag
-        ));
+        );
         if let Some(note) = note {
-            out.push_str(&format!("    [{note}]\n"));
+            let _ = writeln!(out, "    [{note}]");
         }
     }
     out
@@ -274,9 +278,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         }
 
         let content = format_window(&window);
-        let max_lines = ctx.max_output_lines.unwrap_or(
-            crate::feat::tools_actor::truncation::DEFAULT_MAX_LINES,
-        );
+        let max_lines = ctx
+            .max_output_lines
+            .unwrap_or(crate::feat::tools_actor::truncation::DEFAULT_MAX_LINES);
         let max_bytes = ctx
             .max_output_bytes
             .unwrap_or(crate::feat::tools_actor::truncation::DEFAULT_MAX_BYTES);

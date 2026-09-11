@@ -74,8 +74,7 @@ pub struct ToolContext {
     /// tools, which read persisted history across all sessions. Resolved
     /// from `services.session_store` at dispatch time. `None` in tests that
     /// build a bare `ToolContext`.
-    pub session_store:
-        Option<crate::feat::session::session_store::SessionStoreService>,
+    pub session_store: Option<crate::feat::session::session_store::SessionStoreService>,
 }
 
 impl fmt::Debug for ToolContext {

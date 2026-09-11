@@ -19,10 +19,8 @@ use error_stack::Report;
 use wherror::Error;
 
 use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session_search::{
-    SearchParams, SearchOutcome, TranscriptWindow,
-};
 use crate::feat::session::session_summary::SessionSummary;
+use crate::feat::session_search::{SearchOutcome, SearchParams, TranscriptWindow};
 use crate::protocol::{ChatEntryId, SessionId};
 
 /// Error type for session store operations.
@@ -154,9 +152,7 @@ pub trait SessionStore: Send + Sync + 'static {
     ///
     /// Returns [`SessionStoreError`] if any read or write fails. A failed
     /// session's marker remains set, so the next call retries it.
-    async fn reindex_dirty_sessions(
-        &self,
-    ) -> Result<usize, Report<SessionStoreError>>;
+    async fn reindex_dirty_sessions(&self) -> Result<usize, Report<SessionStoreError>>;
 
     /// Run an FTS query over the index.
     ///
@@ -181,8 +177,12 @@ pub trait SessionStore: Send + Sync + 'static {
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if the read fails.
-    async fn fetch_window(&self, session_id: &SessionId, anchor: &ChatEntryId, context: usize)
-    -> Result<Option<TranscriptWindow>, Report<SessionStoreError>>;
+    async fn fetch_window(
+        &self,
+        session_id: &SessionId,
+        anchor: &ChatEntryId,
+        context: usize,
+    ) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>>;
 
     /// Load the last `limit` entries of a session.
     ///

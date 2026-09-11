@@ -15,7 +15,7 @@ mod extract;
 pub mod model;
 pub mod search_index_actor;
 
-pub use extract::{SearchableEntry, extract_searchable, entry_ts_key};
+pub use extract::{SearchableEntry, entry_ts_key, extract_searchable};
 pub use model::{
     SearchHit, SearchOutcome, SearchParams, SearchableRole, TranscriptEntry, TranscriptWindow,
 };

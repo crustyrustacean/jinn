@@ -5,8 +5,6 @@
 //! index. Kinds with no prose worth searching (`Actor`, `Thinking`,
 //! `Transient`, `Annotation`) yield `None` and never get an FTS row.
 
-use jiff::Timestamp;
-
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session_search::model::SearchableRole;
 
@@ -35,9 +33,9 @@ pub fn extract_searchable(kind: &ChatEntryKind) -> Option<(SearchableRole, Strin
     let (role, body) = match kind {
         ChatEntryKind::User { expanded, .. } => (SearchableRole::User, expanded.clone()),
         ChatEntryKind::Assistant(text) => (SearchableRole::Assistant, text.clone()),
-        ChatEntryKind::ToolCall { name, arguments, .. } => {
-            (SearchableRole::ToolCall, format!("{name}: {arguments}"))
-        }
+        ChatEntryKind::ToolCall {
+            name, arguments, ..
+        } => (SearchableRole::ToolCall, format!("{name}: {arguments}")),
         ChatEntryKind::ToolResult {
             name,
             content,
@@ -67,6 +65,5 @@ pub fn extract_searchable(kind: &ChatEntryKind) -> Option<(SearchableRole, Strin
 /// the `since`/`until` filters rely on.
 #[must_use]
 pub fn entry_ts_key(timing: &crate::protocol::EntryTiming) -> String {
-    let ts: Timestamp = timing.at();
-    ts.to_string()
+    timing.at().to_string()
 }
