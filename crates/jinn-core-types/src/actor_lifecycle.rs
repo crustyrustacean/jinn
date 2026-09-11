@@ -9,7 +9,7 @@
 ///
 /// Driven by the existing bus events: `ActorStarting`, `ActorStarted`, and
 /// `ActorShutdownCompleted`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ActorLifecycle {
     /// The actor is currently starting up.
     Starting,

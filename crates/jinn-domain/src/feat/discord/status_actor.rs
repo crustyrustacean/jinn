@@ -16,6 +16,8 @@ use crate::common::actor_deps::ActorDeps;
 use crate::common::bus::BusMessage;
 use crate::common::slices::SlotKey;
 use crate::common::slices::TypedCell;
+use crate::feat::dashboard::ActorLifecycle;
+use crate::feat::dashboard::ServiceStatusUpdate;
 
 /// Discord bot-specific connection status, reported by the gateway task.
 ///
@@ -78,6 +80,37 @@ impl DiscordStatusUpdate {
             other => other.display_message().to_owned(),
         }
     }
+
+    /// Translates this connection state into the dashboard's generic
+    /// status event vocabulary.
+    ///
+    /// The dashboard is a feature-agnostic sink: the row's identity and
+    /// description travel inside this projection, so the dashboard never
+    /// needs to know discord exists.
+    ///
+    /// Mapping:
+    /// - `Connecting` → row `Starting` + description (the gateway task is
+    ///   not an actor, so no `ActorStarting` event ever announces it)
+    /// - `Connected` → row `Running` + description (no `ActorStarted`)
+    /// - `Error` → row `Dead` + description (attach the description even
+    ///   when the error arrives first, e.g. missing token)
+    /// - `Disconnected` → status message only; lifecycle stays untouched
+    ///   (`Running`), and the existing description is preserved.
+    #[must_use]
+    pub fn to_service_update(&self) -> ServiceStatusUpdate {
+        let (lifecycle, with_description) = match self {
+            Self::Connecting => (Some(ActorLifecycle::Starting), true),
+            Self::Connected => (Some(ActorLifecycle::Running), true),
+            Self::Error { .. } => (Some(ActorLifecycle::Dead), true),
+            Self::Disconnected => (None, false),
+        };
+        ServiceStatusUpdate {
+            name: Self::entry_name(self).to_owned(),
+            description: with_description.then(|| Self::entry_description(self).to_owned()),
+            lifecycle,
+            status_message: Some(self.full_message()),
+        }
+    }
 }
 
 /// Discord's own connection fact, folded by [`DiscordStatusActor`].
@@ -107,8 +140,10 @@ pub fn discord_connection_slot() -> SlotKey {
 ///
 /// Subscribes to nothing. Spawns a background drain loop that reads each
 /// [`DiscordStatusUpdate`] from the kanal channel, folds it into the
-/// connection cell, and publishes it on the bus (the [`DashboardActor`]
-/// consumes it from there for display only).
+/// connection cell, and publishes it on the bus: once as the native
+/// event, once translated into the dashboard's generic
+/// [`ServiceStatusUpdate`] vocabulary (the dashboard is a
+/// feature-agnostic sink and consumes only the translation).
 pub struct DiscordStatusActor;
 
 /// Dependencies for [`DiscordStatusActor`].
@@ -130,15 +165,19 @@ impl Actor for DiscordStatusActor {
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         // Spawn the background drain loop: read each gateway update,
         // fold it into the connection cell, and republish it on the bus
-        // so the DashboardActor can consume it.
+        // as the native event, alongside its translation into the
+        // dashboard's generic `ServiceStatusUpdate` vocabulary (the
+        // dashboard is a feature-agnostic sink).
         let deps = args.deps;
         tokio::spawn(drain_status_channel(args.status_rx, deps, args.cell));
         Ok(Self)
     }
 }
+
 /// Background drain loop: reads discord status updates from the kanal
 /// channel, folds the connection fact into the cell, and republishes
-/// them on the bus.
+/// them on the bus — native event first, then its generic translation
+/// for the dashboard.
 async fn drain_status_channel(
     rx: kanal::AsyncReceiver<DiscordStatusUpdate>,
     deps: ActorDeps,
@@ -146,7 +185,11 @@ async fn drain_status_channel(
 ) {
     while let Ok(update) = rx.recv().await {
         cell.update(|state| fold_connection(state, &update));
-        let () = deps.services.bus.publish(update).await;
+        let () = deps.services.bus.publish(update.clone()).await;
+        // The dashboard consumes only the generic projection; discord's
+        // row identity travels inside it, so the dashboard stays
+        // feature-agnostic.
+        let () = deps.services.bus.publish(update.to_service_update()).await;
     }
 }
 

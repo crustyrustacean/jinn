@@ -2553,7 +2553,7 @@ dependencies = [
 
 [[package]]
 name = "jinn"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "async-trait",
  "clap",
@@ -2594,7 +2594,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-cli"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -2611,7 +2611,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-common"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "dirs",
  "error-stack 0.7.1",
@@ -2627,7 +2627,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-core-types"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "rstest",
  "serde",
@@ -2637,7 +2637,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-discord"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "daow",
  "derive_more",
@@ -2656,7 +2656,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-domain"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2729,7 +2729,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-mcp"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "axum",
  "ctor",
@@ -2750,7 +2750,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-plugin"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "error-stack 0.7.1",
  "jinn-plugin-api",
@@ -2768,7 +2768,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-plugin-api"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "jsonschema",
  "rstest",
@@ -2786,7 +2786,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-provider"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "async-trait",
  "base64",
@@ -2810,7 +2810,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-provider-config"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "dirs",
  "error-stack 0.7.1",
@@ -2830,7 +2830,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-selection-widget"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "fuzzy-matcher",
  "jinn-testutil",
@@ -2855,7 +2855,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-slices"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "derive_more",
  "jinn-theme",
@@ -2866,14 +2866,14 @@ dependencies = [
 
 [[package]]
 name = "jinn-testutil"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "ratatui",
 ]
 
 [[package]]
 name = "jinn-theme"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2889,7 +2889,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-tui"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "arboard",
  "crossterm",
@@ -2920,7 +2920,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-web-fetch"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2942,7 +2942,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-web-search"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "async-trait",
  "ctor",
@@ -3832,7 +3832,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "persona-loader"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "error-stack 0.7.1",
  "jinn-plugin-api",
@@ -5547,7 +5547,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "stall-watchdog"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "jinn-plugin-api",
  "jinn-plugin-sdk",
@@ -5825,7 +5825,7 @@ dependencies = [
 
 [[package]]
 name = "theme-loader"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "error-stack 0.7.1",
  "jinn-plugin-api",
@@ -6156,7 +6156,7 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 
 [[package]]
 name = "tool-call-watchdog"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "jinn-plugin-api",
  "jinn-plugin-sdk",
@@ -6912,7 +6912,7 @@ dependencies = [
 
 [[package]]
 name = "url-citations"
-version = "0.115.1"
+version = "0.116.1"
 dependencies = [
  "form_urlencoded",
  "jinn-plugin-api",

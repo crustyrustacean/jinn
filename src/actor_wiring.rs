@@ -249,6 +249,50 @@ impl ActorSystemBuilder {
         // (submit-log writer), attaches rows, and registers the input
         // hook + overlay geometry. Composition owns exactly this call.
         jinn_domain::feat::quake_bar::activate(&mut services);
+        // ── Trouper bridge ─────────────────────────────────────────────
+        // The translation seam between the two fabrics, in both
+        // directions: the kameo→trouper half forwards the bus messages
+        // consumed by the ported slice actors onto their topics; the
+        // trouper→kameo half (inert until a reverse route is
+        // registered) will republish trouper topic messages onto the
+        // bus for pre-port consumers. The kameo→trouper half must be
+        // subscribed before the dashboard activates — the lifecycle
+        // announcements published afterwards are what the dashboard's
+        // rows fold.
+        jinn_domain::common::trouper_bridge::spawn_kameo_to_trouper(&services).await;
+        jinn_domain::common::trouper_bridge::spawn_trouper_to_kameo(
+            &services.trouper_system,
+            services.bus.clone(),
+        );
+
+        // ── Dashboard slice ───────────────────────────────────────────
+        // Activation mints the cell, spawns the canvas actor FIRST
+        // (subscribe is the readiness point, so no lifecycle event from
+        // subsequently spawned actors is missed), attaches rows,
+        // registers the view + tab. The dashboard is a generic sink: it
+        // folds the lifecycle events and the `ServiceStatusUpdate`
+        // projections owning features publish.
+        #[expect(
+            clippy::panic,
+            reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+        )]
+        if let Err(error) = jinn_domain::feat::dashboard::activate(&mut services) {
+            panic!("dashboard slice activation failed: {error}");
+        }
+
+        // ── Discord slice ─────────────────────────────────────────────
+        // Activation mints the connection cell, spawns the status
+        // actor (the connection authority — after the dashboard so its
+        // publications are not missed), creates the gateway kanal
+        // channels unconditionally, config-gates the bridge actor, and
+        // attaches the `gdc` route row. Slice integration is exactly
+        // this call.
+        jinn_domain::feat::discord::activate(&mut services, state.clone()).await;
+
+        // Quake bar slice: activation mints the cell, spawns the actor
+        // (submit-log writer), attaches rows, and registers the input
+        // hook + overlay geometry. Composition owns exactly this call.
+        jinn_domain::feat::quake_bar::activate(&mut services);
 
         // ── Infrastructure actors ──────────────────────────────────────────
 
