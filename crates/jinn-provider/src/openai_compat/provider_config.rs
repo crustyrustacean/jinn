@@ -57,6 +57,8 @@ impl ProviderConfig {
         }
     }
 
+    /// Static configuration for the OpenRouter backend, including app
+    /// attribution headers that identify jinn on openrouter.ai.
     #[must_use]
     pub fn openrouter() -> Self {
         Self {
@@ -64,10 +66,18 @@ impl ProviderConfig {
             default_base_url: "https://openrouter.ai/api/v1/",
             chat_endpoint: "chat/completions",
             models_endpoint: "models",
-            custom_headers: vec![(
-                "X-OpenRouter-Experimental-Metadata".to_owned(),
-                "enabled".to_owned(),
-            )],
+            custom_headers: vec![
+                (
+                    "X-OpenRouter-Experimental-Metadata".to_owned(),
+                    "enabled".to_owned(),
+                ),
+                (
+                    "HTTP-Referer".to_owned(),
+                    "https://jaysonlennon.dev".to_owned(),
+                ),
+                ("X-OpenRouter-Title".to_owned(), "jinn".to_owned()),
+                ("X-OpenRouter-Categories".to_owned(), "cli-agent".to_owned()),
+            ],
         }
     }
 
@@ -207,6 +217,55 @@ mod tests {
                 .iter()
                 .any(|(k, v)| k == "X-OpenRouter-Experimental-Metadata" && v == "enabled"),
             "OpenRouter config should include experimental metadata header"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case("HTTP-Referer", "https://jaysonlennon.dev")]
+    #[case("X-OpenRouter-Title", "jinn")]
+    #[case("X-OpenRouter-Categories", "cli-agent")]
+    fn openrouter_config_includes_attribution_header(#[case] header: &str, #[case] value: &str) {
+        // Given the OpenRouter provider config.
+        let config = ProviderConfig::openrouter();
+
+        // When looking up the attribution header.
+        let found = config
+            .custom_headers
+            .iter()
+            .find(|(k, _)| k == header)
+            .map(|(_, v)| v.as_str());
+
+        // Then it is present with the exact attributed value.
+        assert_eq!(found, Some(value), "missing or wrong value for {header}");
+    }
+
+    #[rstest::rstest]
+    #[case(&Backend::OpenAI)]
+    #[case(&Backend::ZAI)]
+    #[case(&Backend::DeepSeek)]
+    #[case(&Backend::Groq)]
+    #[case(&Backend::XAI)]
+    #[case(&Backend::Mistral)]
+    #[case(&Backend::Cohere)]
+    #[case(&Backend::HuggingFace)]
+    #[case(&Backend::LmStudio)]
+    #[case(&Backend::Phind)]
+    #[case(&Backend::Ollama)]
+    #[case(&Backend::ElevenLabs)]
+    fn non_openrouter_backends_carry_no_attribution_headers(#[case] backend: &Backend) {
+        // Given a non-OpenRouter backend's provider config.
+        let config = ProviderConfig::from(backend);
+
+        // When scanning its custom headers for attribution headers.
+        let has_attribution = config.custom_headers.iter().any(|(k, _)| {
+            k == "HTTP-Referer" || k == "X-OpenRouter-Title" || k == "X-OpenRouter-Categories"
+        });
+
+        // Then none are present.
+        assert!(
+            !has_attribution,
+            "{} config should not carry OpenRouter attribution headers",
+            config.name
         );
     }
 
