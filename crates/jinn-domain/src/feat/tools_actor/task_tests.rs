@@ -254,6 +254,53 @@ async fn task_spawns_child_linked_and_inheriting() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn task_child_has_task_tool_suppressed() {
+    // Given a parent session whose disabled set does not include the task
+    // tool (it is enabled: this session could spawn).
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    {
+        let snapshot = state.read();
+        let parent = snapshot.session.get(&parent_id).expect("parent seeded");
+        assert!(
+            !parent
+                .profile()
+                .disabled_tools
+                .contains(crate::feat::tools_actor::task::TASK_TOOL_NAME),
+            "fixture parent must have task enabled"
+        );
+    }
+    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+
+    // When executing a task call and finishing the child.
+    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    let servers = parent_servers();
+    settle_child_discovery(&harness.bus(), &child_id, &servers).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // Then the child's disabled tools include task — stamped at spawn.
+    let snapshot = state.read();
+    let child = snapshot
+        .session
+        .get(&child_id)
+        .expect("child present in state");
+    assert!(
+        child
+            .profile()
+            .disabled_tools
+            .contains(crate::feat::tools_actor::task::TASK_TOOL_NAME),
+        "spawned child must start with the task tool suppressed, got: {:?}",
+        child.profile().disabled_tools
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn task_child_inherits_parent_project() {
     // Given a parent session stamped with a project.
     let harness = TestHarness::new().await;

@@ -131,12 +131,6 @@ pub fn assemble_prompt(
     tool_defs
         .retain(|def| !disabled.contains(&def.name) && def.available_for_provider(&provider_name));
 
-    // Depth-1 subagent guard: sessions with a parent link cannot spawn
-    // further subagents. Structural, so it can't be undone from the picker.
-    if session.parent_session().is_some() {
-        tool_defs.retain(|def| def.name != crate::feat::tools_actor::task::TASK_TOOL_NAME);
-    }
-
     let filtered_map: BTreeMap<String, ToolDefinition> = tool_defs
         .iter()
         .cloned()
@@ -307,6 +301,7 @@ mod tests {
     use crate::feat::session::model_selection::ModelSelection;
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::skills::Skill;
+    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
     use crate::feat::tools_actor::tool_types::ToolDefinition;
     use crate::protocol::{ChatEntry, SessionId};
     use jinn_provider::ServerToolType;
@@ -1052,6 +1047,45 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    fn parent_linked_session_keeps_task_tool_when_not_disabled() {
+        // Given a state whose context advertises the task tool, and a child
+        // session linked to a parent with nothing disabled.
+        let state = State::new(AppState::default());
+        let parent_id = SessionId::new();
+        let child_id;
+        {
+            let mut guard = state.write_test_no_cap();
+            guard
+                .context
+                .global_tool_definitions
+                .insert(TASK_TOOL_NAME.to_owned(), make_tool(TASK_TOOL_NAME));
+            let child =
+                crate::feat::session::chat_session::ChatSessionState::new_child(&parent_id, true);
+            child_id = child.session_id().clone();
+            guard.session.insert(child);
+        }
+
+        // When assembling the prompt for the child.
+        let snapshot = state.read();
+        let result = assemble_prompt(&snapshot, &child_id, &counter());
+
+        // Then the tool definitions include task.
+        assert!(
+            result
+                .tool_definitions
+                .iter()
+                .any(|def| def.name == TASK_TOOL_NAME),
+            "a parent-linked session without the tool disabled keeps the task tool, got: {:?}",
+            result
+                .tool_definitions
+                .iter()
+                .map(|d| d.name.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
     fn assemble_prompt_excludes_disabled_tools_from_tool_context_block() {
         // Given a session with tools and some disabled.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
@@ -1379,86 +1413,6 @@ mod tests {
         assert_eq!(
             user_msg_count, 1,
             "top pinned user should appear exactly once, appeared {user_msg_count}"
-        );
-    }
-}
-// ---------------------------------------------------------------------------
-// Depth-1 subagent guard
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod depth1_tests {
-    use super::tests::{counter, make_tool};
-    use super::*;
-    use crate::common::app_state::AppState;
-    use crate::common::state::State;
-    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
-
-    #[rstest::rstest]
-    #[test]
-    fn child_sessions_lack_task_tool() {
-        // Given a state whose context advertises the task tool, and a child
-        // session linked to a parent.
-        let state = State::new(AppState::default());
-        let parent_id = SessionId::new();
-        let child_id;
-        {
-            let mut guard = state.write_test_no_cap();
-            guard
-                .context
-                .global_tool_definitions
-                .insert(TASK_TOOL_NAME.to_owned(), make_tool(TASK_TOOL_NAME));
-            let child =
-                crate::feat::session::chat_session::ChatSessionState::new_child(&parent_id, true);
-            child_id = child.session_id().clone();
-            guard.session.insert(child);
-        }
-
-        // When assembling the prompt for the child.
-        let snapshot = state.read();
-        let result = assemble_prompt(&snapshot, &child_id, &counter());
-
-        // Then the tool definitions omit task.
-        assert!(
-            !result
-                .tool_definitions
-                .iter()
-                .any(|def| def.name == TASK_TOOL_NAME),
-            "child sessions must not see the task tool, got: {:?}",
-            result
-                .tool_definitions
-                .iter()
-                .map(|d| d.name.clone())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn root_sessions_keep_task_tool() {
-        // Given the same context but a root session.
-        let state = State::new(AppState::default());
-        let session_id;
-        {
-            let mut guard = state.write_test_no_cap();
-            guard
-                .context
-                .global_tool_definitions
-                .insert(TASK_TOOL_NAME.to_owned(), make_tool(TASK_TOOL_NAME));
-            session_id = guard.session.active_session_id().clone();
-        }
-
-        // When assembling the prompt for the root.
-        let snapshot = state.read();
-        let result = assemble_prompt(&snapshot, &session_id, &counter());
-
-        // Then the tool definitions include task.
-        assert!(
-            result
-                .tool_definitions
-                .iter()
-                .any(|def| def.name == TASK_TOOL_NAME),
-            "root sessions keep the task tool"
         );
     }
 }
