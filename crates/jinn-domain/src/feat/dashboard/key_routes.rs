@@ -140,7 +140,6 @@ mod tests {
     use crate::common::slices::key_routes::ActionCtx;
     use crate::common::slices::key_routes::KeyRoutes;
     use crate::common::slices::key_routes::RouteOutcome;
-    use crate::protocol::intent::Intent;
     use jinn_slices::DynamicIntent;
 
     #[rstest::rstest]
@@ -154,11 +153,7 @@ mod tests {
         attach_dashboard_rows(&routes);
 
         // When dispatching a dynamic intent for one of the actions.
-        let intent = Intent::Dynamic(DynamicIntent::new(
-            dashboard_scope(),
-            action,
-            "dashboard nav",
-        ));
+        let intent = DynamicIntent::new(dashboard_scope(), action, "dashboard nav");
         let mut state = crate::common::app_state::AppState::default();
         let slices = crate::common::slices::Slices::new();
         let result = routes
@@ -208,11 +203,7 @@ mod tests {
         attach_dashboard_rows(&routes);
 
         // When dispatching a dynamic intent for an unknown action.
-        let intent = Intent::Dynamic(DynamicIntent::new(
-            dashboard_scope(),
-            "nonexistent",
-            "nothing",
-        ));
+        let intent = DynamicIntent::new(dashboard_scope(), "nonexistent", "nothing");
         let mut state = crate::common::app_state::AppState::default();
         let slices = crate::common::slices::Slices::new();
         let result = routes.action_for(

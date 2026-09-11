@@ -91,11 +91,21 @@ mod tests {
     use crate::feat::discord::ConnectionState;
     use crate::feat::discord::discord_connection_slot;
     use crate::feat::session::chat_entry::ChatEntryKind;
+    use crate::protocol::Intent;
 
     fn routed() -> KeyRoutes {
         let routes = KeyRoutes::new();
         attach_discord_rows(&routes);
         routes
+    }
+
+    /// The row's dynamic intent, unwrapped from the composition-side
+    /// `Intent` wrapper the keymap produces.
+    fn to_thread_dynamic() -> jinn_slices::DynamicIntent {
+        match to_thread_intent_action() {
+            Intent::Dynamic(dynamic) => dynamic,
+            other => panic!("to-thread action must be a dynamic intent, got {other:?}"),
+        }
     }
 
     #[rstest::rstest]
@@ -134,7 +144,7 @@ mod tests {
         // When dispatching the to-thread dynamic intent.
         let result = routes
             .action_for(
-                &to_thread_intent_action(),
+                &to_thread_dynamic(),
                 ActionCtx {
                     state: &mut state,
                     slices: &slices,
@@ -183,7 +193,7 @@ mod tests {
         // When dispatching the to-thread dynamic intent.
         let result = routes
             .action_for(
-                &to_thread_intent_action(),
+                &to_thread_dynamic(),
                 ActionCtx {
                     state: &mut state,
                     slices: &slices,
@@ -209,7 +219,7 @@ mod tests {
 
         // When dispatching an intent carrying the nominal discord scope.
         let result = routes.action_for(
-            &to_thread_intent_action(),
+            &to_thread_dynamic(),
             ActionCtx {
                 state: &mut crate::common::app_state::AppState::default(),
                 slices: &crate::common::slices::Slices::new(),

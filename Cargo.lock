@@ -2858,10 +2858,14 @@ name = "jinn-slices"
 version = "0.116.1"
 dependencies = [
  "derive_more",
+ "jinn-core-types",
  "jinn-theme",
+ "kameo",
+ "kameo_actors",
  "parking_lot",
  "ratatui",
  "rstest",
+ "tokio",
 ]
 
 [[package]]

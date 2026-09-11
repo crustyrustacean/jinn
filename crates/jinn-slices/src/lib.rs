@@ -30,12 +30,26 @@
 )]
 
 pub mod cell;
+pub mod route;
 pub mod slice_scope;
 pub mod slices;
 pub mod view;
 
 pub use cell::TypedCell;
-pub use slice_scope::DynamicIntent;
+pub use route::ActionCtx;
+pub use route::ActionFn;
+pub use route::BindSite;
+pub use route::DynamicIntent;
+pub use route::EditIntent;
+pub use route::InputHook;
+pub use route::KeyRoutes;
+pub use route::PublishClosure;
+pub use route::RouteId;
+pub use route::RouteOutcome;
+pub use route::RouteResult;
+pub use route::RouteRow;
+pub use route::ScopeSignal;
+pub use route::SliceActionState;
 pub use slice_scope::SliceScopeId;
 pub use slices::Slices;
 pub use slices::SlotKey;

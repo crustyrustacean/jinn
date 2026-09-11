@@ -1,488 +1,109 @@
-//! Feature-registered keybind routing — the slice keybind manifest.
+//! Kernel re-exports of the slice keybind routing mechanics.
 //!
-//! [`KeyRoutes`] dissolves the central-handler coupling: each slice
-//! registers *route rows* — "when this key fires in this scope, produce
-//! this outcome" — and composition generates the keymap bindings from
-//! the registered rows. Rows carry no `Intent`: a row either resolves
-//! through the route table itself (a [`RouteOutcome::Action`], looked up
-//! by dynamic intent) or names a static intent by [`RouteId`] for
-//! composition to bind directly ([`RouteOutcome::StaticIntent`]). The
-//! intent vocabulary therefore lives in exactly one place — the
-//! composition-side `RouteId` map — and slices never edit central
-//! enums.
-//!
-//! Rows also declare *where* their key binds: a slice's own dynamic
-//! scope ([`BindSite::OwnScope`]), every composition scope
-//! ([`BindSite::GlobalToggle`] — e.g. the key that opens the slice), or
-//! named static scopes only ([`BindSite::StaticScopes`] — a key that
-//! belongs to a composition context, not to the slice's scope).
-//! Composition's generator walks the rows; nothing else does.
-//!
-//! Alongside the rows, a slice may register one *input hook* per scope
-//! ([`InputHook`]): a synchronous interceptor consulted before the
-//! handler's built-in arms while that scope is active. This is the
-//! sanctioned carve-out for per-keystroke input surfaces — the hook
-//! writes the slice's own state synchronously, exactly as a built-in
-//! input popup does.
-//!
-//! The table is small and scanned linearly; rows attach at slice
-//! activation (startup wiring) before the keymap is generated.
+//! The route table moved to [`jinn_slices::route`] so slice crates can
+//! register rows without depending on the kernel; this module is the
+//! historical import path inside `jinn-domain`. It also provides the
+//! kernel-side glue the mechanics cannot own: the [`Intent`] →
+//! [`EditIntent`] translation and [`AppState`]'s implementation of
+//! [`SliceActionState`].
 
-use std::sync::Arc;
-
-use jinn_slices::SliceScopeId;
+pub use jinn_slices::route::ActionCtx;
+pub use jinn_slices::route::ActionFn;
+pub use jinn_slices::route::BindSite;
+use jinn_slices::route::EditIntent;
+pub use jinn_slices::route::InputHook;
+pub use jinn_slices::route::KeyRoutes;
+pub use jinn_slices::route::PublishClosure;
+pub use jinn_slices::route::RouteId;
+pub use jinn_slices::route::RouteOutcome;
+pub use jinn_slices::route::RouteResult;
+pub use jinn_slices::route::RouteRow;
+pub use jinn_slices::route::ScopeSignal;
+pub use jinn_slices::route::SliceActionState;
 
 use crate::common::app_state::AppState;
-use crate::common::slices::Slices;
+use crate::common::app_state::FocusScope;
 use crate::protocol::intent::Intent;
 use crate::protocol::intent::IntentResult;
 
-/// Composition-side identifier for a route's intent resolution.
-///
-/// Rows never name [`Intent`] variants directly — they carry a
-/// [`RouteId`], and composition's generator maps ids to intents in one
-/// table. A `RouteId` an unknown id to that map is a wiring bug that
-/// surfaces as an unbound key at startup, not a compile error; the
-/// mapping test pins every registered id against it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct RouteId(&'static str);
-
-impl RouteId {
-    /// Mints a route id from its canonical dotted name.
-    #[must_use]
-    pub const fn new(name: &'static str) -> Self {
-        Self(name)
+impl SliceActionState for AppState {
+    fn active_session_title(&self) -> Option<String> {
+        self.active_session().title().map(str::to_owned)
     }
 
-    /// The canonical name, e.g. `dashboard:nav-down`.
-    #[must_use]
-    pub fn as_str(&self) -> &'static str {
-        self.0
-    }
-}
-
-/// Where a row's keybinding materializes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BindSite {
-    /// Bind in the slice's own dynamic scope only.
-    OwnScope,
-    /// Bind in every composition (static) scope — and in other slices'
-    /// dynamic scopes — so a slice's entry-point key works everywhere.
-    /// Within the slice's own scope the row is skipped, letting the
-    /// slice's own binding (e.g. a close key) win.
-    GlobalToggle,
-    /// Bind in the named composition (static) scopes only — for slices
-    /// whose key belongs to a static context (e.g. normal-mode command
-    /// prefixes) rather than to the slice's dynamic scope or everywhere.
-    ///
-    /// Names are `Scope` display forms (e.g. `"Normal"`); unknown names
-    /// warn and skip at generation time. The owning slice's dynamic
-    /// scope is never included — a row's scope is where its dynamic
-    /// intent resolves, not where it must be displayable.
-    StaticScopes(&'static [&'static str]),
-}
-
-/// What a row's keypress produces.
-#[derive(Debug, Clone)]
-pub enum RouteOutcome {
-    /// Bind the key to a static intent, resolved by composition from
-    /// the [`RouteId`]. The route table is not consulted at keypress
-    /// time — the intent flows through the handler's built-in arms.
-    /// Used for a slice's shared-chrome keys (`q` → quit).
-    StaticIntent(RouteId),
-    /// A slice-specific action: the key binds to a dynamic intent and
-    /// the handler dispatches through this row's `run`.
-    Action {
-        /// The action name — the route-table key within the slice.
-        action: &'static str,
-        /// Human-readable label for which-key popups.
-        display: &'static str,
-        /// Produces the outcome when the dynamic intent fires.
-        run: ActionFn,
-    },
-}
-
-/// The handler context a row action runs in.
-///
-/// Actions that touch app state write through `state` — the same
-/// `&mut AppState` guard the intent handler already holds, so an
-/// action never mints a second write capability and never takes a
-/// second lock (a captured `State::write()` would deadlock against
-/// the handler's guard). Actions that resolve slice cells take
-/// `slices`; cell handles captured at attach time remain the
-/// preferred form (the ctx is for state a cell cannot carry).
-#[derive(Debug)]
-pub struct ActionCtx<'a> {
-    /// Mutable application state, borrowed from the intent handler.
-    pub state: &'a mut AppState,
-    /// The slice registry, borrowed from the intent handler.
-    pub slices: &'a Slices,
-}
-
-/// A row action: produces the intent result (messages + optional scope
-/// signal) when its dynamic intent fires.
-///
-/// A closure, not a bare `fn` pointer: actions may capture the slice's
-/// cell handle (e.g. submit reads and clears the input buffer). The
-/// captured handle is the one registered at slice activation — closure
-/// capture does not mint a second write capability. State outside the
-/// slice's cells is reached through [`ActionCtx`], lent by the handler
-/// at dispatch time.
-#[derive(Clone)]
-pub struct ActionFn(Arc<dyn Fn(ActionCtx<'_>) -> IntentResult + Send + Sync>);
-
-impl ActionFn {
-    /// Wraps a closure or function into a row action.
-    #[must_use]
-    pub fn new<F>(f: F) -> Self
-    where
-        F: Fn(ActionCtx<'_>) -> IntentResult + Send + Sync + 'static,
-    {
-        Self(Arc::new(f))
+    fn active_session_id(&self) -> jinn_core_types::SessionId {
+        self.session.active_session_id().clone()
     }
 
-    /// Runs the action with the handler's context.
-    #[must_use]
-    pub fn run(&self, ctx: ActionCtx<'_>) -> IntentResult {
-        (self.0)(ctx)
+    fn push_session_error(&mut self, message: &str) {
+        self.active_session_mut()
+            .push_entry(crate::feat::session::chat_entry::ChatEntry::error(message));
     }
-}
 
-impl std::fmt::Debug for ActionFn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("ActionFn(..)")
-    }
-}
-
-/// A slice-registered keybind row — one entry of the slice manifest.
-#[derive(Debug, Clone)]
-pub struct RouteRow {
-    /// Composition-facing id (static resolution + diagnostics).
-    pub route_id: RouteId,
-    /// The dynamic scope this row's key lives in.
-    pub scope: SliceScopeId,
-    /// The key, in keymap display form (e.g. `<esc>`, `j`).
-    pub key: &'static str,
-    /// Keymap category hint: `general`, `navigation`, or `input`.
-    pub category: &'static str,
-    /// Where the binding materializes.
-    pub site: BindSite,
-    /// Display name of the owning slice, for diagnostics.
-    pub feature: &'static str,
-    /// What the keypress produces.
-    pub outcome: RouteOutcome,
-}
-
-impl RouteRow {
-    /// The which-key label this row's key shows.
-    ///
-    /// Static intents are labeled by composition (the bound intent's
-    /// own `Display`); dynamic actions carry their label here.
-    #[must_use]
-    pub fn display(&self) -> &'static str {
-        match &self.outcome {
-            RouteOutcome::StaticIntent(_) => "",
-            RouteOutcome::Action { display, .. } => display,
+    fn slice_flag_enabled(&self, slice: &str) -> bool {
+        match slice {
+            "discord" => self.frontend.preferences.discord.enabled,
+            _ => false,
         }
     }
 }
 
-/// A synchronous per-scope input interceptor.
+/// Translates the kernel's editing intents into the slice-hook
+/// vocabulary.
 ///
-/// Consulted by the intent handler while the hook's scope is the active
-/// focus: editing intents (typing, cursor moves) are routed here so the
-/// slice's input surface captures keystrokes without hard-coded handler
-/// arms. Returning `None` lets the intent fall through to the built-in
-/// arms (quit and other app-level intents keep working).
-pub type InputHook = Arc<dyn Fn(&Intent) -> Option<IntentResult> + Send + Sync>;
-
-/// Registry of slice keybind routes and input hooks.
-///
-/// Rows attach at slice activation (startup wiring), so the table is
-/// interior-mutable behind a lock — the same shape as
-/// [`Slices`](super::Slices). Lookup is infallible: an unbound dynamic
-/// intent yields `None` and the handler treats it as inert.
-#[derive(Clone, Debug, Default)]
-pub struct KeyRoutes {
-    rows: row_store::Rows,
-    hooks: row_store::Hooks,
-}
-
-impl KeyRoutes {
-    /// Creates an empty route table.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Attaches a built-in row.
-    pub fn attach(&self, row: RouteRow) {
-        self.rows.push(row);
-    }
-
-    /// Registers the synchronous input hook for a slice's scope.
-    pub fn register_input_hook(&self, scope: &SliceScopeId, hook: InputHook) {
-        self.hooks.insert(scope.key(), hook);
-    }
-
-    /// Returns the input hook registered for `scope`, if any.
-    #[must_use]
-    pub fn input_hook(&self, scope: &SliceScopeId) -> Option<InputHook> {
-        self.hooks.get(&scope.key())
-    }
-
-    /// Dispatches a dynamic intent through its registered row.
-    ///
-    /// Matches by `(slice, action)` — the dynamic intent's identity.
-    /// `None` means no row serves this intent: the handler treats the
-    /// intent as inert.
-    pub fn action_for(&self, intent: &Intent, ctx: ActionCtx<'_>) -> Option<IntentResult> {
-        let Intent::Dynamic(jinn_slices::DynamicIntent { slice, action, .. }) = intent else {
-            return None;
-        };
-        let run = {
-            let rows = self.rows.rows();
-            rows.into_iter().find_map(|row| match &row.outcome {
-                RouteOutcome::Action {
-                    action: row_action,
-                    run,
-                    ..
-                } if row_action == action && row.scope == *slice => Some(run.clone()),
-                _ => None,
-            })
-        };
-        run.map(|run| run.run(ctx))
-    }
-
-    /// Returns all attached rows in attach order.
-    #[must_use]
-    pub fn rows(&self) -> Vec<RouteRow> {
-        self.rows.rows()
-    }
-
-    /// Returns the scope ids of all registered input hooks.
-    #[must_use]
-    pub fn hook_scopes(&self) -> Vec<SliceScopeId> {
-        self.hooks
-            .keys()
-            .into_iter()
-            .filter_map(|key| key.parse::<SliceScopeId>().ok())
-            .collect()
+/// `None` means the intent is not an editing surface action — hooks are
+/// never consulted for it.
+#[must_use]
+pub fn as_edit_intent(intent: &Intent) -> Option<EditIntent> {
+    match intent {
+        Intent::InsertChar { ch } => Some(EditIntent::InsertChar(*ch)),
+        Intent::DeleteGrapheme => Some(EditIntent::DeleteBackward),
+        Intent::DeleteGraphemeForward => Some(EditIntent::DeleteForward),
+        Intent::MoveCursorLeft => Some(EditIntent::CursorLeft),
+        Intent::MoveCursorRight => Some(EditIntent::CursorRight),
+        Intent::MoveCursorToStart => Some(EditIntent::CursorHome),
+        Intent::MoveCursorToEnd => Some(EditIntent::CursorEnd),
+        _ => None,
     }
 }
 
-/// Append-only row/hook store shared by all clones of the table.
-mod row_store {
-    use super::InputHook;
-    use super::RouteRow;
-    use parking_lot::RwLock;
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
-    #[derive(Debug, Default)]
-    pub struct Rows {
-        inner: Arc<RwLock<Vec<RouteRow>>>,
+/// Converts the kernel's [`IntentResult`] into the slice-level
+/// [`RouteResult`] (they are the same shape; this erases the alias).
+#[must_use]
+pub fn into_route_result(result: IntentResult) -> RouteResult {
+    RouteResult {
+        messages: result.messages,
+        message_names: result.message_names,
+        scope_signal: result.scope_signal,
     }
+}
 
-    impl Clone for Rows {
-        fn clone(&self) -> Self {
-            Self {
-                inner: Arc::clone(&self.inner),
+/// Converts a slice-level [`RouteResult`] back into the kernel's
+/// [`IntentResult`] alias.
+#[must_use]
+pub fn from_route_result(result: RouteResult) -> IntentResult {
+    IntentResult {
+        messages: result.messages,
+        message_names: result.message_names,
+        scope_signal: result.scope_signal,
+    }
+}
+
+/// Applies a route action's scope transition to the scope stack.
+///
+/// The handler is the exempt `scope_stack` writer; this is the only
+/// place a slice-requested transition lands.
+pub fn apply_scope_signal(result: &mut IntentResult, state: &mut AppState) {
+    let Some(signal) = result.scope_signal.take() else {
+        return;
+    };
+    match signal {
+        ScopeSignal::Push(id) => state.frontend.scope_stack.push(FocusScope::Dynamic(id)),
+        ScopeSignal::PopIf(id) => {
+            if matches!(state.frontend.scope_stack.current(), FocusScope::Dynamic(cur) if *cur == id)
+            {
+                state.frontend.scope_stack.pop();
             }
         }
-    }
-
-    impl Rows {
-        pub fn push(&self, row: RouteRow) {
-            self.inner.write().push(row);
-        }
-
-        /// Snapshot of all rows; the guard is released before return.
-        pub fn rows(&self) -> Vec<RouteRow> {
-            self.inner.read().clone()
-        }
-    }
-
-    #[derive(Debug, Default)]
-    pub struct Hooks {
-        inner: Arc<RwLock<HashMap<String, HookEntry>>>,
-    }
-
-    /// A hook wrapped for `Debug` (closures are not `Debug`).
-    #[derive(Clone)]
-    struct HookEntry(InputHook);
-
-    impl std::fmt::Debug for HookEntry {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str("InputHook(..)")
-        }
-    }
-
-    impl Clone for Hooks {
-        fn clone(&self) -> Self {
-            Self {
-                inner: Arc::clone(&self.inner),
-            }
-        }
-    }
-
-    impl Hooks {
-        pub fn insert(&self, key: String, hook: InputHook) {
-            self.inner.write().insert(key, HookEntry(hook));
-        }
-
-        pub fn get(&self, key: &str) -> Option<InputHook> {
-            self.inner.read().get(key).map(|entry| entry.0.clone())
-        }
-
-        pub fn keys(&self) -> Vec<String> {
-            self.inner.read().keys().cloned().collect()
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ActionCtx;
-    use super::ActionFn;
-    use super::BindSite;
-    use super::KeyRoutes;
-    use super::RouteId;
-    use super::RouteOutcome;
-    use super::RouteRow;
-    use crate::common::app_state::AppState;
-    use crate::common::slices::Slices;
-    use crate::protocol::intent::Intent;
-    use crate::protocol::intent::IntentResult;
-    use jinn_slices::DynamicIntent;
-    use jinn_slices::SliceScopeId;
-
-    fn scope() -> SliceScopeId {
-        SliceScopeId::new("test-slice", "main")
-    }
-
-    fn row(action: &'static str, key: &'static str) -> RouteRow {
-        RouteRow {
-            route_id: RouteId::new("test-slice:action"),
-            scope: scope(),
-            key,
-            category: "general",
-            site: BindSite::OwnScope,
-            feature: "test-slice",
-            outcome: RouteOutcome::Action {
-                action,
-                display: "test action",
-                run: ActionFn::new(|_ctx| IntentResult::empty()),
-            },
-        }
-    }
-
-    fn dynamic_intent(action: &str) -> Intent {
-        Intent::Dynamic(DynamicIntent::new(scope(), action, "test action"))
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn dynamic_intent_with_registered_row_dispatches_action() {
-        // Given a table with an action row attached.
-        let routes = KeyRoutes::new();
-        routes.attach(row("poke", "<enter>"));
-
-        // When dispatching a dynamic intent carrying the row's action.
-        let mut state = AppState::default();
-        let slices = Slices::new();
-        let result = routes.action_for(
-            &dynamic_intent("poke"),
-            ActionCtx {
-                state: &mut state,
-                slices: &slices,
-            },
-        );
-
-        // Then the row's action ran (empty result, no error).
-        assert!(result.is_some());
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn dynamic_intent_without_row_is_inert() {
-        // Given a table with no matching row.
-        let routes = KeyRoutes::new();
-
-        // When dispatching an unregistered dynamic intent.
-        let mut state = AppState::default();
-        let slices = Slices::new();
-        let result = routes.action_for(
-            &dynamic_intent("missing"),
-            ActionCtx {
-                state: &mut state,
-                slices: &slices,
-            },
-        );
-
-        // Then nothing resolves — the handler will treat it as inert.
-        assert!(result.is_none());
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn static_intents_never_reach_the_route_table() {
-        // Given a table with rows attached.
-        let routes = KeyRoutes::new();
-        routes.attach(row("poke", "<enter>"));
-
-        // When dispatching a static intent.
-        let mut state = AppState::default();
-        let slices = Slices::new();
-        let result = routes.action_for(
-            &Intent::Quit,
-            ActionCtx {
-                state: &mut state,
-                slices: &slices,
-            },
-        );
-
-        // Then nothing resolves (static intents flow through built-in arms).
-        assert!(result.is_none());
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn input_hook_intercepts_intents_for_its_scope() {
-        // Given a table with a hook registered for the scope.
-        let routes = KeyRoutes::new();
-        routes.register_input_hook(
-            &scope(),
-            std::sync::Arc::new(|intent: &Intent| {
-                matches!(intent, Intent::DeleteGrapheme).then(IntentResult::empty)
-            }),
-        );
-
-        // When looking up the hook.
-        #[expect(
-            clippy::expect_used,
-            reason = "test helper: the routes under test register their hook"
-        )]
-        let hook = routes
-            .input_hook(&scope())
-            .expect("hook registered in this test's routes");
-
-        // Then the hook serves the editing intent and declines others.
-        assert!(hook(&Intent::DeleteGrapheme).is_some());
-        assert!(hook(&Intent::Quit).is_none());
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn hook_scopes_enumerates_registered_scopes() {
-        // Given a table with one hook registered.
-        let routes = KeyRoutes::new();
-        routes.register_input_hook(&scope(), std::sync::Arc::new(|_: &Intent| None));
-
-        // When enumerating hook scopes.
-        let scopes = routes.hook_scopes();
-
-        // Then the registered scope is listed.
-        assert_eq!(scopes, vec![scope()]);
     }
 }
