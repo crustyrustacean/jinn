@@ -20,9 +20,9 @@ pub use trouper_to_kameo::spawn_reverse_relay;
 /// fabric); the staged descriptors come from the dashboard crate.
 pub async fn drain_dashboard_routes(services: &Services) {
     use jinn_dashboard::bridge;
-    use jinn_dashboard::contracts::ServiceStatusUpdate;
     use jinn_dashboard::fabric_events::{ActorShutdownCompleted, ActorStarted, ActorStarting};
     use jinn_dashboard::nav::DashboardNav;
+    use jinn_slices::ServiceStatusUpdate;
 
     spawn_one::<ActorStarting>(
         services,
