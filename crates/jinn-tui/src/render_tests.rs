@@ -283,9 +283,7 @@ async fn render_in_dashboard(
         .write_test_no_cap()
         .frontend
         .scope_stack
-        .swap_base(FocusScope::Dynamic(
-            jinn_domain::feat::dashboard::dashboard_scope(),
-        ));
+        .swap_base(FocusScope::Dynamic(jinn_dashboard::dashboard_scope()));
     let (mut terminal, _area) = setup_term(width, height);
     terminal
         .draw(|frame| {
@@ -369,15 +367,12 @@ async fn dashboard_content_fills_full_width() {
 }
 
 /// Writes into the dashboard slice cell through the app registry.
-fn write_dashboard(
-    app: &crate::TuiApp,
-    f: impl FnOnce(&mut jinn_domain::feat::dashboard::DashboardState),
-) {
-    let cell: jinn_domain::common::slices::TypedCell<jinn_domain::feat::dashboard::DashboardState> =
-        app.services
-            .slices
-            .reader(&jinn_domain::feat::dashboard::dashboard_slot())
-            .expect("test builder registers the dashboard slot");
+fn write_dashboard(app: &crate::TuiApp, f: impl FnOnce(&mut jinn_dashboard::DashboardState)) {
+    let cell: jinn_domain::common::slices::TypedCell<jinn_dashboard::DashboardState> = app
+        .services
+        .slices
+        .reader(&jinn_dashboard::dashboard_slot())
+        .expect("test builder registers the dashboard slot");
     cell.update(f);
 }
 
@@ -403,9 +398,7 @@ async fn dashboard_tab_shows_actor_name_and_lifecycle() {
         .write_test_no_cap()
         .frontend
         .scope_stack
-        .swap_base(FocusScope::Dynamic(
-            jinn_domain::feat::dashboard::dashboard_scope(),
-        ));
+        .swap_base(FocusScope::Dynamic(jinn_dashboard::dashboard_scope()));
     write_dashboard(&app, |d| {
         d.mark_running("discord", Some("Discord bot".to_owned()));
     });
@@ -434,9 +427,7 @@ async fn dashboard_tab_shows_status_message_for_discord() {
         .write_test_no_cap()
         .frontend
         .scope_stack
-        .swap_base(FocusScope::Dynamic(
-            jinn_domain::feat::dashboard::dashboard_scope(),
-        ));
+        .swap_base(FocusScope::Dynamic(jinn_dashboard::dashboard_scope()));
     write_dashboard(&app, |d| {
         d.mark_running("discord", None);
         d.set_status_message("discord", Some("Connected".to_owned()));
@@ -464,10 +455,8 @@ async fn dashboard_tab_shows_empty_placeholder_when_no_actors() {
         .write_test_no_cap()
         .frontend
         .scope_stack
-        .swap_base(FocusScope::Dynamic(
-            jinn_domain::feat::dashboard::dashboard_scope(),
-        ));
-    write_dashboard(&app, jinn_domain::feat::dashboard::DashboardState::clear);
+        .swap_base(FocusScope::Dynamic(jinn_dashboard::dashboard_scope()));
+    write_dashboard(&app, jinn_dashboard::DashboardState::clear);
     let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering.
@@ -491,9 +480,7 @@ async fn dashboard_tab_shows_selection_marker_on_selected_entry() {
         .write_test_no_cap()
         .frontend
         .scope_stack
-        .swap_base(FocusScope::Dynamic(
-            jinn_domain::feat::dashboard::dashboard_scope(),
-        ));
+        .swap_base(FocusScope::Dynamic(jinn_dashboard::dashboard_scope()));
     write_dashboard(&app, |d| {
         d.mark_running("alpha", None);
         d.mark_running("beta", None);
@@ -519,9 +506,7 @@ async fn dashboard_tab_has_no_em_dash_separator() {
         .write_test_no_cap()
         .frontend
         .scope_stack
-        .swap_base(FocusScope::Dynamic(
-            jinn_domain::feat::dashboard::dashboard_scope(),
-        ));
+        .swap_base(FocusScope::Dynamic(jinn_dashboard::dashboard_scope()));
     write_dashboard(&app, |d| {
         d.mark_running("discord", Some("Discord bot".to_owned()));
     });

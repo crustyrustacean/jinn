@@ -2565,6 +2565,7 @@ dependencies = [
  "error-stack 0.7.1",
  "jiff",
  "jinn-cli",
+ "jinn-dashboard",
  "jinn-discord",
  "jinn-domain",
  "jinn-plugin",
@@ -2636,6 +2637,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-dashboard"
+version = "0.116.1"
+dependencies = [
+ "jinn-core-types",
+ "jinn-slices",
+ "jinn-testutil",
+ "jinn-theme",
+ "kameo",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "trouper",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-discord"
 version = "0.116.1"
 dependencies = [
@@ -2675,6 +2694,7 @@ dependencies = [
  "jiff",
  "jinn-common",
  "jinn-core-types",
+ "jinn-dashboard",
  "jinn-mcp",
  "jinn-plugin",
  "jinn-plugin-api",
@@ -2878,7 +2898,14 @@ dependencies = [
 name = "jinn-testutil"
 version = "0.116.1"
 dependencies = [
+ "jinn-slices",
+ "kameo",
+ "kameo_actors",
  "ratatui",
+ "serde",
+ "serde_json",
+ "tokio",
+ "trouper",
 ]
 
 [[package]]
@@ -2908,6 +2935,7 @@ dependencies = [
  "dirs",
  "error-stack 0.7.1",
  "futures",
+ "jinn-dashboard",
  "jinn-domain",
  "jinn-selection-widget",
  "jinn-slices",

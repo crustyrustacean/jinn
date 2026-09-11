@@ -147,10 +147,8 @@ mod tests {
     #[tokio::test]
     async fn registered_tab_is_highlighted_in_its_scope() {
         // Given an app whose base scope is the registered dashboard tab.
-        let mut app = build_app_with_scope(FocusScope::Dynamic(
-            jinn_domain::feat::dashboard::dashboard_scope(),
-        ))
-        .await;
+        let mut app =
+            build_app_with_scope(FocusScope::Dynamic(jinn_dashboard::dashboard_scope())).await;
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.
@@ -179,10 +177,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn registered_tab_stays_highlighted_when_another_overlay_opens() {
-        let mut app = build_app_with_scope(FocusScope::Dynamic(
-            jinn_domain::feat::dashboard::dashboard_scope(),
-        ))
-        .await;
+        let mut app =
+            build_app_with_scope(FocusScope::Dynamic(jinn_dashboard::dashboard_scope())).await;
         app.core
             .state
             .write_test_no_cap()

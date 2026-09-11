@@ -162,7 +162,7 @@ async fn environment_loaded_publishes_service_status_update_for_web_fetch() {
 
     // Subscribe to the dashboard projection event, then publish.
     let status_recorder = harness
-        .spawn_recorder::<crate::feat::dashboard::ServiceStatusUpdate>()
+        .spawn_recorder::<jinn_dashboard::ServiceStatusUpdate>()
         .await;
     harness
         .publish(EnvironmentLoaded {

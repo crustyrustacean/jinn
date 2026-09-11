@@ -52,6 +52,7 @@ jinn-plugin = { workspace = true }
 jinn-plugin-api = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
+jinn-dashboard = { workspace = true }
 jinn-discord = { workspace = true }
 
 jinn-web-fetch = { workspace = true }
@@ -97,6 +98,7 @@ jinn-domain = { path = "crates/jinn-domain" }
 jinn-discord = { path = "crates/jinn-discord" }
 jinn-common = { path = "crates/jinn-common" }
 jinn-core-types = { path = "crates/jinn-core-types" }
+jinn-dashboard = { path = "crates/jinn-dashboard" }
 jinn-slices = { path = "crates/jinn-slices" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }

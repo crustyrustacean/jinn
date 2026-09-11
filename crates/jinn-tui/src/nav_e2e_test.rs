@@ -1,7 +1,7 @@
 //! E2E: j-keypress → keymap → router → route row → DashboardNav → actor → cell.
 #![allow(clippy::expect_used, reason = "test code")]
-use jinn_domain::feat::dashboard::DashboardState;
-use jinn_domain::feat::dashboard::dashboard_slot;
+use jinn_dashboard::DashboardState;
+use jinn_dashboard::dashboard_slot;
 
 #[rstest::rstest]
 #[tokio::test]
@@ -15,7 +15,7 @@ async fn j_keypress_routes_to_dashboard_actor_and_moves_selection() {
         .frontend
         .scope_stack
         .swap_base(jinn_domain::FocusScope::Dynamic(
-            jinn_domain::feat::dashboard::dashboard_scope(),
+            jinn_dashboard::dashboard_scope(),
         ));
     let slot = dashboard_slot();
     let cell: jinn_domain::common::slices::TypedCell<DashboardState> =
@@ -28,7 +28,7 @@ async fn j_keypress_routes_to_dashboard_actor_and_moves_selection() {
 
     // When the j key resolves through the keymap and routes like the run loop.
     app.which_key.set_scope(crate::scope::Scope::Dynamic(
-        jinn_domain::feat::dashboard::dashboard_scope(),
+        jinn_dashboard::dashboard_scope(),
     ));
     let protocol_key = {
         use crossterm::event::{KeyCode, KeyEvent as XKeyEvent, KeyModifiers};

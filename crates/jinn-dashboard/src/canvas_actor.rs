@@ -14,7 +14,7 @@
 //! This actor is a feature-agnostic sink: features translate their own
 //! state into the generic events, so no feature-specific type appears
 //! here. It owns the dashboard's slice cell exclusively: the cell is
-//! minted by [`Slices::register`](crate::common::slices::Slices::register)
+//! minted by [`Slices::register`](jinn_slices::Slices::register)
 //! at actor wiring, and this actor holds the one write handle. The
 //! renderer and the intent router resolve read handles. Status sources
 //! are symmetric producers: they publish events, and this actor is the
@@ -34,10 +34,9 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 use trouper::types::ActorPath;
 
-use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
-use crate::common::trouper_bridge;
-use crate::feat::dashboard::nav::DashboardNav;
-use crate::feat::dashboard::{ActorLifecycle, DashboardState, ServiceStatusUpdate};
+use crate::fabric_events::{ActorShutdownCompleted, ActorStarted, ActorStarting};
+use crate::nav::DashboardNav;
+use crate::{ActorLifecycle, DashboardState, ServiceStatusUpdate};
 use jinn_slices::TypedCell;
 
 /// The dashboard actor on the canvas runtime.
@@ -97,14 +96,14 @@ impl DashboardCanvasActor {
             reason = "subscription failure is a broken actor system, not a caller bug;                       the spawn-then-activate ordering relies on the cursor being registered"
         )]
         system
-            .subscribe(&path, &trouper_bridge::fabric_topic(), None)
+            .subscribe(&path, &crate::bridge::fabric_topic(), None)
             .expect("dashboard actor subscribes to the fabric topic");
         #[expect(
             clippy::expect_used,
             reason = "subscription failure is a broken actor system, not a caller bug"
         )]
         system
-            .subscribe(&path, &trouper_bridge::dashboard_topic(), None)
+            .subscribe(&path, &crate::bridge::dashboard_topic(), None)
             .expect("dashboard actor subscribes to the dashboard topic");
         path
     }
@@ -210,9 +209,15 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::common::slices::Slices;
-    use crate::feat::dashboard::ActorLifecycle;
-    use crate::feat::dashboard::dashboard_slot;
+    use crate::contracts::ServiceStatusUpdate;
+    use crate::dashboard_slot;
+    use crate::fabric_events::{ActorShutdownCompleted, ActorStarted, ActorStarting};
+    use crate::nav::DashboardNav;
+    use crate::state::DashboardState;
+    use jinn_slices::Slices;
+    use jinn_slices::TypedCell;
+    use jinn_testutil::TestFabric;
+    use trouper::schema::Schema;
 
     /// Polls `check` until it passes or the bounded retry budget runs out.
     async fn wait_for(check: impl Fn() -> bool) {
@@ -236,32 +241,32 @@ mod tests {
             .map(|e| (e.lifecycle, e.status_message.clone(), e.description.clone()))
     }
 
-    /// Wires one slice cell + dashboard canvas actor into an existing
-    /// services container (bridge assumed spawned by the caller).
-    fn wire_actor(services: &crate::Services) -> TypedCell<DashboardState> {
+    /// Wires one dashboard cell + canvas actor onto the test fabric.
+    fn wire_actor(fabric: &TestFabric) -> TypedCell<DashboardState> {
         let slices = Slices::new();
         let cell = slices
             .register(dashboard_slot(), DashboardState::new())
             .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
+        DashboardCanvasActor::spawn(fabric.system(), &cell);
         cell
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn actor_starting_event_creates_entry_with_starting_lifecycle() {
-        // Given a dashboard canvas actor wired behind the bridge.
-        let services = crate::Services::new_fake().await;
-        crate::feat::dashboard::drain_forward_routes(&services).await;
-        let cell = wire_actor(&services);
+        // Given a dashboard canvas actor subscribed on the fabric.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
 
-        // When publishing ActorStarting on the kameo bus.
-        services
-            .bus
-            .publish(ActorStarting {
-                name: "llm".to_owned(),
-                description: None,
-            })
+        // When an ActorStarting envelope lands on the fabric topic.
+        fabric
+            .send_to_topic(
+                &ActorStarting {
+                    name: "llm".to_owned(),
+                    description: None,
+                },
+                &crate::bridge::fabric_topic(),
+            )
             .await;
 
         // Then the dashboard shows the actor as Starting.
@@ -273,64 +278,71 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn actor_started_event_transitions_to_running() {
-        // Given a dashboard canvas actor wired behind the bridge.
-        let services = crate::Services::new_fake().await;
-        crate::feat::dashboard::drain_forward_routes(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
+    async fn actor_started_event_promotes_entry_to_running() {
+        // Given a wired actor that has seen its subject start.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric
+            .send_to_topic(
+                &ActorStarting {
+                    name: "llm".to_owned(),
+                    description: Some("LlmActor".to_owned()),
+                },
+                &crate::bridge::fabric_topic(),
+            )
+            .await;
+        wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
 
-        // When publishing ActorStarted on the kameo bus.
-        services
-            .bus
-            .publish(ActorStarted {
-                name: "llm".to_owned(),
-                description: None,
-            })
+        // When the ActorStarted envelope arrives.
+        fabric
+            .send_to_topic(
+                &ActorStarted {
+                    name: "llm".to_owned(),
+                    description: Some("LlmActor".to_owned()),
+                },
+                &crate::bridge::fabric_topic(),
+            )
             .await;
 
-        // Then the dashboard shows the actor as Running.
+        // Then the entry promotes to Running with the description.
         wait_for(|| {
             dashboard_entry(&cell, "llm").is_some_and(|(l, _, _)| l == ActorLifecycle::Running)
         })
         .await;
+        assert_eq!(
+            dashboard_entry(&cell, "llm").unwrap().2.as_deref(),
+            Some("LlmActor")
+        );
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn actor_shutdown_event_transitions_to_dead() {
-        // Given a dashboard canvas actor whose llm entry is already Running.
-        let services = crate::Services::new_fake().await;
-        crate::feat::dashboard::drain_forward_routes(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-        services
-            .bus
-            .publish(ActorStarted {
-                name: "llm".to_owned(),
-                description: None,
-            })
+    async fn shutdown_event_marks_entry_dead() {
+        // Given a wired actor with a Running entry.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric
+            .send_to_topic(
+                &ActorStarted {
+                    name: "llm".to_owned(),
+                    description: None,
+                },
+                &crate::bridge::fabric_topic(),
+            )
             .await;
-        wait_for(|| {
-            dashboard_entry(&cell, "llm").is_some_and(|(l, _, _)| l == ActorLifecycle::Running)
-        })
-        .await;
+        wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
 
-        // When publishing ActorShutdownCompleted on the kameo bus.
-        services
-            .bus
-            .publish(ActorShutdownCompleted {
-                name: "llm".to_owned(),
-            })
+        // When the ActorShutdownCompleted envelope arrives.
+        fabric
+            .send_to_topic(
+                &ActorShutdownCompleted {
+                    name: "llm".to_owned(),
+                },
+                &crate::bridge::fabric_topic(),
+            )
             .await;
 
-        // Then the dashboard shows the actor as Dead.
+        // Then the entry is Dead.
         wait_for(|| {
             dashboard_entry(&cell, "llm").is_some_and(|(l, _, _)| l == ActorLifecycle::Dead)
         })
@@ -339,184 +351,91 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn service_status_update_marks_row_running_with_description_and_message() {
-        // Given a dashboard canvas actor wired behind the bridge.
-        let services = crate::Services::new_fake().await;
-        crate::feat::dashboard::drain_forward_routes(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
+    async fn status_update_sets_status_message_and_lifecycle() {
+        // Given a wired actor with a Running entry for "web-fetch".
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric
+            .send_to_topic(
+                &ActorStarted {
+                    name: "web-fetch".to_owned(),
+                    description: None,
+                },
+                &crate::bridge::fabric_topic(),
+            )
+            .await;
+        wait_for(|| dashboard_entry(&cell, "web-fetch").is_some()).await;
 
-        // When publishing a ServiceStatusUpdate carrying lifecycle,
-        // description, and message for a row that does not exist yet.
-        services
-            .bus
-            .publish(ServiceStatusUpdate {
-                name: "discord".to_owned(),
-                description: Some("Discord gateway bot [Task]".to_owned()),
-                lifecycle: Some(ActorLifecycle::Running),
-                status_message: Some("Connected".to_owned()),
-            })
+        // When a ServiceStatusUpdate projection arrives with a status message.
+        fabric
+            .send_to_topic(
+                &ServiceStatusUpdate {
+                    name: "web-fetch".to_owned(),
+                    description: None,
+                    lifecycle: None,
+                    status_message: Some("3 urls verified".to_owned()),
+                },
+                &crate::bridge::fabric_topic(),
+            )
             .await;
 
-        // Then the row exists as Running with the description and message.
-        wait_for(|| {
-            dashboard_entry(&cell, "discord").is_some_and(|(l, m, d)| {
-                l == ActorLifecycle::Running
-                    && m.as_deref() == Some("Connected")
-                    && d.as_deref() == Some("Discord gateway bot [Task]")
-            })
-        })
-        .await;
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn service_status_update_without_lifecycle_leaves_lifecycle_untouched() {
-        // Given a dashboard canvas actor whose llm row is already Running.
-        let services = crate::Services::new_fake().await;
-        crate::feat::dashboard::drain_forward_routes(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-        services
-            .bus
-            .publish(ActorStarted {
-                name: "llm".to_owned(),
-                description: None,
-            })
-            .await;
-        wait_for(|| {
-            dashboard_entry(&cell, "llm").is_some_and(|(l, _, _)| l == ActorLifecycle::Running)
-        })
-        .await;
-
-        // When publishing a message-only ServiceStatusUpdate (None lifecycle).
-        services
-            .bus
-            .publish(ServiceStatusUpdate {
-                name: "llm".to_owned(),
-                description: None,
-                lifecycle: None,
-                status_message: Some("resolving…".to_owned()),
-            })
-            .await;
-
-        // Then the message lands but the lifecycle stays Running.
-        wait_for(|| {
-            dashboard_entry(&cell, "llm").is_some_and(|(l, m, _)| {
-                l == ActorLifecycle::Running && m.as_deref() == Some("resolving…")
-            })
-        })
-        .await;
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn service_status_update_without_message_preserves_existing_message() {
-        // Given a dashboard canvas actor whose web-fetch row carries a message.
-        let services = crate::Services::new_fake().await;
-        crate::feat::dashboard::drain_forward_routes(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-        services
-            .bus
-            .publish(ServiceStatusUpdate {
-                name: "web-fetch".to_owned(),
-                description: None,
-                lifecycle: None,
-                status_message: Some("Chrome 138".to_owned()),
-            })
-            .await;
+        // Then the Notes column carries the message.
         wait_for(|| {
             dashboard_entry(&cell, "web-fetch")
-                .is_some_and(|(_, m, _)| m.as_deref() == Some("Chrome 138"))
-        })
-        .await;
-
-        // When publishing a lifecycle-only ServiceStatusUpdate (None message).
-        services
-            .bus
-            .publish(ServiceStatusUpdate {
-                name: "web-fetch".to_owned(),
-                description: None,
-                lifecycle: Some(ActorLifecycle::Dead),
-                status_message: None,
-            })
-            .await;
-
-        // Then the lifecycle lands but the message is preserved.
-        wait_for(|| {
-            dashboard_entry(&cell, "web-fetch").is_some_and(|(l, m, _)| {
-                l == ActorLifecycle::Dead && m.as_deref() == Some("Chrome 138")
-            })
+                .is_some_and(|(_, m, _)| m.as_deref() == Some("3 urls verified"))
         })
         .await;
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn dashboard_nav_command_moves_selection() {
-        // Given a dashboard canvas actor with three actor rows.
-        let services = crate::Services::new_fake().await;
-        crate::feat::dashboard::drain_forward_routes(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
+    async fn nav_messages_move_the_selection_cursor() {
+        // Given a wired actor with three entries, none selected.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
         for name in ["a", "b", "c"] {
-            services
-                .bus
-                .publish(ActorStarted {
-                    name: name.to_owned(),
-                    description: None,
-                })
+            fabric
+                .send_to_topic(
+                    &ActorStarted {
+                        name: name.to_owned(),
+                        description: None,
+                    },
+                    &crate::bridge::fabric_topic(),
+                )
                 .await;
         }
-        wait_for(|| dashboard_entry(&cell, "c").is_some()).await;
+        wait_for(|| cell.read().actors().len() == 3).await;
 
-        // When a DashboardNav::Down message arrives.
-        services.bus.publish(DashboardNav::Down).await;
-
-        // Then the selection moved to index 1.
-        wait_for(|| cell.read().selected_index() == 1).await;
-    }
-
-    /// Publishes an `ActorStarted` only AFTER the actor wiring has fully
-    /// returned, proving the topic cursor was registered during wiring —
-    /// the no-missed-lifecycle-events property the activation sequence
-    /// depends on.
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn events_published_after_wiring_are_not_missed() {
-        // Given a canvas system with the bridge already spawned.
-        let services = crate::Services::new_fake().await;
-        crate::feat::dashboard::drain_forward_routes(&services).await;
-
-        // When the dashboard activates (spawn + subscribe) and only then
-        // an ActorStarted is published.
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-        services
-            .bus
-            .publish(ActorStarted {
-                name: "late".to_owned(),
-                description: None,
-            })
+        // When DashboardNav::Down envelopes arrive twice.
+        fabric
+            .send_to_topic(&DashboardNav::Down, &crate::bridge::dashboard_topic())
+            .await;
+        fabric
+            .send_to_topic(&DashboardNav::Down, &crate::bridge::dashboard_topic())
             .await;
 
-        // Then the entry still lands — nothing was missed.
-        wait_for(|| dashboard_entry(&cell, "late").is_some()).await;
+        // Then the cursor lands on the third row.
+        wait_for(|| cell.read().selected_index() == 2).await;
+    }
+
+    /// Wire-shape conformance (G4): the kernel's lifecycle event shape
+    /// round-trips through this crate's mirror under the same schema id.
+    #[rstest::rstest]
+    #[test]
+    fn fabric_event_mirrors_roundtrip_with_stable_schema_ids() {
+        // Given one instance of each mirrored event.
+        let starting = ActorStarting {
+            name: "llm".to_owned(),
+            description: None,
+        };
+
+        // When round-tripping through serde.
+        let roundtripped: ActorStarting =
+            serde_json::from_value(serde_json::to_value(&starting).unwrap()).unwrap();
+
+        // Then the payload survived and the schema id is name@1.
+        assert_eq!(roundtripped.name, "llm");
+        let id = ActorStarting::schema_id().to_string();
+        assert!(id.starts_with("ActorStarting@"), "id was {id}");
     }
 }

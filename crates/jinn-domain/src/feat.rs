@@ -8,7 +8,6 @@ pub mod chat_input;
 pub mod compaction_worker;
 pub mod context;
 pub mod cwd_input;
-pub mod dashboard;
 pub mod discord;
 pub mod discovery;
 pub mod discovery_coordinator;
@@ -65,7 +64,7 @@ pub mod web_search_actor;
 #[must_use]
 pub fn composition_routes() -> crate::common::slices::key_routes::KeyRoutes {
     let routes = crate::common::slices::key_routes::KeyRoutes::new();
-    dashboard::attach_dashboard_rows(&routes);
+    jinn_dashboard::attach_dashboard_rows(&routes);
     // The quake rows' submit/scroll actions capture a cell handle; the
     // seam mints a detached one (never registered into a live `Slices`)
     // since only row *shape* matters for keymap tests.

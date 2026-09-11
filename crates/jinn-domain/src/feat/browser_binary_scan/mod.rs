@@ -8,10 +8,10 @@
 //! ## Why events, not direct dashboard writes
 //!
 //! `frontend.dashboard` is sole-owned by
-//! [`DashboardCanvasActor`](crate::feat::dashboard::canvas_actor::DashboardCanvasActor).
+//! `DashboardCanvasActor` (the dashboard slice's canvas actor).
 //! To honour the per-sub-struct ownership rule, this actor does **not** write
 //! to the dashboard. It publishes a generic
-//! [`ServiceStatusUpdate`](crate::feat::dashboard::ServiceStatusUpdate)
+//! [`ServiceStatusUpdate`](jinn_dashboard::ServiceStatusUpdate)
 //! carrying the display label alongside [`BrowserBinaryVerified`] (the domain
 //! fact); the dashboard owner applies it to the `web-fetch` row.
 
@@ -133,7 +133,7 @@ impl Message<EnvironmentLoaded> for BrowserBinaryScanActor {
                 // The web-fetch row's lifecycle is owned by the
                 // actor-lifecycle events (the scan actor IS web-fetch); this
                 // projection only fills the Notes column.
-                self.publish(crate::feat::dashboard::ServiceStatusUpdate {
+                self.publish(jinn_dashboard::ServiceStatusUpdate {
                     name: WEB_FETCH_ENTRY_NAME.to_owned(),
                     description: None,
                     lifecycle: None,
