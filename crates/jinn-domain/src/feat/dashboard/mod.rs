@@ -615,3 +615,46 @@ mod tests {
         assert!(actors.is_empty());
     }
 }
+
+jinn_slices::crossing_schema!(ServiceStatusUpdate, "ServiceStatusUpdate", trouper::schema::SchemaKind::Event,
+    description: "A feature's projection onto its dashboard row (optional lifecycle, description, status message).",
+    fields: ["name" => trouper::schema::FieldTy::Str]);
+
+/// Drains the dashboard slice's forward-bridge routes: one relay actor
+/// per crossing message, registered on the kameo bus to republish onto
+/// the dashboard's trouper topics.
+///
+/// The relays register synchronously (subscribe is the readiness
+/// point), so this may run before or after [`activate`].
+pub async fn drain_forward_routes(services: &crate::Services) {
+    use crate::common::actor::protocol::event::{
+        ActorShutdownCompleted, ActorStarted, ActorStarting,
+    };
+    use crate::common::trouper_bridge::spawn_one;
+    spawn_one::<ActorStarting>(services, &route_entry::<ActorStarting>()).await;
+    spawn_one::<ActorStarted>(services, &route_entry::<ActorStarted>()).await;
+    spawn_one::<ActorShutdownCompleted>(services, &route_entry::<ActorShutdownCompleted>()).await;
+    spawn_one::<ServiceStatusUpdate>(services, &route_entry::<ServiceStatusUpdate>()).await;
+    spawn_one::<nav::DashboardNav>(services, &route_entry::<nav::DashboardNav>()).await;
+}
+
+/// The staged route entry for a dashboard crossing message.
+fn route_entry<M: trouper::schema::Schema>() -> jinn_slices::host::RouteEntry {
+    jinn_slices::host::RouteEntry {
+        schema_id: M::schema_id(),
+        name: "dashboard",
+        topic: topic_for::<M>(),
+        direction: jinn_slices::host::Direction::Forward,
+    }
+}
+
+/// The trouper topic a dashboard crossing message publishes onto.
+fn topic_for<M: trouper::schema::Schema>() -> trouper::types::Topic {
+    use crate::common::trouper_bridge::topics;
+    use trouper::types::Topic;
+    match M::schema_id().to_string().as_str() {
+        id if id.starts_with("DashboardNav") => Topic::new(topics::DASHBOARD),
+        id if id.starts_with("SubmitQuakeBarCommand") => Topic::new(topics::QUAKE_BAR),
+        _ => Topic::new(topics::FABRIC),
+    }
+}

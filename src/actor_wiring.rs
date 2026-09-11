@@ -206,21 +206,12 @@ impl ActorSystemBuilder {
             services: services.clone(),
         };
 
-        // ── Trouper bridge ─────────────────────────────────────────────
-        // The translation seam between the two fabrics, in both
-        // directions: the kameo→trouper half forwards the bus messages
-        // consumed by the ported slice actors onto their topics; the
-        // trouper→kameo half (inert until a reverse route is
-        // registered) will republish trouper topic messages onto the
-        // bus for pre-port consumers. The kameo→trouper half must be
-        // subscribed before the dashboard activates — the lifecycle
-        // announcements published afterwards are what the dashboard's
-        // rows fold.
-        jinn_domain::common::trouper_bridge::spawn_kameo_to_trouper(&services).await;
-        jinn_domain::common::trouper_bridge::spawn_trouper_to_kameo(
-            &services.trouper_system,
-            services.bus.clone(),
-        );
+        // ── Forward-bridge route drains ───────────────────────────────
+        // One relay per crossing message, registered on the bus in its
+        // own on_start: publishes after the drains cannot be missed, so
+        // the ordering constraint against slice activation is gone.
+        jinn_domain::feat::dashboard::drain_forward_routes(&services).await;
+        jinn_domain::feat::quake_bar::drain_forward_routes(&services).await;
 
         // ── Dashboard slice ───────────────────────────────────────────
         // Activation mints the cell, spawns the canvas actor FIRST
@@ -249,21 +240,12 @@ impl ActorSystemBuilder {
         // (submit-log writer), attaches rows, and registers the input
         // hook + overlay geometry. Composition owns exactly this call.
         jinn_domain::feat::quake_bar::activate(&mut services);
-        // ── Trouper bridge ─────────────────────────────────────────────
-        // The translation seam between the two fabrics, in both
-        // directions: the kameo→trouper half forwards the bus messages
-        // consumed by the ported slice actors onto their topics; the
-        // trouper→kameo half (inert until a reverse route is
-        // registered) will republish trouper topic messages onto the
-        // bus for pre-port consumers. The kameo→trouper half must be
-        // subscribed before the dashboard activates — the lifecycle
-        // announcements published afterwards are what the dashboard's
-        // rows fold.
-        jinn_domain::common::trouper_bridge::spawn_kameo_to_trouper(&services).await;
-        jinn_domain::common::trouper_bridge::spawn_trouper_to_kameo(
-            &services.trouper_system,
-            services.bus.clone(),
-        );
+        // ── Forward-bridge route drains ───────────────────────────────
+        // One relay per crossing message, registered on the bus in its
+        // own on_start: publishes after the drains cannot be missed, so
+        // the ordering constraint against slice activation is gone.
+        jinn_domain::feat::dashboard::drain_forward_routes(&services).await;
+        jinn_domain::feat::quake_bar::drain_forward_routes(&services).await;
 
         // ── Dashboard slice ───────────────────────────────────────────
         // Activation mints the cell, spawns the canvas actor FIRST

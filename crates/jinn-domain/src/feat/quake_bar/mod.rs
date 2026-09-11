@@ -97,3 +97,23 @@ fn overlay_rect(area: &ratatui::layout::Rect) -> Option<ratatui::layout::Rect> {
         height: area.height.saturating_sub(1),
     })
 }
+
+/// Drains the quake-bar slice's forward-bridge route: the relay actor
+/// for [`SubmitQuakeBarCommand`], registered on the kameo bus to
+/// republish onto `jinn.quake-bar`.
+///
+/// The relay registers synchronously (subscribe is the readiness
+/// point), so this may run before or after [`activate`].
+pub async fn drain_forward_routes(services: &crate::Services) {
+    use crate::common::trouper_bridge::quake_bar_topic;
+    crate::common::trouper_bridge::spawn_one::<command::SubmitQuakeBarCommand>(
+        services,
+        &jinn_slices::host::RouteEntry {
+            schema_id: <command::SubmitQuakeBarCommand as trouper::schema::Schema>::schema_id(),
+            name: "quake-bar",
+            topic: quake_bar_topic(),
+            direction: jinn_slices::host::Direction::Forward,
+        },
+    )
+    .await;
+}

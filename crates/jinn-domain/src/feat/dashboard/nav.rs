@@ -34,3 +34,7 @@ pub enum DashboardNav {
 }
 
 impl BusMessage for DashboardNav {}
+
+jinn_slices::crossing_schema!(DashboardNav, "DashboardNav", trouper::schema::SchemaKind::Command,
+    description: "Move the dashboard's selection cursor (enum payload).",
+    fields: []);

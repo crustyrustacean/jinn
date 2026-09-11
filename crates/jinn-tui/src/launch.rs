@@ -198,16 +198,12 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         reason = "bootstrap assertion: a broken pairing must abort launch, not render blank"
     )]
     {
-        // The kameo→trouper bridge must be subscribed before the slice
-        // activations, mirroring the production wiring order — the
-        // dashboard's canvas actor consumes bus events through it. The
-        // trouper→kameo half has no ordering constraint while it ships
-        // with zero routes, but spawns here for symmetry.
-        jinn_domain::common::trouper_bridge::spawn_kameo_to_trouper(&services).await;
-        jinn_domain::common::trouper_bridge::spawn_trouper_to_kameo(
-            &services.trouper_system,
-            services.bus.clone(),
-        );
+        // Forward-bridge routes drain per slice: each relay registers on
+        // the bus in its own on_start, so spawns may land before or after
+        // the activations they serve. The dashboard's canvas actor
+        // consumes the fabric + nav topics through these relays.
+        jinn_domain::feat::dashboard::drain_forward_routes(&services).await;
+        jinn_domain::feat::quake_bar::drain_forward_routes(&services).await;
         let activated = jinn_domain::feat::dashboard::activate(&mut services);
         if let Err(error) = activated {
             panic!("dashboard slice activation failed: {error}");

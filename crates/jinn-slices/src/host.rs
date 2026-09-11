@@ -56,9 +56,11 @@ pub use host_config::ConfigSection;
 pub use host_config::ConfigSectionError;
 pub use host_config::DynamicConfigSection;
 pub use host_config::SectionError;
+pub use host_routes::Direction;
 pub use host_routes::ForwardMessage;
 pub use host_routes::ReverseMessage;
 pub use host_routes::RouteConflict;
+pub use host_routes::RouteEntry;
 pub use host_routes::StagedRoutes;
 pub use host_view::HostView;
 
