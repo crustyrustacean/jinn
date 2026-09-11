@@ -19,8 +19,11 @@ use error_stack::Report;
 use wherror::Error;
 
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session_search::{
+    SearchParams, SearchOutcome, TranscriptWindow,
+};
 use crate::feat::session::session_summary::SessionSummary;
-use crate::protocol::SessionId;
+use crate::protocol::{ChatEntryId, SessionId};
 
 /// Error type for session store operations.
 #[derive(Debug, Error)]
@@ -136,6 +139,63 @@ pub trait SessionStore: Send + Sync + 'static {
     async fn load_unarchived_summaries(
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>>;
+
+    /// Recompute FTS index rows for every dirty session.
+    ///
+    /// Dirty sessions are recorded in the `fts_dirty` table by triggers on
+    /// `sessions`. For each one, the session's `session_fts` rows are deleted
+    /// and rebuilt from the live `entries`/`session_history` tables, then the
+    /// marker is cleared — "dirty = recompute this session from scratch". A
+    /// session deleted between mark and reindex has no live rows, so its stale
+    /// FTS rows are removed and its marker cleared. Returns the number of
+    /// sessions reindexed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if any read or write fails. A failed
+    /// session's marker remains set, so the next call retries it.
+    async fn reindex_dirty_sessions(
+        &self,
+    ) -> Result<usize, Report<SessionStoreError>>;
+
+    /// Run an FTS query over the index.
+    ///
+    /// Returns flat bm25-ranked hits plus total and per-session match counts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the query fails — including FTS5
+    /// syntax errors in `params.query`, which surface with the verbatim
+    /// SQLite message attached.
+    async fn search(
+        &self,
+        params: SearchParams,
+    ) -> Result<SearchOutcome, Report<SessionStoreError>>;
+
+    /// Load a window of entries around an anchor entry.
+    ///
+    /// `context` entries total are returned, centered on the anchor and
+    /// clamped to the session's bounds. Returns `None` if the session does
+    /// not exist, or a legible error if the anchor entry is not part of it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    async fn fetch_window(&self, session_id: &SessionId, anchor: &ChatEntryId, context: usize)
+    -> Result<Option<TranscriptWindow>, Report<SessionStoreError>>;
+
+    /// Load the last `limit` entries of a session.
+    ///
+    /// Returns `None` if the session does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    async fn fetch_tail(
+        &self,
+        session_id: &SessionId,
+        limit: usize,
+    ) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>>;
 
     /// Shut down the store, performing any cleanup or flush operations.
     ///

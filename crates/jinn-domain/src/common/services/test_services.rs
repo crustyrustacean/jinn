@@ -103,6 +103,40 @@ impl SessionStore for FakeSessionStore {
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
         Ok(Vec::new())
     }
+
+    async fn reindex_dirty_sessions(&self) -> Result<usize, Report<SessionStoreError>> {
+        Ok(0)
+    }
+
+    async fn search(
+        &self,
+        _params: crate::feat::session_search::SearchParams,
+    ) -> Result<crate::feat::session_search::SearchOutcome, Report<SessionStoreError>> {
+        Ok(crate::feat::session_search::SearchOutcome {
+            total_matches: 0,
+            per_session: Vec::new(),
+            hits: Vec::new(),
+        })
+    }
+
+    async fn fetch_window(
+        &self,
+        _session_id: &SessionId,
+        _anchor: &crate::protocol::ChatEntryId,
+        _context: usize,
+    ) -> Result<Option<crate::feat::session_search::TranscriptWindow>, Report<SessionStoreError>>
+    {
+        Ok(None)
+    }
+
+    async fn fetch_tail(
+        &self,
+        _session_id: &SessionId,
+        _limit: usize,
+    ) -> Result<Option<crate::feat::session_search::TranscriptWindow>, Report<SessionStoreError>>
+    {
+        Ok(None)
+    }
 }
 
 /// A builder for constructing [Services] with fake implementations for tests.

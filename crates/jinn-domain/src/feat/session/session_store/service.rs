@@ -9,7 +9,8 @@ use error_stack::Report;
 
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::session_summary::SessionSummary;
-use crate::protocol::SessionId;
+use crate::feat::session_search::{SearchOutcome, SearchParams, TranscriptWindow};
+use crate::protocol::{ChatEntryId, SessionId};
 
 use super::{SessionStore, SessionStoreError};
 
@@ -118,6 +119,55 @@ impl SessionStoreService {
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
         self.svc.load_unarchived_summaries().await
+    }
+
+    /// Recomputes FTS rows for every dirty session (search index maintenance).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if any read or write fails.
+    pub async fn reindex_dirty_sessions(&self) -> Result<usize, Report<SessionStoreError>> {
+        self.svc.reindex_dirty_sessions().await
+    }
+
+    /// Run an FTS query over the search index.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the query fails, including FTS5
+    /// syntax errors surfaced with the verbatim SQLite message.
+    pub async fn search(
+        &self,
+        params: SearchParams,
+    ) -> Result<SearchOutcome, Report<SessionStoreError>> {
+        self.svc.search(params).await
+    }
+
+    /// Load a window of entries around an anchor entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    pub async fn fetch_window(
+        &self,
+        session_id: &SessionId,
+        anchor: &ChatEntryId,
+        context: usize,
+    ) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>> {
+        self.svc.fetch_window(session_id, anchor, context).await
+    }
+
+    /// Load the last `limit` entries of a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    pub async fn fetch_tail(
+        &self,
+        session_id: &SessionId,
+        limit: usize,
+    ) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>> {
+        self.svc.fetch_tail(session_id, limit).await
     }
 
     /// Loads all non-archived judge sessions targeting the given origin.

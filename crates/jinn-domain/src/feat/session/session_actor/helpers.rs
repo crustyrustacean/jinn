@@ -256,6 +256,50 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
     > {
         Ok(self.summaries.lock().clone())
     }
+
+    async fn reindex_dirty_sessions(
+        &self,
+    ) -> Result<usize, error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+    {
+        Ok(0)
+    }
+
+    async fn search(
+        &self,
+        _params: crate::feat::session_search::SearchParams,
+    ) -> Result<
+        crate::feat::session_search::SearchOutcome,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(crate::feat::session_search::SearchOutcome {
+            total_matches: 0,
+            per_session: Vec::new(),
+            hits: Vec::new(),
+        })
+    }
+
+    async fn fetch_window(
+        &self,
+        _session_id: &crate::protocol::SessionId,
+        _anchor: &crate::protocol::ChatEntryId,
+        _context: usize,
+    ) -> Result<
+        Option<crate::feat::session_search::TranscriptWindow>,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(None)
+    }
+
+    async fn fetch_tail(
+        &self,
+        _session_id: &crate::protocol::SessionId,
+        _limit: usize,
+    ) -> Result<
+        Option<crate::feat::session_search::TranscriptWindow>,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]
