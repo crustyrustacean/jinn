@@ -1,4 +1,4 @@
-//! The migration runner and individual migrations (v0..=v25).
+//! The migration runner and individual migrations (v0..=v26).
 //!
 //! Ported verbatim from jinn-domain's `migrator.rs` so the schema crate is the
 //! single source of truth. Three mechanical changes from the original:
@@ -22,7 +22,7 @@ use crate::SchemaMigrationError;
 ///
 /// `run_pending` skips `BEGIN` when the DB is already at this version, so an
 /// up-to-date database pays no transaction cost on startup.
-const LATEST_VERSION: i32 = 25;
+const LATEST_VERSION: i32 = 26;
 
 /// Runs all pending migrations in order, atomically.
 ///
@@ -321,6 +321,11 @@ fn apply_migration_chain(
         );
         migrate_v25(conn)?;
         record_version(conn, 25, "add_entries_token_count_column")?;
+    }
+    if current < 26 {
+        tracing::debug!(version = 26, name = "add_fts_search_index", "applying migration");
+        migrate_v26(conn)?;
+        record_version(conn, 26, "add_fts_search_index")?;
     }
     Ok(())
 }
@@ -1170,6 +1175,72 @@ pub fn migrate_v25(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
     Ok(())
 }
 
+/// v26: Add the FTS5 search index for cross-session content search.
+///
+/// Three objects:
+///
+/// - `session_fts` — a contentful FTS5 virtual table holding one row per
+///   **(session, entry)** pair. The searchable unit exists in no single
+///   physical table (entries are shared across forked sessions; the junction
+///   is rewritten wholesale on every save), so jinn-domain's search-index
+///   actor recomputes each session's rows from the live tables when the
+///   session is marked dirty. `body` is the only indexed column — the
+///   entry's searchable prose — while `role`, `session_id`, `entry_id`, and
+///   `entry_ts` are `UNINDEXED` filters: bare query terms can never match a
+///   role word, and scope/date filtering is a plain `WHERE` post-filter.
+///   Stored metadata means `snippet()` works with no join.
+/// - `fts_dirty` — the durable dirty-marker set. Triggers on `sessions` (the
+///   single once-per-save touchpoint; the junction is rewritten per row and
+///   carries no text, so per-row triggers there would storm) insert the
+///   session id; a background actor drains the set by full-session recompute.
+///   The table doubles as crash-recovery pending work: a crash mid-reindex
+///   leaves the marker set, and the next startup's drain retries it.
+/// - The triggers themselves — INSERT/UPDATE/DELETE on `sessions`. The DELETE
+///   trigger marks the deleted id dirty so the drain's reinsert-from-live
+///   finds no live rows and removes any stale FTS rows.
+///
+/// Every existing session is seeded dirty, so the first post-upgrade launch
+/// backfills the index lazily in the background — startup never blocks on
+/// parsing the full history. Row bodies are written by jinn-domain (which owns
+/// the `ChatEntryKind` JSON schema); this migration only creates the objects.
+pub fn migrate_v26(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch(
+        "CREATE VIRTUAL TABLE session_fts USING fts5(\
+         body,\
+         role UNINDEXED,\
+         session_id UNINDEXED,\
+         entry_id UNINDEXED,\
+         entry_ts UNINDEXED,\
+         tokenize = 'porter unicode61')",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v26: create session_fts index table")?;
+
+    conn.execute_batch(
+        "CREATE TABLE fts_dirty (\
+         session_id TEXT PRIMARY KEY)",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v26: create fts_dirty marker table")?;
+
+    conn.execute_batch(
+        "CREATE TRIGGER sessions_fts_dirty_ins AFTER INSERT ON sessions BEGIN \
+         INSERT INTO fts_dirty(session_id) VALUES (NEW.id) ON CONFLICT(session_id) DO NOTHING; END;\
+         CREATE TRIGGER sessions_fts_dirty_upd AFTER UPDATE ON sessions BEGIN \
+         INSERT INTO fts_dirty(session_id) VALUES (NEW.id) ON CONFLICT(session_id) DO NOTHING; END;\
+         CREATE TRIGGER sessions_fts_dirty_del AFTER DELETE ON sessions BEGIN \
+         INSERT INTO fts_dirty(session_id) VALUES (OLD.id) ON CONFLICT(session_id) DO NOTHING; END",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v26: create sessions dirty-marking triggers")?;
+
+    conn.execute_batch("INSERT INTO fts_dirty(session_id) SELECT id FROM sessions")
+        .change_context(SchemaMigrationError)
+        .attach("v26: seed fts_dirty with existing sessions")?;
+
+    Ok(())
+}
+
 /// Rewrites the `session_id` and `parent_session` string values inside the
 /// `sessions.metadata` JSON blob, stripping a leading `s-` where present.
 ///
@@ -1451,6 +1522,6 @@ pub mod testing {
     pub use super::{
         apply_migrations_inner, bootstrap_tracking_table, migrate_v10, migrate_v15, migrate_v16,
         migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22, migrate_v23, migrate_v25,
-        record_version,
+        migrate_v26, record_version,
     };
 }
