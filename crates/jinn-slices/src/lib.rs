@@ -30,12 +30,17 @@
 )]
 
 pub mod cell;
+pub mod host;
+pub mod overlay;
 pub mod route;
 pub mod slice_scope;
 pub mod slices;
 pub mod view;
 
 pub use cell::TypedCell;
+pub use host::SliceHost;
+pub use overlay::OverlayViewFn;
+pub use overlay::OverlayViews;
 pub use route::ActionCtx;
 pub use route::ActionFn;
 pub use route::BindSite;

@@ -12,6 +12,12 @@ kameo = { workspace = true }
 kameo_actors = { workspace = true }
 ratatui = { workspace = true }
 tokio = { workspace = true }
+trouper = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
