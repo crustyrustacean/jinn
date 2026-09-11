@@ -1,7 +1,4 @@
 //! The [`Intent`] enum - one variant per user-initiated action.
-use crate::Bridge;
-use crate::common::bridge::BridgeClosure;
-use crate::common::bus::BusMessage;
 use crate::protocol::{PickerKind, SessionId};
 
 /// The search root for the directory picker.
@@ -592,95 +589,23 @@ impl std::fmt::Display for Intent {
 
 /// What an intent handler returns after processing an intent.
 ///
+/// A type alias for the slice-level [`RouteResult`]: the route
+/// mechanics (and this result type) live in `jinn-slices` so slice
+/// crates can produce outcomes without depending on the kernel. The
+/// publish closures are identical — `RouteResult::new_message` and
+/// `Bridge::publish_closure` spawn the same `bus.tell(Publish(..))` —
+/// so behavior is unchanged; only the definition's home moved.
+///
 /// Carries typed message closures to be dispatched to the actor system
 /// via the kameo message bus, plus an optional scope transition. The
 /// scope signal is applied by the handler (an exempt `scope_stack`
 /// writer) *before* the messages publish, so a slice that opens itself
 /// pushes its scope before any bus message a subscriber could observe.
-pub struct IntentResult {
-    /// Typed message closures to publish to the kameo bus.
-    pub messages: Vec<BridgeClosure>,
-    /// Type names of messages, for test inspection.
-    pub message_names: Vec<&'static str>,
-    /// Scope transition to apply before publishing, if any.
-    pub scope_signal: Option<ScopeSignal>,
-}
+pub use jinn_slices::RouteResult as IntentResult;
 
 /// A scope-stack transition requested by a route action.
 ///
 /// Slices declare their transitions as data; the composition-side
 /// handler applies them. Ownership stays single-writer: only the
 /// handler mutates `scope_stack`, and it does so only on these signals.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ScopeSignal {
-    /// Push `scope` onto the stack (entering the slice's overlay/tab).
-    Push(jinn_slices::SliceScopeId),
-    /// Pop `scope` if it is the current top scope (leaving the slice).
-    PopIf(jinn_slices::SliceScopeId),
-}
-
-impl IntentResult {
-    /// An empty result with no messages.
-    #[must_use]
-    pub fn empty() -> Self {
-        Self {
-            messages: vec![],
-            message_names: vec![],
-            scope_signal: None,
-        }
-    }
-
-    /// A result with a single typed message to publish to the bus.
-    ///
-    /// The message is wrapped in a closure that calls
-    /// `bus.tell(Publish(msg)).await` when the bridge drain task processes it.
-    #[must_use]
-    pub fn new_message<M>(msg: M) -> Self
-    where
-        M: BusMessage,
-    {
-        Self {
-            messages: vec![crate::common::bridge::Bridge::publish_closure(msg)],
-            message_names: vec![std::any::type_name::<M>()],
-            scope_signal: None,
-        }
-    }
-
-    /// Requests a scope transition, applied by the handler before the
-    /// messages publish.
-    #[must_use]
-    pub fn with_scope_signal(mut self, signal: ScopeSignal) -> Self {
-        self.scope_signal = Some(signal);
-        self
-    }
-
-    /// Append multiple messages of one type at the same time.
-    #[must_use]
-    pub fn with_messages<I, M>(mut self, msgs: I) -> Self
-    where
-        M: BusMessage,
-        I: IntoIterator<Item = M>,
-    {
-        for msg in msgs {
-            self.messages.push(Bridge::publish_closure(msg));
-            self.message_names.push(std::any::type_name::<M>());
-        }
-        self
-    }
-
-    /// Append a typed message and return self for chaining.
-    #[must_use]
-    pub fn with_message<M: BusMessage>(mut self, msg: M) -> Self {
-        self.messages.push(Bridge::publish_closure(msg));
-        self.message_names.push(std::any::type_name::<M>());
-        self
-    }
-
-    /// Merge another IntentResult's messages into this one.
-    #[must_use]
-    pub fn merge(mut self, other: IntentResult) -> Self {
-        self.messages.extend(other.messages);
-        self.message_names.extend(other.message_names);
-        self
-    }
-}
+pub use jinn_slices::ScopeSignal;

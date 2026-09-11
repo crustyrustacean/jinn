@@ -86,7 +86,11 @@ fn try_slice_input_hook(
         return None;
     };
     let hook = routes.input_hook(scope)?;
-    hook(intent)
+    // Hooks speak the slice-level editing vocabulary, not the kernel's
+    // full intent enum: translate, and skip hooks for non-editing
+    // intents entirely.
+    let edit = crate::common::slices::key_routes::as_edit_intent(intent)?;
+    hook(&edit)
 }
 
 /// Resolves the base scope after a `<Tab>` switch, walking the
@@ -196,15 +200,17 @@ impl IntentHandler {
         // against the handler's own borrows (`ActionCtx`): it writes
         // the same `&mut AppState` guard — never a second lock — and
         // resolves slice cells through the same registry.
-        if let Some(mut result) = routes.action_for(
-            intent,
-            crate::common::slices::key_routes::ActionCtx { state, slices },
-        ) {
-            // Scope transitions apply before the messages publish so a
-            // slice that opens itself is on the stack before any bus
-            // subscriber could observe a message.
-            apply_scope_signal(&mut result, state);
-            return result;
+        if let Intent::Dynamic(dynamic) = intent {
+            if let Some(mut result) = routes.action_for(
+                dynamic,
+                crate::common::slices::key_routes::ActionCtx { state, slices },
+            ) {
+                // Scope transitions apply before the messages publish so
+                // a slice that opens itself is on the stack before any
+                // bus subscriber could observe a message.
+                apply_scope_signal(&mut result, state);
+                return result;
+            }
         }
 
         // Slice input hooks: the active dynamic scope's synchronous

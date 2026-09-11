@@ -15,13 +15,12 @@
 //! (no title, disabled, not connected, no forum channel); the gateway owns
 //! the asynchronous failure cases (already-bound, API errors, mapping write).
 
-use crate::common::app_state::AppState;
+use jinn_slices::route::ActionCtx;
+
 use crate::common::slices::Slices;
-use crate::common::slices::key_routes::ActionCtx;
 use crate::feat::discord::protocol::CreateThreadForSession;
 use crate::feat::discord::status_actor::ConnectionState;
 use crate::feat::discord::status_actor::discord_connection_slot;
-use crate::feat::session::chat_entry::ChatEntry;
 use crate::protocol::IntentResult;
 
 /// Run the to-thread action (the `gdc` route row).
@@ -42,7 +41,7 @@ pub fn handle_to_discord_thread(ctx: ActionCtx<'_>) -> IntentResult {
     let ActionCtx { state, slices } = ctx;
     // Precondition 1: title exists. The session title is `None` until the first
     // user message is sent, so this also gates the "empty session" case.
-    let Some(title) = state.active_session().title().map(str::to_owned) else {
+    let Some(title) = state.active_session_title() else {
         push_error(
             state,
             "Can't continue in Discord: this session has no title yet. \
@@ -52,7 +51,7 @@ pub fn handle_to_discord_thread(ctx: ActionCtx<'_>) -> IntentResult {
     };
 
     // Precondition 2: discord enabled in config.
-    if !state.frontend.preferences.discord.enabled {
+    if !state.slice_flag_enabled("discord") {
         push_error(
             state,
             "Can't continue in Discord: the Discord bot is not enabled \
@@ -76,7 +75,7 @@ pub fn handle_to_discord_thread(ctx: ActionCtx<'_>) -> IntentResult {
     // All preconditions pass — request thread creation. The session id is
     // captured before emitting so a subsequent active-session change can't
     // race the binding.
-    let session_id = state.session.active_session_id().clone();
+    let session_id = state.active_session_id();
     IntentResult::new_message(CreateThreadForSession { session_id, title })
 }
 
@@ -92,11 +91,10 @@ fn discord_is_connected(slices: &Slices) -> bool {
     connection.read().connected
 }
 
-/// Push an error `ChatEntry` into the active session's history.
-fn push_error(state: &mut AppState, message: &str) {
-    state
-        .active_session_mut()
-        .push_entry(ChatEntry::error(message));
+/// Push an error entry into the active session's history, through the
+/// state surface the action is lent.
+fn push_error(state: &mut dyn jinn_slices::SliceActionState, message: &str) {
+    state.push_session_error(message);
 }
 
 #[cfg(test)]

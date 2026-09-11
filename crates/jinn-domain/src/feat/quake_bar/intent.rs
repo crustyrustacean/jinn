@@ -22,14 +22,15 @@ use super::command::SubmitQuakeBarCommand;
 use super::state::QuakeBarInput;
 use super::state::QuakeBarState;
 use super::state::quake_scope;
-use crate::common::slices::key_routes::ActionCtx;
-use crate::common::slices::key_routes::ActionFn;
-use crate::common::slices::key_routes::BindSite;
-use crate::common::slices::key_routes::InputHook;
-use crate::common::slices::key_routes::KeyRoutes;
-use crate::common::slices::key_routes::RouteOutcome;
-use crate::common::slices::key_routes::RouteRow;
-use crate::protocol::Intent;
+use jinn_slices::route::ActionCtx;
+use jinn_slices::route::ActionFn;
+use jinn_slices::route::BindSite;
+use jinn_slices::route::EditIntent;
+use jinn_slices::route::InputHook;
+use jinn_slices::route::KeyRoutes;
+use jinn_slices::route::RouteOutcome;
+use jinn_slices::route::RouteRow;
+
 use crate::protocol::IntentResult;
 use crate::protocol::ScopeSignal;
 
@@ -196,41 +197,40 @@ fn attach_input_rows(routes: &KeyRoutes, cell: &TypedCell<QuakeBarState>) {
 /// buffer, exactly what a built-in input popup does.
 pub fn register_quake_input_hook(routes: &KeyRoutes, cell: &TypedCell<QuakeBarState>) {
     let hook_cell = cell.clone();
-    let hook: InputHook = std::sync::Arc::new(move |intent: &Intent| {
+    let hook: InputHook = std::sync::Arc::new(move |intent: &EditIntent| {
         let cell = &hook_cell;
         match intent {
-            Intent::InsertChar { ch } => {
+            EditIntent::InsertChar(ch) => {
                 cell.update(|s| s.input.text.insert_char(*ch));
                 Some(IntentResult::empty())
             }
-            Intent::DeleteGrapheme => {
+            EditIntent::DeleteBackward => {
                 cell.update(|s| s.input.text.delete());
                 Some(IntentResult::empty())
             }
-            Intent::DeleteGraphemeForward => {
+            EditIntent::DeleteForward => {
                 cell.update(|s| s.input.text.delete_forward());
                 Some(IntentResult::empty())
             }
-            Intent::MoveCursorLeft => {
+            EditIntent::CursorLeft => {
                 cell.update(|s| s.input.text.cursor_left());
                 Some(IntentResult::empty())
             }
-            Intent::MoveCursorRight => {
+            EditIntent::CursorRight => {
                 cell.update(|s| s.input.text.cursor_right());
                 Some(IntentResult::empty())
             }
-            Intent::MoveCursorToStart => {
+            EditIntent::CursorHome => {
                 cell.update(|s| s.input.text.cursor_pos = 0);
                 Some(IntentResult::empty())
             }
-            Intent::MoveCursorToEnd => {
+            EditIntent::CursorEnd => {
                 cell.update(|s| {
                     let len = s.input.text.input.len();
                     s.input.text.cursor_pos = len;
                 });
                 Some(IntentResult::empty())
             }
-            _ => None,
         }
     });
     routes.register_input_hook(&quake_scope(), hook);
@@ -296,7 +296,6 @@ mod tests {
     use super::register_quake_input_hook;
     use crate::common::slices::key_routes::KeyRoutes;
     use crate::protocol::ScopeSignal;
-    use crate::protocol::intent::Intent;
     use jinn_slices::Slices;
 
     use crate::feat::quake_bar::state::quake_bar_slot;
@@ -319,7 +318,7 @@ mod tests {
         let (routes, _cell) = wired();
 
         // When dispatching the open dynamic intent.
-        let intent = Intent::Dynamic(super::quake_intent("open", "quake bar"));
+        let intent = super::quake_intent("open", "quake bar");
         let mut state = crate::common::app_state::AppState::default();
         let slices = Slices::new();
         let result = routes
@@ -343,7 +342,7 @@ mod tests {
         let (routes, _cell) = wired();
 
         // When dispatching the close dynamic intent.
-        let intent = Intent::Dynamic(super::quake_intent("close", "close quake bar"));
+        let intent = super::quake_intent("close", "close quake bar");
         let mut state = crate::common::app_state::AppState::default();
         let slices = Slices::new();
         let result = routes
@@ -422,8 +421,8 @@ mod tests {
         let hook = routes.input_hook(&quake_scope()).expect("hook registered");
 
         // When the hook intercepts insert-char intents.
-        let _ = hook(&Intent::InsertChar { ch: 'x' });
-        let _ = hook(&Intent::InsertChar { ch: 'y' });
+        let _ = hook(&jinn_slices::EditIntent::InsertChar('x'));
+        let _ = hook(&jinn_slices::EditIntent::InsertChar('y'));
 
         // Then the cell's input buffer holds those characters.
         assert_eq!(cell.read().input.text.input, "xy");
@@ -436,11 +435,15 @@ mod tests {
         let (routes, _cell) = wired();
         let hook = routes.input_hook(&quake_scope()).expect("hook registered");
 
-        // When the hook sees a non-editing intent.
-        let result = hook(&Intent::Quit);
+        // When the hook sees a home-cursor intent (which this slice's
+        // input surface does serve) — sanity-check it is matched — and
+        // the dispatch layer never consults hooks for non-editing
+        // intents, that filtering lives in the kernel's translation
+        // (`as_edit_intent`), so no decline-case exists here anymore.
+        let result = hook(&jinn_slices::EditIntent::CursorHome);
 
-        // Then it declines to serve it.
-        assert!(result.is_none());
+        // Then the editing intent is served.
+        assert!(result.is_some());
     }
 
     #[rstest::rstest]
@@ -451,7 +454,7 @@ mod tests {
         for i in 0..5 {
             cell.update(|s| s.log.push(format!("line-{i}")));
         }
-        let intent = Intent::Dynamic(super::quake_intent("scroll-up", "scroll up"));
+        let intent = super::quake_intent("scroll-up", "scroll up");
         let mut state = crate::common::app_state::AppState::default();
         let slices = Slices::new();
         let _ = routes
@@ -469,7 +472,7 @@ mod tests {
         };
 
         // When dispatching scroll-down.
-        let intent = Intent::Dynamic(super::quake_intent("scroll-down", "scroll down"));
+        let intent = super::quake_intent("scroll-down", "scroll down");
         let mut state = crate::common::app_state::AppState::default();
         let slices = Slices::new();
         let _ = routes

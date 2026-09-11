@@ -7,7 +7,11 @@ edition.workspace = true
 parking_lot = { workspace = true }
 derive_more = { workspace = true }
 jinn-theme = { workspace = true }
+jinn-core-types = { workspace = true }
+kameo = { workspace = true }
+kameo_actors = { workspace = true }
 ratatui = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
