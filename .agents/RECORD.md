@@ -278,3 +278,4 @@ Entries are added or amended **only with human approval**.
 - (search) `session_search` passes queries to FTS5 MATCH unmodified and surfaces SQLite syntax errors verbatim; results are a flat bm25-ranked top-N with per-session rollup counts and no pagination.
 - (search) `session_fetch` addresses entries by stable entry_id; ordinals are rendered positionally in output and never used as addresses.
 - (storage) Schema v26 adds the `session_fts` index table, the `fts_dirty` table, and dirty-marking triggers on `sessions`, seeding every existing session dirty so the first post-upgrade launch backfills the index lazily in the background.
+- (tools) The `session_fetch` tool elides individual entries beyond ~2,000 chars with an explicit truncation note, announces gaps between discontinuous ordinals, and applies the standard outer line/byte caps to the whole transcript, carrying the unclipped transcript in `full_content` when capped.

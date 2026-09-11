@@ -202,21 +202,6 @@ fn elide_entry_text(text: &str) -> (String, Option<String>) {
     )
 }
 
-/// Wraps truncation metadata for a fully-truncated tool result.
-fn outer_truncation(content: &str, max_lines: usize, max_bytes: usize) -> Option<TruncationMeta> {
-    let total_lines = content.lines().count();
-    if total_lines <= max_lines && content.len() <= max_bytes {
-        return None;
-    }
-    Some(TruncationMeta {
-        truncated_by: TruncatedBy::Lines,
-        total_lines,
-        total_bytes: content.len(),
-        output_lines: max_lines.min(total_lines),
-        output_bytes: max_bytes.min(content.len()),
-    })
-}
-
 /// Executes the `session_fetch` built-in tool.
 ///
 /// # Errors
@@ -277,22 +262,29 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return fail(format!("session {session_id} has no persisted entries"));
         }
 
-        let content = format_window(&window);
+        // Apply the standard outer caps (the `read` tool convention):
+        // head-truncate the transcript and carry the unclipped text in
+        // `full_content` so nothing is lost.
         let max_lines = ctx
             .max_output_lines
             .unwrap_or(crate::feat::tools_actor::truncation::DEFAULT_MAX_LINES);
         let max_bytes = ctx
             .max_output_bytes
             .unwrap_or(crate::feat::tools_actor::truncation::DEFAULT_MAX_BYTES);
-        let truncation = outer_truncation(&content, max_lines, max_bytes);
+        let full_content = format_window(&window);
+        let truncation_result = crate::feat::tools_actor::truncation::truncate_head(
+            &full_content,
+            max_lines,
+            max_bytes,
+        );
 
         ToolResult {
             tool_call_id,
             name: tool_name,
-            content,
+            content: truncation_result.content,
             success: true,
-            full_content: None,
-            truncation,
+            full_content: truncation_result.truncated.then_some(full_content),
+            truncation: truncation_result.meta,
             pin_position: None,
         }
     })

@@ -401,3 +401,55 @@ fn definition_names_session_fetch() {
     assert_eq!(def.name, "session_fetch");
     assert!(def.parameters["required"].is_null());
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn outer_truncated_result_carries_full_content() {
+    // Given a window with many entries and tight outer caps.
+    let entries: Vec<TranscriptEntry> = (1..=80)
+        .map(|i| entry(i, ChatEntry::user(format!("entry number {i} here"))))
+        .collect();
+    let (ctx, _stub) = {
+        let arc = std::sync::Arc::new(StubStore::with_window(window(entries)));
+        let ctx = ToolContext {
+            cwd: std::path::PathBuf::from("/tmp"),
+            timeout: None,
+            state: None,
+            session_id: Some(SessionId::from(
+                "0199aaaa-0000-7000-8000-000000000001".to_owned(),
+            )),
+            app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
+            bus: None,
+            max_output_lines: Some(10),
+            max_output_bytes: None,
+            dispatched_at: jiff::Timestamp::now(),
+            session_cap: None,
+            mcp_coordinator: None,
+            interactive_term: None,
+            task_spawns: None,
+            session_store: Some(SessionStoreService::new(arc.clone())),
+        };
+        (ctx, arc)
+    };
+
+    // When fetching.
+    let result = run(ctx, serde_json::json!({ "limit": 80 })).await;
+
+    // Then the result reports truncation metadata.
+    assert!(result.success, "{}", result.content);
+    let meta = result.truncation.expect("truncation meta");
+    assert_eq!(
+        meta.truncated_by,
+        crate::feat::tools_actor::truncation::TruncatedBy::Lines
+    );
+    assert_eq!(meta.total_lines, 82); // header, gap announcement, 80 entries
+    assert_eq!(meta.output_lines, 10);
+
+    // And the untruncated transcript is carried in full_content.
+    let full = result.full_content.expect("full content");
+    assert!(full.contains("[80] user:"), "full content has the tail");
+    assert!(
+        !result.content.contains("[80] user:"),
+        "clipped content does not"
+    );
+}
