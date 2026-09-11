@@ -3366,6 +3366,51 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn load_tool_picker_entries_marks_task_disabled_in_subagent_session() {
+        // Given a state whose active session is a subagent (parent-linked)
+        // with the task tool in its disabled set (the spawn stamp).
+        let mut state = AppState::default();
+        let parent_id = crate::protocol::SessionId::new();
+        let child = ChatSessionState::new_child(&parent_id, true);
+        state.session.insert(child);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state
+            .active_session_mut()
+            .profile_mut()
+            .disabled_tools
+            .insert(crate::feat::tools_actor::task::TASK_TOOL_NAME.to_owned());
+        state.context.global_tool_definitions.insert(
+            crate::feat::tools_actor::task::TASK_TOOL_NAME.to_owned(),
+            crate::protocol::ToolDefinition {
+                name: crate::feat::tools_actor::task::TASK_TOOL_NAME.to_owned(),
+                description: "Delegate a sub-task to a subagent".to_owned(),
+                parameters: serde_json::json!({}),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                server_tool_type: None,
+            },
+        );
+
+        // When loading tool picker entries.
+        load_tool_picker_entries(&mut state);
+
+        // Then the task tool renders as disabled in the picker.
+        let entry = state
+            .frontend
+            .tool_picker()
+            .items()
+            .iter()
+            .find(|e| e.name == crate::feat::tools_actor::task::TASK_TOOL_NAME)
+            .expect("task entry present");
+        assert!(
+            !entry.enabled,
+            "a subagent session's spawn stamp must show task as disabled"
+        );
+    }
+
+    #[rstest::rstest]
     fn load_tool_picker_entries_hides_web_search_for_non_openrouter_model() {
         // Given state on a non-openrouter model with a web_search tool registered.
         let mut state = setup_state_with_web_search_tool("zai/glm-4.6");
