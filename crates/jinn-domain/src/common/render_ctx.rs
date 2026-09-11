@@ -8,7 +8,10 @@
 //! [`RenderCtx::slices`] instead of reading `FrontendState` fields.
 
 use crate::common::app_state::AppState;
+use crate::common::overlay_views::OverlayViewFn;
+use crate::common::overlay_views::OverlayViews;
 use jinn_slices::Slices;
+use jinn_slices::render_facts::RenderFacts as SliceFacts;
 
 /// Render context passed to every render function.
 ///
@@ -23,7 +26,7 @@ pub struct RenderCtx<'a> {
     /// Slice-registered overlay renderers for dynamic scopes (the quake
     /// bar). Overlay slices register at activation; an unregistered
     /// scope renders nothing.
-    pub overlay_views: &'a crate::common::overlay_views::OverlayViews,
+    pub overlay_views: &'a OverlayViews<SliceFacts>,
 }
 
 impl<'a> RenderCtx<'a> {
@@ -32,7 +35,7 @@ impl<'a> RenderCtx<'a> {
     pub fn new(
         state: &'a AppState,
         slices: &'a Slices,
-        overlay_views: &'a crate::common::overlay_views::OverlayViews,
+        overlay_views: &'a OverlayViews<SliceFacts>,
     ) -> Self {
         Self {
             state,
@@ -48,7 +51,16 @@ impl<'a> RenderCtx<'a> {
     pub fn overlay_view(
         &self,
         scope: &jinn_slices::SliceScopeId,
-    ) -> Option<crate::common::overlay_views::OverlayViewFn> {
+    ) -> Option<OverlayViewFn<SliceFacts>> {
         self.overlay_views.view(scope)
+    }
+
+    /// Builds the slice-facing facts context for one frame: the same
+    /// theme the app state carries, no seeded facts yet, and the live
+    /// registry. Slice overlay renderers receive this instead of
+    /// `&RenderCtx` so their crates stay kernel-free.
+    #[must_use]
+    pub fn facts(&self) -> jinn_slices::RenderFacts {
+        SliceFacts::new(self.state.frontend.theme.clone(), self.slices)
     }
 }

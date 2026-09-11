@@ -36,7 +36,6 @@ pub mod project_add_input;
 pub mod provider;
 pub use jinn_provider_config as provider_infra;
 pub mod pruner_accumulation_input;
-pub mod quake_bar;
 pub mod queue_actor;
 pub mod reasoning;
 pub mod rename_session_input;
@@ -75,12 +74,12 @@ pub fn composition_routes() -> crate::common::slices::key_routes::KeyRoutes {
     )]
     let cell = slices
         .register(
-            quake_bar::quake_bar_slot(),
-            quake_bar::QuakeBarState::default(),
+            jinn_quake_bar::quake_bar_slot(),
+            jinn_quake_bar::QuakeBarState::default(),
         )
         .expect("fresh Slices never has the quake cell registered");
-    quake_bar::attach_quake_bar_rows(&routes, &cell);
-    quake_bar::register_quake_input_hook(&routes, &cell);
+    jinn_quake_bar::attach_quake_bar_rows(&routes, &cell);
+    jinn_quake_bar::register_quake_input_hook(&routes, &cell);
     // The discord row's action is capture-free (it receives the
     // handler's borrows at dispatch), so attaching needs no handles.
     discord::attach_discord_rows(&routes);

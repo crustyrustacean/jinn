@@ -31,7 +31,9 @@
 
 pub mod cell;
 pub mod host;
+pub mod line_input;
 pub mod overlay;
+pub mod render_facts;
 pub mod route;
 pub mod slice_scope;
 pub mod slices;
@@ -40,8 +42,11 @@ pub mod view;
 pub use cell::TypedCell;
 pub use host::Direction;
 pub use host::SliceHost;
+pub use line_input::LineInput;
 pub use overlay::OverlayViewFn;
 pub use overlay::OverlayViews;
+pub use render_facts::AppFact;
+pub use render_facts::RenderFacts;
 pub use route::ActionCtx;
 pub use route::ActionFn;
 pub use route::BindSite;

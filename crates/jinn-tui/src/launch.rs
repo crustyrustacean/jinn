@@ -203,7 +203,7 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         // the activations they serve. The dashboard's canvas actor
         // consumes the fabric + nav topics through these relays.
         jinn_domain::common::trouper_bridge::drain_dashboard_routes(&services).await;
-        jinn_domain::feat::quake_bar::drain_forward_routes(&services).await;
+        drain_quake_bar_routes(&services).await;
         let activated = jinn_dashboard::activate(&mut jinn_dashboard::SliceCtx {
             slices: &services.slices,
             key_routes: &services.key_routes,
@@ -213,7 +213,7 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         if let Err(error) = activated {
             panic!("dashboard slice activation failed: {error}");
         }
-        jinn_domain::feat::quake_bar::activate(&mut services);
+        activate_quake_bar(&mut services);
         // Bindings generate after all activations so every slice's rows exist.
         crate::keymap_gen::bind_route_rows(&services.key_routes, &mut keymap);
     }
@@ -266,4 +266,42 @@ fn register_slice_wiring(
     // the only place that can put the dashboard first in spawn order.
     // This function runs after it, so every slice's rows exist by now.
     crate::keymap_gen::bind_route_rows(&services.key_routes, keymap);
+}
+
+/// Activates the quake-bar slice over the kernel's registries.
+///
+/// The slice crate is kernel-free, so composition assembles the
+/// `SliceHost` borrows and hands them over.
+#[expect(
+    clippy::panic,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+fn activate_quake_bar(services: &mut jinn_domain::Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_quake_bar::activate(&mut host);
+    let staged = host.finalize(&|_key| None);
+    if let Err(error) = staged {
+        panic!("quake-bar slice finalize failed: {error}");
+    }
+}
+
+/// Drains the quake-bar slice's staged forward route into its relay.
+async fn drain_quake_bar_routes(services: &jinn_domain::Services) {
+    jinn_domain::common::trouper_bridge::spawn_one::<jinn_quake_bar::SubmitQuakeBarCommand>(
+        services,
+        &jinn_slices::host::RouteEntry {
+            schema_id:
+                <jinn_quake_bar::SubmitQuakeBarCommand as trouper::schema::Schema>::schema_id(),
+            name: "quake-bar",
+            topic: jinn_quake_bar::command::quake_bar_topic(),
+            direction: jinn_slices::host::Direction::Forward,
+        },
+    )
+    .await;
 }

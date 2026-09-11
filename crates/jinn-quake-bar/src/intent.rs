@@ -18,10 +18,10 @@
 
 use jinn_slices::TypedCell;
 
-use super::command::SubmitQuakeBarCommand;
-use super::state::QuakeBarInput;
-use super::state::QuakeBarState;
-use super::state::quake_scope;
+use crate::command::SubmitQuakeBarCommand;
+use crate::state::QuakeBarInput;
+use crate::state::QuakeBarState;
+use crate::state::quake_scope;
 use jinn_slices::route::ActionCtx;
 use jinn_slices::route::ActionFn;
 use jinn_slices::route::BindSite;
@@ -31,13 +31,13 @@ use jinn_slices::route::KeyRoutes;
 use jinn_slices::route::RouteOutcome;
 use jinn_slices::route::RouteRow;
 
-use crate::protocol::IntentResult;
-use crate::protocol::ScopeSignal;
+use jinn_slices::RouteResult as IntentResult;
+use jinn_slices::ScopeSignal;
 
 /// Route ids for the quake bar's rows (composition resolution +
 /// diagnostics).
 pub mod route_ids {
-    use crate::common::slices::key_routes::RouteId;
+    use jinn_slices::RouteId;
 
     /// Open the quake bar overlay (the global `<M-\`>` toggle).
     pub const OPEN: RouteId = RouteId::new("quake-bar:open");
@@ -294,11 +294,11 @@ mod tests {
     use super::handle_submit;
     use super::quake_scope;
     use super::register_quake_input_hook;
-    use crate::common::slices::key_routes::KeyRoutes;
-    use crate::protocol::ScopeSignal;
+    use jinn_slices::KeyRoutes;
+    use jinn_slices::ScopeSignal;
     use jinn_slices::Slices;
 
-    use crate::feat::quake_bar::state::quake_bar_slot;
+    use crate::state::quake_bar_slot;
 
     fn wired() -> (KeyRoutes, jinn_slices::TypedCell<QuakeBarState>) {
         let slices = Slices::new();
@@ -319,12 +319,12 @@ mod tests {
 
         // When dispatching the open dynamic intent.
         let intent = super::quake_intent("open", "quake bar");
-        let mut state = crate::common::app_state::AppState::default();
+        let mut state = TestState::default();
         let slices = Slices::new();
         let result = routes
             .action_for(
                 &intent,
-                crate::common::slices::key_routes::ActionCtx {
+                jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
                 },
@@ -343,12 +343,12 @@ mod tests {
 
         // When dispatching the close dynamic intent.
         let intent = super::quake_intent("close", "close quake bar");
-        let mut state = crate::common::app_state::AppState::default();
+        let mut state = TestState::default();
         let slices = Slices::new();
         let result = routes
             .action_for(
                 &intent,
-                crate::common::slices::key_routes::ActionCtx {
+                jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
                 },
@@ -370,11 +370,11 @@ mod tests {
         });
 
         // When submitting.
-        let mut state = crate::common::app_state::AppState::default();
+        let mut state = TestState::default();
         let slices = Slices::new();
         let result = handle_submit(
             &cell,
-            crate::common::slices::key_routes::ActionCtx {
+            jinn_slices::ActionCtx {
                 state: &mut state,
                 slices: &slices,
             },
@@ -399,11 +399,11 @@ mod tests {
         let (_routes, cell) = wired();
 
         // When submitting.
-        let mut state = crate::common::app_state::AppState::default();
+        let mut state = TestState::default();
         let slices = Slices::new();
         let result = handle_submit(
             &cell,
-            crate::common::slices::key_routes::ActionCtx {
+            jinn_slices::ActionCtx {
                 state: &mut state,
                 slices: &slices,
             },
@@ -455,12 +455,12 @@ mod tests {
             cell.update(|s| s.log.push(format!("line-{i}")));
         }
         let intent = super::quake_intent("scroll-up", "scroll up");
-        let mut state = crate::common::app_state::AppState::default();
+        let mut state = TestState::default();
         let slices = Slices::new();
         let _ = routes
             .action_for(
                 &intent,
-                crate::common::slices::key_routes::ActionCtx {
+                jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
                 },
@@ -473,12 +473,12 @@ mod tests {
 
         // When dispatching scroll-down.
         let intent = super::quake_intent("scroll-down", "scroll down");
-        let mut state = crate::common::app_state::AppState::default();
+        let mut state = TestState::default();
         let slices = Slices::new();
         let _ = routes
             .action_for(
                 &intent,
-                crate::common::slices::key_routes::ActionCtx {
+                jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
                 },
@@ -491,5 +491,29 @@ mod tests {
             guard.log.visible_lines(2).to_vec()
         };
         assert_ne!(after, before.as_slice());
+    }
+
+    /// A minimal [`jinn_slices::SliceActionState`] stand-in for the row tests.
+    #[derive(Default)]
+    struct TestState {
+        errors: Vec<String>,
+    }
+
+    impl jinn_slices::SliceActionState for TestState {
+        fn active_session_title(&self) -> Option<String> {
+            None
+        }
+
+        fn active_session_id(&self) -> jinn_core_types::SessionId {
+            jinn_core_types::SessionId::new()
+        }
+
+        fn push_session_error(&mut self, message: &str) {
+            self.errors.push(message.to_owned());
+        }
+
+        fn slice_flag_enabled(&self, _slice: &str) -> bool {
+            false
+        }
     }
 }

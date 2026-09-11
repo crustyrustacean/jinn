@@ -2570,6 +2570,8 @@ dependencies = [
  "jinn-domain",
  "jinn-plugin",
  "jinn-plugin-api",
+ "jinn-quake-bar",
+ "jinn-slices",
  "jinn-tui",
  "jinn-web-fetch",
  "jinn-web-search",
@@ -2700,6 +2702,7 @@ dependencies = [
  "jinn-plugin-api",
  "jinn-provider",
  "jinn-provider-config",
+ "jinn-quake-bar",
  "jinn-selection-widget",
  "jinn-session-schema",
  "jinn-slices",
@@ -2849,6 +2852,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-quake-bar"
+version = "0.116.1"
+dependencies = [
+ "jiff",
+ "jinn-core-types",
+ "jinn-slices",
+ "jinn-testutil",
+ "jinn-theme",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "trouper",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "jinn-selection-widget"
 version = "0.116.1"
 dependencies = [
@@ -2890,6 +2911,7 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "trouper",
+ "unicode-segmentation",
  "uuid",
  "wherror",
 ]
@@ -2937,6 +2959,7 @@ dependencies = [
  "futures",
  "jinn-dashboard",
  "jinn-domain",
+ "jinn-quake-bar",
  "jinn-selection-widget",
  "jinn-slices",
  "jinn-testutil",
@@ -2952,6 +2975,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "trouper",
  "unicode-segmentation",
  "wherror",
 ]

@@ -39,10 +39,6 @@ pub fn buffer_rows(buffer: &ratatui::buffer::Buffer, width: u16, height: u16) ->
 ///
 /// Not `Default` — construction spawns actors on the ambient runtime,
 /// which is a deliberate, visible action (`new`), not a value default.
-#[allow(
-    clippy::new_without_default,
-    reason = "spawning a bus + actor system is an action, not a value default"
-)]
 pub struct TestFabric {
     /// The kameo bus actor ref.
     bus: kameo::actor::ActorRef<kameo_actors::message_bus::MessageBus>,
@@ -58,6 +54,10 @@ impl TestFabric {
     }
 
     /// Spawns a fresh bus + trouper system.
+    #[expect(
+        clippy::new_without_default,
+        reason = "construction spawns actors on the ambient runtime — an action, not a value default"
+    )]
     pub fn new() -> Self {
         let bus = kameo::actor::Spawn::spawn(kameo_actors::message_bus::MessageBus::new(
             kameo_actors::DeliveryStrategy::BestEffort,

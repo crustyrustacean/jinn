@@ -4,7 +4,7 @@
 //! the `trouper` runtime ([`ServiceActor`] tier: stateless
 //! side-effectful fold, no journaling). It subscribes to the
 //! `jinn.quake-bar` trouper topic — fed by the kameo→trouper bridge
-//! ([`crate::common::trouper_bridge`]) — and appends each
+//! (`jinn.quake-bar`) — and appends each
 //! [`SubmitQuakeBarCommand`] to the slice cell's log, exactly as the
 //! kameo actor did. The cell handle cannot ride the runtime's JSON
 //! start args, so it is injected through the builder's
@@ -19,9 +19,8 @@ use trouper::types::ActorPath;
 
 use jinn_slices::TypedCell;
 
-use crate::common::trouper_bridge;
-use crate::feat::quake_bar::command::SubmitQuakeBarCommand;
-use crate::feat::quake_bar::state::QuakeBarState;
+use crate::command::SubmitQuakeBarCommand;
+use crate::state::QuakeBarState;
 
 /// The quake bar actor on the canvas runtime.
 ///
@@ -79,7 +78,7 @@ impl QuakeBarCanvasActor {
             reason = "subscription failure is a broken actor system, not a caller bug"
         )]
         system
-            .subscribe(&path, &trouper_bridge::quake_bar_topic(), None)
+            .subscribe(&path, &crate::command::quake_bar_topic(), None)
             .expect("quake-bar actor subscribes to its topic");
         path
     }
@@ -100,9 +99,9 @@ mod tests {
         reason = "test code"
     )]
 
-    use crate::feat::quake_bar::command::SubmitQuakeBarCommand;
-    use crate::feat::quake_bar::state::QuakeBarState;
-    use crate::feat::quake_bar::state::quake_bar_slot;
+    use crate::command::SubmitQuakeBarCommand;
+    use crate::state::QuakeBarState;
+    use crate::state::quake_bar_slot;
     use jinn_slices::Slices;
 
     use super::QuakeBarCanvasActor;
@@ -141,22 +140,23 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn bus_published_submit_command_reaches_cell_log_through_canvas() {
-        // Given a canvas system with the bridge, the quake-bar canvas
-        // actor, and a fabric-topic probe all wired.
-        let services = crate::Services::new_fake().await;
-        crate::feat::quake_bar::drain_forward_routes(&services).await;
+    async fn topic_published_submit_command_reaches_cell_log_through_canvas() {
+        // Given a fabric with the quake-bar canvas actor subscribed.
+        let fabric = jinn_testutil::TestFabric::new();
         let slices = Slices::new();
         let cell = slices
             .register(quake_bar_slot(), QuakeBarState::default())
             .expect("fresh registry");
-        QuakeBarCanvasActor::spawn(&services.trouper_system, &cell);
-        // When a SubmitQuakeBarCommand is published on the kameo bus.
-        services
-            .bus
-            .publish(SubmitQuakeBarCommand {
-                text: "hello".to_owned(),
-            })
+        QuakeBarCanvasActor::spawn(fabric.system(), &cell);
+
+        // When a SubmitQuakeBarCommand envelope lands on the topic.
+        fabric
+            .send_to_topic(
+                &SubmitQuakeBarCommand {
+                    text: "hello".to_owned(),
+                },
+                &crate::command::quake_bar_topic(),
+            )
             .await;
 
         // Then the command reaches the cell log through the canvas.

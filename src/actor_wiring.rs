@@ -21,6 +21,8 @@ use jinn_domain::ProviderRegistryService;
 use jinn_domain::Services;
 use jinn_domain::SessionStoreService;
 use jinn_domain::UserPreferencesStorageService;
+use jinn_quake_bar;
+use jinn_slices;
 
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -211,7 +213,7 @@ impl ActorSystemBuilder {
         // own on_start: publishes after the drains cannot be missed, so
         // the ordering constraint against slice activation is gone.
         jinn_domain::common::trouper_bridge::drain_dashboard_routes(&services).await;
-        jinn_domain::feat::quake_bar::drain_forward_routes(&services).await;
+        jinn_quake_bar_drain(&services).await;
 
         // ── Dashboard slice ───────────────────────────────────────────
         // Activation mints the cell, spawns the canvas actor FIRST
@@ -244,13 +246,13 @@ impl ActorSystemBuilder {
         // Quake bar slice: activation mints the cell, spawns the actor
         // (submit-log writer), attaches rows, and registers the input
         // hook + overlay geometry. Composition owns exactly this call.
-        jinn_domain::feat::quake_bar::activate(&mut services);
+        jinn_quake_bar_activate(&mut services);
         // ── Forward-bridge route drains ───────────────────────────────
         // One relay per crossing message, registered on the bus in its
         // own on_start: publishes after the drains cannot be missed, so
         // the ordering constraint against slice activation is gone.
         jinn_domain::common::trouper_bridge::drain_dashboard_routes(&services).await;
-        jinn_domain::feat::quake_bar::drain_forward_routes(&services).await;
+        jinn_quake_bar_drain(&services).await;
 
         // ── Dashboard slice ───────────────────────────────────────────
         // Activation mints the cell, spawns the canvas actor FIRST
@@ -284,7 +286,7 @@ impl ActorSystemBuilder {
         // Quake bar slice: activation mints the cell, spawns the actor
         // (submit-log writer), attaches rows, and registers the input
         // hook + overlay geometry. Composition owns exactly this call.
-        jinn_domain::feat::quake_bar::activate(&mut services);
+        jinn_quake_bar_activate(&mut services);
 
         // ── Infrastructure actors ──────────────────────────────────────────
 
@@ -1548,4 +1550,43 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
 
         (core, services)
     }
+}
+
+/// Activates the quake-bar slice over the kernel's registries.
+///
+/// The slice crate is kernel-free, so composition assembles the
+/// `SliceHost` borrows and hands them over.
+#[expect(
+    clippy::panic,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+fn jinn_quake_bar_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_quake_bar::activate(&mut host);
+    let staged = host.finalize(&|_key| None);
+    if let Err(error) = staged {
+        panic!("quake-bar slice finalize failed: {error}");
+    }
+}
+
+/// Drains the quake-bar slice's staged forward routes into per-route
+/// relays. Kernel-side: the relays are kameo actors.
+async fn jinn_quake_bar_drain(services: &Services) {
+    jinn_domain::common::trouper_bridge::spawn_one::<jinn_quake_bar::SubmitQuakeBarCommand>(
+        services,
+        &jinn_slices::host::RouteEntry {
+            schema_id:
+                <jinn_quake_bar::SubmitQuakeBarCommand as trouper::schema::Schema>::schema_id(),
+            name: "quake-bar",
+            topic: jinn_quake_bar::command::quake_bar_topic(),
+            direction: jinn_slices::host::Direction::Forward,
+        },
+    )
+    .await;
 }
