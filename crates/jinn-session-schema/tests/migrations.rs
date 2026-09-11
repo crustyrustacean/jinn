@@ -12,7 +12,7 @@ fn fresh_database_has_all_tables_and_v21() {
     // When running all migrations.
     run_migrations(&mut conn).expect("run migrations");
 
-    // Then all six application tables exist.
+    // Then all eight application tables exist.
     let tables: Vec<String> = conn
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
         .expect("prepare")
@@ -45,12 +45,20 @@ fn fresh_database_has_all_tables_and_v21() {
         tables.contains(&"entry_blobs".to_owned()),
         "entry_blobs table missing: {tables:?}"
     );
+    assert!(
+        tables.contains(&"session_fts".to_owned()),
+        "session_fts table missing: {tables:?}"
+    );
+    assert!(
+        tables.contains(&"fts_dirty".to_owned()),
+        "fts_dirty table missing: {tables:?}"
+    );
 
-    // And the highest recorded migration version is 25.
+    // And the highest recorded migration version is 26.
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
         .expect("query version");
-    assert_eq!(version, 25, "migration version");
+    assert_eq!(version, 26, "migration version");
 
     // And token_ledger has the v24 prompt/cache columns.
     let columns: Vec<String> = conn
@@ -302,4 +310,169 @@ fn v25_adds_nullable_token_count_column_to_entries() {
         )
         .expect("select updated row");
     assert_eq!(after, 42);
+}
+
+/// v26 seeds `fts_dirty` with every session that exists at migration time, so
+/// the first post-upgrade launch backfills the FTS index in the background.
+#[rstest::rstest]
+#[test]
+#[cfg(feature = "testing")]
+fn v26_seeds_every_existing_session_dirty() {
+    use jinn_session_schema::testing::{apply_migrations_inner, bootstrap_tracking_table};
+
+    // Given a DB migrated only to v25 with two sessions in it.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+    bootstrap_tracking_table(&mut conn).expect("bootstrap");
+    apply_migrations_inner(&mut conn, 25);
+    conn.execute(
+        "INSERT INTO sessions (id, title, updated_at, created_at) VALUES ('s-a', 'A', 't', 't')",
+        [],
+    )
+    .expect("insert session a");
+    conn.execute(
+        "INSERT INTO sessions (id, title, updated_at, created_at) VALUES ('s-b', 'B', 't', 't')",
+        [],
+    )
+    .expect("insert session b");
+
+    // When running the pending migrations (v26).
+    run_migrations(&mut conn).expect("run pending migrations");
+
+    // Then both session ids are marked dirty.
+    let dirty: Vec<String> = conn
+        .prepare("SELECT session_id FROM fts_dirty ORDER BY session_id")
+        .expect("prepare")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("query")
+        .map(|r| r.expect("row"))
+        .collect();
+    assert_eq!(dirty, vec!["s-a".to_owned(), "s-b".to_owned()]);
+}
+
+/// v26's dirty-marking triggers: INSERT, UPDATE, and DELETE on `sessions` each
+/// mark the affected session id in `fts_dirty` (deduplicated by the PK).
+#[rstest::rstest]
+#[test]
+#[cfg(feature = "testing")]
+fn v26_triggers_mark_sessions_dirty_on_insert_update_delete() {
+    // Given a fully-migrated DB.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+    run_migrations(&mut conn).expect("run migrations");
+
+    // When inserting a session.
+    conn.execute(
+        "INSERT INTO sessions (id, title, updated_at, created_at) VALUES ('s-a', 'A', 't1', 't1')",
+        [],
+    )
+    .expect("insert session");
+
+    // Then the insert trigger marks it dirty.
+    let dirty: i64 = conn
+        .query_row("SELECT COUNT(*) FROM fts_dirty WHERE session_id = 's-a'", [], |row| {
+            row.get(0)
+        })
+        .expect("count dirty after insert");
+    assert_eq!(dirty, 1, "insert must mark dirty");
+
+    // When updating that session (the save path upserts the row every save).
+    conn.execute("UPDATE sessions SET title = 'A2' WHERE id = 's-a'", [])
+        .expect("update session");
+
+    // Then the update trigger marks it dirty, and the PRIMARY KEY dedupes
+    // repeated marks into a single row.
+    let dirty: i64 = conn
+        .query_row("SELECT COUNT(*) FROM fts_dirty", [], |row| row.get(0))
+        .expect("count dirty after update");
+    assert_eq!(dirty, 1, "update must not duplicate the dirty row");
+
+    // When inserting a second session (to prove DELETE only marks its own id)
+    // and then deleting the first.
+    conn.execute(
+        "INSERT INTO sessions (id, title, updated_at, created_at) VALUES ('s-b', 'B', 't2', 't2')",
+        [],
+    )
+    .expect("insert second session");
+    conn.execute("DELETE FROM sessions WHERE id = 's-a'", []).expect("delete session");
+
+    // Then the delete trigger marks the deleted id dirty.
+    let dirty: Vec<String> = conn
+        .prepare("SELECT session_id FROM fts_dirty ORDER BY session_id")
+        .expect("prepare")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("query")
+        .map(|r| r.expect("row"))
+        .collect();
+    assert_eq!(dirty, vec!["s-a".to_owned(), "s-b".to_owned()]);
+}
+
+/// v26's `session_fts` virtual table is functional in the build DB: MATCH
+/// queries work, UNINDEXED columns store but never match, and `snippet()`
+/// wraps matches. (Catches a system-sqlite lacking FTS5 at build time.)
+#[rstest::rstest]
+#[test]
+fn v26_fts_table_accepts_rows_and_matches() {
+    // Given a fully-migrated DB.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+    run_migrations(&mut conn).expect("run migrations");
+
+    // When inserting two FTS rows with UNINDEXED metadata.
+    conn.execute(
+        "INSERT INTO session_fts(body, role, session_id, entry_id, entry_ts) \
+         VALUES ('the parser rewrites the junction table', 'assistant', 's-a', 'e-1', \
+         '2026-09-01T00:00:00Z')",
+        [],
+    )
+    .expect("insert fts row 1");
+    conn.execute(
+        "INSERT INTO session_fts(body, role, session_id, entry_id, entry_ts) \
+         VALUES ('something entirely unrelated to the query terms', 'assistant', 's-b', 'e-2', \
+         '2026-09-02T00:00:00Z')",
+        [],
+    )
+    .expect("insert fts row 2");
+
+    // Then a MATCH on 'parser' hits exactly the first row.
+    let hits: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_fts WHERE session_fts MATCH 'parser'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("match parser");
+    assert_eq!(hits, 1, "MATCH 'parser' must hit only row 1");
+
+    // And the term 'assistant' never matches via body because the role column
+    // is UNINDEXED (bare terms can't match filter columns).
+    let hits: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_fts WHERE session_fts MATCH 'assistant'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("match assistant");
+    assert_eq!(hits, 0, "UNINDEXED role words must never match");
+
+    // And porter stemming folds 'rewrites' into 'rewrite'.
+    let hits: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_fts WHERE session_fts MATCH 'rewrite'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("match rewrite");
+    assert_eq!(hits, 1, "porter stemmer must fold rewrites/rewrite");
+
+    // And snippet() wraps the matched terms.
+    let snip: String = conn
+        .query_row(
+            "SELECT snippet(session_fts, 0, '<<', '>>', ' … ', 12) FROM session_fts \
+             WHERE session_fts MATCH 'parser'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("snippet");
+    assert!(
+        snip.contains("<<parser>>"),
+        "snippet must wrap the match, got: {snip}"
+    );
 }
