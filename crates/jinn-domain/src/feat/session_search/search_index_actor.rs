@@ -4,11 +4,19 @@
 //! `session_fts` index table), not to shared state. Dirty sessions are
 //! recorded by triggers on the `sessions` table (schema v26); this actor
 //! drives the drain itself: once at startup (backfill after an upgrade),
-//! then on a fixed interval, reindexing one session per loop iteration and
+//! then on a fixed interval, reindexing sessions one at a time and
 //! publishing the remaining pending count to the `search-index` dashboard
-//! row after every index operation. Search results may trail the newest
-//! saves by one interval; the agent's own current-turn entries are in its
-//! context regardless.
+//! row around every drain. Search results may trail the newest saves by one
+//! interval; the agent's own current-turn entries are in its context
+//! regardless.
+//!
+//! Each tick's drain is bounded by a time budget ([`REINDEX_BUDGET`] in
+//! production) so a large pending queue (e.g. the first-launch backfill
+//! after the schema upgrade, hundreds of sessions) drains cooperatively:
+//! the tick handler returns promptly, the actor stays stoppable, and
+//! session persists interleave with backfill writes instead of starving
+//! behind them. The `fts_dirty` table is the durable queue, so a budget
+//! that expires simply resumes on the next tick.
 
 use std::time::Duration;
 
@@ -20,6 +28,16 @@ use crate::common::services::bus_service::BusService;
 
 /// How often the actor drains the dirty set in production.
 pub const REINDEX_INTERVAL: Duration = Duration::from_secs(5);
+
+/// How long one tick's drain may reindex before yielding to the next tick.
+///
+/// Bounds the per-tick write-lock hold so the drain never monopolizes the
+/// database: startup stays responsive, the tick handler returns inside
+/// shutdown timeouts, and session persists interleave with backfill work.
+/// Each tick always processes at least one session, so a budget smaller
+/// than a single session's reindex cannot stall progress — it just makes
+/// the backfill advance one session per tick.
+pub const REINDEX_BUDGET: Duration = Duration::from_secs(2);
 
 /// Dashboard row this actor publishes reindex progress under. Must match the
 /// `spawn_tracked!` registration name in `actor_wiring.rs` — a mismatch would
@@ -36,6 +54,10 @@ pub struct SearchIndexActorDeps {
     /// Poll interval. Production uses [`REINDEX_INTERVAL`]; tests inject a
     /// small value so convergence assertions don't wait on the default.
     pub interval: Duration,
+    /// Per-tick drain time budget. Production uses [`REINDEX_BUDGET`]; tests
+    /// inject `Duration::ZERO` (exactly one session per tick) or a large
+    /// value (drain everything in one tick).
+    pub budget: Duration,
 }
 
 /// The search-index maintenance actor.
@@ -46,6 +68,7 @@ pub struct SearchIndexActorDeps {
 pub struct SearchIndexActor {
     deps: ActorDeps,
     interval: Duration,
+    budget: Duration,
 }
 
 impl kameo::Actor for SearchIndexActor {
@@ -60,6 +83,7 @@ impl kameo::Actor for SearchIndexActor {
         Ok(Self {
             deps: args.deps,
             interval: args.interval,
+            budget: args.budget,
         })
     }
 }
@@ -91,16 +115,26 @@ impl Message<ReindexTick> for SearchIndexActor {
 }
 
 impl SearchIndexActor {
-    /// Drains the dirty set one session at a time, publishing dashboard
-    /// progress after every index operation. Log-and-continue: a failed
-    /// session is left dirty (durable pending work) and never blocks the
-    /// rest of the batch. An empty batch publishes once too, so the row
-    /// reads "index up to date" as soon as the actor is idle.
+    /// Drains the dirty set one session at a time within this tick's time
+    /// budget, then reports the remaining pending count to the dashboard.
+    ///
+    /// Publishes before the first session too, so the row reflects the
+    /// pending queue immediately — even when a single large session will
+    /// occupy the whole budget. Log-and-continue: a failed session is left
+    /// dirty (durable pending work) and never blocks the rest of the batch.
+    /// An empty queue publishes once, so the row reads "index up to date"
+    /// as soon as the actor is idle.
     async fn drain_once(&self) {
         let Ok(ids) = self.deps.services.session_store.dirty_session_ids().await else {
             tracing::warn!("failed to read dirty session markers; will retry next tick");
             return;
         };
+        if ids.is_empty() {
+            self.publish_progress().await;
+            return;
+        }
+        self.publish_progress().await;
+        let deadline = tokio::time::Instant::now() + self.budget;
         for id in &ids {
             match self.deps.services.session_store.reindex_session(id).await {
                 Ok(()) => tracing::debug!(session_id = %id, "FTS reindexed session"),
@@ -110,11 +144,12 @@ impl SearchIndexActor {
                     "FTS reindex failed; leaving marker dirty for the next drain"
                 ),
             }
-            self.publish_progress().await;
+            if tokio::time::Instant::now() >= deadline {
+                tracing::debug!("FTS reindex budget exhausted; resuming next tick");
+                break;
+            }
         }
-        if ids.is_empty() {
-            self.publish_progress().await;
-        }
+        self.publish_progress().await;
     }
 
     /// Publishes the live remaining pending count to the `search-index`

@@ -92,6 +92,7 @@ async fn startup_drain_indexes_all_dirty_sessions() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: REINDEX_INTERVAL,
+            budget: Duration::from_secs(3600),
         },
         &root,
     )
@@ -115,6 +116,7 @@ async fn tick_loop_picks_up_sessions_marked_after_startup() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
+            budget: Duration::from_secs(3600),
         },
         &root,
     )
@@ -183,6 +185,7 @@ async fn failed_drain_leaves_marker_and_next_drain_recovers() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
+            budget: Duration::from_secs(3600),
         },
         &root,
     )
@@ -239,6 +242,7 @@ async fn failing_session_does_not_block_rest_of_batch() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
+            budget: Duration::from_secs(3600),
         },
         &root,
     )
@@ -299,6 +303,7 @@ async fn failed_session_marker_survives_and_recovers_when_fault_clears() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
+            budget: Duration::from_secs(3600),
         },
         &root,
     )
@@ -372,7 +377,7 @@ async fn create_reindex_tripwire(store: &SqliteSessionStore, poisoned: &SessionI
 
 #[rstest::rstest]
 #[tokio::test]
-async fn drain_publishes_descending_counts_then_up_to_date() {
+async fn drain_publishes_pending_count_before_and_after_work() {
     // Given three dirty sessions and a recorder listening for status updates
     // on the same bus the actor publishes to.
     let (_dir, harness, deps, _store) = sqlite_actor_deps().await;
@@ -387,36 +392,35 @@ async fn drain_publishes_descending_counts_then_up_to_date() {
             .expect("save");
     }
 
-    // When the actor runs its startup drain with a tiny interval.
+    // When the actor runs its startup drain with a tiny interval and a
+    // budget large enough to finish the whole batch in one tick.
     let root = RootSupervisor::spawn_root().await;
     let _actor = crate::feat::session_search::search_index_actor::spawn_search_index_actor(
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
+            budget: Duration::from_secs(3600),
         },
         &root,
     )
     .await;
 
-    // Then the drain published exactly one message per index operation with
-    // the remaining queue size at that moment (queried after each op: 2, 1,
-    // 0), ending with the drained state.
+    // Then the drain published the full queue ("3 sessions pending") before
+    // indexing anything and "index up to date" once the batch finished —
+    // the row is never blank while work is in flight.
     let messages =
-        crate::common::bus::test_harness::await_recorded(&recorder, 3, Duration::from_secs(10))
+        crate::common::bus::test_harness::await_recorded(&recorder, 2, Duration::from_secs(10))
             .await;
     let labels: Vec<&str> = messages
         .iter()
         .filter_map(|m| m.status_message.as_deref())
         .collect();
     assert_eq!(
-        labels,
-        vec![
-            "2 sessions pending",
-            "1 sessions pending",
-            "index up to date"
-        ],
-        "one publish per operation, counts descending to the drained finale"
+        labels.first(),
+        Some(&"3 sessions pending"),
+        "first publish must precede the first index operation"
     );
+    assert_eq!(labels.last(), Some(&"index up to date"));
     // And every message targets the search-index row without touching the
     // identity/lifecycle columns.
     for m in &messages {
@@ -424,6 +428,62 @@ async fn drain_publishes_descending_counts_then_up_to_date() {
         assert_eq!(m.description, None);
         assert_eq!(m.lifecycle, None);
     }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn zero_budget_advances_backfill_one_session_per_tick() {
+    // Given three dirty sessions and an actor whose per-tick budget allows
+    // exactly one reindex (Duration::ZERO = no time left after the first).
+    let (_dir, _harness, deps, _store) = sqlite_actor_deps().await;
+    for _ in 0..3 {
+        deps.services
+            .session_store
+            .save(&needle_session(&SessionId::new()))
+            .await
+            .expect("save");
+    }
+
+    // When the actor runs with a tiny interval.
+    let root = RootSupervisor::spawn_root().await;
+    let _actor = crate::feat::session_search::search_index_actor::spawn_search_index_actor(
+        SearchIndexActorDeps {
+            deps: deps.clone(),
+            interval: Duration::from_millis(50),
+            budget: Duration::ZERO,
+        },
+        &root,
+    )
+    .await;
+
+    // Then the pending queue shrinks across resumed ticks instead of the
+    // actor holding itself for the whole batch: the drain yields after each
+    // session and the next tick picks the work back up.
+    let store = deps.services.session_store.clone();
+    let first = poll_until(Duration::from_millis(20), 100, || {
+        let store = store.clone();
+        async move { store.pending_dirty_count().await.expect("count") <= 2 }
+    })
+    .await;
+    assert!(
+        first,
+        "first tick should leave at most two sessions pending"
+    );
+    let second = poll_until(Duration::from_millis(20), 100, || {
+        let store = store.clone();
+        async move { store.pending_dirty_count().await.expect("count") <= 1 }
+    })
+    .await;
+    assert!(
+        second,
+        "second tick should leave at most one session pending"
+    );
+    let third = poll_until(Duration::from_millis(20), 100, || {
+        let store = store.clone();
+        async move { store.pending_dirty_count().await.expect("count") == 0 }
+    })
+    .await;
+    assert!(third, "backfill should complete across resumed ticks");
 }
 
 #[rstest::rstest]
@@ -441,6 +501,7 @@ async fn empty_drain_publishes_index_up_to_date() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
+            budget: Duration::from_secs(3600),
         },
         &root,
     )
@@ -477,6 +538,7 @@ async fn failing_session_still_publishes_progress() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
+            budget: Duration::from_secs(3600),
         },
         &root,
     )

@@ -966,6 +966,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     deps: actor_deps.clone(),
                     interval:
                         jinn_domain::feat::session_search::search_index_actor::REINDEX_INTERVAL,
+                    budget: jinn_domain::feat::session_search::search_index_actor::REINDEX_BUDGET,
                 },
                 &root,
             )
