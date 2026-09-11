@@ -54,6 +54,7 @@ jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-dashboard = { workspace = true }
 jinn-discord = { workspace = true }
+jinn-discord-slice = { workspace = true }
 jinn-quake-bar = { workspace = true }
 jinn-slices = { workspace = true }
 
@@ -98,6 +99,8 @@ rustls = { workspace = true }
 # Internal
 jinn-domain = { path = "crates/jinn-domain" }
 jinn-discord = { path = "crates/jinn-discord" }
+jinn-discord-msg = { path = "crates/jinn-discord-msg" }
+jinn-discord-slice = { path = "crates/jinn-discord-slice" }
 jinn-common = { path = "crates/jinn-common" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-dashboard = { path = "crates/jinn-dashboard" }

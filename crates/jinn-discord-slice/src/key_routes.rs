@@ -16,17 +16,17 @@
 use jinn_slices::SliceScopeId;
 
 use super::to_thread_intent;
-use crate::common::slices::key_routes::ActionFn;
-use crate::common::slices::key_routes::BindSite;
-use crate::common::slices::key_routes::KeyRoutes;
-use crate::common::slices::key_routes::RouteOutcome;
-use crate::common::slices::key_routes::RouteRow;
-use crate::protocol::Intent;
+use jinn_domain::common::slices::key_routes::ActionFn;
+use jinn_domain::common::slices::key_routes::BindSite;
+use jinn_domain::common::slices::key_routes::KeyRoutes;
+use jinn_domain::common::slices::key_routes::RouteOutcome;
+use jinn_domain::common::slices::key_routes::RouteRow;
+use jinn_domain::protocol::Intent;
 
 /// Route ids for the discord slice's rows (composition resolution +
 /// diagnostics).
 pub mod route_ids {
-    use crate::common::slices::key_routes::RouteId;
+    use jinn_domain::common::slices::key_routes::RouteId;
 
     /// Lift the active session into a Discord forum thread (`gdc`).
     pub const TO_THREAD: RouteId = RouteId::new("discord:to-thread");
@@ -56,7 +56,7 @@ pub fn to_thread_intent_action() -> Intent {
 
 /// Attaches the discord slice's route rows. Called once from the
 /// slice's `activate()`; the action needs no captures — it receives
-/// the handler's borrows ([`ActionCtx`](crate::common::slices::key_routes::ActionCtx))
+/// the handler's borrows ([`ActionCtx`](jinn_domain::common::slices::key_routes::ActionCtx))
 /// at dispatch time.
 pub fn attach_discord_rows(routes: &KeyRoutes) {
     routes.attach(RouteRow {
@@ -84,14 +84,14 @@ mod tests {
     use super::attach_discord_rows;
     use super::discord_scope;
     use super::to_thread_intent_action;
-    use crate::common::slices::key_routes::ActionCtx;
-    use crate::common::slices::key_routes::BindSite;
-    use crate::common::slices::key_routes::KeyRoutes;
-    use crate::common::slices::key_routes::RouteOutcome;
-    use crate::feat::discord::ConnectionState;
-    use crate::feat::discord::discord_connection_slot;
-    use crate::feat::session::chat_entry::ChatEntryKind;
-    use crate::protocol::Intent;
+    use crate::ConnectionState;
+    use crate::discord_connection_slot;
+    use jinn_domain::common::slices::key_routes::ActionCtx;
+    use jinn_domain::common::slices::key_routes::BindSite;
+    use jinn_domain::common::slices::key_routes::KeyRoutes;
+    use jinn_domain::common::slices::key_routes::RouteOutcome;
+    use jinn_domain::feat::session::chat_entry::ChatEntryKind;
+    use jinn_domain::protocol::Intent;
 
     fn routed() -> KeyRoutes {
         let routes = KeyRoutes::new();
@@ -138,8 +138,8 @@ mod tests {
     fn action_pushes_error_entry_when_bot_disabled() {
         // Given a route table and a default state: no title, bot disabled.
         let routes = routed();
-        let mut state = crate::common::app_state::AppState::default();
-        let slices = crate::common::slices::Slices::new();
+        let mut state = jinn_domain::common::app_state::AppState::default();
+        let slices = jinn_domain::common::slices::Slices::new();
 
         // When dispatching the to-thread dynamic intent.
         let result = routes
@@ -173,12 +173,12 @@ mod tests {
         // Given a route table and a state meeting every precondition:
         // titled session, bot enabled, connection cell reporting connected.
         let routes = routed();
-        let mut state = crate::common::app_state::AppState::default();
+        let mut state = jinn_domain::common::app_state::AppState::default();
         state
             .active_session_mut()
             .set_title("My session".to_owned());
-        state.frontend.preferences.discord.enabled = true;
-        let slices = crate::common::slices::Slices::new();
+        let slices = jinn_domain::common::slices::Slices::new();
+        slices.set_flag("discord", true);
         let cell = slices
             .register(
                 discord_connection_slot(),
@@ -204,9 +204,7 @@ mod tests {
         // Then the result carries the CreateThreadForSession bus command.
         assert_eq!(
             result.message_names,
-            vec![std::any::type_name::<
-                crate::feat::discord::CreateThreadForSession,
-            >()],
+            vec![std::any::type_name::<crate::CreateThreadForSession>()],
             "to-thread command name"
         );
     }
@@ -221,8 +219,8 @@ mod tests {
         let result = routes.action_for(
             &to_thread_dynamic(),
             ActionCtx {
-                state: &mut crate::common::app_state::AppState::default(),
-                slices: &crate::common::slices::Slices::new(),
+                state: &mut jinn_domain::common::app_state::AppState::default(),
+                slices: &jinn_domain::common::slices::Slices::new(),
             },
         );
 

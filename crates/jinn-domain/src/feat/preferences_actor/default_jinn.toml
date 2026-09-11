@@ -308,16 +308,6 @@ engine = "exa"
 # above, plus an implicit "blank" option) and replies with the final assistant
 # message (or error) on each turn.
 #
-# To enable, uncomment and fill in a token (or set DISCORD_BOT_TOKEN in your
-# env), and set enabled = true.
-# (uncomment below to activate)
-# [discord]
-# enabled = true              # Whether the Discord bot is active.
-# bot_token = "your-token"    # Or set DISCORD_BOT_TOKEN in your environment.
-# guild_id = "123"            # Discord guild (server) ID the bot operates in.
-# forum_channel = "456"       # Forum channel where the bot creates session threads.
-# authorized_users = ["789"]  # Users allowed to interact with the bot.
-
 # <M-c>/<M-d> CWD selection
 [cwd_selector]
 # Shell command template run by the cwd_selector tool. `{path}` is replaced

@@ -117,6 +117,10 @@ pub struct Slices {
     /// Overlay scope → the slot backing the overlay's content, so the
     /// render pass can resolve the scope's view through the viewport.
     overlay_slots: Arc<RwLock<HashMap<SliceScopeId, SlotKey>>>,
+    /// Slice feature flags, set at activation from the slice's own
+    /// config section. Read-model for gating decisions (e.g. a route
+    /// action asking "is this slice enabled?").
+    flags: Arc<RwLock<HashMap<String, bool>>>,
 }
 
 /// A slice-registered overlay geometry function: resolves the screen
@@ -229,6 +233,18 @@ impl Slices {
     /// slot that backs the tab's content. Duplicate scope registration
     /// is a no-op (a tab must not appear twice in the cycle); the slot
     /// mapping is overwritten (last activation wins).
+    /// Sets a slice feature flag. Called at activation from the
+    /// slice's config-section value.
+    pub fn set_flag(&self, slice: &str, enabled: bool) {
+        self.flags.write().insert(slice.to_owned(), enabled);
+    }
+
+    /// Reads a slice feature flag. Unset flags are `false`.
+    #[must_use]
+    pub fn flag(&self, slice: &str) -> bool {
+        self.flags.read().get(slice).copied().unwrap_or(false)
+    }
+
     pub fn register_tab_scope(&self, scope: SliceScopeId, slot: SlotKey) {
         {
             let mut tabs = self.tab_scopes.write();

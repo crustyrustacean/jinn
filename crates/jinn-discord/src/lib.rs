@@ -2,7 +2,7 @@
 //!
 //! Owns the poise gateway task and slash-command handlers that drive a running
 //! jinn instance from Discord. The domain-layer pieces (config, thread-map DAO,
-//! message splitter, bridge actor) live in [`jinn_domain::feat::discord`].
+//! message splitter, bridge actor) live in [`jinn_discord_slice`].
 //!
 //! See `.plans/discord/plan.md` for the full architecture.
 

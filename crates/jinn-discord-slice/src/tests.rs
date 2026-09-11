@@ -12,7 +12,7 @@
     reason = "test code"
 )]
 
-use crate::feat::discord::{DiscordConfig, DiscordThreadMap};
+use crate::{DiscordConfig, DiscordThreadMap};
 use serde::Deserialize;
 
 #[rstest::rstest]
@@ -119,7 +119,7 @@ fn missing_authorized_users_deserializes_to_empty_list() {
 
 // ── DiscordThreadMap DAO ──────────────────────────────────────────────
 
-use crate::feat::session::session_store::SqliteSessionStore;
+use jinn_domain::feat::session::session_store::SqliteSessionStore;
 use tempfile::TempDir;
 
 async fn make_map() -> (TempDir, DiscordThreadMap) {
@@ -205,17 +205,17 @@ async fn dao_set_rebinds_existing_thread_to_new_session() {
 
 // ── DiscordBridgeActor forwarding ─────────────────────────────
 
-use crate::common::app_state::AppState;
-use crate::common::state::State;
-use crate::feat::discord::bridge_actor::DiscordBridgeActor;
-use crate::feat::discord::protocol::BridgeEvent;
-use crate::feat::session::phase_machine::PhaseKind;
-use crate::feat::session::protocol::session_archived::SessionArchived;
-use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
-use crate::feat::session_lifecycle::protocol::event::{
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::common::state::State;
+use crate::bridge_actor::DiscordBridgeActor;
+use jinn_discord_msg::BridgeEvent;
+use jinn_domain::feat::session::phase_machine::PhaseKind;
+use jinn_domain::feat::session::protocol::session_archived::SessionArchived;
+use jinn_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+use jinn_domain::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownFinished,
 };
-use crate::protocol::SessionId;
+use jinn_domain::protocol::SessionId;
 use std::path::PathBuf;
 
 fn session_id() -> SessionId {
@@ -228,7 +228,7 @@ fn make_actor() -> (DiscordBridgeActor, kanal::AsyncReceiver<BridgeEvent>) {
         DiscordBridgeActor::new(
             tx,
             State::new(AppState::default()),
-            crate::common::tcaps::mint::mint_session_cap(),
+            jinn_domain::common::tcaps::mint::mint_session_cap(),
         ),
         rx.to_async(),
     )
@@ -368,9 +368,9 @@ async fn archived_forwards_session_id() {
 // against a real bus and publish events on it, so they fail if any
 // subscription is dropped.
 
-use crate::common::actor_deps::ActorDeps;
-use crate::common::bus::test_harness::TestHarness;
-use crate::feat::discord::{
+use jinn_domain::common::actor_deps::ActorDeps;
+use jinn_domain::common::bus::test_harness::TestHarness;
+use crate::{
     CreateThreadForSession, GatewayRequest, bridge_actor::DiscordBridgeActorDeps,
 };
 async fn spawn_on_bus_with_rx() -> (
@@ -390,7 +390,7 @@ async fn spawn_on_bus_with_rx() -> (
             tx,
             gateway_tx: gw_tx,
             state: State::new(AppState::default()),
-            session_cap: crate::common::tcaps::mint::mint_session_cap(),
+            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
         })
         .await;
     (harness, rx.to_async(), gw_rx.to_async())

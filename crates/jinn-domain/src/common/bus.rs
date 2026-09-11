@@ -11,5 +11,5 @@
 /// purely for discoverability and compile-time bounds checking.
 pub use jinn_slices::BusMessage;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-harness"))]
 pub mod test_harness;

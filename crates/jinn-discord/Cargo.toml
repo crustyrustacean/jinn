@@ -14,6 +14,8 @@ splitter, bridge actor) live in `jinn-domain`'s `feat/discord`.
 """
 
 [dependencies]
+jinn-discord-msg = { workspace = true }
+jinn-discord-slice = { workspace = true }
 jinn-domain = { workspace = true }
 
 # External deps

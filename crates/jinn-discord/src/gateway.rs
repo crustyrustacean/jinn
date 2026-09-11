@@ -7,7 +7,7 @@
 //!
 //! Inbound access is deny-by-default: both the plain-message handler and every
 //! slash command gate on `[discord].authorized_users` via
-//! [`jinn_domain::feat::discord::authorize`] — an empty list authorizes nobody.
+//! [`jinn_discord_slice::authorize`] — an empty list authorizes nobody.
 //!
 //! See `.plans/discord/plan.md` for the full architecture.
 
@@ -16,13 +16,13 @@ use std::sync::Arc;
 use crate::session_route::{InboundOutcome, classify_inbound, is_forwardable_message_type};
 use derive_more::Debug;
 use error_stack::Report;
-use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
-use jinn_domain::feat::discord::status_actor::DiscordStatusUpdate;
-use jinn_domain::feat::discord::{
+use jinn_discord_msg::DiscordStatusUpdate;
+use jinn_discord_slice::{
     BridgeEvent, CreateThreadReason, DiscordConfig, DiscordThreadCreateFailed,
     DiscordThreadCreated, DiscordThreadMap, FinalReply, ForumChannelError, GatewayRequest,
     authorize, read_final_reply, split_message,
 };
+use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
 use jinn_domain::feat::session::protocol::session_load_requested::SessionLoadRequested;

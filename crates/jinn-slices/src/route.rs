@@ -166,8 +166,6 @@ pub trait SliceActionState {
     fn active_session_id(&self) -> jinn_core_types::SessionId;
     /// Pushes an error line into the active session's chat history.
     fn push_session_error(&mut self, message: &str);
-    /// Whether a named slice's feature flag is enabled in preferences.
-    fn slice_flag_enabled(&self, slice: &str) -> bool;
 }
 
 /// A user-initiated action belonging to a dynamically-registered slice.
@@ -630,10 +628,6 @@ mod tests {
 
         fn push_session_error(&mut self, message: &str) {
             self.errors.push(message.to_owned());
-        }
-
-        fn slice_flag_enabled(&self, _slice: &str) -> bool {
-            false
         }
     }
 

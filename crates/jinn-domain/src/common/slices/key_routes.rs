@@ -39,13 +39,6 @@ impl SliceActionState for AppState {
         self.active_session_mut()
             .push_entry(crate::feat::session::chat_entry::ChatEntry::error(message));
     }
-
-    fn slice_flag_enabled(&self, slice: &str) -> bool {
-        match slice {
-            "discord" => self.frontend.preferences.discord.enabled,
-            _ => false,
-        }
-    }
 }
 
 /// Translates the kernel's editing intents into the slice-hook
