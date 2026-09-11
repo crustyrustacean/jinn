@@ -42,3 +42,15 @@ impl crate::common::bus::BusMessage for ActorStarting {}
 impl crate::common::bus::BusMessage for ActorStarted {}
 
 impl crate::common::bus::BusMessage for ActorShutdownCompleted {}
+
+jinn_slices::crossing_schema!(ActorStarting, "ActorStarting", trouper::schema::SchemaKind::Event,
+    description: "An actor is starting up.",
+    fields: ["name" => trouper::schema::FieldTy::Str]);
+
+jinn_slices::crossing_schema!(ActorStarted, "ActorStarted", trouper::schema::SchemaKind::Event,
+    description: "An actor has finished starting up.",
+    fields: ["name" => trouper::schema::FieldTy::Str]);
+
+jinn_slices::crossing_schema!(ActorShutdownCompleted, "ActorShutdownCompleted", trouper::schema::SchemaKind::Event,
+    description: "An actor has completed shutdown.",
+    fields: ["name" => trouper::schema::FieldTy::Str]);

@@ -100,7 +100,6 @@ mod tests {
         reason = "test code"
     )]
 
-    use crate::common::trouper_bridge;
     use crate::feat::quake_bar::command::SubmitQuakeBarCommand;
     use crate::feat::quake_bar::state::QuakeBarState;
     use crate::feat::quake_bar::state::quake_bar_slot;
@@ -146,7 +145,7 @@ mod tests {
         // Given a canvas system with the bridge, the quake-bar canvas
         // actor, and a fabric-topic probe all wired.
         let services = crate::Services::new_fake().await;
-        trouper_bridge::spawn_kameo_to_trouper(&services).await;
+        crate::feat::quake_bar::drain_forward_routes(&services).await;
         let slices = Slices::new();
         let cell = slices
             .register(quake_bar_slot(), QuakeBarState::default())

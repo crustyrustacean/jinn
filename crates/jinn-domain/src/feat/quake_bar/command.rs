@@ -16,3 +16,7 @@ pub struct SubmitQuakeBarCommand {
 }
 
 impl BusMessage for SubmitQuakeBarCommand {}
+
+jinn_slices::crossing_schema!(SubmitQuakeBarCommand, "SubmitQuakeBarCommand", trouper::schema::SchemaKind::Command,
+    description: "Submit the current quake bar input into the command log.",
+    fields: ["text" => trouper::schema::FieldTy::Str]);

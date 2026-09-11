@@ -67,6 +67,31 @@ impl BusService {
     /// # Panics
     ///
     /// Panics if called on a recording-mode bus (tests should not need this).
+    /// A recipient handle for forwarding publishes of `M` to the
+    /// bus's subscribers — the seam the bridge's per-route relays
+    /// register through at activation time.
+    pub async fn register_recipient<M>(&self, recipient: kameo::actor::Recipient<M>)
+    where
+        M: crate::common::bus::BusMessage,
+    {
+        match &self.inner {
+            BusInner::Real(bus) => {
+                if let Err(err) = bus.ask(Register(recipient)).await {
+                    tracing::warn!(?err, "bus recipient registration returned an error");
+                }
+            }
+            BusInner::Recording(_) => {
+                let _ = recipient;
+            }
+        }
+    }
+
+    /// Returns the raw bus actor ref.
+    ///
+    /// # Panics
+    ///
+    /// Panics when called on a recording (test-only) bus: there is no
+    /// actor to return.
     #[expect(
         clippy::panic,
         reason = "invariant: recording variant is test-only; calling actor_ref on it is programmer misuse"

@@ -61,3 +61,24 @@ pub use slices::SlotKey;
 pub use slices::SlotTaken;
 pub use view::SliceView;
 pub use view::ViewCx;
+
+/// Implements [`trouper::schema::Schema`] for a crossing message type.
+///
+/// `name` mirrors the Rust type name so trouper exports read the same on
+/// both sides of the bridge; all crossing schemas are version 1.
+#[macro_export]
+macro_rules! crossing_schema {
+    ($ty:ty, $name:literal, $kind:expr, description: $desc:literal, fields: [$($field:literal => $fty:expr),* $(,)?]) => {
+        impl ::trouper::schema::Schema for $ty {
+            fn schema_def() -> ::trouper::schema::SchemaDef {
+                ::trouper::schema::SchemaDef {
+                    name: $name.to_owned(),
+                    version: 1,
+                    kind: $kind,
+                    fields: vec![$(::trouper::schema::FieldDef::required($field, $fty)),*],
+                    description: Some($desc.to_owned()),
+                }
+            }
+        }
+    };
+}
