@@ -63,6 +63,7 @@ async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -
         mcp_coordinator: None,
         interactive_term: None,
         task_spawns: Some(services.task_spawns.clone()),
+        session_store: Some(services.session_store.clone()),
     }
 }
 

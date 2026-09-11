@@ -70,6 +70,12 @@ pub struct ToolContext {
     /// skip sessions suspended on a `task` call, and written by the `task`
     /// tool through its drop-guard. `None` in tests.
     pub task_spawns: Option<crate::feat::tools_actor::task_registry::TaskSpawnRegistry>,
+    /// Session store — `Some` only for the `session_search`/`session_fetch`
+    /// tools, which read persisted history across all sessions. Resolved
+    /// from `services.session_store` at dispatch time. `None` in tests that
+    /// build a bare `ToolContext`.
+    pub session_store:
+        Option<crate::feat::session::session_store::SessionStoreService>,
 }
 
 impl fmt::Debug for ToolContext {
@@ -113,6 +119,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
 
         // When debugging.
