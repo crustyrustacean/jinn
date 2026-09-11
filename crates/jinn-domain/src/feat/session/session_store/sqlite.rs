@@ -1256,8 +1256,12 @@ fn fork_metadata(
     core.updated_at = jiff::Timestamp::now();
     core.fork_ordinal = Some(at_ordinal);
     // A fork is a fork — even of a subagent session, the result is an
-    // ordinary user-visible session, never a marked subagent.
+    // ordinary user-visible session, never a marked subagent. The spawn
+    // stamp on the source must not carry over: the fork gets full powers.
     core.origin = SessionOrigin::Fork;
+    core.profile
+        .disabled_tools
+        .remove(crate::feat::tools_actor::task::TASK_TOOL_NAME);
     serde_json::to_string(&core).ok()
 }
 

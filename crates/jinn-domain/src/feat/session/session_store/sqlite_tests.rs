@@ -672,6 +672,82 @@ async fn fork_inherits_cwd_from_source() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn fork_strips_suppressed_task_tool() {
+    // Given a store with a source session whose disabled tools include task.
+    let (_dir, store) = make_store().await;
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new();
+    source.set_session_id(source_id.clone());
+    source.set_title("Subagent".to_owned());
+    source.push_entry(ChatEntry::user("hello"));
+    {
+        let profile = source.profile_mut();
+        profile
+            .disabled_tools
+            .insert(crate::feat::tools_actor::task::TASK_TOOL_NAME.to_owned());
+    }
+    store.save(&source).await.expect("save source");
+
+    // When forking.
+    let forked_id = store.fork(&source_id, 0).await.expect("fork");
+
+    // Then the forked session has the task tool enabled again.
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+    assert!(
+        !forked
+            .profile()
+            .disabled_tools
+            .contains(crate::feat::tools_actor::task::TASK_TOOL_NAME),
+        "a fork must not inherit the task suppression stamp, got: {:?}",
+        forked.profile().disabled_tools
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fork_preserves_other_disabled_tools() {
+    // Given a store with a source session disabling write (not task).
+    let (_dir, store) = make_store().await;
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new();
+    source.set_session_id(source_id.clone());
+    source.set_title("Manual disable".to_owned());
+    source.push_entry(ChatEntry::user("hello"));
+    source.set_disabled_tools(std::collections::HashSet::from(["write".to_owned()]));
+    store.save(&source).await.expect("save source");
+
+    // When forking.
+    let forked_id = store.fork(&source_id, 0).await.expect("fork");
+
+    // Then the forked session still has write disabled — the strip is
+    // targeted at task, not a wipe of the disabled set.
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+    assert!(
+        forked.profile().disabled_tools.contains("write"),
+        "fork must preserve non-task disabled tools, got: {:?}",
+        forked.profile().disabled_tools
+    );
+    // And it does not gain a task entry of its own.
+    assert!(
+        !forked
+            .profile()
+            .disabled_tools
+            .contains(crate::feat::tools_actor::task::TASK_TOOL_NAME),
+        "fork must not gain a task disable, got: {:?}",
+        forked.profile().disabled_tools
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn project_round_trips_through_save_and_load() {
     // Given a store with a session that has a project stamp.
     let (_dir, store) = make_store().await;

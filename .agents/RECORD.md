@@ -229,7 +229,8 @@ Entries are added or amended **only with human approval**.
 - (subagents) Subagents are regular sessions spawned by the `task` tool: fresh history, linked to the parent, inheriting the parent's model, cwd, tools, skills, MCP servers, and a snapshot of the parent's task list; they appear in the sidebar as children marked with a subagent symbol.
 - (subagents) A subagent's task-list mutations do not propagate to its parent's list; parent and child own independent copies after spawn.
 - (subagents) The `task` tool blocks until the child session reaches Idle and forwards the child's last chat entry as its tool result; cancellations forward the cancel entry as a failure.
-- (subagents) Sessions with a parent link cannot spawn subagents — the `task` tool is excluded from their toolset (depth-1).
+- (subagents) Subagent spawn stamps the `task` tool into the child's per-session `disabled_tools`, so it suppresses like any user-disabled tool and the tool picker reflects it; re-enabling it via the tool picker lets a subagent spawn subagents, and a session spawned by a re-enabled subagent starts suppressed again.
+- (subagents) Forking strips the `task` tool from the fork's `disabled_tools`, so a fork of a subagent session always has the `task` tool enabled.
 - (session) Sessions carry no automation flag; identity is a persisted origin enum (user, fork, subagent), and tree structure is linked via `parent_session`.
 - (subagents) A spawned subagent's first dispatch waits for its discovery settle gate (project context files, skills, enabled MCP servers), bounded by an internal settle budget, so the first prompt includes MCP tools and project context; the message is sent regardless once the budget expires.
 - (subagents) The sidebar's subagent marking reflects the session's origin, not the parent link; forks always get fork origin — even forks of subagent sessions.
