@@ -38,12 +38,14 @@ pub mod slices;
 pub mod view;
 
 pub use cell::TypedCell;
+pub use host::Direction;
 pub use host::SliceHost;
 pub use overlay::OverlayViewFn;
 pub use overlay::OverlayViews;
 pub use route::ActionCtx;
 pub use route::ActionFn;
 pub use route::BindSite;
+pub use route::BusMessage;
 pub use route::DynamicIntent;
 pub use route::EditIntent;
 pub use route::InputHook;

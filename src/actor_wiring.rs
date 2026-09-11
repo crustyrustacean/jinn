@@ -210,7 +210,7 @@ impl ActorSystemBuilder {
         // One relay per crossing message, registered on the bus in its
         // own on_start: publishes after the drains cannot be missed, so
         // the ordering constraint against slice activation is gone.
-        jinn_domain::feat::dashboard::drain_forward_routes(&services).await;
+        jinn_domain::common::trouper_bridge::drain_dashboard_routes(&services).await;
         jinn_domain::feat::quake_bar::drain_forward_routes(&services).await;
 
         // ── Dashboard slice ───────────────────────────────────────────
@@ -223,7 +223,12 @@ impl ActorSystemBuilder {
             clippy::panic,
             reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
         )]
-        if let Err(error) = jinn_domain::feat::dashboard::activate(&mut services) {
+        if let Err(error) = jinn_dashboard::activate(&mut jinn_dashboard::SliceCtx {
+            slices: &services.slices,
+            key_routes: &services.key_routes,
+            viewport: &mut services.viewport,
+            trouper_system: &services.trouper_system,
+        }) {
             panic!("dashboard slice activation failed: {error}");
         }
 
@@ -244,7 +249,7 @@ impl ActorSystemBuilder {
         // One relay per crossing message, registered on the bus in its
         // own on_start: publishes after the drains cannot be missed, so
         // the ordering constraint against slice activation is gone.
-        jinn_domain::feat::dashboard::drain_forward_routes(&services).await;
+        jinn_domain::common::trouper_bridge::drain_dashboard_routes(&services).await;
         jinn_domain::feat::quake_bar::drain_forward_routes(&services).await;
 
         // ── Dashboard slice ───────────────────────────────────────────
@@ -258,7 +263,12 @@ impl ActorSystemBuilder {
             clippy::panic,
             reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
         )]
-        if let Err(error) = jinn_domain::feat::dashboard::activate(&mut services) {
+        if let Err(error) = jinn_dashboard::activate(&mut jinn_dashboard::SliceCtx {
+            slices: &services.slices,
+            key_routes: &services.key_routes,
+            viewport: &mut services.viewport,
+            trouper_system: &services.trouper_system,
+        }) {
             panic!("dashboard slice activation failed: {error}");
         }
 

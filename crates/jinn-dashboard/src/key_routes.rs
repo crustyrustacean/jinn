@@ -13,13 +13,13 @@
 
 use jinn_slices::SliceScopeId;
 
-use super::DashboardNav;
-use crate::common::slices::key_routes::ActionFn;
-use crate::common::slices::key_routes::BindSite;
-use crate::common::slices::key_routes::KeyRoutes;
-use crate::common::slices::key_routes::RouteOutcome;
-use crate::common::slices::key_routes::RouteRow;
-use crate::protocol::IntentResult;
+use crate::DashboardNav;
+use jinn_slices::ActionFn;
+use jinn_slices::BindSite;
+use jinn_slices::KeyRoutes;
+use jinn_slices::RouteOutcome;
+use jinn_slices::RouteResult as IntentResult;
+use jinn_slices::RouteRow;
 
 /// The dashboard tab's dynamic scope.
 ///
@@ -34,7 +34,7 @@ pub fn dashboard_scope() -> SliceScopeId {
 /// Route ids for the dashboard's rows (composition resolution +
 /// diagnostics).
 pub mod route_ids {
-    use crate::common::slices::key_routes::RouteId;
+    use jinn_slices::RouteId;
 
     /// Move selection up one row (`k`).
     pub const NAV_UP: RouteId = RouteId::new("dashboard:nav-up");
@@ -135,12 +135,12 @@ mod tests {
         clippy::expect_used,
         reason = "test code; a missing attached row is a hard failure"
     )]
-    use super::attach_dashboard_rows;
-    use super::dashboard_scope;
-    use crate::common::slices::key_routes::ActionCtx;
-    use crate::common::slices::key_routes::KeyRoutes;
-    use crate::common::slices::key_routes::RouteOutcome;
+    use crate::attach_dashboard_rows;
+    use crate::dashboard_scope;
+    use jinn_slices::ActionCtx;
     use jinn_slices::DynamicIntent;
+    use jinn_slices::KeyRoutes;
+    use jinn_slices::RouteOutcome;
 
     #[rstest::rstest]
     #[case::up("nav-up")]
@@ -154,8 +154,8 @@ mod tests {
 
         // When dispatching a dynamic intent for one of the actions.
         let intent = DynamicIntent::new(dashboard_scope(), action, "dashboard nav");
-        let mut state = crate::common::app_state::AppState::default();
-        let slices = crate::common::slices::Slices::new();
+        let mut state = TestState::default();
+        let slices = jinn_slices::Slices::new();
         let result = routes
             .action_for(
                 &intent,
@@ -204,8 +204,8 @@ mod tests {
 
         // When dispatching a dynamic intent for an unknown action.
         let intent = DynamicIntent::new(dashboard_scope(), "nonexistent", "nothing");
-        let mut state = crate::common::app_state::AppState::default();
-        let slices = crate::common::slices::Slices::new();
+        let mut state = TestState::default();
+        let slices = jinn_slices::Slices::new();
         let result = routes.action_for(
             &intent,
             ActionCtx {
@@ -216,5 +216,28 @@ mod tests {
 
         // Then no route serves it.
         assert!(result.is_none());
+    }
+    impl jinn_slices::SliceActionState for TestState {
+        fn active_session_title(&self) -> Option<String> {
+            None
+        }
+
+        fn active_session_id(&self) -> jinn_core_types::SessionId {
+            jinn_core_types::SessionId::new()
+        }
+
+        fn push_session_error(&mut self, message: &str) {
+            self.errors.push(message.to_owned());
+        }
+
+        fn slice_flag_enabled(&self, _slice: &str) -> bool {
+            false
+        }
+    }
+
+    /// A minimal [`jinn_slices::SliceActionState`] stand-in for the row tests.
+    #[derive(Default)]
+    struct TestState {
+        errors: Vec<String>,
     }
 }

@@ -1,7 +1,7 @@
 //! The dashboard's VIEW artifact — draws the dashboard slice payload.
 //!
 //! Third of the contribution triple (STATE = [`DashboardState`] cell,
-//! LOGIC = [`DashboardCanvasActor`](super::canvas_actor::DashboardCanvasActor),
+//! LOGIC = [`DashboardCanvasActor`](crate::canvas_actor::DashboardCanvasActor),
 //! VIEW = [`DashboardView`]): a pure renderer over `&DashboardState`
 //! plus the current theme, which stays in `AppState` because themes are
 //! runtime-switchable application data, not slice payload.
@@ -12,13 +12,13 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, HighlightSpacing, Paragraph, Row, Table, TableState};
 
-use crate::common::slices::SlotKey;
-use crate::common::slices::view::SliceView;
-use crate::common::slices::view::ViewCx;
-use crate::feat::dashboard::ActorLifecycle;
-use crate::feat::dashboard::DashboardEntry;
-use crate::feat::dashboard::DashboardState;
-use crate::feat::theme::Theme;
+use crate::ActorLifecycle;
+use crate::DashboardEntry;
+use crate::DashboardState;
+use jinn_slices::SlotKey;
+use jinn_slices::view::SliceView;
+use jinn_slices::view::ViewCx;
+use jinn_theme::Theme;
 
 /// Renders the dashboard slice: one row per actor, selection highlight,
 /// scroll window. Owns no domain state — every drawn value comes from
@@ -136,11 +136,12 @@ fn lifecycle_display(lifecycle: ActorLifecycle, theme: &Theme) -> (&'static str,
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-    use super::DashboardState;
-    use super::DashboardView;
-    use super::SliceView;
-    use super::ViewCx;
+    use crate::DashboardState;
+    use crate::DashboardView;
+    use jinn_slices::view::SliceView;
+    use jinn_slices::view::ViewCx;
     use jinn_testutil::setup_term;
+    use jinn_theme::default_theme;
 
     /// Collects the entire terminal buffer into a single string for substring
     /// assertions.
@@ -162,7 +163,7 @@ mod tests {
         slice.mark_running("alpha", None);
         slice.mark_running("beta", Some("second".to_owned()));
         slice.select_next();
-        let theme = crate::feat::theme::default_theme();
+        let theme = default_theme();
         let cx = ViewCx { theme: &theme };
 
         // When rendering through the view.
@@ -188,7 +189,7 @@ mod tests {
     fn dashboard_view_renders_empty_placeholder_when_no_actors() {
         // Given an empty dashboard slice.
         let slice = DashboardState::new();
-        let theme = crate::feat::theme::default_theme();
+        let theme = default_theme();
         let cx = ViewCx { theme: &theme };
 
         // When rendering through the view.

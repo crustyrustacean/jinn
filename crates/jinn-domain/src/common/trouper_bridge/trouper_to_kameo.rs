@@ -334,7 +334,7 @@ mod tests {
         };
 
         // When draining it as ActorStarted.
-        let _ = super::super::spawn_one::<crate::common::actor::protocol::event::ActorStarted>(
+        super::super::spawn_one::<crate::common::actor::protocol::event::ActorStarted>(
             &services, &staged,
         )
         .await;

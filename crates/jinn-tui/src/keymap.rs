@@ -692,7 +692,7 @@ mod tests {
         for scope in [
             Scope::Normal,
             Scope::Input,
-            Scope::Dynamic(jinn_domain::feat::dashboard::dashboard_scope()),
+            Scope::Dynamic(jinn_dashboard::dashboard_scope()),
             Scope::SidebarSessions,
             Scope::Dynamic(jinn_domain::feat::quake_bar::quake_scope()),
         ] {
@@ -772,7 +772,7 @@ mod tests {
     #[rstest::rstest]
     #[case(Scope::Normal)]
     #[case(Scope::Input)]
-    #[case(Scope::Dynamic(jinn_domain::feat::dashboard::dashboard_scope()))]
+    #[case(Scope::Dynamic(jinn_dashboard::dashboard_scope()))]
     #[case(Scope::SidebarPersona)]
     #[case(Scope::SidebarPins)]
     #[case(Scope::SidebarSessions)]
@@ -839,7 +839,7 @@ mod tests {
     #[rstest::rstest]
     #[case(Scope::Normal)]
     #[case(Scope::Input)]
-    #[case(Scope::Dynamic(jinn_domain::feat::dashboard::dashboard_scope()))]
+    #[case(Scope::Dynamic(jinn_dashboard::dashboard_scope()))]
     #[case(Scope::SidebarPersona)]
     #[case(Scope::SidebarPins)]
     #[case(Scope::SidebarSessions)]
@@ -2165,9 +2165,7 @@ mod leak_check {
             jinn_domain::Intent,
             crate::keymap::KeyCategory,
         > = init();
-        let groups = keymap.bindings_for_scope(Scope::Dynamic(
-            jinn_domain::feat::dashboard::dashboard_scope(),
-        ));
+        let groups = keymap.bindings_for_scope(Scope::Dynamic(jinn_dashboard::dashboard_scope()));
         let all_desc: Vec<&str> = groups
             .iter()
             .flat_map(|g| g.bindings.iter().map(|b| b.description.as_str()))

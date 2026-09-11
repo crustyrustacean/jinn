@@ -16,8 +16,8 @@ use crate::common::actor_deps::ActorDeps;
 use crate::common::bus::BusMessage;
 use crate::common::slices::SlotKey;
 use crate::common::slices::TypedCell;
-use crate::feat::dashboard::ActorLifecycle;
-use crate::feat::dashboard::ServiceStatusUpdate;
+use jinn_dashboard::ActorLifecycle;
+use jinn_dashboard::ServiceStatusUpdate;
 
 /// Discord bot-specific connection status, reported by the gateway task.
 ///
@@ -221,10 +221,10 @@ mod tests {
     use super::*;
     use crate::common::bus::test_harness::TestHarness;
     use crate::common::slices::Slices;
-    use crate::feat::dashboard::ActorLifecycle;
-    use crate::feat::dashboard::DashboardState;
-    use crate::feat::dashboard::canvas_actor::DashboardCanvasActor;
-    use crate::feat::dashboard::dashboard_slot;
+    use jinn_dashboard::ActorLifecycle;
+    use jinn_dashboard::DashboardCanvasActor;
+    use jinn_dashboard::DashboardState;
+    use jinn_dashboard::dashboard_slot;
     use kameo::actor::Spawn;
 
     async fn spawn_translator(
@@ -266,7 +266,7 @@ mod tests {
         // The dashboard display consumer runs on the canvas runtime, fed
         // by the bridge over the harness bus.
         let services = harness.services().await;
-        crate::feat::dashboard::drain_forward_routes(&services).await;
+        crate::common::trouper_bridge::drain_dashboard_routes(&services).await;
         DashboardCanvasActor::spawn(&services.trouper_system, &cell);
 
         // When the gateway sends a Connected update down the kanal channel.

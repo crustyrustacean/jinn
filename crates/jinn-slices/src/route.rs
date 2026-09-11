@@ -53,6 +53,13 @@ use crate::slice_scope::SliceScopeId;
 /// awaits.
 pub type PublishClosure = Box<dyn FnOnce(&ActorRef<MessageBus>) + Send + 'static>;
 
+/// A message that may travel the kernel's kameo message bus.
+///
+/// Marker trait owned here (the slice vocabulary crate) so slice
+/// crates publish without depending on the kernel. The kernel's bus
+/// implements `Publish<M>` for every `M: BusMessage`.
+pub trait BusMessage: Clone + Send + 'static {}
+
 /// Composition-side identifier for a route's intent resolution.
 ///
 /// Rows never name kernel intent variants directly — they carry a

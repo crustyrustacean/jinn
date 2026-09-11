@@ -3,7 +3,7 @@
 //! `j`/`k`/`g`/`G` on the dashboard tab are commands to the application,
 //! not keystroke composition, so they travel the fabric: the keymap
 //! produces a `DashboardSelect*` intent, the feature's route row (see
-//! [`crate::common::slices::key_routes::KeyRoutes`]) maps it to a
+//! [`jinn_slices::KeyRoutes`]) maps it to a
 //! [`DashboardNav`], and the bus delivers it to the dashboard actor —
 //! its sole subscriber, which folds the navigation into the slice cell.
 //!
@@ -14,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::BusMessage;
+use jinn_slices::BusMessage;
 
 /// Move the dashboard's selection cursor.
 ///
