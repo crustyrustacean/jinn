@@ -368,9 +368,11 @@ fn v26_triggers_mark_sessions_dirty_on_insert_update_delete() {
 
     // Then the insert trigger marks it dirty.
     let dirty: i64 = conn
-        .query_row("SELECT COUNT(*) FROM fts_dirty WHERE session_id = 's-a'", [], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT COUNT(*) FROM fts_dirty WHERE session_id = 's-a'",
+            [],
+            |row| row.get(0),
+        )
         .expect("count dirty after insert");
     assert_eq!(dirty, 1, "insert must mark dirty");
 
@@ -392,7 +394,8 @@ fn v26_triggers_mark_sessions_dirty_on_insert_update_delete() {
         [],
     )
     .expect("insert second session");
-    conn.execute("DELETE FROM sessions WHERE id = 's-a'", []).expect("delete session");
+    conn.execute("DELETE FROM sessions WHERE id = 's-a'", [])
+        .expect("delete session");
 
     // Then the delete trigger marks the deleted id dirty.
     let dirty: Vec<String> = conn

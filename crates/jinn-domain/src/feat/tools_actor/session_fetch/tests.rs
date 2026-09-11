@@ -13,7 +13,7 @@ use error_stack::Report;
 
 use crate::common::app_paths::AppPaths;
 use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session::session_store::{SessionStore, SessionStoreService, SessionStoreError};
+use crate::feat::session::session_store::{SessionStore, SessionStoreError, SessionStoreService};
 use crate::feat::session_search::{TranscriptEntry, TranscriptWindow};
 use crate::feat::tools_actor::session_fetch::{definition, execute};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolResult};
@@ -161,7 +161,9 @@ fn ctx_with(store: StubStore) -> (ToolContext, std::sync::Arc<StubStore>) {
         cwd: std::path::PathBuf::from("/tmp"),
         timeout: None,
         state: None,
-        session_id: Some(SessionId::from("0199aaaa-0000-7000-8000-000000000001".to_owned())),
+        session_id: Some(SessionId::from(
+            "0199aaaa-0000-7000-8000-000000000001".to_owned(),
+        )),
         app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
         bus: None,
         max_output_lines: None,
@@ -232,7 +234,10 @@ async fn transcript_renders_header_and_positioned_lines() {
     // Given a window with two entries.
     let window = window(vec![
         entry(408, ChatEntry::user("why was rowid mapping dropped?")),
-        entry(409, ChatEntry::assistant("the junction rewrites made it moot")),
+        entry(
+            409,
+            ChatEntry::assistant("the junction rewrites made it moot"),
+        ),
     ]);
     let (ctx, _stub) = ctx_with(StubStore::with_window(window));
 
@@ -253,7 +258,10 @@ async fn transcript_renders_header_and_positioned_lines() {
 #[tokio::test]
 async fn gap_in_window_is_announced() {
     // Given a window whose ordinals skip (outer truncation aside).
-    let window = window(vec![entry(2, ChatEntry::user("a")), entry(5, ChatEntry::user("b"))]);
+    let window = window(vec![
+        entry(2, ChatEntry::user("a")),
+        entry(5, ChatEntry::user("b")),
+    ]);
     let (ctx, _stub) = ctx_with(StubStore::with_window(window));
 
     // When fetching.
@@ -273,7 +281,12 @@ async fn excluded_entry_is_flagged() {
     // Given a window containing an excluded entry.
     let mut excluded = TranscriptEntry {
         ordinal: 412,
-        entry: ChatEntry::tool_result("t1", "grep", "big output", crate::feat::session::tool_result_status::ToolResultStatus::Success),
+        entry: ChatEntry::tool_result(
+            "t1",
+            "grep",
+            "big output",
+            crate::feat::session::tool_result_status::ToolResultStatus::Success,
+        ),
         excluded: false,
     };
     excluded.excluded = true;
@@ -285,11 +298,17 @@ async fn excluded_entry_is_flagged() {
 
     // Then the excluded entry carries the flag and the included one does not.
     assert!(
-        result.content.contains("[412] tool_result [excluded from context]:"),
+        result
+            .content
+            .contains("[412] tool_result [excluded from context]:"),
         "{}",
         result.content
     );
-    assert!(!result.content.contains("[411] user [excluded"), "{}", result.content);
+    assert!(
+        !result.content.contains("[411] user [excluded"),
+        "{}",
+        result.content
+    );
 }
 
 #[rstest::rstest]
@@ -310,7 +329,11 @@ async fn oversized_entry_text_is_elided_with_note() {
         result.content
     );
     // And the rendered entry stays within the cap plus ellipsis.
-    let line = result.content.lines().find(|l| l.starts_with("[1] assistant:")).expect("entry line");
+    let line = result
+        .content
+        .lines()
+        .find(|l| l.starts_with("[1] assistant:"))
+        .expect("entry line");
     assert!(line.len() < 2_100, "line len {}", line.len());
 }
 
@@ -360,7 +383,9 @@ async fn no_session_and_no_current_is_an_error() {
     // Then the error explains both resolution paths failed.
     assert!(!result.success);
     assert!(
-        result.content.contains("no session_id given and no current session"),
+        result
+            .content
+            .contains("no session_id given and no current session"),
         "{}",
         result.content
     );

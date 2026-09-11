@@ -10,6 +10,8 @@ use crate::feat::session::session_summary::SessionSummary;
 use crate::feat::session_search::{SearchParams, SearchableRole};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
+use std::fmt::Write as _;
+
 use super::BoxedToolFuture;
 
 /// Upper bound on hits returned per search.
@@ -187,15 +189,18 @@ fn parse_date_arg(args: &serde_json::Value, key: &str) -> Result<Option<jiff::Ti
         return Ok(None);
     }
     // Date-only strings are midnight UTC; datetimes parse directly.
-    let ts: jiff::Timestamp = raw.parse::<jiff::Timestamp>().or_else(|_| {
-        raw.parse::<jiff::civil::Date>()
-            .map_err(|e| e.to_string())
-            .and_then(|d| {
-                d.to_zoned(jiff::tz::TimeZone::UTC)
-                    .map_err(|e| e.to_string())
-                    .map(jiff::Timestamp::from)
-            })
-    }).map_err(|e| format!("invalid {key} '{raw}': {e}"))?;
+    let ts: jiff::Timestamp = match raw.parse::<jiff::Timestamp>() {
+        Ok(ts) => ts,
+        Err(_) => {
+            let date = raw
+                .parse::<jiff::civil::Date>()
+                .map_err(|e| format!("invalid {key} '{raw}': {e}"))?;
+            let zoned = date
+                .to_zoned(jiff::tz::TimeZone::UTC)
+                .map_err(|e| format!("invalid {key} '{raw}': {e}"))?;
+            jiff::Timestamp::from(zoned)
+        }
+    };
     Ok(Some(ts))
 }
 
@@ -204,17 +209,16 @@ fn parse_scope(raw: &str) -> Result<Scope, String> {
     match raw {
         "current" | "" => Ok(Scope::Current),
         "all" => Ok(Scope::All),
-        rest => {
-            rest.strip_prefix("project:")
-                .filter(|name| !name.is_empty())
-                .map(|name| Scope::Project(name.to_owned()))
-                .ok_or_else(|| {
-                    format!(
-                        "invalid scope '{raw}': use \"current\", \"all\", or \"project:<name>\" \
+        rest => rest
+            .strip_prefix("project:")
+            .filter(|name| !name.is_empty())
+            .map(|name| Scope::Project(name.to_owned()))
+            .ok_or_else(|| {
+                format!(
+                    "invalid scope '{raw}': use \"current\", \"all\", or \"project:<name>\" \
  (known projects are listed in the error when a name is unknown)"
-                    )
-                })
-        }
+                )
+            }),
     }
 }
 
@@ -251,10 +255,7 @@ async fn resolve_sessions(
     let summaries: Vec<SessionSummary> = store.load_summaries().await.map_err(|e| e.to_string())?;
     let mut titles = std::collections::HashMap::new();
     for summary in &summaries {
-        titles.insert(
-            summary.session_id.to_string(),
-            summary.title.clone(),
-        );
+        titles.insert(summary.session_id.to_string(), summary.title.clone());
     }
 
     match scope {
@@ -299,7 +300,9 @@ async fn resolve_sessions(
                     )
                 });
             }
-            let name = &matched[0];
+            let name = matched
+                .first()
+                .ok_or("project match vanished between filter and select")?;
             Ok(ResolvedSessions {
                 ids: summaries
                     .iter()
@@ -319,24 +322,28 @@ async fn resolve_sessions(
 
 /// Builds the successful [`ToolResult`] from a search outcome.
 fn outcome_to_result(
-    outcome: crate::feat::session_search::SearchOutcome,
+    outcome: &crate::feat::session_search::SearchOutcome,
     sessions: &ResolvedSessions,
     query: &str,
 ) -> String {
     let mut out = String::new();
 
     if outcome.total_matches == 0 {
-        out.push_str(&format!("search: '{query}' — no matches\n"));
+        let _ = writeln!(out, "search: '{query}' — no matches");
         return out;
     }
 
-    out.push_str(&format!(
-        "search: '{query}' — {} matches in {} sessions (showing {} best)\n",
+    let _ = writeln!(
+        out,
+        "search: '{query}' — {} matches in {} sessions (showing {} best)",
         outcome.total_matches,
         outcome.per_session.len(),
         outcome.hits.len()
-    ));
-    out.push_str("legend: # | session `id` \"title\" | date | role | `entry id` [flags] — snippet follows; <<term>> = match\n");
+    );
+    let _ = writeln!(
+        out,
+        "legend: # | session `id` \"title\" | date | role | `entry id` [flags] — snippet follows; <<term>> = match"
+    );
 
     let rollup: Vec<String> = outcome
         .per_session
@@ -346,10 +353,13 @@ fn outcome_to_result(
             format!("`{id}` \"{title}\" ×{count}")
         })
         .collect();
-    out.push_str(&format!("sessions: {}\n", rollup.join(" · ")));
+    let _ = writeln!(out, "sessions: {}", rollup.join(" · "));
 
     for (i, hit) in outcome.hits.iter().enumerate() {
-        let title = sessions.titles.get(&hit.session_id).map_or("", String::as_str);
+        let title = sessions
+            .titles
+            .get(&hit.session_id)
+            .map_or("", String::as_str);
         let date = hit.entry_ts.split('T').next().unwrap_or(&hit.entry_ts);
         let snippet = collapse_whitespace(&hit.snippet);
         let flag = if hit.excluded {
@@ -357,13 +367,14 @@ fn outcome_to_result(
         } else {
             ""
         };
-        out.push_str(&format!(
-            "{} | `{}` \"{title}\" | {date} | {} | `{}`{flag} — {snippet}\n",
+        let _ = writeln!(
+            out,
+            "{} | `{}` \"{title}\" | {date} | {} | `{}`{flag} — {snippet}",
             i + 1,
             hit.session_id,
             hit.role.as_str(),
             hit.entry_id,
-        ));
+        );
     }
     out
 }
@@ -404,19 +415,26 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return fail("session store unavailable".to_owned());
         };
 
-        let scope = args.scope.as_deref().map_or(Ok(Scope::Current), parse_scope);
+        let scope = args
+            .scope
+            .as_deref()
+            .map_or(Ok(Scope::Current), parse_scope);
         let scope = match scope {
             Ok(s) => s,
             Err(e) => return fail(e),
         };
 
-        let sessions =
-            match resolve_sessions(scope, args.session_id.clone(), ctx.session_id.as_ref(), &store)
-                .await
-            {
-                Ok(v) => v,
-                Err(e) => return fail(e),
-            };
+        let sessions = match resolve_sessions(
+            scope,
+            args.session_id.clone(),
+            ctx.session_id.as_ref(),
+            &store,
+        )
+        .await
+        {
+            Ok(v) => v,
+            Err(e) => return fail(e),
+        };
         if sessions.ids.is_empty() {
             return fail("scope resolved to no sessions".to_owned());
         }
@@ -437,7 +455,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         ToolResult {
             tool_call_id,
             name: tool_name,
-            content: outcome_to_result(outcome, &sessions, &args.query),
+            content: outcome_to_result(&outcome, &sessions, &args.query),
             success: true,
             full_content: None,
             truncation: None,

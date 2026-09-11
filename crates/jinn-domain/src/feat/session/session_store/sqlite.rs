@@ -27,14 +27,14 @@ use crate::feat::session::chat_session::{
     SessionState,
 };
 use crate::feat::session::profile::SessionProfile;
+use crate::feat::session::session_summary::SessionSummary;
+use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::session_search::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, TranscriptEntry, TranscriptWindow,
     entry_ts_key, extract_searchable,
 };
-use daow::Param;
-use crate::feat::session::session_summary::SessionSummary;
-use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntryId, ContextOverride, EntryTiming, SessionId};
+use daow::Param;
 use jinn_provider::Attachment;
 
 use super::migrator;
@@ -1548,15 +1548,11 @@ async fn reindex_one_session(
     // Kind JSON parsing can be heavy (full_content tool outputs) — keep it
     // off the async runtime.
     let session_id_owned = session_id.to_owned();
-    let parsed = {
-        let joined = tokio::task::spawn_blocking(move || {
-            parse_searchable_rows(&session_id_owned, &raw)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("reindex parse task panicked")?;
-        joined
-    };
+    let parsed =
+        tokio::task::spawn_blocking(move || parse_searchable_rows(&session_id_owned, &raw))
+            .await
+            .change_context(SessionStoreError)
+            .attach("reindex parse task panicked")?;
 
     let session_id_owned = session_id.to_owned();
     pool.with_conn(move |conn| -> daow::Result<()> {
@@ -1725,7 +1721,7 @@ impl ExclusionRow {
                 serde_json::from_str::<Vec<crate::feat::session::chat_entry::ContextChangeEvent>>(
                     &self.context_history,
                 )
-                .map_or(false, |events| {
+                .is_ok_and(|events| {
                     events
                         .last()
                         .is_some_and(|event| event.to == ContextOverride::ForcedExclude)
@@ -1796,7 +1792,12 @@ async fn search_index(
     if !params.roles.is_empty() {
         let placeholders = repeat_placeholders(params.roles.len());
         clauses.push(format!("f.role IN ({placeholders})"));
-        binds.extend(params.roles.iter().map(|r| Bind::Text(r.as_str().to_owned())));
+        binds.extend(
+            params
+                .roles
+                .iter()
+                .map(|r| Bind::Text(r.as_str().to_owned())),
+        );
     }
     if let Some(since) = params.since {
         clauses.push(format!("f.entry_ts >= ?{}", binds.len() + 1));
@@ -1843,8 +1844,8 @@ async fn search_index(
         .query_all(&rollup_sql, binds_to_params(&binds))
         .await
         .map_err(|daow_err| {
-            Report::new(SessionStoreError).attach(format!("FTS rollup failed: {daow_err}"))
-        })?;
+        Report::new(SessionStoreError).attach(format!("FTS rollup failed: {daow_err}"))
+    })?;
 
     let mut hits: Vec<SearchHit> = rows
         .into_iter()
@@ -1961,11 +1962,7 @@ async fn load_joined_range(
          WHERE session_history.session_id = ? \
          AND session_history.ordinal BETWEEN ? AND ? \
          ORDER BY session_history.ordinal ASC",
-        vec![
-            Box::new(session_id.to_owned()),
-            Box::new(lo),
-            Box::new(hi),
-        ],
+        vec![Box::new(session_id.to_owned()), Box::new(lo), Box::new(hi)],
     )
     .await
     .change_context(SessionStoreError)

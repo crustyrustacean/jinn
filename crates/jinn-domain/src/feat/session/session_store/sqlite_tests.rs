@@ -1951,8 +1951,7 @@ async fn search_reports_per_session_rollup() {
     assert_eq!(outcome.total_matches, 4);
     let mut counted: Vec<(String, u64)> = outcome.per_session.clone();
     counted.sort();
-    let mut expected: Vec<(String, u64)> =
-        vec![(a.to_string(), 2), (b.to_string(), 2)];
+    let mut expected: Vec<(String, u64)> = vec![(a.to_string(), 2), (b.to_string(), 2)];
     expected.sort();
     assert_eq!(counted, expected);
 }
@@ -2116,8 +2115,14 @@ async fn search_snippets_are_single_line_with_match_markers() {
     // Then the snippet is a single line with <<>> markers around the match.
     assert_eq!(outcome.hits.len(), 1);
     let snippet = &outcome.hits[0].snippet;
-    assert!(!snippet.contains('\n'), "snippet must be one line: {snippet:?}");
-    assert!(snippet.contains("<<needle>>"), "marker missing: {snippet:?}");
+    assert!(
+        !snippet.contains('\n'),
+        "snippet must be one line: {snippet:?}"
+    );
+    assert!(
+        snippet.contains("<<needle>>"),
+        "marker missing: {snippet:?}"
+    );
 }
 
 #[rstest::rstest]
@@ -2171,7 +2176,8 @@ async fn search_does_not_flag_pinned_entries_as_excluded() {
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
     session.set_title("pinned".to_owned());
-    session.push_entry(ChatEntry::user("pinned needle").with_pin(crate::protocol::PinPosition::Top));
+    session
+        .push_entry(ChatEntry::user("pinned needle").with_pin(crate::protocol::PinPosition::Top));
     store.save(&session).await.expect("save");
     store.reindex_dirty_sessions().await.expect("reindex");
 

@@ -359,8 +359,10 @@ mod tests {
         async fn search(
             &self,
             _params: crate::feat::session_search::SearchParams,
-        ) -> Result<crate::feat::session_search::SearchOutcome, error_stack::Report<super::super::SessionStoreError>>
-        {
+        ) -> Result<
+            crate::feat::session_search::SearchOutcome,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
             Ok(crate::feat::session_search::SearchOutcome {
                 total_matches: 0,
                 per_session: Vec::new(),
@@ -373,8 +375,10 @@ mod tests {
             _session_id: &SessionId,
             _anchor: &crate::protocol::ChatEntryId,
             _context: usize,
-        ) -> Result<Option<crate::feat::session_search::TranscriptWindow>, error_stack::Report<super::super::SessionStoreError>>
-        {
+        ) -> Result<
+            Option<crate::feat::session_search::TranscriptWindow>,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
             Ok(None)
         }
 
@@ -382,8 +386,10 @@ mod tests {
             &self,
             _session_id: &SessionId,
             _limit: usize,
-        ) -> Result<Option<crate::feat::session_search::TranscriptWindow>, error_stack::Report<super::super::SessionStoreError>>
-        {
+        ) -> Result<
+            Option<crate::feat::session_search::TranscriptWindow>,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
             Ok(None)
         }
     }
@@ -488,8 +494,10 @@ mod tests {
         async fn search(
             &self,
             _params: crate::feat::session_search::SearchParams,
-        ) -> Result<crate::feat::session_search::SearchOutcome, error_stack::Report<super::super::SessionStoreError>>
-        {
+        ) -> Result<
+            crate::feat::session_search::SearchOutcome,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
             Ok(crate::feat::session_search::SearchOutcome {
                 total_matches: 0,
                 per_session: Vec::new(),
@@ -502,8 +510,10 @@ mod tests {
             _session_id: &SessionId,
             _anchor: &crate::protocol::ChatEntryId,
             _context: usize,
-        ) -> Result<Option<crate::feat::session_search::TranscriptWindow>, error_stack::Report<super::super::SessionStoreError>>
-        {
+        ) -> Result<
+            Option<crate::feat::session_search::TranscriptWindow>,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
             Ok(None)
         }
 
@@ -511,8 +521,10 @@ mod tests {
             &self,
             _session_id: &SessionId,
             _limit: usize,
-        ) -> Result<Option<crate::feat::session_search::TranscriptWindow>, error_stack::Report<super::super::SessionStoreError>>
-        {
+        ) -> Result<
+            Option<crate::feat::session_search::TranscriptWindow>,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
             Ok(None)
         }
     }

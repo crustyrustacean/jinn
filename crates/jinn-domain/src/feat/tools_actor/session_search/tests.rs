@@ -12,13 +12,12 @@ use std::sync::Mutex;
 use error_stack::Report;
 
 use crate::common::app_paths::AppPaths;
-use crate::feat::session::session_store::{SessionStore, SessionStoreService, SessionStoreError};
+use crate::feat::session::session_store::{SessionStore, SessionStoreError, SessionStoreService};
 use crate::feat::session::session_summary::SessionSummary;
 use crate::feat::session_search::{SearchOutcome, SearchParams, SearchableRole};
 use crate::feat::tools_actor::session_search::{definition, execute};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolResult};
 use crate::protocol::{ChatEntryId, SessionId};
-
 
 /// A stub store with canned summaries and a canned search outcome,
 /// recording the last params it was asked to search.
@@ -68,17 +67,17 @@ impl SessionStore for StubStore {
         Ok(())
     }
 
-    async fn load_summaries(
-        &self,
-    ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+    async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
         Ok(self.summaries.lock().unwrap().clone())
     }
 
     async fn load_session(
         &self,
         _session_id: &SessionId,
-    ) -> Result<Option<crate::feat::session::chat_session::ChatSessionState>, Report<SessionStoreError>>
-    {
+    ) -> Result<
+        Option<crate::feat::session::chat_session::ChatSessionState>,
+        Report<SessionStoreError>,
+    > {
         Ok(None)
     }
 
@@ -129,9 +128,7 @@ impl SessionStore for StubStore {
         params: SearchParams,
     ) -> Result<SearchOutcome, Report<SessionStoreError>> {
         if *self.fail_search.lock().unwrap() {
-            return Err(
-                Report::new(SessionStoreError).attach("fts5: syntax error near \"(\"")
-            );
+            return Err(Report::new(SessionStoreError).attach("fts5: syntax error near \"(\""));
         }
         *self.last_params.lock().unwrap() = Some(params);
         Ok(self
@@ -178,7 +175,13 @@ fn summary(id: &str, title: &str, project: Option<&str>) -> SessionSummary {
     }
 }
 
-fn hit(session_id: &str, entry_id: &str, role: &str, snippet: &str, excluded: bool) -> crate::feat::session_search::SearchHit {
+fn hit(
+    session_id: &str,
+    entry_id: &str,
+    role: &str,
+    snippet: &str,
+    excluded: bool,
+) -> crate::feat::session_search::SearchHit {
     crate::feat::session_search::SearchHit {
         session_id: session_id.to_owned(),
         entry_id: entry_id.to_owned(),
@@ -208,9 +211,15 @@ fn tool_ctx(store: SessionStoreService, session_id: Option<SessionId>) -> ToolCo
     }
 }
 
-fn stub_ctx(store: StubStore, session_id: Option<SessionId>) -> (ToolContext, std::sync::Arc<StubStore>) {
+fn stub_ctx(
+    store: StubStore,
+    session_id: Option<SessionId>,
+) -> (ToolContext, std::sync::Arc<StubStore>) {
     let arc = std::sync::Arc::new(store);
-    (tool_ctx(SessionStoreService::new(arc.clone()), session_id), arc)
+    (
+        tool_ctx(SessionStoreService::new(arc.clone()), session_id),
+        arc,
+    )
 }
 
 async fn run(ctx: ToolContext, args: serde_json::Value) -> ToolResult {
@@ -236,7 +245,11 @@ async fn missing_query_is_rejected() {
 
     // Then the result fails and names the missing argument.
     assert!(!result.success);
-    assert!(result.content.contains("query is required"), "{}", result.content);
+    assert!(
+        result.content.contains("query is required"),
+        "{}",
+        result.content
+    );
 }
 
 #[rstest::rstest]
@@ -250,7 +263,11 @@ async fn blank_query_is_rejected() {
 
     // Then the result fails.
     assert!(!result.success);
-    assert!(result.content.contains("query is required"), "{}", result.content);
+    assert!(
+        result.content.contains("query is required"),
+        "{}",
+        result.content
+    );
 }
 
 #[rstest::rstest]
@@ -269,7 +286,11 @@ async fn invalid_json_arguments_are_rejected() {
 
     // Then the result fails with the parse error.
     assert!(!result.success);
-    assert!(result.content.contains("invalid JSON"), "{}", result.content);
+    assert!(
+        result.content.contains("invalid JSON"),
+        "{}",
+        result.content
+    );
 }
 
 #[rstest::rstest]
@@ -309,16 +330,19 @@ async fn current_scope_without_current_session_errors() {
 async fn all_scope_searches_every_session() {
     // Given two persisted sessions.
     let (ctx, stub) = stub_ctx(
-        StubStore::new()
-            .with_summaries(vec![
-                summary(CURRENT, "one", None),
-                summary(OTHER, "two", None),
-            ]),
+        StubStore::new().with_summaries(vec![
+            summary(CURRENT, "one", None),
+            summary(OTHER, "two", None),
+        ]),
         Some(SessionId::from(CURRENT.to_owned())),
     );
 
     // When searching with scope "all".
-    run(ctx, serde_json::json!({ "query": "needle", "scope": "all" })).await;
+    run(
+        ctx,
+        serde_json::json!({ "query": "needle", "scope": "all" }),
+    )
+    .await;
 
     // Then both session ids were passed to the store.
     let params = stub.last_params().expect("search ran");
@@ -356,12 +380,20 @@ async fn project_scope_matches_project_name_case_insensitively() {
 async fn unknown_project_name_lists_known_projects() {
     // Given a session in a known project.
     let (ctx, _stub) = stub_ctx(
-        StubStore::new().with_summaries(vec![summary(CURRENT, "one", Some("/home/j/session-search"))]),
+        StubStore::new().with_summaries(vec![summary(
+            CURRENT,
+            "one",
+            Some("/home/j/session-search"),
+        )]),
         None,
     );
 
     // When searching a project that does not exist.
-    let result = run(ctx, serde_json::json!({ "query": "n", "scope": "project:nope" })).await;
+    let result = run(
+        ctx,
+        serde_json::json!({ "query": "n", "scope": "project:nope" }),
+    )
+    .await;
 
     // Then the error lists the known project names.
     assert!(!result.success);
@@ -380,11 +412,19 @@ async fn invalid_scope_value_is_rejected() {
     let (ctx, _stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
 
     // When searching with an unrecognized scope.
-    let result = run(ctx, serde_json::json!({ "query": "n", "scope": "everything" })).await;
+    let result = run(
+        ctx,
+        serde_json::json!({ "query": "n", "scope": "everything" }),
+    )
+    .await;
 
     // Then the error explains the valid scope forms.
     assert!(!result.success);
-    assert!(result.content.contains("invalid scope"), "{}", result.content);
+    assert!(
+        result.content.contains("invalid scope"),
+        "{}",
+        result.content
+    );
 }
 
 #[rstest::rstest]
@@ -416,7 +456,10 @@ async fn default_fields_are_assistant_and_user() {
 
     // Then the store received assistant and user roles only.
     let params = stub.last_params().expect("search ran");
-    assert_eq!(params.roles, vec![SearchableRole::Assistant, SearchableRole::User]);
+    assert_eq!(
+        params.roles,
+        vec![SearchableRole::Assistant, SearchableRole::User]
+    );
 }
 
 #[rstest::rstest]
@@ -487,7 +530,11 @@ async fn invalid_since_date_is_rejected() {
 
     // Then the error names the argument.
     assert!(!result.success);
-    assert!(result.content.contains("invalid since"), "{}", result.content);
+    assert!(
+        result.content.contains("invalid since"),
+        "{}",
+        result.content
+    );
 }
 
 #[rstest::rstest]
@@ -497,7 +544,11 @@ async fn date_only_since_is_accepted_as_utc() {
     let (ctx, stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
 
     // When searching with a date-only since.
-    run(ctx, serde_json::json!({ "query": "n", "since": "2026-09-01" })).await;
+    run(
+        ctx,
+        serde_json::json!({ "query": "n", "since": "2026-09-01" }),
+    )
+    .await;
 
     // Then the store received a UTC midnight instant.
     let params = stub.last_params().expect("search ran");
@@ -509,7 +560,10 @@ async fn date_only_since_is_accepted_as_utc() {
 #[tokio::test]
 async fn search_failure_surfaced_verbatim() {
     // Given a stub store whose search fails with an fts5 message.
-    let (ctx, _stub) = stub_ctx(StubStore::new().failing(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, _stub) = stub_ctx(
+        StubStore::new().failing(),
+        Some(SessionId::from(CURRENT.to_owned())),
+    );
 
     // When searching with a syntactically invalid query.
     let result = run(ctx, serde_json::json!({ "query": "AND (" })).await;
@@ -527,9 +581,12 @@ async fn search_failure_surfaced_verbatim() {
 #[tokio::test]
 async fn missing_session_store_fails_gracefully() {
     // Given a context with no session store.
-    let ctx = tool_ctx(SessionStoreService::new(std::sync::Arc::new(
-        crate::common::services::test_services::FakeSessionStore,
-    )), None);
+    let ctx = tool_ctx(
+        SessionStoreService::new(std::sync::Arc::new(
+            crate::common::services::test_services::FakeSessionStore,
+        )),
+        None,
+    );
     let ctx = ToolContext {
         session_store: None,
         ..ctx
@@ -567,22 +624,23 @@ async fn outcome_renders_header_legend_rollup_and_hits() {
     // Given a stub store returning two hits across two sessions.
     let outcome = SearchOutcome {
         total_matches: 47,
-        per_session: vec![
-            (CURRENT.to_owned(), 41),
-            (OTHER.to_owned(), 6),
-        ],
+        per_session: vec![(CURRENT.to_owned(), 41), (OTHER.to_owned(), 6)],
         hits: vec![
-            hit(CURRENT, "e-1", "assistant", "…we decided <<rowid mapping>> was unnecessary…", false),
+            hit(
+                CURRENT,
+                "e-1",
+                "assistant",
+                "…we decided <<rowid mapping>> was unnecessary…",
+                false,
+            ),
             hit(OTHER, "e-2", "tool_result", "…CREATE TABLE <<fts5>>…", true),
         ],
     };
     let (ctx, _stub) = stub_ctx(
-        StubStore::new()
-            .with_outcome(outcome)
-            .with_summaries(vec![
-                summary(CURRENT, "migrate auth flow", None),
-                summary(OTHER, "session search", None),
-            ]),
+        StubStore::new().with_outcome(outcome).with_summaries(vec![
+            summary(CURRENT, "migrate auth flow", None),
+            summary(OTHER, "session search", None),
+        ]),
         Some(SessionId::from(CURRENT.to_owned())),
     );
 
@@ -605,7 +663,9 @@ async fn outcome_renders_header_legend_rollup_and_hits() {
         result.content
     );
     assert!(
-        lines[3].contains("`e-1`") && lines[3].contains("assistant") && lines[3].contains("<<rowid mapping>>"),
+        lines[3].contains("`e-1`")
+            && lines[3].contains("assistant")
+            && lines[3].contains("<<rowid mapping>>"),
         "{}",
         result.content
     );
@@ -632,7 +692,9 @@ async fn multiline_snippet_is_collapsed_to_one_line() {
         )],
     };
     let (ctx, _stub) = stub_ctx(
-        StubStore::new().with_outcome(outcome).with_summaries(vec![summary(CURRENT, "t", None)]),
+        StubStore::new()
+            .with_outcome(outcome)
+            .with_summaries(vec![summary(CURRENT, "t", None)]),
         Some(SessionId::from(CURRENT.to_owned())),
     );
 

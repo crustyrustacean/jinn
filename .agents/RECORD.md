@@ -37,7 +37,7 @@ Entries are added or amended **only with human approval**.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
 - (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
 - (arch) `AppState` is the shared state; the frontend writes user input, domain actors write their owned fields, and the TUI renderer reads it on each tick.
-- (context) jinn has no memory subsystem by decision: durable cross-session facts are carried by AGENTS.md/CLAUDE.md files, personas, and skills; cross-session recall is via the `session_query` tool; planning state is carried by pinned plan files.
+- (context) jinn has no memory subsystem by decision: durable cross-session facts are carried by AGENTS.md/CLAUDE.md files, personas, and skills; cross-session recall is via the `session_search` and `session_fetch` tools; planning state is carried by pinned plan files.
 - (chat) The queue actor drains the steering buffer before context assembly on both user-message dispatch and dispatch-resume.
 - (compaction) Compaction is gated by a context-size threshold: it skips when below, triggers when at or above, and uses a fallback context length when the model isn't in the cache.
 - (compaction) Compaction preserves pinned entries; the cut index walks backwards from a reserve and advances past complete tool loops to a valid opener.
@@ -189,7 +189,7 @@ Entries are added or amended **only with human approval**.
 - (tools) The `write` tool creates parent directories automatically and overwrites existing files.
 - (tools) The `write` tool pins the tool result only on success — failed writes (bad JSON, dir creation failure, file write failure) produce no pin.
 - (tools) The `write` tool preserves BOM and CRLF line endings on round-trip; it handles filenames with spaces and Unicode.
-- (tools) The agent's built-in file tools are `read`, `write`, `edit`, `bash`, `grep`, `save_plan`, `get_time`, `session_query`, `restart_mcp_server`, and `skill`.
+- (tools) The agent's built-in file tools are `read`, `write`, `edit`, `bash`, `grep`, `save_plan`, `get_time`, `session_search`, `session_fetch`, `restart_mcp_server`, and `skill`.
 - (tools) Programmatic image files a tool writes (`.png`, `.svg`, charts) are artifacts of the existing file-tool pipeline, not a model image-output capability.
 - (tools) When the `bash` tool or a built-in tool panics mid-execution, it publishes a failed-execution event rather than crashing the actor.
 - (tools) The bash and grep tools spawn children terminal-isolated: Unix children run in a new session (setsid), Windows children with CREATE_NO_WINDOW, so child output can never write over the TUI.
@@ -273,3 +273,8 @@ Entries are added or amended **only with human approval**.
 - (preferences) The canonical projects key in `jinn.toml` is `projects` (keyed by `path`); the legacy `[[project]]` spelling is stripped from user files on load (poisoned files) and before every save, is never written by any code path, and is not a serde alias — legacy entries are ignored, not migrated.
 - (tools) `just install-plugins` builds and installs each in-tree plugin via one `jinn plugin add` per plugin (interleaved build+install, aborting at the first failure) rather than building all plugins before installing any; the `build-plugins` recipe remains standalone for artifact-only builds.
 - (tokens) Per-entry token counts are a persisted, content-derived field on chat entries (entries.token_count column), computed once by the token count actor for entries lacking a count and saved by the regular session-snapshot persist path; no separate frontend token cache exists.
+- (search) Sessions are searchable via an FTS5 index over persisted entry prose (user, assistant, tool_call, tool_result, system, error, compaction — never actor/thinking), keyed by (session_id, entry_id).
+- (search) Index freshness is asynchronous: triggers on `sessions` mark sessions dirty; `search_index_actor` reindexes every 5 seconds and drains on startup, so results can trail the newest saves by one poll interval.
+- (search) `session_search` passes queries to FTS5 MATCH unmodified and surfaces SQLite syntax errors verbatim; results are a flat bm25-ranked top-N with per-session rollup counts and no pagination.
+- (search) `session_fetch` addresses entries by stable entry_id; ordinals are rendered positionally in output and never used as addresses.
+- (storage) Schema v26 adds the `session_fts` index table, the `fts_dirty` table, and dirty-marking triggers on `sessions`, seeding every existing session dirty so the first post-upgrade launch backfills the index lazily in the background.
