@@ -19,13 +19,18 @@ use toml::Table;
 #[derive(Debug)]
 pub struct ConfigSection<T: 'static> {
     key: String,
+    slot: ValueSlot,
     _marker: std::marker::PhantomData<fn() -> T>,
 }
+
+/// Shared cell a staged typed section's resolved value lands in.
+type ValueSlot = std::sync::Arc<parking_lot::Mutex<Option<Box<dyn std::any::Any + Send>>>>;
 
 impl<T> ConfigSection<T> {
     fn new(key: &str) -> Self {
         Self {
             key: key.to_owned(),
+            slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             _marker: std::marker::PhantomData,
         }
     }
@@ -34,6 +39,31 @@ impl<T> ConfigSection<T> {
     #[must_use]
     pub fn key(&self) -> &str {
         &self.key
+    }
+
+    /// Takes the resolved value (after [`SectionSet::apply`]);
+    /// `T::default()` when the section was absent-and-optional.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called before `apply` — the value does not exist yet.
+    #[must_use]
+    pub fn take(&self) -> T
+    where
+        T: Default + 'static,
+    {
+        let mut guard = self.slot.lock();
+        match guard.take() {
+            Some(any) => match any.downcast::<T>() {
+                Ok(value) => *value,
+                #[expect(
+                    clippy::unreachable,
+                    reason = "type invariant: the slot only ever holds the T it was set with"
+                )]
+                Err(_) => unreachable!("typed section slot holds exactly T"),
+            },
+            None => T::default(),
+        }
     }
 }
 
@@ -123,36 +153,41 @@ impl std::fmt::Debug for StagedTyped {
 impl SectionSet {
     /// Stages a typed read.
     #[must_use]
-    pub fn add_typed<T: serde::de::DeserializeOwned + Default>(
-        &mut self,
-        key: &str,
-    ) -> ConfigSection<T> {
+    pub fn add_typed<T>(&mut self, key: &str) -> ConfigSection<T>
+    where
+        T: serde::de::DeserializeOwned + Default + Send + 'static,
+    {
         self.stage::<T>(key, false)
     }
 
     /// Stages a typed read where absence is legal. A malformed present
     /// table is still an error.
     #[must_use]
-    pub fn add_typed_optional<T: serde::de::DeserializeOwned + Default>(
-        &mut self,
-        key: &str,
-    ) -> ConfigSection<T> {
+    pub fn add_typed_optional<T>(&mut self, key: &str) -> ConfigSection<T>
+    where
+        T: serde::de::DeserializeOwned + Default + Send + 'static,
+    {
         self.stage::<T>(key, true)
     }
 
-    fn stage<T: serde::de::DeserializeOwned + Default>(
-        &mut self,
-        key: &str,
-        optional: bool,
-    ) -> ConfigSection<T> {
+    fn stage<T>(&mut self, key: &str, optional: bool) -> ConfigSection<T>
+    where
+        T: serde::de::DeserializeOwned + Default + Send + 'static,
+    {
         let staged_key = std::sync::Arc::new(key.to_owned());
         let capture = std::sync::Arc::clone(&staged_key);
+        let section = ConfigSection::<T>::new(key);
+        let slot = std::sync::Arc::clone(&section.slot);
         self.typed.push(StagedTyped {
             key: (*staged_key).clone(),
             optional,
-            convert: Box::new(move |table: &Table| convert::<T>(&capture, table)),
+            convert: Box::new(move |table: &Table| {
+                let value: T = convert::<T>(&capture, table)?;
+                *slot.lock() = Some(Box::new(value) as Box<dyn std::any::Any + Send>);
+                Ok(())
+            }),
         });
-        ConfigSection::new(key)
+        section
     }
 
     /// Stages a dynamic read.
@@ -210,10 +245,10 @@ fn resolve(
 fn convert<T: serde::de::DeserializeOwned + Default>(
     key: &str,
     table: &Table,
-) -> Result<(), SectionError> {
+) -> Result<T, SectionError> {
     let owned = table.clone();
     match T::deserialize(owned) {
-        Ok(_) => Ok(()),
+        Ok(value) => Ok(value),
         Err(err) => Err(SectionError::Malformed {
             key: key.to_owned(),
             detail: err.message().to_owned(),

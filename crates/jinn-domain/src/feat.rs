@@ -8,7 +8,6 @@ pub mod chat_input;
 pub mod compaction_worker;
 pub mod context;
 pub mod cwd_input;
-pub mod discord;
 pub mod discovery;
 pub mod discovery_coordinator;
 pub mod discovery_notifier;
@@ -80,8 +79,7 @@ pub fn composition_routes() -> crate::common::slices::key_routes::KeyRoutes {
         .expect("fresh Slices never has the quake cell registered");
     jinn_quake_bar::attach_quake_bar_rows(&routes, &cell);
     jinn_quake_bar::register_quake_input_hook(&routes, &cell);
-    // The discord row's action is capture-free (it receives the
-    // handler's borrows at dispatch), so attaching needs no handles.
-    discord::attach_discord_rows(&routes);
+    // The discord rows attach through the slice's own activation
+    // (`jinn_discord_slice::activate`) — they are not kernel seams.
     routes
 }

@@ -7,6 +7,9 @@ edition.workspace = true
 # Opt-in: compiles the full 36-grammar tree-sitter set for markdown code-block
 # highlighting instead of the curated default set (see root Cargo.toml).
 syntax-all = ["ratatui-markdown/highlight-lang-all"]
+# Opt-in: exposes the bus test harness (in-crate tests enable it via
+# `cfg(test)`; downstream slice-crate tests opt in by feature).
+test-harness = []
 
 [dependencies]
 # Internal deps

@@ -40,6 +40,7 @@ pub mod slices;
 pub mod view;
 
 pub use cell::TypedCell;
+pub use host::ConfigSectionError;
 pub use host::Direction;
 pub use host::SliceHost;
 pub use line_input::LineInput;

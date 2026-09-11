@@ -17,11 +17,11 @@
 
 use jinn_slices::route::ActionCtx;
 
-use crate::common::slices::Slices;
-use crate::feat::discord::protocol::CreateThreadForSession;
-use crate::feat::discord::status_actor::ConnectionState;
-use crate::feat::discord::status_actor::discord_connection_slot;
-use crate::protocol::IntentResult;
+use crate::status_actor::ConnectionState;
+use crate::status_actor::discord_connection_slot;
+use jinn_discord_msg::CreateThreadForSession;
+use jinn_domain::common::slices::Slices;
+use jinn_domain::protocol::IntentResult;
 
 /// Run the to-thread action (the `gdc` route row).
 ///
@@ -50,8 +50,9 @@ pub fn handle_to_discord_thread(ctx: ActionCtx<'_>) -> IntentResult {
         return IntentResult::empty();
     };
 
-    // Precondition 2: discord enabled in config.
-    if !state.slice_flag_enabled("discord") {
+    // Precondition 2: discord enabled in config (the slice's activate
+    // sets the flag from its config section).
+    if !slices.flag("discord") {
         push_error(
             state,
             "Can't continue in Discord: the Discord bot is not enabled \
@@ -106,12 +107,12 @@ mod tests {
         reason = "test code"
     )]
     use super::handle_to_discord_thread;
-    use crate::common::app_state::AppState;
-    use crate::common::slices::Slices;
-    use crate::common::slices::key_routes::ActionCtx;
-    use crate::feat::discord::ConnectionState;
-    use crate::feat::discord::discord_connection_slot;
-    use crate::feat::session::chat_entry::ChatEntryKind;
+    use crate::ConnectionState;
+    use crate::discord_connection_slot;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::common::slices::Slices;
+    use jinn_domain::common::slices::key_routes::ActionCtx;
+    use jinn_domain::feat::session::chat_entry::ChatEntryKind;
 
     /// Build the state + slices with the happy-path preconditions: a titled
     /// session, discord enabled + connected. (The gateway owns
@@ -123,8 +124,8 @@ mod tests {
         state
             .active_session_mut()
             .set_title("My session".to_owned());
-        state.frontend.preferences.discord.enabled = true;
         let slices = Slices::new();
+        slices.set_flag("discord", true);
         let cell = slices
             .register(
                 discord_connection_slot(),
@@ -176,8 +177,8 @@ mod tests {
     fn regression_title_less_session_gdc_emits_no_request_and_pushes_error() {
         // Given a session with no title (default) but all else fine.
         let mut state = AppState::default();
-        state.frontend.preferences.discord.enabled = true;
         let slices = Slices::new();
+        slices.set_flag("discord", true);
         let cell = slices
             .register(
                 discord_connection_slot(),
@@ -200,9 +201,9 @@ mod tests {
 
     #[rstest::rstest]
     fn discord_disabled_pushes_error_and_emits_nothing() {
-        // Given discord is disabled.
+        // Given discord is disabled (happy state but the flag unset).
         let (mut state, slices) = happy_state();
-        state.frontend.preferences.discord.enabled = false;
+        slices.set_flag("discord", false);
 
         // When running the to-thread action.
         let result = handle_to_discord_thread(ctx(&mut state, &slices));

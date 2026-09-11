@@ -210,15 +210,21 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         self.overlay_views.register(scope, view);
     }
 
+    /// Sets the slice's feature flag in the registry (read model for
+    /// route-action gates).
+    pub fn set_flag(&self, slice: &str, enabled: bool) {
+        self.slices.set_flag(slice, enabled);
+    }
+
     /// Reads the slice's config section as a typed value. The section
     /// table is snapshotted now; conversion to `T` happens when
     /// composition finalizes the host, where a missing table or
     /// malformed TOML aborts launch.
     #[must_use]
-    pub fn config_section<T: serde::de::DeserializeOwned + Default>(
-        &mut self,
-        key: &str,
-    ) -> ConfigSection<T> {
+    pub fn config_section<T>(&mut self, key: &str) -> ConfigSection<T>
+    where
+        T: serde::de::DeserializeOwned + Default + Send + 'static,
+    {
         self.sections.add_typed::<T>(key)
     }
 

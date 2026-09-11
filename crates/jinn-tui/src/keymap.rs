@@ -1405,10 +1405,24 @@ mod tests {
     }
     #[rstest::rstest]
     fn gdc_binds_in_normal_scope_via_the_route_table() {
-        // Given the composed keymap (init + every slice's rows).
+        // Given the composed keymap (init + every slice's rows). The
+        // discord rows come from the slice's activation path, not the
+        // kernel's composition routes — so the test attaches them the
+        // way `activate()` does.
         use jinn_domain::{Key, KeyEvent, Modifiers};
         use ratatui_which_key::NodeResult;
-        let keymap = init_with_slices();
+        let mut routes = jinn_domain::feat::composition_routes();
+        jinn_discord_slice::attach_discord_rows(&routes);
+        let mut keymap = init();
+        crate::keymap_gen::bind_route_rows(&routes, &mut keymap);
+        for scope in crate::keymap_gen::dynamic_scopes(&routes) {
+            keymap.bind(
+                "<M-t>",
+                Intent::ToggleTerminalOverlay { session_id: None },
+                KeyCategory::General,
+                Scope::Dynamic(scope),
+            );
+        }
 
         // When navigating the gdc sequence (g → d → c).
         let path = [

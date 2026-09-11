@@ -2567,6 +2567,7 @@ dependencies = [
  "jinn-cli",
  "jinn-dashboard",
  "jinn-discord",
+ "jinn-discord-slice",
  "jinn-domain",
  "jinn-plugin",
  "jinn-plugin-api",
@@ -2663,6 +2664,8 @@ dependencies = [
  "daow",
  "derive_more",
  "error-stack 0.7.1",
+ "jinn-discord-msg",
+ "jinn-discord-slice",
  "jinn-domain",
  "kameo",
  "kameo_actors",
@@ -2672,6 +2675,47 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-discord-msg"
+version = "0.116.1"
+dependencies = [
+ "jinn-core-types",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
+]
+
+[[package]]
+name = "jinn-discord-slice"
+version = "0.116.1"
+dependencies = [
+ "async-trait",
+ "daow",
+ "error-stack 0.7.1",
+ "jinn-core-types",
+ "jinn-dashboard",
+ "jinn-discord-msg",
+ "jinn-domain",
+ "jinn-session-schema",
+ "jinn-slices",
+ "jinn-testutil",
+ "kameo",
+ "kameo_actors",
+ "kanal",
+ "parking_lot",
+ "rstest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "trouper",
  "wherror",
 ]
 
@@ -2958,6 +3002,7 @@ dependencies = [
  "error-stack 0.7.1",
  "futures",
  "jinn-dashboard",
+ "jinn-discord-slice",
  "jinn-domain",
  "jinn-quake-bar",
  "jinn-selection-widget",

@@ -6,7 +6,7 @@
 //! boolean — "is there an existing mapping for this session?" — so it lives here,
 //! free of serenity / DB / I/O, where it can be unit-tested in isolation.
 
-use jinn_domain::feat::discord::protocol::{CreateThreadReason, GatewayRequest};
+use jinn_discord_msg::{CreateThreadReason, GatewayRequest};
 
 /// The gateway's verdict for a `to-thread` request.
 #[derive(Debug, Clone, PartialEq, Eq)]

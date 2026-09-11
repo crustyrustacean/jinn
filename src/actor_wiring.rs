@@ -120,7 +120,7 @@ impl ActorSystemBuilder {
         Self { args }
     }
     /// Spawn all actors via kameo, build the bus and bridge, and wait for readiness.
-    pub async fn build(self) -> (AppCore, Services) {
+    pub async fn build(self) -> (AppCore, Services, jinn_discord_slice::ActivatedDiscord) {
         let ActorSystemBuilderArgs {
             handle,
             llm_service,
@@ -201,7 +201,6 @@ impl ActorSystemBuilder {
             trouper_system: std::sync::Arc::new(trouper::system::ActorSystem::new(
                 trouper::system::SystemConfig::production(),
             )),
-            discord: jinn_domain::feat::discord::DiscordGatewayChannels::detached(),
         };
 
         let actor_deps = ActorDeps {
@@ -237,51 +236,11 @@ impl ActorSystemBuilder {
         // ── Discord slice ─────────────────────────────────────────────
         // Activation mints the connection cell, spawns the status
         // actor (the connection authority — after the dashboard so its
-        // publications are not missed), creates the gateway kanal
-        // channels unconditionally, config-gates the bridge actor, and
-        // attaches the `gdc` route row. Slice integration is exactly
-        // this call.
-        jinn_domain::feat::discord::activate(&mut services, state.clone()).await;
-
-        // Quake bar slice: activation mints the cell, spawns the actor
-        // (submit-log writer), attaches rows, and registers the input
-        // hook + overlay geometry. Composition owns exactly this call.
-        jinn_quake_bar_activate(&mut services);
-        // ── Forward-bridge route drains ───────────────────────────────
-        // One relay per crossing message, registered on the bus in its
-        // own on_start: publishes after the drains cannot be missed, so
-        // the ordering constraint against slice activation is gone.
-        jinn_domain::common::trouper_bridge::drain_dashboard_routes(&services).await;
-        jinn_quake_bar_drain(&services).await;
-
-        // ── Dashboard slice ───────────────────────────────────────────
-        // Activation mints the cell, spawns the canvas actor FIRST
-        // (subscribe is the readiness point, so no lifecycle event from
-        // subsequently spawned actors is missed), attaches rows,
-        // registers the view + tab. The dashboard is a generic sink: it
-        // folds the lifecycle events and the `ServiceStatusUpdate`
-        // projections owning features publish.
-        #[expect(
-            clippy::panic,
-            reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-        )]
-        if let Err(error) = jinn_dashboard::activate(&mut jinn_dashboard::SliceCtx {
-            slices: &services.slices,
-            key_routes: &services.key_routes,
-            viewport: &mut services.viewport,
-            trouper_system: &services.trouper_system,
-        }) {
-            panic!("dashboard slice activation failed: {error}");
-        }
-
-        // ── Discord slice ─────────────────────────────────────────────
-        // Activation mints the connection cell, spawns the status
-        // actor (the connection authority — after the dashboard so its
-        // publications are not missed), creates the gateway kanal
-        // channels unconditionally, config-gates the bridge actor, and
-        // attaches the `gdc` route row. Slice integration is exactly
-        // this call.
-        jinn_domain::feat::discord::activate(&mut services, state.clone()).await;
+        // publications are not missed), resolves the `[discord]`
+        // section (fail-fast), creates the gateway kanal channels
+        // unconditionally, config-gates the bridge actor, and attaches
+        // the `gdc` route row. Slice integration is exactly this call.
+        let discord_activated = jinn_discord_activate(&mut services, state.clone()).await;
 
         // Quake bar slice: activation mints the cell, spawns the actor
         // (submit-log writer), attaches rows, and registers the input
@@ -1548,7 +1507,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             bridge: services.bridge.clone(),
         };
 
-        (core, services)
+        (core, services, discord_activated)
     }
 }
 
@@ -1589,4 +1548,40 @@ async fn jinn_quake_bar_drain(services: &Services) {
         },
     )
     .await;
+}
+
+/// Activates the discord slice over the kernel's registries.
+///
+/// Composition assembles the `SliceHost` borrows plus the services the
+/// slice's kameo-side bridge actor needs; the slice returns the parked
+/// gateway channels and its validated config for the frontend spawn.
+#[expect(
+    clippy::panic,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+async fn jinn_discord_activate(
+    services: &mut Services,
+    state: jinn_domain::common::state::State,
+) -> jinn_discord_slice::ActivatedDiscord {
+    // `Services` is cheap to clone (Arc fields); the clone side-steps
+    // the host's mutable viewport borrow for the activation call.
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    let activated = jinn_discord_slice::activate(&mut host, &services_snapshot, state)
+        .await
+        .unwrap_or_else(|error| panic!("discord slice activation failed: {error}"));
+    // Config-section resolution: the sink reads the user-preferences
+    // document's raw tables (slice-owned sections survive there).
+    let prefs = services.user_preferences_storage.clone();
+    let sink = move |key: &str| prefs.raw_section(key);
+    if let Err(error) = host.finalize(&sink) {
+        panic!("discord slice finalize failed: {error}");
+    }
+    activated
 }

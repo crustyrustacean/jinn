@@ -1,12 +1,10 @@
 //! Gateway spawn entry point.
 //!
 //! The discord slice owns its wiring (channels, actors, rows) via
-//! `jinn_domain::feat::discord::activate`; this crate is the *frontend* —
-//! the one piece that cannot live in the domain: the poise websocket task.
-//! Composition (`app.rs`) calls [`spawn_gateway`] once per process; the
-//! function decides enablement by reading `[discord] enabled` exactly once
-//! and pulling the parked channels from [`Services`] — composition never
-//! names a discord type.
+//! `jinn_discord_slice::activate`; this crate is the *frontend* —
+//! the one piece that cannot live in the slice: the poise websocket task.
+//! Composition (`app.rs`) calls [`spawn_gateway`] once per process with
+//! the activated slice's parked channels + validated config.
 //!
 //! [`Services`]: jinn_domain::Services
 
@@ -17,13 +15,12 @@ use tokio::task::JoinHandle;
 /// Re-exported so callers name one crate for the pool type.
 pub use daow::Pool as SessionPool;
 
-/// Spawns the Discord gateway task if `[discord] enabled = true`.
+/// Spawns the Discord gateway task when the slice activated enabled.
 ///
-/// Reads the enablement gate exactly once. The channels were minted by
-/// the slice's `activate()` and are parked on `services.discord`; this
-/// pulls the receiving halves and hands the status sender to
-/// [`gateway::run`]. When disabled, nothing is spawned and the parked
-/// channels stay untouched.
+/// `activated` is the slice activation's output: the parked channel
+/// halves and the validated `[discord]` section (the enablement gate,
+/// decided exactly once at activation). When disabled, nothing is
+/// spawned and the parked channels stay untouched.
 ///
 /// `session_pool` backs the thread-map DAO; `intent_handler_cap` grants
 /// the gateway its God-mode state writes.
@@ -32,16 +29,15 @@ pub fn spawn_gateway(
     core: &jinn_domain::AppCore,
     services: &Services,
     session_pool: SessionPool,
-    user_preferences_storage: &jinn_domain::UserPreferencesStorageService,
+    activated: jinn_discord_slice::ActivatedDiscord,
     intent_handler_cap: &jinn_domain::common::tcaps::IntentHandlerCap,
 ) -> Option<JoinHandle<()>> {
-    // The single enablement decision point.
-    let config = user_preferences_storage.read().discord.clone();
+    let jinn_discord_slice::ActivatedDiscord { parked, config } = activated;
     if !config.enabled {
         return None;
     }
 
-    let channels = &services.discord;
+    let channels = &parked;
     let services = services.clone();
     let state = core.state.clone();
     let bridge = core.bridge.clone();
@@ -59,7 +55,7 @@ pub fn spawn_gateway(
             gateway::BotData {
                 state,
                 bridge,
-                thread_map: jinn_domain::feat::discord::DiscordThreadMap::new(session_pool),
+                thread_map: jinn_discord_slice::DiscordThreadMap::new(session_pool),
                 config: std::sync::Arc::new(config),
                 services,
                 intent_handler_cap,
@@ -83,7 +79,6 @@ mod tests {
     use super::*;
     use jinn_domain::common::bridge::Bridge;
     use jinn_domain::common::state::State;
-    use std::sync::Arc;
 
     /// A throwaway in-memory pool; the disabled path never touches it.
     fn detached_pool() -> SessionPool {
@@ -96,14 +91,9 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn spawn_gateway_noops_when_disabled() {
-        // Given services with discord disabled.
+        // Given a disabled slice activation output (the gate decided at
+        // activation).
         let services = jinn_domain::Services::new_fake().await;
-        let mut prefs = services.user_preferences_storage.read();
-        prefs.discord.enabled = false;
-        services
-            .user_preferences_storage
-            .save(&prefs)
-            .expect("save prefs");
         let bus_actor =
             kameo_actors::message_bus::MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
         let bus_ref = kameo::prelude::Spawn::spawn(bus_actor);
@@ -111,10 +101,13 @@ mod tests {
             state: State::new(jinn_domain::common::app_state::AppState::default()),
             bridge: Bridge::new(bus_ref),
         };
-        let prefs_storage = jinn_domain::UserPreferencesStorageService::new(Arc::new(
-            jinn_domain::InMemoryUserPreferencesStorage::new(),
-        ));
-        prefs_storage.reload().expect("test prefs reload");
+        let activated = jinn_discord_slice::ActivatedDiscord {
+            parked: jinn_discord_slice::DiscordGatewayChannels::detached(),
+            config: jinn_discord_slice::DiscordConfig {
+                enabled: false,
+                ..jinn_discord_slice::DiscordConfig::default()
+            },
+        };
         let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
 
         // When spawning the gateway.
@@ -123,7 +116,7 @@ mod tests {
             &core,
             &services,
             detached_pool(),
-            &prefs_storage,
+            activated,
             &cap,
         );
 

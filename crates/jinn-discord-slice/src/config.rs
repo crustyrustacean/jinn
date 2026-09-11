@@ -1,8 +1,9 @@
 //! `[discord]` configuration table for `jinn.toml`.
 //!
-//! When `enabled = true`, the TUI process spawns a Discord bot (via the
-//! `jinn-discord` crate) that drives the same running jinn instance.
-//! See `docs` (and `.plans/discord/plan.md`) for the full workflow.
+//! Slice-owned: read through the host's config-section view with
+//! slice-supplied defaults. When `enabled = true`, the TUI process
+//! spawns a Discord bot (via the `jinn-discord` crate) that drives the
+//! same running jinn instance.
 
 use serde::{Deserialize, Serialize};
 
@@ -45,4 +46,23 @@ pub struct DiscordConfig {
     /// Like every `[discord]` field, changes apply on restart only.
     #[serde(default)]
     pub authorized_users: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DiscordConfig;
+
+    #[rstest::rstest]
+    #[test]
+    fn empty_table_parses_to_disabled_default() {
+        // Given an empty `[discord]` table (all fields defaulted).
+        let raw = "";
+
+        // When deserializing.
+        let config: DiscordConfig = toml::from_str(raw).expect("empty table");
+
+        // Then the bot is disabled by default.
+        assert!(!config.enabled);
+        assert!(config.authorized_users.is_empty());
+    }
 }

@@ -6,7 +6,7 @@
 //! to the model as soon as possible without waiting for the turn to end. The
 //! Discord bot is just another user, so it replicates the same branch.
 
-use crate::feat::session::phase_machine::PhaseKind;
+use jinn_domain::feat::session::phase_machine::PhaseKind;
 
 /// Which bus command an inbound Discord message should be sent as, given the
 /// current session phase.
@@ -33,7 +33,7 @@ pub fn route_decision(phase: PhaseKind) -> RouteDecision {
 #[cfg(test)]
 mod tests {
     use super::{RouteDecision, route_decision};
-    use crate::feat::session::phase_machine::PhaseKind;
+    use jinn_domain::feat::session::phase_machine::PhaseKind;
 
     #[rstest::rstest]
     #[test]

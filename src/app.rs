@@ -510,7 +510,7 @@ impl App {
             Commands::Tui => {
                 let intent_handler_cap =
                     jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
-                let (core, services) = self.runtime.block_on(async {
+                let (core, services, discord_activated) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -528,14 +528,14 @@ impl App {
                     .await
                 });
 
-                // The discord frontend pulls its parked channels from
-                // `services` and no-ops when `[discord] enabled = false`.
+                // The discord frontend consumes the slice activation's
+                // parked channels + config; no-ops when disabled.
                 jinn_discord::spawn_gateway(
                     &self.handle(),
                     &core,
                     &services,
                     session_pool.clone(),
-                    &user_preferences_storage,
+                    discord_activated,
                     &intent_handler_cap,
                 );
 
@@ -548,7 +548,7 @@ impl App {
                 let intent_handler_cap =
                     jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
                 let store_for_shutdown = session_store.clone();
-                let (core, _services) = self.runtime.block_on(async {
+                let (core, _services, _discord_activated) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),

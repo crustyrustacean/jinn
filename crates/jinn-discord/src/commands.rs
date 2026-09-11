@@ -10,8 +10,8 @@
 
 use std::time::Duration;
 
+use jinn_discord_slice::authorize;
 use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
-use jinn_domain::feat::discord::authorize;
 use jinn_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
 use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
 use jinn_domain::protocol::Intent;

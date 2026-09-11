@@ -3,10 +3,9 @@
 //! Discord's three kanal channels are created unconditionally at
 //! [`activate`](super::activate) — a disabled bridge never fills them; an
 //! empty channel is free. The receiving halves (plus the status channel's
-//! sender, which the gateway feeds) are parked here on
-//! [`Services`](crate::Services) so the gateway frontend (`jinn-discord`)
-//! can pull them at spawn time without composition threading discord types
-//! through its signatures.
+//! sender, which the gateway feeds) are returned by `activate()` so the
+//! gateway frontend (`jinn-discord`) can pull them at spawn time without
+//! the kernel threading discord types through its signatures.
 
 /// The channel halves the Discord gateway consumes.
 ///
@@ -20,35 +19,35 @@
 pub struct DiscordGatewayChannels {
     /// Bridge events (bus → gateway), bounded 64. Pairs with the
     /// sender held by the bridge actor.
-    pub bridge_rx: kanal::AsyncReceiver<super::protocol::BridgeEvent>,
+    pub bridge_rx: kanal::AsyncReceiver<jinn_discord_msg::BridgeEvent>,
     /// Gateway requests (bridge → gateway), bounded 16. Pairs with the
     /// sender held by the bridge actor.
-    pub gateway_rx: kanal::AsyncReceiver<super::protocol::GatewayRequest>,
+    pub gateway_rx: kanal::AsyncReceiver<jinn_discord_msg::GatewayRequest>,
     /// Status updates (gateway → status actor), unbounded. The gateway
     /// holds this sender half.
-    pub status_tx: kanal::Sender<super::DiscordStatusUpdate>,
+    pub status_tx: kanal::Sender<jinn_discord_msg::DiscordStatusUpdate>,
 }
 
 /// A freshly-minted channel set plus the partner halves that stay
 /// behind at the mint site.
 pub struct MintedChannels {
-    /// The halves parked on `Services` for the gateway.
+    /// The halves handed to the gateway frontend at spawn time.
     pub parked: DiscordGatewayChannels,
     /// Bridge-event sender, handed to the bridge actor when it spawns.
-    pub bridge_tx: kanal::Sender<super::protocol::BridgeEvent>,
+    pub bridge_tx: kanal::Sender<jinn_discord_msg::BridgeEvent>,
     /// Gateway-request sender, handed to the bridge actor when it spawns.
-    pub gateway_tx: kanal::Sender<super::protocol::GatewayRequest>,
+    pub gateway_tx: kanal::Sender<jinn_discord_msg::GatewayRequest>,
     /// Status-update receiver, handed to the status actor.
-    pub status_rx: kanal::Receiver<super::DiscordStatusUpdate>,
+    pub status_rx: kanal::Receiver<jinn_discord_msg::DiscordStatusUpdate>,
 }
 
 impl DiscordGatewayChannels {
     /// Mints a live channel set with the historical capacities.
     #[must_use]
     pub fn mint() -> MintedChannels {
-        let (bridge_tx, bridge_rx) = kanal::bounded::<super::protocol::BridgeEvent>(64);
-        let (gateway_tx, gateway_rx) = kanal::bounded::<super::protocol::GatewayRequest>(16);
-        let (status_tx, status_rx) = kanal::unbounded::<super::DiscordStatusUpdate>();
+        let (bridge_tx, bridge_rx) = kanal::bounded::<jinn_discord_msg::BridgeEvent>(64);
+        let (gateway_tx, gateway_rx) = kanal::bounded::<jinn_discord_msg::GatewayRequest>(16);
+        let (status_tx, status_rx) = kanal::unbounded::<jinn_discord_msg::DiscordStatusUpdate>();
         MintedChannels {
             parked: Self {
                 bridge_rx: bridge_rx.to_async(),

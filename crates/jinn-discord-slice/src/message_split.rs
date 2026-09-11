@@ -143,7 +143,7 @@ fn is_fence_delimiter(line: &str) -> bool {
 #[cfg(test)]
 mod split_tests {
     use super::split_message;
-    use crate::feat::discord::message_split::DISCORD_MAX_LEN;
+    use crate::message_split::DISCORD_MAX_LEN;
 
     #[rstest::rstest]
     #[test]

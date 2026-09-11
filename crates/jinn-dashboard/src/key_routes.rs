@@ -229,10 +229,6 @@ mod tests {
         fn push_session_error(&mut self, message: &str) {
             self.errors.push(message.to_owned());
         }
-
-        fn slice_flag_enabled(&self, _slice: &str) -> bool {
-            false
-        }
     }
 
     /// A minimal [`jinn_slices::SliceActionState`] stand-in for the row tests.

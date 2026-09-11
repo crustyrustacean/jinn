@@ -18,18 +18,18 @@
 
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 
-use crate::SessionId;
-use crate::common::actor_deps::ActorDeps;
-use crate::common::state::State;
-use crate::feat::session::chat_entry::ChatEntry;
-use crate::feat::session::phase_machine::PhaseKind;
-use crate::feat::session::protocol::session_archived::SessionArchived;
-use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
-use crate::feat::session_lifecycle::protocol::event::{
+use jinn_core_types::SessionId;
+use jinn_domain::common::actor_deps::ActorDeps;
+use jinn_domain::common::state::State;
+use jinn_domain::feat::session::chat_entry::ChatEntry;
+use jinn_domain::feat::session::phase_machine::PhaseKind;
+use jinn_domain::feat::session::protocol::session_archived::SessionArchived;
+use jinn_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+use jinn_domain::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownFinished,
 };
 
-use super::protocol::{
+use jinn_discord_msg::{
     BridgeEvent, CreateThreadForSession, CreateThreadReason, DiscordThreadCreateFailed,
     DiscordThreadCreated, ForumChannelError, GatewayRequest,
 };
@@ -49,7 +49,7 @@ pub struct DiscordBridgeActor {
     /// `ChatEntry` back into the targeted session's history.
     state: State,
     /// Authority to push entries into sessions.
-    session_cap: crate::common::tcaps::session::SessionCap,
+    session_cap: jinn_domain::common::tcaps::session::SessionCap,
 }
 
 /// Dependencies for [`DiscordBridgeActor`].
@@ -64,7 +64,7 @@ pub struct DiscordBridgeActorDeps {
     /// Shared application state.
     pub state: State,
     /// Authority to push entries into sessions.
-    pub session_cap: crate::common::tcaps::session::SessionCap,
+    pub session_cap: jinn_domain::common::tcaps::session::SessionCap,
 }
 
 impl Actor for DiscordBridgeActor {
@@ -179,7 +179,7 @@ impl DiscordBridgeActor {
     pub(crate) fn new(
         tx: kanal::Sender<BridgeEvent>,
         state: State,
-        session_cap: crate::common::tcaps::session::SessionCap,
+        session_cap: jinn_domain::common::tcaps::session::SessionCap,
     ) -> Self {
         let (gateway_tx, _gateway_rx) = kanal::bounded(1);
         Self {
@@ -283,7 +283,7 @@ fn event_discriminant(event: &BridgeEvent) -> &'static str {
 /// gone (closed/archived concurrently since the `gdc` request was emitted).
 fn push_entry(
     state: &State,
-    session_cap: crate::common::tcaps::session::SessionCap,
+    session_cap: jinn_domain::common::tcaps::session::SessionCap,
     session_id: &SessionId,
     entry: ChatEntry,
 ) {
@@ -333,9 +333,9 @@ fn reason_message(reason: &CreateThreadReason) -> String {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
-    use crate::common::app_state::AppState;
-    use crate::feat::session::chat_entry::ChatEntryKind;
-    use crate::protocol::SessionId;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::feat::session::chat_entry::ChatEntryKind;
+    use jinn_domain::protocol::SessionId;
 
     /// Build a bridge actor with one seeded session, plus its session id.
     ///
@@ -346,11 +346,14 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         // Seed the session so `try_session_mut` finds it.
-        state.with_session(&crate::common::tcaps::mint::mint_session_cap(), |v| {
+        state.with_session(&jinn_domain::common::tcaps::mint::mint_session_cap(), |v| {
             v.session.map().get_or_create(&session_id);
         });
-        let actor =
-            DiscordBridgeActor::new(tx, state, crate::common::tcaps::mint::mint_session_cap());
+        let actor = DiscordBridgeActor::new(
+            tx,
+            state,
+            jinn_domain::common::tcaps::mint::mint_session_cap(),
+        );
         (actor, session_id)
     }
 
@@ -458,7 +461,7 @@ mod tests {
         // When pushing an entry for a session that doesn't exist.
         push_entry(
             &state,
-            crate::common::tcaps::mint::mint_session_cap(),
+            jinn_domain::common::tcaps::mint::mint_session_cap(),
             &session_id,
             ChatEntry::system("nope"),
         );
