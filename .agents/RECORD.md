@@ -35,7 +35,12 @@ Entries are added or amended **only with human approval**.
 
 - (arch) A component/actor system built on `kameo` runs domain logic asynchronously, communicating via command routing and event broadcast — except the dashboard and quake-bar slice actors, which run on the trouper actor runtime and receive their inputs through the trouper bridge (`common/trouper_bridge`), which translates in both directions between the kameo bus and trouper topics.
 - (arch) The `actor-runtime` `ActorSystem` handle lives in `Services`, built at the actor-wiring assembly block; slice actors spawn onto it inside their slice's `activate()`.
-- (bridges) The trouper bridge (`common/trouper_bridge`) hosts both route tables; a message crosses fabrics only if registered in its direction, which prevents feedback loops by construction.
+- (bridges) The trouper bridge hosts a runtime route registry (`SliceHost`'s `RouteRegistry`); slices register forward/reverse routes at activation through host verbs (`forward`/`reverse`), and a message crosses fabrics only if registered in its direction, which prevents feedback loops by construction — dual-direction registration panics immediately.
+- (arch) Slice activation runs through a fixed set of host registration verbs (`SliceHost`: cells, route rows, views/tabs/overlays, bridge routes, config sections); in-tree Rust slices activate imperatively via one `activate()` call per slice, called from composition.
+- (slices) Slice code lives in per-slice crates (`jinn-dashboard`, `jinn-quake-bar`, `jinn-discord-slice`; EXPORT slices add a `jinn-<slice>-msg` contracts crate); the kernel references a slice only through its `activate()` call.
+- (slices) Slices read their `jinn.toml` section through read-only typed or dynamic config-section views; defaults are supplied by the slice.
+- (bridges) Cross-fabric asks are, as the documented idiom for future ports, forward-routed commands carrying correlation ids answered by reverse-routed reply events; true asks never cross fabrics.
+- (bridges) Route deletion is part of a producer's port: when a producer moves to trouper, its forward route dies and trouper-native consumers subscribe the topic directly.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
 - (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
 - (arch) `AppState` is the shared state; the frontend writes user input, domain actors write their owned fields, and the TUI renderer reads it on each tick.
@@ -170,7 +175,7 @@ Entries are added or amended **only with human approval**.
 - (storage) Sessions and chat history persist to a SQLite database (`sessions.db` under the data dir).
 - (storage) User-editable TOML files (`providers.toml`, `jinn.toml`) are written through a comment-preserving `DocumentPatcher`, never via plain serialization.
 - (storage) `jinn.toml` holds user preferences and is auto-created if missing.
-- (storage) Startup fail-fast: a malformed providers.toml or jinn.toml aborts launch before actor wiring with a stderr report naming the path and TOML detail; recovery via jinn config subcommands stays unguarded.
+- (storage) Startup fail-fast: whole-file providers.toml/jinn.toml syntax errors abort launch before actor wiring; slice-owned config sections validate at slice activation, which is the fail-fast gate for section-shaped config; recovery via jinn config subcommands stays unguarded.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
 - (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.
 - (theme) Theme discovery flows through a `theme-loader` plugin (prebuilt, shipped by `jinn install`): it scans `~/.config/jinn/themes/*.toml` (ANSI name, ANSI code, hex, RGB formats) and contributes full theme definitions over the plugin wire; the theme picker reads the contribution cache, not disk.
@@ -233,7 +238,7 @@ Entries are added or amended **only with human approval**.
 - (discord) Inbound Discord input — plain messages and every slash command — is accepted only from user IDs listed in `[discord].authorized_users`; an empty or missing list authorizes nobody (deny by default).
 - (discord) Unauthorized slash-command use gets an ephemeral refusal; unauthorized plain messages are silently dropped.
 - (discord) `DiscordStatusUpdate` and `DiscordStatusActor` live in `feat/discord`; discord maintains its own connection cell, the authority for bot-connected checks. The status actor republishes each update on the bus both as the native event (for non-dashboard consumers) and as a generic `ServiceStatusUpdate` (for the dashboard, which knows no feature). Both discord actors spawn via discord's `activate()`.
-- (discord) The three gateway kanal channels (bridge events, gateway requests, status updates) are created unconditionally at activate and parked in `Services`; the `[discord] enabled` gate is read once, by the `jinn_discord` frontend crate, which no-ops when disabled.
+- (discord) The three gateway kanal channels (bridge events, gateway requests, status updates) are created unconditionally at activate and parked on the slice (returned in the activation output, `ActivatedDiscord`); composition hands them to the `jinn_discord` frontend, and the `[discord] enabled` gate is decided once via the slice's config-section view, which no-ops the gateway when disabled.
 - (subagents) Subagents are regular sessions spawned by the `task` tool: fresh history, linked to the parent, inheriting the parent's model, cwd, tools, skills, MCP servers, and a snapshot of the parent's task list; they appear in the sidebar as children marked with a subagent symbol.
 - (subagents) A subagent's task-list mutations do not propagate to its parent's list; parent and child own independent copies after spawn.
 - (subagents) The `task` tool blocks until the child session reaches Idle and forwards the child's last chat entry as its tool result; cancellations forward the cancel entry as a failure.

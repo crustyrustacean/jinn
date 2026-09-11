@@ -9,8 +9,9 @@
 
 /// The channel halves the Discord gateway consumes.
 ///
-/// Created by discord's `activate()`; parked on `Services` until
-/// `jinn_discord::spawn_gateway` drains them. Capacities are the
+/// Created by discord's `activate()`; returned in
+/// [`ActivatedDiscord`](super::ActivatedDiscord) for
+/// `jinn_discord::spawn_gateway` to drain. Capacities are the
 /// historical ones (bridge 64, gateway requests 16, status unbounded).
 ///
 /// The status channel's *receiver* is not parked — the status actor is
