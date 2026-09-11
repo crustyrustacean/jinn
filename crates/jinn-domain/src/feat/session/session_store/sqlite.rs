@@ -1512,6 +1512,10 @@ impl FromRow for RawIndexedEntry {
 /// session's `session_fts` rows and clear the `fts_dirty` marker. If new
 /// writes land between the fetch and the transaction, the `sessions` UPDATE
 /// trigger re-marks the session dirty and the next drain fixes it.
+///
+/// One failing session never blocks the rest of the drain: it is logged,
+/// left dirty (durable pending work), and the loop moves on. The return
+/// value counts only successful reindexes.
 async fn reindex_dirty_sessions(pool: &Pool) -> Result<usize, Report<SessionStoreError>> {
     let dirty: Vec<String> = pool
         .query_all("SELECT session_id AS session_id FROM fts_dirty", vec![])
@@ -1521,8 +1525,16 @@ async fn reindex_dirty_sessions(pool: &Pool) -> Result<usize, Report<SessionStor
 
     let mut reindexed = 0usize;
     for session_id in dirty {
-        reindex_one_session(pool, &session_id).await?;
-        reindexed += 1;
+        match reindex_one_session(pool, &session_id).await {
+            Ok(()) => reindexed += 1,
+            Err(report) => {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = ?report,
+                    "FTS reindex failed for session; leaving it dirty for the next drain"
+                );
+            }
+        }
     }
     Ok(reindexed)
 }

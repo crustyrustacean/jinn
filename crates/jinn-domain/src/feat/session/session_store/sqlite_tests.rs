@@ -2348,3 +2348,114 @@ async fn fetch_tail_marks_excluded_entries() {
     assert!(!window.entries[0].excluded);
     assert!(window.entries[1].excluded);
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn drain_continues_after_one_session_fails_to_reindex() {
+    // Given a store with three dirty sessions and a tripwire trigger that
+    // aborts the FTS rebuild for one specific session.
+    let (_dir, store) = make_store().await;
+    let good_a = SessionId::new();
+    let poisoned = SessionId::new();
+    let good_b = SessionId::new();
+    for id in [&good_a, &poisoned, &good_b] {
+        store
+            .save(&make_two_entry_session(id, "tripwire"))
+            .await
+            .expect("save");
+    }
+    let poisoned_id = poisoned.to_string();
+    let create_sql = format!(
+        "CREATE TRIGGER reindex_tripwire BEFORE DELETE ON fts_dirty \
+         FOR EACH ROW WHEN OLD.session_id = '{poisoned_id}' \
+         BEGIN SELECT RAISE(ABORT, 'tripwire'); END;"
+    );
+    store
+        .pool()
+        .with_conn(move |conn| conn.execute(&create_sql, []).map_err(daow::Error::from))
+        .await
+        .expect("create tripwire");
+
+    // When draining the dirty set.
+    let reindexed = store.reindex_dirty_sessions().await.expect("drain");
+
+    // Then the drain did not fail: two sessions reindexed around the
+    // poisoned one.
+    assert_eq!(reindexed, 2);
+
+    // And both good sessions are searchable.
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "zephyr".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 50,
+        })
+        .await
+        .expect("search");
+    let hit_sessions: std::collections::HashSet<&str> =
+        outcome.hits.iter().map(|h| h.session_id.as_str()).collect();
+    assert_eq!(hit_sessions.len(), 2);
+    assert!(!hit_sessions.contains(poisoned.to_string().as_str()));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn failed_session_stays_dirty_and_recovers_on_next_drain() {
+    // Given a poisoned session (tripwire aborts its rebuild) alongside a
+    // good one, already drained once with the tripwire in place.
+    let (_dir, store) = make_store().await;
+    let poisoned = SessionId::new();
+    store
+        .save(&make_two_entry_session(&poisoned, "tripwire"))
+        .await
+        .expect("save");
+    let poisoned_id = poisoned.to_string();
+    let create_sql = format!(
+        "CREATE TRIGGER reindex_tripwire BEFORE DELETE ON fts_dirty \
+         FOR EACH ROW WHEN OLD.session_id = '{poisoned_id}' \
+         BEGIN SELECT RAISE(ABORT, 'tripwire'); END;"
+    );
+    store
+        .pool()
+        .with_conn(move |conn| conn.execute(&create_sql, []).map_err(daow::Error::from))
+        .await
+        .expect("create tripwire");
+    store.reindex_dirty_sessions().await.expect("first drain");
+
+    // When checking the dirty set, the failed session is still pending.
+    let still_dirty: Vec<String> = store
+        .pool()
+        .query_all("SELECT session_id AS session_id FROM fts_dirty", vec![])
+        .await
+        .expect("read dirty");
+    assert_eq!(still_dirty, vec![poisoned.to_string()]);
+
+    // When the tripwire is removed (fault clears) and the next drain runs.
+    store
+        .pool()
+        .with_conn(move |conn| {
+            conn.execute("DROP TRIGGER reindex_tripwire", [])
+                .map_err(daow::Error::from)
+        })
+        .await
+        .expect("drop tripwire");
+    let reindexed = store.reindex_dirty_sessions().await.expect("second drain");
+
+    // Then the session recovers: reindexed, marker cleared, searchable.
+    assert_eq!(reindexed, 1);
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "zephyr".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+    assert_eq!(outcome.total_matches, 2);
+}
