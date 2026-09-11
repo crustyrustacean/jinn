@@ -7,18 +7,18 @@
 //! - **Lifecycle** — generic `Starting` / `Running` / `Dead`, driven by the
 //!   existing bus events (`ActorStarting`, `ActorStarted`,
 //!   `ActorShutdownCompleted`).
-//! - **Status message** — an optional free-form third column. For the discord
-//!   bot this is the connection sub-state (`Connected`, `Disconnected`, error
-//!   text). Other actors leave it `None` until they gain their own
-//!   service-level reporting.
+//! - **Status message** — an optional free-form third column, driven by
+//!   [`ServiceStatusUpdate`] events published by whichever feature owns the
+//!   service.
 //!
 //! [`DashboardCanvasActor`](canvas_actor::DashboardCanvasActor) owns the
 //! dashboard's slice cell (registered under `dashboard:status` in the
-//! [`Slices`](crate::common::slices::Slices) facade). It receives the generic
-//! lifecycle events, [`DiscordStatusUpdate`](crate::feat::discord::DiscordStatusUpdate)
-//! (republished on the bus by discord's own status actor), and
-//! [`DashboardNav`] for keyboard navigation — all translated onto canvas
-//! topics by the kameo→trouper bridge.
+//! [`Slices`](crate::common::slices::Slices) facade). It is a generic
+//! sink: it receives the lifecycle events and
+//! [`ServiceStatusUpdate`] events published by whichever feature owns a
+//! service (bridged onto the topics by the kameo→trouper bridge), plus
+//! [`DashboardNav`] for keyboard navigation — with no knowledge of any
+//! individual feature.
 pub mod canvas_actor;
 pub mod key_routes;
 pub mod nav;
@@ -91,6 +91,32 @@ use crate::common::AppUiRegistry;
 /// dashboard's historical import path keeps working during extraction.
 pub use jinn_core_types::ActorLifecycle;
 
+/// A service's status for the dashboard, published by the owning feature.
+///
+/// Generic projection onto a dashboard row: `lifecycle: None` leaves the
+/// row's lifecycle untouched (it is driven by the actor-lifecycle events),
+/// and `description: None` preserves any existing description. Features
+/// translate their service-specific state into this event so the dashboard
+/// never needs to know a feature exists.
+///
+/// This is a bridge-crossing type: the kameo→trouper bridge serializes it
+/// onto `jinn.fabric` under its [`Schema`] contract, so the canvas actor's
+/// topic subscription can decode it — hence the serde derives.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ServiceStatusUpdate {
+    /// The dashboard row name (the key the owning feature publishes under,
+    /// e.g. its `spawn_tracked!`/actor name).
+    pub name: String,
+    /// New row description; `None` preserves the existing one.
+    pub description: Option<String>,
+    /// New lifecycle; `None` leaves the row's lifecycle untouched.
+    pub lifecycle: Option<ActorLifecycle>,
+    /// Free-form status message for the third column.
+    pub status_message: Option<String>,
+}
+
+impl crate::common::bus::BusMessage for ServiceStatusUpdate {}
+
 /// A single actor's display data in the dashboard.
 #[derive(Debug, Clone)]
 pub struct DashboardEntry {
@@ -100,8 +126,8 @@ pub struct DashboardEntry {
     pub description: Option<String>,
     /// The actor's current lifecycle phase.
     pub lifecycle: ActorLifecycle,
-    /// Free-form third column. Discord writes its connection status here;
-    /// other actors leave this `None`.
+    /// Free-form third column; the owning feature writes its connection or
+    /// resolution status here via `ServiceStatusUpdate`.
     pub status_message: Option<String>,
 }
 
@@ -436,18 +462,21 @@ mod tests {
     fn set_status_message_sets_message_on_existing_entry() {
         // Given a dashboard with a running actor.
         let mut state = DashboardState::new();
-        state.mark_running("discord", None);
+        state.mark_running("some-service", None);
 
         // When setting a status message.
-        state.set_status_message("discord", Some("Connected".to_owned()));
+        state.set_status_message("some-service", Some("Connected".to_owned()));
 
         // Then the status message is set.
         assert_eq!(
-            entry(&state, "discord").status_message.as_deref(),
+            entry(&state, "some-service").status_message.as_deref(),
             Some("Connected")
         );
         // And the lifecycle is unchanged.
-        assert_eq!(entry(&state, "discord").lifecycle, ActorLifecycle::Running);
+        assert_eq!(
+            entry(&state, "some-service").lifecycle,
+            ActorLifecycle::Running
+        );
     }
 
     #[rstest::rstest]
@@ -456,15 +485,18 @@ mod tests {
         let mut state = DashboardState::new();
 
         // When setting a status message for a new actor.
-        state.set_status_message("discord", Some("Connecting".to_owned()));
+        state.set_status_message("some-service", Some("Connecting".to_owned()));
 
         // Then the entry is created with the message.
         assert_eq!(
-            entry(&state, "discord").status_message.as_deref(),
+            entry(&state, "some-service").status_message.as_deref(),
             Some("Connecting")
         );
         // And defaults to Starting lifecycle.
-        assert_eq!(entry(&state, "discord").lifecycle, ActorLifecycle::Starting);
+        assert_eq!(
+            entry(&state, "some-service").lifecycle,
+            ActorLifecycle::Starting
+        );
     }
 
     #[rstest::rstest]

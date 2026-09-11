@@ -1,18 +1,19 @@
 //! The dashboard actor — owns the dashboard slice cell on trouper.
 //!
-//! Aggregates two data sources into a single dashboard view:
+//! Aggregates three data sources into a single dashboard view:
 //!
 //! - **Generic actor lifecycle** — receives the lifecycle events
 //!   [`ActorStarting`], [`ActorStarted`], and [`ActorShutdownCompleted`] to
 //!   track every actor's `Starting`/`Running`/`Dead` phase.
-//! - **Discord connection status** — receives [`DiscordStatusUpdate`]
-//!   (republished by [`DiscordStatusActor`] onto the bus, bridged to the
-//!   `jinn.fabric` topic), writing the free-form status message into the
-//!   discord entry.
+//! - **Generic service status** — receives [`ServiceStatusUpdate`] events
+//!   published by whichever feature owns a service, applying the optional
+//!   lifecycle, description, and status message to the named row.
 //! - **Keyboard navigation** — receives [`DashboardNav`], bridged onto the
 //!   `jinn.dashboard` topic from the dashboard feature's keybind rows.
 //!
-//! This actor owns the dashboard's slice cell exclusively: the cell is
+//! This actor is a feature-agnostic sink: features translate their own
+//! state into the generic events, so no feature-specific type appears
+//! here. It owns the dashboard's slice cell exclusively: the cell is
 //! minted by [`Slices::register`](crate::common::slices::Slices::register)
 //! at actor wiring, and this actor holds the one write handle. The
 //! renderer and the intent router resolve read handles. Status sources
@@ -35,19 +36,13 @@ use trouper::types::ActorPath;
 
 use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 use crate::common::trouper_bridge;
-use crate::feat::browser_binary_scan::{BinaryFamily, BrowserBinaryVerified};
-use crate::feat::dashboard::DashboardState;
 use crate::feat::dashboard::nav::DashboardNav;
-use crate::feat::discord::DiscordStatusUpdate;
+use crate::feat::dashboard::{ActorLifecycle, DashboardState, ServiceStatusUpdate};
 use jinn_slices::TypedCell;
-
-/// Dashboard entry name for the web-fetch actor — the row whose Notes column
-/// surfaces the resolved browser backend (Chrome/Chromium/Bundled).
-const WEB_FETCH_ENTRY: &str = "web-fetch";
 
 /// The dashboard actor on the canvas runtime.
 ///
-/// Receives lifecycle events, [`DiscordStatusUpdate`], and
+/// Receives lifecycle events, [`ServiceStatusUpdate`], and
 /// [`DashboardNav`] on its topics, folding all of them into the slice
 /// cell.
 pub struct DashboardCanvasActor {
@@ -94,8 +89,7 @@ impl DashboardCanvasActor {
             .handles::<ActorStarting>()
             .handles::<ActorStarted>()
             .handles::<ActorShutdownCompleted>()
-            .handles::<BrowserBinaryVerified>()
-            .handles::<DiscordStatusUpdate>()
+            .handles::<ServiceStatusUpdate>()
             .handles::<DashboardNav>()
             .start();
         #[expect(
@@ -132,17 +126,11 @@ impl DashboardCanvasActor {
         self.cell.update(|s| s.mark_dead(&msg.name, None));
     }
 
-    /// Folds a [`BrowserBinaryVerified`] into the cell: the web-fetch
-    /// entry's Notes column only. Never marks lifecycle — that is the
-    /// lifecycle folds' job, and mixing them would race them.
-    fn apply_browser(&self, msg: &BrowserBinaryVerified) {
-        self.cell
-            .update(|s| s.set_status_message(WEB_FETCH_ENTRY, Some(backend_label(msg))));
-    }
-
-    /// Folds a [`DiscordStatusUpdate`] into the cell.
-    fn apply_discord(&self, msg: &DiscordStatusUpdate) {
-        self.cell.update(|s| apply_discord_update(s, msg));
+    /// Folds a [`ServiceStatusUpdate`] into the cell: the owning
+    /// feature's projection onto its row (optional lifecycle, optional
+    /// description, optional status message).
+    fn apply_service_status(&self, msg: &ServiceStatusUpdate) {
+        self.cell.update(|s| apply_service_update(s, msg));
     }
 
     /// Folds a [`DashboardNav`] into the cell.
@@ -174,15 +162,9 @@ impl MsgHandler<ActorShutdownCompleted> for DashboardCanvasActor {
     }
 }
 
-impl MsgHandler<BrowserBinaryVerified> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: BrowserBinaryVerified, _ctx: &mut MsgCtx<'_>) {
-        self.apply_browser(&msg);
-    }
-}
-
-impl MsgHandler<DiscordStatusUpdate> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: DiscordStatusUpdate, _ctx: &mut MsgCtx<'_>) {
-        self.apply_discord(&msg);
+impl MsgHandler<ServiceStatusUpdate> for DashboardCanvasActor {
+    async fn handle(&mut self, msg: ServiceStatusUpdate, _ctx: &mut MsgCtx<'_>) {
+        self.apply_service_status(&msg);
     }
 }
 
@@ -192,91 +174,30 @@ impl MsgHandler<DashboardNav> for DashboardCanvasActor {
     }
 }
 
-/// Builds the dashboard Notes string for a resolved browser binary.
+/// Apply a generic service status update to the dashboard state.
 ///
-/// Format: `"<family> <version>"` (or the bundled/undetected variants),
-/// optionally suffixed with `" — <path>"` when a path is known, and
-/// optionally prefixed with `"<note>: "` when resolution fell back.
-fn backend_label(msg: &BrowserBinaryVerified) -> String {
-    let label = match msg.family {
-        BinaryFamily::Chrome | BinaryFamily::Chromium => {
-            let family = family_display(msg.family);
-            match &msg.version_major {
-                Some(v) => format!("{family} {v}"),
-                None => format!(
-                    "{family} {} (version undetected)",
-                    jinn_web_fetch::stealth::CHROME_MAJOR
-                ),
-            }
-        }
-        BinaryFamily::Bundled => "Chromium (bundled, version undetected)".to_owned(),
-    };
-
-    let with_path = match &msg.path {
-        Some(p) => format!("{label} — {}", p.display()),
-        None => label,
-    };
-
-    match &msg.fallback_note {
-        Some(note) => format!("{note}: {with_path}"),
-        None => with_path,
-    }
-}
-
-/// Returns the capitalized family name for display.
-fn family_display(family: BinaryFamily) -> &'static str {
-    match family {
-        BinaryFamily::Chrome => "Chrome",
-        BinaryFamily::Chromium => "Chromium",
-        BinaryFamily::Bundled => "Bundled",
-    }
-}
-
-/// Apply a discord connection status update to the dashboard state.
-///
-/// The dashboard is a generic consumer: the entry's identity (name,
-/// description) is read from the event itself, never declared here.
-fn apply_discord_update(dashboard: &mut DashboardState, update: &DiscordStatusUpdate) {
-    let message = update.full_message();
-    let name = update.entry_name();
-    let (lifecycle, with_description) = match update {
-        DiscordStatusUpdate::Connecting => {
-            // Ensure the discord entry exists with a description even
-            // before Connected/Error arrives. The gateway task is not
-            // an actor, so it doesn't emit ActorStarting.
-            (Some(crate::feat::dashboard::ActorLifecycle::Starting), true)
-        }
-        // Disconnected only updates the status message — the lifecycle
-        // (Starting/Running/Dead) is driven by the other update variants.
-        DiscordStatusUpdate::Disconnected => (None, false),
-        DiscordStatusUpdate::Connected => {
-            // The gateway task is not an actor, so it doesn't emit
-            // ActorStarted. Mark it running here.
-            (Some(crate::feat::dashboard::ActorLifecycle::Running), true)
-        }
-        DiscordStatusUpdate::Error { .. } => {
-            // The description is a constant for the discord entry;
-            // attach it on creation even when Error arrives first
-            // (e.g. missing token).
-            (Some(crate::feat::dashboard::ActorLifecycle::Dead), true)
-        }
-    };
-
-    if let Some(lifecycle) = lifecycle {
-        let description = with_description.then(|| update.entry_description().to_owned());
+/// The dashboard is a feature-agnostic sink: the owning feature
+/// translates its own state and publishes this projection; the fold
+/// applies whichever optional fields the event carries (`None`
+/// lifecycle leaves the row's phase untouched; `None` description
+/// preserves the existing one).
+fn apply_service_update(dashboard: &mut DashboardState, update: &ServiceStatusUpdate) {
+    if let Some(lifecycle) = update.lifecycle {
         match lifecycle {
-            crate::feat::dashboard::ActorLifecycle::Starting => {
-                dashboard.mark_starting(name, description);
+            ActorLifecycle::Starting => {
+                dashboard.mark_starting(&update.name, update.description.clone());
             }
-            crate::feat::dashboard::ActorLifecycle::Running => {
-                dashboard.mark_running(name, description);
+            ActorLifecycle::Running => {
+                dashboard.mark_running(&update.name, update.description.clone());
             }
-            crate::feat::dashboard::ActorLifecycle::Dead => {
-                dashboard.mark_dead(name, description);
+            ActorLifecycle::Dead => {
+                dashboard.mark_dead(&update.name, update.description.clone());
             }
         }
     }
-    dashboard.set_status_message(name, Some(message));
+    if update.status_message.is_some() {
+        dashboard.set_status_message(&update.name, update.status_message.clone());
+    }
 }
 
 #[cfg(test)]
@@ -418,7 +339,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn discord_connecting_update_sets_status_message_via_bus() {
+    async fn service_status_update_marks_row_running_with_description_and_message() {
         // Given a dashboard canvas actor wired behind the bridge.
         let services = crate::Services::new_fake().await;
         trouper_bridge::spawn_kameo_to_trouper(&services).await;
@@ -428,65 +349,24 @@ mod tests {
             .expect("fresh registry");
         DashboardCanvasActor::spawn(&services.trouper_system, &cell);
 
-        // When publishing a Connecting update on the bus (as DiscordStatusActor does).
-        services.bus.publish(DiscordStatusUpdate::Connecting).await;
-
-        // Then the dashboard shows the status message.
-        wait_for(|| {
-            dashboard_entry(&cell, "discord")
-                .is_some_and(|(_, m, _)| m.as_deref() == Some("Connecting"))
-        })
-        .await;
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn discord_connected_update_marks_running_with_message_via_bus() {
-        // Given a dashboard canvas actor wired behind the bridge.
-        let services = crate::Services::new_fake().await;
-        trouper_bridge::spawn_kameo_to_trouper(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-
-        // When publishing a Connected update on the bus.
-        services.bus.publish(DiscordStatusUpdate::Connected).await;
-
-        // Then the dashboard shows Running + Connected.
-        wait_for(|| {
-            dashboard_entry(&cell, "discord").is_some_and(|(l, m, _)| {
-                l == ActorLifecycle::Running && m.as_deref() == Some("Connected")
-            })
-        })
-        .await;
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn discord_error_update_marks_dead_with_error_message_via_bus() {
-        // Given a dashboard canvas actor wired behind the bridge.
-        let services = crate::Services::new_fake().await;
-        trouper_bridge::spawn_kameo_to_trouper(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-
-        // When publishing an Error update on the bus.
+        // When publishing a ServiceStatusUpdate carrying lifecycle,
+        // description, and message for a row that does not exist yet.
         services
             .bus
-            .publish(DiscordStatusUpdate::Error {
-                message: "401: invalid token".to_owned(),
+            .publish(ServiceStatusUpdate {
+                name: "discord".to_owned(),
+                description: Some("Discord gateway bot [Task]".to_owned()),
+                lifecycle: Some(ActorLifecycle::Running),
+                status_message: Some("Connected".to_owned()),
             })
             .await;
 
-        // Then the dashboard shows Dead + the error message.
+        // Then the row exists as Running with the description and message.
         wait_for(|| {
-            dashboard_entry(&cell, "discord").is_some_and(|(l, m, _)| {
-                l == ActorLifecycle::Dead && m.as_deref() == Some("Error: 401: invalid token")
+            dashboard_entry(&cell, "discord").is_some_and(|(l, m, d)| {
+                l == ActorLifecycle::Running
+                    && m.as_deref() == Some("Connected")
+                    && d.as_deref() == Some("Discord gateway bot [Task]")
             })
         })
         .await;
@@ -494,8 +374,8 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn discord_error_update_first_still_sets_description() {
-        // Given a dashboard canvas actor (simulating missing-token: Error arrives first).
+    async fn service_status_update_without_lifecycle_leaves_lifecycle_untouched() {
+        // Given a dashboard canvas actor whose llm row is already Running.
         let services = crate::Services::new_fake().await;
         trouper_bridge::spawn_kameo_to_trouper(&services).await;
         let slices = Slices::new();
@@ -503,56 +383,33 @@ mod tests {
             .register(dashboard_slot(), DashboardState::new())
             .expect("fresh registry");
         DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-
-        // When publishing an Error update as the very first message.
         services
             .bus
-            .publish(DiscordStatusUpdate::Error {
-                message: "no token configured".to_owned(),
+            .publish(ActorStarted {
+                name: "llm".to_owned(),
+                description: None,
             })
             .await;
-
-        // Then the entry is created with the identity carried by the
-        // event itself.
-        let expected = DiscordStatusUpdate::Error {
-            message: String::new(),
-        }
-        .entry_description()
-        .to_owned();
         wait_for(|| {
-            dashboard_entry(&cell, "discord")
-                .is_some_and(|(_, _, d)| d.as_deref() == Some(expected.as_str()))
+            dashboard_entry(&cell, "llm").is_some_and(|(l, _, _)| l == ActorLifecycle::Running)
         })
         .await;
-    }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn browser_binary_verified_writes_chrome_label_to_web_fetch_notes() {
-        // Given a dashboard canvas actor wired behind the bridge.
-        let services = crate::Services::new_fake().await;
-        trouper_bridge::spawn_kameo_to_trouper(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-
-        // When publishing BrowserBinaryVerified for a system Chrome.
+        // When publishing a message-only ServiceStatusUpdate (None lifecycle).
         services
             .bus
-            .publish(BrowserBinaryVerified {
-                family: BinaryFamily::Chrome,
-                path: Some(std::path::PathBuf::from("/usr/bin/google-chrome")),
-                version_major: Some("138".to_owned()),
-                fallback_note: None,
+            .publish(ServiceStatusUpdate {
+                name: "llm".to_owned(),
+                description: None,
+                lifecycle: None,
+                status_message: Some("resolving…".to_owned()),
             })
             .await;
 
-        // Then the web-fetch row's Notes column carries the backend label.
+        // Then the message lands but the lifecycle stays Running.
         wait_for(|| {
-            dashboard_entry(&cell, "web-fetch").is_some_and(|(_, m, _)| {
-                m.as_deref() == Some("Chrome 138 — /usr/bin/google-chrome")
+            dashboard_entry(&cell, "llm").is_some_and(|(l, m, _)| {
+                l == ActorLifecycle::Running && m.as_deref() == Some("resolving…")
             })
         })
         .await;
@@ -560,8 +417,8 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn browser_binary_verified_writes_bundled_label_to_web_fetch_notes() {
-        // Given a dashboard canvas actor wired behind the bridge.
+    async fn service_status_update_without_message_preserves_existing_message() {
+        // Given a dashboard canvas actor whose web-fetch row carries a message.
         let services = crate::Services::new_fake().await;
         trouper_bridge::spawn_kameo_to_trouper(&services).await;
         let slices = Slices::new();
@@ -569,92 +426,39 @@ mod tests {
             .register(dashboard_slot(), DashboardState::new())
             .expect("fresh registry");
         DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-
-        // When publishing BrowserBinaryVerified for the bundled binary.
         services
             .bus
-            .publish(BrowserBinaryVerified {
-                family: BinaryFamily::Bundled,
-                path: None,
-                version_major: None,
-                fallback_note: Some("No system Chrome/Chromium — using bundled".to_owned()),
+            .publish(ServiceStatusUpdate {
+                name: "web-fetch".to_owned(),
+                description: None,
+                lifecycle: None,
+                status_message: Some("Chrome 138".to_owned()),
             })
             .await;
-
-        // Then the web-fetch row's Notes column shows the bundled label with note.
-        wait_for(|| {
-            dashboard_entry(&cell, "web-fetch").is_some_and(|(_, m, _)| {
-                m.as_deref()
-                    == Some(
-                        "No system Chrome/Chromium — using bundled: Chromium (bundled, version undetected)",
-                    )
-            })
-        })
-        .await;
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn browser_binary_verified_shows_fallback_version_when_undetected() {
-        // Given a dashboard canvas actor wired behind the bridge.
-        let services = crate::Services::new_fake().await;
-        trouper_bridge::spawn_kameo_to_trouper(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-
-        // When publishing BrowserBinaryVerified for a system Chromium with no version.
-        services
-            .bus
-            .publish(BrowserBinaryVerified {
-                family: BinaryFamily::Chromium,
-                path: Some(std::path::PathBuf::from("/usr/bin/chromium")),
-                version_major: None,
-                fallback_note: None,
-            })
-            .await;
-
-        // Then the displayed version falls back to CHROME_MAJOR so it matches the UA.
-        let expected = format!(
-            "Chromium {} (version undetected) — /usr/bin/chromium",
-            jinn_web_fetch::stealth::CHROME_MAJOR
-        );
         wait_for(|| {
             dashboard_entry(&cell, "web-fetch")
-                .is_some_and(|(_, m, _)| m.as_deref() == Some(expected.as_str()))
+                .is_some_and(|(_, m, _)| m.as_deref() == Some("Chrome 138"))
         })
         .await;
-    }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn browser_binary_verified_does_not_create_phantom_entry() {
-        // Given a dashboard canvas actor wired behind the bridge.
-        let services = crate::Services::new_fake().await;
-        trouper_bridge::spawn_kameo_to_trouper(&services).await;
-        let slices = Slices::new();
-        let cell = slices
-            .register(dashboard_slot(), DashboardState::new())
-            .expect("fresh registry");
-        DashboardCanvasActor::spawn(&services.trouper_system, &cell);
-
-        // When publishing BrowserBinaryVerified.
+        // When publishing a lifecycle-only ServiceStatusUpdate (None message).
         services
             .bus
-            .publish(BrowserBinaryVerified {
-                family: BinaryFamily::Bundled,
-                path: None,
-                version_major: None,
-                fallback_note: None,
+            .publish(ServiceStatusUpdate {
+                name: "web-fetch".to_owned(),
+                description: None,
+                lifecycle: Some(ActorLifecycle::Dead),
+                status_message: None,
             })
             .await;
-        // And giving the pipeline a moment to deliver anything it would.
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // Then no phantom web-fetch-browser entry is created.
-        assert!(dashboard_entry(&cell, "web-fetch-browser").is_none());
+        // Then the lifecycle lands but the message is preserved.
+        wait_for(|| {
+            dashboard_entry(&cell, "web-fetch").is_some_and(|(l, m, _)| {
+                l == ActorLifecycle::Dead && m.as_deref() == Some("Chrome 138")
+            })
+        })
+        .await;
     }
 
     #[rstest::rstest]

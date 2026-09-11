@@ -748,6 +748,53 @@ async fn custom_headers_from_config_are_sent() {
     // Then the request succeeded (mock assertion is implicit via match_header).
 }
 
+#[rstest::rstest]
+#[tokio::test]
+async fn openrouter_attribution_headers_are_sent_on_chat_requests() {
+    // Given an OpenRouter factory pointed at a mock server.
+    let mut server = mockito::Server::new_async().await;
+    let config = ProviderConfig::openrouter();
+    let factory = OpenAiCompatibleFactory::new(
+        config,
+        "test-model".to_owned(),
+        Some(server.url()),
+        "test-key".to_owned(),
+        None,
+        None,
+        "test-openrouter".to_owned(),
+    );
+
+    // The mock only matches when all three attribution headers ride on the request.
+    server
+        .mock("POST", "/chat/completions")
+        .match_header("http-referer", "https://jaysonlennon.dev")
+        .match_header("x-openrouter-title", "jinn")
+        .match_header("x-openrouter-categories", "cli-agent")
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body("data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+        .create_async()
+        .await;
+
+    let service = factory.create().unwrap();
+    let stream = service
+        .chat_stream_with_tools(
+            None,
+            vec![LlmMessage::User {
+                content: "hi".into(),
+                attachments: Vec::new(),
+            }],
+            vec![],
+        )
+        .await
+        .unwrap();
+
+    // When consuming the stream, the attribution headers were matched by the mock.
+    let _events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    // Then the request succeeded (mock assertion is implicit via match_header).
+}
+
 // ---------------------------------------------------------------------------
 // Reasoning effort wire shape (AC3)
 // ---------------------------------------------------------------------------

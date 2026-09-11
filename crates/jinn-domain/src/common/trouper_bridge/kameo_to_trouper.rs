@@ -14,9 +14,8 @@ use crate::Services;
 use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 use crate::common::actor_deps::ActorDeps;
 use crate::common::trouper_bridge::{dashboard_topic, fabric_topic, forward, quake_bar_topic};
-use crate::feat::browser_binary_scan::BrowserBinaryVerified;
+use crate::feat::dashboard::ServiceStatusUpdate;
 use crate::feat::dashboard::nav::DashboardNav;
-use crate::feat::discord::DiscordStatusUpdate;
 use crate::feat::quake_bar::command::SubmitQuakeBarCommand;
 
 /// The bridge actor — kameo bus subscriber, trouper topic publisher.
@@ -53,10 +52,7 @@ impl Actor for KameoToTrouperBridgeActor {
             .subscribe(actor_ref.clone().recipient::<ActorShutdownCompleted>())
             .await;
         args.deps
-            .subscribe(actor_ref.clone().recipient::<BrowserBinaryVerified>())
-            .await;
-        args.deps
-            .subscribe(actor_ref.clone().recipient::<DiscordStatusUpdate>())
+            .subscribe(actor_ref.clone().recipient::<ServiceStatusUpdate>())
             .await;
         args.deps
             .subscribe(actor_ref.clone().recipient::<DashboardNav>())
@@ -99,19 +95,11 @@ impl Message<ActorShutdownCompleted> for KameoToTrouperBridgeActor {
     }
 }
 
-impl Message<BrowserBinaryVerified> for KameoToTrouperBridgeActor {
+impl Message<ServiceStatusUpdate> for KameoToTrouperBridgeActor {
     type Reply = ();
 
-    async fn handle(&mut self, msg: BrowserBinaryVerified, _ctx: &mut Context<Self, Self::Reply>) {
-        forward!(self, msg, fabric_topic(), BrowserBinaryVerified);
-    }
-}
-
-impl Message<DiscordStatusUpdate> for KameoToTrouperBridgeActor {
-    type Reply = ();
-
-    async fn handle(&mut self, msg: DiscordStatusUpdate, _ctx: &mut Context<Self, Self::Reply>) {
-        forward!(self, msg, fabric_topic(), DiscordStatusUpdate);
+    async fn handle(&mut self, msg: ServiceStatusUpdate, _ctx: &mut Context<Self, Self::Reply>) {
+        forward!(self, msg, fabric_topic(), ServiceStatusUpdate);
     }
 }
 
@@ -200,13 +188,12 @@ mod tests {
         let shutdown = ActorShutdownCompleted {
             name: "llm".to_owned(),
         };
-        let browser = BrowserBinaryVerified {
-            family: crate::feat::browser_binary_scan::BinaryFamily::Chrome,
-            path: Some(std::path::PathBuf::from("/usr/bin/chrome")),
-            version_major: Some("138".to_owned()),
-            fallback_note: None,
+        let status = ServiceStatusUpdate {
+            name: "discord".to_owned(),
+            description: Some("Discord gateway bot [Task]".to_owned()),
+            lifecycle: Some(jinn_core_types::ActorLifecycle::Running),
+            status_message: Some("Connected".to_owned()),
         };
-        let discord = DiscordStatusUpdate::Connected;
 
         // When round-tripping each through serde and naming its schema.
         let cases: Vec<(SchemaId, serde_json::Value, serde_json::Value)> = vec![
@@ -236,14 +223,9 @@ mod tests {
                 serde_json::to_value(roundtrip(&shutdown)).unwrap(),
             ),
             (
-                BrowserBinaryVerified::schema_id(),
-                serde_json::to_value(&browser).unwrap(),
-                serde_json::to_value(roundtrip(&browser)).unwrap(),
-            ),
-            (
-                DiscordStatusUpdate::schema_id(),
-                serde_json::to_value(&discord).unwrap(),
-                serde_json::to_value(roundtrip(&discord)).unwrap(),
+                ServiceStatusUpdate::schema_id(),
+                serde_json::to_value(&status).unwrap(),
+                serde_json::to_value(roundtrip(&status)).unwrap(),
             ),
         ];
 

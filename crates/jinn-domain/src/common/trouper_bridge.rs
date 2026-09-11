@@ -10,13 +10,13 @@
 //!
 //! Topic layout (see [`topics`]):
 //!
-//! - `jinn.fabric` — actor lifecycle events, browser binary resolution,
-//!   and discord status (the dashboard's cross-actor inputs).
+//! - `jinn.fabric` — actor lifecycle events and generic service status
+//!   updates (the dashboard's cross-actor inputs).
 //! - `jinn.dashboard` — dashboard keyboard navigation.
 //! - `jinn.quake-bar` — quake bar submit commands.
 //!
 //! Payloads cross as JSON under each message's [`Schema`] contract;
-//! the `Schema` impls for the seven crossing types live here (schema
+//! the `Schema` impls for the crossing types live here (schema
 //! descriptors are transport metadata — they belong with the bridge
 //! that mints envelopes, not with the domain types themselves).
 //!
@@ -36,9 +36,8 @@ use trouper::schema::{FieldTy, Schema, SchemaKind};
 use trouper::types::{SchemaId, Topic};
 
 use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
-use crate::feat::browser_binary_scan::BrowserBinaryVerified;
+use crate::feat::dashboard::ServiceStatusUpdate;
 use crate::feat::dashboard::nav::DashboardNav;
-use crate::feat::discord::DiscordStatusUpdate;
 use crate::feat::quake_bar::command::SubmitQuakeBarCommand;
 
 /// Trouper topic names the bridge publishes onto.
@@ -106,8 +105,7 @@ pub(crate) fn forward_schema_ids() -> Vec<SchemaId> {
         <ActorStarting as Schema>::schema_id(),
         <ActorStarted as Schema>::schema_id(),
         <ActorShutdownCompleted as Schema>::schema_id(),
-        <BrowserBinaryVerified as Schema>::schema_id(),
-        <DiscordStatusUpdate as Schema>::schema_id(),
+        <ServiceStatusUpdate as Schema>::schema_id(),
     ]
 }
 
@@ -160,13 +158,9 @@ impl_schema!(ActorShutdownCompleted, "ActorShutdownCompleted", SchemaKind::Event
     description: "An actor has completed shutdown.",
     fields: ["name" => FieldTy::Str]);
 
-impl_schema!(BrowserBinaryVerified, "BrowserBinaryVerified", SchemaKind::Event,
-    description: "The configured browser binary has been resolved (enum + paths in payload).",
-    fields: ["family" => FieldTy::Str]);
-
-impl_schema!(DiscordStatusUpdate, "DiscordStatusUpdate", SchemaKind::Event,
-    description: "Discord gateway connection status (enum payload).",
-    fields: []);
+impl_schema!(ServiceStatusUpdate, "ServiceStatusUpdate", SchemaKind::Event,
+    description: "A feature's projection onto its dashboard row (optional lifecycle, description, status message).",
+    fields: ["name" => FieldTy::Str]);
 
 /// Builds a trouper [`Event`] from a crossing message.
 ///

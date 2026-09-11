@@ -62,7 +62,7 @@ Entries are added or amended **only with human approval**.
 - (context) `#name` prompt-template tokens in user text expand to the template body; both token kinds are consumed in a second expansion pass.
 - (context) `@path` tokens resolve to `file://` URIs against cwd/home when the file is a readable image; otherwise the token is left as literal text.
 - (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) and browser-binary detection (Chrome vs bundled) for the web-fetch feature.
-- (dashboard) Dashboard state is a `Slices` cell owned by `DashboardCanvasActor`, fed by events and `DashboardNav` messages; the dashboard folds Discord's `DiscordStatusUpdate` event for display only.
+- (dashboard) Dashboard state is a `Slices` cell owned by `DashboardCanvasActor`, fed by generic events: actor-lifecycle events and `ServiceStatusUpdate` status updates; features publish `ServiceStatusUpdate` for display only.
 - (slices) Render slices live in per-slice typed cells behind the `Slices` facade; registration mints exactly one write handle, held by the owning actor; the renderer and intent router hold read handles only.
 - (slices) Slice integration is a single `activate()` per slice called from composition (launch/actor-wiring); removing the call removes the slice with no other edits.
 - (slices) Route rows can bind into named composition scopes via `BindSite::StaticScopes`; a slice's entry-point key (e.g. discord's `gdc`) is a slice-owned route row with no central intent variant, and which-key prefix groups derive from attached rows instead of hardcoded calls.
@@ -147,6 +147,7 @@ Entries are added or amended **only with human approval**.
 - (providers) `providers.toml` declares providers as map-keyed tables (`[providers.<name>]`); provider order in the file carries no meaning, and duplicate names are rejected by TOML parsing.
 - (providers) Model metadata precedence is: per-model config > provider-block config > API-discovered cache > models.dev.
 - (providers) `providers.toml` is hand-authored only; discovered models are never written into it.
+- (providers) OpenRouter requests identify as jinn via static attribution headers (HTTP-Referer https://jaysonlennon.dev, X-OpenRouter-Title jinn, X-OpenRouter-Categories cli-agent) applied to chat, model-list, and endpoint-list requests.
 - (selection) Chat entry selection applies an accumulated-exclude guard that only takes effect after a threshold, with per-entry forced include/exclude tracked separately.
 - (session) A replacement session seeded on archive inherits reasoning effort from the global default.
 - (session) An empty session that was never interacted with is not persisted on archive.
@@ -231,7 +232,7 @@ Entries are added or amended **only with human approval**.
 - (testing) just lint rejects bare #[test]/#[tokio::test] attributes without an accompanying rstest attribute.
 - (discord) Inbound Discord input — plain messages and every slash command — is accepted only from user IDs listed in `[discord].authorized_users`; an empty or missing list authorizes nobody (deny by default).
 - (discord) Unauthorized slash-command use gets an ephemeral refusal; unauthorized plain messages are silently dropped.
-- (discord) `DiscordStatusUpdate` and `DiscordStatusActor` live in `feat/discord`; discord maintains its own connection cell, the authority for bot-connected checks; the dashboard consumes the event for display only. Both discord actors spawn via discord's `activate()`; the event itself carries the dashboard entry's identity (`entry_name`/`entry_description`).
+- (discord) `DiscordStatusUpdate` and `DiscordStatusActor` live in `feat/discord`; discord maintains its own connection cell, the authority for bot-connected checks. The status actor republishes each update on the bus both as the native event (for non-dashboard consumers) and as a generic `ServiceStatusUpdate` (for the dashboard, which knows no feature). Both discord actors spawn via discord's `activate()`.
 - (discord) The three gateway kanal channels (bridge events, gateway requests, status updates) are created unconditionally at activate and parked in `Services`; the `[discord] enabled` gate is read once, by the `jinn_discord` frontend crate, which no-ops when disabled.
 - (subagents) Subagents are regular sessions spawned by the `task` tool: fresh history, linked to the parent, inheriting the parent's model, cwd, tools, skills, MCP servers, and a snapshot of the parent's task list; they appear in the sidebar as children marked with a subagent symbol.
 - (subagents) A subagent's task-list mutations do not propagate to its parent's list; parent and child own independent copies after spawn.
@@ -272,7 +273,8 @@ Entries are added or amended **only with human approval**.
 - (ui) The session picker renders tree connectors within the session-name column, not as a row prefix; connectors are excluded from filter matching and never stored in session titles.
 - (plugins) `jinn plugin install-builtins` overwrites all builtin plugin payloads and writes `[plugin.<name>]` entries only for plugins missing from `jinn.toml`.
 - (plugins) Builtin seeding registration is add-only: existing `[plugin.<name>]` entries are never modified or removed by `jinn install` or `jinn plugin install-builtins`.
-- (ui) Annotation (Sources) entries render collapsed by default — header plus a muted expand hint — and toggle via the shared `e` expand keybind, like tool entries and compaction blocks.
+- (ui) Annotation (Sources) entries render collapsed by default — header in theme-tunable sources_header colors plus a muted expand hint — and toggle via the shared `e` expand keybind, like tool entries and compaction blocks.
+- (keybinds) `[` / `]` + `s` jumps the selection to the previous/next Sources (annotation) entry in chat history, clamping at the ends without wrapping.
 - (testing) Default config templates (default_jinn.toml, default_providers.toml) are independent of code defaults: tests guarantee they parse, document every config key, contain no dead keys, and their marked examples uncomment into a valid config.
 - (prompts) Shipped prompts live in `res/prompts`, are embedded at compile time via the `BUNDLED` install catalogue, and `jinn install` seeds them to the user prompts dir, skipping files that already exist unless `--force`.
 - (ui) The quake bar's session section shows both the currently-applied auto-prune token total and the pending accumulation total; the applied total derives from entry context-history at render time, excluding compaction and user-sourced excludes.
