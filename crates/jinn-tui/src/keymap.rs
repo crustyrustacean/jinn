@@ -694,7 +694,7 @@ mod tests {
             Scope::Input,
             Scope::Dynamic(jinn_dashboard::dashboard_scope()),
             Scope::SidebarSessions,
-            Scope::Dynamic(jinn_domain::feat::quake_bar::quake_scope()),
+            Scope::Dynamic(jinn_quake_bar::quake_scope()),
         ] {
             // Given the default keymap (plus slice rows) starting in `scope`.
             let keymap = init_with_slices();
@@ -798,7 +798,7 @@ mod tests {
     #[case(Scope::PrunerAccumulationInput)]
     #[case(Scope::CwdInput)]
     #[case(Scope::ProjectAddInput)]
-    #[case(Scope::Dynamic(jinn_domain::feat::quake_bar::quake_scope()))]
+    #[case(Scope::Dynamic(jinn_quake_bar::quake_scope()))]
     #[case(Scope::TerminalView)]
     fn alt_t_resolves_in_every_non_terminal_scope(#[case] scope: Scope) {
         use crate::app::WhichKeyInstance;
@@ -864,7 +864,7 @@ mod tests {
     #[case(Scope::PrunerAccumulationInput)]
     #[case(Scope::CwdInput)]
     #[case(Scope::ProjectAddInput)]
-    #[case(Scope::Dynamic(jinn_domain::feat::quake_bar::quake_scope()))]
+    #[case(Scope::Dynamic(jinn_quake_bar::quake_scope()))]
     fn quake_backtick_resolves_in_every_non_terminal_scope(#[case] scope: Scope) {
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, KeyEvent, Modifiers};
@@ -886,7 +886,7 @@ mod tests {
         let intent = wk.handle_key(alt_backtick);
 
         // Then it resolves (QuakeBar binds <M-`> to *close*, the rest open).
-        let quake_scope = jinn_domain::feat::quake_bar::quake_scope();
+        let quake_scope = jinn_quake_bar::quake_scope();
         let expected_close = matches!(&scope, Scope::Dynamic(id) if *id == quake_scope);
         let resolved = intent.expect("{scope:?}: <M-`> must resolve; got None");
         match &resolved {
@@ -1119,10 +1119,7 @@ mod tests {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init_with_slices();
-        let mut wk = WhichKeyInstance::new(
-            keymap,
-            Scope::Dynamic(jinn_domain::feat::quake_bar::quake_scope()),
-        );
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Dynamic(jinn_quake_bar::quake_scope()));
 
         // When pressing ESC.
         let esc = KeyEvent {
@@ -1151,10 +1148,7 @@ mod tests {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init_with_slices();
-        let mut wk = WhichKeyInstance::new(
-            keymap,
-            Scope::Dynamic(jinn_domain::feat::quake_bar::quake_scope()),
-        );
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Dynamic(jinn_quake_bar::quake_scope()));
 
         // When pressing <M-`> (the scoped close binding, overriding the global opener).
         let meta_backtick = KeyEvent {
@@ -1184,10 +1178,7 @@ mod tests {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init_with_slices();
-        let mut wk = WhichKeyInstance::new(
-            keymap,
-            Scope::Dynamic(jinn_domain::feat::quake_bar::quake_scope()),
-        );
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Dynamic(jinn_quake_bar::quake_scope()));
 
         // When pressing a plain printable char.
         let key_x = KeyEvent {
@@ -1219,10 +1210,7 @@ mod tests {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init_with_slices();
-        let mut wk = WhichKeyInstance::new(
-            keymap,
-            Scope::Dynamic(jinn_domain::feat::quake_bar::quake_scope()),
-        );
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Dynamic(jinn_quake_bar::quake_scope()));
 
         // When pressing PageUp.
         let pgup = KeyEvent {

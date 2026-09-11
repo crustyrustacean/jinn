@@ -98,6 +98,20 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         }
     }
 
+    /// The trouper actor system, for slice actors that spawn with
+    /// custom builders (cell-injecting `start_with` overrides).
+    #[must_use]
+    pub fn system(&self) -> &'a Arc<ActorSystem> {
+        self.system
+    }
+
+    /// The kernel's key-route table, for slices that attach rows with
+    /// captured cell handles (the row actions close over them).
+    #[must_use]
+    pub fn key_routes(&self) -> &'a KeyRoutes {
+        self.key_routes
+    }
+
     /// Mints the one write handle for a slice cell.
     ///
     /// # Errors

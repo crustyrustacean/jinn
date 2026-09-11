@@ -141,7 +141,7 @@ pub struct Services {
     /// activation; the generic overlay pass resolves the active scope's
     /// renderer.
     #[debug(skip)]
-    pub overlay_views: crate::common::overlay_views::OverlayViews,
+    pub overlay_views: crate::common::overlay_views::OverlayViews<jinn_slices::RenderFacts>,
 
     /// Actor-canvas runtime system hosting the ported slice actors
     /// (dashboard, quake-bar). Built once here; slice `activate` functions
@@ -227,7 +227,8 @@ impl Services {
             slices: crate::common::slices::Slices::new(),
             key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
             viewport: crate::common::slices::view::Viewport::new(),
-            overlay_views: crate::common::overlay_views::OverlayViews::new(),
+            overlay_views:
+                crate::common::overlay_views::OverlayViews::<jinn_slices::RenderFacts>::new(),
             trouper_system: Arc::new(trouper::system::ActorSystem::new(
                 trouper::system::SystemConfig::production(),
             )),
@@ -284,7 +285,8 @@ impl Services {
             slices: crate::common::slices::Slices::new(),
             key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
             viewport: crate::common::slices::view::Viewport::new(),
-            overlay_views: crate::common::overlay_views::OverlayViews::new(),
+            overlay_views:
+                crate::common::overlay_views::OverlayViews::<jinn_slices::RenderFacts>::new(),
             trouper_system: Arc::new(trouper::system::ActorSystem::new(
                 trouper::system::SystemConfig::production(),
             )),

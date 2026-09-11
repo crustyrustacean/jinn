@@ -368,7 +368,7 @@ async fn dashboard_content_fills_full_width() {
 
 /// Writes into the dashboard slice cell through the app registry.
 fn write_dashboard(app: &crate::TuiApp, f: impl FnOnce(&mut jinn_dashboard::DashboardState)) {
-    let cell: jinn_domain::common::slices::TypedCell<jinn_dashboard::DashboardState> = app
+    let cell: jinn_slices::TypedCell<jinn_dashboard::DashboardState> = app
         .services
         .slices
         .reader(&jinn_dashboard::dashboard_slot())

@@ -317,7 +317,8 @@ fn render_active_overlay(
             let overlay = ctx.slices.overlay(id)?;
             let overlay_area = overlay(&area)?;
             let view = ctx.overlay_view(id)?;
-            view(frame, overlay_area, ctx);
+            let facts = ctx.facts();
+            view(frame, overlay_area, &facts);
             None
         }
         _ => None,

@@ -1,8 +1,15 @@
-//! Commands routed to the [`QuakeBarActor`](super::quake_bar_actor).
+//! The quake bar's crossing command.
+//!
+//! [`SubmitQuakeBarCommand`] is the message the input-hook submit action
+//! publishes on the kameo bus; the forward bridge (route staged at this
+//! slice's activation) translates it onto the `jinn.quake-bar` topic,
+//! where [`QuakeBarCanvasActor`](crate::canvas_actor::QuakeBarCanvasActor)
+//! subscribes. This crate owns the type and its `Schema` definition and
+//! exposes the topic constant.
 
 use serde::{Deserialize, Serialize};
 
-use crate::BusMessage;
+use jinn_slices::BusMessage;
 
 /// Submit the current quake bar input into the command log.
 ///
@@ -20,3 +27,11 @@ impl BusMessage for SubmitQuakeBarCommand {}
 jinn_slices::crossing_schema!(SubmitQuakeBarCommand, "SubmitQuakeBarCommand", trouper::schema::SchemaKind::Command,
     description: "Submit the current quake bar input into the command log.",
     fields: ["text" => trouper::schema::FieldTy::Str]);
+
+use trouper::types::Topic;
+
+/// The trouper topic the quake bar's crossing command travels on.
+#[must_use]
+pub fn quake_bar_topic() -> Topic {
+    Topic::new("jinn.quake-bar")
+}

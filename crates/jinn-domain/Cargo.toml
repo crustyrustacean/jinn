@@ -15,6 +15,7 @@ jinn-common = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-dashboard = { workspace = true }
+jinn-quake-bar = { workspace = true }
 jinn-provider-config = { workspace = true }
 jinn-web-fetch = { workspace = true }
 jinn-web-search = { workspace = true }

@@ -6,7 +6,7 @@
 //! handle minted at activation, and the renderer resolves read handles
 //! through the registry.
 
-use crate::common::line_input::LineInput;
+use jinn_slices::LineInput;
 use jinn_slices::SliceScopeId;
 use jinn_slices::SlotKey;
 
