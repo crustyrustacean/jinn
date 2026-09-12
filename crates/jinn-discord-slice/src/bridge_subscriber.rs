@@ -24,12 +24,12 @@
 //! and lifecycle results.
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::state::State;
-use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_discord_msg::{
     BridgeEvent, CreateThreadForSession, CreateThreadReason, DiscordThreadCreateFailed,
     DiscordThreadCreated, ForumChannelError, GatewayRequest,
 };
+use jinn_domain::common::state::State;
+use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_session_msg::{
     SessionArchived, SessionPhaseChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
@@ -85,7 +85,10 @@ impl DiscordBridgeSubscriber {
     /// Panics if the topic subscription fails, which can only happen
     /// on a broken actor system; the slice activation ordering relies
     /// on the cursor being registered.
-    pub fn spawn(system: &std::sync::Arc<ActorSystem>, deps: DiscordBridgeSubscriberDeps) -> ActorPath {
+    pub fn spawn(
+        system: &std::sync::Arc<ActorSystem>,
+        deps: DiscordBridgeSubscriberDeps,
+    ) -> ActorPath {
         let DiscordBridgeSubscriberDeps {
             tx,
             gateway_tx,
@@ -132,10 +135,10 @@ impl ServiceActor for DiscordBridgeSubscriber {
     ) -> Result<Self, trouper::error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the channels, state,
         // and capability via `start_with`.
-        Err(trouper::error_stack::IntoReport::into_report(
-            RegistryError::InvalidSpec,
+        Err(
+            trouper::error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
+                .attach("DiscordBridgeSubscriber is spawned via start_with"),
         )
-        .attach("DiscordBridgeSubscriber is spawned via start_with"))
     }
 }
 
@@ -246,13 +249,13 @@ impl DiscordBridgeSubscriber {
     /// Handle `DiscordThreadCreated`: push a system `ChatEntry` mentioning the title.
     pub(super) fn handle_created(&self, msg: &DiscordThreadCreated) {
         let entry = ChatEntry::system(format!("Continuing in Discord thread: {}", msg.title));
-        push_entry(&self.state, self.session_cap.clone(), &msg.session_id, entry);
+        push_entry(&self.state, self.session_cap, &msg.session_id, entry);
     }
 
     /// Handle `DiscordThreadCreateFailed`: push an error `ChatEntry`.
     pub(super) fn handle_failed(&self, msg: &DiscordThreadCreateFailed) {
         let entry = ChatEntry::error(reason_message(&msg.reason));
-        push_entry(&self.state, self.session_cap.clone(), &msg.session_id, entry);
+        push_entry(&self.state, self.session_cap, &msg.session_id, entry);
     }
 
     /// Push one event onto the channel.

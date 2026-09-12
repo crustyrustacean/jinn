@@ -125,7 +125,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 /// slice bindings, by design.
 #[must_use]
 pub fn init_with_slices() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
-    let routes = jinn_domain::feat::composition_routes();
+    let routes = crate::test_routes::composition_routes();
     let mut keymap = init();
     crate::keymap_gen::bind_route_rows(&routes, &mut keymap);
     // The `<M-t>` overlay toggle is per-scope chrome (never a global: it
@@ -1411,7 +1411,7 @@ mod tests {
         // way `activate()` does.
         use jinn_domain::{Key, KeyEvent, Modifiers};
         use ratatui_which_key::NodeResult;
-        let mut routes = jinn_domain::feat::composition_routes();
+        let routes = crate::test_routes::composition_routes();
         jinn_discord_slice::attach_discord_rows(&routes);
         let mut keymap = init();
         crate::keymap_gen::bind_route_rows(&routes, &mut keymap);

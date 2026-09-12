@@ -2646,6 +2646,7 @@ name = "jinn-dashboard"
 version = "0.116.1"
 dependencies = [
  "jinn-core-types",
+ "jinn-domain",
  "jinn-slices",
  "jinn-testutil",
  "jinn-theme",
@@ -2741,13 +2742,11 @@ dependencies = [
  "jiff",
  "jinn-common",
  "jinn-core-types",
- "jinn-dashboard",
  "jinn-mcp",
  "jinn-plugin",
  "jinn-plugin-api",
  "jinn-provider",
  "jinn-provider-config",
- "jinn-quake-bar",
  "jinn-selection-widget",
  "jinn-session-msg",
  "jinn-session-schema",

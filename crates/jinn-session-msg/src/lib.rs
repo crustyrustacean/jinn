@@ -124,30 +124,30 @@ impl jinn_slices::BusMessage for SessionTeardownFinished {}
 impl jinn_slices::BusMessage for SessionArchived {}
 
 jinn_slices::crossing_schema!(SessionPhaseChanged, "SessionPhaseChanged",
-    trouper::schema::SchemaKind::Event,
-    description: "A session's phase transitioned.",
-    fields: [
-        "session_id" => trouper::schema::FieldTy::Uuid,
-        "old_phase" => trouper::schema::FieldTy::Str,
-        "new_phase" => trouper::schema::FieldTy::Str,
-    ]);
+trouper::schema::SchemaKind::Event,
+description: "A session's phase transitioned.",
+fields: [
+    "session_id" => trouper::schema::FieldTy::Uuid,
+    "old_phase" => trouper::schema::FieldTy::Str,
+    "new_phase" => trouper::schema::FieldTy::Str,
+]);
 
 jinn_slices::crossing_schema!(SessionSetupCompleted, "SessionSetupCompleted",
-    trouper::schema::SchemaKind::Event,
-    description: "A session's setup command completed (success or failure).",
-    fields: [
-        "session_id" => trouper::schema::FieldTy::Uuid,
-        "cwd" => trouper::schema::FieldTy::Str,
-        "error" => trouper::schema::FieldTy::Str,
-    ]);
+trouper::schema::SchemaKind::Event,
+description: "A session's setup command completed (success or failure).",
+fields: [
+    "session_id" => trouper::schema::FieldTy::Uuid,
+    "cwd" => trouper::schema::FieldTy::Str,
+    "error" => trouper::schema::FieldTy::Str,
+]);
 
 jinn_slices::crossing_schema!(SessionTeardownFinished, "SessionTeardownFinished",
-    trouper::schema::SchemaKind::Event,
-    description: "A session's teardown command finished (success or failure).",
-    fields: [
-        "session_id" => trouper::schema::FieldTy::Uuid,
-        "error" => trouper::schema::FieldTy::Str,
-    ]);
+trouper::schema::SchemaKind::Event,
+description: "A session's teardown command finished (success or failure).",
+fields: [
+    "session_id" => trouper::schema::FieldTy::Uuid,
+    "error" => trouper::schema::FieldTy::Str,
+]);
 
 jinn_slices::crossing_schema!(SessionArchived, "SessionArchived",
     trouper::schema::SchemaKind::Event,
@@ -156,7 +156,7 @@ jinn_slices::crossing_schema!(SessionArchived, "SessionArchived",
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, reason = "test code")]
+    #![allow(clippy::unwrap_used, clippy::expect_used, reason = "test code")]
 
     use super::PhaseKind;
     use super::SessionArchived;
@@ -213,8 +213,12 @@ mod tests {
 
         // When serializing and deserializing the tuple.
         let json = serde_json::to_string(&events).unwrap();
-        let round: (SessionPhaseChanged, SessionSetupCompleted, SessionTeardownFinished, SessionArchived) =
-            serde_json::from_str(&json).unwrap();
+        let round: (
+            SessionPhaseChanged,
+            SessionSetupCompleted,
+            SessionTeardownFinished,
+            SessionArchived,
+        ) = serde_json::from_str(&json).unwrap();
 
         // Then every event survives with its fields intact.
         assert_eq!(round.0.new_phase, PhaseKind::Idle);
