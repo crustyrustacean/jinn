@@ -41,28 +41,58 @@ impl<T> ConfigSection<T> {
         &self.key
     }
 
-    /// Takes the resolved value (after [`SectionSet::apply`]);
-    /// `T::default()` when the section was absent-and-optional.
+    /// Takes the resolved value (after [`SectionSet::apply`] or
+    /// [`crate::host::SliceHost::apply_sections`]); `T::default()`
+    /// when the section was absent-and-optional.
     ///
     /// # Panics
     ///
-    /// Panics if called before `apply` — the value does not exist yet.
+    /// Panics if called before `apply` — the value does not exist yet,
+    /// and defaulting silently here once masked a mis-ordered
+    /// activation as a disabled slice.
     #[must_use]
+    #[expect(
+        clippy::panic,
+        reason = "the documented contract: taking before apply is an activation-ordering bug that must abort launch, not yield defaults"
+    )]
     pub fn take(&self) -> T
     where
         T: Default + 'static,
     {
+        match self.take_resolved() {
+            Some(value) => value,
+            None => panic!("config section `{}` taken before apply", self.key),
+        }
+    }
+
+    /// Takes the resolved value like [`Self::take`], falling back to
+    /// `T::default()` when the section was never applied — the face
+    /// for optional sections whose absence is a normal configuration.
+    ///
+    /// Prefer [`Self::take`] for required sections: its panic turns a
+    /// mis-ordered activation into a launch abort instead of a slice
+    /// silently running on defaults.
+    #[must_use]
+    pub fn take_or_default(&self) -> T
+    where
+        T: Default + 'static,
+    {
+        self.take_resolved().unwrap_or_default()
+    }
+
+    /// Drains the slot's resolved value, if `apply` has landed one.
+    fn take_resolved(&self) -> Option<T> {
         let mut guard = self.slot.lock();
         match guard.take() {
             Some(any) => match any.downcast::<T>() {
-                Ok(value) => *value,
+                Ok(value) => Some(*value),
                 #[expect(
                     clippy::unreachable,
                     reason = "type invariant: the slot only ever holds the T it was set with"
                 )]
                 Err(_) => unreachable!("typed section slot holds exactly T"),
             },
-            None => T::default(),
+            None => None,
         }
     }
 }
@@ -258,18 +288,23 @@ fn convert<T: serde::de::DeserializeOwned + Default>(
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
     use super::SectionError;
     use super::SectionSet;
     use serde::Deserialize;
     use toml::Table;
 
-    #[derive(Debug, Default, Deserialize)]
+    #[derive(Debug, Default, Deserialize, PartialEq)]
     struct SliceCfg {
         #[serde(default)]
-        #[expect(dead_code, reason = "presence of a parseable value is the assertion")]
         enabled: bool,
         #[serde(default)]
-        #[expect(dead_code, reason = "presence of a parseable value is the assertion")]
         retries: u32,
     }
 
@@ -375,5 +410,106 @@ mod tests {
             set.apply(&sink),
             Err(SectionError::Missing { .. })
         ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn take_before_apply_panics_instead_of_defaulting() {
+        // Given a staged typed section that has never been applied.
+        let mut set = SectionSet::default();
+        let handle = set.add_typed::<SliceCfg>("test.slice");
+
+        // When taking the value before any apply.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handle.take()));
+
+        // Then the take aborts — it must not yield defaults and mask a
+        // mis-ordered activation.
+        let message = result.expect_err("take before apply must panic");
+        let text = message
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| message.downcast_ref::<&str>().map(|s| (*s).to_owned()))
+            .expect("panic payload is a string");
+        assert!(
+            text.contains("test.slice"),
+            "panic names the section: {text}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn take_after_apply_returns_the_resolved_value() {
+        // Given a staged typed section applied over a populated table.
+        let mut set = SectionSet::default();
+        let handle = set.add_typed::<SliceCfg>("test.slice");
+        let sink = doc(&[("test.slice", "enabled = true\nretries = 3")]);
+        set.apply(&sink).expect("section applies");
+
+        // When taking the value.
+        let config = handle.take();
+
+        // Then it is the resolved table, not defaults.
+        assert_eq!(
+            config,
+            SliceCfg {
+                enabled: true,
+                retries: 3
+            }
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn take_or_default_falls_back_when_never_applied() {
+        // Given a staged optional-typed section that has never been applied.
+        let mut set = SectionSet::default();
+        let handle = set.add_typed_optional::<SliceCfg>("test.slice");
+
+        // When taking with the defaulting face.
+        let config = handle.take_or_default();
+
+        // Then the default is returned — absence is a normal configuration.
+        assert_eq!(config, SliceCfg::default());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn absent_optional_section_materializes_its_default_on_apply() {
+        // Given a staged optional section over an empty document.
+        let mut set = SectionSet::default();
+        let handle = set.add_typed_optional::<SliceCfg>("test.slice");
+        let sink = doc(&[]);
+
+        // When applying, then taking.
+        set.apply(&sink).expect("absent optional section applies");
+        let config = handle.take();
+
+        // Then the take sees the materialized default — not the
+        // pre-apply panic path.
+        assert_eq!(config, SliceCfg::default());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn reapplying_overwrites_the_resolved_slot() {
+        // Given a staged typed section applied once over a table.
+        let mut set = SectionSet::default();
+        let handle = set.add_typed::<SliceCfg>("test.slice");
+        let first = doc(&[("test.slice", "enabled = true")]);
+        set.apply(&first).expect("first apply succeeds");
+
+        // When applying again over a different document.
+        let second = doc(&[("test.slice", "enabled = false\nretries = 9")]);
+        set.apply(&second).expect("second apply succeeds");
+
+        // Then the second resolution wins — apply is idempotent and
+        // a finalize-time re-apply cannot corrupt the value.
+        assert_eq!(
+            handle.take(),
+            SliceCfg {
+                enabled: false,
+                retries: 9
+            }
+        );
     }
 }

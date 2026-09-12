@@ -72,6 +72,12 @@ pub struct ActivatedDiscord {
 /// enabled, and attach the route rows. Returns the gateway-facing
 /// halves + the config for the frontend spawn.
 ///
+/// The `resolve` closure is the kernel's document lookup; it is
+/// applied to the staged sections **inside** activation so the
+/// `[discord]` value exists before the slice reads it — sections that
+/// resolve only at composition's `finalize` used to hand the slice
+/// `T::default()` and read as a silently disabled bridge.
+///
 /// # Errors
 ///
 /// Returns [`SliceConfigError`] when the `[discord]` section is
@@ -80,11 +86,12 @@ pub async fn activate(
     host: &mut jinn_slices::AppSliceHost<'_>,
     services: &jinn_domain::Services,
     state: jinn_domain::common::state::State,
+    resolve: &dyn Fn(&str) -> Option<toml::Table>,
 ) -> Result<ActivatedDiscord, jinn_slices::ConfigSectionError> {
-    // Config section: typed read through the host. Conversion happens
-    // at finalize (composition); this call stages it and the slice
-    // receives the value below.
+    // Config section: typed read through the host, resolved eagerly —
+    // the value must exist before `take()` below.
     let config_handle = host.config_section::<DiscordConfig>("discord");
+    host.apply_sections(resolve)?;
 
     let system = host.system().clone();
 
@@ -166,4 +173,85 @@ pub async fn activate(
     attach_discord_rows(host.key_routes());
 
     Ok(ActivatedDiscord { parked, config })
+}
+
+#[cfg(test)]
+mod activate_tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
+    use super::activate;
+    use jinn_slices::KeyRoutes;
+    use jinn_slices::OverlayViews;
+    use jinn_slices::Slices;
+    use jinn_slices::host::SliceHost;
+    use jinn_slices::view::Viewport;
+
+    /// A stub document sink carrying a `[discord]` section body.
+    fn stub_doc(body: &'static str) -> impl Fn(&str) -> Option<toml::Table> {
+        let table: toml::Table = toml::from_str(body).expect("stub TOML parses");
+        let sections = std::collections::HashMap::from([("discord".to_owned(), table)]);
+        move |key| sections.get(key).cloned()
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn activation_resolves_the_config_section_before_reading_it() {
+        // Given a fresh slice host and a document sink whose [discord]
+        // section enables the bridge.
+        let slices = Slices::new();
+        let key_routes = KeyRoutes::new();
+        let mut viewport = Viewport::new();
+        let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
+        let services = jinn_domain::Services::new_fake().await;
+        let state = jinn_domain::common::state::State::new(
+            jinn_domain::common::app_state::AppState::default(),
+        );
+        let mut host = SliceHost::new(
+            &slices,
+            &mut viewport,
+            &overlay_views,
+            &key_routes,
+            &services.trouper_system,
+        );
+        let resolve = stub_doc("enabled = true");
+
+        // When activating the slice through the real path.
+        let activated = activate(&mut host, &services, state, &resolve)
+            .await
+            .expect("activation resolves the section");
+
+        // Then the resolved config carries the document value, not defaults.
+        assert!(activated.config.enabled, "config.enabled from the document");
+        // And the slice's feature flag is set from it.
+        assert!(slices.flag("discord"), "flag mirrors the resolved config");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn activation_fails_fast_on_a_malformed_section() {
+        // Given a document sink whose [discord] table is malformed.
+        let slices = Slices::new();
+        let key_routes = KeyRoutes::new();
+        let mut viewport = Viewport::new();
+        let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
+        let services = jinn_domain::Services::new_fake().await;
+        let state = jinn_domain::common::state::State::new(
+            jinn_domain::common::app_state::AppState::default(),
+        );
+        let mut host = SliceHost::new(
+            &slices,
+            &mut viewport,
+            &overlay_views,
+            &key_routes,
+            &services.trouper_system,
+        );
+        let resolve = stub_doc("enabled = \"maybe\"");
+
+        // When activating.
+        let result = activate(&mut host, &services, state, &resolve).await;
+
+        // Then activation is the fail-fast gate: it errors instead of
+        // proceeding on defaults.
+        assert!(result.is_err(), "malformed section aborts activation");
+    }
 }

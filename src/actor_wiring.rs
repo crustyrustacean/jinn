@@ -1641,6 +1641,12 @@ async fn jinn_discord_activate(
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
     let services_snapshot = services.clone();
+    // Config-section resolution sink: reads the user-preferences
+    // document's raw tables (slice-owned sections survive there). Built
+    // before activation — the slice applies its sections during
+    // `activate`, before reading its `[discord]` value.
+    let prefs = services.user_preferences_storage.clone();
+    let sink = move |key: &str| prefs.raw_section(key);
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -1648,13 +1654,9 @@ async fn jinn_discord_activate(
         &services.key_routes,
         &services.trouper_system,
     );
-    let activated = jinn_discord::activate(&mut host, &services_snapshot, state)
+    let activated = jinn_discord::activate(&mut host, &services_snapshot, state, &sink)
         .await
         .unwrap_or_else(|error| panic!("discord slice activation failed: {error}"));
-    // Config-section resolution: the sink reads the user-preferences
-    // document's raw tables (slice-owned sections survive there).
-    let prefs = services.user_preferences_storage.clone();
-    let sink = move |key: &str| prefs.raw_section(key);
     if let Err(error) = host.finalize(&sink) {
         panic!("discord slice finalize failed: {error}");
     }
