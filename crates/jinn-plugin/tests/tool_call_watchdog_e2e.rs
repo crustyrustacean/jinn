@@ -159,7 +159,7 @@ async fn handshake(host: &mut PluginHost, config: serde_json::Value) {
 }
 
 /// Spawns the real guest.
-fn start_guest() -> PluginHost {
+async fn start_guest() -> PluginHost {
     let engine = PluginEngine::new().expect("engine");
     let grants = Grants {
         read_dirs: vec![],
@@ -173,7 +173,9 @@ fn start_guest() -> PluginHost {
         std::path::Path::new(WASM),
         &grants,
     )
+    .await
     .expect("guest started")
+    .0
 }
 
 /// Four consecutive failing tool results push the watchdog pair: the
@@ -185,7 +187,7 @@ fn start_guest() -> PluginHost {
 #[tokio::test]
 async fn four_failing_tool_results_send_entry_then_cancel() {
     // Given the real watchdog guest, handshaken with default config.
-    let mut host = start_guest();
+    let mut host = start_guest().await;
     handshake(&mut host, serde_json::Value::Null).await;
 
     // When four tool results fail in a row for one session.
@@ -234,7 +236,7 @@ async fn four_failing_tool_results_send_entry_then_cancel() {
 #[tokio::test]
 async fn successes_debit_and_clean_turn_end_resets() {
     // Given the real watchdog guest, handshaken.
-    let mut host = start_guest();
+    let mut host = start_guest().await;
     handshake(&mut host, serde_json::Value::Null).await;
     let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
 
@@ -307,7 +309,7 @@ async fn successes_debit_and_clean_turn_end_resets() {
 #[tokio::test]
 async fn aborted_turn_retains_the_count() {
     // Given the real watchdog guest, handshaken.
-    let mut host = start_guest();
+    let mut host = start_guest().await;
     handshake(&mut host, serde_json::Value::Null).await;
     let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
 
@@ -355,7 +357,7 @@ async fn aborted_turn_retains_the_count() {
 #[tokio::test]
 async fn max_failures_config_trips_early() {
     // Given the real watchdog guest, handshaken with max_failures = 2.
-    let mut host = start_guest();
+    let mut host = start_guest().await;
     handshake(&mut host, serde_json::json!({ "max_failures": 2 })).await;
     let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
 
@@ -396,7 +398,7 @@ async fn max_failures_config_trips_early() {
 #[tokio::test]
 async fn trip_latches_until_new_failures_accumulate() {
     // Given the real watchdog guest, handshaken, driven to a trip.
-    let mut host = start_guest();
+    let mut host = start_guest().await;
     handshake(&mut host, serde_json::Value::Null).await;
     let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
     for call in ["f1", "f2", "f3", "f4"] {
