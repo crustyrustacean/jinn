@@ -178,11 +178,11 @@ pub fn composition_routes() -> jinn_domain::common::slices::key_routes::KeyRoute
     routes
 }
 
-/// A composed keymap: built-in scope bindings + every slice's rows +
-/// the per-scope `<M-t>` toggle for every dynamic scope.
+/// A composed keymap: built-in scope bindings + every slice's rows.
 ///
 /// The test twin of the composed bootstrap; tests that exercise slice
-/// keys query this.
+/// keys query this. The per-dynamic-scope `<M-t>` toggle is spread by
+/// `bind_route_rows` itself — production parity, no manual chrome here.
 #[must_use]
 pub fn composed_keymap() -> ratatui_which_key::Keymap<
     jinn_domain::KeyEvent,
@@ -193,18 +193,6 @@ pub fn composed_keymap() -> ratatui_which_key::Keymap<
     let routes = composition_routes();
     let mut keymap = keymap::init();
     jinn_tui::keymap_gen::bind_route_rows(&routes, &mut keymap);
-    // The `<M-t>` overlay toggle is per-scope chrome (never a global: it
-    // must not pierce terminal capture). Dynamic scopes are non-terminal
-    // by construction, so every registered slice scope gets it too —
-    // mirroring what `add_terminal_toggles` does for static scopes.
-    for scope in jinn_tui::keymap_gen::dynamic_scopes(&routes) {
-        keymap.bind(
-            "<M-t>",
-            jinn_domain::Intent::ToggleTerminalOverlay { session_id: None },
-            jinn_tui::KeyCategory::General,
-            jinn_tui::Scope::Dynamic(scope),
-        );
-    }
     keymap
 }
 
