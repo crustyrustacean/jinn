@@ -28,7 +28,7 @@ jinn_slices::crossing_schema!(SubmitQuakeBarCommand, "SubmitQuakeBarCommand", tr
     description: "Submit the current quake bar input into the command log.",
     fields: ["text" => trouper::schema::FieldTy::Str]);
 
-use trouper::types::Topic;
+use trouper::topics::Topic;
 
 /// The trouper topic the quake bar's crossing command travels on.
 #[must_use]

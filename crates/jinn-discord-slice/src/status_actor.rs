@@ -107,7 +107,7 @@ pub struct DiscordStatusActorDeps {
     pub bus: jinn_domain::common::services::bus_service::BusService,
     /// The trouper system, for the native topic publish + schema
     /// registration.
-    pub system: std::sync::Arc<ActorSystem>,
+    pub system: ActorSystem,
 }
 
 impl DiscordStatusActor {
@@ -115,8 +115,8 @@ impl DiscordStatusActor {
     ///
     /// The path registration is the readiness point: once it returns,
     /// the loop is folding updates.
-    pub fn spawn(deps: DiscordStatusActorDeps) -> trouper::types::ActorPath {
-        let path = trouper::types::ActorPath::new("discord-status");
+    pub fn spawn(deps: DiscordStatusActorDeps) -> trouper::actor::ActorPath {
+        let path = trouper::actor::ActorPath::new("discord-status");
         let DiscordStatusActorDeps {
             status_rx,
             cell,
@@ -132,7 +132,7 @@ impl DiscordStatusActor {
 impl ServiceActor for DiscordStatusActor {
     async fn start(
         _args: &serde_json::Value,
-    ) -> Result<Self, trouper::error_stack::Report<trouper::registry::RegistryError>> {
+    ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
         // Never called: `spawn` constructs the actor directly (its
         // state is the drain task's captured handles, not message
         // state).
@@ -148,7 +148,7 @@ async fn drain_status_channel(
     rx: kanal::AsyncReceiver<DiscordStatusUpdate>,
     cell: TypedCell<ConnectionState>,
     bus: jinn_domain::common::services::bus_service::BusService,
-    system: std::sync::Arc<ActorSystem>,
+    system: ActorSystem,
 ) {
     while let Ok(update) = rx.recv().await {
         cell.update(|state| fold_connection(state, &update));
@@ -189,6 +189,7 @@ mod tests {
     use jinn_slices::Slices;
     use std::future::Future;
     use std::pin::Pin;
+    use std::sync::Arc;
 
     #[rstest::rstest]
     #[test]
@@ -247,17 +248,17 @@ mod tests {
     /// A trouper probe recording the status updates its topic
     /// subscription delivers.
     struct TopicProbe {
-        seen: std::sync::Arc<parking_lot::Mutex<Vec<DiscordStatusUpdate>>>,
+        seen: Arc<parking_lot::Mutex<Vec<DiscordStatusUpdate>>>,
     }
 
     impl trouper::actor::ServiceActor for TopicProbe {
         async fn start(
             _args: &serde_json::Value,
-        ) -> Result<Self, trouper::error_stack::Report<trouper::registry::RegistryError>> {
-            Err(trouper::error_stack::IntoReport::into_report(
-                trouper::registry::RegistryError::InvalidSpec,
+        ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
+            Err(
+                error_stack::IntoReport::into_report(trouper::registry::RegistryError::InvalidSpec)
+                    .attach("TopicProbe spawns via start_with"),
             )
-            .attach("TopicProbe spawns via start_with"))
         }
     }
 
@@ -290,10 +291,9 @@ mod tests {
         let services = harness.services().await;
         let (tx, rx) = kanal::bounded::<DiscordStatusUpdate>(8);
         let fabric = jinn_testutil::TestFabric::new();
-        let seen: std::sync::Arc<parking_lot::Mutex<Vec<DiscordStatusUpdate>>> =
-            std::sync::Arc::default();
+        let seen: Arc<parking_lot::Mutex<Vec<DiscordStatusUpdate>>> = Arc::default();
         let probe_path = trouper::builder::spawn_service_builder::<TopicProbe>(fabric.system())
-            .at(trouper::types::ActorPath::new("discord-status-probe"))
+            .at(trouper::actor::ActorPath::new("discord-status-probe"))
             .start_with({
                 let seen = seen.clone();
                 move || {

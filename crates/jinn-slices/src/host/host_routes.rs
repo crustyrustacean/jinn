@@ -13,8 +13,8 @@ use std::collections::HashMap;
 
 use trouper::schema::Schema;
 use trouper::schema::SchemaDef;
-use trouper::types::SchemaId;
-use trouper::types::Topic;
+use trouper::schema::SchemaId;
+use trouper::topics::Topic;
 
 /// A message that can cross kameo → trouper (forward).
 pub trait ForwardMessage: Schema + serde::Serialize + Clone + Send + 'static {}
@@ -227,8 +227,8 @@ mod tests {
         }
     }
 
-    fn topic(name: &str) -> trouper::types::Topic {
-        trouper::types::Topic::new(name)
+    fn topic(name: &str) -> trouper::topics::Topic {
+        trouper::topics::Topic::new(name)
     }
 
     #[rstest::rstest]

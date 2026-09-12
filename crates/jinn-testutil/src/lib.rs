@@ -43,13 +43,13 @@ pub struct TestFabric {
     /// The kameo bus actor ref.
     bus: kameo::actor::ActorRef<kameo_actors::message_bus::MessageBus>,
     /// The trouper system.
-    system: std::sync::Arc<trouper::system::ActorSystem>,
+    system: trouper::system::ActorSystem,
 }
 
 impl TestFabric {
     /// The trouper system, for spawning actors under test.
     #[must_use]
-    pub fn system(&self) -> &std::sync::Arc<trouper::system::ActorSystem> {
+    pub fn system(&self) -> &trouper::system::ActorSystem {
         &self.system
     }
 
@@ -62,9 +62,7 @@ impl TestFabric {
         let bus = kameo::actor::Spawn::spawn(kameo_actors::message_bus::MessageBus::new(
             kameo_actors::DeliveryStrategy::BestEffort,
         ));
-        let system = std::sync::Arc::new(trouper::system::ActorSystem::new(
-            trouper::system::SystemConfig::production(),
-        ));
+        let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
         Self { bus, system }
     }
 
@@ -88,7 +86,7 @@ impl TestFabric {
     pub async fn send_to_topic<M: trouper::schema::Schema + serde::Serialize>(
         &self,
         msg: &M,
-        topic: &trouper::types::Topic,
+        topic: &trouper::topics::Topic,
     ) {
         let payload = serde_json::to_value(msg).unwrap_or(serde_json::Value::Null);
         let event = trouper::envelope::Event::new(M::schema_id(), payload);

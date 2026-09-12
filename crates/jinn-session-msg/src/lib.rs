@@ -113,8 +113,8 @@ pub struct SessionArchived {
 
 /// The trouper topic the session family's events cross on.
 #[must_use]
-pub fn session_topic() -> trouper::types::Topic {
-    trouper::types::Topic::new("jinn.session")
+pub fn session_topic() -> trouper::topics::Topic {
+    trouper::topics::Topic::new("jinn.session")
 }
 
 impl jinn_slices::BusMessage for PhaseKind {}

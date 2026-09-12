@@ -12,8 +12,8 @@ use std::path::PathBuf;
 
 /// The trouper topic the discord status event crosses on.
 #[must_use]
-pub fn discord_topic() -> trouper::types::Topic {
-    trouper::types::Topic::new("jinn.discord")
+pub fn discord_topic() -> trouper::topics::Topic {
+    trouper::topics::Topic::new("jinn.discord")
 }
 
 /// The Discord session id (a string) tied to a jinn [`SessionId`].

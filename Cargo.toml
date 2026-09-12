@@ -147,7 +147,7 @@ wasmtime-wasi-http = { version = "47", features = ["p3"] }
 
 # Error handling
 wherror = "2.3.1"
-error-stack = { version = "0.7", features = ["serde"] }
+error-stack = { version = "0.8", features = ["serde"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

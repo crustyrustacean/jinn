@@ -148,7 +148,7 @@ pub struct Services {
     /// spawn their canvas actors onto it and subscribe them to topics fed
     /// by the kameo→trouper bridge. See `.plans/actor-canvas/plan.md`.
     #[debug(skip)]
-    pub trouper_system: Arc<trouper::system::ActorSystem>,
+    pub trouper_system: trouper::system::ActorSystem,
 }
 
 impl Services {
@@ -223,9 +223,9 @@ impl Services {
             viewport: crate::common::slices::view::Viewport::new(),
             overlay_views:
                 crate::common::overlay_views::OverlayViews::<jinn_slices::RenderFacts>::new(),
-            trouper_system: Arc::new(trouper::system::ActorSystem::new(
+            trouper_system: trouper::system::ActorSystem::new(
                 trouper::system::SystemConfig::production(),
-            )),
+            ),
         }
     }
 
@@ -280,9 +280,9 @@ impl Services {
             viewport: crate::common::slices::view::Viewport::new(),
             overlay_views:
                 crate::common::overlay_views::OverlayViews::<jinn_slices::RenderFacts>::new(),
-            trouper_system: Arc::new(trouper::system::ActorSystem::new(
+            trouper_system: trouper::system::ActorSystem::new(
                 trouper::system::SystemConfig::production(),
-            )),
+            ),
         }
     }
 }

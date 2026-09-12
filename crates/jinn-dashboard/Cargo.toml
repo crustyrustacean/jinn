@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+error-stack = { workspace = true }
 # Slice → kernel edge: the drain calls the kernel's relay spawner. The
 # kernel never depends back on this crate.
 jinn-domain = { workspace = true }

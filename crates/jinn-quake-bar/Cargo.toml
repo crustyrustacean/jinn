@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+error-stack = { workspace = true }
 jiff = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }

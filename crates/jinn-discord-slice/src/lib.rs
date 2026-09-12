@@ -48,8 +48,6 @@ pub use thread_map::DiscordThreadMap;
 pub use thread_map::DiscordThreadMapError;
 pub use thread_map::ThreadMapping;
 
-use jinn_slices::SliceHost;
-
 /// The parked gateway-facing channels + config an activation hands to
 /// the frontend (`jinn_discord::spawn_gateway`).
 #[derive(Debug)]
@@ -76,7 +74,7 @@ pub struct ActivatedDiscord {
 /// Returns [`SliceConfigError`] when the `[discord]` section is
 /// malformed — activation is the fail-fast gate.
 pub async fn activate(
-    host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
+    host: &mut jinn_slices::AppSliceHost<'_>,
     services: &jinn_domain::Services,
     state: jinn_domain::common::state::State,
 ) -> Result<ActivatedDiscord, jinn_slices::ConfigSectionError> {

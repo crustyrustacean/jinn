@@ -11,11 +11,11 @@
 //! [`start_with`](trouper::builder::ServiceBuilder::start_with)
 //! override.
 
+use trouper::actor::ActorPath;
 use trouper::actor::{MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
-use trouper::types::ActorPath;
 
 use jinn_slices::TypedCell;
 
@@ -32,12 +32,10 @@ pub struct QuakeBarCanvasActor {
 }
 
 impl ServiceActor for QuakeBarCanvasActor {
-    async fn start(
-        _args: &serde_json::Value,
-    ) -> Result<Self, trouper::error_stack::Report<RegistryError>> {
+    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the cell via `start_with`.
         Err(
-            trouper::error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
+            error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
                 "QuakeBarCanvasActor is spawned via start_with; start requires the typed cell",
             ),
         )
@@ -61,10 +59,7 @@ impl QuakeBarCanvasActor {
     ///
     /// Panics if the topic subscription fails — a broken actor system;
     /// the activation ordering relies on the cursor being registered.
-    pub fn spawn(
-        system: &std::sync::Arc<ActorSystem>,
-        cell: &TypedCell<QuakeBarState>,
-    ) -> ActorPath {
+    pub fn spawn(system: &ActorSystem, cell: &TypedCell<QuakeBarState>) -> ActorPath {
         let path = trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("quake-bar"))
             .start_with({
