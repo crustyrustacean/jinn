@@ -120,7 +120,7 @@ impl ActorSystemBuilder {
         Self { args }
     }
     /// Spawn all actors via kameo, build the bus and bridge, and wait for readiness.
-    pub async fn build(self) -> (AppCore, Services, jinn_discord_slice::ActivatedDiscord) {
+    pub async fn build(self) -> (AppCore, Services, jinn_discord::ActivatedDiscord) {
         let ActorSystemBuilderArgs {
             handle,
             llm_service,
@@ -1637,7 +1637,7 @@ async fn jinn_discord_drain(services: &Services) {
 async fn jinn_discord_activate(
     services: &mut Services,
     state: jinn_domain::common::state::State,
-) -> jinn_discord_slice::ActivatedDiscord {
+) -> jinn_discord::ActivatedDiscord {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
     let services_snapshot = services.clone();
@@ -1648,7 +1648,7 @@ async fn jinn_discord_activate(
         &services.key_routes,
         &services.trouper_system,
     );
-    let activated = jinn_discord_slice::activate(&mut host, &services_snapshot, state)
+    let activated = jinn_discord::activate(&mut host, &services_snapshot, state)
         .await
         .unwrap_or_else(|error| panic!("discord slice activation failed: {error}"));
     // Config-section resolution: the sink reads the user-preferences

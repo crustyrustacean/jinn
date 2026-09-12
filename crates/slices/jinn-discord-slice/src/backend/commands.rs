@@ -5,12 +5,12 @@
 //! [`teardown`] and [`archive`] operate on the session bound to the invoking
 //! thread. Every command is deny-by-default — the `ensure_authorized` helper
 //! gates on `[discord].authorized_users` before any command body runs. Plain
-//! messages are handled (and gated) in [`crate::gateway`] via the poise event
+//! messages are handled (and gated) in [`crate::backend::gateway`] via the poise event
 //! handler, not here.
 
 use std::time::Duration;
 
-use jinn_discord_slice::authorize;
+use crate::authorize;
 use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
 use jinn_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
 use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
@@ -18,7 +18,7 @@ use jinn_domain::protocol::Intent;
 use jinn_domain::{Bridge, SessionId};
 use poise::serenity_prelude as serenity;
 
-use crate::gateway::{BotContext, BotData, BotError};
+use crate::backend::gateway::{BotContext, BotData, BotError};
 
 /// Deny-by-default gate shared by every slash command.
 ///
@@ -256,7 +256,7 @@ pub async fn archive(ctx: BotContext<'_>) -> Result<(), BotError> {
 ///
 /// Returns [`BotError`] if the thread-map lookup fails.
 async fn resolve_bound_session(
-    data: &crate::gateway::BotData,
+    data: &crate::backend::gateway::BotData,
     thread_id: &str,
 ) -> Result<Option<String>, BotError> {
     data.thread_map
@@ -431,7 +431,7 @@ async fn collect_lifecycle_args(
     author: serenity::UserId,
     lifecycle: String,
 ) -> Result<Option<(String, Vec<String>)>, BotError> {
-    use crate::feat::discord::lifecycle_inputs::resolve_lifecycle_inputs;
+    use crate::backend::feat::discord::lifecycle_inputs::resolve_lifecycle_inputs;
     use jinn_domain::feat::session_lifecycle::command_template::parse_quoted_args;
 
     // Resolve how many positional args the lifecycle needs and the prompt text

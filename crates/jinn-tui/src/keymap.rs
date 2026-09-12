@@ -119,30 +119,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     )
 }
 
-/// Builds the full keymap including slice route rows, mirroring the
-/// runtime composition order (`init` + `bind_route_rows`). Tests that
-/// exercise slice keys must query this — `init` alone carries no
-/// slice bindings, by design.
-#[must_use]
-pub fn init_with_slices() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
-    let routes = crate::test_routes::composition_routes();
-    let mut keymap = init();
-    crate::keymap_gen::bind_route_rows(&routes, &mut keymap);
-    // The `<M-t>` overlay toggle is per-scope chrome (never a global: it
-    // must not pierce terminal capture). Dynamic scopes are non-terminal
-    // by construction, so every registered slice scope gets it too —
-    // mirroring what `add_terminal_toggles` does for static scopes.
-    for scope in crate::keymap_gen::dynamic_scopes(&routes) {
-        keymap.bind(
-            "<M-t>",
-            Intent::ToggleTerminalOverlay { session_id: None },
-            KeyCategory::General,
-            Scope::Dynamic(scope),
-        );
-    }
-    keymap
-}
-
 /// Builds the keymap with a configured terminal control-toggle binding.
 ///
 /// `control_toggle` is the normalized `<c-?>` notation from
@@ -689,15 +665,9 @@ mod tests {
             },
         };
 
-        for scope in [
-            Scope::Normal,
-            Scope::Input,
-            Scope::Dynamic(jinn_dashboard::dashboard_scope()),
-            Scope::SidebarSessions,
-            Scope::Dynamic(jinn_quake_bar::quake_scope()),
-        ] {
-            // Given the default keymap (plus slice rows) starting in `scope`.
-            let keymap = init_with_slices();
+        for scope in [Scope::Normal, Scope::Input, Scope::SidebarSessions] {
+            // Given the default keymap starting in `scope`.
+            let keymap = init();
             let mut wk = WhichKeyInstance::new(keymap, scope.clone());
 
             // When pressing <M-t>.
@@ -772,7 +742,6 @@ mod tests {
     #[rstest::rstest]
     #[case(Scope::Normal)]
     #[case(Scope::Input)]
-    #[case(Scope::Dynamic(jinn_dashboard::dashboard_scope()))]
     #[case(Scope::SidebarPersona)]
     #[case(Scope::SidebarPins)]
     #[case(Scope::SidebarSessions)]
@@ -798,15 +767,13 @@ mod tests {
     #[case(Scope::PrunerAccumulationInput)]
     #[case(Scope::CwdInput)]
     #[case(Scope::ProjectAddInput)]
-    #[case(Scope::Dynamic(jinn_quake_bar::quake_scope()))]
     #[case(Scope::TerminalView)]
     fn alt_t_resolves_in_every_non_terminal_scope(#[case] scope: Scope) {
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
-        // Given the default keymap (plus slice rows) queried in a
-        // non-terminal scope.
-        let keymap = init_with_slices();
+        // Given the default keymap queried in a non-terminal scope.
+        let keymap = init();
         let mut wk = WhichKeyInstance::new(keymap, scope.clone());
 
         // When pressing <M-t>.
@@ -828,76 +795,6 @@ mod tests {
             ),
             "{scope:?}: <M-t> must resolve to ToggleTerminalOverlay; got {intent:?}"
         );
-    }
-
-    /// The quake opener resolves in every non-terminal scope (as its local
-    /// close binding in QuakeBar). Registered per-scope via
-    /// `add_terminal_toggles`; deliberately skipped in ArgInput, where
-    /// unresolved keys fall through to an InsertChar guard that would
-    /// mutate the arg buffer, in TerminalView (would pop the overlay), and
-    /// in TerminalControl where capture must stay hermetic.
-    #[rstest::rstest]
-    #[case(Scope::Normal)]
-    #[case(Scope::Input)]
-    #[case(Scope::Dynamic(jinn_dashboard::dashboard_scope()))]
-    #[case(Scope::SidebarPersona)]
-    #[case(Scope::SidebarPins)]
-    #[case(Scope::SidebarSessions)]
-    #[case(Scope::SidebarTaskList)]
-    #[case(Scope::SidebarMcpServers)]
-    #[case(Scope::PickerProvider)]
-    #[case(Scope::PickerSession)]
-    #[case(Scope::PickerPersona)]
-    #[case(Scope::PickerTheme)]
-    #[case(Scope::PickerLifecycle)]
-    #[case(Scope::PickerCompactionModel)]
-    #[case(Scope::PickerReasoningEffort)]
-    #[case(Scope::PickerEndpoint)]
-    #[case(Scope::PickerTool)]
-    #[case(Scope::PickerSkill)]
-    #[case(Scope::PickerTaskList)]
-    #[case(Scope::PickerProject)]
-    #[case(Scope::PickerMcpServer)]
-    #[case(Scope::PickerPlugin)]
-    #[case(Scope::SidebarResize)]
-    #[case(Scope::RenameSessionInput)]
-    #[case(Scope::PrunerAccumulationInput)]
-    #[case(Scope::CwdInput)]
-    #[case(Scope::ProjectAddInput)]
-    #[case(Scope::Dynamic(jinn_quake_bar::quake_scope()))]
-    fn quake_backtick_resolves_in_every_non_terminal_scope(#[case] scope: Scope) {
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        // Given the default keymap (plus slice rows) queried in a
-        // non-terminal scope.
-        let keymap = init_with_slices();
-        let mut wk = WhichKeyInstance::new(keymap, scope.clone());
-
-        // When pressing <M-`>.
-        let alt_backtick = KeyEvent {
-            key: Key::Char('`'),
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: true,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(alt_backtick);
-
-        // Then it resolves (QuakeBar binds <M-`> to *close*, the rest open).
-        let quake_scope = jinn_quake_bar::quake_scope();
-        let expected_close = matches!(&scope, Scope::Dynamic(id) if *id == quake_scope);
-        let resolved = intent.expect("{scope:?}: <M-`> must resolve; got None");
-        match &resolved {
-            Intent::Dynamic(d) if d.action == "close" => {
-                assert!(expected_close, "{scope:?}: got close, expected open");
-            }
-            Intent::Dynamic(d) if d.action == "open" => {
-                assert!(!expected_close, "{scope:?}: got open, expected close");
-            }
-            other => panic!("{scope:?}: expected the quake open/close action, got {other:?}"),
-        }
     }
 
     /// `y` and `I` resolve in view mode only; in control mode the catch-all
@@ -1081,153 +978,33 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn alt_backtick_in_input_scope_does_not_insert_literal_backtick() {
-        // Given a keymap with the per-scope <M-`> binding, queried in Input scope.
+    fn alt_t_in_input_scope_does_not_insert_literal_t() {
+        // Given a keymap with the per-scope <M-t> binding, queried in Input scope.
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
-        let keymap = init_with_slices();
+        let keymap = init();
         let mut wk = WhichKeyInstance::new(keymap, Scope::Input);
 
-        // When pressing <M-`> (Alt+backtick).
-        let alt_backtick = KeyEvent {
-            key: Key::Char('`'),
+        // When pressing <M-t> (Alt+t).
+        let alt_t = KeyEvent {
+            key: Key::Char('t'),
             modifiers: Modifiers {
                 ctrl: false,
                 alt: true,
                 shift: false,
             },
         };
-        let intent = wk.handle_key(alt_backtick);
+        let intent = wk.handle_key(alt_t);
 
-        // Then it resolves to the quake opener, NOT a literal InsertChar('`') —
+        // Then it resolves to the overlay toggle, NOT a literal InsertChar('t') —
         // the scope binding beats the Input catch-all.
         let intent = intent.expect(
-            "<M-`> in Input scope must fire an intent; got None (scope binding missing, catch-all regression)",
+            "<M-t> in Input scope must fire an intent; got None (scope binding missing, catch-all regression)",
         );
         assert!(
-            matches!(intent, Intent::Dynamic(ref d) if d.action == "open"),
-            "<M-`> must resolve to the quake opener, not InsertChar; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn quake_bar_scope_esc_fires_close_quake_bar() {
-        // Given a keymap queried in QuakeBar scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init_with_slices();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::Dynamic(jinn_quake_bar::quake_scope()));
-
-        // When pressing ESC.
-        let esc = KeyEvent {
-            key: Key::Esc,
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(esc);
-
-        // Then it resolves to the quake close action (which pops the quake bar scope).
-        let intent = intent.expect("ESC in QuakeBar scope must fire an intent");
-        assert!(
-            matches!(intent, Intent::Dynamic(ref d) if d.action == "close"),
-            "ESC must resolve to the quake close action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn quake_bar_scope_meta_backtick_fires_close_quake_bar() {
-        // Given a keymap queried in QuakeBar scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init_with_slices();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::Dynamic(jinn_quake_bar::quake_scope()));
-
-        // When pressing <M-`> (the scoped close binding, overriding the global opener).
-        let meta_backtick = KeyEvent {
-            key: Key::Char('`'),
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: true,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(meta_backtick);
-
-        // Then it resolves to close, making <M-`> a toggle (specific-scope-wins
-        // over the global opener).
-        let intent = intent.expect("<M-`> in QuakeBar scope must fire an intent");
-        assert!(
-            matches!(intent, Intent::Dynamic(ref d) if d.action == "close"),
-            "<M-`> in QuakeBar scope must resolve to close (toggle); got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn quake_bar_scope_printable_char_routes_to_insert_char() {
-        // Given a keymap queried in QuakeBar scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init_with_slices();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::Dynamic(jinn_quake_bar::quake_scope()));
-
-        // When pressing a plain printable char.
-        let key_x = KeyEvent {
-            key: Key::Char('x'),
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(key_x);
-
-        // Then which-key synthesizes the generic editing intent for the
-        // hook scopes: the intent handler's input-hook consult (not a
-        // god-match arm) routes it to the slice's sync writer. Without
-        // the catch-all the keystroke never reaches the slice — the
-        // hook only sees intents the keymap emits.
-        assert!(
-            matches!(intent, Some(Intent::InsertChar { ch: 'x' })),
-            "printable char must synthesize InsertChar for the slice input hook; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn quake_bar_scope_pgup_fires_scroll_up() {
-        // Given a keymap queried in QuakeBar scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init_with_slices();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::Dynamic(jinn_quake_bar::quake_scope()));
-
-        // When pressing PageUp.
-        let pgup = KeyEvent {
-            key: Key::PageUp,
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(pgup);
-
-        // Then it resolves to the quake scroll-up action (so the log actually scrolls).
-        let intent = intent.expect("PageUp in QuakeBar scope must fire an intent");
-        assert!(
-            matches!(intent, Intent::Dynamic(ref d) if d.action == "scroll-up"),
-            "PageUp must resolve to the quake scroll-up action; got {intent:?}",
+            matches!(intent, Intent::ToggleTerminalOverlay { session_id: None }),
+            "<M-t> must resolve to the overlay toggle, not InsertChar; got {intent:?}",
         );
     }
 
@@ -1403,96 +1180,6 @@ mod tests {
             other => panic!("<leader>sr must be a leaf, got branch: {other:?}"),
         }
     }
-    #[rstest::rstest]
-    fn gdc_binds_in_normal_scope_via_the_route_table() {
-        // Given the composed keymap (init + every slice's rows). The
-        // discord rows come from the slice's activation path, not the
-        // kernel's composition routes — so the test attaches them the
-        // way `activate()` does.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let routes = crate::test_routes::composition_routes();
-        jinn_discord_slice::attach_discord_rows(&routes);
-        let mut keymap = init();
-        crate::keymap_gen::bind_route_rows(&routes, &mut keymap);
-        for scope in crate::keymap_gen::dynamic_scopes(&routes) {
-            keymap.bind(
-                "<M-t>",
-                Intent::ToggleTerminalOverlay { session_id: None },
-                KeyCategory::General,
-                Scope::Dynamic(scope),
-            );
-        }
-
-        // When navigating the gdc sequence (g → d → c).
-        let path = [
-            KeyEvent {
-                key: Key::Char('g'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('d'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('c'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
-
-        // Then it resolves to a dynamic intent for discord's to-thread action.
-        match result {
-            NodeResult::Leaf { action } => match action {
-                Intent::Dynamic(dynamic) => {
-                    assert_eq!(dynamic.slice.key(), "discord:actions");
-                    assert_eq!(dynamic.action, "to-thread");
-                }
-                other => panic!("gdc must resolve to a dynamic intent; got {other:?}"),
-            },
-            other => panic!("gdc must be a leaf, got branch: {other:?}"),
-        }
-        // And the `gd` prefix under `g` is a derived group labeled
-        // "discord" (root `g` keeps its hardcoded "general" label).
-        let g_key = KeyEvent {
-            key: Key::Char('g'),
-            modifiers: Modifiers::none(),
-        };
-        let g_children = keymap
-            .children_at_path(&[g_key], &Scope::Normal)
-            .expect("g group bindings");
-        let d_key = KeyEvent {
-            key: Key::Char('d'),
-            modifiers: Modifiers::none(),
-        };
-        assert!(
-            g_children
-                .iter()
-                .any(|b| b.key == d_key && b.description == "discord"),
-            "gd group should be derived with the discord label, got {g_children:?}"
-        );
-    }
-
-    #[rstest::rstest]
-    fn gdc_is_absent_from_insert_scope() {
-        // Given the composed keymap (init + every slice's rows).
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        let keymap = init_with_slices();
-
-        // When navigating the g prefix in the Insert scope.
-        let path = [KeyEvent {
-            key: Key::Char('g'),
-            modifiers: Modifiers::none(),
-        }];
-        let result = keymap.navigate(&path, &Scope::Input);
-
-        // Then nothing resolves — the discord row must not pierce typing.
-        assert!(
-            result.is_none(),
-            "gdc must not bind in Input; typing would break"
-        );
-    }
-
     #[rstest::rstest]
     fn reasoning_effort_picker_scope_binds_base_intents() {
         // Given the default keymap.
@@ -2158,27 +1845,6 @@ mod leak_check {
     use crate::scope::Scope;
     use ratatui_which_key::Keymap as WKKeymap;
 
-    #[rstest::rstest]
-    #[test]
-    fn dashboard_scope_has_no_chathistory_or_sidebar_bindings() {
-        let keymap: WKKeymap<
-            jinn_domain::KeyEvent,
-            Scope,
-            jinn_domain::Intent,
-            crate::keymap::KeyCategory,
-        > = init();
-        let groups = keymap.bindings_for_scope(Scope::Dynamic(jinn_dashboard::dashboard_scope()));
-        let all_desc: Vec<&str> = groups
-            .iter()
-            .flat_map(|g| g.bindings.iter().map(|b| b.description.as_str()))
-            .collect();
-        assert!(
-            !all_desc
-                .iter()
-                .any(|d| d.contains("next") || d.contains("previous")),
-            "ChatHistory groups leaked into Dashboard: {all_desc:?}"
-        );
-    }
     #[rstest::rstest]
     #[test]
     fn normal_scope_still_shows_chathistory_and_sidebar_groups() {

@@ -2,12 +2,12 @@
 //! tests.
 //!
 //! The pure routing decision (phase → enqueue vs steer) lives in
-//! [`jinn_discord_slice::route`]. This module adds the composite
+//! [`crate::route`]. This module adds the composite
 //! inbound-message classifier that also accounts for thread binding and
 //! session presence, so the gateway handler stays a thin adapter and the
 //! decision logic is unit-testable without constructing Discord types.
 
-use jinn_discord_slice::route::{RouteDecision, route_decision};
+use crate::route::{RouteDecision, route_decision};
 use jinn_domain::feat::session::phase_machine::PhaseKind;
 use poise::serenity_prelude::MessageType;
 

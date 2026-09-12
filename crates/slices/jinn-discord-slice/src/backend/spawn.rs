@@ -1,14 +1,14 @@
 //! Gateway spawn entry point.
 //!
 //! The discord slice owns its wiring (channels, actors, rows) via
-//! `jinn_discord_slice::activate`; this crate is the *frontend* —
+//! `crate::activate`; this crate is the *frontend* —
 //! the one piece that cannot live in the slice: the poise websocket task.
 //! Composition (`app.rs`) calls [`spawn_gateway`] once per process with
 //! the activated slice's parked channels + validated config.
 //!
 //! [`Services`]: jinn_domain::Services
 
-use crate::gateway;
+use crate::backend::gateway;
 use jinn_domain::Services;
 use tokio::task::JoinHandle;
 
@@ -29,10 +29,10 @@ pub fn spawn_gateway(
     core: &jinn_domain::AppCore,
     services: &Services,
     session_pool: SessionPool,
-    activated: jinn_discord_slice::ActivatedDiscord,
+    activated: crate::ActivatedDiscord,
     intent_handler_cap: &jinn_domain::common::tcaps::IntentHandlerCap,
 ) -> Option<JoinHandle<()>> {
-    let jinn_discord_slice::ActivatedDiscord { parked, config } = activated;
+    let crate::ActivatedDiscord { parked, config } = activated;
     if !config.enabled {
         return None;
     }
@@ -55,7 +55,7 @@ pub fn spawn_gateway(
             gateway::BotData {
                 state,
                 bridge,
-                thread_map: jinn_discord_slice::DiscordThreadMap::new(session_pool),
+                thread_map: crate::DiscordThreadMap::new(session_pool),
                 config: std::sync::Arc::new(config),
                 services,
                 intent_handler_cap,
@@ -101,11 +101,11 @@ mod tests {
             state: State::new(jinn_domain::common::app_state::AppState::default()),
             bridge: Bridge::new(bus_ref),
         };
-        let activated = jinn_discord_slice::ActivatedDiscord {
-            parked: jinn_discord_slice::DiscordGatewayChannels::detached(),
-            config: jinn_discord_slice::DiscordConfig {
+        let activated = crate::ActivatedDiscord {
+            parked: crate::DiscordGatewayChannels::detached(),
+            config: crate::DiscordConfig {
                 enabled: false,
-                ..jinn_discord_slice::DiscordConfig::default()
+                ..crate::DiscordConfig::default()
             },
         };
         let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();

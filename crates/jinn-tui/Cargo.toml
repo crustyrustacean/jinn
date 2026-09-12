@@ -5,8 +5,6 @@ edition.workspace = true
 
 [dependencies]
 jinn-domain = { workspace = true }
-jinn-dashboard = { workspace = true }
-jinn-quake-bar = { workspace = true }
 jinn-slices = { workspace = true }
 trouper = { workspace = true }
 
@@ -36,10 +34,6 @@ jinn-testutil = { workspace = true }
 tempfile = { workspace = true }
 kameo = { workspace = true }
 kameo_actors = { workspace = true }
-# The discord rows attach via slice activation, not composition routes;
-# the keymap tests compose them explicitly to verify the `gdc` binding.
-jinn-discord-slice = { workspace = true }
-jinn-slices = { workspace = true }
 
 [lints]
 workspace = true
