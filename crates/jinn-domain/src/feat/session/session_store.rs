@@ -138,34 +138,45 @@ pub trait SessionStore: Send + Sync + 'static {
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>>;
 
-    /// Returns the ids of all sessions with pending (dirty) FTS reindex work.
+    /// Returns the ids of all sessions with pending (dirty) FTS reindex work,
+    /// in queue order (oldest marker first).
     ///
-    /// Dirty sessions are recorded in the `fts_dirty` table by triggers on
-    /// `sessions`. Rows whose stored id cannot be parsed as a [`SessionId`]
-    /// are skipped (with a warning) — a corrupt marker must not poison the
-    /// batch, and it could never be reindexed anyway.
+    /// Rows whose stored id cannot be parsed as a [`SessionId`] are skipped
+    /// with a warning — a corrupt marker must not poison the batch, and it
+    /// could never be reindexed anyway.
     ///
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if the read fails.
     async fn dirty_session_ids(&self) -> Result<Vec<SessionId>, Report<SessionStoreError>>;
 
-    /// Recompute one session's FTS index rows and clear its dirty marker.
+    /// Advance one session's chunked FTS reindex by up to `max_entries`.
     ///
-    /// The session's `session_fts` rows are deleted and rebuilt from the live
-    /// `entries`/`session_history` tables — "dirty = recompute this session
-    /// from scratch". A session deleted since being marked has no live rows,
-    /// so this removes its stale FTS rows and clears the marker (a no-op
-    /// rebuild, not an error). A failed session's marker remains set, so the
-    /// next call retries it.
+    /// The store tracks the rebuild's resume point on the session's dirty
+    /// marker: the first chunk of a rebuild (resume point 0) deletes the
+    /// session's existing FTS rows, later chunks append. Each call runs one
+    /// bounded transaction and persists the advanced resume point, so a huge
+    /// session cannot hold the write lock (or the caller) for an unbounded
+    /// time, and progress survives restarts. Returns `true` when the session
+    /// is fully indexed and its marker cleared — callers repeat across ticks
+    /// until then. A failed chunk leaves the marker (and resume point)
+    /// untouched, so the next call retries it.
+    ///
+    /// While a rebuild is partial the index holds a valid prefix of the
+    /// session's entries; the dirty marker stays set. If a save lands
+    /// mid-rebuild the `sessions` UPDATE trigger re-marks the session (its
+    /// resume point stays put) and the next rebuild-from-zero repairs any
+    /// staleness. A session deleted since being marked finishes as an empty
+    /// rebuild — a no-op, not an error.
     ///
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if any read or write fails.
-    async fn reindex_session(
+    async fn reindex_session_chunk(
         &self,
         session_id: &SessionId,
-    ) -> Result<(), Report<SessionStoreError>>;
+        max_entries: usize,
+    ) -> Result<bool, Report<SessionStoreError>>;
 
     /// Returns how many sessions currently have pending (dirty) FTS reindex
     /// work.

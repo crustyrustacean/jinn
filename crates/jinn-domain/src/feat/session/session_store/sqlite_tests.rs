@@ -1879,19 +1879,32 @@ fn make_two_entry_session(id: &SessionId, title: &str) -> ChatSessionState {
     session
 }
 
-/// Drains the dirty set using the store primitives — the same loop the
-/// search-index actor runs. Returns the number of sessions reindexed.
+/// Drains the dirty set using the store primitives — the same chunked,
+/// resumable loop the search-index actor runs, with a chunk size large
+/// enough to finish each test session in one pass. Returns the number of
+/// chunks run.
 ///
 /// Store tests only exercise the store layer; batch isolation and progress
 /// reporting belong to the actor and are covered there.
 async fn drain(
     store: &SqliteSessionStore,
 ) -> Result<usize, error_stack::Report<crate::feat::session::session_store::SessionStoreError>> {
-    let ids = store.dirty_session_ids().await?;
-    for id in &ids {
-        store.reindex_session(id).await?;
+    // Oversized chunks: store tests exercise single-shot rebuilds; chunked
+    // resume semantics belong to the actor tests. Repeats while partial
+    // chunks remain, counting sessions that reached their final chunk.
+    let mut reindexed = 0;
+    for _ in 0..100 {
+        let ids = store.dirty_session_ids().await?;
+        if ids.is_empty() {
+            break;
+        }
+        for id in &ids {
+            if store.reindex_session_chunk(id, 10_000).await? {
+                reindexed += 1;
+            }
+        }
     }
-    Ok(ids.len())
+    Ok(reindexed)
 }
 
 #[rstest::rstest]
@@ -2534,4 +2547,88 @@ async fn pending_dirty_count_includes_unparseable_marker() {
     // Then the corrupt marker is counted — the queue size reflects reality so
     // the dashboard can surface the stuck row instead of hiding it.
     assert_eq!(count, 1);
+}
+#[rstest::rstest]
+#[tokio::test]
+async fn partial_chunk_persists_resume_point_and_next_chunk_finishes() {
+    // Given a store with a 6-entry session and chunks of 2.
+    let (_dir, store) = make_store().await;
+    let id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(id.clone());
+    session.set_title("chunked".to_owned());
+    for i in 0..6 {
+        session.push_entry(ChatEntry::user(format!("entry {i} mentions needle")));
+    }
+    store.save(&session).await.expect("save");
+
+    // When the first bounded chunk runs.
+    let finished = store.reindex_session_chunk(&id, 2).await.expect("chunk 1");
+
+    // Then the session is not finished, its marker stays, and the resume
+    // point advanced to 2 — so search finds only the prefix.
+    assert!(!finished);
+    assert_eq!(store.pending_dirty_count().await.expect("count"), 1);
+    let first = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+    assert_eq!(first.total_matches, 2, "only the indexed prefix is visible");
+
+    // When the remaining chunks run (2+2+2 = three exactly-full chunks; the
+    // final full chunk is followed by an empty one that reports completion).
+    assert!(!store.reindex_session_chunk(&id, 2).await.expect("chunk 2"));
+    assert!(!store.reindex_session_chunk(&id, 2).await.expect("chunk 3"));
+    let finished = store.reindex_session_chunk(&id, 2).await.expect("chunk 4");
+
+    // Then the rebuild completes, the marker clears, and all six entries
+    // are searchable.
+    assert!(finished);
+    assert_eq!(store.pending_dirty_count().await.expect("count"), 0);
+    let all = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+    assert_eq!(all.total_matches, 6);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reindex_chunk_on_deleted_session_clears_marker() {
+    // Given a dirty marker for a session with no rows (deleted since marked).
+    let (_dir, store) = make_store().await;
+    let id = SessionId::new();
+    let marker = id.to_string();
+    store
+        .pool()
+        .with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO fts_dirty(session_id) VALUES (?)",
+                rusqlite::params![marker],
+            )
+            .map_err(daow::Error::from)
+        })
+        .await
+        .expect("mark dirty");
+
+    // When a chunk runs for it.
+    let finished = store.reindex_session_chunk(&id, 100).await.expect("chunk");
+
+    // Then the rebuild is trivially finished and the marker cleared.
+    assert!(finished);
+    assert_eq!(store.pending_dirty_count().await.expect("count"), 0);
 }

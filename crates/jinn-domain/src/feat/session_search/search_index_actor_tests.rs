@@ -92,7 +92,7 @@ async fn startup_drain_indexes_all_dirty_sessions() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: REINDEX_INTERVAL,
-            budget: Duration::from_secs(3600),
+            budget: Duration::from_hours(1),
         },
         &root,
     )
@@ -116,7 +116,7 @@ async fn tick_loop_picks_up_sessions_marked_after_startup() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_secs(3600),
+            budget: Duration::from_hours(1),
         },
         &root,
     )
@@ -162,7 +162,7 @@ async fn failed_drain_leaves_marker_and_next_drain_recovers() {
     for id in &primed {
         deps.services
             .session_store
-            .reindex_session(id)
+            .reindex_session_chunk(id, 10_000)
             .await
             .expect("priming reindex");
     }
@@ -185,7 +185,7 @@ async fn failed_drain_leaves_marker_and_next_drain_recovers() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_secs(3600),
+            budget: Duration::from_hours(1),
         },
         &root,
     )
@@ -242,7 +242,7 @@ async fn failing_session_does_not_block_rest_of_batch() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_secs(3600),
+            budget: Duration::from_hours(1),
         },
         &root,
     )
@@ -303,7 +303,7 @@ async fn failed_session_marker_survives_and_recovers_when_fault_clears() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_secs(3600),
+            budget: Duration::from_hours(1),
         },
         &root,
     )
@@ -399,7 +399,7 @@ async fn drain_publishes_pending_count_before_and_after_work() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_secs(3600),
+            budget: Duration::from_hours(1),
         },
         &root,
     )
@@ -501,7 +501,7 @@ async fn empty_drain_publishes_index_up_to_date() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_secs(3600),
+            budget: Duration::from_hours(1),
         },
         &root,
     )
@@ -538,7 +538,7 @@ async fn failing_session_still_publishes_progress() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_secs(3600),
+            budget: Duration::from_hours(1),
         },
         &root,
     )

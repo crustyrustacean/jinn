@@ -123,11 +123,12 @@ impl SessionStore for StubStore {
         Ok(Vec::new())
     }
 
-    async fn reindex_session(
+    async fn reindex_session_chunk(
         &self,
         _session_id: &SessionId,
-    ) -> Result<(), Report<SessionStoreError>> {
-        Ok(())
+        _max_entries: usize,
+    ) -> Result<bool, Report<SessionStoreError>> {
+        Ok(true)
     }
 
     async fn pending_dirty_count(&self) -> Result<usize, Report<SessionStoreError>> {

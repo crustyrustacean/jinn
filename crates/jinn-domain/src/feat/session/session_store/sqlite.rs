@@ -357,11 +357,12 @@ impl SessionStore for SqliteSessionStore {
         dirty_session_ids(&self.pool).await
     }
 
-    async fn reindex_session(
+    async fn reindex_session_chunk(
         &self,
         session_id: &SessionId,
-    ) -> Result<(), Report<SessionStoreError>> {
-        reindex_session(&self.pool, session_id).await
+        max_entries: usize,
+    ) -> Result<bool, Report<SessionStoreError>> {
+        reindex_session_chunk(&self.pool, session_id, max_entries).await
     }
 
     async fn pending_dirty_count(&self) -> Result<usize, Report<SessionStoreError>> {
@@ -1560,35 +1561,66 @@ async fn pending_dirty_count(pool: &Pool) -> Result<usize, Report<SessionStoreEr
     Ok(total.unwrap_or(0) as usize)
 }
 
-/// Reindexes one session: fetch → parse (blocking) → rebuild in a tx.
-///
-/// Per the "dirty = recompute from scratch" rule, the session's `session_fts`
-/// rows are deleted and rebuilt from the live tables, then the `fts_dirty`
-/// marker is cleared. If new writes land between the fetch and the
-/// transaction, the `sessions` UPDATE trigger re-marks the session dirty and
-/// the next drain fixes it. For a session deleted since being marked, the
-/// live set is empty, so stale FTS rows are removed and the marker clears —
-/// a no-op rebuild, not an error.
-async fn reindex_session(
-    pool: &Pool,
-    session_id: &SessionId,
-) -> Result<(), Report<SessionStoreError>> {
-    reindex_one_session(pool, session_id.to_string()).await
+/// Read by a manual `FromRow` that maps the aliased dirty-marker columns.
+struct DirtyResumeRow {
+    resume_offset: i64,
 }
 
-/// The reindex body, string-typed at the SQL boundary.
-async fn reindex_one_session(
+impl FromRow for DirtyResumeRow {
+    fn from_row(row: &Row) -> daow::Result<Self> {
+        Ok(Self {
+            resume_offset: row.get("resume_offset")?,
+        })
+    }
+}
+
+/// Returns the resume point stored on a session's dirty marker: how many of
+/// its entries the chunked rebuild has already indexed (0 = not started).
+async fn resume_offset(pool: &Pool, session_id: &str) -> usize {
+    let rows: Vec<DirtyResumeRow> = pool
+        .query_all(
+            "SELECT resume_offset AS resume_offset FROM fts_dirty WHERE session_id = ?",
+            vec![Box::new(session_id.to_owned())],
+        )
+        .await
+        .unwrap_or_default();
+    rows.first()
+        .map_or(0, |row| row.resume_offset.max(0) as usize)
+}
+
+/// Indexes at most `max_entries` more of one session's entries into the FTS
+/// table, resuming at the marker's stored resume point (by ordinal), as a
+/// single transaction. A resume point of 0 additionally deletes the
+/// session's existing FTS rows ("dirty = recompute from scratch"); later
+/// chunks append. Returns `true` when the session is fully indexed — its
+/// dirty marker is then deleted in the same transaction.
+///
+/// A partial chunk persists the advanced resume point on the marker, so the
+/// drain continues where it left off on the next tick or after a restart.
+/// If new writes land mid-rebuild, the `sessions` UPDATE trigger re-marks
+/// the session (resume stays put; the next rebuild-from-zero repairs any
+/// staleness). A session deleted since being marked yields an empty first
+/// chunk and a deleted marker — a no-op rebuild, not an error.
+async fn reindex_session_chunk(
     pool: &Pool,
-    session_id: String,
-) -> Result<(), Report<SessionStoreError>> {
+    session_id: &SessionId,
+    max_entries: usize,
+) -> Result<bool, Report<SessionStoreError>> {
+    let session_id = session_id.to_string();
+    let offset = resume_offset(pool, &session_id).await;
     let raw: Vec<RawIndexedEntry> = pool
         .query_all(
             "SELECT entries.id AS entry_id, entries.timing AS timing, entries.kind AS kind \
              FROM entries \
              INNER JOIN session_history ON entries.id = session_history.entry_id \
              WHERE session_history.session_id = ? \
-             ORDER BY session_history.ordinal ASC",
-            vec![Box::new(session_id.clone())],
+             ORDER BY session_history.ordinal ASC \
+             LIMIT ? OFFSET ?",
+            vec![
+                Box::new(session_id.clone()),
+                Box::new(max_entries as i64),
+                Box::new(offset as i64),
+            ],
         )
         .await
         .change_context(SessionStoreError)
@@ -1605,15 +1637,23 @@ async fn reindex_one_session(
             .attach("reindex parse task panicked")?
     };
 
-    pool.with_conn(move |conn| -> daow::Result<()> {
+    // A chunk shorter than `max_entries` means the ordinal walk ran past the
+    // end: the session is fully indexed. (An exactly-full final chunk is
+    // followed by one empty chunk that returns `finished` here — correct,
+    // since the walk is then exhausted.)
+    let finished = parsed.len() < max_entries;
+    let advanced = (offset + parsed.len()) as i64;
+    pool.with_conn(move |conn| -> daow::Result<bool> {
         let tx = conn.transaction()?;
-        // "Dirty = recompute from scratch": drop this session's rows, then
-        // insert the live set. For a deleted session the live set is empty,
-        // so stale rows are removed and the marker clears below.
-        tx.execute(
-            "DELETE FROM session_fts WHERE session_id = ?",
-            rusqlite::params![&session_id],
-        )?;
+        if offset == 0 {
+            // First chunk of the rebuild: drop the session's existing rows
+            // before inserting the live prefix. For a deleted session the
+            // live set is empty, so this removes stale rows only.
+            tx.execute(
+                "DELETE FROM session_fts WHERE session_id = ?",
+                rusqlite::params![&session_id],
+            )?;
+        }
         for entry in &parsed {
             tx.execute(
                 "INSERT INTO session_fts (body, role, session_id, entry_id, entry_ts) \
@@ -1627,18 +1667,26 @@ async fn reindex_one_session(
                 ],
             )?;
         }
-        tx.execute(
-            "DELETE FROM fts_dirty WHERE session_id = ?",
-            rusqlite::params![&session_id],
-        )?;
+        if finished {
+            // Final chunk: the session is fully indexed — clear the marker
+            // (and its resume point) in the same transaction so the queue
+            // and the index agree.
+            tx.execute(
+                "DELETE FROM fts_dirty WHERE session_id = ?",
+                rusqlite::params![&session_id],
+            )?;
+        } else {
+            tx.execute(
+                "UPDATE fts_dirty SET resume_offset = ? WHERE session_id = ?",
+                rusqlite::params![advanced, &session_id],
+            )?;
+        }
         tx.commit()?;
-        Ok(())
+        Ok(finished)
     })
     .await
     .change_context(SessionStoreError)
-    .attach("failed to rebuild FTS rows")?;
-
-    Ok(())
+    .attach("failed to rebuild FTS rows")
 }
 
 /// Parses raw entry rows into indexed rows. Runs inside `spawn_blocking`.

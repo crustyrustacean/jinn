@@ -331,6 +331,15 @@ fn apply_migration_chain(
         migrate_v26(conn)?;
         record_version(conn, 26, "add_fts_search_index")?;
     }
+    if current < 27 {
+        tracing::debug!(
+            version = 27,
+            name = "add_fts_dirty_resume_offset",
+            "applying migration"
+        );
+        migrate_v27(conn)?;
+        record_version(conn, 27, "add_fts_dirty_resume_offset")?;
+    }
     Ok(())
 }
 
@@ -1242,6 +1251,23 @@ pub fn migrate_v26(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
         .change_context(SchemaMigrationError)
         .attach("v26: seed fts_dirty with existing sessions")?;
 
+    Ok(())
+}
+
+/// v27 — add `resume_offset` to `fts_dirty` for chunked reindexing.
+///
+/// The reindex drain chunks each session's FTS rebuild into bounded
+/// transactions (a 40k-entry session must not hold the write lock — or the
+/// tick handler — for an unbounded time). This column stores how many of the
+/// session's entries have been indexed so far: 0 means "start from scratch"
+/// (the next chunk deletes stale FTS rows first); a nonzero value resumes
+/// appending after that ordinal prefix. It is cleared to 0 in the same
+/// transaction that clears the marker on completion, so a crash mid-rebuild
+/// leaves both the marker and its resume point intact for the next drain.
+pub fn migrate_v27(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch("ALTER TABLE fts_dirty ADD COLUMN resume_offset INTEGER NOT NULL DEFAULT 0")
+        .change_context(SchemaMigrationError)
+        .attach("v27: add fts_dirty.resume_offset")?;
     Ok(())
 }
 
