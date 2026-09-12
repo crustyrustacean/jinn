@@ -1,223 +1,19 @@
-//! Slice-composition integration tests.
+//! Dashboard-slice integration tests: the slice's scope, cell, and actor
+//! inside the composed system.
 //!
-//! These exercise the composed system — real slice activation over the
-//! kernel's registries, real route rows, real cells and actors — the
-//! layer no individual crate can test in isolation. They live here (the
-//! root crate's `tests/`) so `just check` and IDE analysis never compile
-//! slice crates into the kernel or the tui crate graph.
-//!
-//! Coverage split:
-//! - tui unit tests: synthetic/slice-shaped inputs only
-//! - slice crate tests: each slice's own row shape and behavior
-//! - these tests: the composition of both (keys resolve across the
-//!   built-in keymap plus every slice's rows; rendering against real
-//!   slice cells; actors applying routed messages).
+//! These exercise the dashboard slice **as composed** — its dynamic scope
+//! receiving composition chrome, its scope staying free of kernel keybind
+//! groups, the `j`-key E2E through the routed message to the actor, and
+//! rendering against the real dashboard cell (tab highlighting, actor
+//! rows, status messages, placeholder, selection marker).
+
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
-mod common;
-
-use common::{composed_keymap, composition_routes, test_app, wait_for};
+use crate::common::{composed_keymap, test_app, wait_for};
 use jinn_dashboard::dashboard_scope;
 use jinn_domain::common::slices::TypedCell;
 use jinn_domain::{Intent, Key, KeyEvent, Modifiers};
-use jinn_quake_bar::quake_scope;
 use jinn_tui::Scope;
-use ratatui_which_key::NodeResult;
-
-fn plain(ch: char) -> KeyEvent {
-    KeyEvent {
-        key: Key::Char(ch),
-        modifiers: Modifiers::none(),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Composed keymap resolution
-// ---------------------------------------------------------------------------
-
-/// The composed `gdc` sequence resolves to discord's to-thread action:
-/// the slice's row survives the merge into the composed keymap.
-#[rstest::rstest]
-#[test]
-fn gdc_resolves_to_discord_to_thread_in_the_composed_keymap() {
-    // Given the composed keymap (built-in bindings + every slice's rows).
-    let keymap = composed_keymap();
-
-    // When navigating the gdc sequence in the Normal scope.
-    let result = keymap
-        .navigate(&[plain('g'), plain('d'), plain('c')], &Scope::Normal)
-        .expect("gdc path exists in the composed keymap");
-
-    // Then it resolves to a dynamic intent for discord's to-thread action.
-    let NodeResult::Leaf { action } = result else {
-        panic!("gdc must be a leaf, got {result:?}");
-    };
-    let Intent::Dynamic(dynamic) = action else {
-        panic!("gdc must resolve to a dynamic intent, got {action:?}");
-    };
-    assert_eq!(dynamic.slice.key(), "discord:actions");
-    assert_eq!(dynamic.action, "to-thread");
-}
-
-/// The `gd` prefix under `g` derives a group labeled "discord" (the
-/// feature label), while the root `g` keeps its hardcoded "general" label.
-#[rstest::rstest]
-#[test]
-fn gd_prefix_derives_the_discord_group_label() {
-    // Given the composed keymap.
-    let keymap = composed_keymap();
-
-    // When listing the children under the `g` prefix in Normal scope.
-    let g_children = keymap
-        .children_at_path(&[plain('g')], &Scope::Normal)
-        .expect("g group bindings");
-
-    // Then the `d` child is described as the discord group.
-    assert!(
-        g_children
-            .iter()
-            .any(|b| b.key == plain('d') && b.description == "discord"),
-        "gd group should be derived with the discord label, got {g_children:?}"
-    );
-    // And the root `g` keeps its hardcoded "general" description.
-    let root = keymap
-        .children_at_path(&[], &Scope::Normal)
-        .expect("root bindings");
-    assert!(
-        root.iter()
-            .any(|b| b.key == plain('g') && b.description == "general"),
-        "root g should keep the general label, got {root:?}"
-    );
-}
-
-/// The discord row does not pierce typing: no `g` branch exists in the
-/// Input scope even with every slice's rows attached.
-#[rstest::rstest]
-#[test]
-fn gdc_is_absent_from_the_input_scope() {
-    // Given the composed keymap.
-    let keymap = composed_keymap();
-
-    // When navigating the g prefix in the Input scope.
-    let result = keymap.navigate(&[plain('g')], &Scope::Input);
-
-    // Then nothing resolves — typing is untouched by slice rows.
-    assert!(
-        result.is_none(),
-        "gdc must not bind in Input; got {result:?}"
-    );
-}
-
-/// The quake `<M-\`>` toggle: open from static scopes, close inside the
-/// quake's own dynamic scope (specific-scope-wins).
-#[rstest::rstest]
-#[test]
-fn quake_backtick_toggles_open_in_normal_and_close_in_quake_scope() {
-    // Given the composed keymap in the Normal scope.
-    let keymap = composed_keymap();
-    let alt_backtick = KeyEvent {
-        key: Key::Char('`'),
-        modifiers: Modifiers {
-            ctrl: false,
-            alt: true,
-            shift: false,
-        },
-    };
-
-    // When pressing <M-`> in Normal scope.
-    let intent = {
-        let mut wk = jinn_tui::app::WhichKeyInstance::new(keymap.clone(), Scope::Normal);
-        wk.handle_key(alt_backtick.clone())
-    };
-
-    // Then it resolves to the quake open action.
-    let intent = intent.expect("<M-`> must open the quake bar from Normal");
-    assert!(
-        matches!(&intent, Intent::Dynamic(d) if d.action == "open"),
-        "expected the quake open action, got {intent:?}"
-    );
-
-    // And when pressing <M-`> in the quake's own scope, it resolves to
-    // close — making <M-`> a toggle (specific-scope-wins over the opener).
-    let mut wk = jinn_tui::app::WhichKeyInstance::new(keymap, Scope::Dynamic(quake_scope()));
-    let intent = wk
-        .handle_key(alt_backtick)
-        .expect("<M-`> must resolve in QuakeBar");
-    assert!(
-        matches!(&intent, Intent::Dynamic(d) if d.action == "close"),
-        "expected the quake close action, got {intent:?}"
-    );
-}
-
-/// ESC resolves to the quake close action inside the quake scope.
-#[rstest::rstest]
-#[test]
-fn esc_fires_quake_close_in_quake_scope() {
-    // Given the composed keymap in the quake's dynamic scope.
-    let keymap = composed_keymap();
-    let mut wk = jinn_tui::app::WhichKeyInstance::new(keymap, Scope::Dynamic(quake_scope()));
-
-    // When pressing ESC.
-    let esc = KeyEvent {
-        key: Key::Esc,
-        modifiers: Modifiers::none(),
-    };
-    let intent = wk.handle_key(esc);
-
-    // Then it resolves to the quake close action (which pops the scope).
-    let intent = intent.expect("ESC in QuakeBar scope must fire an intent");
-    assert!(
-        matches!(&intent, Intent::Dynamic(d) if d.action == "close"),
-        "ESC must resolve to the quake close action; got {intent:?}"
-    );
-}
-
-/// A printable char in the quake input-hook scope synthesizes InsertChar:
-/// the hook only sees intents the keymap emits.
-#[rstest::rstest]
-#[test]
-fn printable_char_synthesizes_insert_char_in_quake_hook_scope() {
-    // Given the composed keymap in the quake's dynamic scope.
-    let keymap = composed_keymap();
-    let mut wk = jinn_tui::app::WhichKeyInstance::new(keymap, Scope::Dynamic(quake_scope()));
-
-    // When pressing a plain printable char.
-    let key_x = KeyEvent {
-        key: Key::Char('x'),
-        modifiers: Modifiers::none(),
-    };
-    let intent = wk.handle_key(key_x);
-
-    // Then which-key synthesizes the generic editing intent for the hook
-    // scopes (the handler's hook consult routes it to the slice writer).
-    assert!(
-        matches!(intent, Some(Intent::InsertChar { ch: 'x' })),
-        "printable char must synthesize InsertChar for the slice input hook; got {intent:?}"
-    );
-}
-
-/// PageUp resolves to the quake scroll-up action (so the log scrolls).
-#[rstest::rstest]
-#[test]
-fn pgup_fires_quake_scroll_up_in_quake_scope() {
-    // Given the composed keymap in the quake's dynamic scope.
-    let keymap = composed_keymap();
-    let mut wk = jinn_tui::app::WhichKeyInstance::new(keymap, Scope::Dynamic(quake_scope()));
-
-    // When pressing PageUp.
-    let pgup = KeyEvent {
-        key: Key::PageUp,
-        modifiers: Modifiers::none(),
-    };
-    let intent = wk.handle_key(pgup);
-
-    // Then it resolves to the quake scroll-up action.
-    let intent = intent.expect("PageUp in QuakeBar scope must fire an intent");
-    assert!(
-        matches!(&intent, Intent::Dynamic(d) if d.action == "scroll-up"),
-        "PageUp must resolve to the quake scroll-up action; got {intent:?}"
-    );
-}
 
 /// The composed keymap carries the terminal-overlay toggle in the
 /// dashboard's dynamic scope: registered slice scopes get the per-scope
@@ -250,10 +46,6 @@ fn alt_t_resolves_in_the_dashboard_dynamic_scope() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Leak guard
-// ---------------------------------------------------------------------------
-
 /// Kernel chat-history bindings never leak into the dashboard scope:
 /// the slice's scope carries only its own rows.
 #[rstest::rstest]
@@ -277,40 +69,6 @@ fn dashboard_scope_has_no_chathistory_or_sidebar_bindings() {
         "ChatHistory groups leaked into Dashboard: {all_desc:?}"
     );
 }
-
-// ---------------------------------------------------------------------------
-// Composition seam
-// ---------------------------------------------------------------------------
-
-/// The row seam carries every slice's rows: dashboard, quake-bar, and
-/// discord all attached (the precondition the keymap tests rely on).
-#[rstest::rstest]
-#[test]
-fn composition_sees_rows_from_every_slice() {
-    // Given the composed route table.
-    let routes = composition_routes();
-
-    // When listing the dynamic scopes it knows about.
-    let scopes = jinn_tui::keymap_gen::dynamic_scopes(&routes);
-
-    // Then every slice's scope is present.
-    assert!(
-        scopes.iter().any(|s| *s == dashboard_scope()),
-        "dashboard scope missing from composed routes"
-    );
-    assert!(
-        scopes.iter().any(|s| *s == quake_scope()),
-        "quake-bar scope missing from composed routes"
-    );
-    assert!(
-        scopes.iter().any(|s| *s == jinn_discord::discord_scope()),
-        "discord scope missing from composed routes"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// End-to-end: keypress → keymap → router → actor → cell
-// ---------------------------------------------------------------------------
 
 /// E2E: the j keypress routes through the composed keymap to the
 /// dashboard actor, which applies the selection move to the slice cell.
@@ -363,10 +121,6 @@ async fn j_keypress_routes_to_dashboard_actor_and_moves_selection() {
         "j moves selection via the routed message"
     );
 }
-
-// ---------------------------------------------------------------------------
-// Rendering against real slice cells
-// ---------------------------------------------------------------------------
 
 /// Writes into the dashboard slice cell through the app registry.
 fn write_dashboard(app: &jinn_tui::TuiApp, f: impl FnOnce(&mut jinn_dashboard::DashboardState)) {

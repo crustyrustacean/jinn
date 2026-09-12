@@ -1,10 +1,10 @@
-//! Shared harness for the root crate's slice-composition integration tests.
+//! Shared harness for the slice-composition integration tests (`tests/slices`).
 //!
 //! Tests here compose the real system: real slice activation over the
 //! kernel's registries, real route rows, real cells and actors. Everything
 //! the production launch path does — minus the terminal itself.
 //!
-//! This module exists in the root crate's `tests/` (not inside a slice or
+//! This harness exists in the root crate's `tests/` (not inside a slice or
 //! the tui crate) because that is the only place a test may depend on
 //! several slice crates at once: `just check` and IDE analysis never
 //! compile integration targets, so the tui crate stays slice-free.
@@ -230,4 +230,13 @@ pub async fn wait_for(what: &str, mut predicate: impl FnMut() -> bool) {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
     panic!("timed out waiting for: {what}");
+}
+
+/// Builds a plain (unmodified) character `KeyEvent`.
+#[must_use]
+pub fn plain(ch: char) -> jinn_domain::KeyEvent {
+    jinn_domain::KeyEvent {
+        key: jinn_domain::Key::Char(ch),
+        modifiers: jinn_domain::Modifiers::none(),
+    }
 }
