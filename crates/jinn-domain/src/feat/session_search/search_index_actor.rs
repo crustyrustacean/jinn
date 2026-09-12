@@ -134,8 +134,9 @@ impl SearchIndexActor {
     /// resumes exactly there — next tick or next launch. Publishes before the
     /// first chunk so the row reflects the queue immediately. Log-and-continue:
     /// a failed chunk is left at its old resume point and retried on a later
-    /// tick. An empty queue publishes once, so the row reads "index up to
-    /// date" as soon as the actor is idle.
+    /// tick. An empty queue re-checks the authoritative pending count before
+    /// publishing, so the row reads "index up to date" only when the
+    /// dirty-marker table is genuinely clean.
     async fn drain_once(&self) {
         // Snapshot the queue once per tick: a failed chunk stays in place
         // (resumed by a later tick) instead of spinning the loop.
@@ -188,10 +189,26 @@ impl SearchIndexActor {
         }
     }
 
-    /// Publishes "index up to date" unconditionally (the caller just observed
-    /// an empty queue — a count round-trip would only race new dirt).
+    /// Publishes the idle label after an empty queue read. An empty
+    /// `dirty_session_ids` does not prove the fts dirty-marker table is
+    /// clean: unreadable (non-UUID) markers are skipped silently by that
+    /// query, so the authoritative `pending_dirty_count` is consulted
+    /// before claiming "index up to date" — a nonzero count publishes the
+    /// pending label instead and logs how many markers could not be read.
     async fn publish_up_to_date(&self) {
-        self.publish_status("index up to date".to_owned()).await;
+        match self.deps.services.session_store.pending_dirty_count().await {
+            Ok(0) => self.publish_status("index up to date".to_owned()).await,
+            Ok(n) => {
+                tracing::warn!(
+                    pending = n,
+                    "dirty_session_ids returned an empty queue while the dirty-marker count is nonzero; some markers may be unreadable"
+                );
+                self.publish_status(format!("{n} sessions pending")).await;
+            }
+            Err(_) => {
+                tracing::warn!("failed to read the pending dirty count; label not updated");
+            }
+        }
     }
 
     async fn pending_label(&self) -> Option<String> {

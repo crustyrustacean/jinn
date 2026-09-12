@@ -488,6 +488,45 @@ async fn zero_budget_advances_backfill_one_session_per_tick() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn unreadable_dirty_markers_keep_the_row_out_of_the_up_to_date_state() {
+    // Given a store whose only dirty marker is unparseable (dirty_session_ids
+    // skips it, pending_dirty_count still counts it) and a status recorder.
+    let (_dir, harness, deps, store) = sqlite_actor_deps().await;
+    store
+        .pool()
+        .execute(
+            "INSERT INTO fts_dirty (session_id) VALUES ('not-a-uuid')",
+            vec![],
+        )
+        .await
+        .expect("seed corrupt marker");
+    let recorder = harness
+        .spawn_recorder::<jinn_slices::ServiceStatusUpdate>()
+        .await;
+
+    // When the actor drains the (effectively empty) queue.
+    let root = RootSupervisor::spawn_root().await;
+    let _actor = crate::feat::session_search::search_index_actor::spawn_search_index_actor(
+        SearchIndexActorDeps {
+            deps: deps.clone(),
+            interval: Duration::from_hours(1),
+            budget: Duration::from_secs(5),
+        },
+        &root,
+    )
+    .await;
+
+    // Then the row shows the pending label, never "index up to date".
+    let messages =
+        crate::common::bus::test_harness::await_recorded(&recorder, 1, Duration::from_secs(10))
+            .await;
+    let first = messages.first().expect("at least one status update");
+    assert_eq!(first.name, "search-index");
+    assert_eq!(first.status_message.as_deref(), Some("1 sessions pending"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn empty_drain_publishes_index_up_to_date() {
     // Given a clean store (nothing dirty) and a recorder for status updates.
     let (_dir, harness, deps, _store) = sqlite_actor_deps().await;

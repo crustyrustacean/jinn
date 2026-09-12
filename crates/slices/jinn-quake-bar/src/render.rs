@@ -37,14 +37,10 @@ use crate::state::QuakeBarState;
 const DIVIDER_LIGHTEN_FACTOR: f32 = 2.0;
 
 /// Fixed rows that are always present regardless of log size:
-/// header, session data (prune pruned), session data (prune pending),
+/// header, session data (prune pending), session data (prune pruned),
 /// lifecycle data, bright divider, muted divider, input.
 /// (The bottom bright divider was removed — the background color
 /// contrast alone separates the bar from content below.)
-/// Fixed rows that are always present regardless of log size:
-/// header, bright divider, muted divider, input row, and the bottom
-/// bright divider. (The session-fact rows were folded out with the
-/// crate cut.)
 const FIXED_ROWS: u16 = 7;
 
 /// Maximum rows the command log viewport can occupy, regardless of
@@ -112,10 +108,25 @@ pub fn render_quake_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderFacts) {
         theme.muted_text,
     );
 
-    // Session-fact rows were folded out with the crate cut: the
-    // pending-prune, pruned-total, and lifecycle lines read AppState
-    // (kernel state). Re-adding them requires an application-facts
-    // render context — see the playwright notes in the migration plan.
+    // Session data rows: application facts composition seeds each frame
+    // (prune accumulator, prune report, lifecycle label). Missing facts
+    // render as blank rows so the layout stays stable.
+    for key in [
+        "session.prune-pending",
+        "session.prune-pruned",
+        "session.lifecycle",
+    ] {
+        let text = ctx.fact(key).unwrap_or_default().to_owned();
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                text,
+                Style::default().fg(theme.primary_text).bg(bg),
+            )))
+            .style(bg_style),
+            single_row(quake_area, y),
+        );
+        y += 1;
+    }
 
     // Bright divider.
     frame.render_widget(
@@ -313,6 +324,38 @@ mod tests {
         RenderFacts::new(jinn_theme::default_theme(), slices)
     }
 
+    /// Seeds the three session facts so fact-row tests can assert on
+    /// the rendered labels.
+    fn facts_with_session_rows(slices: &Slices) -> RenderFacts {
+        let mut facts = facts_for(slices);
+        facts.set_facts([
+            jinn_slices::AppFact {
+                key: "session.prune-pending",
+                value: "Prune ctx pending: 120 tok".to_owned(),
+            },
+            jinn_slices::AppFact {
+                key: "session.prune-pruned",
+                value: "Prune ctx pruned: 55 tok (1 entries)".to_owned(),
+            },
+            jinn_slices::AppFact {
+                key: "session.lifecycle",
+                value: "Lifecycle: review (nothing_ran)".to_owned(),
+            },
+        ]);
+        facts
+    }
+
+    fn row_symbols(
+        terminal: &ratatui::Terminal<ratatui::backend::TestBackend>,
+        area: Rect,
+        y: u16,
+    ) -> String {
+        let buffer = terminal.backend().buffer();
+        (area.x..area.x + area.width)
+            .filter_map(|x| buffer.cell((x, y)).map(|c| c.symbol().to_owned()))
+            .collect()
+    }
+
     fn quake_state_with_log(lines: &[&str]) -> (Slices, TypedCell<QuakeBarState>) {
         quake_ctx_with(lines, "")
     }
@@ -401,8 +444,9 @@ mod tests {
         // Then the ">" prefix cell uses focus_accent.
         let buffer = terminal.backend().buffer().clone();
         let focus = jinn_theme::default_theme().focus_accent;
-        // The input row sits after header(1)+bright(1)+log(0)+muted(1) = 3 rows.
-        let input_y = area.y + 3;
+        // The input row sits after header(1)+facts(3)+bright(1)+log(0)
+        // +muted(1) = 6 rows.
+        let input_y = area.y + 6;
         let prefix_cell = buffer.cell((area.x, input_y)).expect("prefix cell");
         assert_eq!(prefix_cell.symbol(), ">");
         assert_eq!(
@@ -427,11 +471,11 @@ mod tests {
             })
             .unwrap();
 
-        // Then the bright divider (row 1) uses lighten(quake_bar_bg) foreground.
+        // Then the bright divider uses lighten(quake_bar_bg) foreground.
         let buffer = terminal.backend().buffer().clone();
         let bg = jinn_theme::default_theme().quake_bar_bg;
         let expected_bright = jinn_theme::contrast::lighten(bg, DIVIDER_LIGHTEN_FACTOR);
-        let bright_y = area.y + 1;
+        let bright_y = area.y + 4;
         let cell = buffer.cell((area.x + 5, bright_y)).expect("divider cell");
         assert_eq!(
             cell.style().fg,
@@ -455,11 +499,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then the muted divider (row 2, empty log) uses muted_text
-        // foreground.
+        // Then the muted divider (empty log) uses muted_text foreground.
         let buffer = terminal.backend().buffer().clone();
         let muted = facts_for(&slices).theme.muted_text;
-        let muted_y = area.y + 2;
+        let muted_y = area.y + 5;
         let cell = buffer.cell((area.x, muted_y)).expect("divider cell");
         assert_eq!(
             cell.style().fg,
@@ -518,16 +561,80 @@ mod tests {
             })
             .unwrap();
 
-        // Then the log row (row 2: header, bright, then the first log
-        // line) contains the logged text.
+        // Then the log row (row 5: header, facts(3), bright, then the
+        // first log line) contains the logged text.
         let buffer = terminal.backend().buffer().clone();
-        let log_y = area.y + 2;
+        let log_y = area.y + 5;
         let symbols: String = (area.x..area.x + area.width)
             .filter_map(|x| buffer.cell((x, log_y)).map(|c| c.symbol().to_owned()))
             .collect();
         assert!(
             symbols.contains("hello world"),
             "logged line should render in the log region"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn prune_pending_fact_renders_below_the_header() {
+        // Given a quake-bar state with the session facts seeded.
+        let (slices, _cell) = quake_state_with_log(&[]);
+        let facts = facts_with_session_rows(&slices);
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal
+            .draw(|frame| render_quake_bar(frame, area, &facts))
+            .unwrap();
+
+        // Then the first data row (row 1, below the header) shows the
+        // pending label.
+        let symbols = row_symbols(&terminal, area, area.y + 1);
+        assert!(
+            symbols.contains("Prune ctx pending: 120 tok"),
+            "pending-prune row should render, got {symbols:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn prune_pruned_fact_renders_below_the_pending_row() {
+        // Given a quake-bar state with the session facts seeded.
+        let (slices, _cell) = quake_state_with_log(&[]);
+        let facts = facts_with_session_rows(&slices);
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal
+            .draw(|frame| render_quake_bar(frame, area, &facts))
+            .unwrap();
+
+        // Then the second data row (row 2) shows the pruned label.
+        let symbols = row_symbols(&terminal, area, area.y + 2);
+        assert!(
+            symbols.contains("Prune ctx pruned: 55 tok (1 entries)"),
+            "pruned row should render, got {symbols:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn lifecycle_fact_renders_below_the_pruned_row() {
+        // Given a quake-bar state with the session facts seeded.
+        let (slices, _cell) = quake_state_with_log(&[]);
+        let facts = facts_with_session_rows(&slices);
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal
+            .draw(|frame| render_quake_bar(frame, area, &facts))
+            .unwrap();
+
+        // Then the third data row (row 3) shows the lifecycle label.
+        let symbols = row_symbols(&terminal, area, area.y + 3);
+        assert!(
+            symbols.contains("Lifecycle: review (nothing_ran)"),
+            "lifecycle row should render, got {symbols:?}"
         );
     }
 
