@@ -85,7 +85,9 @@ async fn parallel_search_turn_yields_push_citations() {
         std::path::Path::new(WASM),
         &grants,
     )
-    .expect("guest started");
+    .await
+    .expect("guest started")
+    .0;
 
     // When the handshake completes: Hello arrives, and the test replies
     // Welcome — the guest's main() blocks in welcome() until it lands, so
@@ -193,7 +195,9 @@ async fn parallel_fetch_turn_yields_push_citations() {
         std::path::Path::new(WASM),
         &grants,
     )
-    .expect("guest started");
+    .await
+    .expect("guest started")
+    .0;
     let _ = next_message(&mut host).await; // Hello
     send(
         &mut host,
@@ -288,7 +292,9 @@ async fn builtin_web_tools_turn_yields_both_citations() {
         std::path::Path::new(WASM),
         &grants,
     )
-    .expect("guest started");
+    .await
+    .expect("guest started")
+    .0;
     let _ = next_message(&mut host).await; // Hello
     send(
         &mut host,
@@ -405,7 +411,9 @@ async fn zai_search_turn_yields_push_citations() {
         std::path::Path::new(WASM),
         &grants,
     )
-    .expect("guest started");
+    .await
+    .expect("guest started")
+    .0;
     let _ = next_message(&mut host).await; // Hello
     send(
         &mut host,
@@ -514,7 +522,9 @@ async fn errored_turn_retains_citations_until_next_success() {
         std::path::Path::new(WASM),
         &grants,
     )
-    .expect("guest started");
+    .await
+    .expect("guest started")
+    .0;
     let _ = next_message(&mut host).await; // Hello
     send(
         &mut host,
@@ -618,7 +628,9 @@ async fn unknown_shapes_are_ignored_never_fatal() {
         std::path::Path::new(WASM),
         &grants,
     )
-    .expect("guest started");
+    .await
+    .expect("guest started")
+    .0;
     let _ = next_message(&mut host).await; // Hello
     send(
         &mut host,
@@ -761,7 +773,9 @@ async fn truncated_result_forwards_full_content() {
         std::path::Path::new(WASM),
         &grants,
     )
-    .expect("guest started");
+    .await
+    .expect("guest started")
+    .0;
     let _ = next_message(&mut host).await; // Hello
     send(
         &mut host,

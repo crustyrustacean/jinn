@@ -46,7 +46,7 @@ Entries are added or amended **only with human approval**.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
 - (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
 - (arch) `AppState` is the shared state; the frontend writes user input, domain actors write their owned fields, and the TUI renderer reads it on each tick.
-- (context) jinn has no memory subsystem by decision: durable cross-session facts are carried by AGENTS.md/CLAUDE.md files, personas, and skills; cross-session recall is via the `session_query` tool; planning state is carried by pinned plan files.
+- (context) jinn has no memory subsystem by decision: durable cross-session facts are carried by AGENTS.md/CLAUDE.md files, personas, and skills; cross-session recall is via the `session_search` and `session_fetch` tools; planning state is carried by pinned plan files.
 - (chat) The queue actor drains the steering buffer before context assembly on both user-message dispatch and dispatch-resume.
 - (compaction) Compaction is gated by a context-size threshold: it skips when below, triggers when at or above, and uses a fallback context length when the model isn't in the cache.
 - (compaction) Compaction preserves pinned entries; the cut index walks backwards from a reserve and advances past complete tool loops to a valid opener.
@@ -142,6 +142,7 @@ Entries are added or amended **only with human approval**.
 - (plugins) First-party plugins ship as prebuilt wasm embedded in the jinn binary; `jinn install` copies them into the plugins dir and registers them in `jinn.toml` only when `jinn.toml` does not yet exist — an existing `jinn.toml` is never modified by `jinn install`, even with `--force`. Artifacts are refreshed into `res/plugins/` by `just refresh-plugins` (run by `just release`).
 - (plugins) The plugin picker (`<leader>sP`) is a read-only list of loaded plugins (name + phase) snapshot from the contribution cache at open time; plugins are managed outside jinn and cannot be toggled from within.
 - (plugins) A plugin guest that closes stdout cleanly after the handshake ends in phase `Done` (run-to-completion loaders; contributions stay cached); `Dead` is reserved for spawn/handshake failure, traps, and abrupt pipe loss.
+- (plugins) Compiled plugin components are cached on disk between launches (wasmtime cache); each plugin's compile prints progress to the terminal before the TUI starts.
 - (persona) Personas are markdown templates with TOML frontmatter; the persona picker (`<leader>se`) switches the active session persona.
 - (persona) Persona discovery flows through a `persona-loader` plugin (prebuilt, shipped by `jinn install`): it scans `~/.config/jinn/personas/*.md` and contributes definitions over the plugin wire; the coordinator publishes them as `PersonasLoaded`.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
@@ -180,6 +181,10 @@ Entries are added or amended **only with human approval**.
 - (storage) Startup fail-fast: whole-file providers.toml/jinn.toml syntax errors abort launch before actor wiring; slice-owned config sections validate at slice activation, which is the fail-fast gate for section-shaped config; recovery via jinn config subcommands stays unguarded.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
 - (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.
+- (storage) On an up-to-date database, startup skips the post-migration foreign-key integrity check; the check runs only when migrations actually applied.
+- (storage) Each pending schema migration prints an announcement to the terminal before applying, so an upgrade launch visibly explains the startup wait.
+- (storage) LATEST_VERSION tracks the newest migration in the apply chain, enforced by a drift test that upgrades a seeded database from every prior version to latest.
+- (storage) Schema v28 adds `fts_rowids`, a per-session map of FTS rowids backfilled from `session_fts`, maintained by the index write path; search SQL and the FTS5 schema are unchanged.
 - (theme) Theme discovery flows through a `theme-loader` plugin (prebuilt, shipped by `jinn install`): it scans `~/.config/jinn/themes/*.toml` (ANSI name, ANSI code, hex, RGB formats) and contributes full theme definitions over the plugin wire; the theme picker reads the contribution cache, not disk.
 - (tokens) A token-count actor estimates per-entry token usage; these estimates drive context-assembly sizing and compaction thresholds.
 - (tokens) The session token ledger stores the pre-send local estimate (`tokens_sent`) alongside provider-reported `prompt_tokens` and `cached_tokens` per request; the estimate is never overwritten.
@@ -203,7 +208,7 @@ Entries are added or amended **only with human approval**.
 - (tools) The `write` tool creates parent directories automatically and overwrites existing files.
 - (tools) The `write` tool pins the tool result only on success — failed writes (bad JSON, dir creation failure, file write failure) produce no pin.
 - (tools) The `write` tool preserves BOM and CRLF line endings on round-trip; it handles filenames with spaces and Unicode.
-- (tools) The agent's built-in file tools are `read`, `write`, `edit`, `bash`, `grep`, `save_plan`, `get_time`, `session_query`, `restart_mcp_server`, and `skill`.
+- (tools) The agent's built-in file tools are `read`, `write`, `edit`, `bash`, `grep`, `save_plan`, `get_time`, `session_search`, `session_fetch`, `restart_mcp_server`, and `skill`.
 - (tools) Programmatic image files a tool writes (`.png`, `.svg`, charts) are artifacts of the existing file-tool pipeline, not a model image-output capability.
 - (tools) When the `bash` tool or a built-in tool panics mid-execution, it publishes a failed-execution event rather than crashing the actor.
 - (tools) The bash and grep tools spawn children terminal-isolated: Unix children run in a new session (setsid), Windows children with CREATE_NO_WINDOW, so child output can never write over the TUI.
@@ -289,3 +294,12 @@ Entries are added or amended **only with human approval**.
 - (preferences) The canonical projects key in `jinn.toml` is `projects` (keyed by `path`); the legacy `[[project]]` spelling is stripped from user files on load (poisoned files) and before every save, is never written by any code path, and is not a serde alias — legacy entries are ignored, not migrated.
 - (tools) `just install-plugins` builds and installs each in-tree plugin via one `jinn plugin add` per plugin (interleaved build+install, aborting at the first failure) rather than building all plugins before installing any; the `build-plugins` recipe remains standalone for artifact-only builds.
 - (tokens) Per-entry token counts are a persisted, content-derived field on chat entries (entries.token_count column), computed once by the token count actor for entries lacking a count and saved by the regular session-snapshot persist path; no separate frontend token cache exists.
+- (search) Sessions are searchable via an FTS5 index over persisted entry prose (user, assistant, tool_call, tool_result, system, error, compaction — never actor/thinking), keyed by (session_id, entry_id).
+- (search) Index freshness is asynchronous: triggers on `sessions` mark sessions dirty; `search_index_actor` reindexes every 5 seconds and drains on startup, so results can trail the newest saves by one poll interval.
+- (search) `session_search` passes queries to FTS5 MATCH unmodified and surfaces SQLite syntax errors verbatim; results are a flat bm25-ranked top-N with per-session rollup counts and no pagination.
+- (search) `session_fetch` addresses entries by stable entry_id; ordinals are rendered positionally in output and never used as addresses.
+- (storage) Schema v26 adds the `session_fts` index table, the `fts_dirty` table, and dirty-marking triggers on `sessions`, seeding every existing session dirty so the first post-upgrade launch backfills the index lazily in the background.
+- (tools) The `session_fetch` tool elides individual entries beyond ~2,000 chars with an explicit truncation note, announces gaps between discontinuous ordinals, and applies the standard outer line/byte caps to the whole transcript, carrying the unclipped transcript in `full_content` when capped.
+- (search) The search-index dashboard row's status column reports live reindex progress: "N sessions pending" refreshed after every per-session index operation and "index up to date" whenever a drain finds an empty queue (including idle drains).
+- (search) A failed reindex leaves that session's dirty marker set (durable pending work), logs a warning with the session id, and never blocks the rest of the drain batch; a later drain retries it.
+- (search) A rebuild's per-session index delete is driven by the `fts_rowids` map (rowid lookups), avoiding full FTS-table scans; sessions absent from the map skip the delete entirely.

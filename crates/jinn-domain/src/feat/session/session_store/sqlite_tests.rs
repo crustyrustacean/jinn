@@ -1863,3 +1863,932 @@ async fn saving_entry_with_uncomputed_count_preserves_persisted_count() {
         .expect("should exist");
     assert_eq!(loaded.history()[0].token_count, Some(77));
 }
+
+// ── FTS search index (schema v26) ────────────────────────────────────────
+
+use crate::feat::session_search::SearchableRole;
+
+/// A session with a user entry and an assistant entry, both mentioning the
+/// needle word used across the search tests.
+fn make_two_entry_session(id: &SessionId, title: &str) -> ChatSessionState {
+    let mut session = ChatSessionState::new();
+    session.set_session_id(id.clone());
+    session.set_title(title.to_owned());
+    session.push_entry(ChatEntry::user("the zephyr needle sails home"));
+    session.push_entry(ChatEntry::assistant("and the zephyr needle docks"));
+    session
+}
+
+/// Drains the dirty set using the store primitives — the same chunked,
+/// resumable loop the search-index actor runs, with a chunk size large
+/// enough to finish each test session in one pass. Returns the number of
+/// chunks run.
+///
+/// Store tests only exercise the store layer; batch isolation and progress
+/// reporting belong to the actor and are covered there.
+async fn drain(
+    store: &SqliteSessionStore,
+) -> Result<usize, error_stack::Report<crate::feat::session::session_store::SessionStoreError>> {
+    // Oversized chunks: store tests exercise single-shot rebuilds; chunked
+    // resume semantics belong to the actor tests. Repeats while partial
+    // chunks remain, counting sessions that reached their final chunk.
+    let mut reindexed = 0;
+    for _ in 0..100 {
+        let ids = store.dirty_session_ids().await?;
+        if ids.is_empty() {
+            break;
+        }
+        for id in &ids {
+            if store.reindex_session_chunk(id, 10_000).await? {
+                reindexed += 1;
+            }
+        }
+    }
+    Ok(reindexed)
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn save_marks_session_dirty_and_reindex_indexes_it() {
+    // Given a store with a saved session mentioning a needle word.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    store
+        .save(&make_two_entry_session(&session_id, "sailing"))
+        .await
+        .expect("save");
+
+    // When reindexing the dirty set and searching for the needle.
+    let reindexed = drain(&store).await.expect("reindex");
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+
+    // Then the session was reindexed and its user+assistant entries match.
+    assert_eq!(reindexed, 1);
+    assert_eq!(outcome.total_matches, 2);
+    assert_eq!(outcome.hits.len(), 2);
+    // And the marker is cleared: a second drain finds nothing to do.
+    let second = drain(&store).await.expect("reindex 2");
+    assert_eq!(second, 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reindex_honors_default_field_visibility_via_roles() {
+    // Given an indexed session with a tool_result entry.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = make_two_entry_session(&session_id, "tools");
+    session.push_entry(ChatEntry::tool_result(
+        "t1",
+        "grep",
+        "needle found in config.toml",
+        ToolResultStatus::Success,
+    ));
+    store.save(&session).await.expect("save");
+    drain(&store).await.expect("reindex");
+
+    // When searching without a role filter.
+    let all = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: vec![session_id.to_string()],
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+    drain(&store).await.expect("reindex");
+    let tool_only = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: vec![session_id.to_string()],
+            roles: vec![SearchableRole::ToolResult],
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+
+    // Then the unfiltered search sees all three entries.
+    assert!(all.total_matches >= 3);
+    // And the role-filtered search sees only the tool_result.
+    assert_eq!(tool_only.total_matches, 1);
+    assert_eq!(tool_only.hits[0].role, "tool_result");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reindex_clears_rows_of_deleted_sessions() {
+    // Given a store with an indexed session.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    store
+        .save(&make_two_entry_session(&session_id, "doomed"))
+        .await
+        .expect("save");
+    drain(&store).await.expect("reindex");
+
+    // When deleting the session, marking it dirty, and reindexing.
+    store.delete(&session_id).await.expect("delete");
+    let reindexed = drain(&store).await.expect("reindex");
+
+    // Then the deletion marked it dirty, and its rows are gone.
+    assert_eq!(reindexed, 1);
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+    assert_eq!(outcome.total_matches, 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn search_reports_per_session_rollup() {
+    // Given two indexed sessions both matching the needle.
+    let (_dir, store) = make_store().await;
+    let a = SessionId::new();
+    let b = SessionId::new();
+    store
+        .save(&make_two_entry_session(&a, "alpha"))
+        .await
+        .expect("save a");
+    store
+        .save(&make_two_entry_session(&b, "beta"))
+        .await
+        .expect("save b");
+    drain(&store).await.expect("reindex");
+
+    // When searching without scope restriction.
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 50,
+        })
+        .await
+        .expect("search");
+
+    // Then both sessions appear in the rollup with their counts.
+    assert_eq!(outcome.total_matches, 4);
+    let mut counted: Vec<(String, u64)> = outcome.per_session.clone();
+    counted.sort();
+    let mut expected: Vec<(String, u64)> = vec![(a.to_string(), 2), (b.to_string(), 2)];
+    expected.sort();
+    assert_eq!(counted, expected);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn search_limits_hits_but_reports_full_totals() {
+    // Given two matching entries in one session.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    store
+        .save(&make_two_entry_session(&session_id, "capped"))
+        .await
+        .expect("save");
+    drain(&store).await.expect("reindex");
+
+    // When searching with a limit of 1.
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 1,
+        })
+        .await
+        .expect("search");
+
+    // Then only one hit is returned but the total is complete.
+    assert_eq!(outcome.hits.len(), 1);
+    assert_eq!(outcome.total_matches, 2);
+    assert_eq!(outcome.per_session, vec![(session_id.to_string(), 2)]);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn search_filters_by_session_ids() {
+    // Given two indexed sessions.
+    let (_dir, store) = make_store().await;
+    let a = SessionId::new();
+    let b = SessionId::new();
+    store
+        .save(&make_two_entry_session(&a, "alpha"))
+        .await
+        .expect("save a");
+    store
+        .save(&make_two_entry_session(&b, "beta"))
+        .await
+        .expect("save b");
+    drain(&store).await.expect("reindex");
+
+    // When searching restricted to session b.
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: vec![b.to_string()],
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+
+    // Then only session b's entries match.
+    assert_eq!(outcome.total_matches, 2);
+    assert!(outcome.hits.iter().all(|h| h.session_id == b.to_string()));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn search_surfaces_fts_syntax_errors_verbatim() {
+    // Given an indexed store.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    store
+        .save(&make_two_entry_session(&session_id, "syntax"))
+        .await
+        .expect("save");
+    drain(&store).await.expect("reindex");
+
+    // When running a syntactically invalid MATCH query.
+    let result = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle AND".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await;
+
+    // Then the error carries the fts5 message text.
+    let report = result.expect_err("invalid query must fail");
+    let rendered = format!("{report:?}");
+    assert!(
+        rendered.contains("fts5"),
+        "expected verbatim fts5 error, got: {rendered}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn search_dates_filter_on_entry_timestamps() {
+    // Given an indexed session whose entries are all from now.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    store
+        .save(&make_two_entry_session(&session_id, "dated"))
+        .await
+        .expect("save");
+    drain(&store).await.expect("reindex");
+
+    let until_long_ago = jiff::Timestamp::now() - jiff::Span::new().hours(25);
+
+    // When searching with an `until` bound in the past.
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: Some(until_long_ago),
+            limit: 10,
+        })
+        .await
+        .expect("search");
+
+    // Then nothing matches.
+    assert_eq!(outcome.total_matches, 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn search_snippets_are_single_line_with_match_markers() {
+    // Given an indexed session with a multi-line assistant entry.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("snippets".to_owned());
+    session.push_entry(ChatEntry::assistant("first line\nneedle on its\nown line"));
+    store.save(&session).await.expect("save");
+    drain(&store).await.expect("reindex");
+
+    // When searching for the needle.
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+
+    // Then the snippet is a single line with <<>> markers around the match.
+    assert_eq!(outcome.hits.len(), 1);
+    let snippet = &outcome.hits[0].snippet;
+    assert!(
+        !snippet.contains('\n'),
+        "snippet must be one line: {snippet:?}"
+    );
+    assert!(
+        snippet.contains("<<needle>>"),
+        "marker missing: {snippet:?}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn search_flags_ignored_entries_as_excluded() {
+    // Given an indexed session where one entry is user-force-excluded.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("excluded".to_owned());
+    session.push_entry(ChatEntry::user("in context needle"));
+    session.push_entry(
+        ChatEntry::user("dropped needle")
+            .with_context_override(crate::protocol::ContextOverride::ForcedExclude),
+    );
+    store.save(&session).await.expect("save");
+    drain(&store).await.expect("reindex");
+
+    // When searching.
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+
+    // Then both entries match but only the excluded one is flagged.
+    assert_eq!(outcome.total_matches, 2);
+    let mut flagged = 0;
+    for hit in &outcome.hits {
+        if hit.excluded {
+            flagged += 1;
+            assert!(hit.snippet.contains("dropped"), "wrong entry flagged");
+        }
+    }
+    assert_eq!(flagged, 1);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn search_does_not_flag_pinned_entries_as_excluded() {
+    // Given an indexed session with a pinned (thus in-context) entry.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("pinned".to_owned());
+    session
+        .push_entry(ChatEntry::user("pinned needle").with_pin(crate::protocol::PinPosition::Top));
+    store.save(&session).await.expect("save");
+    drain(&store).await.expect("reindex");
+
+    // When searching.
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+
+    // Then the pinned entry matches without the excluded flag.
+    assert_eq!(outcome.total_matches, 1);
+    assert!(!outcome.hits[0].excluded);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fetch_window_returns_entries_around_anchor() {
+    // Given an indexed session with five entries.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("window".to_owned());
+    for i in 0..5 {
+        session.push_entry(ChatEntry::user(format!("entry {i}")));
+    }
+    store.save(&session).await.expect("save");
+
+    // When fetching a window of 3 entries anchored at the middle entry.
+    let anchor = session.history()[2].id.clone();
+    let window = store
+        .fetch_window(&session_id, &anchor, 3)
+        .await
+        .expect("fetch_window")
+        .expect("session exists");
+
+    // Then the window has 3 entries starting at the anchor's neighborhood,
+    // with live ordinals and total count.
+    assert_eq!(window.total_entries, 5);
+    assert_eq!(window.entries.len(), 3);
+    let ordinals: Vec<usize> = window.entries.iter().map(|e| e.ordinal).collect();
+    assert_eq!(ordinals, vec![1, 2, 3]);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fetch_window_clamps_at_session_start() {
+    // Given an indexed session with five entries.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("clamp".to_owned());
+    for i in 0..5 {
+        session.push_entry(ChatEntry::user(format!("entry {i}")));
+    }
+    store.save(&session).await.expect("save");
+
+    // When fetching a window anchored at the first entry.
+    let anchor = session.history()[0].id.clone();
+    let window = store
+        .fetch_window(&session_id, &anchor, 3)
+        .await
+        .expect("fetch_window")
+        .expect("session exists");
+
+    // Then the window is clamped to the start (no negative ordinals).
+    let ordinals: Vec<usize> = window.entries.iter().map(|e| e.ordinal).collect();
+    assert_eq!(ordinals, vec![0, 1, 2]);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fetch_window_errors_for_anchor_in_wrong_session() {
+    // Given an indexed session.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("solo".to_owned());
+    session.push_entry(ChatEntry::user("entry here"));
+    store.save(&session).await.expect("save");
+
+    // When fetching a window anchored at an entry from another session.
+    let stranger = ChatEntry::user("stranger");
+    let result = store.fetch_window(&session_id, &stranger.id, 3).await;
+
+    // Then the call fails with a legible error.
+    assert!(result.is_err());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fetch_window_returns_none_for_missing_session() {
+    // Given a store with no such session.
+    let (_dir, store) = make_store().await;
+
+    // When fetching by an unknown session id.
+    let anchor = ChatEntry::user("x");
+    let window = store
+        .fetch_window(&SessionId::new(), &anchor.id, 3)
+        .await
+        .expect("fetch_window");
+
+    // Then no window is returned.
+    assert!(window.is_none());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fetch_tail_returns_last_entries() {
+    // Given an indexed session with five entries.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("tail".to_owned());
+    for i in 0..5 {
+        session.push_entry(ChatEntry::user(format!("entry {i}")));
+    }
+    store.save(&session).await.expect("save");
+
+    // When fetching the tail with a limit of 2.
+    let window = store
+        .fetch_tail(&session_id, 2)
+        .await
+        .expect("fetch_tail")
+        .expect("session exists");
+
+    // Then the last two entries are returned with live ordinals.
+    assert_eq!(window.total_entries, 5);
+    let ordinals: Vec<usize> = window.entries.iter().map(|e| e.ordinal).collect();
+    assert_eq!(ordinals, vec![3, 4]);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fetch_tail_marks_excluded_entries() {
+    // Given a session whose last entry is user-force-excluded.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("flagged".to_owned());
+    session.push_entry(ChatEntry::user("kept"));
+    session.push_entry(
+        ChatEntry::assistant("dropped")
+            .with_context_override(crate::protocol::ContextOverride::ForcedExclude),
+    );
+    store.save(&session).await.expect("save");
+
+    // When fetching the tail.
+    let window = store
+        .fetch_tail(&session_id, 10)
+        .await
+        .expect("fetch_tail")
+        .expect("session exists");
+
+    // Then the excluded flag is true only for the dropped entry.
+    assert_eq!(window.entries.len(), 2);
+    assert!(!window.entries[0].excluded);
+    assert!(window.entries[1].excluded);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dirty_session_ids_returns_saved_sessions() {
+    // Given a store with two saved sessions (saves seed dirty markers).
+    let (_dir, store) = make_store().await;
+    let a = SessionId::new();
+    let b = SessionId::new();
+    store
+        .save(&make_two_entry_session(&a, "a"))
+        .await
+        .expect("save");
+    store
+        .save(&make_two_entry_session(&b, "b"))
+        .await
+        .expect("save");
+
+    // When reading the dirty ids.
+    let mut ids = store.dirty_session_ids().await.expect("dirty ids");
+    let mut expected = vec![a, b];
+    ids.sort();
+    expected.sort();
+
+    // Then both saved sessions are pending.
+    assert_eq!(ids, expected);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn pending_dirty_count_tracks_markers() {
+    // Given a store with one saved session.
+    let (_dir, store) = make_store().await;
+    let id = SessionId::new();
+    store
+        .save(&make_two_entry_session(&id, "counted"))
+        .await
+        .expect("save");
+
+    // When reading the pending count before and after a drain.
+    let before = store.pending_dirty_count().await.expect("count");
+    drain(&store).await.expect("drain");
+    let after = store.pending_dirty_count().await.expect("count");
+
+    // Then the save left one pending session and the drain cleared it.
+    assert_eq!(before, 1);
+    assert_eq!(after, 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dirty_session_ids_skips_unparseable_marker() {
+    // Given a store whose dirty table holds a corrupt (unparseable) id.
+    let (_dir, store) = make_store().await;
+    store
+        .pool()
+        .with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO fts_dirty(session_id) VALUES ('not-a-uuid')",
+                [],
+            )
+            .map_err(daow::Error::from)
+        })
+        .await
+        .expect("insert corrupt marker");
+
+    // When reading the dirty ids.
+    let ids = store.dirty_session_ids().await.expect("dirty ids");
+
+    // Then the corrupt marker is not returned (it could never be reindexed).
+    assert!(ids.is_empty());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn pending_dirty_count_includes_unparseable_marker() {
+    // Given a store whose dirty table holds a corrupt (unparseable) id.
+    let (_dir, store) = make_store().await;
+    store
+        .pool()
+        .with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO fts_dirty(session_id) VALUES ('not-a-uuid')",
+                [],
+            )
+            .map_err(daow::Error::from)
+        })
+        .await
+        .expect("insert corrupt marker");
+
+    // When reading the pending count.
+    let count = store.pending_dirty_count().await.expect("count");
+
+    // Then the corrupt marker is counted — the queue size reflects reality so
+    // the dashboard can surface the stuck row instead of hiding it.
+    assert_eq!(count, 1);
+}
+#[rstest::rstest]
+#[tokio::test]
+async fn partial_chunk_persists_resume_point_and_next_chunk_finishes() {
+    // Given a store with a 6-entry session and chunks of 2.
+    let (_dir, store) = make_store().await;
+    let id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(id.clone());
+    session.set_title("chunked".to_owned());
+    for i in 0..6 {
+        session.push_entry(ChatEntry::user(format!("entry {i} mentions needle")));
+    }
+    store.save(&session).await.expect("save");
+
+    // When the first bounded chunk runs.
+    let finished = store.reindex_session_chunk(&id, 2).await.expect("chunk 1");
+
+    // Then the session is not finished, its marker stays, and the resume
+    // point advanced to 2 — so search finds only the prefix.
+    assert!(!finished);
+    assert_eq!(store.pending_dirty_count().await.expect("count"), 1);
+    let first = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+    assert_eq!(first.total_matches, 2, "only the indexed prefix is visible");
+
+    // When the remaining chunks run (2+2+2 = three exactly-full chunks; the
+    // final full chunk is followed by an empty one that reports completion).
+    assert!(!store.reindex_session_chunk(&id, 2).await.expect("chunk 2"));
+    assert!(!store.reindex_session_chunk(&id, 2).await.expect("chunk 3"));
+    let finished = store.reindex_session_chunk(&id, 2).await.expect("chunk 4");
+
+    // Then the rebuild completes, the marker clears, and all six entries
+    // are searchable.
+    assert!(finished);
+    assert_eq!(store.pending_dirty_count().await.expect("count"), 0);
+    let all = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: Vec::new(),
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search");
+    assert_eq!(all.total_matches, 6);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reindex_chunk_on_deleted_session_clears_marker() {
+    // Given a dirty marker for a session with no rows (deleted since marked).
+    let (_dir, store) = make_store().await;
+    let id = SessionId::new();
+    let marker = id.to_string();
+    store
+        .pool()
+        .with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO fts_dirty(session_id) VALUES (?)",
+                rusqlite::params![marker],
+            )
+            .map_err(daow::Error::from)
+        })
+        .await
+        .expect("mark dirty");
+
+    // When a chunk runs for it.
+    let finished = store.reindex_session_chunk(&id, 100).await.expect("chunk");
+
+    // Then the rebuild is trivially finished and the marker cleared.
+    assert!(finished);
+    assert_eq!(store.pending_dirty_count().await.expect("count"), 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reindex_maps_every_fts_row_in_the_rowid_side_table() {
+    // Given a store with an indexed two-entry session.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    store
+        .save(&make_two_entry_session(&session_id, "mapped"))
+        .await
+        .expect("save");
+    drain(&store).await.expect("reindex");
+
+    // When counting FTS rows and map rows for the session.
+    let (fts_count, map_count) = fts_and_map_counts(store.pool(), &session_id.to_string()).await;
+
+    // Then the map is exactly as large as the index it mirrors.
+    assert!(fts_count > 0, "precondition: the session was indexed");
+    assert_eq!(
+        map_count, fts_count,
+        "one fts_rowids row per session_fts row"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reindexed_rebuild_replaces_rows_via_rowid_map() {
+    // Given an indexed session.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    store
+        .save(&make_two_entry_session(&session_id, "rebuild"))
+        .await
+        .expect("save");
+    drain(&store).await.expect("initial reindex");
+    let (initial_fts, initial_map) =
+        fts_and_map_counts(store.pool(), &session_id.to_string()).await;
+
+    // When the session is saved again (re-marked dirty: a rebuild-from-zero)
+    // and reindexed.
+    store
+        .save(&make_two_entry_session(&session_id, "rebuild"))
+        .await
+        .expect("save again");
+    drain(&store).await.expect("rebuild reindex");
+
+    // Then no old row survives the rebuild — every pre-rebuild FTS rowid was
+    // deleted, not re-inserted on top of — and the map is consistent.
+    let (after_fts, after_map) = fts_and_map_counts(store.pool(), &session_id.to_string()).await;
+    assert_eq!(after_fts, initial_fts, "same entry count after rebuild");
+    assert_eq!(after_map, initial_map, "map tracks the rebuilt rows");
+    let orphan_map_rows: i64 = {
+        let sid = session_id.to_string();
+        store
+            .pool()
+            .with_conn(move |conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM fts_rowids \
+                     WHERE session_id = ? AND fts_rowid NOT IN \
+                     (SELECT rowid FROM session_fts)",
+                    rusqlite::params![sid],
+                    |row| row.get(0),
+                )
+                .map_err(daow::Error::from)
+            })
+            .await
+            .expect("orphan check")
+    };
+    assert_eq!(orphan_map_rows, 0, "no map row points at a dead FTS rowid");
+    // And search still finds the session after the map-mediated rebuild.
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: vec![session_id.to_string()],
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search after rebuild");
+    assert_eq!(outcome.total_matches, 2, "search works after rebuild");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reindex_of_never_indexed_session_skips_delete_with_empty_map() {
+    // Given a dirty marker for a session that has never been indexed
+    // (so fts_rowids has no rows for it) and one saved entry.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = make_two_entry_session(&session_id, "fresh");
+    // Save the session first so the marker exists with entries attached,
+    // then clear its FTS presence to simulate a never-indexed session.
+    store.save(&session).await.expect("save");
+    drain(&store).await.expect("reindex");
+    store
+        .pool()
+        .with_conn({
+            let marker = session_id.to_string();
+            move |conn| {
+                conn.execute_batch(&format!(
+                    "DELETE FROM session_fts WHERE session_id = '{marker}'; \
+                     DELETE FROM fts_rowids WHERE session_id = '{marker}';"
+                ))
+                .map_err(daow::Error::from)
+            }
+        })
+        .await
+        .expect("strip index and map");
+    // Re-mark the session dirty so a rebuild runs over the empty map.
+    store
+        .pool()
+        .with_conn({
+            let marker = session_id.to_string();
+            move |conn| {
+                conn.execute(
+                    "INSERT INTO fts_dirty(session_id) VALUES (?)",
+                    rusqlite::params![marker],
+                )
+                .map_err(daow::Error::from)
+            }
+        })
+        .await
+        .expect("re-mark dirty");
+    session.set_session_id(session_id.clone());
+
+    // When reindexing the session.
+    let finished = store
+        .reindex_session_chunk(&session_id, 10_000)
+        .await
+        .expect("chunk");
+
+    // Then the rebuild succeeds (the empty-map delete was skipped, not
+    // attempted as a full scan) and the session is fully indexed again.
+    assert!(finished, "single oversized chunk finishes the session");
+    let (fts_count, map_count) = fts_and_map_counts(store.pool(), &session_id.to_string()).await;
+    assert_eq!(fts_count, 2, "both entries indexed");
+    assert_eq!(map_count, 2, "map re-populated");
+}
+
+/// Returns the number of `session_fts` and `fts_rowids` rows for `session_id`.
+async fn fts_and_map_counts(pool: &daow::Pool, session_id: &str) -> (i64, i64) {
+    let sid = session_id.to_owned();
+    pool.with_conn(move |conn| {
+        let fts: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM session_fts WHERE session_id = ?",
+            rusqlite::params![sid],
+            |row| row.get(0),
+        )?;
+        let map: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM fts_rowids WHERE session_id = ?",
+            rusqlite::params![sid],
+            |row| row.get(0),
+        )?;
+        Ok((fts, map))
+    })
+    .await
+    .expect("fts/map counts")
+}
