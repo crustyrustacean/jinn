@@ -149,7 +149,7 @@ The entire "system" prompt can be indirectly edited by either changing config fi
 ```
 <persona>      # all sessions must use some persona
 <AGENTS.md>
-<tool context> # available tools + tool guidelines (NOT schemas)
+<tool context> # available tools + tool guidelines
 <skills>       # available skills including name, description, path
 <date>         # current date
 <cwd>          # current working directory
@@ -181,8 +181,6 @@ The contents of `AGENTS.md`/`CLAUDE.md` files, discovered from the session's wor
 An `Available tools:` section (one-line summary per tool) and a `Tool guidelines:` section (behavioral bullet points) generated from the tool definitions registered in the session. Tools you've disabled and server tools that don't match the active provider (e.g. OpenRouter web search only appears on OpenRouter models) are filtered out of both the tool list sent to the API and this block.
 
 **Change it:** Enable/disable tools with the tool picker (`<leader>st`, `Tab` to toggle). The snippets/guidelines themselves are part of each tool's definition.
-
-Note: automated sessions (like background compaction) can replace this entire system message with their own, bypassing all of the above.
 
 #### Skills
 
