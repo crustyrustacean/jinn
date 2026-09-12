@@ -31,9 +31,9 @@
 
 use std::sync::Arc;
 
+use trouper::actor::ActorPath;
 use trouper::actor::ServiceActor;
 use trouper::system::ActorSystem;
-use trouper::types::ActorPath;
 
 use crate::overlay::OverlayViewFn;
 use crate::overlay::OverlayViews;
@@ -70,7 +70,7 @@ pub struct SliceHost<'a, C: 'static> {
     viewport: &'a mut Viewport,
     overlay_views: &'a OverlayViews<C>,
     key_routes: &'a KeyRoutes,
-    system: &'a Arc<ActorSystem>,
+    system: &'a ActorSystem,
     routes: host_routes::RouteRegistry,
     hooks: host_input::HookRegistry,
     sections: host_config::SectionSet,
@@ -84,7 +84,7 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         viewport: &'a mut Viewport,
         overlay_views: &'a OverlayViews<C>,
         key_routes: &'a KeyRoutes,
-        system: &'a Arc<ActorSystem>,
+        system: &'a ActorSystem,
     ) -> Self {
         Self {
             slices,
@@ -101,7 +101,7 @@ impl<'a, C: 'static> SliceHost<'a, C> {
     /// The trouper actor system, for slice actors that spawn with
     /// custom builders (cell-injecting `start_with` overrides).
     #[must_use]
-    pub fn system(&self) -> &'a Arc<ActorSystem> {
+    pub fn system(&self) -> &'a ActorSystem {
         self.system
     }
 
@@ -145,7 +145,7 @@ impl<'a, C: 'static> SliceHost<'a, C> {
             .start_with(move || {
                 Box::pin(async move {
                     build().map_err(|err| {
-                        trouper::error_stack::Report::new(SpawnError)
+                        error_stack::Report::new(SpawnError)
                             .attach(err.into())
                             .change_context(trouper::registry::RegistryError::InvalidSpec)
                     })
@@ -241,7 +241,7 @@ impl<'a, C: 'static> SliceHost<'a, C> {
     /// The `Schema` impl is supplied as a thunk because schema
     /// definitions belong to the message-owning crate; id equality is
     /// checked eagerly, the definition is taken verbatim.
-    pub fn forward<M: ForwardMessage, S>(&mut self, topic: trouper::types::Topic, schema: S)
+    pub fn forward<M: ForwardMessage, S>(&mut self, topic: trouper::topics::Topic, schema: S)
     where
         S: FnOnce() -> trouper::schema::SchemaDef,
     {
@@ -250,7 +250,7 @@ impl<'a, C: 'static> SliceHost<'a, C> {
 
     /// Declares a reverse bridge route: trouper `topic` publishes of
     /// `M` cross to the bus.
-    pub fn reverse<M: ReverseMessage, S>(&mut self, topic: trouper::types::Topic, schema: S)
+    pub fn reverse<M: ReverseMessage, S>(&mut self, topic: trouper::topics::Topic, schema: S)
     where
         S: FnOnce() -> trouper::schema::SchemaDef,
     {

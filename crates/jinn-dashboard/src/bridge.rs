@@ -3,7 +3,7 @@
 //! Topics are named here (the dashboard consumes them); the relays
 //! themselves spawn in composition's drain wiring.
 
-use trouper::types::Topic;
+use trouper::topics::Topic;
 
 use crate::contracts::ServiceStatusUpdate;
 use crate::fabric_events::{ActorShutdownCompleted, ActorStarted, ActorStarting};
@@ -42,7 +42,7 @@ pub fn typed_stages() -> Vec<RouteStagingDescriptor> {
 /// manifest a composition drain walks.
 pub struct RouteStagingDescriptor {
     /// The message's schema id.
-    pub schema_id: trouper::types::SchemaId,
+    pub schema_id: trouper::schema::SchemaId,
     /// The trouper topic the relay publishes onto.
     pub topic: Topic,
     /// Display name for diagnostics.
@@ -116,7 +116,7 @@ pub async fn drain_routes(services: &jinn_domain::Services) {
 }
 
 /// Builds the route entry a dashboard drain spawns a relay from.
-fn entry(topic: Topic, schema_id: trouper::types::SchemaId) -> jinn_slices::host::RouteEntry {
+fn entry(topic: Topic, schema_id: trouper::schema::SchemaId) -> jinn_slices::host::RouteEntry {
     jinn_slices::host::RouteEntry {
         schema_id,
         name: "dashboard",

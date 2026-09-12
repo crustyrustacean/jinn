@@ -198,9 +198,9 @@ impl ActorSystemBuilder {
             key_routes: jinn_domain::common::slices::key_routes::KeyRoutes::new(),
             viewport: jinn_domain::common::slices::view::Viewport::new(),
             overlay_views: jinn_domain::common::overlay_views::OverlayViews::new(),
-            trouper_system: std::sync::Arc::new(trouper::system::ActorSystem::new(
+            trouper_system: trouper::system::ActorSystem::new(
                 trouper::system::SystemConfig::production(),
-            )),
+            ),
         };
 
         let actor_deps = ActorDeps {

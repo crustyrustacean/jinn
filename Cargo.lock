@@ -1564,23 +1564,13 @@ checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
 
 [[package]]
 name = "error-stack"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c179ac93a7a9670668c9c1558269344d224aecf2fb089bf0e215e8adf1c73643"
-dependencies = [
- "anyhow",
- "rustc_version",
- "serde_core",
-]
-
-[[package]]
-name = "error-stack"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d01a8d4d427153bae0c38ca68d7912cbf9903fdcc97ecac18801738b3656a46d"
 dependencies = [
  "anyhow",
  "rustc_version",
+ "serde_core",
 ]
 
 [[package]]
@@ -2562,7 +2552,7 @@ dependencies = [
  "ctor",
  "dirs",
  "dotenvy",
- "error-stack 0.7.1",
+ "error-stack",
  "jiff",
  "jinn-cli",
  "jinn-dashboard",
@@ -2605,7 +2595,7 @@ dependencies = [
  "clap",
  "clap-verbosity-flag",
  "clap_complete",
- "error-stack 0.7.1",
+ "error-stack",
  "jinn-domain",
  "rstest",
  "serde_json",
@@ -2620,7 +2610,7 @@ name = "jinn-common"
 version = "0.116.1"
 dependencies = [
  "dirs",
- "error-stack 0.7.1",
+ "error-stack",
  "libc",
  "rstest",
  "serde",
@@ -2645,6 +2635,7 @@ dependencies = [
 name = "jinn-dashboard"
 version = "0.116.1"
 dependencies = [
+ "error-stack",
  "jinn-core-types",
  "jinn-domain",
  "jinn-slices",
@@ -2666,7 +2657,7 @@ version = "0.116.1"
 dependencies = [
  "daow",
  "derive_more",
- "error-stack 0.7.1",
+ "error-stack",
  "jinn-discord-msg",
  "jinn-discord-slice",
  "jinn-domain",
@@ -2699,7 +2690,7 @@ version = "0.116.1"
 dependencies = [
  "async-trait",
  "daow",
- "error-stack 0.7.1",
+ "error-stack",
  "jinn-core-types",
  "jinn-dashboard",
  "jinn-discord-msg",
@@ -2734,7 +2725,7 @@ dependencies = [
  "dashmap 6.2.1",
  "derive_more",
  "dirs",
- "error-stack 0.7.1",
+ "error-stack",
  "form_urlencoded",
  "futures",
  "fuzzy-matcher",
@@ -2802,7 +2793,7 @@ version = "0.116.1"
 dependencies = [
  "axum",
  "ctor",
- "error-stack 0.7.1",
+ "error-stack",
  "jinn-common",
  "jinn-provider",
  "reqwest 0.13.3",
@@ -2821,7 +2812,7 @@ dependencies = [
 name = "jinn-plugin"
 version = "0.116.1"
 dependencies = [
- "error-stack 0.7.1",
+ "error-stack",
  "jinn-plugin-api",
  "rstest",
  "serde",
@@ -2860,7 +2851,7 @@ dependencies = [
  "async-trait",
  "base64",
  "ctor",
- "error-stack 0.7.1",
+ "error-stack",
  "futures",
  "jiff",
  "mockito",
@@ -2882,7 +2873,7 @@ name = "jinn-provider-config"
 version = "0.116.1"
 dependencies = [
  "dirs",
- "error-stack 0.7.1",
+ "error-stack",
  "jiff",
  "jinn-common",
  "jinn-provider",
@@ -2901,6 +2892,7 @@ dependencies = [
 name = "jinn-quake-bar"
 version = "0.116.1"
 dependencies = [
+ "error-stack",
  "jiff",
  "jinn-core-types",
  "jinn-slices",
@@ -2943,7 +2935,7 @@ dependencies = [
 name = "jinn-session-schema"
 version = "0.1.0"
 dependencies = [
- "error-stack 0.7.1",
+ "error-stack",
  "jiff",
  "rstest",
  "rusqlite",
@@ -2958,7 +2950,7 @@ name = "jinn-slices"
 version = "0.116.1"
 dependencies = [
  "derive_more",
- "error-stack 0.7.1",
+ "error-stack",
  "jinn-core-types",
  "jinn-theme",
  "kameo",
@@ -2995,7 +2987,7 @@ version = "0.116.1"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
- "error-stack 0.7.1",
+ "error-stack",
  "jinn-selection-widget",
  "ratatui",
  "rstest",
@@ -3014,7 +3006,7 @@ dependencies = [
  "derive_more",
  "dialoguer",
  "dirs",
- "error-stack 0.7.1",
+ "error-stack",
  "futures",
  "jinn-dashboard",
  "jinn-discord-slice",
@@ -3956,7 +3948,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 name = "persona-loader"
 version = "0.116.1"
 dependencies = [
- "error-stack 0.7.1",
+ "error-stack",
  "jinn-plugin-api",
  "jinn-plugin-sdk",
  "rstest",
@@ -5949,7 +5941,7 @@ dependencies = [
 name = "theme-loader"
 version = "0.116.1"
 dependencies = [
- "error-stack 0.7.1",
+ "error-stack",
  "jinn-plugin-api",
  "jinn-plugin-sdk",
  "jinn-theme",
@@ -6819,7 +6811,7 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "derive_more",
- "error-stack 0.8.0",
+ "error-stack",
  "parking_lot",
  "serde",
  "serde_json",

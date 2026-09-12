@@ -15,7 +15,7 @@ pub mod trouper_to_kameo;
 pub use kameo_to_trouper::spawn_one;
 pub use trouper_to_kameo::spawn_reverse_relay;
 
-use trouper::types::Topic;
+use trouper::topics::Topic;
 
 /// Trouper topic names crossing messages publish onto.
 ///

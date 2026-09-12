@@ -43,7 +43,7 @@ pub struct SliceCtx<'a> {
     /// The viewport: view registration.
     pub viewport: &'a mut jinn_slices::view::Viewport,
     /// The trouper system: actor spawning.
-    pub trouper_system: &'a std::sync::Arc<trouper::system::ActorSystem>,
+    pub trouper_system: &'a trouper::system::ActorSystem,
 }
 
 /// Activates the dashboard slice: mints the cell, spawns the canvas

@@ -33,11 +33,11 @@ use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_session_msg::{
     SessionArchived, SessionPhaseChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
+use trouper::actor::ActorPath;
 use trouper::actor::{MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
-use trouper::types::ActorPath;
 
 /// The Discord bridge subscriber.
 ///
@@ -85,10 +85,7 @@ impl DiscordBridgeSubscriber {
     /// Panics if the topic subscription fails, which can only happen
     /// on a broken actor system; the slice activation ordering relies
     /// on the cursor being registered.
-    pub fn spawn(
-        system: &std::sync::Arc<ActorSystem>,
-        deps: DiscordBridgeSubscriberDeps,
-    ) -> ActorPath {
+    pub fn spawn(system: &ActorSystem, deps: DiscordBridgeSubscriberDeps) -> ActorPath {
         let DiscordBridgeSubscriberDeps {
             tx,
             gateway_tx,
@@ -130,13 +127,11 @@ impl DiscordBridgeSubscriber {
 }
 
 impl ServiceActor for DiscordBridgeSubscriber {
-    async fn start(
-        _args: &serde_json::Value,
-    ) -> Result<Self, trouper::error_stack::Report<RegistryError>> {
+    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the channels, state,
         // and capability via `start_with`.
         Err(
-            trouper::error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
+            error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("DiscordBridgeSubscriber is spawned via start_with"),
         )
     }

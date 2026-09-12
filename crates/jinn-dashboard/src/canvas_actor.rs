@@ -28,11 +28,11 @@
 //! [`start_with`](trouper::builder::ServiceBuilder::start_with)
 //! override.
 
+use trouper::actor::ActorPath;
 use trouper::actor::{MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
-use trouper::types::ActorPath;
 
 use crate::fabric_events::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 use crate::nav::DashboardNav;
@@ -50,12 +50,10 @@ pub struct DashboardCanvasActor {
 }
 
 impl ServiceActor for DashboardCanvasActor {
-    async fn start(
-        _args: &serde_json::Value,
-    ) -> Result<Self, trouper::error_stack::Report<RegistryError>> {
+    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the cell via `start_with`.
         Err(
-            trouper::error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
+            error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
                 "DashboardCanvasActor is spawned via start_with; start requires the typed cell",
             ),
         )
@@ -75,10 +73,7 @@ impl DashboardCanvasActor {
     ///
     /// Panics if the topic subscriptions fail, which can only happen on a
     /// broken actor system; the spawn-then-activate ordering relies on it.
-    pub fn spawn(
-        system: &std::sync::Arc<ActorSystem>,
-        cell: &TypedCell<DashboardState>,
-    ) -> ActorPath {
+    pub fn spawn(system: &ActorSystem, cell: &TypedCell<DashboardState>) -> ActorPath {
         let path = trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("dashboard"))
             .start_with({

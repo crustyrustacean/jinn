@@ -8,12 +8,12 @@
 //! at spawn — subscribe is the readiness point, so publishes after
 //! [`spawn_reverse_relay`] returns cannot be missed.
 
+use trouper::actor::ActorPath;
 use trouper::actor::MsgHandler;
 use trouper::actor::ServiceActor;
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
-use trouper::types::ActorPath;
 
 use crate::common::services::bus_service::BusService;
 use jinn_slices::host::ReverseMessage;
@@ -28,11 +28,9 @@ impl<M> ServiceActor for ReverseRelay<M>
 where
     M: ReverseMessage + crate::common::bus::BusMessage,
 {
-    async fn start(
-        _args: &serde_json::Value,
-    ) -> Result<Self, trouper::error_stack::Report<RegistryError>> {
+    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
         Err(
-            trouper::error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
+            error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("ReverseRelay spawns via start_with; start requires the bus handle"),
         )
     }
@@ -58,7 +56,7 @@ where
     clippy::expect_used,
     reason = "a failed reverse-route subscription is a wiring bug that must abort launch"
 )]
-pub fn spawn_reverse_relay<M>(system: &std::sync::Arc<ActorSystem>, bus: BusService) -> ActorPath
+pub fn spawn_reverse_relay<M>(system: &ActorSystem, bus: BusService) -> ActorPath
 where
     M: ReverseMessage + crate::common::bus::BusMessage,
 {
@@ -76,7 +74,7 @@ where
         })
         .handles::<M>()
         .start();
-    let topic = trouper::types::Topic::new(name.as_str());
+    let topic = trouper::topics::Topic::new(name.as_str());
     system
         .subscribe(&spawned, &topic, None)
         .expect("reverse relay subscribes its own schema topic");
@@ -96,12 +94,12 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
+    use trouper::actor::ActorPath;
     use trouper::actor::MsgHandler;
     use trouper::context::MsgCtx;
     use trouper::envelope::Event;
     use trouper::registry::RegistryError;
     use trouper::schema::Schema;
-    use trouper::types::ActorPath;
 
     use super::spawn_reverse_relay;
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
@@ -109,8 +107,8 @@ mod tests {
     /// Test-only topic: a topic with no reverse route — the negative case.
     const UNROUTED_TOPIC: &str = "jinn.test.reverse-bridge-unrouted";
 
-    fn unrouted_topic() -> trouper::types::Topic {
-        trouper::types::Topic::new(UNROUTED_TOPIC)
+    fn unrouted_topic() -> trouper::topics::Topic {
+        trouper::topics::Topic::new(UNROUTED_TOPIC)
     }
 
     /// Test-only probe message — the stand-in for the first real
@@ -215,8 +213,8 @@ mod tests {
         assert_eq!(path.to_string(), "trouper-to-kameo/ProbeEvent");
     }
 
-    fn probe_topic() -> trouper::types::Topic {
-        trouper::types::Topic::new("ProbeEvent")
+    fn probe_topic() -> trouper::topics::Topic {
+        trouper::topics::Topic::new("ProbeEvent")
     }
 
     /// A probe trouper actor counting the envelopes it receives on a
@@ -228,9 +226,9 @@ mod tests {
     impl trouper::actor::ServiceActor for TopicProbe {
         async fn start(
             _args: &serde_json::Value,
-        ) -> Result<Self, trouper::error_stack::Report<RegistryError>> {
+        ) -> Result<Self, error_stack::Report<RegistryError>> {
             Err(
-                trouper::error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
+                error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                     .attach("spawned via start_with; start is never called"),
             )
         }

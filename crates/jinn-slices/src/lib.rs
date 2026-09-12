@@ -49,6 +49,11 @@ pub use overlay::OverlayViewFn;
 pub use overlay::OverlayViews;
 pub use render_facts::AppFact;
 pub use render_facts::RenderFacts;
+
+/// The slice host specialized to jinn's render facts — the spelling
+/// slices use in their `activate` signatures instead of naming the
+/// generic parameter everywhere.
+pub type AppSliceHost<'a> = SliceHost<'a, RenderFacts>;
 pub use route::ActionCtx;
 pub use route::ActionFn;
 pub use route::BindSite;

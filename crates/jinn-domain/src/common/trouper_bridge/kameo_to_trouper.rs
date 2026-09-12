@@ -12,7 +12,7 @@
 //! fire-and-forget, a warn log on unroutable sends, no retry.
 
 use trouper::envelope::Event;
-use trouper::types::Topic;
+use trouper::topics::Topic;
 
 use crate::Services;
 use crate::common::bus::BusMessage;
@@ -35,7 +35,7 @@ where
 /// One relay: registered on the bus for `M`, forwards each publish
 /// onto `topic`.
 struct ForwardRelay<M> {
-    system: std::sync::Arc<trouper::system::ActorSystem>,
+    system: trouper::system::ActorSystem,
     topic: Topic,
     _marker: std::marker::PhantomData<fn() -> M>,
 }
@@ -44,7 +44,7 @@ impl<M> kameo::prelude::Actor for ForwardRelay<M>
 where
     M: BusMessage + ForwardMessage,
 {
-    type Args = (std::sync::Arc<trouper::system::ActorSystem>, Topic);
+    type Args = (trouper::system::ActorSystem, Topic);
     type Error = kameo::error::Infallible;
 
     async fn on_start(
