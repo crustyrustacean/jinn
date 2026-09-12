@@ -369,10 +369,9 @@ async fn kernel_lifecycle_events_drive_the_dashboard_rows() {
     };
     let _ = app.core.bridge.send(Bridge::publish_closure(starting));
     wait_for("the row to appear as Starting", || {
-        cell.read()
-            .actors()
-            .iter()
-            .any(|e| e.name == "test-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Starting)
+        cell.read().actors().iter().any(|e| {
+            e.name == "test-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Starting
+        })
     })
     .await;
 
@@ -383,10 +382,9 @@ async fn kernel_lifecycle_events_drive_the_dashboard_rows() {
     };
     let _ = app.core.bridge.send(Bridge::publish_closure(started));
     wait_for("the row to be promoted to Running", || {
-        cell.read()
-            .actors()
-            .iter()
-            .any(|e| e.name == "test-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Running)
+        cell.read().actors().iter().any(|e| {
+            e.name == "test-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Running
+        })
     })
     .await;
 
@@ -454,10 +452,9 @@ async fn status_message_row_is_promoted_by_lifecycle_events() {
     };
     let _ = app.core.bridge.send(Bridge::publish_closure(started));
     wait_for("the svc-actor row to reach Running", || {
-        cell.read()
-            .actors()
-            .iter()
-            .any(|e| e.name == "svc-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Running)
+        cell.read().actors().iter().any(|e| {
+            e.name == "svc-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Running
+        })
     })
     .await;
     // And the status message survived the promotion.
