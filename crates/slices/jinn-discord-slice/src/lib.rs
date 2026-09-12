@@ -2,11 +2,13 @@
 //!
 //! Owns the connection authority (status actor on trouper), the bridge
 //! actor (bus → gateway channels), the thread-map DAO, config, the
-//! message splitter, final-reply extraction, route rows, and the
-//! `[discord]` config section. The poise gateway itself (Discord
-//! websocket + slash commands) lives in the `jinn-discord` crate.
+//! message splitter, final-reply extraction, route rows, the
+//! `[discord]` config section, and the poise gateway itself (Discord
+//! websocket + slash commands, under [`backend`], re-exported at the
+//! crate root).
 
 pub mod authorize;
+pub mod backend;
 pub mod bridge_subscriber;
 pub mod channels;
 pub mod config;
@@ -18,6 +20,7 @@ pub mod status_actor;
 pub mod thread_map;
 pub mod to_thread_intent;
 
+pub use backend::spawn_gateway;
 pub use bridge_subscriber::DiscordBridgeSubscriber;
 pub use bridge_subscriber::DiscordBridgeSubscriberDeps;
 pub use channels::DiscordGatewayChannels;
@@ -49,7 +52,7 @@ pub use thread_map::DiscordThreadMapError;
 pub use thread_map::ThreadMapping;
 
 /// The parked gateway-facing channels + config an activation hands to
-/// the frontend (`jinn_discord::spawn_gateway`).
+/// the frontend (`spawn_gateway`, [`crate::backend`]).
 #[derive(Debug)]
 pub struct ActivatedDiscord {
     /// The gateway's receiving halves (bridge events, gateway
@@ -117,7 +120,7 @@ pub async fn activate(
 
     // Conditionally spawn the bridge subscriber: trouper `jinn.session`
     // topic events → the gateway channels. The gateway task itself is
-    // spawned later by the frontend (`jinn_discord::spawn_gateway`), so
+    // spawned later by the frontend (`spawn_gateway`), so
     // it never blocks readiness. When disabled, the senders drop here —
     // the parked receivers then report `Disconnected`, fail-closed.
     if config.enabled {

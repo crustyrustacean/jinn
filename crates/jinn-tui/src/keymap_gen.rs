@@ -294,6 +294,7 @@ mod tests {
 
     use super::bind_route_rows;
     use super::category;
+    use super::dynamic_scopes;
     use super::static_intent;
     use crate::keymap::KeyCategory;
     use crate::scope::Scope;
@@ -607,6 +608,95 @@ mod tests {
             root.iter()
                 .all(|(_, d)| d != "test-slice" && d != "quake-bar"),
             "no derived group descriptions should exist, got {root:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn multi_key_synthetic_row_derives_a_group_label_and_resolves() {
+        // Given a route table with a three-key synthetic row (`gdc` shape:
+        // a StaticScopes leaf deep enough to imply two prefixes).
+        let routes = KeyRoutes::new();
+        routes.attach(RouteRow {
+            route_id: RouteId::new("test:to-thread"),
+            scope: SliceScopeId::new("test-slice", "main"),
+            key: "gdc",
+            category: "general",
+            site: BindSite::StaticScopes(&["Normal"]),
+            feature: "test-slice",
+            outcome: RouteOutcome::Action {
+                action: "to-thread",
+                display: "test thread action",
+                run: ActionFn::new(|_ctx| IntentResult::empty()),
+            },
+        });
+
+        // When generating bindings into a fresh keymap.
+        let mut keymap = Keymap::new();
+        bind_route_rows(&routes, &mut keymap);
+
+        // Then the full sequence resolves to the row's dynamic intent.
+        let leaf = leaf_at(&keymap, &[key("g"), key("d"), key("c")], &Scope::Normal);
+        assert!(
+            matches!(&leaf, Some(Intent::Dynamic(d)) if d.action == "to-thread"),
+            "gdc should resolve to the synthetic action, got {leaf:?}"
+        );
+        // And the `g` prefix derives a group labeled for the owning slice,
+        // with `gd` beneath it (each proper prefix describes itself).
+        let root = at_path(&keymap, &[], &Scope::Normal);
+        assert!(
+            root.iter()
+                .any(|(k, d)| *k == key("g") && d == "test-slice"),
+            "root should describe g as the test-slice group, got {root:?}"
+        );
+        let gd = at_path(&keymap, &[key("g")], &Scope::Normal);
+        assert!(
+            gd.iter().any(|(k, d)| *k == key("d") && d == "test-slice"),
+            "g group should describe d as the test-slice group, got {gd:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn dynamic_scope_spread_binds_the_terminal_toggle_for_synthetic_rows() {
+        // Given a synthetic OwnScope row (its scope is the only dynamic one).
+        let routes = KeyRoutes::new();
+        routes.attach(quake_open_row());
+
+        // When collecting the dynamic scopes and spreading the per-scope
+        // `<M-t>` chrome across them — what composition does after
+        // `bind_route_rows`.
+        let mut keymap = Keymap::new();
+        bind_route_rows(&routes, &mut keymap);
+        for scope in dynamic_scopes(&routes) {
+            keymap.bind(
+                "<M-t>",
+                Intent::ToggleTerminalOverlay { session_id: None },
+                KeyCategory::General,
+                Scope::Dynamic(scope),
+            );
+        }
+
+        // Then the toggle resolves inside the row's own dynamic scope.
+        let dynamic = Scope::Dynamic(SliceScopeId::new("quake-bar", "open"));
+        let leaf = leaf_at(
+            &keymap,
+            &[KeyEvent {
+                key: jinn_domain::Key::Char('t'),
+                modifiers: jinn_domain::Modifiers {
+                    ctrl: false,
+                    alt: true,
+                    shift: false,
+                },
+            }],
+            &dynamic,
+        );
+        assert!(
+            matches!(
+                leaf,
+                Some(Intent::ToggleTerminalOverlay { session_id: None })
+            ),
+            "the slice's dynamic scope must carry the <M-t> toggle, got {leaf:?}"
         );
     }
 }

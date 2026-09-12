@@ -11,15 +11,12 @@ pub mod keymap;
 pub mod keymap_gen;
 pub mod launch;
 pub mod msg;
-#[cfg(test)]
-mod nav_e2e_test;
 pub mod render;
 pub mod run;
 pub mod scope;
 pub mod selection;
 pub mod suspend;
 pub mod terminal;
-pub mod test_routes;
 
 pub use app::TuiApp;
 pub use app::TuiAppBuilder;

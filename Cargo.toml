@@ -23,7 +23,9 @@ disabled-strategies = ["quick-install", "compile"]
 
 
 [workspace]
-members = ["crates/*", "plugins/*", "vendor/*"]
+# `crates/jinn-*` (not `crates/*`) so the glob never matches the `crates/slices/`
+# container directory, which holds the slice crates matched by `crates/slices/*`.
+members = ["crates/jinn-*", "crates/slices/*", "plugins/*", "vendor/*"]
 
 
 [workspace.package]
@@ -75,7 +77,6 @@ jinn-domain = { workspace = true }
 jinn-dashboard = { workspace = true }
 jinn-discord = { workspace = true }
 jinn-discord-msg = { workspace = true }
-jinn-discord-slice = { workspace = true }
 jinn-quake-bar = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-slices = { workspace = true }
@@ -115,18 +116,29 @@ tokio = { workspace = true, features = ["full"] }
 tempfile = { workspace = true }
 ctor = "0.8"
 rustls = { workspace = true }
+# Slice-composition integration tests (tests/slices.rs) drive the real
+# slices; integration targets are not compiled by `just check`, so the
+# kernel/tui crates above stay slice-free.
+jinn-dashboard = { workspace = true }
+jinn-quake-bar = { workspace = true }
+jinn-discord = { workspace = true }
+jinn-testutil = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
 
 [workspace.dependencies]
 
 # Internal
 jinn-domain = { path = "crates/jinn-domain" }
-jinn-discord = { path = "crates/jinn-discord" }
-jinn-discord-msg = { path = "crates/jinn-discord-msg" }
-jinn-discord-slice = { path = "crates/jinn-discord-slice" }
+# The discord slice crate carries the poise gateway as its `backend` module;
+# the directory name (`jinn-discord-slice`) is the crate's home, the package
+# name is `jinn-discord`.
+jinn-discord = { path = "crates/slices/jinn-discord-slice" }
+jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }
 jinn-core-types = { path = "crates/jinn-core-types" }
-jinn-dashboard = { path = "crates/jinn-dashboard" }
-jinn-quake-bar = { path = "crates/jinn-quake-bar" }
+jinn-dashboard = { path = "crates/slices/jinn-dashboard" }
+jinn-quake-bar = { path = "crates/slices/jinn-quake-bar" }
 jinn-slices = { path = "crates/jinn-slices" }
 jinn-session-msg = { path = "crates/jinn-session-msg" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }

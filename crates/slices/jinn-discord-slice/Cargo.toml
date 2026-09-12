@@ -1,5 +1,5 @@
 [package]
-name = "jinn-discord-slice"
+name = "jinn-discord"
 version = "0.116.1"
 edition.workspace = true
 publish.workspace = true
@@ -29,6 +29,8 @@ trouper = { workspace = true }
 tracing = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
+derive_more = { workspace = true }
+poise = { workspace = true }
 
 [build-dependencies]
 rusqlite = { workspace = true }
@@ -37,3 +39,5 @@ jinn-session-schema = { workspace = true }
 [dev-dependencies]
 jinn-testutil = { workspace = true }
 tempfile = { workspace = true }
+kameo = { workspace = true }
+kameo_actors = { workspace = true }
