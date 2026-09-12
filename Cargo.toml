@@ -106,6 +106,7 @@ jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-dashboard = { path = "crates/jinn-dashboard" }
 jinn-quake-bar = { path = "crates/jinn-quake-bar" }
 jinn-slices = { path = "crates/jinn-slices" }
+jinn-session-msg = { path = "crates/jinn-session-msg" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }
 ratatui-markdown = { path = "vendor/ratatui-markdown", features = [
