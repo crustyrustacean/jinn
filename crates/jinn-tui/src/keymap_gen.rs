@@ -264,21 +264,55 @@ pub fn bind_route_rows(
     }
     // Typing carve-out: a slice with a registered input hook captures
     // printable keystrokes in its own scope. The keymap synthesizes the
-    // generic editing intent; the intent handler's hook consult (not a
-    // god-match arm) routes it to the slice's sync writer.
+    // generic editing intents — the char catch-all for printable keys,
+    // plus trunk-parity explicit binds for the six non-char editing
+    // keys (Backspace used to fall into the catch-all, resolve to
+    // nothing, and die in the which-key popup). The intent handler's
+    // hook consult (not a god-match arm) routes them to the slice's
+    // sync writer via `as_edit_intent`.
     for hook in hooks {
-        keymap.scope(Scope::Dynamic(hook), |b| {
-            b.catch_all(|key: KeyEvent| {
-                if let KeyEvent {
-                    key: Key::Char(c), ..
-                } = &key
-                {
-                    Some(Intent::InsertChar { ch: *c })
-                } else {
-                    None
-                }
-            });
+        keymap.scope(Scope::Dynamic(hook.clone()), |b| {
+            b.bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
+                .bind(
+                    "<delete>",
+                    Intent::DeleteGraphemeForward,
+                    KeyCategory::Input,
+                )
+                .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
+                .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
+                .bind("<home>", Intent::MoveCursorToStart, KeyCategory::Input)
+                .bind("<end>", Intent::MoveCursorToEnd, KeyCategory::Input)
+                .catch_all(|key: KeyEvent| {
+                    if let KeyEvent {
+                        key: Key::Char(c), ..
+                    } = &key
+                    {
+                        Some(Intent::InsertChar { ch: *c })
+                    } else {
+                        None
+                    }
+                });
         });
+        // Per-scope composition chrome: the `<M-t>` overlay toggle is
+        // bound in every dynamic scope (never a global — globals pierce
+        // terminal capture). Dynamic scopes are non-terminal by
+        // construction, so hook scopes get it too.
+        keymap.bind(
+            "<M-t>",
+            Intent::ToggleTerminalOverlay { session_id: None },
+            KeyCategory::General,
+            Scope::Dynamic(hook),
+        );
+    }
+    // The same chrome for the row scopes (tab scopes), which are not
+    // hook scopes.
+    for scope in routes.rows().iter().map(|r| r.scope.clone()) {
+        keymap.bind(
+            "<M-t>",
+            Intent::ToggleTerminalOverlay { session_id: None },
+            KeyCategory::General,
+            Scope::Dynamic(scope),
+        );
     }
 }
 
@@ -294,7 +328,6 @@ mod tests {
 
     use super::bind_route_rows;
     use super::category;
-    use super::dynamic_scopes;
     use super::static_intent;
     use crate::keymap::KeyCategory;
     use crate::scope::Scope;
@@ -663,19 +696,11 @@ mod tests {
         let routes = KeyRoutes::new();
         routes.attach(quake_open_row());
 
-        // When collecting the dynamic scopes and spreading the per-scope
-        // `<M-t>` chrome across them — what composition does after
-        // `bind_route_rows`.
+        // When generating bindings: `bind_route_rows` alone spreads the
+        // per-scope `<M-t>` chrome (production parity — the old manual
+        // spread lived in the test harness, which prod never ran).
         let mut keymap = Keymap::new();
         bind_route_rows(&routes, &mut keymap);
-        for scope in dynamic_scopes(&routes) {
-            keymap.bind(
-                "<M-t>",
-                Intent::ToggleTerminalOverlay { session_id: None },
-                KeyCategory::General,
-                Scope::Dynamic(scope),
-            );
-        }
 
         // Then the toggle resolves inside the row's own dynamic scope.
         let dynamic = Scope::Dynamic(SliceScopeId::new("quake-bar", "open"));
@@ -697,6 +722,81 @@ mod tests {
                 Some(Intent::ToggleTerminalOverlay { session_id: None })
             ),
             "the slice's dynamic scope must carry the <M-t> toggle, got {leaf:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn hook_scopes_bind_the_six_editing_keys() {
+        // Given a route table whose slice registers an input hook.
+        let routes = KeyRoutes::new();
+        let hook_scope = SliceScopeId::new("quake-bar", "bar");
+        routes.register_input_hook(
+            &hook_scope,
+            std::sync::Arc::new(|_: &jinn_slices::route::EditIntent| None),
+        );
+
+        // When generating bindings into a fresh keymap.
+        let mut keymap = Keymap::new();
+        bind_route_rows(&routes, &mut keymap);
+
+        // Then all six editing keys resolve to the kernel editing
+        // intents in the hook scope (trunk parity: Backspace et al.
+        // bound explicitly, not left to the char catch-all).
+        let dynamic = Scope::Dynamic(hook_scope);
+        let expected: [(&str, Intent); 6] = [
+            ("backspace", Intent::DeleteGrapheme),
+            ("delete", Intent::DeleteGraphemeForward),
+            ("left", Intent::MoveCursorLeft),
+            ("right", Intent::MoveCursorRight),
+            ("home", Intent::MoveCursorToStart),
+            ("end", Intent::MoveCursorToEnd),
+        ];
+        for (notation, intent) in expected {
+            let leaf = leaf_at(&keymap, &[key(notation)], &dynamic);
+            assert_eq!(
+                leaf,
+                Some(intent),
+                "{notation} must bind the editing intent in hook scopes"
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn hook_scopes_carry_the_terminal_toggle() {
+        // Given a route table whose slice registers an input hook.
+        let routes = KeyRoutes::new();
+        let hook_scope = SliceScopeId::new("quake-bar", "bar");
+        routes.register_input_hook(
+            &hook_scope,
+            std::sync::Arc::new(|_: &jinn_slices::route::EditIntent| None),
+        );
+
+        // When generating bindings into a fresh keymap.
+        let mut keymap = Keymap::new();
+        bind_route_rows(&routes, &mut keymap);
+
+        // Then the hook scope resolves <M-t> (hook scopes are dynamic
+        // scopes, so they get the per-scope chrome too).
+        let leaf = leaf_at(
+            &keymap,
+            &[KeyEvent {
+                key: jinn_domain::Key::Char('t'),
+                modifiers: jinn_domain::Modifiers {
+                    ctrl: false,
+                    alt: true,
+                    shift: false,
+                },
+            }],
+            &Scope::Dynamic(hook_scope),
+        );
+        assert!(
+            matches!(
+                leaf,
+                Some(Intent::ToggleTerminalOverlay { session_id: None })
+            ),
+            "hook scope must carry the <M-t> toggle, got {leaf:?}"
         );
     }
 }

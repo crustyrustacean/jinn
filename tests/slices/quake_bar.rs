@@ -127,3 +127,95 @@ fn pgup_fires_quake_scroll_up_in_quake_scope() {
         "PageUp must resolve to the quake scroll-up action; got {intent:?}"
     );
 }
+
+/// A wired app whose base focus scope is the quake bar's dynamic scope.
+async fn quake_app() -> jinn_tui::TuiApp {
+    let app = crate::common::test_app().await;
+    app.core
+        .state
+        .write_test_no_cap()
+        .frontend
+        .scope_stack
+        .swap_base(jinn_domain::FocusScope::Dynamic(quake_scope()));
+    app
+}
+
+/// The quake cell for a wired app.
+fn quake_cell(app: &jinn_tui::TuiApp) -> jinn_domain::common::slices::TypedCell<jinn_quake_bar::QuakeBarState> {
+    app.services
+        .slices
+        .reader(&jinn_quake_bar::quake_bar_slot())
+        .expect("harness registers the quake slot")
+}
+
+/// E2E regression: Backspace deletes the last typed grapheme through the
+/// hook. The slice-port dropped the trunk editing binds, so Backspace
+/// fell into the char catch-all, resolved to nothing, and editing died.
+#[rstest::rstest]
+#[tokio::test]
+async fn backspace_deletes_via_the_hook() {
+    // Given a wired app focused on the quake bar with "hi" typed in.
+    let mut app = quake_app().await;
+    app.which_key.set_scope(Scope::Dynamic(quake_scope()));
+    let cell = quake_cell(&app);
+    cell.update(|s| s.input.text.set("hi".to_owned()));
+
+    // When Backspace resolves through the composed keymap and routes
+    // like the run loop.
+    let backspace = KeyEvent {
+        key: Key::Backspace,
+        modifiers: Modifiers::none(),
+    };
+    let intent = app
+        .which_key
+        .handle_key(backspace)
+        .expect("Backspace must resolve in the quake hook scope");
+    app.route_intent(intent);
+    crate::common::wait_for("Backspace to delete the last grapheme", || {
+        cell.read().input.text.input == "h"
+    })
+    .await;
+
+    // Then the input holds "h".
+    assert_eq!(
+        cell.read().input.text.input,
+        "h",
+        "Backspace must delete through the slice hook"
+    );
+}
+
+/// E2E discriminator: Enter submits the typed command — the keymap must
+/// resolve Enter to the submit action, the action must emit
+/// SubmitQuakeBarCommand, and the quake actor must append it to the log.
+#[rstest::rstest]
+#[tokio::test]
+async fn enter_submits_and_appends_to_the_log() {
+    // Given a wired app focused on the quake bar with "hi" typed in.
+    let mut app = quake_app().await;
+    app.which_key.set_scope(Scope::Dynamic(quake_scope()));
+    let cell = quake_cell(&app);
+    cell.update(|s| s.input.text.set("hi".to_owned()));
+
+    // When Enter resolves through the composed keymap and routes like
+    // the run loop.
+    let enter = KeyEvent {
+        key: Key::Enter,
+        modifiers: Modifiers::none(),
+    };
+    let intent = app
+        .which_key
+        .handle_key(enter)
+        .expect("Enter must resolve in the quake scope");
+    app.route_intent(intent);
+
+    // Then the submit fired: the log gains "hi" and the input clears.
+    crate::common::wait_for("the submitted command to land in the log", || {
+        cell.read().log.len() == 1
+    })
+    .await;
+    assert_eq!(cell.read().log.visible_lines(10).first().map(String::as_str), Some("hi"));
+    assert!(
+        cell.read().input.text.input.is_empty(),
+        "submit must clear the input buffer"
+    );
+}
