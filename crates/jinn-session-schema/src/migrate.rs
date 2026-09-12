@@ -1,4 +1,4 @@
-//! The migration runner and individual migrations (v0..=v25).
+//! The migration runner and individual migrations (v0..=v28).
 //!
 //! Ported verbatim from jinn-domain's `migrator.rs` so the schema crate is the
 //! single source of truth. Three mechanical changes from the original:
@@ -22,7 +22,16 @@ use crate::SchemaMigrationError;
 ///
 /// `run_pending` skips `BEGIN` when the DB is already at this version, so an
 /// up-to-date database pays no transaction cost on startup.
-const LATEST_VERSION: i32 = 25;
+///
+/// MUST be bumped in lockstep with [`apply_migration_chain`]: every new
+/// `migrate_vN` block requires this constant set to `N`. The drift-guard test
+/// (`upgrade_from_every_seedable_version_reaches_latest`) fails otherwise. A
+/// stale value is the worst kind of bug: fresh databases still run the whole
+/// chain (so row-count tests pass) while already-migrated databases silently
+/// never receive the new migration, because the no-op early-return fires
+/// first. This exact bug shipped once — v27 landed with the constant left
+/// at 26.
+pub const LATEST_VERSION: i32 = CHAIN_LATEST_VERSION;
 
 /// Runs all pending migrations in order, atomically.
 ///
@@ -37,20 +46,29 @@ const LATEST_VERSION: i32 = 25;
 /// A database already at [`LATEST_VERSION`] is a no-op: no `BEGIN` is issued,
 /// so existing-DB startup cost is unchanged.
 ///
+/// Returns `true` when at least one migration was applied (i.e. the database
+/// was below [`LATEST_VERSION`]) and `false` on a no-op run. Callers use this
+/// to skip post-migration work that only makes sense when the schema changed
+/// (the caller is responsible for the FK toggle around this call — FK pragmas
+/// cannot change inside an open transaction, so they stay outside
+/// `run_pending`'s BEGIN).
+///
 /// # Errors
 ///
 /// Returns an error if the transaction cannot be opened/committed or if any
 /// migration or version recording fails (the transaction is rolled back first).
 pub(crate) fn run_pending(
     conn: &mut rusqlite::Connection,
-) -> Result<(), Report<SchemaMigrationError>> {
+) -> Result<bool, Report<SchemaMigrationError>> {
     bootstrap_tracking_table(conn)?;
     let current = current_version(conn)?;
 
     // No-op path: an up-to-date database pays no transaction cost.
     if current >= LATEST_VERSION {
-        return Ok(());
+        return Ok(false);
     }
+
+    let applied = current < LATEST_VERSION;
 
     // Raw BEGIN/COMMIT/ROLLBACK (not rusqlite's Transaction) because the
     // connection is a `&mut` borrowed under dao's `with_conn`; `Transaction`
@@ -66,7 +84,7 @@ pub(crate) fn run_pending(
             conn.execute_batch("COMMIT")
                 .change_context(SchemaMigrationError)
                 .attach("commit migration transaction")?;
-            Ok(())
+            Ok(applied)
         }
         Err(report) => {
             // Best-effort rollback; the original migration error propagates.
@@ -76,252 +94,224 @@ pub(crate) fn run_pending(
     }
 }
 
-/// Applies every migration above `current`, recording each version.
+/// A single migration in the chain: its version, stable name, and DDL.
+pub struct Migration {
+    pub version: i32,
+    pub name: &'static str,
+    apply: fn(&mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>>,
+}
+
+/// The full migration chain, in application order.
 ///
-/// Runs inside the caller's open transaction; its `?` short-circuits on the
-/// first failure, at which point `run_pending` rolls back.
+/// One row per migration: version number, stable name (recorded in
+/// `_migrations`), and the DDL function. This table is the single source of
+/// truth for both [`apply_migration_chain`] (production) and
+/// [`apply_migrations_inner`] (test seeding), so a new migration cannot
+/// appear in one list and be missing from the other.
+///
+/// Every `apply` returns the Report-bearing signature; `migrate_v6` (the one
+/// infallible legacy migration) is wrapped by [`migrate_v6_step`].
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 0,
+        name: "create_initial_schema",
+        apply: migrate_v0,
+    },
+    Migration {
+        version: 1,
+        name: "add_cwd_column",
+        apply: migrate_v1,
+    },
+    Migration {
+        version: 2,
+        name: "add_created_at_column",
+        apply: migrate_v2,
+    },
+    Migration {
+        version: 3,
+        name: "add_ignored_to_session_entries",
+        apply: migrate_v3,
+    },
+    Migration {
+        version: 4,
+        name: "add_cost_to_token_ledger",
+        apply: migrate_v4,
+    },
+    Migration {
+        version: 5,
+        name: "add_lifecycle_columns_to_sessions",
+        apply: migrate_v5,
+    },
+    Migration {
+        version: 6,
+        name: "add_archived_column",
+        apply: migrate_v6_step,
+    },
+    Migration {
+        version: 7,
+        name: "add_lifecycle_script_state_column",
+        apply: migrate_v7,
+    },
+    Migration {
+        version: 8,
+        name: "add_metadata_column",
+        apply: migrate_v8,
+    },
+    Migration {
+        version: 9,
+        name: "rename_session_entries_to_session_history",
+        apply: migrate_v9,
+    },
+    Migration {
+        version: 10,
+        name: "consolidate_to_compaction_strategy",
+        apply: migrate_v10,
+    },
+    Migration {
+        version: 11,
+        name: "add_is_workflow_column",
+        apply: migrate_v11,
+    },
+    Migration {
+        version: 12,
+        name: "replace_ignored_with_context_override",
+        apply: migrate_v12,
+    },
+    Migration {
+        version: 13,
+        name: "add_judge_meta_column",
+        apply: migrate_v13,
+    },
+    Migration {
+        version: 14,
+        name: "add_context_history",
+        apply: migrate_v14,
+    },
+    Migration {
+        version: 15,
+        name: "drop_strategy_state_column",
+        apply: migrate_v15,
+    },
+    Migration {
+        version: 16,
+        name: "rename_is_workflow_to_is_automated_and_add_persist",
+        apply: migrate_v16,
+    },
+    Migration {
+        version: 17,
+        name: "rewrite_model_to_model_selection_and_add_model_used",
+        apply: migrate_v17,
+    },
+    Migration {
+        version: 18,
+        name: "rename_entries_timestamp_to_timing",
+        apply: migrate_v18,
+    },
+    Migration {
+        version: 19,
+        name: "rewrite_metadata_blob_profile_model",
+        apply: migrate_v19,
+    },
+    Migration {
+        version: 20,
+        name: "drop_zombie_columns_backfill_metadata",
+        apply: migrate_v20,
+    },
+    Migration {
+        version: 21,
+        name: "add_discord_thread_table",
+        apply: migrate_v21,
+    },
+    Migration {
+        version: 22,
+        name: "add_entry_blobs_table",
+        apply: migrate_v22,
+    },
+    Migration {
+        version: 23,
+        name: "strip_s_prefix_from_session_ids",
+        apply: migrate_v23,
+    },
+    Migration {
+        version: 24,
+        name: "add_token_ledger_prompt_cached_columns",
+        apply: migrate_v24,
+    },
+    Migration {
+        version: 25,
+        name: "add_entries_token_count_column",
+        apply: migrate_v25,
+    },
+    Migration {
+        version: 26,
+        name: "add_fts_search_index",
+        apply: migrate_v26,
+    },
+    Migration {
+        version: 27,
+        name: "add_fts_dirty_resume_offset",
+        apply: migrate_v27,
+    },
+    Migration {
+        version: 28,
+        name: "add_fts_rowid_map",
+        apply: migrate_v28,
+    },
+];
+
+/// The newest migration in [`MIGRATIONS`], kept in lockstep with
+/// [`LATEST_VERSION`] (which is asserted equal to this by
+/// `latest_version_matches_chain`).
+pub const CHAIN_LATEST_VERSION: i32 = 28;
+
+/// Applies every migration above `current`, announcing each to stderr.
+///
+/// Runs inside the caller's open transaction; the `?` on each step
+/// short-circuits on the first failure, at which point `run_pending` rolls
+/// back.
 fn apply_migration_chain(
     conn: &mut rusqlite::Connection,
     current: i32,
 ) -> Result<(), Report<SchemaMigrationError>> {
-    if current < 0 {
-        tracing::debug!(
-            version = 0,
-            name = "create_initial_schema",
-            "applying migration"
-        );
-        migrate_v0(conn)?;
-        record_version(conn, 0, "create_initial_schema")?;
+    apply_migration_chain_with(conn, current, &announce_migration)
+}
+
+/// [`apply_migration_chain`] with an injectable announcer, so tests can
+/// observe announcements without capturing stderr.
+fn apply_migration_chain_with(
+    conn: &mut rusqlite::Connection,
+    current: i32,
+    announce: &dyn Fn(i32, &str),
+) -> Result<(), Report<SchemaMigrationError>> {
+    for migration in MIGRATIONS {
+        if current < migration.version {
+            announce(migration.version, migration.name);
+            (migration.apply)(conn)?;
+            record_version(conn, migration.version, migration.name)?;
+        }
     }
-    if current < 1 {
-        tracing::debug!(version = 1, name = "add_cwd_column", "applying migration");
-        migrate_v1(conn)?;
-        record_version(conn, 1, "add_cwd_column")?;
-    }
-    if current < 2 {
-        tracing::debug!(
-            version = 2,
-            name = "add_created_at_column",
-            "applying migration"
-        );
-        migrate_v2(conn)?;
-        record_version(conn, 2, "add_created_at_column")?;
-    }
-    if current < 3 {
-        tracing::debug!(
-            version = 3,
-            name = "add_ignored_to_session_entries",
-            "applying migration"
-        );
-        migrate_v3(conn)?;
-        record_version(conn, 3, "add_ignored_to_session_entries")?;
-    }
-    if current < 4 {
-        tracing::debug!(
-            version = 4,
-            name = "add_cost_to_token_ledger",
-            "applying migration"
-        );
-        migrate_v4(conn)?;
-        record_version(conn, 4, "add_cost_to_token_ledger")?;
-    }
-    if current < 5 {
-        tracing::debug!(
-            version = 5,
-            name = "add_lifecycle_columns_to_sessions",
-            "applying migration"
-        );
-        migrate_v5(conn)?;
-        record_version(conn, 5, "add_lifecycle_columns_to_sessions")?;
-    }
-    if current < 6 {
-        tracing::debug!(
-            version = 6,
-            name = "add_archived_column",
-            "applying migration"
-        );
-        migrate_v6(conn);
-        record_version(conn, 6, "add_archived_column")?;
-    }
-    if current < 7 {
-        tracing::debug!(
-            version = 7,
-            name = "add_lifecycle_script_state_column",
-            "applying migration"
-        );
-        migrate_v7(conn)?;
-        record_version(conn, 7, "add_lifecycle_script_state_column")?;
-    }
-    if current < 8 {
-        tracing::debug!(
-            version = 8,
-            name = "add_metadata_column",
-            "applying migration"
-        );
-        migrate_v8(conn)?;
-        record_version(conn, 8, "add_metadata_column")?;
-    }
-    if current < 9 {
-        tracing::debug!(
-            version = 9,
-            name = "rename_session_entries_to_session_history",
-            "applying migration"
-        );
-        migrate_v9(conn)?;
-        record_version(conn, 9, "rename_session_entries_to_session_history")?;
-    }
-    if current < 10 {
-        tracing::debug!(
-            version = 10,
-            name = "consolidate_to_compaction_strategy",
-            "applying migration"
-        );
-        migrate_v10(conn)?;
-        record_version(conn, 10, "consolidate_to_compaction_strategy")?;
-    }
-    if current < 11 {
-        tracing::debug!(
-            version = 11,
-            name = "add_is_workflow_column",
-            "applying migration"
-        );
-        migrate_v11(conn)?;
-        record_version(conn, 11, "add_is_workflow_column")?;
-    }
-    if current < 12 {
-        tracing::debug!(
-            version = 12,
-            name = "replace_ignored_with_context_override",
-            "applying migration"
-        );
-        migrate_v12(conn)?;
-        record_version(conn, 12, "replace_ignored_with_context_override")?;
-    }
-    if current < 13 {
-        tracing::debug!(
-            version = 13,
-            name = "add_judge_meta_column",
-            "applying migration"
-        );
-        migrate_v13(conn)?;
-        record_version(conn, 13, "add_judge_meta_column")?;
-    }
-    if current < 14 {
-        tracing::debug!(
-            version = 14,
-            name = "add_context_history",
-            "applying migration"
-        );
-        migrate_v14(conn)?;
-        record_version(conn, 14, "add_context_history")?;
-    }
-    if current < 15 {
-        tracing::debug!(
-            version = 15,
-            name = "drop_strategy_state_column",
-            "applying migration"
-        );
-        migrate_v15(conn)?;
-        record_version(conn, 15, "drop_strategy_state_column")?;
-    }
-    if current < 16 {
-        tracing::debug!(
-            version = 16,
-            name = "rename_is_workflow_to_is_automated_and_add_persist",
-            "applying migration"
-        );
-        migrate_v16(conn)?;
-        record_version(
-            conn,
-            16,
-            "rename_is_workflow_to_is_automated_and_add_persist",
-        )?;
-    }
-    if current < 17 {
-        tracing::debug!(
-            version = 17,
-            name = "rewrite_model_to_model_selection_and_add_model_used",
-            "applying migration"
-        );
-        migrate_v17(conn)?;
-        record_version(
-            conn,
-            17,
-            "rewrite_model_to_model_selection_and_add_model_used",
-        )?;
-    }
-    if current < 18 {
-        tracing::debug!(
-            version = 18,
-            name = "rename_entries_timestamp_to_timing",
-            "applying migration"
-        );
-        migrate_v18(conn)?;
-        record_version(conn, 18, "rename_entries_timestamp_to_timing")?;
-    }
-    if current < 19 {
-        tracing::debug!(
-            version = 19,
-            name = "rewrite_metadata_blob_profile_model",
-            "applying migration"
-        );
-        migrate_v19(conn)?;
-        record_version(conn, 19, "rewrite_metadata_blob_profile_model")?;
-    }
-    if current < 20 {
-        tracing::debug!(
-            version = 20,
-            name = "drop_zombie_columns_backfill_metadata",
-            "applying migration"
-        );
-        migrate_v20(conn)?;
-        record_version(conn, 20, "drop_zombie_columns_backfill_metadata")?;
-    }
-    if current < 21 {
-        tracing::debug!(
-            version = 21,
-            name = "add_discord_thread_table",
-            "applying migration"
-        );
-        migrate_v21(conn)?;
-        record_version(conn, 21, "add_discord_thread_table")?;
-    }
-    if current < 22 {
-        tracing::debug!(
-            version = 22,
-            name = "add_entry_blobs_table",
-            "applying migration"
-        );
-        migrate_v22(conn)?;
-        record_version(conn, 22, "add_entry_blobs_table")?;
-    }
-    if current < 23 {
-        tracing::debug!(
-            version = 23,
-            name = "strip_s_prefix_from_session_ids",
-            "applying migration"
-        );
-        migrate_v23(conn)?;
-        record_version(conn, 23, "strip_s_prefix_from_session_ids")?;
-    }
-    if current < 24 {
-        tracing::debug!(
-            version = 24,
-            name = "add_token_ledger_prompt_cached_columns",
-            "applying migration"
-        );
-        migrate_v24(conn)?;
-        record_version(conn, 24, "add_token_ledger_prompt_cached_columns")?;
-    }
-    if current < 25 {
-        tracing::debug!(
-            version = 25,
-            name = "add_entries_token_count_column",
-            "applying migration"
-        );
-        migrate_v25(conn)?;
-        record_version(conn, 25, "add_entries_token_count_column")?;
-    }
+    Ok(())
+}
+
+/// Prints the user-facing pre-TUI announcement for a migration about to run.
+///
+/// Migrations apply before the TUI launches (terminal still in normal mode),
+/// so plain stderr is visible to the user; this explains an upgrade launch's
+/// startup wait. The tracing log file gets the same event at debug level via
+/// the `tracing` lines this replaces' neighbors (kept in `run_pending`).
+fn announce_migration(version: i32, name: &str) {
+    eprintln!("{}", announcement_line(version, name));
+}
+
+/// Renders the announcement line exactly as a user sees it.
+pub fn announcement_line(version: i32, name: &str) -> String {
+    format!("jinn: applying migration v{version} ({name})\u{2026}")
+}
+
+/// Wraps the infallible legacy `migrate_v6` so it fits the chain's
+/// Report-bearing signature. It cannot fail, so the error arm is unreachable.
+fn migrate_v6_step(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    migrate_v6(conn);
     Ok(())
 }
 
@@ -1170,6 +1160,115 @@ pub fn migrate_v25(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
     Ok(())
 }
 
+/// v26: Add the FTS5 search index for cross-session content search.
+///
+/// Three objects:
+///
+/// - `session_fts` — a contentful FTS5 virtual table holding one row per
+///   **(session, entry)** pair. The searchable unit exists in no single
+///   physical table (entries are shared across forked sessions; the junction
+///   is rewritten wholesale on every save), so jinn-domain's search-index
+///   actor recomputes each session's rows from the live tables when the
+///   session is marked dirty. `body` is the only indexed column — the
+///   entry's searchable prose — while `role`, `session_id`, `entry_id`, and
+///   `entry_ts` are `UNINDEXED` filters: bare query terms can never match a
+///   role word, and scope/date filtering is a plain `WHERE` post-filter.
+///   Stored metadata means `snippet()` works with no join.
+/// - `fts_dirty` — the durable dirty-marker set. Triggers on `sessions` (the
+///   single once-per-save touchpoint; the junction is rewritten per row and
+///   carries no text, so per-row triggers there would storm) insert the
+///   session id; a background actor drains the set by full-session recompute.
+///   The table doubles as crash-recovery pending work: a crash mid-reindex
+///   leaves the marker set, and the next startup's drain retries it.
+/// - The triggers themselves — INSERT/UPDATE/DELETE on `sessions`. The DELETE
+///   trigger marks the deleted id dirty so the drain's reinsert-from-live
+///   finds no live rows and removes any stale FTS rows.
+///
+/// Every existing session is seeded dirty, so the first post-upgrade launch
+/// backfills the index lazily in the background — startup never blocks on
+/// parsing the full history. Row bodies are written by jinn-domain (which owns
+/// the `ChatEntryKind` JSON schema); this migration only creates the objects.
+pub fn migrate_v26(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch(
+        "CREATE VIRTUAL TABLE session_fts USING fts5(\
+         body,\
+         role UNINDEXED,\
+         session_id UNINDEXED,\
+         entry_id UNINDEXED,\
+         entry_ts UNINDEXED,\
+         tokenize = 'porter unicode61')",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v26: create session_fts index table")?;
+
+    conn.execute_batch(
+        "CREATE TABLE fts_dirty (\
+         session_id TEXT PRIMARY KEY)",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v26: create fts_dirty marker table")?;
+
+    conn.execute_batch(
+        "CREATE TRIGGER sessions_fts_dirty_ins AFTER INSERT ON sessions BEGIN \
+         INSERT INTO fts_dirty(session_id) VALUES (NEW.id) ON CONFLICT(session_id) DO NOTHING; END;\
+         CREATE TRIGGER sessions_fts_dirty_upd AFTER UPDATE ON sessions BEGIN \
+         INSERT INTO fts_dirty(session_id) VALUES (NEW.id) ON CONFLICT(session_id) DO NOTHING; END;\
+         CREATE TRIGGER sessions_fts_dirty_del AFTER DELETE ON sessions BEGIN \
+         INSERT INTO fts_dirty(session_id) VALUES (OLD.id) ON CONFLICT(session_id) DO NOTHING; END",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v26: create sessions dirty-marking triggers")?;
+
+    conn.execute_batch("INSERT INTO fts_dirty(session_id) SELECT id FROM sessions")
+        .change_context(SchemaMigrationError)
+        .attach("v26: seed fts_dirty with existing sessions")?;
+
+    Ok(())
+}
+
+/// v27 — add `resume_offset` to `fts_dirty` for chunked reindexing.
+///
+/// The reindex drain chunks each session's FTS rebuild into bounded
+/// transactions (a 40k-entry session must not hold the write lock — or the
+/// tick handler — for an unbounded time). This column stores how many of the
+/// session's entries have been indexed so far: 0 means "start from scratch"
+/// (the next chunk deletes stale FTS rows first); a nonzero value resumes
+/// appending after that ordinal prefix. It is cleared to 0 in the same
+/// transaction that clears the marker on completion, so a crash mid-rebuild
+/// leaves both the marker and its resume point intact for the next drain.
+pub fn migrate_v27(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch("ALTER TABLE fts_dirty ADD COLUMN resume_offset INTEGER NOT NULL DEFAULT 0")
+        .change_context(SchemaMigrationError)
+        .attach("v27: add fts_dirty.resume_offset")?;
+    Ok(())
+}
+
+/// v28 — add `fts_rowids`, the per-session rowid map over `session_fts`.
+///
+/// `session_id` is UNINDEXED in the FTS5 table (by design: it is stored as
+/// metadata, never matched), so a per-session `DELETE FROM session_fts WHERE
+/// session_id = ?` full-scans the whole index — seconds on a large corpus,
+/// paid once per dirty session at reindex time. This migration creates a
+/// plain side table mapping each FTS row to its session, backfilled from the
+/// existing index, so reindexing can delete via primary-key rowids instead.
+///
+/// The map is a derived index: it carries no data of its own and is
+/// maintained by the store's single `session_fts` write path (paired inserts,
+/// same transaction). Search SQL is untouched.
+pub fn migrate_v28(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch(
+        "CREATE TABLE fts_rowids (\
+         session_id TEXT NOT NULL,\
+         fts_rowid INTEGER NOT NULL,\
+         PRIMARY KEY (session_id, fts_rowid));\
+         INSERT INTO fts_rowids (session_id, fts_rowid)\
+         SELECT session_id, rowid FROM session_fts",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v28: create fts_rowids and backfill from session_fts")?;
+    Ok(())
+}
+
 /// Rewrites the `session_id` and `parent_session` string values inside the
 /// `sessions.metadata` JSON blob, stripping a leading `s-` where present.
 ///
@@ -1305,125 +1404,19 @@ where
 
 // ── Test helpers ─────────────────────────────────────────────────────────
 //
-// These mirror jinn-domain's test-only `apply_migrations_inner` and
-// `seed_at_version` so the schema crate's own tests and (transitively)
-// jinn-domain's tests can stand up a DB at a specific legacy version.
+// `apply_migrations_inner` mirrors jinn-domain's test-only helper of the same
+// name so the schema crate's own tests and (transitively) jinn-domain's tests
+// can stand a DB up at any schema version. It drives [`MIGRATIONS`] directly,
+// so seeding and production application can never drift.
 
 #[cfg(feature = "testing")]
 pub fn apply_migrations_inner(conn: &mut rusqlite::Connection, target: i32) {
-    if target >= 0 {
-        migrate_v0(conn).expect("v0");
-        record_version(conn, 0, "create_initial_schema").expect("record v0");
-    }
-    if target >= 1 {
-        migrate_v1(conn).expect("v1");
-        record_version(conn, 1, "add_cwd_column").expect("record v1");
-    }
-    if target >= 2 {
-        migrate_v2(conn).expect("v2");
-        record_version(conn, 2, "add_created_at_column").expect("record v2");
-    }
-    if target >= 3 {
-        migrate_v3(conn).expect("v3");
-        record_version(conn, 3, "add_ignored_to_session_entries").expect("record v3");
-    }
-    if target >= 4 {
-        migrate_v4(conn).expect("v4");
-        record_version(conn, 4, "add_cost_to_token_ledger").expect("record v4");
-    }
-    if target >= 5 {
-        migrate_v5(conn).expect("v5");
-        record_version(conn, 5, "add_lifecycle_columns_to_sessions").expect("record v5");
-    }
-    if target >= 6 {
-        migrate_v6(conn);
-        record_version(conn, 6, "add_archived_column").expect("record v6");
-    }
-    if target >= 7 {
-        migrate_v7(conn).expect("v7");
-        record_version(conn, 7, "add_lifecycle_script_state_column").expect("record v7");
-    }
-    if target >= 8 {
-        migrate_v8(conn).expect("v8");
-        record_version(conn, 8, "add_metadata_column").expect("record v8");
-    }
-    if target >= 9 {
-        migrate_v9(conn).expect("v9");
-        record_version(conn, 9, "rename_session_entries_to_session_history").expect("record v9");
-    }
-    if target >= 10 {
-        migrate_v10(conn).expect("v10");
-        record_version(conn, 10, "consolidate_to_compaction_strategy").expect("record v10");
-    }
-    if target >= 11 {
-        migrate_v11(conn).expect("v11");
-        record_version(conn, 11, "add_is_workflow_column").expect("record v11");
-    }
-    if target >= 12 {
-        migrate_v12(conn).expect("v12");
-        record_version(conn, 12, "replace_ignored_with_context_override").expect("record v12");
-    }
-    if target >= 13 {
-        migrate_v13(conn).expect("v13");
-        record_version(conn, 13, "add_judge_meta_column").expect("record v13");
-    }
-    if target >= 14 {
-        migrate_v14(conn).expect("v14");
-        record_version(conn, 14, "add_context_history").expect("record v14");
-    }
-    if target >= 15 {
-        migrate_v15(conn).expect("v15");
-        record_version(conn, 15, "drop_strategy_state_column").expect("record v15");
-    }
-    if target >= 16 {
-        migrate_v16(conn).expect("v16");
-        record_version(
-            conn,
-            16,
-            "rename_is_workflow_to_is_automated_and_add_persist",
-        )
-        .expect("record v16");
-    }
-    if target >= 17 {
-        migrate_v17(conn).expect("v17");
-        record_version(
-            conn,
-            17,
-            "rewrite_model_to_model_selection_and_add_model_used",
-        )
-        .expect("record v17");
-    }
-    if target >= 18 {
-        migrate_v18(conn).expect("v18");
-        record_version(conn, 18, "rename_entries_timestamp_to_timing").expect("record v18");
-    }
-    if target >= 19 {
-        migrate_v19(conn).expect("v19");
-        record_version(conn, 19, "rewrite_metadata_blob_profile_model").expect("record v19");
-    }
-    if target >= 20 {
-        migrate_v20(conn).expect("v20");
-        record_version(conn, 20, "drop_zombie_columns_backfill_metadata").expect("record v20");
-    }
-    if target >= 21 {
-        migrate_v21(conn).expect("v21");
-        record_version(conn, 21, "add_discord_thread_table").expect("record v21");
-    }
-    if target >= 22 {
-        migrate_v22(conn).expect("v22");
-        record_version(conn, 22, "add_entry_blobs_table").expect("record v22");
-    }
-    if target >= 23 {
-        migrate_v23(conn).expect("v23");
-        record_version(conn, 23, "strip_s_prefix_from_session_ids").expect("record v23");
-    }
-    if target >= 24 {
-        migrate_v24(conn).expect("v24");
-        record_version(conn, 24, "add_token_ledger_prompt_cached_columns").expect("record v24");
-    }
-    if target >= 25 {
-        migrate_v25(conn).expect("v25");
-        record_version(conn, 25, "add_entries_token_count_column").expect("record v25");
+    for migration in MIGRATIONS {
+        if target >= migration.version {
+            (migration.apply)(conn)
+                .unwrap_or_else(|e| panic!("migration v{} failed: {e:?}", migration.version));
+            record_version(conn, migration.version, migration.name).expect("record version");
+        }
     }
 }
 
@@ -1449,8 +1442,9 @@ pub fn apply_up_to_no_fk(conn: &mut rusqlite::Connection, target: i32) {
 #[allow(unused_imports)]
 pub mod testing {
     pub use super::{
-        apply_migrations_inner, bootstrap_tracking_table, migrate_v10, migrate_v15, migrate_v16,
-        migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22, migrate_v23, migrate_v25,
-        record_version,
+        announcement_line, apply_migrations_inner, bootstrap_tracking_table, migrate_v10,
+        migrate_v15, migrate_v16, migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22,
+        migrate_v23, migrate_v25, migrate_v26, record_version, CHAIN_LATEST_VERSION,
+        LATEST_VERSION, MIGRATIONS,
     };
 }

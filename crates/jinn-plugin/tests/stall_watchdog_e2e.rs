@@ -178,7 +178,7 @@ async fn handshake(host: &mut PluginHost, config: serde_json::Value) {
 }
 
 /// Spawns the real guest.
-fn start_guest() -> PluginHost {
+async fn start_guest() -> PluginHost {
     let engine = PluginEngine::new().expect("engine");
     let grants = Grants {
         read_dirs: vec![],
@@ -192,7 +192,9 @@ fn start_guest() -> PluginHost {
         std::path::Path::new(WASM),
         &grants,
     )
+    .await
     .expect("guest started")
+    .0
 }
 
 /// Arms the timer by sending `stream_start` at the real clock's `now`, and
@@ -225,7 +227,7 @@ async fn elapse_window_and_tick(host: &mut PluginHost, seq: u64) {
 async fn consecutive_silent_windows_push_ordered_restart_pairs() {
     // Given the real watchdog guest, handshaken with a 2s window and a
     // restart budget of 2.
-    let mut host = start_guest();
+    let mut host = start_guest().await;
     handshake(&mut host, watchdog_config()).await;
     let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
 
@@ -282,7 +284,7 @@ async fn consecutive_silent_windows_push_ordered_restart_pairs() {
 async fn budget_exhaustion_gives_up_with_entry_then_cancel_then_stays_silent() {
     // Given the real watchdog guest, handshaken with a 2s window and a
     // restart budget of 2.
-    let mut host = start_guest();
+    let mut host = start_guest().await;
     handshake(&mut host, watchdog_config()).await;
     let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
     let _base = arm_at_now(&mut host, &session, 1).await;
@@ -333,7 +335,7 @@ async fn budget_exhaustion_gives_up_with_entry_then_cancel_then_stays_silent() {
 #[tokio::test]
 async fn stream_ping_resets_the_silence_window() {
     // Given the real watchdog guest, handshaken, timer armed by stream_start.
-    let mut host = start_guest();
+    let mut host = start_guest().await;
     handshake(&mut host, watchdog_config()).await;
     let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
     let _base = arm_at_now(&mut host, &session, 1).await;
@@ -374,7 +376,7 @@ async fn stream_ping_resets_the_silence_window() {
 #[tokio::test]
 async fn finished_stream_end_disarms_the_timer() {
     // Given the real watchdog guest, handshaken, timer armed by stream_start.
-    let mut host = start_guest();
+    let mut host = start_guest().await;
     handshake(&mut host, watchdog_config()).await;
     let session = "01943d8e-5a1f-7c2d-9e3b-4f6a8b0c1d2e".to_owned();
     let _base = arm_at_now(&mut host, &session, 1).await;
@@ -394,4 +396,34 @@ async fn finished_stream_end_disarms_the_timer() {
     tokio::time::timeout(WAIT, host.shutdown())
         .await
         .expect("shutdown timed out");
+}
+
+/// The cache-enabled engine reports how each load was obtained: the second
+/// load of the same bytes comes from the disk cache (the production
+/// second-launch path). The `from_cache` flag is what gates the user-facing
+/// "compiled plugin" announcement, so a wrong flag either spams every
+/// launch or hides real compiles.
+#[rstest::rstest]
+#[tokio::test]
+async fn engine_reports_second_load_as_cached() {
+    // Given an engine with the disk cache enabled and a committed component.
+    let engine = PluginEngine::new().expect("engine with cache");
+
+    // When loading the same component file twice.
+    let (_first_component, first) = engine
+        .load(std::path::Path::new(WASM))
+        .await
+        .expect("first load succeeds");
+    let (_second_component, second) = engine
+        .load(std::path::Path::new(WASM))
+        .await
+        .expect("second load succeeds");
+
+    // Then the second load reports a disk-cache hit.
+    assert!(
+        second.from_cache,
+        "second load must be a cache hit, got: {second:?}"
+    );
+    // And the first load took measurable time (compile or cache read).
+    assert!(first.duration.as_nanos() > 0);
 }

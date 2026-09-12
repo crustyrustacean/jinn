@@ -202,6 +202,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         }
     }
 
@@ -261,6 +262,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
         let result = execute(
             ToolCall {
@@ -339,6 +341,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
 
         // When executing.
@@ -420,6 +423,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
 
         // When executing.
@@ -508,6 +512,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
 
         // When executing.
@@ -585,6 +590,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
         let result = execute(call, ctx).await;
 
@@ -652,6 +658,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
         let result = execute(call, ctx).await;
 
@@ -712,6 +719,7 @@ mod tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         };
 
         // When executing.

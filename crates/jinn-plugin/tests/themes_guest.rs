@@ -48,8 +48,10 @@ async fn themes_guest_handshakes_and_contributes_over_real_engine() {
 
     // Given a real host for the themes guest.
     let engine = PluginEngine::new().expect("engine");
-    let mut host =
-        PluginHost::start(&engine, "theme-loader", &wasm, &themes_grants()).expect("guest start");
+    let mut host = PluginHost::start(&engine, "theme-loader", &wasm, &themes_grants())
+        .await
+        .expect("guest start")
+        .0;
 
     // When the handshake completes and the guest runs to completion.
     let mut reader = host.split();
@@ -142,7 +144,9 @@ async fn themes_guest_with_empty_grants_contributes_nothing() {
             config: serde_json::Value::Null,
         },
     )
-    .expect("guest start");
+    .await
+    .expect("guest start")
+    .0;
     let mut reader = host.split();
 
     // When the handshake completes.

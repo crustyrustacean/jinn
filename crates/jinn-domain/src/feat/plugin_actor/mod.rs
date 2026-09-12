@@ -133,10 +133,10 @@ impl kameo::Actor for PluginActor {
             #[cfg(test)]
             let start = match args.fake_guest.lock().ok().and_then(|g| g.clone()) {
                 Some(script) => Ok(PluginHost::fake(&args.name, script)),
-                None => start_real_guest(&args),
+                None => start_real_guest(&args).await,
             };
             #[cfg(not(test))]
-            let start = start_real_guest(&args);
+            let start = start_real_guest(&args).await;
 
             match start {
                 Ok(mut host) => match handshake(&mut host, &args).await {
@@ -341,14 +341,38 @@ struct MarkCleanExit;
 #[derive(Debug)]
 struct PublishPhase(PluginPhase);
 
-/// Starts the production wasm guest through the shared engine.
-fn start_real_guest(args: &PluginActorDeps) -> Result<PluginHost, PluginActorError> {
-    PluginHost::start(&args.engine, &args.name, &args.wasm_path, &args.grants).map_err(
-        |report: Report<jinn_plugin::PluginHostError>| {
+/// Starts the production wasm guest through the shared engine, announcing
+/// compile progress to the terminal — but only when real compilation
+/// happens. Cache hits stay silent (near-zero cost, nothing to wait for).
+///
+/// Plugin compilation runs before the TUI launches (terminal still in normal
+/// mode), so plain stderr is visible to the user; without it a cold launch
+/// silently freezes for seconds per plugin.
+#[expect(
+    clippy::print_stderr,
+    reason = "pre-TUI user-facing progress; tracing goes to a log file the terminal never shows"
+)]
+async fn start_real_guest(args: &PluginActorDeps) -> Result<PluginHost, PluginActorError> {
+    let result = PluginHost::start(&args.engine, &args.name, &args.wasm_path, &args.grants).await;
+    match &result {
+        Ok((_, compiled)) if !compiled.from_cache => {
+            eprintln!(
+                "compiled plugin '{}' ({:.1}s)",
+                args.name,
+                compiled.duration.as_secs_f32()
+            );
+        }
+        Ok((_, compiled)) => {
+            tracing::debug!(plugin = %args.name, cached = true,
+                elapsed_ms = compiled.duration.as_millis() as u64, "plugin loaded from cache");
+        }
+        Err(report) => {
             tracing::warn!(plugin = %args.name, "{report:#}");
-            PluginActorError::Spawn
-        },
-    )
+        }
+    }
+    result
+        .map(|(host, _compiled)| host)
+        .map_err(|_report: Report<jinn_plugin::PluginHostError>| PluginActorError::Spawn)
 }
 
 /// Completes the v1 handshake: waits (bounded) for the guest `Hello`,
