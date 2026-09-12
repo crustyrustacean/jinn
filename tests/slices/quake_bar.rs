@@ -141,7 +141,9 @@ async fn quake_app() -> jinn_tui::TuiApp {
 }
 
 /// The quake cell for a wired app.
-fn quake_cell(app: &jinn_tui::TuiApp) -> jinn_domain::common::slices::TypedCell<jinn_quake_bar::QuakeBarState> {
+fn quake_cell(
+    app: &jinn_tui::TuiApp,
+) -> jinn_domain::common::slices::TypedCell<jinn_quake_bar::QuakeBarState> {
     app.services
         .slices
         .reader(&jinn_quake_bar::quake_bar_slot())
@@ -213,7 +215,14 @@ async fn enter_submits_and_appends_to_the_log() {
         cell.read().log.len() == 1
     })
     .await;
-    assert_eq!(cell.read().log.visible_lines(10).first().map(String::as_str), Some("hi"));
+    assert_eq!(
+        cell.read()
+            .log
+            .visible_lines(10)
+            .first()
+            .map(String::as_str),
+        Some("hi")
+    );
     assert!(
         cell.read().input.text.input.is_empty(),
         "submit must clear the input buffer"
