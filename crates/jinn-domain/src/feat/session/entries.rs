@@ -356,11 +356,12 @@ mod tests {
             Ok(Vec::new())
         }
 
-        async fn reindex_session(
+        async fn reindex_session_chunk(
             &self,
             _session_id: &SessionId,
-        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
-            Ok(())
+            _max_entries: usize,
+        ) -> Result<bool, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(true)
         }
 
         async fn pending_dirty_count(
@@ -504,11 +505,12 @@ mod tests {
             Ok(Vec::new())
         }
 
-        async fn reindex_session(
+        async fn reindex_session_chunk(
             &self,
             _session_id: &SessionId,
-        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
-            Ok(())
+            _max_entries: usize,
+        ) -> Result<bool, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(true)
         }
 
         async fn pending_dirty_count(

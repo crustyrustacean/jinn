@@ -54,11 +54,11 @@ fn fresh_database_has_all_tables_and_v21() {
         "fts_dirty table missing: {tables:?}"
     );
 
-    // And the highest recorded migration version is 26.
+    // And the highest recorded migration version is 27.
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
         .expect("query version");
-    assert_eq!(version, 26, "migration version");
+    assert_eq!(version, 27, "migration version");
 
     // And token_ledger has the v24 prompt/cache columns.
     let columns: Vec<String> = conn

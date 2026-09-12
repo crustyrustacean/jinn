@@ -130,17 +130,20 @@ impl SessionStoreService {
         self.svc.dirty_session_ids().await
     }
 
-    /// Recomputes one session's FTS rows and clears its dirty marker
-    /// (search index maintenance).
+    /// Advance one session's chunked FTS reindex by up to `max_entries`;
+    /// returns `true` when the session is fully indexed.
     ///
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if any read or write fails.
-    pub async fn reindex_session(
+    pub async fn reindex_session_chunk(
         &self,
         session_id: &SessionId,
-    ) -> Result<(), Report<SessionStoreError>> {
-        self.svc.reindex_session(session_id).await
+        max_entries: usize,
+    ) -> Result<bool, Report<SessionStoreError>> {
+        self.svc
+            .reindex_session_chunk(session_id, max_entries)
+            .await
     }
 
     /// Returns how many sessions have pending (dirty) FTS reindex work.

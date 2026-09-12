@@ -266,12 +266,13 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
         Ok(Vec::new())
     }
 
-    async fn reindex_session(
+    async fn reindex_session_chunk(
         &self,
         _session_id: &crate::protocol::SessionId,
-    ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+        _max_entries: usize,
+    ) -> Result<bool, error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
     {
-        Ok(())
+        Ok(true)
     }
 
     async fn pending_dirty_count(

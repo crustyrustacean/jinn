@@ -34,10 +34,17 @@ pub const REINDEX_INTERVAL: Duration = Duration::from_secs(5);
 /// Bounds the per-tick write-lock hold so the drain never monopolizes the
 /// database: startup stays responsive, the tick handler returns inside
 /// shutdown timeouts, and session persists interleave with backfill work.
-/// Each tick always processes at least one session, so a budget smaller
-/// than a single session's reindex cannot stall progress — it just makes
-/// the backfill advance one session per tick.
+/// The store chunks each session's rebuild ([`REINDEX_CHUNK`] entries per
+/// transaction), so the budget always bites within a bounded interval even
+/// when a single session is enormous.
 pub const REINDEX_BUDGET: Duration = Duration::from_secs(2);
+
+/// How many entries one reindex chunk transaction may index.
+///
+/// Small enough that a debug-build parse of a chunk (the expensive part —
+/// kind JSON of full tool outputs) stays well under the budget and the
+/// write lock is released between chunks for concurrent persists.
+pub const REINDEX_CHUNK: usize = 500;
 
 /// Dashboard row this actor publishes reindex progress under. Must match the
 /// `spawn_tracked!` registration name in `actor_wiring.rs` — a mismatch would
@@ -76,10 +83,13 @@ impl kameo::Actor for SearchIndexActor {
     type Error = kameo::error::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        // Kick the first drain immediately (startup backfill), then keep the
-        // tick alive by rescheduling from the handler itself. A failed send
-        // only means the actor is already stopping.
-        let _ = actor_ref.tell(ReindexTick).send().await;
+        // No drain kick here on purpose: a self-tell queued from `on_start`
+        // lands in the mailbox ahead of kameo's StartupFinished signal, so
+        // the supervised spawn handshake — and with it the whole actor
+        // wiring — would block until the first drain completes (a
+        // multi-second freeze on a large pending queue). The spawn helper
+        // kicks the first tick after the handshake instead.
+        let _ = actor_ref; // unused without the kick; keeps the signature stable
         Ok(Self {
             deps: args.deps,
             interval: args.interval,
@@ -115,53 +125,84 @@ impl Message<ReindexTick> for SearchIndexActor {
 }
 
 impl SearchIndexActor {
-    /// Drains the dirty set one session at a time within this tick's time
-    /// budget, then reports the remaining pending count to the dashboard.
+    /// Drains the pending reindex queue within this tick's time budget,
+    /// then reports the remaining pending count to the dashboard.
     ///
-    /// Publishes before the first session too, so the row reflects the
-    /// pending queue immediately — even when a single large session will
-    /// occupy the whole budget. Log-and-continue: a failed session is left
-    /// dirty (durable pending work) and never blocks the rest of the batch.
-    /// An empty queue publishes once, so the row reads "index up to date"
-    /// as soon as the actor is idle.
+    /// Work is chunked ([`REINDEX_CHUNK`] entries per transaction) and
+    /// resumable: the store's dirty-marker row records how far the current
+    /// session's rebuild has progressed, so a budget that expires mid-session
+    /// resumes exactly there — next tick or next launch. Publishes before the
+    /// first chunk so the row reflects the queue immediately. Log-and-continue:
+    /// a failed chunk is left at its old resume point and retried on a later
+    /// tick. An empty queue publishes once, so the row reads "index up to
+    /// date" as soon as the actor is idle.
     async fn drain_once(&self) {
+        // Snapshot the queue once per tick: a failed chunk stays in place
+        // (resumed by a later tick) instead of spinning the loop.
         let Ok(ids) = self.deps.services.session_store.dirty_session_ids().await else {
-            tracing::warn!("failed to read dirty session markers; will retry next tick");
+            tracing::warn!("failed to read the reindex queue; will retry next tick");
             return;
         };
         if ids.is_empty() {
-            self.publish_progress().await;
+            self.publish_up_to_date().await;
             return;
         }
         self.publish_progress().await;
         let deadline = tokio::time::Instant::now() + self.budget;
         for id in &ids {
-            match self.deps.services.session_store.reindex_session(id).await {
-                Ok(()) => tracing::debug!(session_id = %id, "FTS reindexed session"),
+            match self
+                .deps
+                .services
+                .session_store
+                .reindex_session_chunk(id, REINDEX_CHUNK)
+                .await
+            {
+                Ok(true) => tracing::debug!(session_id = %id, "FTS reindexed session"),
+                Ok(false) => tracing::debug!(
+                    session_id = %id,
+                    "FTS reindex chunk advanced the session's resume point"
+                ),
                 Err(report) => tracing::warn!(
                     session_id = %id,
                     error = ?report,
-                    "FTS reindex failed; leaving marker dirty for the next drain"
+                    "FTS reindex chunk failed; resuming from its stored offset next tick"
                 ),
             }
             if tokio::time::Instant::now() >= deadline {
+                self.publish_progress().await;
                 tracing::debug!("FTS reindex budget exhausted; resuming next tick");
-                break;
+                return;
             }
         }
+        // Budget not exhausted: the queue just drained. Report the idle state.
         self.publish_progress().await;
     }
 
     /// Publishes the live remaining pending count to the `search-index`
     /// dashboard row: "N sessions pending", or "index up to date" once the
     /// queue drains. A failed count publishes nothing — the previous message
-    /// stays up and the next session's publish retries.
+    /// stays up and the next publish retries.
     async fn publish_progress(&self) {
-        let status = match self.deps.services.session_store.pending_dirty_count().await {
-            Ok(0) => "index up to date".to_owned(),
-            Ok(n) => format!("{n} sessions pending"),
-            Err(_) => return,
-        };
+        if let Some(status) = self.pending_label().await {
+            self.publish_status(status).await;
+        }
+    }
+
+    /// Publishes "index up to date" unconditionally (the caller just observed
+    /// an empty queue — a count round-trip would only race new dirt).
+    async fn publish_up_to_date(&self) {
+        self.publish_status("index up to date".to_owned()).await;
+    }
+
+    async fn pending_label(&self) -> Option<String> {
+        match self.deps.services.session_store.pending_dirty_count().await {
+            Ok(0) => Some("index up to date".to_owned()),
+            Ok(n) => Some(format!("{n} sessions pending")),
+            Err(_) => None,
+        }
+    }
+
+    async fn publish_status(&self, status: String) {
         self.publish(crate::feat::dashboard::ServiceStatusUpdate {
             name: SEARCH_INDEX_ROW_NAME.to_owned(),
             description: None,
@@ -173,12 +214,25 @@ impl SearchIndexActor {
 }
 
 /// Spawns the actor as a supervised child of the root and returns its ref.
+///
+/// Kicks the first drain via a detached task **after** the supervised spawn
+/// handshake resolves, so the drain never blocks startup: the wiring moves
+/// on while the tick processes concurrently. (`spawn_search_index_actor`
+/// remains the single registration point the `spawn_tracked!` macro wraps.)
 pub async fn spawn_search_index_actor(
     deps: SearchIndexActorDeps,
     supervisor: &crate::common::root_supervisor::RootSupervisorRef,
 ) -> ActorRef<SearchIndexActor> {
-    SearchIndexActor::supervise(supervisor, deps)
+    let actor_ref = SearchIndexActor::supervise(supervisor, deps)
         .restart_policy(kameo::supervision::RestartPolicy::Never)
         .spawn()
-        .await
+        .await;
+    tokio::spawn({
+        let actor_ref = actor_ref.clone();
+        async move {
+            // A failed send only means the actor is already stopping.
+            let _ = actor_ref.tell(ReindexTick).send().await;
+        }
+    });
+    actor_ref
 }
