@@ -2632,3 +2632,163 @@ async fn reindex_chunk_on_deleted_session_clears_marker() {
     assert!(finished);
     assert_eq!(store.pending_dirty_count().await.expect("count"), 0);
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reindex_maps_every_fts_row_in_the_rowid_side_table() {
+    // Given a store with an indexed two-entry session.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    store
+        .save(&make_two_entry_session(&session_id, "mapped"))
+        .await
+        .expect("save");
+    drain(&store).await.expect("reindex");
+
+    // When counting FTS rows and map rows for the session.
+    let (fts_count, map_count) = fts_and_map_counts(store.pool(), &session_id.to_string()).await;
+
+    // Then the map is exactly as large as the index it mirrors.
+    assert!(fts_count > 0, "precondition: the session was indexed");
+    assert_eq!(
+        map_count, fts_count,
+        "one fts_rowids row per session_fts row"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reindexed_rebuild_replaces_rows_via_rowid_map() {
+    // Given an indexed session.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    store
+        .save(&make_two_entry_session(&session_id, "rebuild"))
+        .await
+        .expect("save");
+    drain(&store).await.expect("initial reindex");
+    let (initial_fts, initial_map) =
+        fts_and_map_counts(store.pool(), &session_id.to_string()).await;
+
+    // When the session is saved again (re-marked dirty: a rebuild-from-zero)
+    // and reindexed.
+    store
+        .save(&make_two_entry_session(&session_id, "rebuild"))
+        .await
+        .expect("save again");
+    drain(&store).await.expect("rebuild reindex");
+
+    // Then no old row survives the rebuild — every pre-rebuild FTS rowid was
+    // deleted, not re-inserted on top of — and the map is consistent.
+    let (after_fts, after_map) = fts_and_map_counts(store.pool(), &session_id.to_string()).await;
+    assert_eq!(after_fts, initial_fts, "same entry count after rebuild");
+    assert_eq!(after_map, initial_map, "map tracks the rebuilt rows");
+    let orphan_map_rows: i64 = {
+        let sid = session_id.to_string();
+        store
+            .pool()
+            .with_conn(move |conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM fts_rowids \
+                     WHERE session_id = ? AND fts_rowid NOT IN \
+                     (SELECT rowid FROM session_fts)",
+                    rusqlite::params![sid],
+                    |row| row.get(0),
+                )
+                .map_err(daow::Error::from)
+            })
+            .await
+            .expect("orphan check")
+    };
+    assert_eq!(orphan_map_rows, 0, "no map row points at a dead FTS rowid");
+    // And search still finds the session after the map-mediated rebuild.
+    let outcome = store
+        .search(crate::feat::session_search::SearchParams {
+            query: "needle".to_owned(),
+            session_ids: vec![session_id.to_string()],
+            roles: Vec::new(),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .expect("search after rebuild");
+    assert_eq!(outcome.total_matches, 2, "search works after rebuild");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reindex_of_never_indexed_session_skips_delete_with_empty_map() {
+    // Given a dirty marker for a session that has never been indexed
+    // (so fts_rowids has no rows for it) and one saved entry.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = make_two_entry_session(&session_id, "fresh");
+    // Save the session first so the marker exists with entries attached,
+    // then clear its FTS presence to simulate a never-indexed session.
+    store.save(&session).await.expect("save");
+    drain(&store).await.expect("reindex");
+    store
+        .pool()
+        .with_conn({
+            let marker = session_id.to_string();
+            move |conn| {
+                conn.execute_batch(&format!(
+                    "DELETE FROM session_fts WHERE session_id = '{marker}'; \
+                     DELETE FROM fts_rowids WHERE session_id = '{marker}';"
+                ))
+                .map_err(daow::Error::from)
+            }
+        })
+        .await
+        .expect("strip index and map");
+    // Re-mark the session dirty so a rebuild runs over the empty map.
+    store
+        .pool()
+        .with_conn({
+            let marker = session_id.to_string();
+            move |conn| {
+                conn.execute(
+                    "INSERT INTO fts_dirty(session_id) VALUES (?)",
+                    rusqlite::params![marker],
+                )
+                .map_err(daow::Error::from)
+            }
+        })
+        .await
+        .expect("re-mark dirty");
+    session.set_session_id(session_id.clone());
+
+    // When reindexing the session.
+    let finished = store
+        .reindex_session_chunk(&session_id, 10_000)
+        .await
+        .expect("chunk");
+
+    // Then the rebuild succeeds (the empty-map delete was skipped, not
+    // attempted as a full scan) and the session is fully indexed again.
+    assert!(finished, "single oversized chunk finishes the session");
+    let (fts_count, map_count) = fts_and_map_counts(store.pool(), &session_id.to_string()).await;
+    assert_eq!(fts_count, 2, "both entries indexed");
+    assert_eq!(map_count, 2, "map re-populated");
+}
+
+/// Returns the number of `session_fts` and `fts_rowids` rows for `session_id`.
+async fn fts_and_map_counts(pool: &daow::Pool, session_id: &str) -> (i64, i64) {
+    let sid = session_id.to_owned();
+    pool.with_conn(move |conn| {
+        let fts: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM session_fts WHERE session_id = ?",
+            rusqlite::params![sid],
+            |row| row.get(0),
+        )?;
+        let map: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM fts_rowids WHERE session_id = ?",
+            rusqlite::params![sid],
+            |row| row.get(0),
+        )?;
+        Ok((fts, map))
+    })
+    .await
+    .expect("fts/map counts")
+}

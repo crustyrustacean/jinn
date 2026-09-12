@@ -341,14 +341,37 @@ struct MarkCleanExit;
 #[derive(Debug)]
 struct PublishPhase(PluginPhase);
 
-/// Starts the production wasm guest through the shared engine.
+/// Starts the production wasm guest through the shared engine, announcing
+/// compile progress to the terminal.
+///
+/// Plugin compilation runs before the TUI launches (terminal still in normal
+/// mode), so plain stderr is visible to the user; without it a cold launch
+/// silently freezes for seconds per plugin. With the wasmtime disk cache warm
+/// the load is fast and the two lines bracket a near-zero elapsed time.
+#[expect(
+    clippy::print_stderr,
+    reason = "pre-TUI user-facing progress; tracing goes to a log file the terminal never shows"
+)]
 fn start_real_guest(args: &PluginActorDeps) -> Result<PluginHost, PluginActorError> {
-    PluginHost::start(&args.engine, &args.name, &args.wasm_path, &args.grants).map_err(
-        |report: Report<jinn_plugin::PluginHostError>| {
+    eprintln!("jinn: compiling plugin '{}'…", args.name);
+    let started = std::time::Instant::now();
+    let result = PluginHost::start(&args.engine, &args.name, &args.wasm_path, &args.grants);
+    match &result {
+        Ok(_) => eprintln!(
+            "jinn: plugin '{}' ready ({:.1}s)",
+            args.name,
+            started.elapsed().as_secs_f32()
+        ),
+        Err(report) => {
+            eprintln!(
+                "jinn: plugin '{}' failed to compile ({:.1}s)",
+                args.name,
+                started.elapsed().as_secs_f32()
+            );
             tracing::warn!(plugin = %args.name, "{report:#}");
-            PluginActorError::Spawn
-        },
-    )
+        }
+    }
+    result.map_err(|_report: Report<jinn_plugin::PluginHostError>| PluginActorError::Spawn)
 }
 
 /// Completes the v1 handshake: waits (bounded) for the guest `Hello`,

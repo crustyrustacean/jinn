@@ -1576,6 +1576,11 @@ impl FromRow for DirtyResumeRow {
 
 /// Returns the resume point stored on a session's dirty marker: how many of
 /// its entries the chunked rebuild has already indexed (0 = not started).
+///
+/// A query failure falls back to 0 (rebuild from scratch — correct, just
+/// slower) but is logged loudly: this default once masked a migration drift
+/// bug where the `resume_offset` column itself was missing, silently
+/// restarting every partial rebuild for days.
 async fn resume_offset(pool: &Pool, session_id: &str) -> usize {
     let rows: Vec<DirtyResumeRow> = pool
         .query_all(
@@ -1583,6 +1588,13 @@ async fn resume_offset(pool: &Pool, session_id: &str) -> usize {
             vec![Box::new(session_id.to_owned())],
         )
         .await
+        .inspect_err(|e| {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %e,
+                "failed to read FTS resume offset; restarting this session's reindex from 0"
+            );
+        })
         .unwrap_or_default();
     rows.first()
         .map_or(0, |row| row.resume_offset.max(0) as usize)
@@ -1649,8 +1661,25 @@ async fn reindex_session_chunk(
             // First chunk of the rebuild: drop the session's existing rows
             // before inserting the live prefix. For a deleted session the
             // live set is empty, so this removes stale rows only.
+            //
+            // `session_id` is UNINDEXED in the FTS5 table, so filtering on it
+            // full-scans the index; delete via the `fts_rowids` map instead
+            // (primary-key rowid lookups), and skip entirely when the map has
+            // no rows for this session (a never-indexed session).
+            let mapped: i64 = tx.query_row(
+                "SELECT EXISTS (SELECT 1 FROM fts_rowids WHERE session_id = ?)",
+                rusqlite::params![&session_id],
+                |row| row.get(0),
+            )?;
+            if mapped != 0 {
+                tx.execute(
+                    "DELETE FROM session_fts WHERE rowid IN \
+                     (SELECT fts_rowid FROM fts_rowids WHERE session_id = ?)",
+                    rusqlite::params![&session_id],
+                )?;
+            }
             tx.execute(
-                "DELETE FROM session_fts WHERE session_id = ?",
+                "DELETE FROM fts_rowids WHERE session_id = ?",
                 rusqlite::params![&session_id],
             )?;
         }
@@ -1665,6 +1694,15 @@ async fn reindex_session_chunk(
                     entry.entry_id,
                     entry.entry_ts
                 ],
+            )?;
+            // Paired map insert, same transaction: the map must reference
+            // every row the index gains, or a later rebuild's delete misses
+            // it. `last_insert_rowid` reflects the FTS insert above — the
+            // only intervening insert on this connection.
+            tx.execute(
+                "INSERT INTO fts_rowids (session_id, fts_rowid) \
+                 VALUES (?, last_insert_rowid())",
+                rusqlite::params![&session_id],
             )?;
         }
         if finished {
