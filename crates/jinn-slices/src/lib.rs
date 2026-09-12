@@ -30,6 +30,7 @@
 )]
 
 pub mod cell;
+pub mod fabric;
 pub mod host;
 pub mod line_input;
 pub mod overlay;
@@ -41,6 +42,9 @@ pub mod slices;
 pub mod view;
 
 pub use cell::TypedCell;
+pub use fabric::ActorShutdownCompleted;
+pub use fabric::ActorStarted;
+pub use fabric::ActorStarting;
 pub use host::ConfigSectionError;
 pub use host::Direction;
 pub use host::SliceHost;
