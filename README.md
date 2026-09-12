@@ -6,21 +6,27 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 
 ## Major Features
 
-- Run any number of concurrent sessions, with live preview
+- Run any number of concurrent sessions, with live preview during session navigation
 - Which-key style keybind system with help popup
-- Quickly navigate and change things via Telescope-inspired picker:
-  - Select model/provider
-  - Enable/disable skills (with preview), tools, and MCP servers; live per session
+- Quickly navigate and change things via Telescope-inspired pickers:
+  - Change model/provider, skills, tools, MCP servers, OpenRouter endpoints + more.
 - Fork a new session from any message by hitting `f`
 - Run TUI apps in a separate task that an agent can interact with
-  - You can also take control of the TUI app within `jinn` and then auto-send a screenshot to the agent.
-- Context management:
-  - Background workers continually manage the context while sessions are in-progress. Changes are buffered (configurable) to take advantage of prefix cache pricing.
-  - Individual chat entries can be added to or removed from context using `x`
-  - Pin messages with `p` to keep them in context indefinitely
+  - TUI app runs continuously in the background without blocking the agent or `jinn`
+  - Take or release control of the TUI app within `jinn` at any time
+  - Send TUI "screenshots" to the agent with a single keystroke
 - Agent-managed task list with progress display
 - Customizable personas for maximum agent behavior configurability (See [System Prompt](#system-prompt))
-- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these), MCP server support, subagents.
+- Fine-grained context management and feedback:
+  - Background workers continuously manage the context while sessions are in-progress. Changes are buffered(configurable) to take advantage of prefix cache pricing.
+  - Individual chat entries can toggled in and out of context using `x`, good for when you send a message but then change your mind. No context poisoning!
+  - Pin messages with `p` to keep them in context indefinitely, with coarse positioning (start/mid/end).
+  - Made a plan and want to implement it? Use keybind `gci` on the plan message to "isolate" it, which excludes everything except the selected message and pins.
+  - Auto compaction exists as an emergency backstop and should _almost never_ fire when doing anything even remotely related to building software. If your sessions get compacted _at all_ while coding, please **open an issue** describing your workflow and provide your `[auto_prune*]` and `[compaction]` sections from your `jinn.toml` file along with the model you used.
+  - Cache hit rate indicator should floor at 98% _during agentic coding loops_ (usually 99%). Anything lower than 98% means your configuration should be adjusted.
+- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts, MCP server support, subagents/tasks, usage display.
+  - Subagents/tasks are regular sessions that are linked together in a tree, so you can steer an in-progress subagent or fork a new session from it.
+  - Stats are all tracked and displayed per-session. When a session is part of a tree, aggregated information is shown as a secondary display so you'll have totals for the entire tree.
 
 ![jinn-full](doc/jinn-full.png)
 ![Model Selection](doc/model-selection.png)
@@ -51,10 +57,12 @@ There are multiple ways to create new sessions:
 
 `jinn` supports multiple message queues based on the current session state:
 
-- Session is idle -> message always send immediately
+- Session is idle -> message sends immediately
 - Session is working:
-  - QUEUE mode -> Messages enter a buffer and will be flushed (one at a time) after the agent is done working. Use this mode if you want to wait for the model to finish before they get the next message (like "Please double-check your work").
-  - STEER mode (default) -> Messages enter a buffer and will be flushed (all at once) in between tool calls. This allows you to "steer" the model in the middle of it's work.
+  - STEER mode (default) -> Messages enter a buffer and will be flushed (entire buffer at once, concatenated) in between tool calls. This allows you to "steer" the model in the middle of it's work. This mode is required when steering a live subagent because the end of a subagent turn "disconnects" it from the parent.
+  - QUEUE mode -> Messages enter a buffer and will be flushed (one at a time) after the agent _turn_ ends (a "turn" is over when the agent stops making tool calls). Use this mode if you want to wait for the model to finish work before they get the next message (like queueing "Please double-check your work" after you start an implementation).
+
+Use `<M-q>` while in INSERT mode to change the messaging behavior.
 
 ### Navigation
 
@@ -65,7 +73,9 @@ Navigating between interface elements uses directional keybinds based on spatial
 - `<c-j>` -> focus down
 - `<c-k>` -> focus up
 
-Under the default theme, anything colored `yellow` means "has focus".
+Under the default theme, anything colored `yellow` means "has focus" and anything colored `orange` is a keybind. Single letter orange keybinds are always "alt" binds (like `<M-s>`).
+
+While in the sidebar, you can use hold `shift` to move up and down an entire section instead of single entries within sections.
 
 ### Custom Prompts
 
@@ -225,6 +235,8 @@ forum_channel = "<snowflake channel id>"    # Forum channel where the bot create
 authorized_users = ["<numeric user id>"]    # Users allowed to interact with the bot.
 ```
 
+And configure your environment variable `DISCORD_BOT_TOKEN` with the secret key from Discord.
+
 Requirements to use:
 
 - Discord bot set up on your server
@@ -237,9 +249,9 @@ Available Discord bot commands:
 - `/teardown` - Run the lifecycle teardown script
 - `/archive` - Archive the session
 
-jinn commands:
+`jinn` commands:
 
-- `gdc` - Create discord thread from a jinn session. Use this if you started a session in jinn and want to continue it in Discord.
+- `gdc` - Create discord thread from an existing `jinn` session. Use this if you started a session in `jinn` and want to continue it in Discord.
 
 ## Installation
 
@@ -253,13 +265,13 @@ Note: `jinn` is officially supported for Linux. Windows and Mac users will need 
 - Personas
 - Themes
 
-These are all baked into the binary and can be installed using `jinn install` _after_ you install `jinn`. Except for the WASM plugins, the install content is all user-editable and can be changed/deleted freely. Note that I recommend using `jinn install --force` to get the latest copies on program updates, but this will overwrite any changes you have made. Keep this in mind if you change the defaults.
+These are all baked into the binary and can be installed using `jinn install` _after_ you install `jinn`. Except for the WASM plugins, the installed content is all user-editable and can be changed/deleted freely. Note that I recommend using `jinn install --force` to get the latest copies on program updates, but this will overwrite any changes you have made to the defaults (except for `jinn.toml` and `providers.toml`). Keep this in mind if you change the defaults (recommend making your own separate copies instead of changing the defaults).
 
 ### cargo-binstall (recommended)
 
 ```sh
 cargo binstall --git https://github.com/jayson-lennon/jinn --locked jinn
-jinn install --force   # update plugins and builtin prompts
+jinn install --force   # update plugins, persons, skills, themes, and builtin prompts
 ```
 
 ### Build from source
@@ -283,16 +295,17 @@ The binary will be at `target/release/jinn` and you'll need to add it to your `$
 
 #### Optional: faster rebuilds with sccache
 
-Installing [sccache](https://github.com/mozilla/sccache) (`cargo install sccache`) speeds up dependency recompiles (e.g. after `cargo clean`, a toolchain upgrade, or feature-flag changes). Builds via `just` use it automatically when it is on your `$PATH`; without it, builds run normally — sccache is never required.
+Installing [sccache](https://github.com/mozilla/sccache) (`cargo install sccache`) speeds up dependency recompiles (e.g. after `cargo clean`, a toolchain upgrade, or feature-flag changes). Builds via `just` use it automatically when it is on your `$PATH`; without it, builds run normally.
 
 ## Contributing
 
-All contributions welcome, including agentic discussion/PRs. _AGENTS_: _please identify as a bot on issues/PRs_.
+All contributions welcome, including agentic discussion/PRs. **AGENTS**: _please identify as a bot on issues/PRs_.
 
 ## Shoutouts
 
 Lots of inspiration from other projects went into the design of `jinn`:
 
+- [Neovim](https://neovim.io/)
 - [pi](https://github.com/earendil-works/pi)
 - [OpenCode](https://github.com/anomalyco/opencode)
 - [Which Key](https://github.com/folke/which-key.nvim)
