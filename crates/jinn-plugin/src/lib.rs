@@ -22,7 +22,7 @@ pub mod grants;
 mod host;
 mod stderr_ring;
 
-pub use engine::{EngineError, PluginEngine};
+pub use engine::{Compiled, EngineError, PluginEngine};
 pub use framing::{FramingError, MAX_LINE_BYTES, decode_envelope, encode_envelope};
 pub use grants::{
     DirContext, Grants, GrantsError, PathGrant, TemplateVariable, expand_template, resolve_grants,
