@@ -36,3 +36,4 @@ jinn-session-schema = { workspace = true }
 
 [dev-dependencies]
 jinn-testutil = { workspace = true }
+tempfile = { workspace = true }

@@ -51,6 +51,7 @@ pub struct DiscordConfig {
 #[cfg(test)]
 mod tests {
     use super::DiscordConfig;
+    use serde::Deserialize;
 
     #[rstest::rstest]
     #[test]
@@ -64,5 +65,92 @@ mod tests {
         // Then the bot is disabled by default.
         assert!(!config.enabled);
         assert!(config.authorized_users.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn populated_discord_table_round_trips() {
+        // Given a populated `[discord]` table.
+        #[derive(Deserialize)]
+        struct Wrapper {
+            discord: DiscordConfig,
+        }
+        let toml_str = r#"
+            [discord]
+            enabled = true
+            bot_token = "abc123"
+            guild_id = "9999"
+        "#;
+
+        // When deserializing.
+        let parsed: Wrapper = toml::from_str(toml_str).expect("parse");
+
+        // Then all fields are preserved.
+        assert!(parsed.discord.enabled);
+        assert_eq!(parsed.discord.bot_token.as_deref(), Some("abc123"));
+        assert_eq!(parsed.discord.guild_id.as_deref(), Some("9999"));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn leftover_lifecycle_key_is_ignored() {
+        // Given a `[discord]` table with a stale `lifecycle` key plus the
+        // current fields.
+        #[derive(Deserialize)]
+        struct Wrapper {
+            discord: DiscordConfig,
+        }
+        let toml_str = r#"
+            [discord]
+            enabled = true
+            bot_token = "abc123"
+            lifecycle = "x"
+            guild_id = "9999"
+        "#;
+
+        // When deserializing.
+        let parsed: Wrapper = toml::from_str(toml_str).expect("parse");
+
+        // Then the stale `lifecycle` key is silently dropped and the
+        // remaining fields are populated.
+        assert!(parsed.discord.enabled);
+        assert_eq!(parsed.discord.bot_token.as_deref(), Some("abc123"));
+        assert_eq!(parsed.discord.guild_id.as_deref(), Some("9999"));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn re_serializing_disabled_default_round_trips() {
+        // Given a default config.
+        let cfg = DiscordConfig::default();
+
+        // When serializing then re-parsing.
+        let s = toml::to_string(&cfg).expect("serialize");
+        let reparsed: DiscordConfig = toml::from_str(&s).expect("reparse");
+
+        // Then it equals the original (still disabled).
+        assert_eq!(cfg, reparsed);
+        assert!(!reparsed.enabled);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn missing_authorized_users_deserializes_to_empty_list() {
+        // Given a `[discord]` table with no `authorized_users` key.
+        #[derive(Deserialize)]
+        struct Wrapper {
+            discord: DiscordConfig,
+        }
+        let toml_str = r#"
+            [discord]
+            enabled = true
+            bot_token = "abc123"
+        "#;
+
+        // When deserializing.
+        let parsed: Wrapper = toml::from_str(toml_str).expect("parse");
+
+        // Then the allow-list is empty (which denies everybody).
+        assert!(parsed.discord.authorized_users.is_empty());
     }
 }
