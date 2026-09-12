@@ -19,6 +19,7 @@ pub mod scope;
 pub mod selection;
 pub mod suspend;
 pub mod terminal;
+pub mod test_routes;
 
 pub use app::TuiApp;
 pub use app::TuiAppBuilder;

@@ -211,7 +211,7 @@ impl ActorSystemBuilder {
         // One relay per crossing message, registered on the bus in its
         // own on_start: publishes after the drains cannot be missed, so
         // the ordering constraint against slice activation is gone.
-        jinn_domain::common::trouper_bridge::drain_dashboard_routes(&services).await;
+        jinn_dashboard::bridge::drain_routes(&services).await;
         jinn_quake_bar_drain(&services).await;
         jinn_discord_drain(&services).await;
 
@@ -1554,7 +1554,9 @@ async fn jinn_quake_bar_drain(services: &Services) {
 /// Drains the discord slice's staged forward routes into per-route
 /// relays on the shared `jinn.session` topic.
 async fn jinn_discord_drain(services: &Services) {
-    use jinn_discord_msg::{CreateThreadForSession, DiscordThreadCreateFailed, DiscordThreadCreated};
+    use jinn_discord_msg::{
+        CreateThreadForSession, DiscordThreadCreateFailed, DiscordThreadCreated,
+    };
     use jinn_session_msg::{
         SessionArchived, SessionPhaseChanged, SessionSetupCompleted, SessionTeardownFinished,
         session_topic,

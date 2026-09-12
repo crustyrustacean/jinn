@@ -202,7 +202,7 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         // the bus in its own on_start, so spawns may land before or after
         // the activations they serve. The dashboard's canvas actor
         // consumes the fabric + nav topics through these relays.
-        jinn_domain::common::trouper_bridge::drain_dashboard_routes(&services).await;
+        jinn_dashboard::bridge::drain_routes(&services).await;
         drain_quake_bar_routes(&services).await;
         let activated = jinn_dashboard::activate(&mut jinn_dashboard::SliceCtx {
             slices: &services.slices,

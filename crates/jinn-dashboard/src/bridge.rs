@@ -63,3 +63,64 @@ impl RouteStagingDescriptor {
         }
     }
 }
+
+/// Drains the dashboard slice's staged forward routes into per-route
+/// relays. Typed here because the relays are kameo actors (kernel
+/// fabric); the typed descriptors above describe what to spawn.
+///
+/// Slice → kernel direction: this function is the dashboard's own
+/// drain, called by composition after activation. It lives in this
+/// crate (not the kernel's bridge module) because it names dashboard
+/// types — the kernel must not depend on slice crates.
+pub async fn drain_routes(services: &jinn_domain::Services) {
+    jinn_domain::common::trouper_bridge::spawn_one::<ActorStarting>(
+        services,
+        &entry(
+            fabric_topic(),
+            <ActorStarting as trouper::schema::Schema>::schema_id(),
+        ),
+    )
+    .await;
+    jinn_domain::common::trouper_bridge::spawn_one::<ActorStarted>(
+        services,
+        &entry(
+            fabric_topic(),
+            <ActorStarted as trouper::schema::Schema>::schema_id(),
+        ),
+    )
+    .await;
+    jinn_domain::common::trouper_bridge::spawn_one::<ActorShutdownCompleted>(
+        services,
+        &entry(
+            fabric_topic(),
+            <ActorShutdownCompleted as trouper::schema::Schema>::schema_id(),
+        ),
+    )
+    .await;
+    jinn_domain::common::trouper_bridge::spawn_one::<ServiceStatusUpdate>(
+        services,
+        &entry(
+            fabric_topic(),
+            <ServiceStatusUpdate as trouper::schema::Schema>::schema_id(),
+        ),
+    )
+    .await;
+    jinn_domain::common::trouper_bridge::spawn_one::<DashboardNav>(
+        services,
+        &entry(
+            dashboard_topic(),
+            <DashboardNav as trouper::schema::Schema>::schema_id(),
+        ),
+    )
+    .await;
+}
+
+/// Builds the route entry a dashboard drain spawns a relay from.
+fn entry(topic: Topic, schema_id: trouper::types::SchemaId) -> jinn_slices::host::RouteEntry {
+    jinn_slices::host::RouteEntry {
+        schema_id,
+        name: "dashboard",
+        topic,
+        direction: jinn_slices::host::Direction::Forward,
+    }
+}

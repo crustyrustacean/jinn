@@ -163,28 +163,28 @@ pub struct DiscordThreadCreateFailed {
 }
 
 jinn_slices::crossing_schema!(CreateThreadForSession, "CreateThreadForSession",
-    trouper::schema::SchemaKind::Command,
-    description: "Lift a jinn session into a new Discord forum thread.",
-    fields: [
-        "session_id" => trouper::schema::FieldTy::Uuid,
-        "title" => trouper::schema::FieldTy::Str,
-    ]);
+trouper::schema::SchemaKind::Command,
+description: "Lift a jinn session into a new Discord forum thread.",
+fields: [
+    "session_id" => trouper::schema::FieldTy::Uuid,
+    "title" => trouper::schema::FieldTy::Str,
+]);
 
 jinn_slices::crossing_schema!(DiscordThreadCreated, "DiscordThreadCreated",
-    trouper::schema::SchemaKind::Event,
-    description: "A Discord forum thread was created and bound to a session.",
-    fields: [
-        "session_id" => trouper::schema::FieldTy::Uuid,
-        "title" => trouper::schema::FieldTy::Str,
-    ]);
+trouper::schema::SchemaKind::Event,
+description: "A Discord forum thread was created and bound to a session.",
+fields: [
+    "session_id" => trouper::schema::FieldTy::Uuid,
+    "title" => trouper::schema::FieldTy::Str,
+]);
 
 jinn_slices::crossing_schema!(DiscordThreadCreateFailed, "DiscordThreadCreateFailed",
-    trouper::schema::SchemaKind::Event,
-    description: "Discord thread creation failed; carries the reason.",
-    fields: [
-        "session_id" => trouper::schema::FieldTy::Uuid,
-        "reason" => trouper::schema::FieldTy::Json,
-    ]);
+trouper::schema::SchemaKind::Event,
+description: "Discord thread creation failed; carries the reason.",
+fields: [
+    "session_id" => trouper::schema::FieldTy::Uuid,
+    "reason" => trouper::schema::FieldTy::Json,
+]);
 
 /// A request from the jinn command path to the poise gateway task.
 ///
