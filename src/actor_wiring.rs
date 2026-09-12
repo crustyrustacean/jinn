@@ -213,6 +213,7 @@ impl ActorSystemBuilder {
         // the ordering constraint against slice activation is gone.
         jinn_domain::common::trouper_bridge::drain_dashboard_routes(&services).await;
         jinn_quake_bar_drain(&services).await;
+        jinn_discord_drain(&services).await;
 
         // ── Dashboard slice ───────────────────────────────────────────
         // Activation mints the cell, spawns the canvas actor FIRST
@@ -1546,6 +1547,59 @@ async fn jinn_quake_bar_drain(services: &Services) {
             topic: jinn_quake_bar::command::quake_bar_topic(),
             direction: jinn_slices::host::Direction::Forward,
         },
+    )
+    .await;
+}
+
+/// Drains the discord slice's staged forward routes into per-route
+/// relays on the shared `jinn.session` topic.
+async fn jinn_discord_drain(services: &Services) {
+    use jinn_discord_msg::{CreateThreadForSession, DiscordThreadCreateFailed, DiscordThreadCreated};
+    use jinn_session_msg::{
+        SessionArchived, SessionPhaseChanged, SessionSetupCompleted, SessionTeardownFinished,
+        session_topic,
+    };
+
+    let topic = session_topic();
+    let route = |schema_id| jinn_slices::host::RouteEntry {
+        schema_id,
+        name: "discord",
+        topic: topic.clone(),
+        direction: jinn_slices::host::Direction::Forward,
+    };
+    jinn_domain::common::trouper_bridge::spawn_one::<SessionPhaseChanged>(
+        services,
+        &route(<SessionPhaseChanged as trouper::schema::Schema>::schema_id()),
+    )
+    .await;
+    jinn_domain::common::trouper_bridge::spawn_one::<SessionSetupCompleted>(
+        services,
+        &route(<SessionSetupCompleted as trouper::schema::Schema>::schema_id()),
+    )
+    .await;
+    jinn_domain::common::trouper_bridge::spawn_one::<SessionTeardownFinished>(
+        services,
+        &route(<SessionTeardownFinished as trouper::schema::Schema>::schema_id()),
+    )
+    .await;
+    jinn_domain::common::trouper_bridge::spawn_one::<SessionArchived>(
+        services,
+        &route(<SessionArchived as trouper::schema::Schema>::schema_id()),
+    )
+    .await;
+    jinn_domain::common::trouper_bridge::spawn_one::<CreateThreadForSession>(
+        services,
+        &route(<CreateThreadForSession as trouper::schema::Schema>::schema_id()),
+    )
+    .await;
+    jinn_domain::common::trouper_bridge::spawn_one::<DiscordThreadCreated>(
+        services,
+        &route(<DiscordThreadCreated as trouper::schema::Schema>::schema_id()),
+    )
+    .await;
+    jinn_domain::common::trouper_bridge::spawn_one::<DiscordThreadCreateFailed>(
+        services,
+        &route(<DiscordThreadCreateFailed as trouper::schema::Schema>::schema_id()),
     )
     .await;
 }

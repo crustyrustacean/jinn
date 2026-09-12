@@ -54,8 +54,10 @@ jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-dashboard = { workspace = true }
 jinn-discord = { workspace = true }
+jinn-discord-msg = { workspace = true }
 jinn-discord-slice = { workspace = true }
 jinn-quake-bar = { workspace = true }
+jinn-session-msg = { workspace = true }
 jinn-slices = { workspace = true }
 
 jinn-web-fetch = { workspace = true }
