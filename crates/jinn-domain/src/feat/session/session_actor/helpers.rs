@@ -256,6 +256,68 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
     > {
         Ok(self.summaries.lock().clone())
     }
+
+    async fn dirty_session_ids(
+        &self,
+    ) -> Result<
+        Vec<crate::protocol::SessionId>,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(Vec::new())
+    }
+
+    async fn reindex_session_chunk(
+        &self,
+        _session_id: &crate::protocol::SessionId,
+        _max_entries: usize,
+    ) -> Result<bool, error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+    {
+        Ok(true)
+    }
+
+    async fn pending_dirty_count(
+        &self,
+    ) -> Result<usize, error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+    {
+        Ok(0)
+    }
+
+    async fn search(
+        &self,
+        _params: crate::feat::session_search::SearchParams,
+    ) -> Result<
+        crate::feat::session_search::SearchOutcome,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(crate::feat::session_search::SearchOutcome {
+            total_matches: 0,
+            per_session: Vec::new(),
+            hits: Vec::new(),
+        })
+    }
+
+    async fn fetch_window(
+        &self,
+        _session_id: &crate::protocol::SessionId,
+        _anchor: &crate::protocol::ChatEntryId,
+        _context: usize,
+    ) -> Result<
+        Option<crate::feat::session_search::TranscriptWindow>,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(None)
+    }
+
+    async fn fetch_tail(
+        &self,
+        _session_id: &crate::protocol::SessionId,
+        _limit: usize,
+    ) -> Result<
+        Option<crate::feat::session_search::TranscriptWindow>,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

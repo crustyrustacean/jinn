@@ -9,7 +9,8 @@ use error_stack::Report;
 
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::session_summary::SessionSummary;
-use crate::protocol::SessionId;
+use crate::feat::session_search::{SearchOutcome, SearchParams, TranscriptWindow};
+use crate::protocol::{ChatEntryId, SessionId};
 
 use super::{SessionStore, SessionStoreError};
 
@@ -118,6 +119,80 @@ impl SessionStoreService {
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
         self.svc.load_unarchived_summaries().await
+    }
+
+    /// Returns the ids of all sessions with pending (dirty) FTS reindex work.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    pub async fn dirty_session_ids(&self) -> Result<Vec<SessionId>, Report<SessionStoreError>> {
+        self.svc.dirty_session_ids().await
+    }
+
+    /// Advance one session's chunked FTS reindex by up to `max_entries`;
+    /// returns `true` when the session is fully indexed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if any read or write fails.
+    pub async fn reindex_session_chunk(
+        &self,
+        session_id: &SessionId,
+        max_entries: usize,
+    ) -> Result<bool, Report<SessionStoreError>> {
+        self.svc
+            .reindex_session_chunk(session_id, max_entries)
+            .await
+    }
+
+    /// Returns how many sessions have pending (dirty) FTS reindex work.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    pub async fn pending_dirty_count(&self) -> Result<usize, Report<SessionStoreError>> {
+        self.svc.pending_dirty_count().await
+    }
+
+    /// Run an FTS query over the search index.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the query fails, including FTS5
+    /// syntax errors surfaced with the verbatim SQLite message.
+    pub async fn search(
+        &self,
+        params: SearchParams,
+    ) -> Result<SearchOutcome, Report<SessionStoreError>> {
+        self.svc.search(params).await
+    }
+
+    /// Load a window of entries around an anchor entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    pub async fn fetch_window(
+        &self,
+        session_id: &SessionId,
+        anchor: &ChatEntryId,
+        context: usize,
+    ) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>> {
+        self.svc.fetch_window(session_id, anchor, context).await
+    }
+
+    /// Load the last `limit` entries of a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    pub async fn fetch_tail(
+        &self,
+        session_id: &SessionId,
+        limit: usize,
+    ) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>> {
+        self.svc.fetch_tail(session_id, limit).await
     }
 
     /// Loads all non-archived judge sessions targeting the given origin.

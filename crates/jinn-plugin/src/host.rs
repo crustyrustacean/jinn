@@ -23,7 +23,7 @@ use jinn_plugin_api::Envelope;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
-use crate::engine::PluginEngine;
+use crate::engine::{Compiled, PluginEngine};
 use crate::framing::{decode_envelope, encode_envelope};
 use crate::grants::Grants;
 use crate::stderr_ring::StderrRing;
@@ -79,38 +79,44 @@ impl PluginHost {
     /// Instantiates and starts the guest for one plugin.
     ///
     /// `engine` is the shared wasmtime engine (one per process, reused
-    /// across plugins — compile once, instantiate per plugin).
+    /// across plugins — compile once, instantiate per plugin). The returned
+    /// [`Compiled`] reports whether the component was freshly compiled or
+    /// loaded from the disk cache.
     ///
     /// # Errors
     ///
     /// Returns an error if the module cannot be loaded or instantiated.
-    pub fn start(
+    pub async fn start(
         engine: &PluginEngine,
         name: &str,
         wasm_path: &Path,
         grants: &Grants,
-    ) -> Result<Self, Report<PluginHostError>> {
+    ) -> Result<(Self, Compiled), Report<PluginHostError>> {
         let (host_to_guest_tx, guest_rx) = tokio::io::duplex(PIPE_CAPACITY_BYTES);
         let (guest_tx, host_rx) = tokio::io::duplex(PIPE_CAPACITY_BYTES);
         let stderr_ring = Arc::new(Mutex::new(StderrRing::new()));
 
-        let guest_task = engine
+        let (guest_task, compiled) = engine
             .run_guest(wasm_path, grants, guest_rx, guest_tx, stderr_ring.clone())
+            .await
             .change_context(PluginHostError::Start)
             .attach(format!("failed to start plugin guest {name}"))?;
 
-        Ok(Self {
-            guest_task,
-            write: HostWriter {
-                stdin: host_to_guest_tx,
+        Ok((
+            Self {
+                guest_task,
+                write: HostWriter {
+                    stdin: host_to_guest_tx,
+                },
+                read_half: Some(BufReader::new(host_rx)),
+                stderr_ring,
+                spawn: SpawnInfo {
+                    name: name.to_owned(),
+                    wasm_path: wasm_path.to_path_buf(),
+                },
             },
-            read_half: Some(BufReader::new(host_rx)),
-            stderr_ring,
-            spawn: SpawnInfo {
-                name: name.to_owned(),
-                wasm_path: wasm_path.to_path_buf(),
-            },
-        })
+            compiled,
+        ))
     }
 
     /// Splits off the stdout read half for a pump task.

@@ -49,6 +49,7 @@ fn ctx_with(session_id: Option<SessionId>, cwd: &str) -> ToolContext {
         mcp_coordinator: None,
         interactive_term: None,
         task_spawns: None,
+        session_store: None,
     }
 }
 

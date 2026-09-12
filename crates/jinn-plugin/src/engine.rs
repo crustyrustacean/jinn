@@ -17,12 +17,13 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
 
 use error_stack::{Report, ResultExt as _};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 use wasmtime::component::{Component, Linker};
-use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
+use wasmtime::{Cache, CacheConfig, Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::cli::{AsyncStdinStream, AsyncStdoutStream};
 use wasmtime_wasi::p2::bindings::Command;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
@@ -31,6 +32,17 @@ use wasmtime_wasi_http::p2::{WasiHttpCtxView, WasiHttpView};
 
 use crate::grants::Grants;
 use crate::stderr_ring::StderrRing;
+
+/// How one [`PluginEngine::load`] obtained its component.
+#[derive(Debug, Clone, Copy)]
+pub struct Compiled {
+    /// `true` when the compiled artifact came from the disk cache (no
+    /// compilation happened); `false` when the wasm was freshly JIT-compiled.
+    pub from_cache: bool,
+    /// Wall-clock time the load took — compile time on a miss, deserialize
+    /// time on a hit.
+    pub duration: std::time::Duration,
+}
 
 /// The engine failed to start or the guest failed to run.
 #[derive(Debug, wherror::Error)]
@@ -83,6 +95,12 @@ const MEMORY_LIMIT_BYTES: usize = 256 * 1024 * 1024;
 #[derive(Clone)]
 pub struct PluginEngine {
     engine: Engine,
+    cache: Option<Cache>,
+    /// Serializes component compilation. wasmtime's hit/miss counters are
+    /// process-global, so concurrent compiles would attribute each other's
+    /// misses to the wrong plugin; a gate gives exact per-plugin reporting
+    /// and avoids oversubscribing cores when several plugins JIT at once.
+    compile_gate: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl std::fmt::Debug for PluginEngine {
@@ -92,29 +110,87 @@ impl std::fmt::Debug for PluginEngine {
 }
 
 impl PluginEngine {
-    /// Builds the engine: epoch interruption on, component model on.
+    /// Builds the engine: epoch interruption on, component model on, disk
+    /// cache on.
+    ///
+    /// The cache persists compiled component artifacts under the OS cache dir
+    /// (`~/.cache/wasmtime/…`), so a plugin compiled once loads from disk on
+    /// every later launch instead of re-JITing (~seconds → ~milliseconds). A
+    /// cache failure is fatal at engine construction (directory cannot be
+    /// created); once constructed, cache write failures degrade silently to
+    /// compile-per-launch.
     ///
     /// # Errors
     ///
-    /// Returns an error if the wasmtime engine cannot be constructed.
+    /// Returns an error if the wasmtime engine cannot be constructed or the
+    /// cache cannot be configured.
     pub fn new() -> Result<Self, Report<EngineError>> {
+        let cache = {
+            let cache_config = CacheConfig::new();
+            let cache = Cache::new(cache_config)
+                .map_err(|e| Report::new(EngineError::Instantiate).attach(format!("cache: {e}")))?;
+            Some(cache)
+        };
         let mut config = Config::new();
         config.epoch_interruption(true);
         config.wasm_component_model(true);
         config.concurrency_support(true);
+        config.cache(cache.clone());
         let engine = Engine::new(&config)
             .map_err(|e| Report::new(EngineError::Instantiate).attach(e.to_string()))?;
-        Ok(Self { engine })
+        Ok(Self {
+            engine,
+            cache,
+            compile_gate: Arc::new(tokio::sync::Mutex::const_new(())),
+        })
     }
 
     /// Loads a `.wasm` file as a component (compiled once per module).
     ///
+    /// Returns how the component was obtained so callers can report
+    /// progress only when real compilation happened.
+    ///
     /// # Errors
     ///
     /// Returns an error if the file cannot be read or is not a valid component.
-    pub fn load(&self, wasm_path: &Path) -> Result<Component, Report<EngineError>> {
-        Component::from_file(&self.engine, wasm_path)
-            .map_err(|e| Report::new(EngineError::Load).attach(format!("wasm load: {e}")))
+    pub async fn load(
+        &self,
+        wasm_path: &Path,
+    ) -> Result<(Component, Compiled), Report<EngineError>> {
+        // Gate around the whole hit-or-miss decision: wasmtime counts hits
+        // and misses on process-global counters, so without the gate two
+        // plugins compiling concurrently could each observe the other's
+        // delta.
+        let gate = self.compile_gate.lock().await;
+        let started = Instant::now();
+        let (hits_before, misses_before) = self.cache_counters();
+        let component = Component::from_file(&self.engine, wasm_path)
+            .map_err(|e| Report::new(EngineError::Load).attach(format!("wasm load: {e}")))?;
+        let (hits_after, misses_after) = self.cache_counters();
+        drop(gate);
+
+        let duration = started.elapsed();
+        let from_cache = match self.cache.as_ref() {
+            // The disk cache answered: either the hit counter advanced, or
+            // no new miss was recorded — the artifact was found and
+            // deserialized rather than compiled.
+            Some(_) => hits_after > hits_before || misses_after == misses_before,
+            // No cache configured: everything is compiled fresh.
+            None => false,
+        };
+        let report = Compiled {
+            from_cache,
+            duration,
+        };
+        Ok((component, report))
+    }
+
+    /// Snapshot of the engine cache's global hit/miss counters.
+    fn cache_counters(&self) -> (usize, usize) {
+        match self.cache.as_ref() {
+            Some(cache) => (cache.cache_hits(), cache.cache_misses()),
+            None => (0, 0),
+        }
     }
 
     /// Instantiates and starts one guest on a spawned task under `grants`.
@@ -128,19 +204,25 @@ impl PluginEngine {
     /// # Errors
     ///
     /// Returns an error if the module cannot be loaded or instantiated.
-    pub fn run_guest<R, W>(
+    pub async fn run_guest<R, W>(
         &self,
         wasm_path: &Path,
         grants: &Grants,
         stdin: R,
         stdout: W,
         stderr_ring: Arc<Mutex<StderrRing>>,
-    ) -> Result<tokio::task::JoinHandle<Result<(), Report<EngineError>>>, Report<EngineError>>
+    ) -> Result<
+        (
+            tokio::task::JoinHandle<Result<(), Report<EngineError>>>,
+            Compiled,
+        ),
+        Report<EngineError>,
+    >
     where
         R: AsyncRead + Send + Sync + 'static,
         W: AsyncWrite + Send + Sync + 'static,
     {
-        let component = self.load(wasm_path)?;
+        let (component, report) = self.load(wasm_path).await?;
         let store = build_store(&self.engine, grants, stdin, stdout, stderr_ring)?;
 
         let mut linker: Linker<PluginState> = Linker::new(&self.engine);
@@ -161,7 +243,7 @@ impl PluginEngine {
             ticker.abort();
             result
         });
-        Ok(task)
+        Ok((task, report))
     }
 }
 
