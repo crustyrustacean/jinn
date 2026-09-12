@@ -8,6 +8,7 @@
 
 pub mod authorize;
 pub mod bridge_actor;
+pub mod bridge_subscriber;
 pub mod channels;
 pub mod config;
 pub mod key_routes;
@@ -18,8 +19,8 @@ pub mod status_actor;
 pub mod thread_map;
 pub mod to_thread_intent;
 
-pub use bridge_actor::DiscordBridgeActor;
-pub use bridge_actor::DiscordBridgeActorDeps;
+pub use bridge_subscriber::DiscordBridgeSubscriber;
+pub use bridge_subscriber::DiscordBridgeSubscriberDeps;
 pub use channels::DiscordGatewayChannels;
 pub use channels::MintedChannels;
 pub use config::DiscordConfig;
@@ -123,7 +124,15 @@ pub async fn activate(
     // it never blocks readiness. When disabled, the senders drop here —
     // the parked receivers then report `Disconnected`, fail-closed.
     if config.enabled {
-        spawn_bridge(services, state, bridge_tx, gateway_tx).await;
+        bridge_subscriber::DiscordBridgeSubscriber::spawn(
+            &services.trouper_system,
+            bridge_subscriber::DiscordBridgeSubscriberDeps {
+                tx: bridge_tx,
+                gateway_tx,
+                state,
+                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+            },
+        );
     }
 
     // Forward routes: the session-family messages this slice consumes
@@ -157,34 +166,4 @@ pub async fn activate(
     attach_discord_rows(host.key_routes());
 
     Ok(ActivatedDiscord { parked, config })
-}
-
-/// Spawns the kameo-side bridge actor (bus events → gateway channels).
-///
-/// The bridge subscribes kameo bus messages (session protocol), so it
-/// lives on the kameo fabric via the kernel's supervisor, exactly as
-/// before the cut; the slice crate is simply where its wiring is
-/// expressed.
-async fn spawn_bridge(
-    services: &jinn_domain::Services,
-    state: jinn_domain::common::state::State,
-    bridge_tx: kanal::Sender<BridgeEvent>,
-    gateway_tx: kanal::Sender<GatewayRequest>,
-) {
-    use kameo::actor::Spawn as _;
-    let _discord_bridge = DiscordBridgeActor::supervise(
-        &services.root_supervisor,
-        DiscordBridgeActorDeps {
-            deps: jinn_domain::common::actor_deps::ActorDeps {
-                services: services.clone(),
-            },
-            tx: bridge_tx,
-            gateway_tx,
-            state,
-            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-        },
-    )
-    .restart_policy(kameo::supervision::RestartPolicy::Never)
-    .spawn()
-    .await;
 }
