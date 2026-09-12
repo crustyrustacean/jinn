@@ -1,3 +1,22 @@
+## (development; unreleased) v0.117.0
+
+- Report app name/id to OpenRouter.
+- Fix: `task` tool is now available in forked sessions at any depth and is automatically disabled for subagent sessions (unbound subagent storms are still impossible). Manually forking a subagent session re-activates the `task` tool automatically.
+  - The assumption here is that a manual session fork means that the user wants to continue working with the session as if it were a normal session and therefore they probably want access to the `task` tool to spawn more subagents.
+- Removed `session_query` tool and replaced with two new session searching tools:
+  - `session_search`: searches all sessions by content
+  - `session_fetch`: reads specific entries from a session; defaults to current session
+- Added FTS indexing to support `session_search` tool. Initial indexing could take anywhere from several minutes to a half hour+ depending on number of sessions and their size.
+  - Indexing status is displayed on the dashboard.
+  - Indexes are large so expect database size to increase by 2x-2.5x.
+  - Session search will work in a degraded state until initial indexing is complete. After that, indexes should only lag by about 10 seconds after a session update.
+- Startup performance characteristics have changed. Overall `jinn` should startup faster.
+  - Applied migrations are now skipped. Any migrations that need to get applied are reported on startup.
+  - WASM plugin compilation is now cached, so they will only get compiled once at startup instead of every startup.
+- Shutdown performance characteristics have changed. Shutdowns should now be immediate on average.
+  - Shutting down immediately after startup has a minor slowdown.
+  - Shutting down during a large write has a minor slowdown (like in the middle of saving a large FTS index)
+
 ## 2026-09-09 v0.116.1
 
 - Change default "sources" section highlight to light blue.
