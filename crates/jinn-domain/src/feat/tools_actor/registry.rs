@@ -7,7 +7,8 @@ use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition
 
 use super::{
     BoxedToolFuture, bash, edit, get_time, grep, interactive_term, interactive_term_kill,
-    interactive_term_send, read, restart_mcp, save_plan, session_query, skill, task, write,
+    interactive_term_send, read, restart_mcp, save_plan, session_fetch, session_search, skill,
+    task, write,
 };
 use crate::feat::todo_list;
 
@@ -68,8 +69,13 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
             false,
         ),
         (
-            session_query::definition(),
-            session_query::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            session_search::definition(),
+            session_search::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
+        ),
+        (
+            session_fetch::definition(),
+            session_fetch::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
             false,
         ),
         (
@@ -135,7 +141,8 @@ mod tests {
             "edit",
             "skill",
             "save_plan",
-            "session_query",
+            "session_search",
+            "session_fetch",
             "grep",
             "task",
             "interactive_term",

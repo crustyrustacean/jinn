@@ -29,7 +29,12 @@ use crate::feat::session::chat_session::{
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::session_summary::SessionSummary;
 use crate::feat::session::token_stats::TokenRecord;
-use crate::protocol::{ChatEntryId, ContextOverride, SessionId};
+use crate::feat::session_search::{
+    SearchHit, SearchOutcome, SearchParams, SearchableEntry, TranscriptEntry, TranscriptWindow,
+    entry_ts_key, extract_searchable,
+};
+use crate::protocol::{ChatEntryId, ContextOverride, EntryTiming, SessionId};
+use daow::Param;
 use jinn_provider::Attachment;
 
 use super::migrator;
@@ -346,6 +351,46 @@ impl SessionStore for SqliteSessionStore {
             .change_context(SessionStoreError)
             .attach("failed to query unarchived summaries")?;
         Ok(rows.into_iter().map(summary_from_row).collect())
+    }
+
+    async fn dirty_session_ids(&self) -> Result<Vec<SessionId>, Report<SessionStoreError>> {
+        dirty_session_ids(&self.pool).await
+    }
+
+    async fn reindex_session_chunk(
+        &self,
+        session_id: &SessionId,
+        max_entries: usize,
+    ) -> Result<bool, Report<SessionStoreError>> {
+        reindex_session_chunk(&self.pool, session_id, max_entries).await
+    }
+
+    async fn pending_dirty_count(&self) -> Result<usize, Report<SessionStoreError>> {
+        pending_dirty_count(&self.pool).await
+    }
+
+    async fn search(
+        &self,
+        params: SearchParams,
+    ) -> Result<SearchOutcome, Report<SessionStoreError>> {
+        search_index(&self.pool, params).await
+    }
+
+    async fn fetch_window(
+        &self,
+        session_id: &SessionId,
+        anchor: &ChatEntryId,
+        context: usize,
+    ) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>> {
+        fetch_window(&self.pool, session_id, anchor, context).await
+    }
+
+    async fn fetch_tail(
+        &self,
+        session_id: &SessionId,
+        limit: usize,
+    ) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>> {
+        fetch_tail(&self.pool, session_id, limit).await
     }
 
     async fn shutdown(&self) -> Result<(), Report<SessionStoreError>> {
@@ -1454,4 +1499,710 @@ fn classify_checkpoint_result(result: &CheckpointResult) {
             "folded WAL into sessions.db during shutdown"
         );
     }
+}
+
+// ── FTS search index (schema v26) ────────────────────────────────────────
+
+/// A raw `(entry_id, timing, kind)` row joined across `session_history` +
+/// `entries` — the input to the reindex parse stage.
+struct RawIndexedEntry {
+    entry_id: String,
+    timing: String,
+    kind: String,
+}
+
+impl FromRow for RawIndexedEntry {
+    fn from_row(row: &Row) -> daow::Result<Self> {
+        Ok(Self {
+            entry_id: row.get("entry_id")?,
+            timing: row.get("timing")?,
+            kind: row.get("kind")?,
+        })
+    }
+}
+
+/// Returns the ids of all sessions with pending (dirty) FTS reindex work.
+///
+/// Rows whose stored id cannot be parsed as a [`SessionId`] are skipped with
+/// a warning: a corrupt marker must not poison the batch, and it could never
+/// be reindexed anyway. [`pending_dirty_count`] counts those rows — the two
+/// primitives intentionally disagree on corrupt markers so the dashboard can
+/// surface them as permanently pending.
+async fn dirty_session_ids(pool: &Pool) -> Result<Vec<SessionId>, Report<SessionStoreError>> {
+    let dirty: Vec<String> = pool
+        .query_all("SELECT session_id AS session_id FROM fts_dirty", vec![])
+        .await
+        .change_context(SessionStoreError)
+        .attach("failed to read dirty session markers")?;
+
+    Ok(dirty
+        .into_iter()
+        .filter_map(|id_str| match SessionId::try_from_string(&id_str) {
+            Some(id) => Some(id),
+            None => {
+                tracing::warn!(
+                    raw_id = %id_str,
+                    "skipping unparseable FTS dirty marker"
+                );
+                None
+            }
+        })
+        .collect())
+}
+
+/// Counts all `fts_dirty` marker rows, including corrupt (unparseable) ones —
+/// the number reflects the true size of the pending queue.
+async fn pending_dirty_count(pool: &Pool) -> Result<usize, Report<SessionStoreError>> {
+    let total: Option<i64> = pool
+        .query_one("SELECT COUNT(*) AS total FROM fts_dirty", vec![])
+        .await
+        .change_context(SessionStoreError)
+        .attach("failed to count dirty session markers")?;
+    Ok(total.unwrap_or(0) as usize)
+}
+
+/// Read by a manual `FromRow` that maps the aliased dirty-marker columns.
+struct DirtyResumeRow {
+    resume_offset: i64,
+}
+
+impl FromRow for DirtyResumeRow {
+    fn from_row(row: &Row) -> daow::Result<Self> {
+        Ok(Self {
+            resume_offset: row.get("resume_offset")?,
+        })
+    }
+}
+
+/// Returns the resume point stored on a session's dirty marker: how many of
+/// its entries the chunked rebuild has already indexed (0 = not started).
+///
+/// A query failure falls back to 0 (rebuild from scratch — correct, just
+/// slower) but is logged loudly: this default once masked a migration drift
+/// bug where the `resume_offset` column itself was missing, silently
+/// restarting every partial rebuild for days.
+async fn resume_offset(pool: &Pool, session_id: &str) -> usize {
+    let rows: Vec<DirtyResumeRow> = pool
+        .query_all(
+            "SELECT resume_offset AS resume_offset FROM fts_dirty WHERE session_id = ?",
+            vec![Box::new(session_id.to_owned())],
+        )
+        .await
+        .inspect_err(|e| {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %e,
+                "failed to read FTS resume offset; restarting this session's reindex from 0"
+            );
+        })
+        .unwrap_or_default();
+    rows.first()
+        .map_or(0, |row| row.resume_offset.max(0) as usize)
+}
+
+/// Indexes at most `max_entries` more of one session's entries into the FTS
+/// table, resuming at the marker's stored resume point (by ordinal), as a
+/// single transaction. A resume point of 0 additionally deletes the
+/// session's existing FTS rows ("dirty = recompute from scratch"); later
+/// chunks append. Returns `true` when the session is fully indexed — its
+/// dirty marker is then deleted in the same transaction.
+///
+/// A partial chunk persists the advanced resume point on the marker, so the
+/// drain continues where it left off on the next tick or after a restart.
+/// If new writes land mid-rebuild, the `sessions` UPDATE trigger re-marks
+/// the session (resume stays put; the next rebuild-from-zero repairs any
+/// staleness). A session deleted since being marked yields an empty first
+/// chunk and a deleted marker — a no-op rebuild, not an error.
+async fn reindex_session_chunk(
+    pool: &Pool,
+    session_id: &SessionId,
+    max_entries: usize,
+) -> Result<bool, Report<SessionStoreError>> {
+    let session_id = session_id.to_string();
+    let offset = resume_offset(pool, &session_id).await;
+    let raw: Vec<RawIndexedEntry> = pool
+        .query_all(
+            "SELECT entries.id AS entry_id, entries.timing AS timing, entries.kind AS kind \
+             FROM entries \
+             INNER JOIN session_history ON entries.id = session_history.entry_id \
+             WHERE session_history.session_id = ? \
+             ORDER BY session_history.ordinal ASC \
+             LIMIT ? OFFSET ?",
+            vec![
+                Box::new(session_id.clone()),
+                Box::new(max_entries as i64),
+                Box::new(offset as i64),
+            ],
+        )
+        .await
+        .change_context(SessionStoreError)
+        .attach("failed to read entries for reindex")?;
+
+    // Kind JSON parsing can be heavy (full_content tool outputs) — keep it
+    // off the async runtime. `raw` moves in; `session_id` is cloned for the
+    // closure because the tx stage below needs it too.
+    let parsed = {
+        let session_id = session_id.clone();
+        tokio::task::spawn_blocking(move || parse_searchable_rows(&session_id, &raw))
+            .await
+            .change_context(SessionStoreError)
+            .attach("reindex parse task panicked")?
+    };
+
+    // A chunk shorter than `max_entries` means the ordinal walk ran past the
+    // end: the session is fully indexed. (An exactly-full final chunk is
+    // followed by one empty chunk that returns `finished` here — correct,
+    // since the walk is then exhausted.)
+    let finished = parsed.len() < max_entries;
+    let advanced = (offset + parsed.len()) as i64;
+    pool.with_conn(move |conn| -> daow::Result<bool> {
+        let tx = conn.transaction()?;
+        if offset == 0 {
+            // First chunk of the rebuild: drop the session's existing rows
+            // before inserting the live prefix. For a deleted session the
+            // live set is empty, so this removes stale rows only.
+            //
+            // `session_id` is UNINDEXED in the FTS5 table, so filtering on it
+            // full-scans the index; delete via the `fts_rowids` map instead
+            // (primary-key rowid lookups), and skip entirely when the map has
+            // no rows for this session (a never-indexed session).
+            let mapped: i64 = tx.query_row(
+                "SELECT EXISTS (SELECT 1 FROM fts_rowids WHERE session_id = ?)",
+                rusqlite::params![&session_id],
+                |row| row.get(0),
+            )?;
+            if mapped != 0 {
+                tx.execute(
+                    "DELETE FROM session_fts WHERE rowid IN \
+                     (SELECT fts_rowid FROM fts_rowids WHERE session_id = ?)",
+                    rusqlite::params![&session_id],
+                )?;
+            }
+            tx.execute(
+                "DELETE FROM fts_rowids WHERE session_id = ?",
+                rusqlite::params![&session_id],
+            )?;
+        }
+        for entry in &parsed {
+            tx.execute(
+                "INSERT INTO session_fts (body, role, session_id, entry_id, entry_ts) \
+                 VALUES (?, ?, ?, ?, ?)",
+                rusqlite::params![
+                    entry.body,
+                    entry.role.as_str(),
+                    &session_id,
+                    entry.entry_id,
+                    entry.entry_ts
+                ],
+            )?;
+            // Paired map insert, same transaction: the map must reference
+            // every row the index gains, or a later rebuild's delete misses
+            // it. `last_insert_rowid` reflects the FTS insert above — the
+            // only intervening insert on this connection.
+            tx.execute(
+                "INSERT INTO fts_rowids (session_id, fts_rowid) \
+                 VALUES (?, last_insert_rowid())",
+                rusqlite::params![&session_id],
+            )?;
+        }
+        if finished {
+            // Final chunk: the session is fully indexed — clear the marker
+            // (and its resume point) in the same transaction so the queue
+            // and the index agree.
+            tx.execute(
+                "DELETE FROM fts_dirty WHERE session_id = ?",
+                rusqlite::params![&session_id],
+            )?;
+        } else {
+            tx.execute(
+                "UPDATE fts_dirty SET resume_offset = ? WHERE session_id = ?",
+                rusqlite::params![advanced, &session_id],
+            )?;
+        }
+        tx.commit()?;
+        Ok(finished)
+    })
+    .await
+    .change_context(SessionStoreError)
+    .attach("failed to rebuild FTS rows")
+}
+
+/// Parses raw entry rows into indexed rows. Runs inside `spawn_blocking`.
+///
+/// Rows whose kind JSON fails to deserialize are skipped with a warning: the
+/// FTS index is derived data, and a corrupt entry must not fail the whole
+/// reindex (it will be retried on the next save anyway).
+fn parse_searchable_rows(session_id: &str, raw: &[RawIndexedEntry]) -> Vec<SearchableEntry> {
+    raw.iter()
+        .filter_map(|r| {
+            let kind: ChatEntryKind = match serde_json::from_str(&r.kind) {
+                Ok(kind) => kind,
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        entry_id = %r.entry_id,
+                        error = %e,
+                        "skipping unparseable entry kind during FTS reindex"
+                    );
+                    return None;
+                }
+            };
+            let (role, body) = extract_searchable(&kind)?;
+            let timing: EntryTiming = serde_json::from_str(&r.timing).unwrap_or_else(|_| {
+                match r.timing.parse::<jiff::Timestamp>() {
+                    Ok(at) => EntryTiming::Instant { at },
+                    Err(_) => EntryTiming::instant_now(),
+                }
+            });
+            Some(SearchableEntry {
+                entry_id: r.entry_id.clone(),
+                role,
+                body,
+                entry_ts: entry_ts_key(&timing),
+            })
+        })
+        .collect()
+}
+
+/// A hit row read back from the FTS table.
+struct FtsHitRow {
+    entry_id: String,
+    role: String,
+    session_id: String,
+    entry_ts: String,
+    snippet: String,
+}
+
+impl FromRow for FtsHitRow {
+    fn from_row(row: &Row) -> daow::Result<Self> {
+        Ok(Self {
+            entry_id: row.get("entry_id")?,
+            role: row.get("role")?,
+            session_id: row.get("session_id")?,
+            entry_ts: row.get("entry_ts")?,
+            snippet: row.get("snippet")?,
+        })
+    }
+}
+
+/// A per-session match count row for the rollup.
+struct SessionCountRow {
+    session_id: String,
+    matches: i64,
+}
+
+impl FromRow for SessionCountRow {
+    fn from_row(row: &Row) -> daow::Result<Self> {
+        Ok(Self {
+            session_id: row.get("session_id")?,
+            matches: row.get("matches")?,
+        })
+    }
+}
+
+/// A joined window row: an entry plus its junction ordinal.
+struct JoinedWindowEntry {
+    joined: JoinedEntry,
+    ordinal: i64,
+}
+
+impl FromRow for JoinedWindowEntry {
+    fn from_row(row: &Row) -> daow::Result<Self> {
+        Ok(Self {
+            joined: JoinedEntry::from_row(row)?,
+            ordinal: row.get("ordinal")?,
+        })
+    }
+}
+
+/// A `(entry_id, ignored, context_override, pin_position, context_history)`
+/// row — the persisted signals behind the excluded-from-context flag.
+struct ExclusionRow {
+    entry_id: String,
+    ignored: bool,
+    context_override: String,
+    pin_position: Option<String>,
+    context_history: String,
+}
+
+impl FromRow for ExclusionRow {
+    fn from_row(row: &Row) -> daow::Result<Self> {
+        Ok(Self {
+            entry_id: row.get("entry_id")?,
+            ignored: row.get("ignored")?,
+            context_override: row.get("context_override")?,
+            pin_position: row.get("pin_position")?,
+            context_history: row.get("context_history")?,
+        })
+    }
+}
+
+impl ExclusionRow {
+    /// Whether the persisted signals say this entry is out of context.
+    ///
+    /// Priority matches `ChatEntry::is_in_context`: pins win; an explicit
+    /// `ForcedInclude` wins over a persisted worker exclusion; `ForcedExclude`
+    /// (or the legacy `ignored` column) excludes.
+    fn is_excluded(&self) -> bool {
+        if self.pin_position.is_some() {
+            return false;
+        }
+        match serde_json::from_str::<ContextOverride>(&self.context_override) {
+            Ok(ContextOverride::ForcedInclude) => false,
+            Ok(ContextOverride::ForcedExclude) => true,
+            _ if self.ignored => true,
+            _ => {
+                // Fall back to the audit trail: a persisted worker/user
+                // ForcedExclude that was never re-included.
+                serde_json::from_str::<Vec<crate::feat::session::chat_entry::ContextChangeEvent>>(
+                    &self.context_history,
+                )
+                .is_ok_and(|events| {
+                    events
+                        .last()
+                        .is_some_and(|event| event.to == ContextOverride::ForcedExclude)
+                })
+            }
+        }
+    }
+}
+
+/// Clamps an anchor + context size to an inclusive ordinal window of at most
+/// `context` entries, centered on the anchor with a slight forward bias
+/// (reading forward is what fetch is for), clamped to the session's start.
+fn clamp_window(anchor_ord: i64, context: usize) -> (i64, i64) {
+    let span = i64::try_from(context.max(1)).unwrap_or(i64::MAX);
+    let after = (span - 1) * 7 / 10;
+    let before = span - 1 - after;
+    let lo = (anchor_ord - before).max(0);
+    match lo.checked_add(span - 1) {
+        Some(hi) => (lo, hi),
+        None => (0, span - 1),
+    }
+}
+
+/// Collapses all whitespace in an FTS snippet to single spaces so one hit is
+/// always one output line.
+fn collapse_whitespace(snippet: &str) -> String {
+    snippet.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The bind values for one search, in a cloneable form (plain owned values).
+#[derive(Clone)]
+enum Bind {
+    Text(String),
+    Int(i64),
+}
+
+impl Bind {
+    fn into_param(self) -> Param {
+        match self {
+            Self::Text(s) => Box::new(s),
+            Self::Int(i) => Box::new(i),
+        }
+    }
+}
+
+fn binds_to_params(binds: &[Bind]) -> Vec<Param> {
+    binds.iter().cloned().map(Bind::into_param).collect()
+}
+
+/// Runs the FTS query with WHERE post-filters, then the count + rollup.
+///
+/// `role` and `session_id` are UNINDEXED columns: they are invisible to
+/// `MATCH` and must be plain `WHERE` conditions (which also guarantees bare
+/// query terms can never match a role word).
+async fn search_index(
+    pool: &Pool,
+    params: SearchParams,
+) -> Result<SearchOutcome, Report<SessionStoreError>> {
+    // Collect the dynamic WHERE clauses; ?1 is always the MATCH expression.
+    let mut clauses: Vec<String> = vec!["session_fts MATCH ?1".to_owned()];
+    let mut binds: Vec<Bind> = vec![Bind::Text(params.query.clone())];
+
+    if !params.session_ids.is_empty() {
+        let placeholders = repeat_placeholders(params.session_ids.len());
+        clauses.push(format!("f.session_id IN ({placeholders})"));
+        binds.extend(params.session_ids.iter().cloned().map(Bind::Text));
+    }
+    if !params.roles.is_empty() {
+        let placeholders = repeat_placeholders(params.roles.len());
+        clauses.push(format!("f.role IN ({placeholders})"));
+        binds.extend(
+            params
+                .roles
+                .iter()
+                .map(|r| Bind::Text(r.as_str().to_owned())),
+        );
+    }
+    if let Some(since) = params.since {
+        clauses.push(format!("f.entry_ts >= ?{}", binds.len() + 1));
+        binds.push(Bind::Text(since.to_string()));
+    }
+    if let Some(until) = params.until {
+        clauses.push(format!("f.entry_ts <= ?{}", binds.len() + 1));
+        binds.push(Bind::Text(until.to_string()));
+    }
+
+    let where_clause = clauses.join(" AND ");
+    let limit_placeholder = format!("?{}", binds.len() + 1);
+
+    let hits_sql = format!(
+        "SELECT f.entry_id AS entry_id, f.role AS role, f.session_id AS session_id, \
+         f.entry_ts AS entry_ts, \
+         snippet(session_fts, 0, '<<', '>>', ' … ', 24) AS snippet \
+         FROM session_fts f WHERE {where_clause} \
+         ORDER BY bm25(session_fts) LIMIT {limit_placeholder}"
+    );
+    let count_sql = format!("SELECT COUNT(*) AS total FROM session_fts f WHERE {where_clause}");
+    let rollup_sql = format!(
+        "SELECT f.session_id AS session_id, COUNT(*) AS matches \
+         FROM session_fts f WHERE {where_clause} GROUP BY f.session_id \
+         ORDER BY matches DESC"
+    );
+
+    let mut hit_binds = binds.clone();
+    hit_binds.push(Bind::Int(params.limit as i64));
+
+    let rows: Vec<FtsHitRow> = pool
+        .query_all(&hits_sql, binds_to_params(&hit_binds))
+        .await
+        .map_err(|daow_err| {
+            Report::new(SessionStoreError).attach(format!("FTS query failed: {daow_err}"))
+        })?;
+    let total: Option<i64> = pool
+        .query_one(&count_sql, binds_to_params(&binds))
+        .await
+        .map_err(|daow_err| {
+            Report::new(SessionStoreError).attach(format!("FTS count failed: {daow_err}"))
+        })?;
+    let rollup: Vec<SessionCountRow> = pool
+        .query_all(&rollup_sql, binds_to_params(&binds))
+        .await
+        .map_err(|daow_err| {
+        Report::new(SessionStoreError).attach(format!("FTS rollup failed: {daow_err}"))
+    })?;
+
+    let mut hits: Vec<SearchHit> = rows
+        .into_iter()
+        .map(|r| SearchHit {
+            session_id: r.session_id,
+            entry_id: r.entry_id,
+            role: r.role,
+            snippet: collapse_whitespace(&r.snippet),
+            entry_ts: r.entry_ts,
+            excluded: false,
+        })
+        .collect();
+    mark_excluded_hits(pool, &mut hits).await?;
+
+    Ok(SearchOutcome {
+        total_matches: total.unwrap_or(0) as u64,
+        per_session: rollup
+            .into_iter()
+            .map(|r| (r.session_id, r.matches as u64))
+            .collect(),
+        hits,
+    })
+}
+
+/// Sets the `excluded` flag on each hit from its persisted context signals.
+///
+/// Mirrors [`ChatEntry::is_in_context`]'s priority (pin > forced-include >
+/// forced-exclude > kind default) without reconstructing full entries. Kind
+/// defaults never apply here — non-context kinds (`Actor`, `Thinking`,
+/// `Transient`, `Annotation`) are not indexed in the first place.
+async fn mark_excluded_hits(
+    pool: &Pool,
+    hits: &mut [SearchHit],
+) -> Result<(), Report<SessionStoreError>> {
+    if hits.is_empty() {
+        return Ok(());
+    }
+    let entry_ids: Vec<String> = hits.iter().map(|h| h.entry_id.clone()).collect();
+    let placeholders = repeat_placeholders(entry_ids.len());
+    let sql = format!(
+        "SELECT e.id AS entry_id, h.ignored AS ignored, \
+         h.context_override AS context_override, h.pin_position AS pin_position, \
+         e.context_history AS context_history \
+         FROM entries e INNER JOIN session_history h ON e.id = h.entry_id \
+         WHERE e.id IN ({placeholders})"
+    );
+    let params: Vec<Param> = entry_ids
+        .into_iter()
+        .map(|id| Box::new(id) as Param)
+        .collect();
+    let rows: Vec<ExclusionRow> = pool
+        .query_all(&sql, params)
+        .await
+        .change_context(SessionStoreError)
+        .attach("failed to read exclusion signals for hits")?;
+    let by_entry: HashMap<String, bool> = rows
+        .into_iter()
+        .map(|r| {
+            let excluded = r.is_excluded();
+            (r.entry_id, excluded)
+        })
+        .collect();
+
+    for hit in hits {
+        hit.excluded = by_entry.get(&hit.entry_id).copied().unwrap_or(false);
+    }
+    Ok(())
+}
+
+// ── Transcript fetch (session_fetch) ─────────────────────────────────────
+
+/// Loads the session row or `None` if the session does not exist.
+async fn session_meta(
+    pool: &Pool,
+    session_id: &str,
+) -> Result<Option<SessionRow>, Report<SessionStoreError>> {
+    let dao = SessionDao::new(pool.clone());
+    dao.session_by_id(session_id.to_owned())
+        .await
+        .change_context(SessionStoreError)
+        .attach("failed to query session metadata")
+}
+
+/// Counts the entries in a session.
+async fn count_entries(pool: &Pool, session_id: &str) -> Result<usize, Report<SessionStoreError>> {
+    let total: Option<i64> = pool
+        .query_one(
+            "SELECT COUNT(*) AS total FROM session_history WHERE session_id = ?",
+            vec![Box::new(session_id.to_owned())],
+        )
+        .await
+        .change_context(SessionStoreError)
+        .attach("failed to count session entries")?;
+    Ok(total.unwrap_or(0) as usize)
+}
+
+/// Loads joined entries + ordinals for an inclusive ordinal range [lo, hi].
+async fn load_joined_range(
+    pool: &Pool,
+    session_id: &str,
+    lo: i64,
+    hi: i64,
+) -> Result<Vec<JoinedWindowEntry>, Report<SessionStoreError>> {
+    pool.query_all(
+        "SELECT entries.id AS entry_id, entries.timing AS timing, entries.kind AS kind, \
+         entries.context_history AS context_history, \
+         session_history.pin_position AS pin_position, \
+         session_history.ignored AS ignored, \
+         session_history.context_override AS context_override, \
+         entries.token_count AS token_count, \
+         session_history.ordinal AS ordinal \
+         FROM entries \
+         INNER JOIN session_history ON entries.id = session_history.entry_id \
+         WHERE session_history.session_id = ? \
+         AND session_history.ordinal BETWEEN ? AND ? \
+         ORDER BY session_history.ordinal ASC",
+        vec![Box::new(session_id.to_owned()), Box::new(lo), Box::new(hi)],
+    )
+    .await
+    .change_context(SessionStoreError)
+    .attach("failed to query transcript window")
+}
+
+/// Resolves an anchor entry's ordinal within a session, with a legible error
+/// when the entry is not part of it (wrong session, or pre-index data).
+async fn anchor_ordinal(
+    pool: &Pool,
+    session_id: &str,
+    anchor: &ChatEntryId,
+) -> Result<i64, Report<SessionStoreError>> {
+    let ordinal: Option<i64> = pool
+        .query_one(
+            "SELECT ordinal AS ordinal FROM session_history \
+             WHERE session_id = ? AND entry_id = ?",
+            vec![
+                Box::new(session_id.to_owned()),
+                Box::new(anchor.to_string()),
+            ],
+        )
+        .await
+        .change_context(SessionStoreError)
+        .attach("failed to resolve anchor ordinal")?;
+    ordinal.ok_or_else(|| {
+        Report::new(SessionStoreError).attach(format!(
+            "entry {anchor} was not found in session {session_id} - it may belong to another \
+             session or predate the search index; re-run session_search to locate an entry in \
+             this session"
+        ))
+    })
+}
+
+/// Builds a [`TranscriptWindow`] from loaded joined rows.
+fn build_window(
+    session_id: String,
+    title: Option<String>,
+    total_entries: usize,
+    joined: Vec<JoinedWindowEntry>,
+) -> TranscriptWindow {
+    let entries = joined
+        .into_iter()
+        .map(|row| {
+            let ordinal = row.ordinal;
+            let entry = entry_from_joined(row.joined, Vec::new());
+            let excluded = !entry.is_in_context();
+            TranscriptEntry {
+                ordinal: usize::try_from(ordinal).unwrap_or(0),
+                entry,
+                excluded,
+            }
+        })
+        .collect();
+    TranscriptWindow {
+        session_id,
+        title,
+        total_entries,
+        entries,
+    }
+}
+
+/// Fetches a window of `context` entries starting just before the anchor,
+/// clamped to the session's bounds.
+async fn fetch_window(
+    pool: &Pool,
+    session_id: &SessionId,
+    anchor: &ChatEntryId,
+    context: usize,
+) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>> {
+    let session_id_str = session_id.to_string();
+    let Some(meta) = session_meta(pool, &session_id_str).await? else {
+        return Ok(None);
+    };
+    let anchor_ord = anchor_ordinal(pool, &session_id_str, anchor).await?;
+    let total = count_entries(pool, &session_id_str).await?;
+    let (lo, hi) = clamp_window(anchor_ord, context);
+    let joined = load_joined_range(pool, &session_id_str, lo, hi).await?;
+    Ok(Some(build_window(
+        session_id_str,
+        meta.title,
+        total,
+        joined,
+    )))
+}
+
+/// Fetches the last `limit` entries of a session.
+async fn fetch_tail(
+    pool: &Pool,
+    session_id: &SessionId,
+    limit: usize,
+) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>> {
+    let session_id_str = session_id.to_string();
+    let Some(meta) = session_meta(pool, &session_id_str).await? else {
+        return Ok(None);
+    };
+    let total = count_entries(pool, &session_id_str).await?;
+    let span = i64::try_from(limit.max(1)).unwrap_or(i64::MAX);
+    let lo = (i64::from(i32::try_from(total).unwrap_or(i32::MAX)) - span).max(0);
+    let joined = load_joined_range(pool, &session_id_str, lo, i64::MAX).await?;
+    Ok(Some(build_window(
+        session_id_str,
+        meta.title,
+        total,
+        joined,
+    )))
 }

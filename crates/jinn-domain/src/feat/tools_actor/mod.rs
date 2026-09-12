@@ -78,7 +78,8 @@ pub mod restart_mcp;
 #[cfg(test)]
 mod restart_mcp_tests;
 pub mod save_plan;
-pub mod session_query;
+pub mod session_fetch;
+pub mod session_search;
 pub mod skill;
 pub mod task;
 pub mod task_phase_listener_actor;
@@ -587,6 +588,7 @@ impl ToolOrchestratorActor {
             mcp_coordinator: self.services.mcp_coordinator.get().cloned(),
             interactive_term: self.services.interactive_term.get().cloned(),
             task_spawns: Some(self.services.task_spawns.clone()),
+            session_store: Some(self.services.session_store.clone()),
         }
     }
 
@@ -1068,6 +1070,7 @@ mod timeout_tests {
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
+            session_store: None,
         }
     }
 
@@ -1320,6 +1323,7 @@ mod panic_safety_tests {
                 mcp_coordinator: None,
                 interactive_term: None,
                 task_spawns: None,
+                session_store: None,
             },
         ))
         .catch_unwind()

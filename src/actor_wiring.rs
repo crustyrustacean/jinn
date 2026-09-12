@@ -954,6 +954,25 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .await
         );
 
+        // Search index maintenance: drives the dirty-set drain once at
+        // startup (upgrade backfill) and then every REINDEX_INTERVAL,
+        // publishing per-session progress to this dashboard row.
+        let _search_index = spawn_tracked!(
+            &services.bus,
+            jinn_domain::feat::session_search::search_index_actor::SEARCH_INDEX_ROW_NAME,
+            "SearchIndexActor",
+            jinn_domain::feat::session_search::search_index_actor::spawn_search_index_actor(
+                jinn_domain::feat::session_search::search_index_actor::SearchIndexActorDeps {
+                    deps: actor_deps.clone(),
+                    interval:
+                        jinn_domain::feat::session_search::search_index_actor::REINDEX_INTERVAL,
+                    budget: jinn_domain::feat::session_search::search_index_actor::REINDEX_BUDGET,
+                },
+                &root,
+            )
+            .await
+        );
+
         // Queue actor.
         let _queue = spawn_tracked!(
             &services.bus,

@@ -349,6 +349,63 @@ mod tests {
         {
             Ok(vec![self.summary.clone()])
         }
+
+        async fn dirty_session_ids(
+            &self,
+        ) -> Result<Vec<SessionId>, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(Vec::new())
+        }
+
+        async fn reindex_session_chunk(
+            &self,
+            _session_id: &SessionId,
+            _max_entries: usize,
+        ) -> Result<bool, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(true)
+        }
+
+        async fn pending_dirty_count(
+            &self,
+        ) -> Result<usize, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(0)
+        }
+
+        async fn search(
+            &self,
+            _params: crate::feat::session_search::SearchParams,
+        ) -> Result<
+            crate::feat::session_search::SearchOutcome,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
+            Ok(crate::feat::session_search::SearchOutcome {
+                total_matches: 0,
+                per_session: Vec::new(),
+                hits: Vec::new(),
+            })
+        }
+
+        async fn fetch_window(
+            &self,
+            _session_id: &SessionId,
+            _anchor: &crate::protocol::ChatEntryId,
+            _context: usize,
+        ) -> Result<
+            Option<crate::feat::session_search::TranscriptWindow>,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
+            Ok(None)
+        }
+
+        async fn fetch_tail(
+            &self,
+            _session_id: &SessionId,
+            _limit: usize,
+        ) -> Result<
+            Option<crate::feat::session_search::TranscriptWindow>,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
+            Ok(None)
+        }
     }
 
     #[rstest::rstest]
@@ -440,6 +497,63 @@ mod tests {
         ) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>>
         {
             Ok(self.summaries.clone())
+        }
+
+        async fn dirty_session_ids(
+            &self,
+        ) -> Result<Vec<SessionId>, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(Vec::new())
+        }
+
+        async fn reindex_session_chunk(
+            &self,
+            _session_id: &SessionId,
+            _max_entries: usize,
+        ) -> Result<bool, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(true)
+        }
+
+        async fn pending_dirty_count(
+            &self,
+        ) -> Result<usize, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(0)
+        }
+
+        async fn search(
+            &self,
+            _params: crate::feat::session_search::SearchParams,
+        ) -> Result<
+            crate::feat::session_search::SearchOutcome,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
+            Ok(crate::feat::session_search::SearchOutcome {
+                total_matches: 0,
+                per_session: Vec::new(),
+                hits: Vec::new(),
+            })
+        }
+
+        async fn fetch_window(
+            &self,
+            _session_id: &SessionId,
+            _anchor: &crate::protocol::ChatEntryId,
+            _context: usize,
+        ) -> Result<
+            Option<crate::feat::session_search::TranscriptWindow>,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
+            Ok(None)
+        }
+
+        async fn fetch_tail(
+            &self,
+            _session_id: &SessionId,
+            _limit: usize,
+        ) -> Result<
+            Option<crate::feat::session_search::TranscriptWindow>,
+            error_stack::Report<super::super::SessionStoreError>,
+        > {
+            Ok(None)
         }
     }
 
