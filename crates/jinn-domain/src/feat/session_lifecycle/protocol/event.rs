@@ -1,4 +1,8 @@
 //! Lifecycle event structs - completion callbacks for setup/teardown.
+//!
+//! [`SessionSetupCompleted`] and [`SessionTeardownFinished`] live in
+//! `jinn-session-msg` (the crossing-contract crate) and are re-exported
+//! here so the kernel path stays stable.
 
 use std::path::PathBuf;
 
@@ -6,22 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::SessionId;
 
-/// Setup command completed (success or failure).
-///
-/// Emitted by the session-persistence actor after running a lifecycle setup command.
-/// On success, `cwd` is the directory reported by the command. On failure, `cwd`
-/// is the default CWD and `error` contains the failure details.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionSetupCompleted {
-    /// The session that was being set up.
-    pub session_id: SessionId,
-    /// The resulting CWD on success, or default CWD on failure.
-    pub cwd: PathBuf,
-    /// Error message if setup failed.
-    pub error: Option<String>,
-}
-
-impl crate::common::bus::BusMessage for SessionSetupCompleted {}
+pub use jinn_session_msg::SessionSetupCompleted;
+pub use jinn_session_msg::SessionTeardownFinished;
 
 /// A new chat session was created.
 ///
@@ -48,20 +38,5 @@ pub struct SessionCwdChanged {
 }
 
 impl crate::common::bus::BusMessage for SessionCwdChanged {}
-
-/// Teardown command finished (success or failure).
-///
-/// Emitted by the session-persistence actor after running a lifecycle teardown command.
-/// On success, the session has already been removed from the sessions map.
-/// On failure, the session is still open and `error` describes the problem.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionTeardownFinished {
-    /// The session that was being torn down.
-    pub session_id: SessionId,
-    /// Error message if teardown failed.
-    pub error: Option<String>,
-}
-
-impl crate::common::bus::BusMessage for SessionTeardownFinished {}
 
 impl crate::common::bus::BusMessage for SessionCreated {}

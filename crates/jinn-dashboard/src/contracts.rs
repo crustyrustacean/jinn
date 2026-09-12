@@ -9,6 +9,3 @@
 //! test in `tests.rs` pins the two definitions together.
 
 pub use jinn_slices::ServiceStatusUpdate;
-
-use serde::Deserialize;
-use serde::Serialize;

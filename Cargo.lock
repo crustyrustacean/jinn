@@ -2748,6 +2748,7 @@ dependencies = [
  "jinn-provider-config",
  "jinn-quake-bar",
  "jinn-selection-widget",
+ "jinn-session-msg",
  "jinn-session-schema",
  "jinn-slices",
  "jinn-testutil",
@@ -2922,6 +2923,19 @@ dependencies = [
  "ratatui",
  "rstest",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "jinn-session-msg"
+version = "0.116.1"
+dependencies = [
+ "jinn-core-types",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
+ "wherror",
 ]
 
 [[package]]
