@@ -342,3 +342,452 @@ fn reason_message(reason: &CreateThreadReason) -> String {
         .to_owned(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+    use super::*;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::feat::session::chat_entry::ChatEntryKind;
+    use jinn_domain::protocol::SessionId;
+
+    /// Build a bridge subscriber with one seeded session, plus its session id.
+    ///
+    /// The `tx` channel is a throwaway — these tests exercise the to-thread
+    /// feedback handlers, not the forwarding path.
+    fn subscriber_with_session() -> (DiscordBridgeSubscriber, SessionId) {
+        let (tx, _rx) = kanal::bounded(1);
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        // Seed the session so `push_entry` finds it.
+        state.with_session(&jinn_domain::common::tcaps::mint::mint_session_cap(), |v| {
+            v.session.map().get_or_create(&session_id);
+        });
+        let subscriber = DiscordBridgeSubscriber::new(
+            tx,
+            state,
+            jinn_domain::common::tcaps::mint::mint_session_cap(),
+        );
+        (subscriber, session_id)
+    }
+
+    /// `reason_message` for `AlreadyBound` mentions continuing in the existing thread.
+    #[rstest::rstest]
+    #[test]
+    fn reason_message_already_bound_is_descriptive() {
+        let msg = reason_message(&CreateThreadReason::AlreadyBound);
+        assert!(msg.contains("already in a Discord thread"));
+    }
+
+    /// `reason_message` for `ForumChannel(Missing)` explains how to set the field.
+    #[rstest::rstest]
+    #[test]
+    fn reason_message_forum_channel_missing_explains_how_to_set() {
+        let msg = reason_message(&CreateThreadReason::ForumChannel(
+            ForumChannelError::Missing,
+        ));
+        assert!(msg.contains("no `forum_channel` is set"));
+        assert!(msg.contains("snowflake"));
+        assert!(msg.contains("GUILD_FORUM"));
+    }
+
+    /// `reason_message` for `ForumChannel(Invalid)` shows the bad value and what
+    /// a snowflake looks like.
+    #[rstest::rstest]
+    #[test]
+    fn reason_message_forum_channel_invalid_shows_bad_value() {
+        let msg = reason_message(&CreateThreadReason::ForumChannel(
+            ForumChannelError::Invalid {
+                value: "sessions".to_owned(),
+            },
+        ));
+        assert!(
+            msg.contains("`sessions`"),
+            "expected the bad value in the message: {msg}"
+        );
+        assert!(msg.contains("snowflake"));
+        assert!(msg.contains("Copy Channel ID"));
+    }
+
+    /// `reason_message` for `CreateFailed` includes the Discord error detail.
+    #[rstest::rstest]
+    #[test]
+    fn reason_message_create_failed_includes_detail() {
+        let msg = reason_message(&CreateThreadReason::CreateFailed("boom".to_owned()));
+        assert!(msg.contains("boom"));
+    }
+
+    /// `reason_message` for `MappingWriteFailed` describes the orphaned-thread state.
+    #[rstest::rstest]
+    #[test]
+    fn reason_message_mapping_write_failed_describes_orphan() {
+        let msg = reason_message(&CreateThreadReason::MappingWriteFailed);
+        assert!(msg.contains("won't receive replies"));
+    }
+
+    /// A `Created` event pushes a system entry mentioning the title.
+    #[rstest::rstest]
+    #[test]
+    fn created_pushes_system_entry_with_title() {
+        // Given a subscriber with one session.
+        let (subscriber, session_id) = subscriber_with_session();
+
+        // When handling a Created event.
+        subscriber.handle_created(&DiscordThreadCreated {
+            session_id: session_id.clone(),
+            title: "My Cool Session".to_owned(),
+        });
+
+        // Then the session's last history entry is a System entry with the title.
+        let guard = subscriber.state.read();
+        let last = guard.session(&session_id).history().last().expect("entry");
+        assert!(matches!(last.kind, ChatEntryKind::System(_)));
+        assert!(last.text().contains("My Cool Session"));
+    }
+
+    /// A `Failed(AlreadyBound)` event pushes an error entry.
+    #[rstest::rstest]
+    #[test]
+    fn failed_already_bound_pushes_error_entry() {
+        // Given a subscriber with one session.
+        let (subscriber, session_id) = subscriber_with_session();
+
+        // When handling a Failed(AlreadyBound) event.
+        subscriber.handle_failed(&DiscordThreadCreateFailed {
+            session_id: session_id.clone(),
+            reason: CreateThreadReason::AlreadyBound,
+        });
+
+        // Then the session's last history entry is an Error entry.
+        let guard = subscriber.state.read();
+        let last = guard.session(&session_id).history().last().expect("entry");
+        assert!(matches!(last.kind, ChatEntryKind::Error(_)));
+    }
+
+    /// A result for a session that doesn't exist is dropped, not panicked.
+    #[rstest::rstest]
+    #[test]
+    fn result_for_missing_session_is_dropped() {
+        // Given a state with no sessions.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+
+        // When pushing an entry for a session that doesn't exist.
+        push_entry(
+            &state,
+            jinn_domain::common::tcaps::mint::mint_session_cap(),
+            &session_id,
+            ChatEntry::system("nope"),
+        );
+
+        // Then no panic occurred (reaching here is the assertion).
+    }
+
+    // ── trouper transport tests ───────────────────────────────────────
+    //
+    // The fold tests above call the handlers directly. They prove the
+    // folding logic works but NOT that the subscriber is wired to the
+    // `jinn.session` topic end to end. A dropped `handles::<M>()` call
+    // (the bug this port could introduce) would pass every one of those
+    // tests. The tests below publish through the trouper system and
+    // assert the subscriber's output channels, so they fail if any
+    // subscription is dropped.
+
+    use jinn_session_msg::PhaseKind;
+    use std::time::Duration;
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn spawned_subscriber_forwards_turn_finished_from_topic() {
+        // Given a subscriber spawned against a real trouper system, with
+        // its bridge channel drained here.
+        let fabric = jinn_testutil::TestFabric::new();
+        let (tx, rx) = kanal::bounded::<BridgeEvent>(8);
+        let (gw_tx, _gw_rx) = kanal::bounded::<GatewayRequest>(4);
+        DiscordBridgeSubscriber::spawn(
+            fabric.system(),
+            DiscordBridgeSubscriberDeps {
+                tx,
+                gateway_tx: gw_tx,
+                state: State::new(AppState::default()),
+                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+            },
+        );
+        let sid = SessionId::new();
+
+        // When an Idle phase change is published on the session topic.
+        fabric
+            .send_to_topic(
+                &SessionPhaseChanged {
+                    session_id: sid.clone(),
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
+                },
+                &jinn_session_msg::session_topic(),
+            )
+            .await;
+
+        // Then exactly one TurnFinished was forwarded.
+        let event = rx.to_async().recv().await.expect("event forwarded");
+        match event {
+            BridgeEvent::TurnFinished { session_id } => {
+                assert_eq!(session_id, sid);
+            }
+            other => panic!("expected TurnFinished, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn spawned_subscriber_ignores_non_idle_phase_changes() {
+        // Given a spawned subscriber.
+        let fabric = jinn_testutil::TestFabric::new();
+        let (tx, rx) = kanal::bounded::<BridgeEvent>(8);
+        let (gw_tx, _gw_rx) = kanal::bounded::<GatewayRequest>(4);
+        DiscordBridgeSubscriber::spawn(
+            fabric.system(),
+            DiscordBridgeSubscriberDeps {
+                tx,
+                gateway_tx: gw_tx,
+                state: State::new(AppState::default()),
+                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+            },
+        );
+        let sid = SessionId::new();
+
+        // When a non-idle phase change is published on the session topic.
+        fabric
+            .send_to_topic(
+                &SessionPhaseChanged {
+                    session_id: sid.clone(),
+                    old_phase: PhaseKind::Idle,
+                    new_phase: PhaseKind::Streaming,
+                },
+                &jinn_session_msg::session_topic(),
+            )
+            .await;
+
+        // Then nothing is forwarded within a settle window.
+        let mut settled = false;
+        for _ in 0..50 {
+            if matches!(rx.try_recv(), Ok(None)) {
+                settled = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(settled, "non-idle transition must not forward");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn spawned_subscriber_forwards_setup_completed_from_topic() {
+        // Given a spawned subscriber.
+        let fabric = jinn_testutil::TestFabric::new();
+        let (tx, rx) = kanal::bounded::<BridgeEvent>(8);
+        let (gw_tx, _gw_rx) = kanal::bounded::<GatewayRequest>(4);
+        DiscordBridgeSubscriber::spawn(
+            fabric.system(),
+            DiscordBridgeSubscriberDeps {
+                tx,
+                gateway_tx: gw_tx,
+                state: State::new(AppState::default()),
+                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+            },
+        );
+        let sid = SessionId::new();
+
+        // When a failed setup completion is published on the session topic.
+        fabric
+            .send_to_topic(
+                &SessionSetupCompleted {
+                    session_id: sid.clone(),
+                    cwd: std::path::PathBuf::from("/repo"),
+                    error: Some("boom".to_owned()),
+                },
+                &jinn_session_msg::session_topic(),
+            )
+            .await;
+
+        // Then exactly one SetupCompleted was forwarded with the payload.
+        let event = rx.to_async().recv().await.expect("event forwarded");
+        match event {
+            BridgeEvent::SetupCompleted {
+                session_id,
+                cwd,
+                error,
+            } => {
+                assert_eq!(session_id, sid);
+                assert_eq!(cwd, std::path::PathBuf::from("/repo"));
+                assert_eq!(error.as_deref(), Some("boom"));
+            }
+            other => panic!("expected SetupCompleted, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn spawned_subscriber_forwards_teardown_finished_from_topic() {
+        // Given a spawned subscriber.
+        let fabric = jinn_testutil::TestFabric::new();
+        let (tx, rx) = kanal::bounded::<BridgeEvent>(8);
+        let (gw_tx, _gw_rx) = kanal::bounded::<GatewayRequest>(4);
+        DiscordBridgeSubscriber::spawn(
+            fabric.system(),
+            DiscordBridgeSubscriberDeps {
+                tx,
+                gateway_tx: gw_tx,
+                state: State::new(AppState::default()),
+                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+            },
+        );
+        let sid = SessionId::new();
+
+        // When a failed teardown finish is published on the session topic.
+        fabric
+            .send_to_topic(
+                &SessionTeardownFinished {
+                    session_id: sid.clone(),
+                    error: Some("boom".to_owned()),
+                },
+                &jinn_session_msg::session_topic(),
+            )
+            .await;
+
+        // Then exactly one TeardownFinished was forwarded with the payload.
+        let event = rx.to_async().recv().await.expect("event forwarded");
+        match event {
+            BridgeEvent::TeardownFinished { session_id, error } => {
+                assert_eq!(session_id, sid);
+                assert_eq!(error.as_deref(), Some("boom"));
+            }
+            other => panic!("expected TeardownFinished, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn spawned_subscriber_forwards_archived_from_topic() {
+        // Given a spawned subscriber.
+        let fabric = jinn_testutil::TestFabric::new();
+        let (tx, rx) = kanal::bounded::<BridgeEvent>(8);
+        let (gw_tx, _gw_rx) = kanal::bounded::<GatewayRequest>(4);
+        DiscordBridgeSubscriber::spawn(
+            fabric.system(),
+            DiscordBridgeSubscriberDeps {
+                tx,
+                gateway_tx: gw_tx,
+                state: State::new(AppState::default()),
+                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+            },
+        );
+        let sid = SessionId::new();
+
+        // When an archive event is published on the session topic.
+        fabric
+            .send_to_topic(
+                &SessionArchived {
+                    session_id: sid.clone(),
+                },
+                &jinn_session_msg::session_topic(),
+            )
+            .await;
+
+        // Then exactly one Archived was forwarded.
+        let event = rx.to_async().recv().await.expect("event forwarded");
+        match event {
+            BridgeEvent::Archived { session_id } => {
+                assert_eq!(session_id, sid);
+            }
+            other => panic!("expected Archived, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn spawned_subscriber_routes_create_thread_to_gateway_channel() {
+        // Given a spawned subscriber.
+        let fabric = jinn_testutil::TestFabric::new();
+        let (tx, _rx) = kanal::bounded::<BridgeEvent>(8);
+        let (gw_tx, gw_rx) = kanal::bounded::<GatewayRequest>(4);
+        DiscordBridgeSubscriber::spawn(
+            fabric.system(),
+            DiscordBridgeSubscriberDeps {
+                tx,
+                gateway_tx: gw_tx,
+                state: State::new(AppState::default()),
+                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+            },
+        );
+        let sid = SessionId::new();
+
+        // When a CreateThreadForSession command is published on the session topic.
+        fabric
+            .send_to_topic(
+                &CreateThreadForSession {
+                    session_id: sid.clone(),
+                    title: "my thread".to_owned(),
+                },
+                &jinn_session_msg::session_topic(),
+            )
+            .await;
+
+        // Then exactly one GatewayRequest::CreateThreadForSession landed on
+        // the gateway-request channel.
+        let request = gw_rx.to_async().recv().await.expect("request forwarded");
+        let GatewayRequest::CreateThreadForSession { session_id, title } = request;
+        assert_eq!(session_id, sid);
+        assert_eq!(title, "my thread");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn spawned_subscriber_writes_thread_created_into_session_history() {
+        // Given a spawned subscriber whose state holds one seeded session.
+        let fabric = jinn_testutil::TestFabric::new();
+        let (tx, _rx) = kanal::bounded::<BridgeEvent>(8);
+        let (gw_tx, _gw_rx) = kanal::bounded::<GatewayRequest>(4);
+        let state = State::new(AppState::default());
+        let sid = SessionId::new();
+        let cap = jinn_domain::common::tcaps::mint::mint_session_cap();
+        state.with_session(&cap, |v| {
+            v.session.map().get_or_create(&sid);
+        });
+        DiscordBridgeSubscriber::spawn(
+            fabric.system(),
+            DiscordBridgeSubscriberDeps {
+                tx,
+                gateway_tx: gw_tx,
+                state: state.clone(),
+                session_cap: cap,
+            },
+        );
+
+        // When the gateway's thread-created event crosses the session topic.
+        fabric
+            .send_to_topic(
+                &DiscordThreadCreated {
+                    session_id: sid.clone(),
+                    title: "Threaded".to_owned(),
+                },
+                &jinn_session_msg::session_topic(),
+            )
+            .await;
+
+        // Then the session's history gained a System entry mentioning the title.
+        let last = {
+            let mut found = None;
+            for _ in 0..200 {
+                let guard = state.read();
+                if let Some(entry) = guard.session(&sid).history().last() {
+                    found = Some(entry.text().to_owned());
+                    break;
+                }
+                drop(guard);
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            found.expect("history entry written")
+        };
+        assert!(last.contains("Threaded"), "entry text: {last}");
+    }
+}
