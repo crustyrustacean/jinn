@@ -128,6 +128,7 @@ Entries are added or amended **only with human approval**.
 - (plugins) First-party plugins ship as prebuilt wasm embedded in the jinn binary; `jinn install` copies them into the plugins dir and registers them in `jinn.toml` only when `jinn.toml` does not yet exist — an existing `jinn.toml` is never modified by `jinn install`, even with `--force`. Artifacts are refreshed into `res/plugins/` by `just refresh-plugins` (run by `just release`).
 - (plugins) The plugin picker (`<leader>sP`) is a read-only list of loaded plugins (name + phase) snapshot from the contribution cache at open time; plugins are managed outside jinn and cannot be toggled from within.
 - (plugins) A plugin guest that closes stdout cleanly after the handshake ends in phase `Done` (run-to-completion loaders; contributions stay cached); `Dead` is reserved for spawn/handshake failure, traps, and abrupt pipe loss.
+- (plugins) Compiled plugin components are cached on disk between launches (wasmtime cache); each plugin's compile prints progress to the terminal before the TUI starts.
 - (persona) Personas are markdown templates with TOML frontmatter; the persona picker (`<leader>se`) switches the active session persona.
 - (persona) Persona discovery flows through a `persona-loader` plugin (prebuilt, shipped by `jinn install`): it scans `~/.config/jinn/personas/*.md` and contributes definitions over the plugin wire; the coordinator publishes them as `PersonasLoaded`.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
@@ -166,6 +167,10 @@ Entries are added or amended **only with human approval**.
 - (storage) Startup fail-fast: a malformed providers.toml or jinn.toml aborts launch before actor wiring with a stderr report naming the path and TOML detail; recovery via jinn config subcommands stays unguarded.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
 - (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.
+- (storage) On an up-to-date database, startup skips the post-migration foreign-key integrity check; the check runs only when migrations actually applied.
+- (storage) Each pending schema migration prints an announcement to the terminal before applying, so an upgrade launch visibly explains the startup wait.
+- (storage) LATEST_VERSION tracks the newest migration in the apply chain, enforced by a drift test that upgrades a seeded database from every prior version to latest.
+- (storage) Schema v28 adds `fts_rowids`, a per-session map of FTS rowids backfilled from `session_fts`, maintained by the index write path; search SQL and the FTS5 schema are unchanged.
 - (theme) Theme discovery flows through a `theme-loader` plugin (prebuilt, shipped by `jinn install`): it scans `~/.config/jinn/themes/*.toml` (ANSI name, ANSI code, hex, RGB formats) and contributes full theme definitions over the plugin wire; the theme picker reads the contribution cache, not disk.
 - (tokens) A token-count actor estimates per-entry token usage; these estimates drive context-assembly sizing and compaction thresholds.
 - (tokens) The session token ledger stores the pre-send local estimate (`tokens_sent`) alongside provider-reported `prompt_tokens` and `cached_tokens` per request; the estimate is never overwritten.
@@ -282,3 +287,4 @@ Entries are added or amended **only with human approval**.
 - (tools) The `session_fetch` tool elides individual entries beyond ~2,000 chars with an explicit truncation note, announces gaps between discontinuous ordinals, and applies the standard outer line/byte caps to the whole transcript, carrying the unclipped transcript in `full_content` when capped.
 - (search) The search-index dashboard row's status column reports live reindex progress: "N sessions pending" refreshed after every per-session index operation and "index up to date" whenever a drain finds an empty queue (including idle drains).
 - (search) A failed reindex leaves that session's dirty marker set (durable pending work), logs a warning with the session id, and never blocks the rest of the drain batch; a later drain retries it.
+- (search) A rebuild's per-session index delete is driven by the `fts_rowids` map (rowid lookups), avoiding full FTS-table scans; sessions absent from the map skip the delete entirely.
