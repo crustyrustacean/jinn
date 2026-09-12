@@ -217,9 +217,12 @@ impl<'a, C: 'static> SliceHost<'a, C> {
     }
 
     /// Reads the slice's config section as a typed value. The section
-    /// table is snapshotted now; conversion to `T` happens when
-    /// composition finalizes the host, where a missing table or
-    /// malformed TOML aborts launch.
+    /// table is snapshotted now; conversion to `T` happens when the
+    /// sections are applied — during activation via
+    /// [`Self::apply_sections`] (a slice that needs its config value
+    /// before returning calls this itself) or at composition's
+    /// `finalize`. A missing table or malformed TOML aborts launch
+    /// there.
     #[must_use]
     pub fn config_section<T>(&mut self, key: &str) -> ConfigSection<T>
     where
@@ -264,6 +267,24 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         I: FnMut(SliceScopeId, crate::route::InputHook),
     {
         self.hooks.install(install);
+    }
+
+    /// Resolves the staged config sections through `resolve` (the
+    /// kernel's document lookup) so the slice's [`ConfigSection`]
+    /// handles hold values immediately. Sections applied here are
+    /// resolved again — harmlessly, overwriting the slot — at
+    /// composition's `finalize`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SectionError`] for a missing required section or a
+    /// malformed table — the activation-time fail-fast gate, raised
+    /// before the slice reads its value.
+    pub fn apply_sections(
+        &mut self,
+        resolve: &dyn Fn(&str) -> Option<toml::Table>,
+    ) -> Result<(), SectionError> {
+        self.sections.apply(resolve)
     }
 
     /// Applies staged config sections through `sink` (composition
