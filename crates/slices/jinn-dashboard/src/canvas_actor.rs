@@ -413,12 +413,15 @@ mod tests {
         wait_for(|| cell.read().selected_index() == 2).await;
     }
 
-    /// Wire-shape conformance (G4): the kernel's lifecycle event shape
-    /// round-trips through this crate's mirror under the same schema id.
+    /// The lifecycle events the dashboard folds are the **same Rust
+    /// types** the kernel publishes (`jinn_slices::fabric` re-exported
+    /// here via `fabric_events`) — kameo bus dispatch is by `TypeId`,
+    /// so schema-id-equal mirrors would silently drop every event.
+    /// This pins the shared identity plus the wire schema id.
     #[rstest::rstest]
     #[test]
-    fn fabric_event_mirrors_roundtrip_with_stable_schema_ids() {
-        // Given one instance of each mirrored event.
+    fn lifecycle_events_are_the_shared_fabric_types() {
+        // Given one instance of each lifecycle event.
         let starting = ActorStarting {
             name: "llm".to_owned(),
             description: None,
@@ -432,5 +435,7 @@ mod tests {
         assert_eq!(roundtripped.name, "llm");
         let id = ActorStarting::schema_id().to_string();
         assert!(id.starts_with("ActorStarting@"), "id was {id}");
+        // And the dashboard's import surface IS the shared fabric type.
+        let _: jinn_slices::fabric::ActorStarting = starting;
     }
 }

@@ -87,7 +87,12 @@ impl SliceView for DashboardView {
 
         let mut table_state = TableState::default();
         table_state.select(Some(slice.selected_index()));
-        *table_state.offset_mut() = usize::from(slice.scroll_offset());
+        // Trunk parity: the scroll window is clamped per frame so the
+        // selection stays visible in whatever viewport this frame has.
+        // The slice actor owns the cell, so the clamp is the pure
+        // read-side form — no write handle reaches the render path.
+        let content_height = area.height.saturating_sub(1); // header row
+        *table_state.offset_mut() = usize::from(slice.clamped_offset(content_height));
 
         frame.render_stateful_widget(table, area, &mut table_state);
     }
@@ -227,5 +232,41 @@ mod tests {
             (visible_start..visible_end).contains(&4),
             "selected index should be within visible window {visible_start}..{visible_end}"
         );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn render_clamps_the_offset_per_frame_without_mutating_the_slice() {
+        // Given 8 actors with the last selected and a stored offset of 0
+        // (no clamp has ever run on the cell).
+        let mut slice = DashboardState::new();
+        for name in ["a", "b", "c", "d", "e", "f", "g", "h"] {
+            slice.mark_running(name, None);
+        }
+        slice.select_last();
+        assert_eq!(slice.scroll_offset(), 0);
+        let theme = default_theme();
+        let cx = ViewCx { theme: &theme };
+
+        // When rendering into a 5-row-tall viewport (1 header + 4 rows).
+        let (mut terminal, _area) = setup_term(80, 5);
+        terminal
+            .draw(|frame| {
+                let mut view = DashboardView::new();
+                let area = ratatui::layout::Rect::new(0, 0, 80, 5);
+                view.render(frame, area, &cx, &slice);
+            })
+            .expect("render");
+
+        // Then the selected last row is drawn despite offset 0, and the
+        // earliest rows scrolled out of the window.
+        let buf = buffer_string(&terminal);
+        assert!(buf.contains('h'), "selected last row renders: {buf}");
+        assert!(
+            !buf.contains(" a ") && !buf.contains("\u{2502}a"),
+            "first row is scrolled out of the window: {buf}"
+        );
+        // And the read path left the slice's own offset untouched.
+        assert_eq!(slice.scroll_offset(), 0, "render never mutates the slice");
     }
 }

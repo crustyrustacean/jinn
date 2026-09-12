@@ -54,30 +54,36 @@ impl DashboardState {
     /// Clamps `scroll_offset` so the selected entry is always visible within
     /// a viewport of `viewport_height` rows.
     pub fn clamp_scroll(&mut self, viewport_height: u16) {
+        self.scroll_offset = self.clamped_offset(viewport_height);
+    }
+
+    /// The scroll offset that keeps the selected entry visible within a
+    /// viewport of `viewport_height` rows — the pure read-side form of
+    /// [`Self::clamp_scroll`], for renderers that hold only a read
+    /// handle and clamp per frame instead of mutating the cell.
+    #[must_use]
+    pub fn clamped_offset(&self, viewport_height: u16) -> u16 {
         if viewport_height == 0 {
-            return;
+            return self.scroll_offset;
         }
         let count = self.order.len() as u16;
         if count == 0 {
-            self.scroll_offset = 0;
-            return;
+            return 0;
         }
-        let sel = u16::try_from(self.selected_index).unwrap_or(u16::MAX);
-        let bottom = self
-            .scroll_offset
-            .saturating_add(viewport_height)
-            .saturating_sub(1);
-        match sel {
-            s if s < self.scroll_offset => {
-                self.scroll_offset = s;
+        let offset = {
+            let sel = u16::try_from(self.selected_index).unwrap_or(u16::MAX);
+            let bottom = self
+                .scroll_offset
+                .saturating_add(viewport_height)
+                .saturating_sub(1);
+            match sel {
+                s if s < self.scroll_offset => s,
+                s if s > bottom => s.saturating_sub(viewport_height).saturating_add(1),
+                _ => self.scroll_offset,
             }
-            s if s > bottom => {
-                self.scroll_offset = s.saturating_sub(viewport_height).saturating_add(1);
-            }
-            _ => {}
-        }
+        };
         let max_offset = count.saturating_sub(viewport_height);
-        self.scroll_offset = self.scroll_offset.min(max_offset);
+        offset.min(max_offset)
     }
 
     /// Returns all tracked actors in insertion order.

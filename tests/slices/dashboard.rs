@@ -12,7 +12,7 @@
 use crate::common::{composed_keymap, test_app, wait_for};
 use jinn_dashboard::dashboard_scope;
 use jinn_domain::common::slices::TypedCell;
-use jinn_domain::{Intent, Key, KeyEvent, Modifiers};
+use jinn_domain::{Bridge, Intent, Key, KeyEvent, Modifiers};
 use jinn_tui::Scope;
 
 /// The composed keymap carries the terminal-overlay toggle in the
@@ -341,5 +341,138 @@ async fn dashboard_tab_has_no_em_dash_separator() {
     assert!(
         !buf_str.contains('\u{2014}'),
         "dashboard should not contain em-dashes"
+    );
+}
+
+/// REGRESSION (slice migration): lifecycle events published by the
+/// kernel's `spawn_tracked!` (the **kernel** `ActorStarting`/
+/// `ActorStarted` types from `protocol::event`) must reach the
+/// dashboard actor's rows. The slice used to subscribe to
+/// schema-identical but distinct Rust types — kameo dispatches by
+/// `TypeId`, so every lifecycle event silently dropped and only
+/// `ServiceStatusUpdate` rows ever appeared.
+#[rstest::rstest]
+#[tokio::test]
+async fn kernel_lifecycle_events_drive_the_dashboard_rows() {
+    // Given a composed app: the harness activated the dashboard slice,
+    // whose relays subscribe the bus for the kernel lifecycle types.
+    let app = test_app().await;
+    let slot = jinn_dashboard::dashboard_slot();
+    let cell: TypedCell<jinn_dashboard::DashboardState> =
+        app.services.slices.reader(&slot).expect("cell");
+
+    // When an ActorStarting publish rides the bus (the kernel path:
+    // `Bridge::publish_closure` → `bus.tell(Publish(msg))`).
+    let starting = jinn_domain::common::actor::protocol::event::ActorStarting {
+        name: "test-actor".to_owned(),
+        description: Some("regression probe".to_owned()),
+    };
+    let _ = app.core.bridge.send(Bridge::publish_closure(starting));
+    wait_for("the row to appear as Starting", || {
+        cell.read()
+            .actors()
+            .iter()
+            .any(|e| e.name == "test-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Starting)
+    })
+    .await;
+
+    // And when the matching ActorStarted publish rides the bus.
+    let started = jinn_domain::common::actor::protocol::event::ActorStarted {
+        name: "test-actor".to_owned(),
+        description: Some("regression probe".to_owned()),
+    };
+    let _ = app.core.bridge.send(Bridge::publish_closure(started));
+    wait_for("the row to be promoted to Running", || {
+        cell.read()
+            .actors()
+            .iter()
+            .any(|e| e.name == "test-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Running)
+    })
+    .await;
+
+    // Then the row exists and reports the running lifecycle.
+    let row = {
+        let reader = cell.read();
+        reader
+            .actors()
+            .into_iter()
+            .find(|e| e.name == "test-actor")
+            .cloned()
+            .expect("lifecycle event created the row")
+    };
+    assert_eq!(row.lifecycle, jinn_dashboard::ActorLifecycle::Running);
+    assert_eq!(row.description.as_deref(), Some("regression probe"));
+}
+
+/// REGRESSION: a row born from a `ServiceStatusUpdate` without a
+/// lifecycle (the shared-type path — no mirror involved) shows up
+/// `Starting` and is promoted when the lifecycle event lands. Rows
+/// used to be stuck at `Starting` forever.
+#[rstest::rstest]
+#[tokio::test]
+async fn status_message_row_is_promoted_by_lifecycle_events() {
+    // Given a composed app and a ServiceStatusUpdate without a lifecycle.
+    let app = test_app().await;
+    let slot = jinn_dashboard::dashboard_slot();
+    let cell: TypedCell<jinn_dashboard::DashboardState> =
+        app.services.slices.reader(&slot).expect("cell");
+    let update = jinn_slices::ServiceStatusUpdate {
+        name: "svc-actor".to_owned(),
+        description: None,
+        lifecycle: None,
+        status_message: Some("working".to_owned()),
+    };
+    let _ = app.core.bridge.send(Bridge::publish_closure(update));
+
+    // Then the row is born as Starting.
+    wait_for("the svc-actor row to appear", || {
+        cell.read()
+            .actors()
+            .iter()
+            .any(|e| e.name == "svc-actor" && e.status_message.as_deref() == Some("working"))
+    })
+    .await;
+    let born = {
+        let reader = cell.read();
+        reader
+            .actors()
+            .into_iter()
+            .find(|e| e.name == "svc-actor")
+            .cloned()
+            .expect("row exists")
+    };
+    assert_eq!(
+        born.lifecycle,
+        jinn_dashboard::ActorLifecycle::Starting,
+        "status-born rows start as Starting"
+    );
+
+    // And when the kernel lifecycle event arrives, the row is promoted.
+    let started = jinn_domain::common::actor::protocol::event::ActorStarted {
+        name: "svc-actor".to_owned(),
+        description: None,
+    };
+    let _ = app.core.bridge.send(Bridge::publish_closure(started));
+    wait_for("the svc-actor row to reach Running", || {
+        cell.read()
+            .actors()
+            .iter()
+            .any(|e| e.name == "svc-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Running)
+    })
+    .await;
+    // And the status message survived the promotion.
+    let promoted = {
+        let reader = cell.read();
+        reader
+            .actors()
+            .into_iter()
+            .find(|e| e.name == "svc-actor")
+            .cloned()
+            .expect("row exists")
+    };
+    assert_eq!(
+        promoted.status_message.as_deref(),
+        Some("working"),
+        "promotion preserves the status message"
     );
 }
