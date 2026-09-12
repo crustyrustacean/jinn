@@ -2707,8 +2707,6 @@ dependencies = [
  "jinn-session-schema",
  "jinn-slices",
  "jinn-testutil",
- "kameo",
- "kameo_actors",
  "kanal",
  "parking_lot",
  "rstest",

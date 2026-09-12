@@ -7,7 +7,6 @@
 //! websocket + slash commands) lives in the `jinn-discord` crate.
 
 pub mod authorize;
-pub mod bridge_actor;
 pub mod bridge_subscriber;
 pub mod channels;
 pub mod config;
@@ -68,9 +67,9 @@ pub struct ActivatedDiscord {
 /// — it is the connection authority regardless of bridge enablement),
 /// read + validate the `[discord]` section (fail-fast), set the
 /// slice's feature flag from it, create all three gateway kanal
-/// channels unconditionally, spawn the bridge actor only when enabled,
-/// and attach the route rows. Returns the gateway-facing halves + the
-/// config for the frontend spawn.
+/// channels unconditionally, spawn the bridge subscriber only when
+/// enabled, and attach the route rows. Returns the gateway-facing
+/// halves + the config for the frontend spawn.
 ///
 /// # Errors
 ///
