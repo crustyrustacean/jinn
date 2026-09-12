@@ -179,3 +179,96 @@ impl From<DiscordThreadRow> for ThreadMapping {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        reason = "test code: assertion helpers are fine to panic"
+    )]
+
+    use super::DiscordThreadMap;
+    use jinn_domain::feat::session::session_store::SqliteSessionStore;
+    use tempfile::TempDir;
+
+    async fn make_map() -> (TempDir, DiscordThreadMap) {
+        let dir = TempDir::new().expect("temp dir");
+        let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
+        let map = DiscordThreadMap::new(store.pool().clone());
+        (dir, map)
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn dao_set_then_forward_lookup_returns_session_id() {
+        // Given an empty map with one mapping inserted.
+        let (_dir, map) = make_map().await;
+        map.set("thread-1", "session-1", Some("guild-1"), 1_700_000_000)
+            .await
+            .expect("set");
+
+        // When doing the forward lookup.
+        let session = map.get_session_by_thread("thread-1").await.expect("lookup");
+
+        // Then the stored session id is returned.
+        assert_eq!(session.as_deref(), Some("session-1"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn dao_set_then_reverse_lookup_returns_mapping() {
+        // Given a map with one mapping.
+        let (_dir, map) = make_map().await;
+        map.set("thread-1", "session-1", Some("guild-1"), 1_700_000_000)
+            .await
+            .expect("set");
+
+        // When doing the reverse lookup.
+        let mapping = map
+            .get_thread_by_session("session-1")
+            .await
+            .expect("lookup");
+
+        // Then the full mapping is returned.
+        let mapping = mapping.expect("mapping exists");
+        assert_eq!(mapping.thread_id, "thread-1");
+        assert_eq!(mapping.session_id, "session-1");
+        assert_eq!(mapping.guild_id.as_deref(), Some("guild-1"));
+        assert_eq!(mapping.created_at, 1_700_000_000);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn dao_unknown_thread_returns_none() {
+        // Given an empty map.
+        let (_dir, map) = make_map().await;
+
+        // When looking up a thread that was never recorded.
+        let session = map
+            .get_session_by_thread("never-seen")
+            .await
+            .expect("lookup");
+
+        // Then None is returned.
+        assert!(session.is_none());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn dao_set_rebinds_existing_thread_to_new_session() {
+        // Given a thread already mapped to session-1.
+        let (_dir, map) = make_map().await;
+        map.set("thread-1", "session-1", None, 1)
+            .await
+            .expect("first set");
+
+        // When re-running set for the same thread with a new session.
+        map.set("thread-1", "session-2", None, 2)
+            .await
+            .expect("rebind");
+
+        // Then the forward lookup returns the new session.
+        let session = map.get_session_by_thread("thread-1").await.expect("lookup");
+        assert_eq!(session.as_deref(), Some("session-2"));
+    }
+}
