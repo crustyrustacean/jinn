@@ -117,14 +117,41 @@ pub async fn activate(
     let config = config_handle.take();
     host.set_flag("discord", config.enabled);
 
-    // Conditionally spawn the bridge actor: bus events → the gateway
-    // channels. The gateway task itself is spawned later by the
-    // frontend (`jinn_discord::spawn_gateway`), so it never blocks
-    // readiness. When disabled, the senders drop here — the parked
-    // receivers then report `Disconnected`, fail-closed.
+    // Conditionally spawn the bridge subscriber: trouper `jinn.session`
+    // topic events → the gateway channels. The gateway task itself is
+    // spawned later by the frontend (`jinn_discord::spawn_gateway`), so
+    // it never blocks readiness. When disabled, the senders drop here —
+    // the parked receivers then report `Disconnected`, fail-closed.
     if config.enabled {
         spawn_bridge(services, state, bridge_tx, gateway_tx).await;
     }
+
+    // Forward routes: the session-family messages this slice consumes
+    // cross the core bridge onto `jinn.session`. Composition drains the
+    // staged set into per-route relays; the relay is just one more bus
+    // subscriber, so existing kameo consumers are unaffected.
+    let topic = jinn_session_msg::session_topic();
+    host.forward::<jinn_session_msg::SessionPhaseChanged, _>(topic.clone(), || {
+        <jinn_session_msg::SessionPhaseChanged as trouper::schema::Schema>::schema_def()
+    });
+    host.forward::<jinn_session_msg::SessionSetupCompleted, _>(topic.clone(), || {
+        <jinn_session_msg::SessionSetupCompleted as trouper::schema::Schema>::schema_def()
+    });
+    host.forward::<jinn_session_msg::SessionTeardownFinished, _>(topic.clone(), || {
+        <jinn_session_msg::SessionTeardownFinished as trouper::schema::Schema>::schema_def()
+    });
+    host.forward::<jinn_session_msg::SessionArchived, _>(topic.clone(), || {
+        <jinn_session_msg::SessionArchived as trouper::schema::Schema>::schema_def()
+    });
+    host.forward::<CreateThreadForSession, _>(topic.clone(), || {
+        <CreateThreadForSession as trouper::schema::Schema>::schema_def()
+    });
+    host.forward::<DiscordThreadCreated, _>(topic.clone(), || {
+        <DiscordThreadCreated as trouper::schema::Schema>::schema_def()
+    });
+    host.forward::<DiscordThreadCreateFailed, _>(topic, || {
+        <DiscordThreadCreateFailed as trouper::schema::Schema>::schema_def()
+    });
 
     // Route rows: the `gdc` sequence in the Normal scope.
     attach_discord_rows(host.key_routes());

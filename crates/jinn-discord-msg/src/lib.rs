@@ -22,6 +22,10 @@ pub fn discord_topic() -> trouper::types::Topic {
 /// the gateway and are stored as `TEXT` in the `discord_thread` table.
 pub type ThreadId = String;
 
+impl jinn_slices::BusMessage for CreateThreadForSession {}
+impl jinn_slices::BusMessage for DiscordThreadCreated {}
+impl jinn_slices::BusMessage for DiscordThreadCreateFailed {}
+
 /// An event forwarded from the jinn bus to the poise gateway task.
 ///
 /// Only the transitions the bot reacts to are modeled:
@@ -85,7 +89,7 @@ pub enum BridgeEvent {
 ///
 /// Carried by [`DiscordThreadCreateFailed`] so the feedback actor can render
 /// a specific in-chat error message.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CreateThreadReason {
     /// The session is already bound to a Discord thread — re-`gdc` is rejected
     /// (never rebind, never orphan the existing thread).
@@ -104,7 +108,7 @@ pub enum CreateThreadReason {
 ///
 /// The gateway is the sole judge of whether `forum_channel` is usable, so
 /// both cases surface here (never at the intent handler).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ForumChannelError {
     /// `[discord] forum_channel` is unset or empty.
     Missing,
@@ -118,10 +122,12 @@ pub enum ForumChannelError {
 
 /// Bus command: lift the active jinn session into a new Discord forum thread.
 ///
-/// Published by the intent handler (on `gdc`); the slice's bridge actor turns
-/// it into a [`GatewayRequest`] on the request channel. The gateway owns the
+/// Published by the intent handler (on `gdc`); the core-bridge forward
+/// route (staged at slice activation) carries it to the `jinn.session`
+/// topic, where the slice's bridge subscriber turns it into a
+/// [`GatewayRequest`] on the request channel. The gateway owns the
 /// serenity `Http`, so Discord-mutating work is funneled through it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateThreadForSession {
     /// The session to continue in Discord (bound to the new thread).
     pub session_id: SessionId,
@@ -131,9 +137,10 @@ pub struct CreateThreadForSession {
 
 /// The gateway created the Discord thread and bound it to the session.
 ///
-/// Subscribed to by the feedback actor, which appends a
-/// `ChatEntry::system` confirmation to the session's history.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Published by the gateway after a successful thread creation; the
+/// bridge subscriber appends a `ChatEntry::system` confirmation to the
+/// session's history.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiscordThreadCreated {
     /// The session that now has a Discord thread.
     pub session_id: SessionId,
@@ -143,17 +150,41 @@ pub struct DiscordThreadCreated {
 
 /// The gateway could not create / bind the Discord thread.
 ///
-/// Subscribed to by the feedback actor, which appends a `ChatEntry::error`
-/// to the session's history. No thread is created on `AlreadyBound` /
-/// `ForumChannel(_)`; a thread may exist on Discord but be unbound on
-/// `MappingWriteFailed`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Published by the gateway on a failed `gdc`; the bridge subscriber
+/// appends a `ChatEntry::error` to the session's history. No thread is
+/// created on `AlreadyBound` / `ForumChannel(_)`; a thread may exist on
+/// Discord but be unbound on `MappingWriteFailed`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiscordThreadCreateFailed {
     /// The session whose `gdc` failed.
     pub session_id: SessionId,
     /// Why it failed.
     pub reason: CreateThreadReason,
 }
+
+jinn_slices::crossing_schema!(CreateThreadForSession, "CreateThreadForSession",
+    trouper::schema::SchemaKind::Command,
+    description: "Lift a jinn session into a new Discord forum thread.",
+    fields: [
+        "session_id" => trouper::schema::FieldTy::Uuid,
+        "title" => trouper::schema::FieldTy::Str,
+    ]);
+
+jinn_slices::crossing_schema!(DiscordThreadCreated, "DiscordThreadCreated",
+    trouper::schema::SchemaKind::Event,
+    description: "A Discord forum thread was created and bound to a session.",
+    fields: [
+        "session_id" => trouper::schema::FieldTy::Uuid,
+        "title" => trouper::schema::FieldTy::Str,
+    ]);
+
+jinn_slices::crossing_schema!(DiscordThreadCreateFailed, "DiscordThreadCreateFailed",
+    trouper::schema::SchemaKind::Event,
+    description: "Discord thread creation failed; carries the reason.",
+    fields: [
+        "session_id" => trouper::schema::FieldTy::Uuid,
+        "reason" => trouper::schema::FieldTy::Json,
+    ]);
 
 /// A request from the jinn command path to the poise gateway task.
 ///

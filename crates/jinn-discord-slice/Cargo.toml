@@ -10,10 +10,13 @@ daow = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-dashboard = { workspace = true }
 jinn-discord-msg = { workspace = true }
-# The bridge actor relays kernel bus events (session lifecycle family) into
-# the gateway channel; the session slices have not graduated to crates yet,
-# so their event types still live in jinn-domain. This edge dies when they do.
+# The bridge subscriber folds trouper topic events (session lifecycle
+# family) into the gateway channels; the session slices have not
+# graduated to crates yet, so State and the session capability still
+# live in jinn-domain. This edge survives the cut (slice → domain is
+# the legal direction).
 jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-session-msg = { workspace = true }
 jinn-slices = { workspace = true }
 kanal = { workspace = true }
 kameo = { workspace = true }
