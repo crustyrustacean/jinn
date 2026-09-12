@@ -130,10 +130,7 @@ crossterm = { workspace = true }
 
 # Internal
 jinn-domain = { path = "crates/jinn-domain" }
-# The discord slice crate carries the poise gateway as its `backend` module;
-# the directory name (`jinn-discord-slice`) is the crate's home, the package
-# name is `jinn-discord`.
-jinn-discord = { path = "crates/slices/jinn-discord-slice" }
+jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }
 jinn-core-types = { path = "crates/jinn-core-types" }
