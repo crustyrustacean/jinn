@@ -395,3 +395,26 @@ async fn finished_stream_end_disarms_the_timer() {
         .await
         .expect("shutdown timed out");
 }
+
+/// The cache-enabled engine loads the same committed component twice without
+/// error — the second load exercises the disk-cache read path, proving cached
+/// artifacts deserialize back into a working component (the production
+/// second-launch path).
+#[rstest::rstest]
+#[tokio::test]
+async fn engine_loads_component_twice_with_cache_enabled() {
+    // Given an engine with the disk cache enabled and a committed component.
+    let engine = PluginEngine::new().expect("engine with cache");
+
+    // When loading the same component file twice.
+    let first = engine.load(std::path::Path::new(WASM));
+    let second = engine.load(std::path::Path::new(WASM));
+
+    // Then both loads succeed.
+    assert!(first.is_ok(), "first load: {:?}", first.as_ref().err());
+    assert!(
+        second.is_ok(),
+        "second (cached) load: {:?}",
+        second.as_ref().err()
+    );
+}

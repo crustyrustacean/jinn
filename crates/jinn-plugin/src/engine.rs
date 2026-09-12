@@ -22,7 +22,7 @@ use error_stack::{Report, ResultExt as _};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 use wasmtime::component::{Component, Linker};
-use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
+use wasmtime::{Cache, CacheConfig, Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::cli::{AsyncStdinStream, AsyncStdoutStream};
 use wasmtime_wasi::p2::bindings::Command;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
@@ -92,16 +92,32 @@ impl std::fmt::Debug for PluginEngine {
 }
 
 impl PluginEngine {
-    /// Builds the engine: epoch interruption on, component model on.
+    /// Builds the engine: epoch interruption on, component model on, disk
+    /// cache on.
+    ///
+    /// The cache persists compiled component artifacts under the OS cache dir
+    /// (`~/.cache/wasmtime/…`), so a plugin compiled once loads from disk on
+    /// every later launch instead of re-JITing (~seconds → ~milliseconds). A
+    /// cache failure is fatal at engine construction (directory cannot be
+    /// created); once constructed, cache write failures degrade silently to
+    /// compile-per-launch.
     ///
     /// # Errors
     ///
-    /// Returns an error if the wasmtime engine cannot be constructed.
+    /// Returns an error if the wasmtime engine cannot be constructed or the
+    /// cache cannot be configured.
     pub fn new() -> Result<Self, Report<EngineError>> {
+        let cache = {
+            let cache_config = CacheConfig::new();
+            let cache = Cache::new(cache_config)
+                .map_err(|e| Report::new(EngineError::Instantiate).attach(format!("cache: {e}")))?;
+            Some(cache)
+        };
         let mut config = Config::new();
         config.epoch_interruption(true);
         config.wasm_component_model(true);
         config.concurrency_support(true);
+        config.cache(cache);
         let engine = Engine::new(&config)
             .map_err(|e| Report::new(EngineError::Instantiate).attach(e.to_string()))?;
         Ok(Self { engine })

@@ -23,6 +23,12 @@ pub use legacy::PersistableCoreV20;
 #[cfg(feature = "testing")]
 pub use migrate::testing;
 
+/// The highest migration version this runner knows how to apply.
+///
+/// Re-exported from the migrate module for test suites that assert upgrade
+/// postconditions against the published latest version.
+pub use migrate::LATEST_VERSION;
+
 use error_stack::{Report, ResultExt as _};
 use wherror::Error;
 
@@ -40,8 +46,12 @@ use wherror::Error;
 /// table-rebuild migrations) performs an implicit `DELETE` of all rows, which
 /// would otherwise fire the application-level `ON DELETE CASCADE` and wipe
 /// every `session_history` and `token_ledger` row. After the migrations
-/// complete (or fail), FK is re-enabled and `foreign_key_check` verifies
-/// referential integrity.
+/// complete (or fail), FK is re-enabled.
+///
+/// The `foreign_key_check` integrity walk runs **only when migrations
+/// applied**. On an up-to-date database nothing changed, so there is nothing
+/// new to verify and the full walk (measured in seconds on large databases)
+/// is skipped.
 ///
 /// Safe to call on an empty database (bootstraps the tracking table) and
 /// idempotent on a fully-migrated one (the version check short-circuits
@@ -50,7 +60,8 @@ use wherror::Error;
 /// # Errors
 ///
 /// Returns an error if any migration fails, if the FK pragma cannot be toggled,
-/// or if `foreign_key_check` reports integrity violations after the run.
+/// or if `foreign_key_check` reports integrity violations after a run that
+/// applied migrations.
 pub fn run_migrations(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.pragma_update(None, "foreign_keys", "OFF")
         .change_context(SchemaMigrationError)
@@ -58,16 +69,21 @@ pub fn run_migrations(conn: &mut rusqlite::Connection) -> Result<(), Report<Sche
 
     let migrate_result = migrate::run_pending(conn);
 
-    // Always re-enable FK + check integrity, even if a migration failed, so the
-    // connection is left in its normal (FK-on) state.
+    // Always re-enable FK, even if a migration failed, so the connection is
+    // left in its normal (FK-on) state.
     conn.pragma_update(None, "foreign_keys", "ON")
         .change_context(SchemaMigrationError)
         .attach("re-enable foreign_keys after migration")?;
 
-    let violations = fk_violations(conn)?;
+    let violations = match &migrate_result {
+        // Only a run that applied migrations can have changed referential
+        // integrity; a no-op run skips the full-table walk entirely.
+        Ok(true) => fk_violations(conn)?,
+        Ok(false) | Err(_) => Vec::new(),
+    };
     match (migrate_result, violations) {
-        (Ok(()), empty) if empty.is_empty() => Ok(()),
-        (Ok(()), tables) => Err(Report::new(SchemaMigrationError)
+        (Ok(_), empty) if empty.is_empty() => Ok(()),
+        (Ok(_), tables) => Err(Report::new(SchemaMigrationError)
             .attach("foreign_key_check reported violations after migration")
             .attach(format!("violating tables: {}", tables.join(", ")))),
         (Err(e), _) => Err(e),

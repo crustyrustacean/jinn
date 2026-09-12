@@ -125,7 +125,7 @@ mod tests {
         // When running migrations.
         run_migrations(&pool).await.unwrap();
 
-        // Then the _migrations table has 27 entries.
+        // Then the _migrations table has one entry per migration.
         let rows: Vec<(i32, String)> = pool
             .with_conn(|conn| {
                 let mut stmt =
@@ -140,7 +140,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(rows.len(), 28);
+        let expected = usize::try_from(jinn_session_schema::LATEST_VERSION)
+            .expect("LATEST_VERSION is non-negative")
+            + 1;
+        assert_eq!(rows.len(), expected);
         assert_eq!(rows[0].0, 0);
         assert_eq!(rows[0].1, "create_initial_schema");
         assert_eq!(rows[1].0, 1);
@@ -199,15 +202,16 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(count, 28);
+        let expected = i64::from(jinn_session_schema::LATEST_VERSION) + 1;
+        assert_eq!(count, expected);
     }
 
     /// Verifies that each migration guard uses `<` not `<=`.
     ///
-    /// For each version N (0..=24), we build a database at exactly version N
-    /// by calling individual migration functions, then re-run `run_migrations`.
-    /// It must succeed (applying only v(N+1) through v24) and produce exactly
-    /// 26 migration rows.
+    /// For each version N (0..=LATEST), we build a database at exactly version
+    /// N by seeding via the chain table, then re-run `run_migrations`. It must
+    /// succeed (applying only v(N+1) through LATEST) and produce exactly one
+    /// row per version, with no duplicates.
     ///
     /// If `current < N` were mutated to `current <= N`, vN would re-run when
     /// current == N. Most migrations would fail (duplicate table/column),
@@ -216,7 +220,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn migration_guards_do_not_reapply_completed_version() {
-        for target_version in 0..=24_i32 {
+        for target_version in 0..=jinn_session_schema::LATEST_VERSION {
             let (pool, _dir) = apply_migrations_up_to(target_version).await;
 
             // Re-running should succeed - applying only versions > target_version.
@@ -224,7 +228,7 @@ mod tests {
                 panic!("re-run at target_version={target_version} should succeed: {e:?}")
             });
 
-            // Verify no duplicate rows: exactly 28 migration rows total.
+            // Verify no duplicate rows: exactly one migration row per version.
             let count: i64 = pool
                 .with_conn(|conn| {
                     conn.query_row("SELECT COUNT(*) AS count FROM _migrations", [], |r| {
@@ -234,9 +238,10 @@ mod tests {
                 })
                 .await
                 .unwrap();
+            let expected = i64::from(jinn_session_schema::LATEST_VERSION) + 1;
             assert_eq!(
-                count, 28,
-                "at target_version={target_version}: expected 28 migration rows, no duplicates"
+                count, expected,
+                "at target_version={target_version}: expected one row per version, no duplicates"
             );
         }
     }
