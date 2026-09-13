@@ -92,7 +92,7 @@ async fn startup_drain_indexes_all_dirty_sessions() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: REINDEX_INTERVAL,
-            budget: Duration::from_hours(1),
+            batch: usize::MAX,
         },
         &root,
     )
@@ -116,7 +116,7 @@ async fn tick_loop_picks_up_sessions_marked_after_startup() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_hours(1),
+            batch: usize::MAX,
         },
         &root,
     )
@@ -185,7 +185,7 @@ async fn failed_drain_leaves_marker_and_next_drain_recovers() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_hours(1),
+            batch: usize::MAX,
         },
         &root,
     )
@@ -242,7 +242,7 @@ async fn failing_session_does_not_block_rest_of_batch() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_hours(1),
+            batch: usize::MAX,
         },
         &root,
     )
@@ -303,7 +303,7 @@ async fn failed_session_marker_survives_and_recovers_when_fault_clears() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_hours(1),
+            batch: usize::MAX,
         },
         &root,
     )
@@ -377,12 +377,12 @@ async fn create_reindex_tripwire(store: &SqliteSessionStore, poisoned: &SessionI
 
 #[rstest::rstest]
 #[tokio::test]
-async fn drain_publishes_pending_count_before_and_after_work() {
+async fn drain_publishes_a_countdown_label_after_each_session() {
     // Given three dirty sessions and a recorder listening for status updates
     // on the same bus the actor publishes to.
     let (_dir, harness, deps, _store) = sqlite_actor_deps().await;
     let recorder = harness
-        .spawn_recorder::<crate::feat::dashboard::ServiceStatusUpdate>()
+        .spawn_recorder::<jinn_slices::ServiceStatusUpdate>()
         .await;
     for _ in 0..3 {
         deps.services
@@ -393,34 +393,38 @@ async fn drain_publishes_pending_count_before_and_after_work() {
     }
 
     // When the actor runs its startup drain with a tiny interval and a
-    // budget large enough to finish the whole batch in one tick.
+    // batch large enough to finish the whole queue in one heartbeat.
     let root = RootSupervisor::spawn_root().await;
     let _actor = crate::feat::session_search::search_index_actor::spawn_search_index_actor(
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_hours(1),
+            batch: usize::MAX,
         },
         &root,
     )
     .await;
 
-    // Then the drain published the full queue ("3 sessions pending") before
-    // indexing anything and "index up to date" once the batch finished —
-    // the row is never blank while work is in flight.
+    // Then the drain published the live remaining count after every
+    // session — 3, 2, 1 — and "index up to date" once the queue emptied,
+    // so the row steps down per session instead of per drain.
     let messages =
-        crate::common::bus::test_harness::await_recorded(&recorder, 2, Duration::from_secs(10))
+        crate::common::bus::test_harness::await_recorded(&recorder, 4, Duration::from_secs(10))
             .await;
     let labels: Vec<&str> = messages
         .iter()
         .filter_map(|m| m.status_message.as_deref())
         .collect();
     assert_eq!(
-        labels.first(),
-        Some(&"3 sessions pending"),
-        "first publish must precede the first index operation"
+        labels,
+        vec![
+            "3 sessions pending",
+            "2 sessions pending",
+            "1 sessions pending",
+            "index up to date",
+        ],
+        "one label per completed session, then the idle state"
     );
-    assert_eq!(labels.last(), Some(&"index up to date"));
     // And every message targets the search-index row without touching the
     // identity/lifecycle columns.
     for m in &messages {
@@ -432,9 +436,9 @@ async fn drain_publishes_pending_count_before_and_after_work() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn zero_budget_advances_backfill_one_session_per_tick() {
-    // Given three dirty sessions and an actor whose per-tick budget allows
-    // exactly one reindex (Duration::ZERO = no time left after the first).
+async fn batch_of_one_reindexes_one_session_per_heartbeat() {
+    // Given three dirty sessions and an actor whose batch allows exactly one
+    // reindex per heartbeat.
     let (_dir, _harness, deps, _store) = sqlite_actor_deps().await;
     for _ in 0..3 {
         deps.services
@@ -450,15 +454,16 @@ async fn zero_budget_advances_backfill_one_session_per_tick() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::ZERO,
+            batch: 1,
         },
         &root,
     )
     .await;
 
-    // Then the pending queue shrinks across resumed ticks instead of the
-    // actor holding itself for the whole batch: the drain yields after each
-    // session and the next tick picks the work back up.
+    // Then the pending queue shrinks one session per heartbeat instead of
+    // the handler holding itself for the whole queue: each heartbeat yields
+    // to the mailbox after its one session and the next one picks the work
+    // back up.
     let store = deps.services.session_store.clone();
     let first = poll_until(Duration::from_millis(20), 100, || {
         let store = store.clone();
@@ -467,7 +472,7 @@ async fn zero_budget_advances_backfill_one_session_per_tick() {
     .await;
     assert!(
         first,
-        "first tick should leave at most two sessions pending"
+        "first heartbeat should leave at most two sessions pending"
     );
     let second = poll_until(Duration::from_millis(20), 100, || {
         let store = store.clone();
@@ -476,14 +481,216 @@ async fn zero_budget_advances_backfill_one_session_per_tick() {
     .await;
     assert!(
         second,
-        "second tick should leave at most one session pending"
+        "second heartbeat should leave at most one session pending"
     );
     let third = poll_until(Duration::from_millis(20), 100, || {
         let store = store.clone();
         async move { store.pending_dirty_count().await.expect("count") == 0 }
     })
     .await;
-    assert!(third, "backfill should complete across resumed ticks");
+    assert!(third, "backfill should complete across heartbeats");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn heartbeat_processes_at_most_one_batch() {
+    // Given fifteen dirty sessions and an actor whose batch is ten with an
+    // interval long enough that only the first heartbeat fires.
+    let (_dir, _harness, deps, _store) = sqlite_actor_deps().await;
+    for _ in 0..15 {
+        deps.services
+            .session_store
+            .save(&needle_session(&SessionId::new()))
+            .await
+            .expect("save");
+    }
+
+    // When the actor runs its first heartbeat.
+    let root = RootSupervisor::spawn_root().await;
+    let _actor = crate::feat::session_search::search_index_actor::spawn_search_index_actor(
+        SearchIndexActorDeps {
+            deps: deps.clone(),
+            interval: Duration::from_hours(1),
+            batch: 10,
+        },
+        &root,
+    )
+    .await;
+
+    // Then exactly one batch drained: the pending count settles at the five
+    // sessions beyond the batch size and — with no second heartbeat
+    // possible before the interval elapses — stays there.
+    let store = deps.services.session_store.clone();
+    let settled = poll_until(Duration::from_millis(20), 100, || {
+        let store = store.clone();
+        async move { store.pending_dirty_count().await.expect("count") == 5 }
+    })
+    .await;
+    assert!(
+        settled,
+        "first heartbeat should process exactly one batch of ten"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn redirtied_session_is_requeued_and_reindexed_on_a_later_heartbeat() {
+    // Given a session the actor has already fully indexed.
+    let (_dir, _harness, deps, store) = sqlite_actor_deps().await;
+    let session_id = SessionId::new();
+    deps.services
+        .session_store
+        .save(&needle_session(&session_id))
+        .await
+        .expect("save");
+    let root = RootSupervisor::spawn_root().await;
+    let _actor = crate::feat::session_search::search_index_actor::spawn_search_index_actor(
+        SearchIndexActorDeps {
+            deps: deps.clone(),
+            interval: Duration::from_millis(50),
+            batch: usize::MAX,
+        },
+        &root,
+    )
+    .await;
+    let drained = poll_until(Duration::from_millis(20), 100, || {
+        let store = deps.services.session_store.clone();
+        async move { store.pending_dirty_count().await.expect("count") == 0 }
+    })
+    .await;
+    assert!(drained, "the session should be indexed before re-marking");
+
+    // When the session is re-marked dirty the way a save after indexing
+    // would (insert straight into fts_dirty).
+    store
+        .pool()
+        .with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO fts_dirty(session_id) VALUES (?) \
+                 ON CONFLICT(session_id) DO NOTHING",
+                rusqlite::params![session_id.to_string()],
+            )
+            .map_err(daow::Error::from)
+        })
+        .await
+        .expect("mark dirty");
+
+    // Then the idle heartbeats pick it back up: the durable queue drains to
+    // zero again without any restart.
+    let reindexed = poll_until(Duration::from_millis(20), 100, || {
+        let store = deps.services.session_store.clone();
+        async move { store.pending_dirty_count().await.expect("count") == 0 }
+    })
+    .await;
+    assert!(
+        reindexed,
+        "re-marked session should be re-queued and re-indexed"
+    );
+    // And the session stays searchable throughout.
+    assert_eq!(
+        search_all(&deps.services.session_store).await.total_matches,
+        2,
+        "session remains searchable"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn countdown_label_counts_every_session_including_the_unprocessed_batch_tail() {
+    // Given fifteen dirty sessions, a batch of ten, and a status recorder.
+    let (_dir, harness, deps, _store) = sqlite_actor_deps().await;
+    let recorder = harness
+        .spawn_recorder::<jinn_slices::ServiceStatusUpdate>()
+        .await;
+    for _ in 0..15 {
+        deps.services
+            .session_store
+            .save(&needle_session(&SessionId::new()))
+            .await
+            .expect("save");
+    }
+
+    // When the actor drains across two heartbeats (interval well under the
+    // wait, so both fire during the assertion window).
+    let root = RootSupervisor::spawn_root().await;
+    let _actor = crate::feat::session_search::search_index_actor::spawn_search_index_actor(
+        SearchIndexActorDeps {
+            deps: deps.clone(),
+            interval: Duration::from_millis(50),
+            batch: 10,
+        },
+        &root,
+    )
+    .await;
+
+    // Then every session decrements the label: the first heartbeat counts
+    // its unpopped batch tail (after the first session, 14 = 5 queued + 9
+    // in flight), the second heartbeat continues the countdown at its own
+    // pre-batch "5" without flashing "index up to date", and the queue
+    // empties into the idle label. Later idle heartbeats repeat the idle
+    // label, so only the deterministic prefix is asserted.
+    let messages =
+        crate::common::bus::test_harness::await_recorded(&recorder, 17, Duration::from_secs(8))
+            .await;
+    let labels: Vec<&str> = messages
+        .iter()
+        .filter_map(|m| m.status_message.as_deref())
+        .collect();
+    let expected: Vec<String> = (5..=15)
+        .rev()
+        .chain([5, 4, 3, 2, 1])
+        .map(|n| format!("{n} sessions pending"))
+        .chain(std::iter::once("index up to date".to_owned()))
+        .collect();
+    assert!(
+        labels.len() >= expected.len(),
+        "expected the full countdown plus idle label, got {labels:?}"
+    );
+    let prefix: Vec<&str> = labels.iter().take(expected.len()).copied().collect();
+    assert_eq!(
+        prefix,
+        expected.iter().map(String::as_str).collect::<Vec<_>>(),
+        "one decrement per session, counting the in-flight batch tail"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn unreadable_dirty_markers_keep_the_row_out_of_the_up_to_date_state() {
+    // Given a store whose only dirty marker is unparseable (dirty_session_ids
+    // skips it, pending_dirty_count still counts it) and a status recorder.
+    let (_dir, harness, deps, store) = sqlite_actor_deps().await;
+    store
+        .pool()
+        .execute(
+            "INSERT INTO fts_dirty (session_id) VALUES ('not-a-uuid')",
+            vec![],
+        )
+        .await
+        .expect("seed corrupt marker");
+    let recorder = harness
+        .spawn_recorder::<jinn_slices::ServiceStatusUpdate>()
+        .await;
+
+    // When the actor drains the (effectively empty) queue.
+    let root = RootSupervisor::spawn_root().await;
+    let _actor = crate::feat::session_search::search_index_actor::spawn_search_index_actor(
+        SearchIndexActorDeps {
+            deps: deps.clone(),
+            interval: Duration::from_hours(1),
+            batch: 10,
+        },
+        &root,
+    )
+    .await;
+
+    // Then the row shows the pending label, never "index up to date".
+    let messages =
+        crate::common::bus::test_harness::await_recorded(&recorder, 1, Duration::from_secs(10))
+            .await;
+    let first = messages.first().expect("at least one status update");
+    assert_eq!(first.name, "search-index");
+    assert_eq!(first.status_message.as_deref(), Some("1 sessions pending"));
 }
 
 #[rstest::rstest]
@@ -492,7 +699,7 @@ async fn empty_drain_publishes_index_up_to_date() {
     // Given a clean store (nothing dirty) and a recorder for status updates.
     let (_dir, harness, deps, _store) = sqlite_actor_deps().await;
     let recorder = harness
-        .spawn_recorder::<crate::feat::dashboard::ServiceStatusUpdate>()
+        .spawn_recorder::<jinn_slices::ServiceStatusUpdate>()
         .await;
 
     // When the actor runs (its startup drain fires on an empty queue).
@@ -501,7 +708,7 @@ async fn empty_drain_publishes_index_up_to_date() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_hours(1),
+            batch: usize::MAX,
         },
         &root,
     )
@@ -523,7 +730,7 @@ async fn failing_session_still_publishes_progress() {
     // for status updates.
     let (_dir, harness, deps, store) = sqlite_actor_deps().await;
     let recorder = harness
-        .spawn_recorder::<crate::feat::dashboard::ServiceStatusUpdate>()
+        .spawn_recorder::<jinn_slices::ServiceStatusUpdate>()
         .await;
     deps.services
         .session_store
@@ -538,7 +745,7 @@ async fn failing_session_still_publishes_progress() {
         SearchIndexActorDeps {
             deps: deps.clone(),
             interval: Duration::from_millis(50),
-            budget: Duration::from_hours(1),
+            batch: usize::MAX,
         },
         &root,
     )

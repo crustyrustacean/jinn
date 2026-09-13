@@ -232,12 +232,13 @@ fn collect_matching_pairs(
 
         // Run regex against the full text() output: "{name}: {arguments}".
         // Match regardless of current exclusion status so that already-excluded
-        // entries still count toward keep_last positioning.
+        // entries still count toward keep_last positioning. The text itself is
+        // never logged (can be thousands of chars); entry_id is enough to
+        // recover it.
         let text = entry.text();
         let matched = rule.regex.is_match(&text);
         tracing::debug!(
             entry_id = %entry.id,
-            text = %text,
             matched,
             "regex match attempt"
         );

@@ -1,7 +1,4 @@
 //! The [`Intent`] enum - one variant per user-initiated action.
-use crate::Bridge;
-use crate::common::bridge::BridgeClosure;
-use crate::common::bus::BusMessage;
 use crate::protocol::{PickerKind, SessionId};
 
 /// The search root for the directory picker.
@@ -26,7 +23,7 @@ impl std::fmt::Display for CwdRoot {
 ///
 /// Every keymap binding and mouse event produces exactly one [`Intent`] variant.
 /// The keymap decides the intent; the `IntentHandler` decides what to do with it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Intent {
     /// Insert a character at the cursor position.
     InsertChar {
@@ -362,33 +359,22 @@ pub enum Intent {
         root: CwdRoot,
     },
 
-    /// Open the quake bar overlay (pushes `FocusScope::QuakeBar`).
-    OpenQuakeBar,
-    /// Close the quake bar overlay (pops `FocusScope::QuakeBar`).
-    CloseQuakeBar,
-    /// Submit the quake bar input into the command log.
-    SubmitQuakeBar,
-    /// Scroll the quake bar command log toward the oldest line.
-    QuakeBarScrollUp,
-    /// Scroll the quake bar command log toward the newest line.
-    QuakeBarScrollDown,
+    /// A dynamically-registered slice's action.
+    ///
+    /// Dispatched exclusively through the feature route table
+    /// ([`KeyRoutes`](crate::common::slices::key_routes::KeyRoutes)):
+    /// a slice that never registered a row for this intent is inert by
+    /// construction. Carries its identity as data, so slices never edit
+    /// this enum.
+    Dynamic(jinn_slices::DynamicIntent),
 
     /// Scroll the task list preview popup toward the top (older tasks).
     TaskListPreviewScrollUp,
     /// Scroll the task list preview popup toward the bottom (newer tasks).
     TaskListPreviewScrollDown,
 
-    // ── Dashboard tab ──────────────────────────────────────────────
-    /// Switch between Chat and Dashboard tabs.
+    /// Switch between Chat and the registered dynamic tabs.
     SwitchTab,
-    /// Move dashboard selection up one row.
-    DashboardSelectUp,
-    /// Move dashboard selection down one row.
-    DashboardSelectDown,
-    /// Move dashboard selection to the first row.
-    DashboardSelectFirst,
-    /// Move dashboard selection to the last row.
-    DashboardSelectLast,
 
     // ── Terminal overlay (interactive_term takeover) ──────────────
     /// Toggle the terminal overlay for a session (global `<M-t>`, or the
@@ -425,15 +411,6 @@ pub enum Intent {
         /// Human-readable key description for the hint line.
         label: String,
     },
-
-    // ── Discord ──────────────────────────────────────────────────
-    /// Continue the active session in a new Discord forum thread ("to-thread").
-    ///
-    /// Binds the current jinn session to a freshly created Discord thread under
-    /// the configured `[discord] forum_channel`. Rejected (in-chat error, no
-    /// thread created) when the session has no title, discord is disabled /
-    /// disconnected, or `forum_channel` is unset.
-    ToDiscordThread,
 }
 
 impl std::fmt::Display for Intent {
@@ -588,18 +565,10 @@ impl std::fmt::Display for Intent {
 
             Intent::ChangeCwd { root } => write!(f, "change cwd from '{root}'"),
 
-            Intent::OpenQuakeBar => write!(f, "open quake bar"),
-            Intent::CloseQuakeBar => write!(f, "close quake bar"),
-            Intent::SubmitQuakeBar => write!(f, "quake bar submit"),
-            Intent::QuakeBarScrollUp => write!(f, "quake bar scroll up"),
-            Intent::QuakeBarScrollDown => write!(f, "quake bar scroll down"),
+            Intent::Dynamic(dynamic) => write!(f, "{dynamic}"),
             Intent::TaskListPreviewScrollUp => write!(f, "task list preview scroll up"),
             Intent::TaskListPreviewScrollDown => write!(f, "task list preview scroll down"),
             Intent::SwitchTab => write!(f, "switch tab"),
-            Intent::DashboardSelectUp => write!(f, "dashboard select up"),
-            Intent::DashboardSelectDown => write!(f, "dashboard select down"),
-            Intent::DashboardSelectFirst => write!(f, "dashboard select first"),
-            Intent::DashboardSelectLast => write!(f, "dashboard select last"),
             Intent::ToggleTerminalOverlay { session_id } => match session_id {
                 Some(id) => write!(f, "toggle terminal overlay for session {id}"),
                 None => write!(f, "toggle terminal overlay"),
@@ -614,74 +583,29 @@ impl std::fmt::Display for Intent {
             Intent::TerminalSendKey { label, .. } => {
                 write!(f, "terminal send key ({label})")
             }
-            Intent::ToDiscordThread => write!(f, "to discord thread"),
         }
     }
 }
 
 /// What an intent handler returns after processing an intent.
 ///
+/// A type alias for the slice-level [`RouteResult`]: the route
+/// mechanics (and this result type) live in `jinn-slices` so slice
+/// crates can produce outcomes without depending on the kernel. The
+/// publish closures are identical — `RouteResult::new_message` and
+/// `Bridge::publish_closure` spawn the same `bus.tell(Publish(..))` —
+/// so behavior is unchanged; only the definition's home moved.
+///
 /// Carries typed message closures to be dispatched to the actor system
-/// via the kameo message bus.
-pub struct IntentResult {
-    /// Typed message closures to publish to the kameo bus.
-    pub messages: Vec<BridgeClosure>,
-    /// Type names of messages, for test inspection.
-    pub message_names: Vec<&'static str>,
-}
+/// via the kameo message bus, plus an optional scope transition. The
+/// scope signal is applied by the handler (an exempt `scope_stack`
+/// writer) *before* the messages publish, so a slice that opens itself
+/// pushes its scope before any bus message a subscriber could observe.
+pub use jinn_slices::RouteResult as IntentResult;
 
-impl IntentResult {
-    /// An empty result with no messages.
-    #[must_use]
-    pub fn empty() -> Self {
-        Self {
-            messages: vec![],
-            message_names: vec![],
-        }
-    }
-
-    /// A result with a single typed message to publish to the bus.
-    ///
-    /// The message is wrapped in a closure that calls
-    /// `bus.tell(Publish(msg)).await` when the bridge drain task processes it.
-    #[must_use]
-    pub fn new_message<M>(msg: M) -> Self
-    where
-        M: BusMessage,
-    {
-        Self {
-            messages: vec![crate::common::bridge::Bridge::publish_closure(msg)],
-            message_names: vec![std::any::type_name::<M>()],
-        }
-    }
-
-    /// Append multiple messages of one type at the same time.
-    #[must_use]
-    pub fn with_messages<I, M>(mut self, msgs: I) -> Self
-    where
-        M: BusMessage,
-        I: IntoIterator<Item = M>,
-    {
-        for msg in msgs {
-            self.messages.push(Bridge::publish_closure(msg));
-            self.message_names.push(std::any::type_name::<M>());
-        }
-        self
-    }
-
-    /// Append a typed message and return self for chaining.
-    #[must_use]
-    pub fn with_message<M: BusMessage>(mut self, msg: M) -> Self {
-        self.messages.push(Bridge::publish_closure(msg));
-        self.message_names.push(std::any::type_name::<M>());
-        self
-    }
-
-    /// Merge another IntentResult's messages into this one.
-    #[must_use]
-    pub fn merge(mut self, other: IntentResult) -> Self {
-        self.messages.extend(other.messages);
-        self.message_names.extend(other.message_names);
-        self
-    }
-}
+/// A scope-stack transition requested by a route action.
+///
+/// Slices declare their transitions as data; the composition-side
+/// handler applies them. Ownership stays single-writer: only the
+/// handler mutates `scope_stack`, and it does so only on these signals.
+pub use jinn_slices::ScopeSignal;

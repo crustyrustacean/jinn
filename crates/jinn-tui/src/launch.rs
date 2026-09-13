@@ -17,6 +17,7 @@ use wherror::Error;
 use crate::app::WhichKeyInstance;
 use crate::config::TuiConfig;
 use crate::keymap;
+use crate::keymap::KeyCategory;
 use crate::scope::Scope;
 use crate::selection::{SelectableRects, SelectionState};
 use crate::suspend::Suspend;
@@ -48,7 +49,7 @@ pub struct LaunchError;
 /// cannot run without it).
 pub fn launch(
     core: AppCore,
-    services: jinn_domain::Services,
+    mut services: jinn_domain::Services,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
     let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
@@ -68,9 +69,6 @@ pub fn launch(
     // Resolve mouse-selection config from environment.
     let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
     let tui_config = TuiConfig::new(mouse_selection);
-
-    let mut ui_registry = AppUiRegistry::new();
-    jinn_domain::register_all_ui_elements(&mut ui_registry);
 
     // The single keymap-bootstrap site. Production and tests reach this
     // via the same path. The terminal control-toggle binding comes from
@@ -95,7 +93,14 @@ pub fn launch(
         );
         jinn_domain::feat::interactive_term::prefs::DEFAULT_CONTROL_TOGGLE_KEY.to_owned()
     });
-    let keymap = keymap::init_with_control_toggle(&control_toggle);
+
+    let mut ui_registry = AppUiRegistry::new();
+    jinn_domain::register_all_ui_elements(&mut ui_registry);
+
+    // Generated keymap bindings from the slice route rows attached
+    // during actor-system bootstrap (single keymap bootstrap site).
+    let mut keymap = keymap::init_with_control_toggle(&control_toggle);
+    register_slice_wiring(&mut services, &mut keymap);
     let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
 
     Ok(TuiApp {
@@ -167,39 +172,26 @@ pub fn load_theme(
     }
 }
 
-/// Test variant of [`launch`] that skips the fatal bootstrap steps (prompt
-/// template loading, compaction prompt, theme) and uses a fake actor host.
+/// Generates slice keymap bindings from the attached route rows.
 ///
-/// This is what [`crate::TuiAppBuilder`] delegates to so that tests still go
-/// through the single keymap-bootstrap site without requiring real on-disk
-/// prompt/theme files.
-pub fn launch_for_test(core: AppCore, services: jinn_domain::Services) -> TuiApp {
-    let mut ui_registry = AppUiRegistry::new();
-    jinn_domain::register_all_ui_elements(&mut ui_registry);
-
-    let initial_scope =
-        crate::app::scope_for_focus(core.state.read().frontend.scope_stack.current());
-
-    let keymap = keymap::init();
-
-    TuiApp {
-        core,
-        services,
-        ui_registry,
-        events: MsgHandler::new(),
-        which_key: WhichKeyInstance::new(keymap, initial_scope),
-        suspend: Suspend::new(),
-        event_thread: None,
-        status: AppStatus::Starting,
-        selection: SelectionState::Idle,
-        selectable_rects: SelectableRects::default(),
-        pending_clipboard: false,
-        config: TuiConfig::default(),
-        sidebar: {
-            let mut s = Sidebar::new();
-            register_sections(&mut s);
-            s
-        },
-        intent_handler_cap: jinn_domain::common::tcaps::mint::mint_intent_handler_cap(),
-    }
+/// Slice activation (cells, actors, views, tab/overlay descriptors)
+/// happens in the actor-system bootstrap (`actor_wiring::build`) for the
+/// production path. This function runs after it, on the freshly built
+/// keymap, so slice bindings land in the same tree as the built-in scope
+/// bindings. A slice whose activate is commented out leaves no keymap,
+/// scope, or which-key residue: removability is automatic.
+fn register_slice_wiring(
+    services: &mut jinn_domain::Services,
+    keymap: &mut ratatui_which_key::Keymap<
+        jinn_domain::KeyEvent,
+        Scope,
+        jinn_domain::Intent,
+        KeyCategory,
+    >,
+) {
+    // Slice activation happens in the actor-system bootstrap
+    // (`actor_wiring`), which is the async context kameo spawns need and
+    // the only place that can put the dashboard first in spawn order.
+    // This function runs after it, so every slice's rows exist by now.
+    crate::keymap_gen::bind_route_rows(&services.key_routes, keymap);
 }

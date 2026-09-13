@@ -343,6 +343,13 @@ impl TestServices {
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: crate::common::request_dump::RequestDumpService::default(),
             task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry::default(),
+            slices: crate::common::slices::Slices::new(),
+            key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
+            viewport: crate::common::slices::view::Viewport::new(),
+            overlay_views: crate::common::overlay_views::OverlayViews::new(),
+            trouper_system: trouper::system::ActorSystem::new(
+                trouper::system::SystemConfig::production(),
+            ),
         }
     }
 }

@@ -23,7 +23,9 @@ disabled-strategies = ["quick-install", "compile"]
 
 
 [workspace]
-members = ["crates/*", "plugins/*", "vendor/*"]
+# `crates/jinn-*` (not `crates/*`) so the glob never matches the `crates/slices/`
+# container directory, which holds the slice crates matched by `crates/slices/*`.
+members = ["crates/jinn-*", "crates/slices/*", "plugins/*", "vendor/*"]
 
 
 [workspace.package]
@@ -72,7 +74,12 @@ jinn-plugin = { workspace = true }
 jinn-plugin-api = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
+jinn-dashboard = { workspace = true }
 jinn-discord = { workspace = true }
+jinn-discord-msg = { workspace = true }
+jinn-quake-bar = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-slices = { workspace = true }
 
 jinn-web-fetch = { workspace = true }
 jinn-web-search = { workspace = true }
@@ -81,6 +88,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 kameo = { workspace = true }
 kameo_actors = { workspace = true }
+trouper = { workspace = true }
 async-trait = { workspace = true }
 wherror = { workspace = true }
 kanal = { workspace = true }
@@ -93,6 +101,7 @@ dirs = { workspace = true }
 jiff = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+nu-ansi-term = { workspace = true }
 clap = { workspace = true }
 clap-verbosity-flag = { workspace = true }
 ratatui-which-key = { workspace = true }
@@ -108,14 +117,28 @@ tokio = { workspace = true, features = ["full"] }
 tempfile = { workspace = true }
 ctor = "0.8"
 rustls = { workspace = true }
+# Slice-composition integration tests (tests/slices.rs) drive the real
+# slices; integration targets are not compiled by `just check`, so the
+# kernel/tui crates above stay slice-free.
+jinn-dashboard = { workspace = true }
+jinn-quake-bar = { workspace = true }
+jinn-discord = { workspace = true }
+jinn-testutil = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
 
 [workspace.dependencies]
 
 # Internal
 jinn-domain = { path = "crates/jinn-domain" }
-jinn-discord = { path = "crates/jinn-discord" }
+jinn-discord = { path = "crates/slices/jinn-discord" }
+jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }
 jinn-core-types = { path = "crates/jinn-core-types" }
+jinn-dashboard = { path = "crates/slices/jinn-dashboard" }
+jinn-quake-bar = { path = "crates/slices/jinn-quake-bar" }
+jinn-slices = { path = "crates/jinn-slices" }
+jinn-session-msg = { path = "crates/jinn-session-msg" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }
 ratatui-markdown = { path = "vendor/ratatui-markdown", features = [
@@ -154,7 +177,7 @@ wasmtime-wasi-http = { version = "47", features = ["p3"] }
 
 # Error handling
 wherror = "2.3.1"
-error-stack = { version = "0.7", features = ["serde"] }
+error-stack = { version = "0.8", features = ["serde"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -173,6 +196,10 @@ futures = "0.3"
 # Actor framework
 kameo = { version = "0.20", features = ["tracing"] }
 kameo_actors = "0.5"
+
+# The trouper actor runtime (path dep on the sibling trouper workspace;
+# an unpublished crate — see .plans/actor-canvas/plan.md)
+trouper = { path = "../../trouper/trouper-sdk/crates/trouper" }
 
 # PTY + terminal emulation (interactive_term tool)
 portable-pty = "0.9"
@@ -242,6 +269,7 @@ anstyle-lossy = "1"
 anstyle = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+nu-ansi-term = "0.50"
 
 # Proc-macro
 syn = { version = "2", features = ["full"] }

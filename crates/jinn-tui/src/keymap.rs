@@ -94,11 +94,12 @@ fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Inte
         });
 }
 
-/// Registers the would-be-global overlay/quake toggles on a non-terminal
+/// Registers the would-be-global terminal toggle on a non-terminal
 /// scope. Globals pierce capture mode (globals beat catch-alls), which used
-/// to strand the terminal control flag on `User`; keeping these as scope
-/// bindings makes capture mode hermetic while preserving the toggles
-/// everywhere else.
+/// to strand the terminal control flag on `User`; keeping this as a scope
+/// binding makes capture mode hermetic while preserving the toggle
+/// everywhere else. (Slice keys are generated from route rows — see
+/// `keymap_gen`.)
 fn add_terminal_toggles(
     b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Intent, KeyCategory>,
 ) {
@@ -106,8 +107,7 @@ fn add_terminal_toggles(
         "<M-t>",
         Intent::ToggleTerminalOverlay { session_id: None },
         KeyCategory::General,
-    )
-    .bind("<M-`>", Intent::OpenQuakeBar, KeyCategory::General);
+    );
 }
 
 /// Builds and returns the full keymap with all scope bindings.
@@ -126,8 +126,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 /// degrade to no toggle binding (the caller validates config earlier).
 ///
 /// The terminal overlay toggle (`<M-t>`) and the quake-bar open key
-/// (`<M-\`>`) are deliberately **scope bindings, not globals**: in
-/// `TerminalControl` a toggle would leave the control flag stuck on `User`
+/// (`<M-\`>`, a slice row binding) are deliberately **scope bindings, not
+/// globals**: in `TerminalControl` a toggle would leave the control flag
+/// stuck on `User`
 /// (the agent locked out). Every other scope registers them locally,
 /// including `TerminalView` where `<M-t>` closes the overlay; only
 /// `TerminalControl` does not — capture mode is hermetic.
@@ -177,7 +178,6 @@ pub fn init_with_control_toggle(control_toggle: &str) -> Keymap<KeyEvent, Scope,
             .describe_group_with_category("g", "general", KeyCategory::General)
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
-            .describe_group_with_category("gd", "discord", KeyCategory::General)
             .bind("<leader>sl", Intent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
             .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::CompactionModel }, KeyCategory::Model)
             .describe_group_with_category("<leader>c", "change", KeyCategory::General)
@@ -189,7 +189,6 @@ pub fn init_with_control_toggle(control_toggle: &str) -> Keymap<KeyEvent, Scope,
             .bind("gcp", Intent::OpenPrunerAccumulationInput, KeyCategory::Context)
             // Isolate selected entry: force-include its tool loop, force-exclude the rest
             .bind("gci", Intent::ChatEntryIsolateSelected, KeyCategory::Context)
-            .bind("gdc", Intent::ToDiscordThread, KeyCategory::General)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
             // Sidebar resize
@@ -429,20 +428,6 @@ pub fn init_with_control_toggle(control_toggle: &str) -> Keymap<KeyEvent, Scope,
             add_picker_base(b);
         });
 
-    // Dashboard scope - service status overview.
-    keymap.scope(Scope::Dashboard, |b| {
-        add_terminal_toggles(b);
-        b
-        .bind("<Tab>", Intent::SwitchTab, KeyCategory::General)
-        .bind("j", Intent::DashboardSelectDown, KeyCategory::Navigation)
-        .bind("k", Intent::DashboardSelectUp, KeyCategory::Navigation)
-        .bind("g", Intent::DashboardSelectFirst, KeyCategory::Navigation)
-        .bind("G", Intent::DashboardSelectLast, KeyCategory::Navigation)
-        .bind("q", Intent::Quit, KeyCategory::General)
-        .bind("<esc>", Intent::SwitchTab, KeyCategory::General)
-        .bind("?", Intent::ToggleWhichkey, KeyCategory::General);
-    });
-
     // TerminalView scope — watching an interactive_term session. Passive:
     // nothing forwards to the pty. The configured toggle key enters control
     // mode; `<M-t>` toggles the overlay closed (view mode holds no user
@@ -487,7 +472,7 @@ pub fn init_with_control_toggle(control_toggle: &str) -> Keymap<KeyEvent, Scope,
 
     // ArgInput scope - typing positional args for a lifecycle command.
     keymap.scope(Scope::ArgInput, |b| {
-        // Only the toggles here, not the quake opener: `<M-`>` is a shell
+        // Only the toggles here, not slice openers: `<M-`>` is a shell
         // character and this scope has an InsertChar guard — unlike other
         // scopes' catch-alls, an unresolved key would mutate arg text.
         b.bind("<M-t>", Intent::ToggleTerminalOverlay { session_id: None }, KeyCategory::General);
@@ -600,34 +585,6 @@ pub fn init_with_control_toggle(control_toggle: &str) -> Keymap<KeyEvent, Scope,
             });
     });
 
-    // Quake Bar scope — the global overlay console. Captures every keystroke;
-    // only <esc>/<M-`> dismiss it, and <M-t> jumps to the terminal overlay.
-    // The opening <M-`> keybind lives on every non-terminal scope (see
-    // add_terminal_toggles) instead of as a global binding: globals pierce
-    // the terminal scopes, which would strand the terminal control flag.
-    keymap.scope(Scope::QuakeBar, |b| {
-        add_terminal_toggles(b);
-        b.bind("<esc>", Intent::CloseQuakeBar, KeyCategory::General)
-            .bind("<M-`>", Intent::CloseQuakeBar, KeyCategory::General)
-            .bind("<enter>", Intent::SubmitQuakeBar, KeyCategory::Input)
-            .bind("<pgup>", Intent::QuakeBarScrollUp, KeyCategory::Navigation)
-            .bind("<pgdn>", Intent::QuakeBarScrollDown, KeyCategory::Navigation)
-            .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
-            .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
-            .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
-            .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
-            .bind("<home>", Intent::MoveCursorToStart, KeyCategory::Input)
-            .bind("<end>", Intent::MoveCursorToEnd, KeyCategory::Input)
-            .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
-            .catch_all(|key: KeyEvent| {
-                if let Key::Char(c) = key.key {
-                    Some(Intent::InsertChar { ch: c })
-                } else {
-                    None
-                }
-            });
-    });
-
     // No global bindings by design: globals survive every scope's catch-all
     // and would pierce TerminalControl's forwarding catch-all (stranding the
     // control flag on User) and TerminalView (popping the overlay). The two
@@ -681,7 +638,7 @@ mod tests {
         let scope = scope_for_focus(&jinn_domain::FocusScope::Picker { kind });
 
         // Then that scope has at least one binding group with a binding.
-        let groups = keymap.bindings_for_scope(scope);
+        let groups = keymap.bindings_for_scope(scope.clone());
         let binding_count: usize = groups.iter().map(|g| g.bindings.len()).sum();
         assert!(
             binding_count > 0,
@@ -708,16 +665,10 @@ mod tests {
             },
         };
 
-        for scope in [
-            Scope::Normal,
-            Scope::Input,
-            Scope::Dashboard,
-            Scope::SidebarSessions,
-            Scope::QuakeBar,
-        ] {
+        for scope in [Scope::Normal, Scope::Input, Scope::SidebarSessions] {
             // Given the default keymap starting in `scope`.
             let keymap = init();
-            let mut wk = WhichKeyInstance::new(keymap, scope);
+            let mut wk = WhichKeyInstance::new(keymap, scope.clone());
 
             // When pressing <M-t>.
             let intent = wk.handle_key(alt_t.clone());
@@ -745,7 +696,7 @@ mod tests {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, scope);
+        let mut wk = WhichKeyInstance::new(keymap, scope.clone());
 
         // When pressing <M-t>.
         let alt_t = KeyEvent {
@@ -778,7 +729,7 @@ mod tests {
 
         // Then likewise no quake intent fires.
         assert!(
-            !matches!(intent, Some(Intent::OpenQuakeBar)),
+            !matches!(intent, Some(Intent::Dynamic(ref d)) if d.action == "open"),
             "{scope:?}: <M-`> must not open the quake bar; got {intent:?}"
         );
     }
@@ -791,7 +742,6 @@ mod tests {
     #[rstest::rstest]
     #[case(Scope::Normal)]
     #[case(Scope::Input)]
-    #[case(Scope::Dashboard)]
     #[case(Scope::SidebarPersona)]
     #[case(Scope::SidebarPins)]
     #[case(Scope::SidebarSessions)]
@@ -817,7 +767,6 @@ mod tests {
     #[case(Scope::PrunerAccumulationInput)]
     #[case(Scope::CwdInput)]
     #[case(Scope::ProjectAddInput)]
-    #[case(Scope::QuakeBar)]
     #[case(Scope::TerminalView)]
     fn alt_t_resolves_in_every_non_terminal_scope(#[case] scope: Scope) {
         use crate::app::WhichKeyInstance;
@@ -825,7 +774,7 @@ mod tests {
 
         // Given the default keymap queried in a non-terminal scope.
         let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, scope);
+        let mut wk = WhichKeyInstance::new(keymap, scope.clone());
 
         // When pressing <M-t>.
         let alt_t = KeyEvent {
@@ -846,76 +795,6 @@ mod tests {
             ),
             "{scope:?}: <M-t> must resolve to ToggleTerminalOverlay; got {intent:?}"
         );
-    }
-
-    /// The quake opener resolves in every non-terminal scope (as its local
-    /// close binding in QuakeBar). Registered per-scope via
-    /// `add_terminal_toggles`; deliberately skipped in ArgInput, where
-    /// unresolved keys fall through to an InsertChar guard that would
-    /// mutate the arg buffer, in TerminalView (would pop the overlay), and
-    /// in TerminalControl where capture must stay hermetic.
-    #[rstest::rstest]
-    #[case(Scope::Normal)]
-    #[case(Scope::Input)]
-    #[case(Scope::Dashboard)]
-    #[case(Scope::SidebarPersona)]
-    #[case(Scope::SidebarPins)]
-    #[case(Scope::SidebarSessions)]
-    #[case(Scope::SidebarTaskList)]
-    #[case(Scope::SidebarMcpServers)]
-    #[case(Scope::PickerProvider)]
-    #[case(Scope::PickerSession)]
-    #[case(Scope::PickerPersona)]
-    #[case(Scope::PickerTheme)]
-    #[case(Scope::PickerLifecycle)]
-    #[case(Scope::PickerCompactionModel)]
-    #[case(Scope::PickerReasoningEffort)]
-    #[case(Scope::PickerEndpoint)]
-    #[case(Scope::PickerTool)]
-    #[case(Scope::PickerSkill)]
-    #[case(Scope::PickerTaskList)]
-    #[case(Scope::PickerProject)]
-    #[case(Scope::PickerMcpServer)]
-    #[case(Scope::PickerPlugin)]
-    #[case(Scope::SidebarResize)]
-    #[case(Scope::RenameSessionInput)]
-    #[case(Scope::PrunerAccumulationInput)]
-    #[case(Scope::CwdInput)]
-    #[case(Scope::ProjectAddInput)]
-    #[case(Scope::QuakeBar)]
-    fn quake_backtick_resolves_in_every_non_terminal_scope(#[case] scope: Scope) {
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        // Given the default keymap queried in a non-terminal scope.
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, scope);
-
-        // When pressing <M-`>.
-        let alt_backtick = KeyEvent {
-            key: Key::Char('`'),
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: true,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(alt_backtick);
-
-        // Then it resolves (QuakeBar binds <M-`> to *close*, the rest open).
-        let expected_close = scope == Scope::QuakeBar;
-        match intent {
-            Some(Intent::OpenQuakeBar) if !expected_close => {}
-            Some(Intent::CloseQuakeBar) if expected_close => {}
-            other => panic!(
-                "{scope:?}: <M-`> must resolve to {} (got {other:?})",
-                if expected_close {
-                    "CloseQuakeBar"
-                } else {
-                    "OpenQuakeBar"
-                },
-            ),
-        }
     }
 
     /// `y` and `I` resolve in view mode only; in control mode the catch-all
@@ -1099,150 +978,33 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn alt_backtick_in_input_scope_does_not_insert_literal_backtick() {
-        // Given a keymap with the per-scope <M-`> binding, queried in Input scope.
+    fn alt_t_in_input_scope_does_not_insert_literal_t() {
+        // Given a keymap with the per-scope <M-t> binding, queried in Input scope.
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
         let mut wk = WhichKeyInstance::new(keymap, Scope::Input);
 
-        // When pressing <M-`> (Alt+backtick).
-        let alt_backtick = KeyEvent {
-            key: Key::Char('`'),
+        // When pressing <M-t> (Alt+t).
+        let alt_t = KeyEvent {
+            key: Key::Char('t'),
             modifiers: Modifiers {
                 ctrl: false,
                 alt: true,
                 shift: false,
             },
         };
-        let intent = wk.handle_key(alt_backtick);
+        let intent = wk.handle_key(alt_t);
 
-        // Then it resolves to OpenQuakeBar, NOT a literal InsertChar('`') —
+        // Then it resolves to the overlay toggle, NOT a literal InsertChar('t') —
         // the scope binding beats the Input catch-all.
         let intent = intent.expect(
-            "<M-`> in Input scope must fire an intent; got None (scope binding missing, catch-all regression)",
+            "<M-t> in Input scope must fire an intent; got None (scope binding missing, catch-all regression)",
         );
         assert!(
-            matches!(intent, Intent::OpenQuakeBar),
-            "<M-`> must resolve to OpenQuakeBar, not InsertChar; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn quake_bar_scope_esc_fires_close_quake_bar() {
-        // Given a keymap queried in QuakeBar scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::QuakeBar);
-
-        // When pressing ESC.
-        let esc = KeyEvent {
-            key: Key::Esc,
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(esc);
-
-        // Then it resolves to CloseQuakeBar (which pops the quake bar scope).
-        let intent = intent.expect("ESC in QuakeBar scope must fire an intent");
-        assert!(
-            matches!(intent, Intent::CloseQuakeBar),
-            "ESC must resolve to CloseQuakeBar; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn quake_bar_scope_meta_backtick_fires_close_quake_bar() {
-        // Given a keymap queried in QuakeBar scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::QuakeBar);
-
-        // When pressing <M-`> (the scoped close binding, overriding the global opener).
-        let meta_backtick = KeyEvent {
-            key: Key::Char('`'),
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: true,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(meta_backtick);
-
-        // Then it resolves to CloseQuakeBar, making <M-`> a toggle (specific-scope-wins
-        // over the global OpenQuakeBar).
-        let intent = intent.expect("<M-`> in QuakeBar scope must fire an intent");
-        assert!(
-            matches!(intent, Intent::CloseQuakeBar),
-            "<M-`> in QuakeBar scope must resolve to CloseQuakeBar (toggle); got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn quake_bar_scope_printable_char_routes_to_insert_char() {
-        // Given a keymap queried in QuakeBar scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::QuakeBar);
-
-        // When pressing a plain printable char.
-        let key_x = KeyEvent {
-            key: Key::Char('x'),
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(key_x);
-
-        // Then it resolves to InsertChar('x') (full keystroke capture).
-        let intent = intent.expect("printable char in QuakeBar scope must fire an intent");
-        assert!(
-            matches!(intent, Intent::InsertChar { ch: 'x' }),
-            "printable char must route to InsertChar; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn quake_bar_scope_pgup_fires_scroll_up() {
-        // Given a keymap queried in QuakeBar scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::QuakeBar);
-
-        // When pressing PageUp.
-        let pgup = KeyEvent {
-            key: Key::PageUp,
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(pgup);
-
-        // Then it resolves to QuakeBarScrollUp (so the log actually scrolls).
-        let intent = intent.expect("PageUp in QuakeBar scope must fire an intent");
-        assert!(
-            matches!(intent, Intent::QuakeBarScrollUp),
-            "PageUp must resolve to QuakeBarScrollUp; got {intent:?}",
+            matches!(intent, Intent::ToggleTerminalOverlay { session_id: None }),
+            "<M-t> must resolve to the overlay toggle, not InsertChar; got {intent:?}",
         );
     }
 
@@ -1418,40 +1180,6 @@ mod tests {
             other => panic!("<leader>sr must be a leaf, got branch: {other:?}"),
         }
     }
-    #[rstest::rstest]
-    fn gdc_resolves_to_to_discord_thread() {
-        // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-
-        // When navigating the gdc sequence (g → d → c).
-        let path = [
-            KeyEvent {
-                key: Key::Char('g'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('d'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('c'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
-
-        // Then it resolves to Intent::ToDiscordThread.
-        match result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(action, Intent::ToDiscordThread),
-                "gdc must resolve to ToDiscordThread; got {action:?}",
-            ),
-            other => panic!("gdc must be a leaf, got branch: {other:?}"),
-        }
-    }
-
     #[rstest::rstest]
     fn reasoning_effort_picker_scope_binds_base_intents() {
         // Given the default keymap.
@@ -2117,27 +1845,6 @@ mod leak_check {
     use crate::scope::Scope;
     use ratatui_which_key::Keymap as WKKeymap;
 
-    #[rstest::rstest]
-    #[test]
-    fn dashboard_scope_has_no_chathistory_or_sidebar_bindings() {
-        let keymap: WKKeymap<
-            jinn_domain::KeyEvent,
-            Scope,
-            jinn_domain::Intent,
-            crate::keymap::KeyCategory,
-        > = init();
-        let groups = keymap.bindings_for_scope(Scope::Dashboard);
-        let all_desc: Vec<&str> = groups
-            .iter()
-            .flat_map(|g| g.bindings.iter().map(|b| b.description.as_str()))
-            .collect();
-        assert!(
-            !all_desc
-                .iter()
-                .any(|d| d.contains("next") || d.contains("previous")),
-            "ChatHistory groups leaked into Dashboard: {all_desc:?}"
-        );
-    }
     #[rstest::rstest]
     #[test]
     fn normal_scope_still_shows_chathistory_and_sidebar_groups() {

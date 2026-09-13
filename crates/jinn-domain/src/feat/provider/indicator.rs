@@ -124,7 +124,9 @@ mod tests {
         let (mut terminal, area) = setup_term(30, 1);
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 element.render(frame, area, &ctx);
             })
             .unwrap();
@@ -148,7 +150,9 @@ mod tests {
         let (mut terminal, area) = setup_term(30, 1);
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 element.render(frame, area, &ctx);
             })
             .unwrap();
@@ -175,7 +179,9 @@ mod tests {
         let (mut terminal, area) = setup_term(30, 1);
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 element.render(frame, area, &ctx);
             })
             .unwrap();

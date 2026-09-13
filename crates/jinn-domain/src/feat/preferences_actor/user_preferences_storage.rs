@@ -41,6 +41,16 @@ pub trait UserPreferencesStorage: Send + Sync + 'static {
     /// Returns [`UserPreferencesError::Io`] if writing fails.
     /// Returns [`UserPreferencesError::Parse`] if serialization fails.
     fn save(&self, prefs: &UserPreferences) -> Result<(), Report<UserPreferencesError>>;
+
+    /// Reads a raw top-level section of the document as a TOML table.
+    ///
+    /// The read face for slice-owned config sections: the kernel struct
+    /// models only the sections it owns; slices read their own tables
+    /// through this method (the `SliceHost` config-section sink), so a
+    /// slice's table survives kernel struct changes.
+    fn raw_section(&self, _key: &str) -> Option<toml::Table> {
+        None
+    }
 }
 
 /// Filesystem-backed user preferences storage.
@@ -85,6 +95,12 @@ impl UserPreferencesStorage for FilesystemUserPreferencesStorage {
 
     fn save(&self, prefs: &UserPreferences) -> Result<(), Report<UserPreferencesError>> {
         super::user_preferences::save_preferences_to(prefs, &self.path)
+    }
+
+    fn raw_section(&self, key: &str) -> Option<toml::Table> {
+        let content = std::fs::read_to_string(&self.path).ok()?;
+        let doc: toml::Table = toml::from_str(&content).ok()?;
+        doc.get(key)?.as_table().cloned()
     }
 }
 
@@ -193,6 +209,14 @@ impl UserPreferencesStorageService {
         let mut guard = self.cache.write();
         *guard = Some(prefs.clone());
         Ok(())
+    }
+
+    /// Reads a raw top-level section of the underlying document.
+    ///
+    /// Always hits the underlying storage (bypasses the typed cache —
+    /// the cache only models the sections the kernel struct owns).
+    pub fn raw_section(&self, key: &str) -> Option<toml::Table> {
+        self.svc.raw_section(key)
     }
 
     /// Reloads preferences from the underlying storage, bypassing the cache.

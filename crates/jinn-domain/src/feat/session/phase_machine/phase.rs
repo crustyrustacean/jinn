@@ -4,37 +4,15 @@
 //! state. Transitioning away from a variant drops its data automatically.
 //!
 //! [`PhaseKind`] is the discriminant used for event emission and logging
-//! where the per-phase data is not needed.
+//! where the per-phase data is not needed. It lives in `jinn-session-msg`
+//! (the crossing-contract crate) and is re-exported here.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Discriminant of [`Phase`] - used for event emission where phase data is not needed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PhaseKind {
-    Idle,
-    Sending,
-    Streaming,
-}
-
-impl std::str::FromStr for PhaseKind {
-    type Err = PhaseKindParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "idle" => Ok(Self::Idle),
-            "sending" => Ok(Self::Sending),
-            "streaming" => Ok(Self::Streaming),
-            _ => Err(PhaseKindParseError(s.to_owned())),
-        }
-    }
-}
-
-/// Error returned when a string does not match any [`PhaseKind`] variant.
-#[derive(Debug, wherror::Error)]
-#[error("unknown phase kind: {0}")]
-pub struct PhaseKindParseError(String);
+pub use jinn_session_msg::PhaseKind;
+pub use jinn_session_msg::PhaseKindParseError;
 
 /// No per-phase data needed for Idle.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

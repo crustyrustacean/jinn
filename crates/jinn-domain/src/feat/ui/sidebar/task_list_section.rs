@@ -436,7 +436,12 @@ mod tests {
     fn content_height_is_zero_when_empty() {
         let app = AppState::default();
         let section = TaskListSection;
-        assert_eq!(section.content_height(&{ RenderCtx::new(&app) }), 0);
+        let slices = jinn_slices::Slices::new();
+        let overlay_views = crate::common::overlay_views::OverlayViews::new();
+        assert_eq!(
+            section.content_height(&RenderCtx::new(&app, &slices, &overlay_views)),
+            0
+        );
     }
 
     #[rstest::rstest]
@@ -444,7 +449,9 @@ mod tests {
     fn content_height_is_nonzero_when_has_phases() {
         let app = setup_with_tasks();
         let section = TaskListSection;
-        let height = section.content_height(&{ RenderCtx::new(&app) });
+        let slices = jinn_slices::Slices::new();
+        let overlay_views = crate::common::overlay_views::OverlayViews::new();
+        let height = section.content_height(&RenderCtx::new(&app, &slices, &overlay_views));
         assert!(height > 0, "expected non-zero height, got {height}");
     }
 
@@ -480,7 +487,9 @@ mod tests {
         let section = TaskListSection;
 
         // When computing the height and the render line count.
-        let height = section.content_height(&{ RenderCtx::new(&app) });
+        let slices = jinn_slices::Slices::new();
+        let overlay_views = crate::common::overlay_views::OverlayViews::new();
+        let height = section.content_height(&RenderCtx::new(&app, &slices, &overlay_views));
         let line_count = build_render_lines(&list, &app).len() as u16;
 
         // Then they agree (render/height lockstep).

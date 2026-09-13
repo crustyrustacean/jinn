@@ -103,7 +103,9 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("terminal");
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_endpoint_picker(frame, Rect::new(0, 0, 80, 24), &ctx);
             })
             .expect("draw");
@@ -131,7 +133,9 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("terminal");
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_endpoint_picker(frame, Rect::new(0, 0, 100, 30), &ctx);
             })
             .expect("draw");
@@ -144,7 +148,9 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(120, 30)).expect("terminal");
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(state, &slices, &overlay_views);
                 render_endpoint_picker(frame, Rect::new(0, 0, 120, 30), &ctx);
             })
             .expect("draw");

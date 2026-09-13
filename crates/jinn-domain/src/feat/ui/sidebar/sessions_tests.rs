@@ -74,14 +74,28 @@ fn section_id_is_sessions() {
 fn content_height_with_one_session() {
     let section = SessionsSection::new();
     let state = AppState::default();
-    assert_eq!(section.content_height(&{ RenderCtx::new(&state) }), 2); // 1 session + footer
+    assert_eq!(
+        {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            section.content_height(&RenderCtx::new(&state, &slices, &overlay_views))
+        },
+        2
+    ); // 1 session + footer
 }
 
 #[rstest::rstest]
 fn content_height_with_three_sessions() {
     let section = SessionsSection::new();
     let state = state_with_sessions(3);
-    assert_eq!(section.content_height(&{ RenderCtx::new(&state) }), 4); // 3 sessions + footer
+    assert_eq!(
+        {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            section.content_height(&RenderCtx::new(&state, &slices, &overlay_views))
+        },
+        4
+    ); // 3 sessions + footer
 }
 
 #[rstest::rstest]
@@ -91,7 +105,9 @@ fn content_height_capped_at_max_visible() {
     let state = state_with_sessions(20);
 
     // When computing content height.
-    let height = section.content_height(&{ RenderCtx::new(&state) });
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = crate::common::overlay_views::OverlayViews::new();
+    let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
 
     // Then it is capped at 15 + 1 = 16, not 20 + 1 = 21.
     assert_eq!(height, 16);
@@ -408,7 +424,9 @@ fn render_rows(
     let (mut terminal, area) = setup_term(width, height);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -559,7 +577,9 @@ fn render_arrow_has_inverted_colors() {
     let (mut terminal, area) = setup_term(30, 20);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -587,7 +607,9 @@ fn render_footer_uses_focus_accent_when_sidebar_focused() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -612,7 +634,9 @@ fn render_footer_uses_border_unfocused_when_sidebar_not_focused() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -641,7 +665,9 @@ fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -911,7 +937,9 @@ fn render_session_title_is_red_when_last_entry_is_error() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -938,7 +966,9 @@ fn render_session_title_is_normal_when_last_entry_is_not_error() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1030,6 +1060,8 @@ fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SessionNewWithLifecycle,
         &mut state,
+        &empty_slices(),
+        &empty_routes(),
     );
 
     // Then the picker scope is pushed with SessionLifecycle kind.
@@ -1052,6 +1084,8 @@ fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SessionNewWithLifecycle,
         &mut state,
+        &empty_slices(),
+        &empty_routes(),
     );
 
     // Then the picker scope is pushed with SessionLifecycle kind.
@@ -1100,6 +1134,8 @@ fn teardown_only_emits_run_session_teardown() {
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SidebarSessionTeardown,
         &mut state,
+        &empty_slices(),
+        &empty_routes(),
     );
 
     // Then a RunSessionTeardown command is emitted with the rendered teardown command.
@@ -1136,6 +1172,8 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SidebarSessionTeardown,
         &mut state,
+        &empty_slices(),
+        &empty_routes(),
     );
 
     // Then no commands are emitted (no teardown command to run).
@@ -1180,6 +1218,8 @@ fn teardown_only_is_noop_when_session_busy() {
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SidebarSessionTeardown,
         &mut state,
+        &empty_slices(),
+        &empty_routes(),
     );
 
     // Then no commands are emitted (validation gates on busy state).
@@ -1734,7 +1774,9 @@ fn render_tree_shows_tree_characters() {
     let (mut terminal, area) = jinn_testutil::setup_term(30, 15);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -2346,7 +2388,12 @@ fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
     focus_sessions_and_select(&mut state, "tree root");
 
     // When handling the first SidebarSessionArchiveTree.
-    let result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    let result = IntentHandler::handle(
+        &Intent::SidebarSessionArchiveTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the confirm prompt is armed with the subtree size.
     assert_eq!(
@@ -2372,7 +2419,12 @@ fn archive_tree_arm_sets_busy_prompt_when_subtree_busy() {
     focus_sessions_and_select(&mut state, "tree root");
 
     // When handling the first SidebarSessionArchiveTree.
-    let result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    let result = IntentHandler::handle(
+        &Intent::SidebarSessionArchiveTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the busy prompt is armed.
     assert_eq!(
@@ -2388,10 +2440,20 @@ fn archive_tree_second_press_emits_archive_command() {
     // Given an armed confirm prompt over an idle subtree.
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
-    IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    IntentHandler::handle(
+        &Intent::SidebarSessionArchiveTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // When handling a second SidebarSessionArchiveTree.
-    let result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    let result = IntentHandler::handle(
+        &Intent::SidebarSessionArchiveTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the ArchiveSessionTree command is emitted.
     assert!(
@@ -2411,7 +2473,12 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
     // Given an armed confirm prompt whose grandchild then becomes busy.
     let (mut state, [.., grandchild_id, _survivor]) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
-    IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    IntentHandler::handle(
+        &Intent::SidebarSessionArchiveTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
     state
         .session
         .get_mut(&grandchild_id)
@@ -2419,7 +2486,12 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
         .begin_busy();
 
     // When handling a second SidebarSessionArchiveTree.
-    let result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    let result = IntentHandler::handle(
+        &Intent::SidebarSessionArchiveTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the prompt flipped to Busy instead of archiving.
     assert_eq!(
@@ -2442,10 +2514,20 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
     // Given an armed confirm prompt.
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
-    IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    IntentHandler::handle(
+        &Intent::SidebarSessionArchiveTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // When handling a different intent (SidebarSectionNext).
-    let _result = IntentHandler::handle(&Intent::SidebarSectionNext, &mut state);
+    let _result = IntentHandler::handle(
+        &Intent::SidebarSectionNext,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the prompt is dismissed.
     assert_eq!(state.frontend.archive_tree_prompt, None);
@@ -2457,7 +2539,12 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
     let (mut state, _) = state_with_archive_tree();
 
     // When handling SidebarSessionArchiveTree.
-    let result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    let result = IntentHandler::handle(
+        &Intent::SidebarSessionArchiveTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then no prompt is armed and no commands are emitted.
     assert_eq!(state.frontend.archive_tree_prompt, None);
@@ -2471,7 +2558,12 @@ fn teardown_tree_arm_sets_confirm_prompt_with_action() {
     focus_sessions_and_select(&mut state, "tree root");
 
     // When handling the first SidebarSessionTeardownTree.
-    let result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+    let result = IntentHandler::handle(
+        &Intent::SidebarSessionTeardownTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the confirm prompt is armed for teardown-and-archive.
     assert_eq!(
@@ -2497,7 +2589,12 @@ fn teardown_tree_arm_sets_busy_prompt_when_subtree_busy() {
     focus_sessions_and_select(&mut state, "tree root");
 
     // When handling the first SidebarSessionTeardownTree.
-    let result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+    let result = IntentHandler::handle(
+        &Intent::SidebarSessionTeardownTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the busy prompt is armed.
     assert_eq!(
@@ -2513,10 +2610,20 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
     // Given an armed teardown confirm prompt over an idle subtree.
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
-    IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+    IntentHandler::handle(
+        &Intent::SidebarSessionTeardownTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // When handling a second SidebarSessionTeardownTree.
-    let result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+    let result = IntentHandler::handle(
+        &Intent::SidebarSessionTeardownTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the TeardownSessionTree command is emitted.
     assert!(
@@ -2545,10 +2652,20 @@ fn teardown_tree_other_intent_dismisses_prompt() {
     // Given an armed teardown confirm prompt.
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
-    IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+    IntentHandler::handle(
+        &Intent::SidebarSessionTeardownTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // When handling a different intent (SidebarSectionNext).
-    let _result = IntentHandler::handle(&Intent::SidebarSectionNext, &mut state);
+    let _result = IntentHandler::handle(
+        &Intent::SidebarSectionNext,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the prompt is dismissed.
     assert_eq!(state.frontend.archive_tree_prompt, None);
@@ -2562,7 +2679,12 @@ fn busy_tree_prompt_dismisses_on_other_intent() {
     state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
 
     // When handling a different intent (SidebarSectionNext).
-    let _result = IntentHandler::handle(&Intent::SidebarSectionNext, &mut state);
+    let _result = IntentHandler::handle(
+        &Intent::SidebarSectionNext,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the busy notice is dismissed.
     assert_eq!(state.frontend.archive_tree_prompt, None);
@@ -2576,7 +2698,12 @@ fn busy_tree_prompt_still_confirms_on_tree_key() {
     state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
 
     // When handling SidebarSessionTeardownTree (the notice's own key).
-    let result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+    let result = IntentHandler::handle(
+        &Intent::SidebarSessionTeardownTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the re-validation passes and the teardown-tree command is emitted.
     assert!(
@@ -2596,10 +2723,20 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
     // Given an armed teardown confirm prompt.
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
-    IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+    IntentHandler::handle(
+        &Intent::SidebarSessionTeardownTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // When handling SidebarSessionArchiveTree (the sibling tree key).
-    let _result = IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    let _result = IntentHandler::handle(
+        &Intent::SidebarSessionArchiveTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the teardown prompt was replaced by a fresh archive prompt.
     assert_eq!(
@@ -2616,10 +2753,20 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
     // Given an armed archive confirm prompt.
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
-    IntentHandler::handle(&Intent::SidebarSessionArchiveTree, &mut state);
+    IntentHandler::handle(
+        &Intent::SidebarSessionArchiveTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // When handling SidebarSessionTeardownTree (the sibling tree key).
-    let _result = IntentHandler::handle(&Intent::SidebarSessionTeardownTree, &mut state);
+    let _result = IntentHandler::handle(
+        &Intent::SidebarSessionTeardownTree,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then the archive prompt was replaced by a fresh teardown prompt.
     assert_eq!(
@@ -2637,6 +2784,16 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+
+/// Empty slice registry + route table for handler tests that don't
+/// exercise slices or route rows.
+fn empty_slices() -> crate::common::slices::Slices {
+    crate::common::slices::Slices::new()
+}
+
+fn empty_routes() -> crate::common::slices::key_routes::KeyRoutes {
+    crate::common::slices::key_routes::KeyRoutes::new()
+}
 
 #[rstest::rstest]
 fn archive_tree_prompt_renders_yellow_confirm_with_count() {
@@ -2801,7 +2958,9 @@ fn render_archive_tree_prompt_rows(state: &AppState, sidebar_width: u16) -> Vec<
         height,
     };
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    let ctx = RenderCtx::new(state);
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = crate::common::overlay_views::OverlayViews::new();
+    let ctx = RenderCtx::new(state, &slices, &overlay_views);
     terminal
         .draw(|frame| {
             crate::feat::ui::sidebar::sessions::render_archive_tree_prompt_for_state(
@@ -2834,7 +2993,9 @@ fn render_sessions_with_archive_tree_prompt(state: &AppState, sidebar_width: u16
         height,
     };
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    let ctx = RenderCtx::new(state);
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = crate::common::overlay_views::OverlayViews::new();
+    let ctx = RenderCtx::new(state, &slices, &overlay_views);
     let mut sidebar = crate::feat::ui::sidebar::Sidebar::default();
     sidebar.register(Box::new(SessionsSection::new()));
     terminal
@@ -2886,7 +3047,9 @@ fn render_sessions_with_close_prompt(state: &AppState, sidebar_width: u16) -> Ve
         height,
     };
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    let ctx = RenderCtx::new(state);
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = crate::common::overlay_views::OverlayViews::new();
+    let ctx = RenderCtx::new(state, &slices, &overlay_views);
     let mut sidebar = crate::feat::ui::sidebar::Sidebar::default();
     sidebar.register(Box::new(SessionsSection::new()));
     terminal

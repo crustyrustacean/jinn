@@ -5,19 +5,37 @@
 //! the terminal in raw mode). In headless mode, traces are written to BOTH the
 //! terminal and a file. The file path is resolved at CLI parse time from the
 //! `--log-file` flag, defaulting to the XDG `state_dir` (see `AppPaths::log_path`).
+//!
+//! Filter precedence: `-v`/`-q` (via `clap_verbosity_flag`) controls only the
+//! verbosity of `jinn*` crates — [`EnvFilter`] matches targets by string
+//! prefix, so `jinn={level}` covers every workspace crate. Third-party crates
+//! (wasmtime, kameo, …) sit on a global `warn` floor, so warnings and errors
+//! always surface from dependencies; at `-q` the floor steps down to `error`
+//! and at `-qq` everything is off. Setting `RUST_LOG` overrides this
+//! automatic filter entirely.
 
 use std::{
-    env,
+    env, fmt,
     fs::{File, OpenOptions},
     io::Write,
     path::PathBuf,
     sync::Arc,
 };
 
-use clap_verbosity_flag::{Verbosity, WarnLevel};
+use clap_verbosity_flag::{Verbosity, VerbosityFilter, WarnLevel};
 use error_stack::{Report, ResultExt};
 use jinn_domain::common::app_info::APP_NAME;
-use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing::{Event, Level, Subscriber};
+use tracing_subscriber::{
+    EnvFilter, Layer,
+    fmt::{
+        FmtContext, FormattedFields, format::FormatEvent, format::FormatFields, format::Writer,
+        time::FormatTime, time::SystemTime,
+    },
+    layer::SubscriberExt,
+    registry::LookupSpan,
+    util::SubscriberInitExt,
+};
 use wherror::Error;
 
 /// Error type returned when tracing subscriber initialization fails.
@@ -96,10 +114,246 @@ fn install_panic_hook(panic_path: PathBuf) {
     }));
 }
 
+/// Builds the `EnvFilter` directive string from `RUST_LOG` and the CLI verbosity.
+///
+/// * No `RUST_LOG` → `warn,jinn={v}`: the global `warn` floor keeps warnings
+///   and errors visible from third-party crates, while the `jinn={v}`
+///   directive (prefix-matched against every `jinn*` workspace crate) is the
+///   only thing `-v`/`-q` control. At `-q` the floor steps down to `error`
+///   (`error,jinn=error`); at `-qq` the filter is `off` entirely.
+/// * Any `RUST_LOG` value → used verbatim as the entire filter; the user has
+///   taken manual control of everything.
+fn build_filter(rust_log: Option<&str>, verbosity: &Verbosity<WarnLevel>) -> String {
+    let Some(log) = rust_log else {
+        return format_from_verbosity(verbosity);
+    };
+    log.to_owned()
+}
+
+/// Renders the automatic (no-`RUST_LOG`) filter for the CLI verbosity: a
+/// global floor for third-party crates plus the `jinn={v}` directive.
+fn format_from_verbosity(verbosity: &Verbosity<WarnLevel>) -> String {
+    match verbosity.filter() {
+        VerbosityFilter::Off => "off".to_owned(),
+        VerbosityFilter::Error => format!("error,{APP_NAME}=error"),
+        level => format!("warn,{APP_NAME}={level}"),
+    }
+}
+
+/// Compact event formatter: shows only the *innermost* span plus a nesting
+/// depth marker, with optional ANSI coloring of the structural segments.
+///
+/// kameo creates one `actor.handle_message` span per actor hop (parented on
+/// the caller's span), so a single tell→handle→publish round trip can nest a
+/// dozen spans. Rendering the whole chain on every line produces giant,
+/// mostly-redundant prefixes. This formatter renders:
+///
+/// ```text
+/// <timestamp> <LEVEL> …×N innermost_span{fields}: target:line: event fields
+/// ```
+///
+/// `…×N` says how deep the event fired without repeating the parents; the
+/// innermost span is where the event actually happened (for kameo arrivals
+/// that's the actor name + message type). Line length is therefore bounded
+/// regardless of nesting depth.
+///
+/// When [`CompactSpans::color`] is set, the timestamp, level, depth marker,
+/// span name, and target segments are wrapped in ANSI styles (via
+/// `nu-ansi-term`); when unset, output is plain text with no escapes.
+struct CompactSpans {
+    color: bool,
+}
+
+impl Clone for CompactSpans {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl Copy for CompactSpans {}
+
+impl<S, N> FormatEvent<S, N> for CompactSpans
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    N: for<'a> tracing_subscriber::fmt::FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        ctx: &FmtContext<'_, S, N>,
+        mut writer: Writer<'_>,
+        event: &Event<'_>,
+    ) -> fmt::Result {
+        // Timestamp, dimmed when coloring.
+        if self.color {
+            write_dimmed_timestamp(&mut writer)?;
+            writer.write_char(' ')?;
+        } else {
+            SystemTime.format_time(&mut writer)?;
+            writer.write_char(' ')?;
+        }
+
+        // Level, padded to width 5 like the default formatters (" INFO") —
+        // pad the plain token first so the escape bytes never shift alignment,
+        // then wrap the token itself in its per-level color.
+        let level: &Level = event.metadata().level();
+        let padded = format!("{level:>5}");
+        if self.color {
+            write!(writer, "{} ", level_color(level).bold().paint(&padded))?;
+        } else {
+            write!(writer, "{padded} ")?;
+        }
+
+        // Depth marker + innermost span only.
+        self.write_span_context(ctx, &mut writer)?;
+
+        // target:line — always on, replacing the per-layer display flags.
+        let meta = event.metadata();
+        if self.color {
+            write!(writer, "{}:", DIMMED.paint(meta.target()))?;
+        } else {
+            write!(writer, "{}:", meta.target())?;
+        }
+        if let Some(line) = meta.line() {
+            write!(writer, "{line}:")?;
+        }
+        writer.write_char(' ')?;
+
+        // The event's own fields (includes the message text); content stays
+        // unstyled so payloads remain greppable.
+        ctx.format_fields(writer.by_ref(), event)?;
+        writeln!(writer)
+    }
+}
+
+/// The style with every property unset (mirrors `nu_ansi_term`'s `Default`,
+/// which is not `const`); the functional-update syntax builds the styles we
+/// actually use in `const` context.
+const UNSET: nu_ansi_term::Style = nu_ansi_term::Style {
+    foreground: None,
+    background: None,
+    is_bold: false,
+    is_dimmed: false,
+    is_italic: false,
+    is_underline: false,
+    is_blink: false,
+    is_reverse: false,
+    is_hidden: false,
+    is_strikethrough: false,
+    prefix_with_reset: false,
+};
+
+/// Dimmed style for structural segments (timestamp, depth marker, target).
+const DIMMED: nu_ansi_term::Style = nu_ansi_term::Style {
+    is_dimmed: true,
+    ..UNSET
+};
+
+/// Bold style for the innermost span name.
+const BOLD: nu_ansi_term::Style = nu_ansi_term::Style {
+    is_bold: true,
+    ..UNSET
+};
+
+/// Maps a tracing level to its conventional terminal color.
+const fn level_color(level: &Level) -> nu_ansi_term::Style {
+    use nu_ansi_term::Color;
+    match *level {
+        Level::ERROR => nu_ansi_term::Style {
+            foreground: Some(Color::Red),
+            ..UNSET
+        },
+        Level::WARN => nu_ansi_term::Style {
+            foreground: Some(Color::Yellow),
+            ..UNSET
+        },
+        Level::INFO => nu_ansi_term::Style {
+            foreground: Some(Color::Green),
+            ..UNSET
+        },
+        Level::DEBUG => nu_ansi_term::Style {
+            foreground: Some(Color::Blue),
+            ..UNSET
+        },
+        Level::TRACE => nu_ansi_term::Style {
+            foreground: Some(Color::Purple),
+            ..UNSET
+        },
+    }
+}
+
+/// Renders a system timestamp as dimmed SGR codes around the fixed-width
+/// form produced by [`SystemTime`], keeping the colored and plain renderings
+/// column-aligned.
+fn write_dimmed_timestamp(writer: &mut Writer<'_>) -> fmt::Result {
+    // `SystemTime::format_time` writes directly; capture the plain form so it
+    // can be wrapped in style codes without reparsing.
+    let mut plain = String::new();
+    {
+        let mut sink = owning_writer(&mut plain);
+        SystemTime.format_time(&mut sink)?;
+    }
+    write!(writer, "{}", DIMMED.paint(plain))
+}
+
+/// Adapts a `String` sink into the `tracing_subscriber::fmt::format::Writer`
+/// expected by `FormatTime`.
+fn owning_writer(sink: &mut String) -> Writer<'_> {
+    Writer::new(sink)
+}
+
+impl CompactSpans {
+    /// Writes the `…×N innermost_span{fields}: ` portion of an event line.
+    fn write_span_context<S, N>(
+        &self,
+        ctx: &FmtContext<'_, S, N>,
+        writer: &mut Writer<'_>,
+    ) -> fmt::Result
+    where
+        S: Subscriber + for<'lookup> LookupSpan<'lookup>,
+        N: for<'writer> FormatFields<'writer> + 'static,
+    {
+        let Some(scope) = ctx.event_scope() else {
+            return Ok(());
+        };
+        let (depth, innermost) = {
+            let mut innermost = None;
+            let mut depth = 0;
+            // Single pass; avoids buffering the whole span chain.
+            for span in scope.from_root() {
+                depth += 1;
+                innermost = Some(span);
+            }
+            (depth, innermost)
+        };
+        let Some(innermost) = innermost else {
+            return Ok(());
+        };
+        if self.color {
+            write!(writer, "{} ", DIMMED.paint(format!("…×{depth}")))?;
+            write!(writer, "{}", BOLD.paint(innermost.metadata().name()))?;
+        } else {
+            write!(writer, "…×{depth} ")?;
+            write!(writer, "{}", innermost.metadata().name())?;
+        }
+        let ext = innermost.extensions();
+        if let Some(fields) = ext.get::<FormattedFields<N>>()
+            && !fields.is_empty()
+        {
+            if self.color {
+                write!(writer, "{}", DIMMED.paint(format!("{{{fields}}}")))?;
+            } else {
+                write!(writer, "{{{fields}}}")?;
+            }
+        }
+        writer.write_str(": ")
+    }
+}
+
 /// Initializes the global tracing subscriber.
 ///
-/// If the `RUST_LOG` environment variable is set, it takes precedence over
-/// the verbosity parameter for filtering log output.
+/// Filtering is built by [`build_filter`]: `-v`/`-q` control only the
+/// `jinn*` crates while third-party crates sit on a global `warn` floor;
+/// setting `RUST_LOG` replaces the whole filter.
 ///
 /// # Arguments
 ///
@@ -119,12 +373,10 @@ fn install_panic_hook(panic_path: PathBuf) {
 pub fn init(
     verbosity: Verbosity<WarnLevel>,
     mode: TracingMode,
+    trace_color: bool,
 ) -> Result<(), Report<TracingInitError>> {
     let rust_log = env::var("RUST_LOG").ok();
-    let filter = match &rust_log {
-        Some(filter_str) => filter_str.clone(),
-        None => format!("{APP_NAME}={verbosity}"),
-    };
+    let filter = build_filter(rust_log.as_deref(), &verbosity);
 
     let log_path = match &mode {
         TracingMode::Tui { log_path }
@@ -144,12 +396,13 @@ pub fn init(
         eprintln!("  or rerun with --log-file <path> to choose a different file.");
     }
 
+    let formatter = CompactSpans { color: trace_color };
+
     match mode {
         TracingMode::Tui { .. } | TracingMode::Quiet { .. } => {
             let file_layer = tracing_subscriber::fmt::layer()
-                .with_file(true)
-                .with_line_number(true)
-                .with_target(true)
+                .event_format(formatter)
+                .with_ansi(trace_color)
                 .with_writer(Arc::new(logfile))
                 .with_filter(EnvFilter::new(filter));
 
@@ -158,15 +411,16 @@ pub fn init(
         TracingMode::Headless { .. } => {
             let file_layer: Box<dyn Layer<_> + Send + Sync + 'static> =
                 tracing_subscriber::fmt::layer()
-                    .with_file(true)
-                    .with_line_number(true)
-                    .with_target(true)
+                    .event_format(formatter)
+                    .with_ansi(trace_color)
                     .with_writer(Arc::new(logfile))
                     .with_filter(EnvFilter::new(filter.clone()))
                     .boxed();
 
-            let terminal_layer =
-                tracing_subscriber::fmt::layer().with_filter(EnvFilter::new(filter));
+            let terminal_layer = tracing_subscriber::fmt::layer()
+                .event_format(formatter)
+                .with_ansi(trace_color)
+                .with_filter(EnvFilter::new(filter));
 
             tracing_subscriber::registry()
                 .with(file_layer)
@@ -207,6 +461,329 @@ fn open_log_file(path: &std::path::Path) -> Result<File, Report<TracingInitError
 mod tests {
     use super::*;
     use std::path::Path;
+    use std::sync::Mutex;
+
+    /// A `MakeWriter` capturing formatted output for assertions.
+    #[derive(Clone, Default)]
+    struct CapturingWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl CapturingWriter {
+        fn contents(&self) -> String {
+            String::from_utf8(self.0.lock().expect("poisoned").clone())
+                .expect("captured output is utf-8")
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CapturingWriter {
+        type Writer = CapturingSink;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            CapturingSink(self.0.clone())
+        }
+    }
+
+    struct CapturingSink(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CapturingSink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("poisoned").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Emits an info event inside `depth` nested spans and returns the
+    /// captured formatter output.
+    fn render_event_at_depth(depth: usize) -> String {
+        render_at_depth_with(depth, false)
+    }
+
+    /// Emits an info event inside `depth` nested spans, with or without
+    /// coloring, returning the captured formatter output.
+    fn render_at_depth_with(depth: usize, color: bool) -> String {
+        let capture = CapturingWriter::default();
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(CompactSpans { color })
+                .with_ansi(color)
+                .with_writer(capture.clone()),
+        );
+
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            let outer = tracing::info_span!("outer_span", hop = "first");
+            let _entered_outer = outer.enter();
+            let held: Vec<tracing::Span> = {
+                let mut spans: Vec<tracing::Span> = Vec::with_capacity(depth);
+                for i in 0..depth {
+                    let parent = spans.last();
+                    let span = match parent {
+                        Some(parent) => tracing::info_span!(
+                            parent: parent.id(),
+                            "actor.handle_message",
+                            actor.name = "TestActor"
+                        ),
+                        None => {
+                            tracing::info_span!("actor.handle_message", actor.name = "TestActor")
+                        }
+                    };
+                    spans.push(span);
+                    let _ = i;
+                }
+                spans
+            };
+            let _guards: Vec<_> = held.iter().map(|span| span.enter()).collect();
+            tracing::info!("hello from inside");
+        }
+
+        capture.contents()
+    }
+
+    #[rstest::rstest]
+    #[case(false)]
+    #[case(true)]
+    #[test]
+    fn formatter_renders_depth_marker_and_innermost_span(#[case] color: bool) {
+        // Given a subscriber with the compact formatter and 20 nested spans.
+        let output = render_at_depth_with(20, color);
+
+        // When formatting an event inside those spans (rendered above).
+
+        // Then the depth marker counts all spans (outer + 20 nested).
+        assert!(
+            output
+                .replace("\x1b[2m", "")
+                .replace("\x1b[0m", "")
+                .contains("…×21 "),
+            "expected depth marker, got: {output}"
+        );
+        // And only the innermost span name and fields are rendered.
+        assert!(
+            output.contains("actor.handle_message"),
+            "expected innermost span, got: {output}"
+        );
+        // And no parent span names leak into the line (field names may carry
+        // ANSI styling, so match on the value alone).
+        assert!(
+            !output.contains("outer_span"),
+            "expected no parent-chain text, got: {output}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn formatter_output_prefix_is_bounded() {
+        // Given events rendered at depth 1 and depth 20.
+        let shallow = render_event_at_depth(1);
+        let deep = render_event_at_depth(20);
+
+        // When measuring the span context each line renders (timestamp +
+        // level + depth marker + span prefix, i.e. everything before the
+        // target).
+        let prefix_len = |output: &str| {
+            let line = output.lines().next().expect("one line of output");
+            line.find("jinn::tracing:").expect("target in output")
+        };
+
+        // Then the prefix length does not grow with nesting depth (the depth
+        // marker gains one char from "…×2" to "…×21"; that is it).
+        let shallow_prefix = prefix_len(&shallow);
+        let deep_prefix = prefix_len(&deep);
+        let delta = (deep_prefix - shallow_prefix) as i64;
+        assert!(
+            (-1..=1).contains(&delta),
+            "prefix must not depend on nesting depth (shallow={shallow}, deep={deep})"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn formatter_renders_event_without_spans() {
+        // Given a subscriber with the compact formatter and no active spans.
+        let capture = CapturingWriter::default();
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(CompactSpans { color: false })
+                .with_writer(capture.clone()),
+        );
+
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            tracing::info!("spanless event");
+        }
+
+        // When formatting the event (rendered above).
+
+        // Then no depth marker or span prefix is emitted.
+        let output = capture.contents();
+        assert!(
+            !output.contains("…×"),
+            "expected no depth marker, got: {output}"
+        );
+        // And the event message and target are still present.
+        assert!(
+            output.contains("spanless event"),
+            "expected event message, got: {output}"
+        );
+        assert!(
+            output.contains("jinn::tracing:"),
+            "expected target, got: {output}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn formatter_without_color_emits_no_escapes() {
+        // Given the compact formatter with coloring disabled.
+        let output = render_at_depth_with(3, false);
+
+        // When formatting an event (rendered above).
+
+        // Then the rendered line contains no ANSI escape sequences.
+        assert!(
+            !output.contains('\x1b'),
+            "expected no escapes, got: {output:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn formatter_with_color_emits_level_color_and_styles() {
+        // Given the compact formatter with coloring enabled.
+        let output = render_at_depth_with(3, true);
+
+        // When formatting an INFO event (rendered above).
+
+        // Then the level token carries its green foreground code (bold+green
+        // renders as `1;32` in a single SGR sequence).
+        assert!(
+            output.contains("\x1b[1;32m INFO\x1b[0m"),
+            "expected colored INFO level, got: {output:?}"
+        );
+        // And the timestamp and span name are styled.
+        assert!(
+            output.contains("\x1b[2m"),
+            "expected dimmed segments, got: {output:?}"
+        );
+        assert!(
+            output.contains("\x1b[1mactor.handle_message\x1b[0m"),
+            "expected bold span name, got: {output:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn formatter_with_color_keeps_level_padding() {
+        // Given colored and plain renderings of the same event.
+        let plain = render_at_depth_with(3, false);
+        let colored = render_at_depth_with(3, true);
+
+        // When locating the level token in each (stripping escapes from the
+        // colored one).
+
+        // Then both place the level in the same columns — the escape bytes
+        // never shift the padding.
+        let strip = |s: &str| {
+            let line = s.lines().next().expect("one line");
+            let idx = line.find(" INFO").expect("level token in output");
+            line[idx..].to_owned()
+        };
+        assert!(
+            strip(&plain).starts_with(" INFO "),
+            "plain level alignment broken: {plain:?}"
+        );
+        let colored_plain = colored
+            .replace("\x1b[1;32m", "")
+            .replace("\x1b[2m", "")
+            .replace("\x1b[0m", "")
+            .replace("\x1b[1m", "")
+            .replace("\x1b[3m", "");
+        assert!(
+            strip(&colored_plain).starts_with(" INFO "),
+            "colored level alignment broken: {colored:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn filter_without_rust_log_defaults_to_warn_floor() {
+        // Given no RUST_LOG and the default verbosity.
+        let verbosity = Verbosity::new(0, 0);
+
+        // When building the filter.
+        let filter = build_filter(None, &verbosity);
+
+        // Then third-party crates sit on the warn floor and jinn is at the CLI level.
+        assert_eq!(filter, "warn,jinn=warn");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn filter_verbosity_raises_only_jinn() {
+        // Given no RUST_LOG and -vv.
+        let verbosity = Verbosity::new(2, 0);
+
+        // When building the filter.
+        let filter = build_filter(None, &verbosity);
+
+        // Then jinn rises to debug while the third-party floor stays at warn.
+        assert_eq!(filter, "warn,jinn=debug");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn filter_quiet_lowers_floor_to_error() {
+        // Given no RUST_LOG and -q.
+        let verbosity = Verbosity::new(0, 1);
+
+        // When building the filter.
+        let filter = build_filter(None, &verbosity);
+
+        // Then the floor steps down to error so quiet quiets dependencies too.
+        assert_eq!(filter, "error,jinn=error");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn filter_double_quiet_turns_everything_off() {
+        // Given no RUST_LOG and -qq.
+        let verbosity = Verbosity::new(0, 2);
+
+        // When building the filter.
+        let filter = build_filter(None, &verbosity);
+
+        // Then the whole filter is off — silence was requested.
+        assert_eq!(filter, "off");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn filter_rust_log_overrides_entirely() {
+        // Given a global-level RUST_LOG.
+        let verbosity = Verbosity::new(1, 0);
+
+        // When building the filter.
+        let filter = build_filter(Some("debug"), &verbosity);
+
+        // Then it is used verbatim — no jinn directive appended, no floor injected.
+        assert_eq!(filter, "debug");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn filter_rust_log_jinn_target_verbatim() {
+        // Given a RUST_LOG naming a jinn-prefixed workspace crate.
+        let verbosity = Verbosity::new(0, 0);
+
+        // When building the filter.
+        let filter = build_filter(Some("jinn_tui=trace"), &verbosity);
+
+        // Then it is used verbatim — the user took control.
+        assert_eq!(filter, "jinn_tui=trace");
+    }
 
     #[rstest::rstest]
     #[test]

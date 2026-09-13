@@ -1,0 +1,22 @@
+[package]
+name = "jinn-dashboard"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+error-stack = { workspace = true }
+# Slice → kernel edge: the drain calls the kernel's relay spawner. The
+# kernel never depends back on this crate.
+jinn-domain = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-core-types = { workspace = true }
+trouper = { workspace = true }
+kameo = { workspace = true }
+ratatui = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+wherror = { workspace = true }
+rstest = { workspace = true }
+jinn-testutil = { workspace = true }
+tokio = { workspace = true }

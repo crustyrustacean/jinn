@@ -7,12 +7,17 @@ edition.workspace = true
 # Opt-in: compiles the full 36-grammar tree-sitter set for markdown code-block
 # highlighting instead of the curated default set (see root Cargo.toml).
 syntax-all = ["ratatui-markdown/highlight-lang-all"]
+# Opt-in: exposes the bus test harness (in-crate tests enable it via
+# `cfg(test)`; downstream slice-crate tests opt in by feature).
+test-harness = []
 
 [dependencies]
 # Internal deps
 jinn-provider = { workspace = true }
 jinn-common = { workspace = true }
 jinn-core-types = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-session-msg = { workspace = true }
 jinn-provider-config = { workspace = true }
 jinn-web-fetch = { workspace = true }
 jinn-web-search = { workspace = true }
@@ -76,6 +81,10 @@ jinn-session-schema = { workspace = true, features = ["testing"] }
 kameo = { workspace = true }
 kameo_actors = { workspace = true }
 
+# Actor canvas runtime (jinn slice actors ported onto it — see
+# .plans/actor-canvas/plan.md)
+trouper = { workspace = true }
+
 # SQLite driver — dao wraps rusqlite but the migrator and tests use the raw
 # `rusqlite::Connection` (via `pool.with_conn`) for FK toggles and row-by-row
 # JSON surgery that dao's typed DAO layer doesn't cover.
@@ -91,6 +100,7 @@ jinn-common = { workspace = true, features = ["testing"] }
 trybuild = "1"
 ctor = "0.8"
 rustls = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 
 [build-dependencies]

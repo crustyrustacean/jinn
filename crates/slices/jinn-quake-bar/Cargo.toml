@@ -1,0 +1,24 @@
+[package]
+name = "jinn-quake-bar"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+error-stack = { workspace = true }
+jiff = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+trouper = { workspace = true }
+unicode-segmentation = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+jinn-testutil = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

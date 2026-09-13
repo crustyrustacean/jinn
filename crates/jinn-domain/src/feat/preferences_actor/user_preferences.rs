@@ -187,9 +187,6 @@ pub struct UserPreferences {
     /// Interactive terminal configuration (control-toggle key, settle wait).
     #[serde(default)]
     pub interactive_term: crate::feat::interactive_term::prefs::InteractiveTermPrefs,
-    /// Discord bot configuration. Off by default.
-    #[serde(default)]
-    pub discord: crate::feat::discord::DiscordConfig,
     /// Default execution timeout (seconds) for all tool calls.
     ///
     /// The model can override per-call via the reserved `max_duration_secs` argument
@@ -243,7 +240,6 @@ impl Default for UserPreferences {
             auto_prune: AutoPruneConfig::default(),
             interactive_term:
                 crate::feat::interactive_term::prefs::InteractiveTermPrefs::default(),
-            discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
         }
     }
@@ -786,13 +782,6 @@ pub(crate) mod tests {
                 settle_quiet_ms: 410,
                 settle_max_wait_ms: 3100,
             },
-            discord: crate::feat::discord::DiscordConfig {
-                enabled: true,
-                bot_token: Some("fixture-token".to_owned()),
-                guild_id: Some("111".to_owned()),
-                forum_channel: Some("222".to_owned()),
-                authorized_users: vec!["333".to_owned()],
-            },
             tool_default_timeout_secs: 301,
         }
     }
@@ -858,6 +847,38 @@ pub(crate) mod tests {
         // Then both produce identical preferences (the removed sections are
         // inert unknown keys).
         assert_eq!(stale, empty);
+    }
+
+    #[rstest::rstest]
+    fn save_preserves_slice_owned_discord_table() {
+        // Given a jinn.toml with a user-configured [discord] table (a
+        // slice-owned section the kernel struct no longer models) plus
+        // a modeled field.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            "# my prefs\ntool_entry_max_lines = 10\n\n# discord setup\n[discord]\nenabled = true\nforum_channel = \"222\"\n",
+        )
+        .expect("write");
+
+        // When loading and saving back.
+        let prefs = load_preferences_from(&path).expect("load");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the [discord] table and its comment survive untouched.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            on_disk.contains("[discord]"),
+            "table must survive: {on_disk}"
+        );
+        assert!(
+            on_disk.contains("forum_channel = \"222\""),
+            "fields must survive"
+        );
+        assert!(on_disk.contains("# discord setup"), "comment must survive");
+        // And the modeled field is still patched.
+        assert!(on_disk.contains("tool_entry_max_lines = 10"));
     }
 
     #[rstest::rstest]
