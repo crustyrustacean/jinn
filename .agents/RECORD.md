@@ -288,3 +288,6 @@ Entries are added or amended **only with human approval**.
 - (search) The search-index dashboard row's status column reports live reindex progress: "N sessions pending" refreshed after every per-session index operation and "index up to date" whenever a drain finds an empty queue (including idle drains).
 - (search) A failed reindex leaves that session's dirty marker set (durable pending work), logs a warning with the session id, and never blocks the rest of the drain batch; a later drain retries it.
 - (search) A rebuild's per-session index delete is driven by the `fts_rowids` map (rowid lookups), avoiding full FTS-table scans; sessions absent from the map skip the delete entirely.
+- (build) jinn's runtime/target link statically bundles SQLite via rusqlite's `bundled` feature (through daow's default `bundled-sqlite` feature); no system SQLite is used at runtime link time.
+- (build) Host-side link units (jinn-domain's build script, the daow-macros proc-macro) link the system libsqlite3 on Linux/macOS and bundled SQLite on Windows.
+- (build) Building jinn from source on Windows requires no system SQLite installation.
