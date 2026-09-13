@@ -23,6 +23,8 @@
 - `-v` semantics have changed and it now manipulates `RUST_LOG`. Set `RUST_LOG=...` directly to override the new behavior.
   - `-v` now controls only the verbosity of `jinn_*` crates.
   - Third-party crates will now only display `WARN` and `ERROR` traces unless `-q` is passed.
+- Use bundled SQLite3 on Windows. Should resolve issues when building from source on Windows.
+- Precompiled Windows artifact will now be shipped with every version update.
 
 ## 2026-09-09 v0.116.1
 
