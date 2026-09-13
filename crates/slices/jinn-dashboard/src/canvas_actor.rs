@@ -315,6 +315,53 @@ mod tests {
         );
     }
 
+    /// REGRESSION (relay reorder): the `ActorStarting` and `ActorStarted`
+    /// forward relays are independent actors, so under the startup burst
+    /// the `Started` envelope can cross the fabric before its `Starting`
+    /// twin. The fold used to apply events blindly: `Running` then a
+    /// stale `Starting` left the row stuck at `Starting` forever — a
+    /// different random set of actors on every launch.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stale_starting_after_running_leaves_the_row_running() {
+        // Given a wired actor that has already seen its subject running.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric
+            .send_to_topic(
+                &ActorStarted {
+                    name: "llm".to_owned(),
+                    description: Some("LlmActor".to_owned()),
+                },
+                &crate::bridge::fabric_topic(),
+            )
+            .await;
+        wait_for(|| {
+            dashboard_entry(&cell, "llm").is_some_and(|(l, _, _)| l == ActorLifecycle::Running)
+        })
+        .await;
+
+        // When the racing ActorStarting envelope lands afterwards.
+        fabric
+            .send_to_topic(
+                &ActorStarting {
+                    name: "llm".to_owned(),
+                    description: Some("LlmActor".to_owned()),
+                },
+                &crate::bridge::fabric_topic(),
+            )
+            .await;
+        wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
+
+        // Then the row stays Running.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(
+            dashboard_entry(&cell, "llm").map(|(l, _, _)| l),
+            Some(ActorLifecycle::Running),
+            "a stale Starting report must not demote a Running row"
+        );
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn shutdown_event_marks_entry_dead() {

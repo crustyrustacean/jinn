@@ -144,14 +144,28 @@ impl DashboardState {
         self.scroll_offset = 0;
     }
 
-    /// Record that an actor is in (or has returned to) the startup phase.
+    /// Record that an actor is in the startup phase.
     ///
     /// If the actor is new it is appended to the display order. Existing
     /// entries keep their description unless a new one is supplied.
+    ///
+    /// The lifecycle fold is a forward-only state machine: a `Starting`
+    /// report never pulls a `Running` or `Dead` row back. The two
+    /// lifecycle relays (one per event type) race each other across the
+    /// fabric, so a stale `ActorStarting` can land after its actor's
+    /// `ActorStarted`; an actor does not restart by itself, so a late
+    /// starting report is always that race, never a real transition.
     pub fn mark_starting<S>(&mut self, name: S, description: Option<String>)
     where
         S: AsRef<str>,
     {
+        let name = name.as_ref();
+        if let Some(entry) = self.actors.get_mut(name) {
+            if description.is_some() {
+                entry.description = description;
+            }
+            return;
+        }
         self.upsert(name, description, ActorLifecycle::Starting);
     }
 
