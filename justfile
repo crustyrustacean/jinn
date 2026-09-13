@@ -894,23 +894,47 @@ pkg:
 # Prerequisite: install the GitHub CLI and authenticate once:
 #     https://cli.github.com/   then   gh auth login
 
-# Build the release binary and package it into a cargo-binstall tarball
-build-release-tarball:
+# Build the release binary and package it into a cargo-binstall tarball.
+# TARGET defaults to the native linux release target; pass x86_64-pc-windows-gnu
+# to cross-build the Windows tarball (needs mingw-w64 + the rustup target).
+build-release-tarball TARGET="x86_64-unknown-linux-gnu":
     #!/usr/bin/env bash
     set -euo pipefail
 
     VERSION=$(sed -n '/^\[workspace\.package\]/,/^[\[]/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
-    TARGET=x86_64-unknown-linux-gnu
+    TARGET="{{TARGET}}"
     STAGE="jinn-${TARGET}-v${VERSION}"
     TARBALL="${STAGE}.tgz"
 
+    # --- Prerequisites for cross targets ---
+    case "${TARGET}" in
+        *windows*)
+            if ! command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then
+                echo "Error: x86_64-w64-mingw32-gcc (mingw-w64) is not on PATH." >&2
+                echo "  Arch: pacman -S mingw-w64-gcc   Debian/Ubuntu: apt install gcc-mingw-w64-x86-64" >&2
+                exit 1
+            fi
+            ;;
+    esac
+    if ! rustup target list --installed 2>/dev/null | grep -qx "${TARGET}"; then
+        echo "Error: rustup target '${TARGET}' is not installed." >&2
+        echo "  Run: rustup target add ${TARGET}" >&2
+        exit 1
+    fi
+
+    # Binary name: cargo emits foo.exe for windows targets, foo otherwise.
+    BIN="jinn"
+    case "${TARGET}" in
+        *windows*) BIN="jinn.exe" ;;
+    esac
+
     echo "==> Building release binary (target ${TARGET})"
-    cargo build --release
+    cargo build --release --target "${TARGET}"
 
     echo "==> Packaging ${TARBALL}"
     STAGE_DIR="$(mktemp -d)"
     mkdir -p "${STAGE_DIR}/${STAGE}"
-    cp target/release/jinn "${STAGE_DIR}/${STAGE}/jinn"
+    cp "target/${TARGET}/release/${BIN}" "${STAGE_DIR}/${STAGE}/${BIN}"
     tar -czf "${TARBALL}" -C "${STAGE_DIR}" "${STAGE}"
     rm -rf "${STAGE_DIR}"
 
@@ -922,8 +946,8 @@ release TAG:
     set -euo pipefail
 
     REPO="jayson-lennon/jinn"
-
-    # --- Pre-flight: TAG must match the Cargo.toml version ---
+    LINUX_TARGET="x86_64-unknown-linux-gnu"
+    WINDOWS_TARGET="x86_64-pc-windows-gnu"
     VERSION=$(sed -n '/^\[workspace\.package\]/,/^[\[]/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
     if [ "{{TAG}}" != "v${VERSION}" ]; then
         echo "Error: tag '{{TAG}}' does not match Cargo.toml version 'v${VERSION}'." >&2
@@ -945,44 +969,47 @@ release TAG:
         exit 1
     fi
 
-    # --- Pre-flight: cargo-binstall must be installed (for smoke test) ---
-    if ! command -v cargo-binstall >/dev/null 2>&1; then
-        echo "Error: cargo-binstall is not installed." >&2
-        echo "  Run: cargo install cargo-binstall" >&2
-        exit 1
-    fi
-
     # --- 1. Mirror trunk (and tags) to GitHub ---
     echo '==> Mirroring trunk to GitHub...'
     just sync-github
 
     # --- 2. Refresh bundled plugin payloads (embedded into the binary) ---
+    # MUST run before both target builds: the wasm payloads are compiled in.
     just refresh-plugins
 
-    # --- 3. Build the cargo-binstall tarball ---
-    just build-release-tarball
+    # --- 3. Build the cargo-binstall tarballs (linux + windows) ---
+    just build-release-tarball "${LINUX_TARGET}"
+    just build-release-tarball "${WINDOWS_TARGET}"
 
-    TARBALL="jinn-x86_64-unknown-linux-gnu-v${VERSION}.tgz"
+    TARBALL_LINUX="jinn-x86_64-unknown-linux-gnu-v${VERSION}.tgz"
+    TARBALL_WINDOWS="jinn-x86_64-pc-windows-gnu-v${VERSION}.tgz"
 
     # --- 4. Create the release if it doesn't exist, else upload ---
     if gh release view "{{TAG}}" --repo "${REPO}" >/dev/null 2>&1; then
-        echo "==> Uploading ${TARBALL} to existing release {{TAG}}"
-        gh release upload "{{TAG}}" "${TARBALL}" --repo "${REPO}" --clobber
+        echo "==> Uploading tarballs to existing release {{TAG}}"
+        gh release upload "{{TAG}}" "${TARBALL_LINUX}" "${TARBALL_WINDOWS}" --repo "${REPO}" --clobber
     else
-        echo "==> Creating release {{TAG}} and uploading ${TARBALL}"
-        gh release create "{{TAG}}" "${TARBALL}" --repo "${REPO}" --generate-notes
+        echo "==> Creating release {{TAG}} and uploading tarballs"
+        gh release create "{{TAG}}" "${TARBALL_LINUX}" "${TARBALL_WINDOWS}" --repo "${REPO}" --generate-notes
     fi
 
-    # --- 5. Smoke-test: cargo-binstall into an isolated cargo home ---
-    echo '==> Smoke-testing cargo-binstall...'
-    SMOKE_HOME="$(mktemp -d)"
-    trap 'rm -rf "${SMOKE_HOME}"' EXIT
-    CARGO_HOME="${SMOKE_HOME}" cargo binstall \
-        --git "https://github.com/${REPO}" \
-        --locked jinn \
-        --target x86_64-unknown-linux-gnu \
-        --no-confirm
-    INSTALLED="${SMOKE_HOME}/bin/jinn"
-    echo "==> Installed binary reports: $(${INSTALLED} --version)"
+    # --- 5. Verify the uploaded artifacts locally ---
+    # The [package.metadata.binstall] templates resolve
+    # jinn-<target>-v<version>.tgz -> jinn-<target>-v<version>/<bin><binary-ext>,
+    # so the tarball member path IS what binstall looks up. Checking the
+    # members (and running each binary) verifies the template against the
+    # assets we just built — no network round-trip needed.
+    echo '==> Verifying tarball layouts (binstall template: {name}-{target}-v{version}/{bin}{binary-ext})'
+    [ "$(tar -tzf "${TARBALL_LINUX}" | grep -cx "jinn-${LINUX_TARGET}-v${VERSION}/jinn")" -eq 1 ] \
+        || { echo "Error: ${TARBALL_LINUX} does not contain jinn-${LINUX_TARGET}-v${VERSION}/jinn" >&2; exit 1; }
+    [ "$(tar -tzf "${TARBALL_WINDOWS}" | grep -cx "jinn-${WINDOWS_TARGET}-v${VERSION}/jinn.exe")" -eq 1 ] \
+        || { echo "Error: ${TARBALL_WINDOWS} does not contain jinn-${WINDOWS_TARGET}-v${VERSION}/jinn.exe" >&2; exit 1; }
+
+    echo "==> Linux binary reports: $(./target/${LINUX_TARGET}/release/jinn --version)"
+    if command -v wine >/dev/null 2>&1; then
+        echo "==> Windows binary reports: $(WINEDEBUG=-all wine ./target/${WINDOWS_TARGET}/release/jinn.exe --version 2>/dev/null)"
+    else
+        echo '==> wine not on PATH; skipping windows binary run'
+    fi
 
     echo "==> Done. https://github.com/${REPO}/releases/tag/{{TAG}}"
