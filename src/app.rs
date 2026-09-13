@@ -548,7 +548,7 @@ impl App {
                 let intent_handler_cap =
                     jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, _discord_activated) = self.runtime.block_on(async {
+                let (core, services, _discord_activated) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -557,7 +557,7 @@ impl App {
                         config_storage,
                         session_store,
                         user_preferences_storage: user_preferences_storage.clone(),
-                        app_state_storage: app_state_storage.clone(),
+                        app_state_storage,
                         paths: jinn_domain::AppPaths::default(),
                         browser_profile_override: cli.browser_profile.clone(),
                         dump_requests: cli.dump_requests.clone(),
@@ -568,18 +568,18 @@ impl App {
 
                 jinn_tui::load_compaction_prompt(
                     &core.state,
-                    &_services.paths.prompts_dir(),
-                    &_services.paths.system_prompts_dir(),
+                    &services.paths.prompts_dir(),
+                    &services.paths.system_prompts_dir(),
                     &intent_handler_cap,
                 )
                 .change_context(AppError)?;
                 jinn_tui::load_theme(
                     &core.state,
-                    &_services.paths.themes_dir(),
-                    &_services.paths.system_themes_dir(),
+                    &services.paths.themes_dir(),
+                    &services.paths.system_themes_dir(),
                     &intent_handler_cap,
                 );
-                let mut headless = HeadlessApp::new(core, _services);
+                let mut headless = HeadlessApp::new(core, services);
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
                         headless.send_chat(&message).change_context(AppError)?;
