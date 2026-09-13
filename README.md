@@ -257,6 +257,13 @@ Available Discord bot commands:
 
 Note: `jinn` is officially supported for Linux & Windows. Mac users will need to [build from source](#build-from-source).
 
+### cargo-binstall (recommended)
+
+```sh
+cargo binstall --git https://github.com/jayson-lennon/jinn --locked jinn
+jinn install --force   # update plugins, persons, skills, themes, and builtin prompts
+```
+
 `jinn` has several artifacts that must be installed to work properly:
 
 - WASM plugins
@@ -266,13 +273,6 @@ Note: `jinn` is officially supported for Linux & Windows. Mac users will need to
 - Themes
 
 These are all baked into the binary and can be installed using `jinn install` _after_ you install `jinn`. Except for the WASM plugins, the installed content is all user-editable and can be changed/deleted freely. Note that I recommend using `jinn install --force` to get the latest copies on program updates, but this will overwrite any changes you have made to the defaults (except for `jinn.toml` and `providers.toml`). Keep this in mind if you change the defaults (recommend making your own separate copies instead of changing the defaults).
-
-### cargo-binstall (recommended)
-
-```sh
-cargo binstall --git https://github.com/jayson-lennon/jinn --locked jinn
-jinn install --force   # update plugins, persons, skills, themes, and builtin prompts
-```
 
 ### Build from source
 
