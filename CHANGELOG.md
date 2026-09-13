@@ -1,4 +1,6 @@
-## (development; unreleased) v0.117.0
+**(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
+
+## (development; unreleased)
 
 - Report app name/id to OpenRouter.
 - Fix: `task` tool is now available in forked sessions at any depth and is automatically disabled for subagent sessions (unbound subagent storms are still impossible). Manually forking a subagent session re-activates the `task` tool automatically.
@@ -9,13 +11,18 @@
 - Added FTS indexing to support `session_search` tool. Initial indexing could take anywhere from several minutes to a half hour+ depending on number of sessions and their size.
   - Indexing status is displayed on the dashboard.
   - Indexes are large so expect database size to increase by 2x-2.5x.
-  - Session search will work in a degraded state until initial indexing is complete. After that, indexes should only lag by about 10 seconds after a session update.
-- Startup performance characteristics have changed. Overall `jinn` should startup faster.
-  - Applied migrations are now skipped. Any migrations that need to get applied are reported on startup.
-  - WASM plugin compilation is now cached, so they will only get compiled once at startup instead of every startup.
+  - Session search will work in a degraded state until initial indexing is complete. After that, indexes should only lag by about 10 seconds from when entries land in the chat history.
+- Startup performance characteristics have changed. `jinn` should startup faster overall.
+  - Already applied migrations are now skipped. Migrations get reported at startup as they are applied.
+  - WASM plugin compilation is now cached. Plugins will only get compiled _once_ at startup instead of on every startup.
 - Shutdown performance characteristics have changed. Shutdowns should now be immediate on average.
-  - Shutting down immediately after startup has a minor slowdown.
-  - Shutting down during a large write has a minor slowdown (like in the middle of saving a large FTS index)
+  - Shutting down immediately after startup has a minor slowdown. This is a known issue.
+  - Shutting down during a large write has a minor slowdown (like in the middle of saving a large FTS index). This is unavoidable.
+- Traces should be less noisy.
+- Traces now are colorless by default since they log to files. Use `--trace-color` to re-enable colored traces.
+- `-v` semantics have changed and it now manipulates `RUST_LOG`. Set `RUST_LOG=...` directly to override the new behavior.
+  - `-v` now controls only the verbosity of `jinn_*` crates.
+  - Third-party crates will now only display `WARN` and `ERROR` traces unless `-q` is passed.
 
 ## 2026-09-09 v0.116.1
 
