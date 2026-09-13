@@ -73,6 +73,11 @@ where
     type Reply = ();
 
     async fn handle(&mut self, msg: M, _ctx: &mut kameo::prelude::Context<Self, Self::Reply>) {
+        tracing::debug!(
+            schema = %M::schema_id(),
+            topic = %self.topic,
+            "trouper: {} crossing", M::schema_id()
+        );
         let event = event_of(&msg);
         if let Err(_unroutable) = self
             .system

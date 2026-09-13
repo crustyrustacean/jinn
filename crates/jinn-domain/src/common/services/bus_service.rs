@@ -145,25 +145,30 @@ impl BusService {
     pub async fn publish<M: BusMessage>(&self, msg: M) {
         match &self.inner {
             BusInner::Real(bus) => {
+                let name = message_name::<M>();
+                tracing::debug!(message = name, "kameo: {name} sent");
                 if let Err(e) = bus.tell(Publish(msg)).await {
                     tracing::warn!(err = ?e, "bus publish failed");
                 }
             }
             BusInner::Recording(recorded) => {
-                let name = std::any::type_name::<M>()
-                    .rsplit("::")
-                    .next()
-                    .unwrap_or(std::any::type_name::<M>())
-                    .to_owned();
                 let type_id = TypeId::of::<M>();
                 recorded.lock().push(RecordedMessage {
-                    name,
+                    name: message_name::<M>().to_owned(),
                     type_id,
                     payload: Box::new(msg) as Box<dyn Any + Send>,
                 });
             }
         }
     }
+}
+
+/// The short type name of a bus message (e.g. `"PushChatEntry"`).
+fn message_name<M: BusMessage>() -> &'static str {
+    std::any::type_name::<M>()
+        .rsplit("::")
+        .next()
+        .unwrap_or(std::any::type_name::<M>())
 }
 
 impl fmt::Debug for BusService {
@@ -367,5 +372,79 @@ mod tests {
         // We can't easily create a Recipient without spawning an actor,
         // so just verify the bus drops without panic.
         drop(bus);
+    }
+
+    /// A `MakeWriter` capturing formatted log output for assertions.
+    #[derive(Clone, Default)]
+    struct CapturingWriter(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl CapturingWriter {
+        fn contents(&self) -> String {
+            String::from_utf8(self.0.lock().expect("poisoned").clone())
+                .expect("captured output is utf-8")
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CapturingWriter {
+        type Writer = CapturingSink;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            CapturingSink(self.0.clone())
+        }
+    }
+
+    struct CapturingSink(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CapturingSink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("poisoned").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn publish_on_real_bus_logs_sent_line() {
+        use kameo::actor::Spawn;
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+        use tracing_subscriber::Layer;
+
+        // Given a real MessageBus-backed BusService and a subscriber
+        // capturing debug events.
+        let bus_actor = MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
+        let bus_ref = MessageBus::spawn(bus_actor);
+        let bus = BusService::new(bus_ref);
+
+        let capture = CapturingWriter::default();
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(capture.clone())
+                .with_ansi(false)
+                .with_filter(tracing_subscriber::EnvFilter::new("jinn_domain=debug")),
+        );
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        // When publishing a message.
+        bus.publish(Alpha { val: 7 }).await;
+
+        // Then a debug line names the type as sent. Delivery into the bus
+        // actor is async, so poll briefly for the line to land.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            if capture.contents().contains("kameo: Alpha sent") {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "expected 'kameo: Alpha sent' in captured output, got: {}",
+                capture.contents()
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
     }
 }
