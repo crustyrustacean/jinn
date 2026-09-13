@@ -100,6 +100,7 @@ jinn-common = { workspace = true, features = ["testing"] }
 trybuild = "1"
 ctor = "0.8"
 rustls = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 
 [build-dependencies]
