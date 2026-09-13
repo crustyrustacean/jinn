@@ -162,6 +162,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-swap"
+version = "1.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c049c0be4daef0b145cb3555416b3b8ef5b7888a38aea1a3a155801fe7b0810b"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1555,9 +1564,9 @@ checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
 
 [[package]]
 name = "error-stack"
-version = "0.7.1"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c179ac93a7a9670668c9c1558269344d224aecf2fb089bf0e215e8adf1c73643"
+checksum = "d01a8d4d427153bae0c38ca68d7912cbf9903fdcc97ecac18801738b3656a46d"
 dependencies = [
  "anyhow",
  "rustc_version",
@@ -2540,16 +2549,23 @@ dependencies = [
  "clap",
  "clap-verbosity-flag",
  "clap_complete",
+ "crossterm",
  "ctor",
  "dirs",
  "dotenvy",
  "error-stack",
  "jiff",
  "jinn-cli",
+ "jinn-dashboard",
  "jinn-discord",
+ "jinn-discord-msg",
  "jinn-domain",
  "jinn-plugin",
  "jinn-plugin-api",
+ "jinn-quake-bar",
+ "jinn-session-msg",
+ "jinn-slices",
+ "jinn-testutil",
  "jinn-tui",
  "jinn-web-fetch",
  "jinn-web-search",
@@ -2557,6 +2573,8 @@ dependencies = [
  "kameo_actors",
  "kanal",
  "mockito",
+ "nu-ansi-term",
+ "ratatui",
  "ratatui-spatial-splits",
  "ratatui-which-key",
  "reqwest 0.13.3",
@@ -2569,6 +2587,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "trouper",
  "wherror",
 ]
 
@@ -2616,18 +2635,68 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-dashboard"
+version = "0.116.1"
+dependencies = [
+ "error-stack",
+ "jinn-core-types",
+ "jinn-domain",
+ "jinn-slices",
+ "jinn-testutil",
+ "jinn-theme",
+ "kameo",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "trouper",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-discord"
 version = "0.117.0"
 dependencies = [
+ "async-trait",
+ "daow",
  "derive_more",
  "error-stack",
+ "jinn-core-types",
+ "jinn-dashboard",
+ "jinn-discord-msg",
  "jinn-domain",
+ "jinn-session-msg",
+ "jinn-session-schema",
+ "jinn-slices",
+ "jinn-testutil",
+ "kameo",
+ "kameo_actors",
  "kanal",
+ "parking_lot",
  "poise",
  "rstest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tokio",
+ "toml 0.8.23",
  "tracing",
+ "trouper",
  "wherror",
+]
+
+[[package]]
+name = "jinn-discord-msg"
+version = "0.116.1"
+dependencies = [
+ "jinn-core-types",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
 ]
 
 [[package]]
@@ -2657,7 +2726,9 @@ dependencies = [
  "jinn-provider",
  "jinn-provider-config",
  "jinn-selection-widget",
+ "jinn-session-msg",
  "jinn-session-schema",
+ "jinn-slices",
  "jinn-testutil",
  "jinn-theme",
  "jinn-web-fetch",
@@ -2690,6 +2761,8 @@ dependencies = [
  "toml 0.8.23",
  "toml_edit 0.22.27",
  "tracing",
+ "tracing-subscriber",
+ "trouper",
  "trybuild",
  "unicode-segmentation",
  "unicode-width 0.2.2",
@@ -2803,6 +2876,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-quake-bar"
+version = "0.116.1"
+dependencies = [
+ "error-stack",
+ "jiff",
+ "jinn-core-types",
+ "jinn-slices",
+ "jinn-testutil",
+ "jinn-theme",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "trouper",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "jinn-selection-widget"
 version = "0.117.0"
 dependencies = [
@@ -2811,6 +2903,19 @@ dependencies = [
  "ratatui",
  "rstest",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "jinn-session-msg"
+version = "0.116.1"
+dependencies = [
+ "jinn-core-types",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
+ "wherror",
 ]
 
 [[package]]
@@ -2828,10 +2933,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-slices"
+version = "0.116.1"
+dependencies = [
+ "derive_more",
+ "error-stack",
+ "jinn-core-types",
+ "jinn-theme",
+ "kameo",
+ "kameo_actors",
+ "parking_lot",
+ "ratatui",
+ "rstest",
+ "serde",
+ "tokio",
+ "toml 0.8.23",
+ "trouper",
+ "unicode-segmentation",
+ "uuid",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-testutil"
 version = "0.117.0"
 dependencies = [
+ "jinn-slices",
+ "kameo",
+ "kameo_actors",
  "ratatui",
+ "serde",
+ "serde_json",
+ "tokio",
+ "trouper",
 ]
 
 [[package]]
@@ -2860,8 +2994,10 @@ dependencies = [
  "dialoguer",
  "dirs",
  "error-stack",
+ "futures",
  "jinn-domain",
  "jinn-selection-widget",
+ "jinn-slices",
  "jinn-testutil",
  "kameo",
  "kameo_actors",
@@ -2875,6 +3011,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "trouper",
  "unicode-segmentation",
  "wherror",
 ]
@@ -6653,6 +6790,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b2cb4fbb9995eeb36ac86fadf24031ccd58f99d6b4b2d7b911db70bddb80d90"
 
 [[package]]
+name = "trouper"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "derive_more",
+ "error-stack",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+ "wherror",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6898,9 +7051,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.24.0"
+version = "1.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
+checksum = "b5772d71c9be8a8a6ac2117d949c5b224c1b72241bb611d9a3012edcf8af7812"
 dependencies = [
  "atomic",
  "getrandom 0.4.3",
@@ -7656,22 +7809,22 @@ dependencies = [
 
 [[package]]
 name = "wherror"
-version = "2.3.1"
+version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "173da68485ccbdef03f13567248aff45302bef208a1fe1b966b9d2d7292348ed"
+checksum = "9464ed694aa5abd4b6422fa111132e73f483dec7a96bd51bb88bb58dfba01f78"
 dependencies = [
  "wherror-impl",
 ]
 
 [[package]]
 name = "wherror-impl"
-version = "2.3.1"
+version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e1270ef9f7b3afa45a98deaaaed36e5edb116c03686f69b7a89e1cccc90572c"
+checksum = "c6930f5b954732bbc0f23bf1a769dd2f49f050b0f17e77068fca435690ae598f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.3",
 ]
 
 [[package]]

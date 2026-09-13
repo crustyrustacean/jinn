@@ -1,0 +1,27 @@
+[package]
+name = "jinn-slices"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+unicode-segmentation = { workspace = true }
+parking_lot = { workspace = true }
+derive_more = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-core-types = { workspace = true }
+kameo = { workspace = true }
+kameo_actors = { workspace = true }
+ratatui = { workspace = true }
+tokio = { workspace = true }
+trouper = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+
+[lints]
+workspace = true

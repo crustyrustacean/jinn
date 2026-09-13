@@ -5,12 +5,10 @@ use parking_lot::RwLock;
 use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
 use crate::feat::cwd_input::state::CwdInputState;
-use crate::feat::dashboard::DashboardState;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
 use crate::feat::project_add_input::state::ProjectAddInputState;
 use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
-use crate::feat::quake_bar::state::QuakeBarState;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
 
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
@@ -203,14 +201,6 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (set by project picker, consumed by session creation).
     pub pending_creation: Option<PendingSessionCreation>,
 
-    /// Quake bar state - active when `FocusScope::QuakeBar` is on the scope stack.
-    /// OWNER: `input` written by IntentHandler; `log` written by QuakeBarActor.
-    pub quake_bar: QuakeBarState,
-
-    /// Dashboard tab state - actor lifecycle + service status list.
-    /// OWNER: DashboardActor.
-    pub dashboard: DashboardState,
-
     /// Terminal tab state - mirror of the active `interactive_term` session.
     /// OWNER: InteractiveTermActor (screen/control events); the IntentHandler
     /// flips the control holder on takeover intents (exempt writer).
@@ -255,8 +245,6 @@ impl Default for FrontendState {
             cwd_input: CwdInputState::default(),
             project_add_input: ProjectAddInputState::default(),
             pending_creation: None,
-            quake_bar: QuakeBarState::default(),
-            dashboard: DashboardState::default(),
             terminal: crate::feat::interactive_term::terminal_tab_state::TerminalTabState::default(
             ),
 

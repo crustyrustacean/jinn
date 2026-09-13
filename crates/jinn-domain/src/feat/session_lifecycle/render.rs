@@ -282,7 +282,9 @@ mod tests {
         // When rendering the arg input popup.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
             .unwrap();
@@ -318,7 +320,9 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
             .unwrap();
@@ -354,7 +358,9 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
             .unwrap();
@@ -398,7 +404,9 @@ mod tests {
         // When rendering - should not panic.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
             .unwrap();
@@ -442,7 +450,9 @@ mod tests {
         // Then draw the arg input popup on top.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
             .unwrap();
@@ -475,7 +485,9 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
             .unwrap();
@@ -523,7 +535,9 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
             .unwrap();
@@ -570,7 +584,9 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
             .unwrap();
@@ -607,7 +623,9 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
             .unwrap();

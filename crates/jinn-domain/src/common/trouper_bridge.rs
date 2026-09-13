@@ -1,0 +1,49 @@
+//! Kameo → trouper bridge: per-route forward relays.
+//!
+//! A slice declares its forward routes at activation
+//! ([`SliceHost::forward`]); the drain wiring spawns one relay per
+//! route (see [`kameo_to_trouper`]). There is no central route table:
+//! routes live in the slices that own their messages, and a message
+//! crosses only because its owning slice staged it.
+//!
+//! Topic names crossing messages are published onto live in this
+//! module; the routes themselves are staged per-slice at activation.
+
+pub mod kameo_to_trouper;
+pub mod trouper_to_kameo;
+
+pub use kameo_to_trouper::spawn_one;
+pub use trouper_to_kameo::spawn_reverse_relay;
+
+use trouper::topics::Topic;
+
+/// Trouper topic names crossing messages publish onto.
+///
+/// Constants live with the bridge (both fabrics read them); the
+/// staging call sites are the slices.
+pub mod topics {
+    /// Actor lifecycle + cross-actor status events (dashboard input).
+    pub const FABRIC: &str = "jinn.fabric";
+    /// Dashboard keyboard navigation.
+    pub const DASHBOARD: &str = "jinn.dashboard";
+    /// Quake bar submit commands.
+    pub const QUAKE_BAR: &str = "jinn.quake-bar";
+}
+
+/// The fabric topic (`jinn.fabric`) as a [`Topic`].
+#[must_use]
+pub fn fabric_topic() -> Topic {
+    Topic::new(topics::FABRIC)
+}
+
+/// The dashboard topic (`jinn.dashboard`) as a [`Topic`].
+#[must_use]
+pub fn dashboard_topic() -> Topic {
+    Topic::new(topics::DASHBOARD)
+}
+
+/// The quake-bar topic (`jinn.quake-bar`) as a [`Topic`].
+#[must_use]
+pub fn quake_bar_topic() -> Topic {
+    Topic::new(topics::QUAKE_BAR)
+}

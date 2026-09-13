@@ -116,6 +116,39 @@ pub struct Services {
     /// `task` tool. Read by the stall watchdog to skip waiting parents.
     #[debug(skip)]
     pub task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry,
+
+    /// Dynamic registry of per-slice render cells.
+    ///
+    /// `register` mints the one write handle for a slice; the renderer
+    /// and intent router hold read handles only. Shared by all clones.
+    #[debug(skip)]
+    pub slices: crate::common::slices::Slices,
+
+    /// Feature-registered keybind routes (intent → message).
+    ///
+    /// The intent handler consults this table before its own arms; rows
+    /// attach after startup wiring as features and plugins register.
+    #[debug(skip)]
+    pub key_routes: crate::common::slices::key_routes::KeyRoutes,
+
+    /// Erased slice views, one per rendered slot. Views pair with their
+    /// slice at registration (type-checked at startup); the renderer asks
+    /// the viewport for the active slot's view instead of hand-written
+    /// tab code.
+    pub viewport: crate::common::slices::view::Viewport,
+
+    /// Slice-registered overlay renderers for dynamic scopes. Written at
+    /// activation; the generic overlay pass resolves the active scope's
+    /// renderer.
+    #[debug(skip)]
+    pub overlay_views: crate::common::overlay_views::OverlayViews<jinn_slices::RenderFacts>,
+
+    /// Actor-canvas runtime system hosting the ported slice actors
+    /// (dashboard, quake-bar). Built once here; slice `activate` functions
+    /// spawn their canvas actors onto it and subscribe them to topics fed
+    /// by the kameo→trouper bridge. See `.plans/actor-canvas/plan.md`.
+    #[debug(skip)]
+    pub trouper_system: trouper::system::ActorSystem,
 }
 
 impl Services {
@@ -185,6 +218,14 @@ impl Services {
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
             task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry::default(),
+            slices: crate::common::slices::Slices::new(),
+            key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
+            viewport: crate::common::slices::view::Viewport::new(),
+            overlay_views:
+                crate::common::overlay_views::OverlayViews::<jinn_slices::RenderFacts>::new(),
+            trouper_system: trouper::system::ActorSystem::new(
+                trouper::system::SystemConfig::production(),
+            ),
         }
     }
 
@@ -234,6 +275,14 @@ impl Services {
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
             task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry::default(),
+            slices: crate::common::slices::Slices::new(),
+            key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
+            viewport: crate::common::slices::view::Viewport::new(),
+            overlay_views:
+                crate::common::overlay_views::OverlayViews::<jinn_slices::RenderFacts>::new(),
+            trouper_system: trouper::system::ActorSystem::new(
+                trouper::system::SystemConfig::production(),
+            ),
         }
     }
 }

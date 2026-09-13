@@ -14,12 +14,12 @@ The planner consults this file before proposing a plan. If a feature **contradic
 
 ## Templates
 
-| Pattern     | Form                                                             | Example                                                                                 |
-| ----------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| State       | `[Scope] currently [does X / is Y].`                             | "The TUI's first screen at startup is the chat screen."                                 |
-| Persistence | `[Scope] persists [what] to [where].`                            | "Sessions persist to SQLite."                                                           |
-| Flow        | `[Input/event] is handled by [actor/subsystem], which [action].` | "File edits route through the `edit` tool, which requires a unique match or `replace_all`."        |
-| Boundary    | `[Scope] is bounded by [constraint].`                            | "Project discovery walks ancestors until a VCS root or `$HOME`, whichever comes first." |
+| Pattern     | Form                                                             | Example                                                                                     |
+| ----------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| State       | `[Scope] currently [does X / is Y].`                             | "The TUI's first screen at startup is the chat screen."                                     |
+| Persistence | `[Scope] persists [what] to [where].`                            | "Sessions persist to SQLite."                                                               |
+| Flow        | `[Input/event] is handled by [actor/subsystem], which [action].` | "File edits route through the `edit` tool, which requires a unique match or `replace_all`." |
+| Boundary    | `[Scope] is bounded by [constraint].`                            | "Project discovery walks ancestors until a VCS root or `$HOME`, whichever comes first."     |
 
 ## Absence
 
@@ -33,8 +33,19 @@ Entries are added or amended **only with human approval**.
 
 - (context) Outgoing context assembly converts history entries to messages directly; a final tripwire validator drops any invalid tool loop with a tracing warning instead of sending invalid sequencing.
 
-- (arch) A component/actor system built on `kameo` runs domain logic asynchronously, communicating via command routing and event broadcast.
+- (arch) A component/actor system built on `kameo` runs domain logic asynchronously, communicating via command routing and event broadcast — except the slice actors (dashboard, quake-bar, discord's status actor + bridge subscriber), which run on the trouper actor runtime and receive their inputs through the trouper bridge (`common/trouper_bridge`), which translates in both directions between the kameo bus and trouper topics.
+- (arch) The trouper `ActorSystem` is a cloneable handle newtype over one shared fabric; the handle lives in `Services`, built at the actor-wiring assembly block, and slice actors spawn onto it inside their slice's `activate()`. Cloning the handle aliases the same fabric; dropping handles never tears it down — `ActorSystem::shutdown()` explicitly stops supervision loops.
+- (bridges) The trouper bridge hosts a runtime route registry (`SliceHost`'s `RouteRegistry`); slices register forward/reverse routes at activation through host verbs (`forward`/`reverse`), and a message crosses fabrics only if registered in its direction, which prevents feedback loops by construction — dual-direction registration panics immediately.
+- (arch) Slice activation runs through a fixed set of host registration verbs (`SliceHost`: cells, route rows, views/tabs/overlays, bridge routes, config sections); in-tree Rust slices activate imperatively via one `activate()` call per slice, called from composition.
+- (slices) Slice crates live under `crates/slices/` (host/shared crates stay at `crates/`): `jinn-dashboard`, `jinn-quake-bar`, `jinn-discord`, and `jinn-discord-msg`; the merged `jinn-discord` carries the old gateway frontend as its `backend` module, and a `-msg` crate lives in `crates/slices/` only when exclusively slice-consumed (`jinn-session-msg` stays at `crates/` because the kernel consumes it). The kernel references a slice only through its `activate()` call.
+- (slices) Slices read their `jinn.toml` section through read-only typed or dynamic config-section views; defaults are supplied by the slice.
+- (bridges) Cross-fabric asks are, as the documented idiom for future ports, forward-routed commands carrying correlation ids answered by reverse-routed reply events; true asks never cross fabrics.
+- (bridges) Route deletion is part of a producer's port: when a producer moves to trouper, its forward route dies and trouper-native consumers subscribe the topic directly.
+- (arch) Dependency direction: slice crates may import `jinn-domain` (core types, `State`, tcaps); `jinn-domain` never imports slice crates. Composition imports both. Slices needing kernel seams (e.g. keymap test fixtures) put them in a slice-adjacent crate, not the kernel.
+- (bridges) Forward routes are staged per consumed message at slice activation and drained by composition; a drain that names a slice's types lives outside the kernel — in the slice's own crate where one exists (`jinn_dashboard::bridge::drain_routes`), else as a composition-local fn (`jinn_discord_drain` in `src/actor_wiring.rs`). The relay is an additional kameo bus subscriber, so existing kameo consumers are unaffected by a new route.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
+- (arch) `jinn-tui` compiles with zero slice-crate dependencies: tui tests use synthetic slice-shaped inputs, and tests composing real slice rows, cells, or activation live in the root crate's `tests/` integration targets with a `tests/common` harness.
+- (arch) Test fixtures and integration tests that span crates live in the root crate's `tests/` directory so `just check` and IDE analysis never compile them; unit tests inside a crate may only use that crate's dependencies.
 - (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
 - (arch) `AppState` is the shared state; the frontend writes user input, domain actors write their owned fields, and the TUI renderer reads it on each tick.
 - (context) jinn has no memory subsystem by decision: durable cross-session facts are carried by AGENTS.md/CLAUDE.md files, personas, and skills; cross-session recall is via the `session_search` and `session_fetch` tools; planning state is carried by pinned plan files.
@@ -60,13 +71,18 @@ Entries are added or amended **only with human approval**.
 - (context) `#name` prompt-template tokens in user text expand to the template body; both token kinds are consumed in a second expansion pass.
 - (context) `@path` tokens resolve to `file://` URIs against cwd/home when the file is a readable image; otherwise the token is left as literal text.
 - (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) and browser-binary detection (Chrome vs bundled) for the web-fetch feature.
-- (dashboard) `frontend.dashboard` is owned by `DashboardActor`, fed exclusively by generic events: actor-lifecycle events and `ServiceStatusUpdate` status updates; features publish `ServiceStatusUpdate` rather than the dashboard consuming feature-specific events.
+- (dashboard) Dashboard state is a `Slices` cell owned by `DashboardCanvasActor`, fed by generic events: actor-lifecycle events and `ServiceStatusUpdate` status updates; features publish `ServiceStatusUpdate` for display only.
+- (slices) Render slices live in per-slice typed cells behind the `Slices` facade; registration mints exactly one write handle, held by the owning actor; the renderer and intent router hold read handles only.
+- (slices) Slice integration is a single `activate()` per slice called from composition (launch/actor-wiring); removing the call removes the slice with no other edits.
+- (slices) Route rows can bind into named composition scopes via `BindSite::StaticScopes`; a slice's entry-point key (e.g. discord's `gdc`) is a slice-owned route row with no central intent variant, and which-key prefix groups derive from attached rows instead of hardcoded calls.
+- (keybinds) Feature keybinds are route rows carrying scope and key; keymap bindings are generated from registered rows at launch; dynamic intents and scope ids are data-carried, so an unregistered slice leaves no keymap, scope, or intent residue.
+- (keybinds) Route row actions are `ActionFn` closures that receive an `ActionCtx` (`&mut AppState`, `&Slices`) lent by the intent handler at dispatch; actions capture no capabilities and never mint caps — state outside the slice's cells is reached only through the lent context.
 - (discovery) Project discovery walks ancestors from the session cwd up to either a VCS root or `$HOME`, whichever comes first; `$HOME` is exclusive.
 - (discovery) VCS roots are detected by marker files (`.git`, `.hg`, `.fslckout`, `.fossil`, `.jj`), not by shelling out to a VCS CLI.
 - (discovery) A discovery coordinator orchestrates project, browser-binary, file-listing, and skills scans across ancestor dirs; a notifier surfaces settled results to the session.
 - (history) Auto-prune respects a minimum entry age: entries at or below the age boundary are protected from pruning.
 - (history) Auto-prune skips entries that are already excluded/forced (no duplicate mutations), and a user force-include overrides a worker force-exclude.
-- (history) Auto-prune strategies exclude stale/redundant entries from LLM context; strategies include `anchor_shield`, `anchored_assistant`, `broken_edit`, `consecutive_reads`, `double_edit`, `edit_read`, `read_edit`, `min_age`, `regex`, `todo_prune`, `tool_age_window`, `trivial_assistant`.
+- (history) Auto-prune strategies exclude stale/redundant entries from LLM context; the wired strategies are `anchor_shield`, `anchored_assistant`, `broken_edit`, `consecutive_reads`, `double_edit`, `edit_read`, `read_edit`, `regex`, `todo_prune`, `tool_age_window`, `trivial_assistant`. `min_age` is not a strategy — it is a shared helper (`is_within_min_age`) giving individual workers an age floor.
 - (history) History workers are limited to compaction and auto-prune strategies; no auto-steer worker exists.
 - (history) History workers implement a `HistoryWorker` trait and are spawned via `actor_wiring.rs`; adding a new strategy means adding a worker file and wiring it.
 - (history) There is a per-session steering buffer for mid-turn message injection; drained steering entries become normal User entries with the default context override and are never pinned.
@@ -164,7 +180,7 @@ Entries are added or amended **only with human approval**.
 - (storage) Sessions and chat history persist to a SQLite database (`sessions.db` under the data dir).
 - (storage) User-editable TOML files (`providers.toml`, `jinn.toml`) are written through a comment-preserving `DocumentPatcher`, never via plain serialization.
 - (storage) `jinn.toml` holds user preferences and is auto-created if missing.
-- (storage) Startup fail-fast: a malformed providers.toml or jinn.toml aborts launch before actor wiring with a stderr report naming the path and TOML detail; recovery via jinn config subcommands stays unguarded.
+- (storage) Startup fail-fast: whole-file providers.toml/jinn.toml syntax errors abort launch before actor wiring; slice-owned config sections validate at slice activation, which is the fail-fast gate for section-shaped config; recovery via jinn config subcommands stays unguarded.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
 - (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.
 - (storage) On an up-to-date database, startup skips the post-migration foreign-key integrity check; the check runs only when migrations actually applied.
@@ -230,7 +246,8 @@ Entries are added or amended **only with human approval**.
 - (testing) just lint rejects bare #[test]/#[tokio::test] attributes without an accompanying rstest attribute.
 - (discord) Inbound Discord input — plain messages and every slash command — is accepted only from user IDs listed in `[discord].authorized_users`; an empty or missing list authorizes nobody (deny by default).
 - (discord) Unauthorized slash-command use gets an ephemeral refusal; unauthorized plain messages are silently dropped.
-- (discord) `DiscordStatusActor` lives in the discord feature: it drains the gateway's status channel and translates connection states into generic dashboard `ServiceStatusUpdate` events (the gateway task itself is not a kameo actor).
+- (discord) `DiscordStatusUpdate` is defined in the `jinn-discord-msg` contract crate; `DiscordStatusActor` lives in the discord slice crate (`crates/slices/jinn-discord`, on the trouper runtime — native publish onto the `jinn.discord` topic). Discord maintains its own connection cell, the authority for bot-connected checks. The status actor republishes each update on the kameo bus as a generic `ServiceStatusUpdate` (for the dashboard, which knows no feature). Both discord actors spawn via discord's `activate()`.
+- (discord) The bridge is a trouper `ServiceActor` at path `discord-bridge` (no kameo actor remains in the slice): session events reach it through core-bridge forward routes on the `jinn.session` topic (staged at slice activation, drained by composition's `jinn_discord_drain`), and it folds them into the gateway channels; thread outcomes write session history directly via `State` + `SessionCap`. The three gateway kanal channels (bridge events, gateway requests, status updates) are created unconditionally at activate and parked on the slice (returned in the activation output, `ActivatedDiscord`); composition hands them to the `jinn_discord` frontend, and the `[discord] enabled` gate is decided once via the slice's config-section view, which no-ops the gateway when disabled.
 - (subagents) Subagents are regular sessions spawned by the `task` tool: fresh history, linked to the parent, inheriting the parent's model, cwd, tools, skills, MCP servers, and a snapshot of the parent's task list; they appear in the sidebar as children marked with a subagent symbol.
 - (subagents) A subagent's task-list mutations do not propagate to its parent's list; parent and child own independent copies after spawn.
 - (subagents) The `task` tool blocks until the child session reaches Idle and forwards the child's last chat entry as its tool result; cancellations forward the cancel entry as a failure.
@@ -280,7 +297,7 @@ Entries are added or amended **only with human approval**.
 - (tools) `just install-plugins` builds and installs each in-tree plugin via one `jinn plugin add` per plugin (interleaved build+install, aborting at the first failure) rather than building all plugins before installing any; the `build-plugins` recipe remains standalone for artifact-only builds.
 - (tokens) Per-entry token counts are a persisted, content-derived field on chat entries (entries.token_count column), computed once by the token count actor for entries lacking a count and saved by the regular session-snapshot persist path; no separate frontend token cache exists.
 - (search) Sessions are searchable via an FTS5 index over persisted entry prose (user, assistant, tool_call, tool_result, system, error, compaction — never actor/thinking), keyed by (session_id, entry_id).
-- (search) Index freshness is asynchronous: triggers on `sessions` mark sessions dirty; `search_index_actor` reindexes every 5 seconds and drains on startup, so results can trail the newest saves by one poll interval.
+- (search) Index freshness is asynchronous: triggers on `sessions` mark sessions dirty; `search_index_actor` keeps an in-memory queue of dirty sessions, refreshes it from the durable marker table on each 5s heartbeat when idle, and reindexes at most 10 sessions per heartbeat — publishing the remaining count after every session — so results can trail the newest saves by roughly one heartbeat.
 - (search) `session_search` passes queries to FTS5 MATCH unmodified and surfaces SQLite syntax errors verbatim; results are a flat bm25-ranked top-N with per-session rollup counts and no pagination.
 - (search) `session_fetch` addresses entries by stable entry_id; ordinals are rendered positionally in output and never used as addresses.
 - (storage) Schema v26 adds the `session_fts` index table, the `fts_dirty` table, and dirty-marking triggers on `sessions`, seeding every existing session dirty so the first post-upgrade launch backfills the index lazily in the background.
@@ -288,6 +305,13 @@ Entries are added or amended **only with human approval**.
 - (search) The search-index dashboard row's status column reports live reindex progress: "N sessions pending" refreshed after every per-session index operation and "index up to date" whenever a drain finds an empty queue (including idle drains).
 - (search) A failed reindex leaves that session's dirty marker set (durable pending work), logs a warning with the session id, and never blocks the rest of the drain batch; a later drain retries it.
 - (search) A rebuild's per-session index delete is driven by the `fts_rowids` map (rowid lookups), avoiding full FTS-table scans; sessions absent from the map skip the delete entirely.
+- (bridges) Fabric lifecycle events (ActorStarting, ActorStarted, ActorShutdownCompleted) cross the kameo↔trouper bridge as a single shared Rust type defined in jinn-slices and re-exported by the kernel — kameo bus dispatch is by TypeId, so schema-id-equal mirror types silently drop every event.
+- (slices) Slice config sections resolve during that slice's activate() from a document sink composition passes in; calling ConfigSection::take() before resolution aborts launch instead of yielding defaults.
+- (bridges) Bridge relays (kameo→trouper and trouper→kameo) spawn with deep mailboxes — unbounded on the kameo side, 64k-entry backpressured inboxes on the trouper side, matching the dashboard canvas actor — so a startup-scale publish burst crosses the fabric without BestEffort drops; the kameo bus itself keeps its BestEffort strategy and bounded-actor mailboxes.
+- (slices) The dashboard's lifecycle fold is a forward-only state machine: a late `ActorStarting` report never demotes a `Running` or `Dead` row, because the `ActorStarting` and `ActorStarted` forward relays are independent actors and their envelopes can cross the fabric out of order under the startup burst.
+- (logs) -v controls only the verbosity of jinn\* crates; third-party crates always display WARN and ERROR (ERROR only at -q), and setting RUST_LOG overrides the automatic filter entirely.
+- (logs) Every kameo bus publish and kameo→trouper crossing logs a debug line naming the message type; per-actor arrival is rendered by kameo's `actor.handle_message` spans through a compact formatter that shows only the innermost span plus nesting depth.
+- (logs) Trace colors are opt-in via `--trace-color`; default rendering is plain text (no ANSI escapes) in the trace file.
 - (build) jinn's runtime/target link statically bundles SQLite via rusqlite's `bundled` feature (through daow's default `bundled-sqlite` feature); no system SQLite is used at runtime link time.
 - (build) Host-side link units (jinn-domain's build script, the daow-macros proc-macro) link the system libsqlite3 on Linux/macOS and bundled SQLite on Windows.
 - (build) Building jinn from source on Windows requires no system SQLite installation.

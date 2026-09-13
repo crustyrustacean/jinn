@@ -9,14 +9,24 @@ pub mod history_snapshot_ready;
 pub mod load_session_picker_entries;
 pub mod mark_session_interacted;
 pub mod retry_stalled_session;
-pub mod session_archived;
+
+/// Re-export: the archived event lives in `jinn-session-msg` (the
+/// crossing-contract crate); the kernel path stays stable for consumers.
+pub mod session_archived {
+    pub use jinn_session_msg::SessionArchived;
+}
 pub mod session_closed;
 pub mod session_fork_requested;
 pub mod session_id;
 pub mod session_load_completed;
 pub mod session_load_requested;
 pub mod session_new;
-pub mod session_phase_changed;
+
+/// Re-export: the phase-changed event lives in `jinn-session-msg` (the
+/// crossing-contract crate); the kernel path stays stable for consumers.
+pub mod session_phase_changed {
+    pub use jinn_session_msg::SessionPhaseChanged;
+}
 pub mod submit_history_mutations;
 pub mod task_list_updated;
 pub mod teardown_session_tree;
@@ -30,6 +40,7 @@ pub use mark_session_interacted::MarkSessionInteracted;
 pub use retry_stalled_session::RetryStalledSession;
 pub use session_archived::SessionArchived;
 pub use session_closed::SessionClosed;
+pub use session_phase_changed::SessionPhaseChanged;
 pub use submit_history_mutations::SubmitHistoryMutations;
 pub use task_list_updated::TaskListUpdated;
 pub use teardown_session_tree::TeardownSessionTree;

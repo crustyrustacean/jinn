@@ -2,13 +2,30 @@
 
 use jinn_domain::AppCore;
 
-use super::TuiApp;
+use crate::TuiApp;
+use crate::app::WhichKeyInstance;
+use crate::config::TuiConfig;
+use crate::keymap;
+use crate::selection::{SelectableRects, SelectionState};
+use crate::suspend::Suspend;
+use crate::{AppStatus, MsgHandler};
+use jinn_domain::feat::ui::sidebar::register_sections;
+use jinn_domain::feat::ui::sidebar::sidebar::Sidebar;
 
 /// Builder for constructing a [`TuiApp`] with sensible defaults for tests.
 ///
-/// All fields default to fake/noop implementations. Override only what the test needs.
+/// All fields default to fake/noop implementations. Override only what the
+/// test needs.
 ///
-/// See the tests in this crate for usage patterns.
+/// The built app is **slice-free**: the keymap carries only the built-in
+/// scope bindings (`keymap::init`). Tests exercising slice keys, cells, or
+/// actors live in the root crate's `tests/` integration targets, where a
+/// slice-activating harness composes the real system.
+///
+/// # Panics
+///
+/// Panics if scope resolution for the default state fails — unreachable
+/// for the default scope stack.
 #[derive(Default)]
 pub struct TuiAppBuilder {
     /// Optional services override (defaults to fake services).
@@ -34,9 +51,10 @@ impl TuiAppBuilder {
 
     /// Build the `TuiApp` with the configured overrides.
     ///
-    /// Delegates to [`crate::launch::launch_for_test`] so that the test path and
-    /// the real launch path ([`crate::launch::launch`]) share a single keymap
-    /// bootstrap site. This is what prevents test/prod divergence in keymap binding.
+    /// Mirrors [`crate::launch::launch`]'s assembly with the fatal
+    /// bootstrap steps skipped (no on-disk prompt/theme files) and no
+    /// slice wiring: route rows are a composition concern, and this
+    /// builder never touches slice crates.
     pub async fn build(self) -> TuiApp {
         let services = match self.services {
             Some(s) => s,
@@ -49,6 +67,32 @@ impl TuiAppBuilder {
             bridge: services.bridge.clone(),
         };
 
-        crate::launch::launch_for_test(core, services)
+        let mut ui_registry = jinn_domain::AppUiRegistry::new();
+        jinn_domain::register_all_ui_elements(&mut ui_registry);
+
+        let keymap = keymap::init();
+        let initial_scope =
+            crate::app::scope_for_focus(core.state.read().frontend.scope_stack.current());
+
+        TuiApp {
+            core,
+            services,
+            ui_registry,
+            events: MsgHandler::new(),
+            which_key: WhichKeyInstance::new(keymap, initial_scope),
+            suspend: Suspend::new(),
+            event_thread: None,
+            status: AppStatus::Starting,
+            selection: SelectionState::Idle,
+            selectable_rects: SelectableRects::default(),
+            pending_clipboard: false,
+            config: TuiConfig::default(),
+            sidebar: {
+                let mut s = Sidebar::new();
+                register_sections(&mut s);
+                s
+            },
+            intent_handler_cap: jinn_domain::common::tcaps::mint::mint_intent_handler_cap(),
+        }
     }
 }

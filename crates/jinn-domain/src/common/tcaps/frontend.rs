@@ -14,7 +14,6 @@
 use std::collections::HashSet;
 
 use crate::common::state::State;
-use crate::feat::dashboard::DashboardState;
 use crate::feat::file_lister::FilePickerState;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
@@ -44,13 +43,6 @@ impl FrontendCap {
 /// `FrontendState` (its public field API is the capsule wall).
 pub struct PreferencesOps<'a>(&'a mut FrontendState);
 
-/// Narrow write-handle to `frontend.dashboard` for the status actor.
-pub struct DashboardOps<'a>(&'a mut DashboardState);
-
-/// Narrow write-handle to `frontend.quake_bar` for the quake-bar actor.
-/// Exposes the [`QuakeBarLogWrite`] trait.
-pub struct QuakeBarOps<'a>(&'a mut crate::feat::quake_bar::state::QuakeBarState);
-
 /// Narrow write-handle to the skills picker + preview cache for the skills
 /// actor.
 pub struct SkillPickerOps<'a>(&'a mut FrontendState);
@@ -71,11 +63,6 @@ pub struct TerminalOps<'a>(
 pub struct AppStateOps<'a>(&'a mut AppStateFile);
 
 // ── Extension traits (the opt-in method menu) ───────────────────────────────
-
-/// Append a line to the quake-bar log.
-pub trait QuakeBarLogWrite {
-    fn push_log(&mut self, text: String);
-}
 
 /// Mirror terminal screen/control updates into the frontend.
 pub trait TerminalMirrorWrite {
@@ -103,13 +90,6 @@ pub trait TerminalMirrorWrite {
 impl PreferencesOps<'_> {
     /// Mutable access to the whole frontend (preferences, sidebar, theme, ...).
     pub fn frontend(&mut self) -> &mut FrontendState {
-        self.0
-    }
-}
-
-impl DashboardOps<'_> {
-    /// Mutable dashboard, used to call `mark_starting`/`mark_running`/`mark_dead`.
-    pub fn dashboard(&mut self) -> &mut DashboardState {
         self.0
     }
 }
@@ -187,12 +167,6 @@ impl AppStateOps<'_> {
 
 // ── Trait impls ─────────────────────────────────────────────────────────────
 
-impl QuakeBarLogWrite for QuakeBarOps<'_> {
-    fn push_log(&mut self, text: String) {
-        self.0.log.push(text);
-    }
-}
-
 // ── Projection methods ──────────────────────────────────────────────────────
 
 impl State {
@@ -207,16 +181,6 @@ impl State {
         f(&mut PreferencesOps(&mut app.frontend))
     }
 
-    /// Write access to the dashboard grid, scoped via [`DashboardOps`].
-    pub fn with_dashboard<R, F>(&self, _cap: &FrontendCap, f: F) -> R
-    where
-        F: FnOnce(&mut DashboardOps<'_>) -> R,
-    {
-        let mut guard = self.write_lock();
-        let app = &mut *guard;
-        f(&mut DashboardOps(&mut app.frontend.dashboard))
-    }
-
     /// Write access to the terminal-tab mirror, scoped via [`TerminalOps`].
     pub fn with_terminal<R, F>(&self, _cap: &FrontendCap, f: F) -> R
     where
@@ -225,16 +189,6 @@ impl State {
         let mut guard = self.write_lock();
         let app = &mut *guard;
         f(&mut TerminalOps(&mut app.frontend.terminal))
-    }
-
-    /// Write access to the quake-bar log, scoped via [`QuakeBarOps`].
-    pub fn with_quake_bar<R, F>(&self, _cap: &FrontendCap, f: F) -> R
-    where
-        F: FnOnce(&mut QuakeBarOps<'_>) -> R,
-    {
-        let mut guard = self.write_lock();
-        let app = &mut *guard;
-        f(&mut QuakeBarOps(&mut app.frontend.quake_bar))
     }
 
     /// Write access to the skills picker, scoped via [`SkillPickerOps`].

@@ -1,5 +1,7 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
+## (development version)
+
 ## 2026-09-13 v0.117.0
 
 - Report app name/id to OpenRouter.

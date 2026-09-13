@@ -1,25 +1,68 @@
-//! Tab bar — top-level strip showing `[ Chat ] [ Dashboard ]`.
+//! Tab bar — top-level strip showing one label per registered tab slice.
 
 use jinn_domain::RenderCtx;
+use jinn_slices::SliceScopeId;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-/// The tab labels shown left-to-right.
+/// The chat tab, which is always present and first in the order.
+const CHAT_TAB: &str = "Chat";
+
+/// The active application layout, selected by the base focus scope.
 ///
-/// Order must stay in sync with `active_tab_index`, which derives the active
-/// index from the current base `FocusScope`.
-const TAB_LABELS: [&str; 2] = ["Chat", "Dashboard"];
+/// Tab metadata (label, order) is declared by slices at activation; the
+/// chat tab is the always-present fallback, so an app with no
+/// registered tab slices renders exactly one tab.
+fn tab_labels(slices: &jinn_slices::Slices) -> Vec<String> {
+    let mut labels = vec![CHAT_TAB.to_owned()];
+    for scope in slices.tab_scopes() {
+        labels.push(tab_label(&scope));
+    }
+    labels
+}
+
+/// The display label for a registered tab scope.
+fn tab_label(scope: &SliceScopeId) -> String {
+    // A slice's tab label: derived from the scope id's slice name,
+    // title-cased (e.g. "dashboard/status" → "Dashboard"). Kept as a
+    // pure derivation so the slice declares identity once (its scope
+    // id) and the bar renders it consistently.
+    scope
+        .slice()
+        .split(['-', '_'])
+        .map(capitalize)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn capitalize(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(first) => {
+            let mut label: String = first.to_uppercase().collect();
+            label.push_str(chars.as_str());
+            label
+        }
+        None => String::new(),
+    }
+}
 
 /// Returns the highlighted tab index for the current base scope.
 ///
-/// Chat is `0`, Dashboard `1`. The terminal is an overlay (`<M-t>`), not a
-/// tab, so it never highlights a tab.
-fn active_tab_index(ctx: &RenderCtx) -> usize {
+/// Chat is `0`; a registered tab scope highlights its position in the
+/// declared order (chat + 1 + index). Unregistered scopes fall back to
+/// chat. The terminal is an overlay (`<M-t>`), not a tab, so it never
+/// highlights a tab.
+fn active_tab_index(slices: &jinn_slices::Slices, ctx: &RenderCtx) -> usize {
     match ctx.state.frontend.scope_stack.base() {
-        jinn_domain::FocusScope::Dashboard => 1,
+        jinn_domain::FocusScope::Dynamic(id) => slices
+            .tab_scopes()
+            .iter()
+            .position(|scope| scope == id)
+            .map_or(0, |idx| idx + 1),
         _ => 0,
     }
 }
@@ -27,10 +70,11 @@ fn active_tab_index(ctx: &RenderCtx) -> usize {
 /// Renders the tab bar into `area`.
 pub fn render_tab_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     let theme = &ctx.state.frontend.theme;
-    let active = active_tab_index(ctx);
+    let labels = tab_labels(ctx.slices);
+    let active = active_tab_index(ctx.slices, ctx);
 
     let mut spans = Vec::new();
-    for (idx, &label) in TAB_LABELS.iter().enumerate() {
+    for (idx, label) in labels.iter().enumerate() {
         let is_active = idx == active;
 
         let style = if is_active {
@@ -42,7 +86,7 @@ pub fn render_tab_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         };
 
         spans.push(Span::styled(format!(" {label} "), style));
-        if idx + 1 < TAB_LABELS.len() {
+        if idx + 1 < labels.len() {
             spans.push(Span::raw(" "));
         }
     }
@@ -95,78 +139,6 @@ mod tests {
             cell.bg,
             Color::Reset,
             "chat tab should be highlighted in Normal scope"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn dashboard_tab_is_highlighted_in_dashboard_scope() {
-        // Given an app in Dashboard scope.
-        let mut app = build_app_with_scope(FocusScope::Dashboard).await;
-        let (mut terminal, _area) = setup_term(80, 24);
-
-        // When rendering.
-        terminal.draw(|frame| app.render(frame)).unwrap();
-
-        // Then the dashboard tab cell has an active background (non-Reset).
-        let layout = crate::render::app_layout::AppLayout::new(
-            ratatui::layout::Rect::new(0, 0, 80, 24),
-            1,
-            12,
-            30,
-        );
-        let buffer = terminal.backend().buffer();
-        // " Chat " (6 cols) + separator space (1) = 7 cols offset.
-        let dash_x = layout.tab_bar.x + 1 + " Chat ".len() as u16 + 1;
-        let cell = buffer
-            .cell((dash_x, layout.tab_bar.y))
-            .expect("dashboard tab cell");
-        assert_ne!(
-            cell.bg,
-            Color::Reset,
-            "dashboard tab should be highlighted in Dashboard scope"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn dashboard_tab_stays_highlighted_when_quake_bar_open() {
-        let mut app = build_app_with_scope(FocusScope::Dashboard).await;
-        app.core
-            .state
-            .write_test_no_cap()
-            .frontend
-            .scope_stack
-            .push(FocusScope::QuakeBar);
-        let (mut terminal, _area) = setup_term(80, 24);
-
-        // When rendering.
-        terminal.draw(|frame| app.render(frame)).unwrap();
-
-        // Then the dashboard tab is still highlighted (uses base scope, not top).
-        let layout = crate::render::app_layout::AppLayout::new(
-            ratatui::layout::Rect::new(0, 0, 80, 24),
-            1,
-            12,
-            30,
-        );
-        let buffer = terminal.backend().buffer();
-        let dash_x = layout.tab_bar.x + 1 + " Chat ".len() as u16 + 1;
-        let chat_cell = buffer
-            .cell((layout.tab_bar.x + 1, layout.tab_bar.y))
-            .expect("chat tab cell");
-        let dash_cell = buffer
-            .cell((dash_x, layout.tab_bar.y))
-            .expect("dashboard tab cell");
-        assert_eq!(
-            chat_cell.bg,
-            Color::Reset,
-            "chat tab should NOT be highlighted when base is Dashboard"
-        );
-        assert_ne!(
-            dash_cell.bg,
-            Color::Reset,
-            "dashboard tab should stay highlighted when quake bar is open"
         );
     }
 }

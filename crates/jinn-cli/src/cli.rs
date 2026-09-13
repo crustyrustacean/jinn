@@ -13,6 +13,13 @@ pub struct Cli {
     #[command(flatten)]
     pub verbosity: Verbosity<WarnLevel>,
 
+    /// Colorize trace output written to the log file.
+    ///
+    /// Traces only ever go to the log file (the terminal never shows traces in
+    /// TUI mode), so this only affects file rendering. Default is plain text.
+    #[arg(long, global = true)]
+    pub trace_color: bool,
+
     /// Path to the log file. Defaults to the platform's state directory
     /// (e.g. `~/.local/state/jinn/jinn.log` on Linux).
     #[arg(long, value_hint = clap::ValueHint::FilePath)]

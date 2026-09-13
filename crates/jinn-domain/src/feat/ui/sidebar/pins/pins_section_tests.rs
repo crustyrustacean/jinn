@@ -232,7 +232,9 @@ fn content_height_is_zero_when_empty() {
     let state = AppState::default();
 
     // When asking for content height.
-    let height = section.content_height(&{ RenderCtx::new(&state) });
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = crate::common::overlay_views::OverlayViews::new();
+    let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
 
     // Then it returns 0 (section is hidden when empty).
     assert_eq!(height, 0);
@@ -245,7 +247,9 @@ fn content_height_matches_entry_count() {
     let state = state_with_pinned(3);
 
     // When asking for content height.
-    let height = section.content_height(&{ RenderCtx::new(&state) });
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = crate::common::overlay_views::OverlayViews::new();
+    let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
 
     // Then it returns header(1) + header-gap(1) + entries(3) + trailing gap(1) = 6.
     assert_eq!(height, 6);
@@ -260,7 +264,9 @@ fn render_rows(
     let (mut terminal, area) = setup_term(width, height);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -332,7 +338,9 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
     let (mut terminal, area) = setup_term(60, 20);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -354,7 +362,9 @@ fn render_selected_entry_has_darkgray_marker_when_not_focused() {
     let (mut terminal, area) = setup_term(60, 20);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -432,7 +442,12 @@ fn session_new_works_when_sidebar_sessions_focused() {
     let _old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
-    let result = crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
+    let result = crate::feat::intent::IntentHandler::handle(
+        &crate::Intent::SessionNew,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then a new session is created.
     // And SessionCreated and ActiveSessionChanged are emitted.
@@ -458,8 +473,12 @@ fn session_new_works_when_not_in_sidebar() {
     let old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
-    let _result =
-        crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
+    let _result = crate::feat::intent::IntentHandler::handle(
+        &crate::Intent::SessionNew,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+    );
 
     // Then a new session is created (no section restriction outside sidebar).
     assert_ne!(*state.session.active_session_id(), old_id);
@@ -608,6 +627,16 @@ fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
 }
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
+
+/// Empty slice registry + route table for handler tests that don't
+/// exercise slices or route rows.
+fn empty_slices() -> crate::common::slices::Slices {
+    crate::common::slices::Slices::new()
+}
+
+fn empty_routes() -> crate::common::slices::key_routes::KeyRoutes {
+    crate::common::slices::key_routes::KeyRoutes::new()
+}
 
 /// Build an AppState with one pinned tool-result entry.
 fn state_with_pinned_tool_result(name: &str, content: &str) -> AppState {
