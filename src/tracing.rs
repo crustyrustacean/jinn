@@ -14,8 +14,7 @@
 //! verbatim — the user explicitly took control of the whole filter.
 
 use std::{
-    env,
-    fmt,
+    env, fmt,
     fs::{File, OpenOptions},
     io::Write,
     path::PathBuf,
@@ -127,9 +126,8 @@ fn install_panic_hook(panic_path: PathBuf) {
 /// crate and `kameo` covers `kameo_actors`; `kameo_actors` is listed explicitly
 /// only to keep its inclusion obvious.
 fn build_filter(rust_log: Option<&str>, verbosity: &Verbosity<WarnLevel>) -> String {
-    let jinn_directives = format!(
-        "{APP_NAME}={verbosity},kameo={verbosity},kameo_actors={verbosity}"
-    );
+    let jinn_directives =
+        format!("{APP_NAME}={verbosity},kameo={verbosity},kameo_actors={verbosity}");
 
     let mentions_jinn = |filter: &str| {
         filter.split(',').any(|directive| {
@@ -409,6 +407,7 @@ mod tests {
         capture.contents()
     }
 
+    #[rstest::rstest]
     #[test]
     fn formatter_renders_depth_marker_and_innermost_span() {
         // Given a subscriber with the compact formatter and 20 nested spans.
@@ -417,7 +416,10 @@ mod tests {
         // When formatting an event inside those spans (rendered above).
 
         // Then the depth marker counts all spans (outer + 20 nested).
-        assert!(output.contains("…×21 "), "expected depth marker, got: {output}");
+        assert!(
+            output.contains("…×21 "),
+            "expected depth marker, got: {output}"
+        );
         // And only the innermost span name and fields are rendered.
         assert!(
             output.contains("actor.handle_message"),
@@ -431,6 +433,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn formatter_output_prefix_is_bounded() {
         // Given events rendered at depth 1 and depth 20.
@@ -456,6 +459,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn formatter_renders_event_without_spans() {
         // Given a subscriber with the compact formatter and no active spans.
@@ -490,6 +494,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[test]
     fn filter_merge_without_rust_log() {
         // Given no RUST_LOG and the default verbosity.
@@ -502,6 +507,7 @@ mod tests {
         assert_eq!(filter, "jinn=warn,kameo=warn,kameo_actors=warn");
     }
 
+    #[rstest::rstest]
     #[test]
     fn filter_merge_rust_log_with_jinn_directive() {
         // Given a RUST_LOG that already names a jinn crate.
@@ -514,6 +520,7 @@ mod tests {
         assert_eq!(filter, "jinn=trace,wasmtime=debug");
     }
 
+    #[rstest::rstest]
     #[test]
     fn filter_merge_rust_log_global_only() {
         // Given a global-level RUST_LOG with no jinn directive.
@@ -523,10 +530,7 @@ mod tests {
         let filter = build_filter(Some("debug"), &verbosity);
 
         // Then the jinn/kameo directives are appended after the global level.
-        assert_eq!(
-            filter,
-            "debug,jinn=warn,kameo=warn,kameo_actors=warn"
-        );
+        assert_eq!(filter, "debug,jinn=warn,kameo=warn,kameo_actors=warn");
         // And the merged filter still enables a dependency target at the
         // RUST_LOG level while jinn stays at the CLI level.
         // (EnvFilter resolves most-specific-target-wins.)
@@ -534,6 +538,7 @@ mod tests {
         assert!(parsed.max_level_hint().is_some());
     }
 
+    #[rstest::rstest]
     #[test]
     fn filter_merge_rust_log_with_jinn_prefixed_crate() {
         // Given a RUST_LOG naming a jinn-prefixed workspace crate (not "jinn").
