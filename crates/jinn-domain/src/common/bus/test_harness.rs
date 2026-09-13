@@ -151,19 +151,22 @@ pub async fn await_recorded<M: Clone + Send + 'static>(
     timeout: Duration,
 ) -> Vec<M> {
     let deadline = tokio::time::Instant::now() + timeout;
+    // `GetRecorded` drains the recorder, so every poll's messages must be
+    // kept: a burst split across polls would otherwise be discarded piecemeal
+    // below `min_count`. Accumulate until the minimum is met.
+    let mut collected: Vec<M> = Vec::new();
     loop {
-        let messages: Vec<M> = recorder
-            .ask(GetRecorded::new())
-            .await
-            .expect("get recorded");
-        if messages.len() >= min_count {
-            return messages;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            return recorder
+        collected.extend(
+            recorder
                 .ask(GetRecorded::new())
                 .await
-                .expect("get recorded");
+                .expect("get recorded"),
+        );
+        if collected.len() >= min_count {
+            return collected;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return collected;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
