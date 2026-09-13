@@ -7,3 +7,10 @@
 [env]
 RSTEST_TIMEOUT = "10"
 
+# Cross-compilation to Windows (just build-release-tarball x86_64-pc-windows-gnu).
+# mingw-w64's gcc drives the link (and bundled C compiles) for the gnu target;
+# this section is inert for native builds. Requires the mingw-w64 toolchain on
+# PATH and `rustup target add x86_64-pc-windows-gnu`.
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+

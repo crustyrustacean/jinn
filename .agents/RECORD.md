@@ -291,3 +291,6 @@ Entries are added or amended **only with human approval**.
 - (build) jinn's runtime/target link statically bundles SQLite via rusqlite's `bundled` feature (through daow's default `bundled-sqlite` feature); no system SQLite is used at runtime link time.
 - (build) Host-side link units (jinn-domain's build script, the daow-macros proc-macro) link the system libsqlite3 on Linux/macOS and bundled SQLite on Windows.
 - (build) Building jinn from source on Windows requires no system SQLite installation.
+- (build) Releases ship two cargo-binstall tarballs per tag: `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-gnu` (cross-built from Linux via mingw-w64).
+- (build) The windows-gnu cross target's linker is configured in the checked-in `.cargo/config.toml`; the config is inert for native Linux builds.
+- (build) Release binaries are self-contained on both platforms: bundled SQLite in the target graph, no SQLite DLL/import-library requirement.
