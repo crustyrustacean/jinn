@@ -15,6 +15,7 @@
 
 use std::{
     env,
+    fmt,
     fs::{File, OpenOptions},
     io::Write,
     path::PathBuf,
@@ -24,7 +25,17 @@ use std::{
 use clap_verbosity_flag::{Verbosity, WarnLevel};
 use error_stack::{Report, ResultExt};
 use jinn_domain::common::app_info::APP_NAME;
-use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing::{Event, Level, Subscriber};
+use tracing_subscriber::{
+    EnvFilter, Layer,
+    fmt::{
+        FmtContext, FormattedFields, format::FormatEvent, format::FormatFields, format::Writer,
+        time::FormatTime, time::SystemTime,
+    },
+    layer::SubscriberExt,
+    registry::LookupSpan,
+    util::SubscriberInitExt,
+};
 use wherror::Error;
 
 /// Error type returned when tracing subscriber initialization fails.
@@ -138,6 +149,84 @@ fn build_filter(rust_log: Option<&str>, verbosity: &Verbosity<WarnLevel>) -> Str
     }
 }
 
+/// Compact event formatter: shows only the *innermost* span plus a nesting
+/// depth marker.
+///
+/// kameo creates one `actor.handle_message` span per actor hop (parented on
+/// the caller's span), so a single tell→handle→publish round trip can nest a
+/// dozen spans. Rendering the whole chain on every line produces giant,
+/// mostly-redundant prefixes. This formatter renders:
+///
+/// ```text
+/// <timestamp> <LEVEL> …×N innermost_span{fields}: target:line: event fields
+/// ```
+///
+/// `…×N` says how deep the event fired without repeating the parents; the
+/// innermost span is where the event actually happened (for kameo arrivals
+/// that's the actor name + message type). Line length is therefore bounded
+/// regardless of nesting depth.
+struct CompactSpans;
+
+impl<S, N> FormatEvent<S, N> for CompactSpans
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    N: for<'a> tracing_subscriber::fmt::FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        ctx: &FmtContext<'_, S, N>,
+        mut writer: Writer<'_>,
+        event: &Event<'_>,
+    ) -> fmt::Result {
+        // Plain timestamp (matches the previous file output; no ANSI).
+        SystemTime.format_time(&mut writer)?;
+        writer.write_char(' ')?;
+
+        // Level, padded to width 5 like the default formatters (" INFO").
+        let level: &Level = event.metadata().level();
+        write!(writer, "{level:>5} ")?;
+
+        // Depth marker + innermost span only.
+        write_span_context(ctx, &mut writer)?;
+
+        // target:line — always on, replacing the per-layer display flags.
+        let meta = event.metadata();
+        write!(writer, "{}:", meta.target())?;
+        if let Some(line) = meta.line() {
+            write!(writer, "{line}:")?;
+        }
+        writer.write_char(' ')?;
+
+        // The event's own fields (includes the message text).
+        ctx.format_fields(writer.by_ref(), event)?;
+        writeln!(writer)
+    }
+}
+
+/// Writes the `…×N innermost_span{fields}: ` portion of an event line.
+fn write_span_context<S, N>(ctx: &FmtContext<'_, S, N>, writer: &mut Writer<'_>) -> fmt::Result
+where
+    S: Subscriber + for<'lookup> LookupSpan<'lookup>,
+    N: for<'writer> FormatFields<'writer> + 'static,
+{
+    let Some(scope) = ctx.event_scope() else {
+        return Ok(());
+    };
+    let spans: Vec<_> = scope.from_root().collect();
+    let Some(innermost) = spans.last() else {
+        return Ok(());
+    };
+    write!(writer, "…×{} ", spans.len())?;
+    write!(writer, "{}", innermost.metadata().name())?;
+    let ext = innermost.extensions();
+    if let Some(fields) = ext.get::<FormattedFields<N>>()
+        && !fields.is_empty()
+    {
+        write!(writer, "{{{fields}}}")?;
+    }
+    writer.write_str(": ")
+}
+
 /// Initializes the global tracing subscriber.
 ///
 /// Filtering is built by [`build_filter`]: `-v`/`-q` govern every workspace
@@ -187,9 +276,8 @@ pub fn init(
     match mode {
         TracingMode::Tui { .. } | TracingMode::Quiet { .. } => {
             let file_layer = tracing_subscriber::fmt::layer()
-                .with_file(true)
-                .with_line_number(true)
-                .with_target(true)
+                .event_format(CompactSpans)
+                .with_ansi(false)
                 .with_writer(Arc::new(logfile))
                 .with_filter(EnvFilter::new(filter));
 
@@ -198,15 +286,15 @@ pub fn init(
         TracingMode::Headless { .. } => {
             let file_layer: Box<dyn Layer<_> + Send + Sync + 'static> =
                 tracing_subscriber::fmt::layer()
-                    .with_file(true)
-                    .with_line_number(true)
-                    .with_target(true)
+                    .event_format(CompactSpans)
+                    .with_ansi(false)
                     .with_writer(Arc::new(logfile))
                     .with_filter(EnvFilter::new(filter.clone()))
                     .boxed();
 
-            let terminal_layer =
-                tracing_subscriber::fmt::layer().with_filter(EnvFilter::new(filter));
+            let terminal_layer = tracing_subscriber::fmt::layer()
+                .event_format(CompactSpans)
+                .with_filter(EnvFilter::new(filter));
 
             tracing_subscriber::registry()
                 .with(file_layer)
@@ -247,6 +335,160 @@ fn open_log_file(path: &std::path::Path) -> Result<File, Report<TracingInitError
 mod tests {
     use super::*;
     use std::path::Path;
+    use std::sync::Mutex;
+
+    /// A `MakeWriter` capturing formatted output for assertions.
+    #[derive(Clone, Default)]
+    struct CapturingWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl CapturingWriter {
+        fn contents(&self) -> String {
+            String::from_utf8(self.0.lock().expect("poisoned").clone())
+                .expect("captured output is utf-8")
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CapturingWriter {
+        type Writer = CapturingSink;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            CapturingSink(self.0.clone())
+        }
+    }
+
+    struct CapturingSink(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CapturingSink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("poisoned").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Emits an info event inside `depth` nested spans and returns the
+    /// captured formatter output.
+    fn render_event_at_depth(depth: usize) -> String {
+        let capture = CapturingWriter::default();
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(CompactSpans)
+                .with_writer(capture.clone()),
+        );
+
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            let outer = tracing::info_span!("outer_span", hop = "first");
+            let _entered_outer = outer.enter();
+            let held: Vec<tracing::Span> = {
+                let mut spans: Vec<tracing::Span> = Vec::with_capacity(depth);
+                for i in 0..depth {
+                    let parent = spans.last();
+                    let span = match parent {
+                        Some(parent) => tracing::info_span!(
+                            parent: parent.id(),
+                            "actor.handle_message",
+                            actor.name = "TestActor"
+                        ),
+                        None => {
+                            tracing::info_span!("actor.handle_message", actor.name = "TestActor")
+                        }
+                    };
+                    spans.push(span);
+                    let _ = i;
+                }
+                spans
+            };
+            let _guards: Vec<_> = held.iter().map(|span| span.enter()).collect();
+            tracing::info!("hello from inside");
+        }
+
+        capture.contents()
+    }
+
+    #[test]
+    fn formatter_renders_depth_marker_and_innermost_span() {
+        // Given a subscriber with the compact formatter and 20 nested spans.
+        let output = render_event_at_depth(20);
+
+        // When formatting an event inside those spans (rendered above).
+
+        // Then the depth marker counts all spans (outer + 20 nested).
+        assert!(output.contains("…×21 "), "expected depth marker, got: {output}");
+        // And only the innermost span name and fields are rendered.
+        assert!(
+            output.contains("actor.handle_message"),
+            "expected innermost span, got: {output}"
+        );
+        // And no parent span names leak into the line (field names may carry
+        // ANSI styling, so match on the value alone).
+        assert!(
+            !output.contains("outer_span"),
+            "expected no parent-chain text, got: {output}"
+        );
+    }
+
+    #[test]
+    fn formatter_output_prefix_is_bounded() {
+        // Given events rendered at depth 1 and depth 20.
+        let shallow = render_event_at_depth(1);
+        let deep = render_event_at_depth(20);
+
+        // When measuring the span context each line renders (timestamp +
+        // level + depth marker + span prefix, i.e. everything before the
+        // target).
+        let prefix_len = |output: &str| {
+            let line = output.lines().next().expect("one line of output");
+            line.find("jinn::tracing:").expect("target in output")
+        };
+
+        // Then the prefix length does not grow with nesting depth (the depth
+        // marker gains one char from "…×2" to "…×21"; that is it).
+        let shallow_prefix = prefix_len(&shallow);
+        let deep_prefix = prefix_len(&deep);
+        let delta = (deep_prefix - shallow_prefix) as i64;
+        assert!(
+            (-1..=1).contains(&delta),
+            "prefix must not depend on nesting depth (shallow={shallow}, deep={deep})"
+        );
+    }
+
+    #[test]
+    fn formatter_renders_event_without_spans() {
+        // Given a subscriber with the compact formatter and no active spans.
+        let capture = CapturingWriter::default();
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(CompactSpans)
+                .with_writer(capture.clone()),
+        );
+
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            tracing::info!("spanless event");
+        }
+
+        // When formatting the event (rendered above).
+
+        // Then no depth marker or span prefix is emitted.
+        let output = capture.contents();
+        assert!(
+            !output.contains("…×"),
+            "expected no depth marker, got: {output}"
+        );
+        // And the event message and target are still present.
+        assert!(
+            output.contains("spanless event"),
+            "expected event message, got: {output}"
+        );
+        assert!(
+            output.contains("jinn::tracing:"),
+            "expected target, got: {output}"
+        );
+    }
 
     #[test]
     fn filter_merge_without_rust_log() {
