@@ -264,29 +264,28 @@ const BOLD: nu_ansi_term::Style = nu_ansi_term::Style {
 /// Maps a tracing level to its conventional terminal color.
 const fn level_color(level: &Level) -> nu_ansi_term::Style {
     use nu_ansi_term::Color;
-    let style = match level {
-        &Level::ERROR => nu_ansi_term::Style {
+    match *level {
+        Level::ERROR => nu_ansi_term::Style {
             foreground: Some(Color::Red),
             ..UNSET
         },
-        &Level::WARN => nu_ansi_term::Style {
+        Level::WARN => nu_ansi_term::Style {
             foreground: Some(Color::Yellow),
             ..UNSET
         },
-        &Level::INFO => nu_ansi_term::Style {
+        Level::INFO => nu_ansi_term::Style {
             foreground: Some(Color::Green),
             ..UNSET
         },
-        &Level::DEBUG => nu_ansi_term::Style {
+        Level::DEBUG => nu_ansi_term::Style {
             foreground: Some(Color::Blue),
             ..UNSET
         },
-        &Level::TRACE => nu_ansi_term::Style {
+        Level::TRACE => nu_ansi_term::Style {
             foreground: Some(Color::Purple),
             ..UNSET
         },
-    };
-    style
+    }
 }
 
 /// Renders a system timestamp as dimmed SGR codes around the fixed-width
@@ -311,7 +310,11 @@ fn owning_writer(sink: &mut String) -> Writer<'_> {
 
 impl CompactSpans {
     /// Writes the `…×N innermost_span{fields}: ` portion of an event line.
-    fn write_span_context<S, N>(&self, ctx: &FmtContext<'_, S, N>, writer: &mut Writer<'_>) -> fmt::Result
+    fn write_span_context<S, N>(
+        &self,
+        ctx: &FmtContext<'_, S, N>,
+        writer: &mut Writer<'_>,
+    ) -> fmt::Result
     where
         S: Subscriber + for<'lookup> LookupSpan<'lookup>,
         N: for<'writer> FormatFields<'writer> + 'static,
@@ -319,15 +322,24 @@ impl CompactSpans {
         let Some(scope) = ctx.event_scope() else {
             return Ok(());
         };
-        let spans: Vec<_> = scope.from_root().collect();
-        let Some(innermost) = spans.last() else {
+        let (depth, innermost) = {
+            let mut innermost = None;
+            let mut depth = 0;
+            // Single pass; avoids buffering the whole span chain.
+            for span in scope.from_root() {
+                depth += 1;
+                innermost = Some(span);
+            }
+            (depth, innermost)
+        };
+        let Some(innermost) = innermost else {
             return Ok(());
         };
         if self.color {
-            write!(writer, "{} ", DIMMED.paint(format!("…×{}", spans.len())))?;
+            write!(writer, "{} ", DIMMED.paint(format!("…×{depth}")))?;
             write!(writer, "{}", BOLD.paint(innermost.metadata().name()))?;
         } else {
-            write!(writer, "…×{} ", spans.len())?;
+            write!(writer, "…×{depth} ")?;
             write!(writer, "{}", innermost.metadata().name())?;
         }
         let ext = innermost.extensions();
@@ -549,7 +561,10 @@ mod tests {
 
         // Then the depth marker counts all spans (outer + 20 nested).
         assert!(
-            output.replace("\x1b[2m", "").replace("\x1b[0m", "").contains("…×21 "),
+            output
+                .replace("\x1b[2m", "")
+                .replace("\x1b[0m", "")
+                .contains("…×21 "),
             "expected depth marker, got: {output}"
         );
         // And only the innermost span name and fields are rendered.
