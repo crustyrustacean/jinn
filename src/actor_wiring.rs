@@ -933,9 +933,10 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .await
         );
 
-        // Search index maintenance: drives the dirty-set drain once at
-        // startup (upgrade backfill) and then every REINDEX_INTERVAL,
-        // publishing per-session progress to this dashboard row.
+        // Search index maintenance: message-driven reindex state machine —
+        // refreshes its in-memory dirty-session queue when idle and
+        // reindexes at most REINDEX_BATCH sessions per heartbeat,
+        // publishing the remaining count after every session.
         let _search_index = spawn_tracked!(
             &services.bus,
             jinn_domain::feat::session_search::search_index_actor::SEARCH_INDEX_ROW_NAME,
@@ -945,7 +946,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     deps: actor_deps.clone(),
                     interval:
                         jinn_domain::feat::session_search::search_index_actor::REINDEX_INTERVAL,
-                    budget: jinn_domain::feat::session_search::search_index_actor::REINDEX_BUDGET,
+                    batch: jinn_domain::feat::session_search::search_index_actor::REINDEX_BATCH,
                 },
                 &root,
             )
