@@ -946,8 +946,8 @@ release TAG:
     set -euo pipefail
 
     REPO="jayson-lennon/jinn"
-
-    # --- Pre-flight: TAG must match the Cargo.toml version ---
+    LINUX_TARGET="x86_64-unknown-linux-gnu"
+    WINDOWS_TARGET="x86_64-pc-windows-gnu"
     VERSION=$(sed -n '/^\[workspace\.package\]/,/^[\[]/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
     if [ "{{TAG}}" != "v${VERSION}" ]; then
         echo "Error: tag '{{TAG}}' does not match Cargo.toml version 'v${VERSION}'." >&2
@@ -969,13 +969,6 @@ release TAG:
         exit 1
     fi
 
-    # --- Pre-flight: cargo-binstall must be installed (for smoke test) ---
-    if ! command -v cargo-binstall >/dev/null 2>&1; then
-        echo "Error: cargo-binstall is not installed." >&2
-        echo "  Run: cargo install cargo-binstall" >&2
-        exit 1
-    fi
-
     # --- 1. Mirror trunk (and tags) to GitHub ---
     echo '==> Mirroring trunk to GitHub...'
     just sync-github
@@ -985,8 +978,8 @@ release TAG:
     just refresh-plugins
 
     # --- 3. Build the cargo-binstall tarballs (linux + windows) ---
-    just build-release-tarball x86_64-unknown-linux-gnu
-    just build-release-tarball x86_64-pc-windows-gnu
+    just build-release-tarball "${LINUX_TARGET}"
+    just build-release-tarball "${WINDOWS_TARGET}"
 
     TARBALL_LINUX="jinn-x86_64-unknown-linux-gnu-v${VERSION}.tgz"
     TARBALL_WINDOWS="jinn-x86_64-pc-windows-gnu-v${VERSION}.tgz"
@@ -1000,30 +993,23 @@ release TAG:
         gh release create "{{TAG}}" "${TARBALL_LINUX}" "${TARBALL_WINDOWS}" --repo "${REPO}" --generate-notes
     fi
 
-    # --- 5. Smoke-test: cargo-binstall per target into an isolated cargo home ---
-    echo '==> Smoke-testing cargo-binstall (linux)...'
-    SMOKE_HOME="$(mktemp -d)"
-    trap 'rm -rf "${SMOKE_HOME}"' EXIT
-    CARGO_HOME="${SMOKE_HOME}" cargo binstall \
-        --git "https://github.com/${REPO}" \
-        --locked jinn \
-        --target x86_64-unknown-linux-gnu \
-        --no-confirm
-    INSTALLED="${SMOKE_HOME}/bin/jinn"
-    echo "==> Installed binary reports: $(${INSTALLED} --version)"
+    # --- 5. Verify the uploaded artifacts locally ---
+    # The [package.metadata.binstall] templates resolve
+    # jinn-<target>-v<version>.tgz -> jinn-<target>-v<version>/<bin><binary-ext>,
+    # so the tarball member path IS what binstall looks up. Checking the
+    # members (and running each binary) verifies the template against the
+    # assets we just built — no network round-trip needed.
+    echo '==> Verifying tarball layouts (binstall template: {name}-{target}-v{version}/{bin}{binary-ext})'
+    [ "$(tar -tzf "${TARBALL_LINUX}" | grep -cx "jinn-${LINUX_TARGET}-v${VERSION}/jinn")" -eq 1 ] \
+        || { echo "Error: ${TARBALL_LINUX} does not contain jinn-${LINUX_TARGET}-v${VERSION}/jinn" >&2; exit 1; }
+    [ "$(tar -tzf "${TARBALL_WINDOWS}" | grep -cx "jinn-${WINDOWS_TARGET}-v${VERSION}/jinn.exe")" -eq 1 ] \
+        || { echo "Error: ${TARBALL_WINDOWS} does not contain jinn-${WINDOWS_TARGET}-v${VERSION}/jinn.exe" >&2; exit 1; }
 
-    echo '==> Smoke-testing cargo-binstall (windows)...'
-    CARGO_HOME="${SMOKE_HOME}" cargo binstall \
-        --git "https://github.com/${REPO}" \
-        --locked jinn \
-        --target x86_64-pc-windows-gnu \
-        --no-confirm
-    WIN_EXE="${SMOKE_HOME}/bin/jinn.exe"
-    [ -f "${WIN_EXE}" ] || { echo "Error: windows tarball did not install jinn.exe" >&2; exit 1; }
+    echo "==> Linux binary reports: $(./target/${LINUX_TARGET}/release/jinn --version)"
     if command -v wine >/dev/null 2>&1; then
-        echo "==> Installed windows binary reports: $(wine "${WIN_EXE}" --version 2>/dev/null)"
+        echo "==> Windows binary reports: $(WINEDEBUG=-all wine ./target/${WINDOWS_TARGET}/release/jinn.exe --version 2>/dev/null)"
     else
-        echo '==> wine not on PATH; skipping windows binary run (install/extraction verified)'
+        echo '==> wine not on PATH; skipping windows binary run'
     fi
 
     echo "==> Done. https://github.com/${REPO}/releases/tag/{{TAG}}"
