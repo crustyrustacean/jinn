@@ -397,7 +397,10 @@ mod tests {
 
     impl std::io::Write for CapturingSink {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().expect("poisoned").extend_from_slice(buf);
+            let mut sink = self.0.lock().map_err(|err| {
+                std::io::Error::other(format!("capture buffer mutex poisoned: {err}"))
+            })?;
+            sink.extend_from_slice(buf);
             Ok(buf.len())
         }
 
@@ -410,9 +413,8 @@ mod tests {
     #[tokio::test]
     async fn publish_on_real_bus_logs_sent_line() {
         use kameo::actor::Spawn;
-        use tracing_subscriber::layer::SubscriberExt;
-        use tracing_subscriber::util::SubscriberInitExt;
         use tracing_subscriber::Layer;
+        use tracing_subscriber::layer::SubscriberExt;
 
         // Given a real MessageBus-backed BusService and a subscriber
         // capturing debug events.
