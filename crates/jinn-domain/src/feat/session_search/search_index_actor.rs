@@ -21,7 +21,7 @@
 //! no-op (the set dedupes), and one re-marked after processing re-enters
 //! the queue on the next idle refresh.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
 
 use kameo::actor::{ActorRef, Spawn};
@@ -129,7 +129,9 @@ impl Message<ReindexTick> for SearchIndexActor {
         if self.queue.is_empty() {
             self.publish_up_to_date().await;
         } else {
-            self.publish_remaining().await;
+            // Nothing is in flight yet: the whole queue is still counted in
+            // self.queue.
+            self.publish_remaining(0).await;
             self.process_batch().await;
         }
         self.reschedule(ctx);
@@ -168,14 +170,24 @@ impl SearchIndexActor {
     /// offset). A failed chunk keeps the session queued — the store keeps
     /// its resume offset, and a later heartbeat retries it — while the rest
     /// of the batch continues.
+    ///
+    /// The remaining count reported per session is `queue.len()` plus the
+    /// batch tail not yet popped, so a label published after the k-th
+    /// session includes the batch members still waiting their turn —
+    /// without this, every mid-batch publish would under-count by the whole
+    /// unpopped remainder and the dashboard would visibly step down only
+    /// once per heartbeat.
     async fn process_batch(&mut self) {
-        let batch = self.take_batch();
-        for id in batch {
+        let mut batch: VecDeque<SessionId> = self.take_batch().into_iter().collect();
+        while let Some(id) = batch.pop_front() {
             let finished = self.reindex_session(&id).await;
             if !finished {
                 self.queue.insert(id);
             }
-            self.publish_remaining().await;
+            // batch.len() is exactly the unpopped tail of this heartbeat's
+            // batch (completed sessions are not re-inserted; a failed
+            // session goes back into the queue, not into the tail).
+            self.publish_remaining(batch.len()).await;
         }
     }
 
@@ -222,14 +234,15 @@ impl SearchIndexActor {
     }
 
     /// Publishes the queue's remaining count: "N sessions pending", or —
-    /// once the in-memory queue empties — the authoritative up-to-date
-    /// check. A failed count publishes nothing; the previous message stays
-    /// up and the next publish retries.
-    async fn publish_remaining(&self) {
-        if self.queue.is_empty() {
+    /// once the queue and the in-flight batch tail empty — the
+    /// authoritative up-to-date check. A failed count publishes nothing;
+    /// the previous message stays up and the next publish retries.
+    async fn publish_remaining(&self, in_flight: usize) {
+        let remaining = self.queue.len() + in_flight;
+        if remaining == 0 {
             self.publish_up_to_date().await;
         } else {
-            self.publish_status(format!("{} sessions pending", self.queue.len()))
+            self.publish_status(format!("{remaining} sessions pending"))
                 .await;
         }
     }

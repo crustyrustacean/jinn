@@ -596,6 +596,66 @@ async fn redirtied_session_is_requeued_and_reindexed_on_a_later_heartbeat() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn countdown_label_counts_every_session_including_the_unprocessed_batch_tail() {
+    // Given fifteen dirty sessions, a batch of ten, and a status recorder.
+    let (_dir, harness, deps, _store) = sqlite_actor_deps().await;
+    let recorder = harness
+        .spawn_recorder::<jinn_slices::ServiceStatusUpdate>()
+        .await;
+    for _ in 0..15 {
+        deps.services
+            .session_store
+            .save(&needle_session(&SessionId::new()))
+            .await
+            .expect("save");
+    }
+
+    // When the actor drains across two heartbeats (interval well under the
+    // wait, so both fire during the assertion window).
+    let root = RootSupervisor::spawn_root().await;
+    let _actor = crate::feat::session_search::search_index_actor::spawn_search_index_actor(
+        SearchIndexActorDeps {
+            deps: deps.clone(),
+            interval: Duration::from_millis(50),
+            batch: 10,
+        },
+        &root,
+    )
+    .await;
+
+    // Then every session decrements the label: the first heartbeat counts
+    // its unpopped batch tail (after the first session, 14 = 5 queued + 9
+    // in flight), the second heartbeat continues the countdown at its own
+    // pre-batch "5" without flashing "index up to date", and the queue
+    // empties into the idle label. Later idle heartbeats repeat the idle
+    // label, so only the deterministic prefix is asserted.
+    let messages =
+        crate::common::bus::test_harness::await_recorded(&recorder, 17, Duration::from_secs(8))
+            .await;
+    let labels: Vec<&str> = messages
+        .iter()
+        .filter_map(|m| m.status_message.as_deref())
+        .collect();
+    let expected: Vec<String> = (5..=15)
+        .rev()
+        .chain([5, 4, 3, 2, 1])
+        .map(|n| format!("{n} sessions pending"))
+        .chain(std::iter::once("index up to date".to_owned()))
+        .collect();
+    assert!(
+        labels.len() >= expected.len(),
+        "expected the full countdown plus idle label, got {labels:?}"
+    );
+    let prefix: Vec<&str> = labels.iter().take(expected.len()).copied().collect();
+    assert_eq!(
+        prefix,
+        expected.iter().map(String::as_str).collect::<Vec<_>>(),
+        "one decrement per session, counting the in-flight batch tail"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn unreadable_dirty_markers_keep_the_row_out_of_the_up_to_date_state() {
     // Given a store whose only dirty marker is unparseable (dirty_session_ids
     // skips it, pending_dirty_count still counts it) and a status recorder.
