@@ -255,7 +255,7 @@ Available Discord bot commands:
 
 ## Installation
 
-Note: `jinn` is officially supported for Linux. Windows and Mac users will need to [build from source](#build-from-source).
+Note: `jinn` is officially supported for Linux & Windows. Mac users will need to [build from source](#build-from-source).
 
 `jinn` has several artifacts that must be installed to work properly:
 
@@ -279,7 +279,7 @@ jinn install --force   # update plugins, persons, skills, themes, and builtin pr
 #### Requirements
 
 - Rust toolchain (stable)
-- SQLite (`sqlite`) — not needed on Windows; the build compiles its own copy there
+- SQLite (Linux + Mac)
 - `clang`
 - `gcc-libs`
 - [`just`](https://github.com/casey/just) (recommended)
