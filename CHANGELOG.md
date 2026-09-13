@@ -1,3 +1,5 @@
+**(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
+
 ## (development; unreleased)
 
 - Report app name/id to OpenRouter.
