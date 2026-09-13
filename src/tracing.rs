@@ -148,7 +148,7 @@ fn build_filter(rust_log: Option<&str>, verbosity: &Verbosity<WarnLevel>) -> Str
 }
 
 /// Compact event formatter: shows only the *innermost* span plus a nesting
-/// depth marker.
+/// depth marker, with optional ANSI coloring of the structural segments.
 ///
 /// kameo creates one `actor.handle_message` span per actor hop (parented on
 /// the caller's span), so a single tell→handle→publish round trip can nest a
@@ -163,7 +163,26 @@ fn build_filter(rust_log: Option<&str>, verbosity: &Verbosity<WarnLevel>) -> Str
 /// innermost span is where the event actually happened (for kameo arrivals
 /// that's the actor name + message type). Line length is therefore bounded
 /// regardless of nesting depth.
-struct CompactSpans;
+///
+/// When [`CompactSpans::color`] is set, the timestamp, level, depth marker,
+/// span name, and target segments are wrapped in ANSI styles (via
+/// `nu-ansi-term`); when unset, output is plain text with no escapes.
+struct CompactSpans {
+    color: bool,
+}
+
+impl Clone for CompactSpans {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl Copy for CompactSpans {}
+
+impl CompactSpans {
+    /// The plain-text formatter (no ANSI escapes).
+    const PLAIN: Self = Self { color: false };
+}
 
 impl<S, N> FormatEvent<S, N> for CompactSpans
 where
@@ -249,6 +268,7 @@ where
 pub fn init(
     verbosity: Verbosity<WarnLevel>,
     mode: TracingMode,
+    trace_color: bool,
 ) -> Result<(), Report<TracingInitError>> {
     let rust_log = env::var("RUST_LOG").ok();
     let filter = build_filter(rust_log.as_deref(), &verbosity);
@@ -271,10 +291,12 @@ pub fn init(
         eprintln!("  or rerun with --log-file <path> to choose a different file.");
     }
 
+    let formatter = CompactSpans { color: trace_color };
+
     match mode {
         TracingMode::Tui { .. } | TracingMode::Quiet { .. } => {
             let file_layer = tracing_subscriber::fmt::layer()
-                .event_format(CompactSpans)
+                .event_format(formatter)
                 .with_ansi(false)
                 .with_writer(Arc::new(logfile))
                 .with_filter(EnvFilter::new(filter));
@@ -284,14 +306,14 @@ pub fn init(
         TracingMode::Headless { .. } => {
             let file_layer: Box<dyn Layer<_> + Send + Sync + 'static> =
                 tracing_subscriber::fmt::layer()
-                    .event_format(CompactSpans)
+                    .event_format(formatter)
                     .with_ansi(false)
                     .with_writer(Arc::new(logfile))
                     .with_filter(EnvFilter::new(filter.clone()))
                     .boxed();
 
             let terminal_layer = tracing_subscriber::fmt::layer()
-                .event_format(CompactSpans)
+                .event_format(formatter)
                 .with_filter(EnvFilter::new(filter));
 
             tracing_subscriber::registry()
@@ -373,7 +395,7 @@ mod tests {
         let capture = CapturingWriter::default();
         let subscriber = tracing_subscriber::registry().with(
             tracing_subscriber::fmt::layer()
-                .event_format(CompactSpans)
+                .event_format(CompactSpans::PLAIN)
                 .with_writer(capture.clone()),
         );
 
@@ -466,7 +488,7 @@ mod tests {
         let capture = CapturingWriter::default();
         let subscriber = tracing_subscriber::registry().with(
             tracing_subscriber::fmt::layer()
-                .event_format(CompactSpans)
+                .event_format(CompactSpans::PLAIN)
                 .with_writer(capture.clone()),
         );
 
