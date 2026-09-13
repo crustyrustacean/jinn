@@ -3,9 +3,9 @@
 //!
 //! [`ServiceStatusUpdate`] is the kernel-surface vocabulary every feature
 //! publishes (it lives in `jinn-slices`, re-exported here). The lifecycle
-//! events are jinn-domain-owned; per the migration contract (bridge
-//! routing is schema-id based) they are mirrored here as wire-shape-
-//! compatible structs with identical schema descriptors — the conformance
-//! test in `tests.rs` pins the two definitions together.
+//! events are shared Rust types from `jinn_slices::fabric`, re-exported by
+//! [`crate::fabric_events`]: kameo bus dispatch is by `TypeId`, so
+//! wire-shape mirrors would silently drop every event — one type,
+//! imported by both sides.
 
 pub use jinn_slices::ServiceStatusUpdate;
