@@ -311,3 +311,4 @@ Entries are added or amended **only with human approval**.
 - (slices) The dashboard's lifecycle fold is a forward-only state machine: a late `ActorStarting` report never demotes a `Running` or `Dead` row, because the `ActorStarting` and `ActorStarted` forward relays are independent actors and their envelopes can cross the fabric out of order under the startup burst.
 - (logs) -v scopes all workspace crates (every crate target starts with `jinn`) plus kameo's span targets; `RUST_LOG` adds dependency targets, and a `RUST_LOG` filter already mentioning `jinn` overrides `-v` entirely.
 - (logs) Every kameo bus publish and kameo→trouper crossing logs a debug line naming the message type; per-actor arrival is rendered by kameo's `actor.handle_message` spans through a compact formatter that shows only the innermost span plus nesting depth.
+- (logs) Trace colors are opt-in via `--trace-color`; default rendering is plain text (no ANSI escapes) in the trace file.
