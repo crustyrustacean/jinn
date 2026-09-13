@@ -101,6 +101,7 @@ dirs = { workspace = true }
 jiff = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+nu-ansi-term = { workspace = true }
 clap = { workspace = true }
 clap-verbosity-flag = { workspace = true }
 ratatui-which-key = { workspace = true }
@@ -268,6 +269,7 @@ anstyle-lossy = "1"
 anstyle = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+nu-ansi-term = "0.50"
 
 # Proc-macro
 syn = { version = "2", features = ["full"] }
