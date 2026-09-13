@@ -29,7 +29,7 @@ members = ["crates/jinn-*", "crates/slices/*", "plugins/*", "vendor/*"]
 
 
 [workspace.package]
-version = "0.116.1"
+version = "0.117.0"
 edition = "2024"
 publish = false
 
@@ -290,13 +290,20 @@ ctrlc = "3"
 comfy-table = "7"
 # Database
 daow = "0.2.0"
-# `bundled` is deliberately NOT in this spec. Host-side consumers (build
-# scripts, daow's proc-macro validation) must link the system libsqlite3 — a
-# bundled build here would recompile the whole SQLite amalgamation for the
-# host on every clean build. The runtime link still gets `bundled` (a
-# self-contained binary) through daow's own `bundled` feature, which unions
-# across the target-side graph. resolver v3 keeps host and target resolution
-# separate, which is what makes this split possible.
+# `bundled` is deliberately NOT in this spec for the host-side graph: host
+# consumers (build scripts, daow's proc-macro validation) link the system
+# libsqlite3 on Linux/macOS — a bundled build there would recompile the whole
+# SQLite amalgamation for the host on every clean build. The runtime link
+# still gets `bundled` (a self-contained binary) through daow's own
+# `bundled-sqlite` feature, which unions across the target-side graph.
+# resolver v3 keeps host and target resolution separate, which is what makes
+# this split possible.
+#
+# Windows exception: the host link used to fail there with LNK1181 — Windows
+# has no system SQLite import library to link. Both host edges (this crate's
+# build-dependencies and daow-macros' windows-scoped dependency) therefore
+# enable `bundled` under cfg(windows) only. Windows pays one extra host
+# amalgamation compile on clean builds; Linux/macOS are unchanged.
 rusqlite = { version = "0.40", default-features = false, features = ["cache"] }
 
 # Discord bot

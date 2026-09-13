@@ -400,9 +400,17 @@ impl PtySession {
     }
 
     /// The child's pid, if the platform exposes it.
+    #[cfg(unix)]
     #[must_use]
     pub fn pid(&self) -> Option<u32> {
         self.master.process_group_leader().map(|pid| pid as u32)
+    }
+
+    /// Windows: portable-pty's ConPTY does not expose the child pid.
+    #[cfg(windows)]
+    #[must_use]
+    pub fn pid(&self) -> Option<u32> {
+        None
     }
 
     /// The pty's foreground process group (unix), for diagnostics and tests.

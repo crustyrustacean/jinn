@@ -14,12 +14,12 @@ The planner consults this file before proposing a plan. If a feature **contradic
 
 ## Templates
 
-| Pattern     | Form                                                             | Example                                                                                 |
-| ----------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| State       | `[Scope] currently [does X / is Y].`                             | "The TUI's first screen at startup is the chat screen."                                 |
-| Persistence | `[Scope] persists [what] to [where].`                            | "Sessions persist to SQLite."                                                           |
-| Flow        | `[Input/event] is handled by [actor/subsystem], which [action].` | "File edits route through the `edit` tool, which requires a unique match or `replace_all`."        |
-| Boundary    | `[Scope] is bounded by [constraint].`                            | "Project discovery walks ancestors until a VCS root or `$HOME`, whichever comes first." |
+| Pattern     | Form                                                             | Example                                                                                     |
+| ----------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| State       | `[Scope] currently [does X / is Y].`                             | "The TUI's first screen at startup is the chat screen."                                     |
+| Persistence | `[Scope] persists [what] to [where].`                            | "Sessions persist to SQLite."                                                               |
+| Flow        | `[Input/event] is handled by [actor/subsystem], which [action].` | "File edits route through the `edit` tool, which requires a unique match or `replace_all`." |
+| Boundary    | `[Scope] is bounded by [constraint].`                            | "Project discovery walks ancestors until a VCS root or `$HOME`, whichever comes first."     |
 
 ## Absence
 
@@ -309,6 +309,12 @@ Entries are added or amended **only with human approval**.
 - (slices) Slice config sections resolve during that slice's activate() from a document sink composition passes in; calling ConfigSection::take() before resolution aborts launch instead of yielding defaults.
 - (bridges) Bridge relays (kameo→trouper and trouper→kameo) spawn with deep mailboxes — unbounded on the kameo side, 64k-entry backpressured inboxes on the trouper side, matching the dashboard canvas actor — so a startup-scale publish burst crosses the fabric without BestEffort drops; the kameo bus itself keeps its BestEffort strategy and bounded-actor mailboxes.
 - (slices) The dashboard's lifecycle fold is a forward-only state machine: a late `ActorStarting` report never demotes a `Running` or `Dead` row, because the `ActorStarting` and `ActorStarted` forward relays are independent actors and their envelopes can cross the fabric out of order under the startup burst.
-- (logs) -v controls only the verbosity of jinn* crates; third-party crates always display WARN and ERROR (ERROR only at -q), and setting RUST_LOG overrides the automatic filter entirely.
+- (logs) -v controls only the verbosity of jinn\* crates; third-party crates always display WARN and ERROR (ERROR only at -q), and setting RUST_LOG overrides the automatic filter entirely.
 - (logs) Every kameo bus publish and kameo→trouper crossing logs a debug line naming the message type; per-actor arrival is rendered by kameo's `actor.handle_message` spans through a compact formatter that shows only the innermost span plus nesting depth.
 - (logs) Trace colors are opt-in via `--trace-color`; default rendering is plain text (no ANSI escapes) in the trace file.
+- (build) jinn's runtime/target link statically bundles SQLite via rusqlite's `bundled` feature (through daow's default `bundled-sqlite` feature); no system SQLite is used at runtime link time.
+- (build) Host-side link units (jinn-domain's build script, the daow-macros proc-macro) link the system libsqlite3 on Linux/macOS and bundled SQLite on Windows.
+- (build) Building jinn from source on Windows requires no system SQLite installation.
+- (build) Releases ship two cargo-binstall tarballs per tag: `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-gnu` (cross-built from Linux via mingw-w64).
+- (build) The windows-gnu cross target's linker is configured in the checked-in `.cargo/config.toml`; the config is inert for native Linux builds.
+- (build) Release binaries are self-contained on both platforms: bundled SQLite in the target graph, no SQLite DLL/import-library requirement.
