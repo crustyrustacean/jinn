@@ -90,7 +90,7 @@ fn kill_process_tree_unix(pid: u32, child: &mut tokio::process::Child) {
 #[cfg(windows)]
 fn kill_process_group_windows(pid: u32) {
     let config = kill_tree::Config {
-        signal: "SIGKILL".to_string(),
+        signal: "SIGKILL".to_owned(),
         ..Default::default()
     };
     if let Err(e) = kill_tree::blocking::kill_tree_with_config(pid, &config) {

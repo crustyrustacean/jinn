@@ -97,6 +97,15 @@ rustls = { workspace = true }
 rusqlite = { workspace = true }
 jinn-session-schema = { workspace = true }
 
+# The build script runs on the host, so this edge links the *system*
+# libsqlite3 on Linux/macOS — but Windows has no system SQLite import library,
+# which failed the host link with LNK1181 (sqlite3.lib). Enable rusqlite's
+# bundled build on Windows only so a from-source build needs no SQLite
+# installation there; the extra host amalgamation compile is cached and only
+# re-runs on cache-invalidating events (clean, toolchain/lockfile bumps).
+[target.'cfg(windows)'.build-dependencies]
+rusqlite = { workspace = true, features = ["bundled"] }
+
 [target.'cfg(windows)'.dependencies]
 # kill_tree provides Toolhelp32-based process-tree termination on Windows.
 # Used by `common::process_kill` as the Windows counterpart to Unix's

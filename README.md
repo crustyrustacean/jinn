@@ -279,7 +279,7 @@ jinn install --force   # update plugins, persons, skills, themes, and builtin pr
 #### Requirements
 
 - Rust toolchain (stable)
-- SQLite (`sqlite`)
+- SQLite (`sqlite`) — not needed on Windows; the build compiles its own copy there
 - `clang`
 - `gcc-libs`
 - [`just`](https://github.com/casey/just) (recommended)
