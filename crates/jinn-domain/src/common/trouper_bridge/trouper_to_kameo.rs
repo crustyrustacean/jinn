@@ -6,7 +6,9 @@
 //! a [`ServiceActor`] at path `trouper-to-kameo/<schema-name>`, whose
 //! handler republishes onto the kameo bus. Topic subscription happens
 //! at spawn — subscribe is the readiness point, so publishes after
-//! [`spawn_reverse_relay`] returns cannot be missed.
+//! [`spawn_reverse_relay`] returns cannot be missed. The relay's inbox
+//! is deep with backpressure (see the spawn site) so a retained-topic
+//! pump pass never strands events behind a full inbox.
 
 use trouper::actor::ActorPath;
 use trouper::actor::MsgHandler;
@@ -64,6 +66,12 @@ where
     let path = ActorPath::new(format!("trouper-to-kameo/{name}"));
     let spawned = trouper::builder::spawn_service_builder::<ReverseRelay<M>>(system)
         .at(path.clone())
+        // Large-inbox + Block: the topic pump offers retained entries with
+        // try_deliver, so a full (default-64) inbox would leave events
+        // stranded in the topic log until the next pump pass. A deep inbox
+        // with backpressure drains the startup burst in one pass; true
+        // redelivery stays available via cursor reset.
+        .mailbox(64 * 1024, trouper::inbox::OverloadPolicy::Block)
         .start_with(move || {
             Box::pin(async move {
                 Ok(ReverseRelay::<M> {

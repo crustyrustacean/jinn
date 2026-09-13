@@ -76,6 +76,11 @@ impl DashboardCanvasActor {
     pub fn spawn(system: &ActorSystem, cell: &TypedCell<DashboardState>) -> ActorPath {
         let path = trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("dashboard"))
+            // Deep inbox: the startup lifecycle burst (hundreds of
+            // events in under a second) must not fill the dashboard's
+            // inbox — a full inbox stalls the topic-pump cursor while
+            // the retained log evicts, silently dropping events.
+            .mailbox(64 * 1024, trouper::inbox::OverloadPolicy::Block)
             .start_with({
                 let cell = cell.clone();
                 move || Box::pin(async move { Ok(Self { cell }) })
