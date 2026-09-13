@@ -2573,6 +2573,7 @@ dependencies = [
  "kameo_actors",
  "kanal",
  "mockito",
+ "nu-ansi-term",
  "ratatui",
  "ratatui-spatial-splits",
  "ratatui-which-key",

@@ -179,11 +179,6 @@ impl Clone for CompactSpans {
 
 impl Copy for CompactSpans {}
 
-impl CompactSpans {
-    /// The plain-text formatter (no ANSI escapes).
-    const PLAIN: Self = Self { color: false };
-}
-
 impl<S, N> FormatEvent<S, N> for CompactSpans
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -195,53 +190,158 @@ where
         mut writer: Writer<'_>,
         event: &Event<'_>,
     ) -> fmt::Result {
-        // Plain timestamp (matches the previous file output; no ANSI).
-        SystemTime.format_time(&mut writer)?;
-        writer.write_char(' ')?;
+        // Timestamp, dimmed when coloring.
+        if self.color {
+            write_dimmed_timestamp(&mut writer)?;
+            writer.write_char(' ')?;
+        } else {
+            SystemTime.format_time(&mut writer)?;
+            writer.write_char(' ')?;
+        }
 
-        // Level, padded to width 5 like the default formatters (" INFO").
+        // Level, padded to width 5 like the default formatters (" INFO") —
+        // pad the plain token first so the escape bytes never shift alignment,
+        // then wrap the token itself in its per-level color.
         let level: &Level = event.metadata().level();
-        write!(writer, "{level:>5} ")?;
+        let padded = format!("{level:>5}");
+        if self.color {
+            write!(writer, "{} ", level_color(level).bold().paint(&padded))?;
+        } else {
+            write!(writer, "{padded} ")?;
+        }
 
         // Depth marker + innermost span only.
-        write_span_context(ctx, &mut writer)?;
+        self.write_span_context(ctx, &mut writer)?;
 
         // target:line — always on, replacing the per-layer display flags.
         let meta = event.metadata();
-        write!(writer, "{}:", meta.target())?;
+        if self.color {
+            write!(writer, "{}:", DIMMED.paint(meta.target()))?;
+        } else {
+            write!(writer, "{}:", meta.target())?;
+        }
         if let Some(line) = meta.line() {
             write!(writer, "{line}:")?;
         }
         writer.write_char(' ')?;
 
-        // The event's own fields (includes the message text).
+        // The event's own fields (includes the message text); content stays
+        // unstyled so payloads remain greppable.
         ctx.format_fields(writer.by_ref(), event)?;
         writeln!(writer)
     }
 }
 
-/// Writes the `…×N innermost_span{fields}: ` portion of an event line.
-fn write_span_context<S, N>(ctx: &FmtContext<'_, S, N>, writer: &mut Writer<'_>) -> fmt::Result
-where
-    S: Subscriber + for<'lookup> LookupSpan<'lookup>,
-    N: for<'writer> FormatFields<'writer> + 'static,
-{
-    let Some(scope) = ctx.event_scope() else {
-        return Ok(());
+/// The style with every property unset (mirrors `nu_ansi_term`'s `Default`,
+/// which is not `const`); the functional-update syntax builds the styles we
+/// actually use in `const` context.
+const UNSET: nu_ansi_term::Style = nu_ansi_term::Style {
+    foreground: None,
+    background: None,
+    is_bold: false,
+    is_dimmed: false,
+    is_italic: false,
+    is_underline: false,
+    is_blink: false,
+    is_reverse: false,
+    is_hidden: false,
+    is_strikethrough: false,
+    prefix_with_reset: false,
+};
+
+/// Dimmed style for structural segments (timestamp, depth marker, target).
+const DIMMED: nu_ansi_term::Style = nu_ansi_term::Style {
+    is_dimmed: true,
+    ..UNSET
+};
+
+/// Bold style for the innermost span name.
+const BOLD: nu_ansi_term::Style = nu_ansi_term::Style {
+    is_bold: true,
+    ..UNSET
+};
+
+/// Maps a tracing level to its conventional terminal color.
+const fn level_color(level: &Level) -> nu_ansi_term::Style {
+    use nu_ansi_term::Color;
+    let style = match level {
+        &Level::ERROR => nu_ansi_term::Style {
+            foreground: Some(Color::Red),
+            ..UNSET
+        },
+        &Level::WARN => nu_ansi_term::Style {
+            foreground: Some(Color::Yellow),
+            ..UNSET
+        },
+        &Level::INFO => nu_ansi_term::Style {
+            foreground: Some(Color::Green),
+            ..UNSET
+        },
+        &Level::DEBUG => nu_ansi_term::Style {
+            foreground: Some(Color::Blue),
+            ..UNSET
+        },
+        &Level::TRACE => nu_ansi_term::Style {
+            foreground: Some(Color::Purple),
+            ..UNSET
+        },
     };
-    let spans: Vec<_> = scope.from_root().collect();
-    let Some(innermost) = spans.last() else {
-        return Ok(());
-    };
-    write!(writer, "…×{} ", spans.len())?;
-    write!(writer, "{}", innermost.metadata().name())?;
-    let ext = innermost.extensions();
-    if let Some(fields) = ext.get::<FormattedFields<N>>()
-        && !fields.is_empty()
+    style
+}
+
+/// Renders a system timestamp as dimmed SGR codes around the fixed-width
+/// form produced by [`SystemTime`], keeping the colored and plain renderings
+/// column-aligned.
+fn write_dimmed_timestamp(writer: &mut Writer<'_>) -> fmt::Result {
+    // `SystemTime::format_time` writes directly; capture the plain form so it
+    // can be wrapped in style codes without reparsing.
+    let mut plain = String::new();
     {
-        write!(writer, "{{{fields}}}")?;
+        let mut sink = owning_writer(&mut plain);
+        SystemTime.format_time(&mut sink)?;
     }
-    writer.write_str(": ")
+    write!(writer, "{}", DIMMED.paint(plain))
+}
+
+/// Adapts a `String` sink into the `tracing_subscriber::fmt::format::Writer`
+/// expected by `FormatTime`.
+fn owning_writer(sink: &mut String) -> Writer<'_> {
+    Writer::new(sink)
+}
+
+impl CompactSpans {
+    /// Writes the `…×N innermost_span{fields}: ` portion of an event line.
+    fn write_span_context<S, N>(&self, ctx: &FmtContext<'_, S, N>, writer: &mut Writer<'_>) -> fmt::Result
+    where
+        S: Subscriber + for<'lookup> LookupSpan<'lookup>,
+        N: for<'writer> FormatFields<'writer> + 'static,
+    {
+        let Some(scope) = ctx.event_scope() else {
+            return Ok(());
+        };
+        let spans: Vec<_> = scope.from_root().collect();
+        let Some(innermost) = spans.last() else {
+            return Ok(());
+        };
+        if self.color {
+            write!(writer, "{} ", DIMMED.paint(format!("…×{}", spans.len())))?;
+            write!(writer, "{}", BOLD.paint(innermost.metadata().name()))?;
+        } else {
+            write!(writer, "…×{} ", spans.len())?;
+            write!(writer, "{}", innermost.metadata().name())?;
+        }
+        let ext = innermost.extensions();
+        if let Some(fields) = ext.get::<FormattedFields<N>>()
+            && !fields.is_empty()
+        {
+            if self.color {
+                write!(writer, "{}", DIMMED.paint(format!("{{{fields}}}")))?;
+            } else {
+                write!(writer, "{{{fields}}}")?;
+            }
+        }
+        writer.write_str(": ")
+    }
 }
 
 /// Initializes the global tracing subscriber.
@@ -297,7 +397,7 @@ pub fn init(
         TracingMode::Tui { .. } | TracingMode::Quiet { .. } => {
             let file_layer = tracing_subscriber::fmt::layer()
                 .event_format(formatter)
-                .with_ansi(false)
+                .with_ansi(trace_color)
                 .with_writer(Arc::new(logfile))
                 .with_filter(EnvFilter::new(filter));
 
@@ -307,13 +407,14 @@ pub fn init(
             let file_layer: Box<dyn Layer<_> + Send + Sync + 'static> =
                 tracing_subscriber::fmt::layer()
                     .event_format(formatter)
-                    .with_ansi(false)
+                    .with_ansi(trace_color)
                     .with_writer(Arc::new(logfile))
                     .with_filter(EnvFilter::new(filter.clone()))
                     .boxed();
 
             let terminal_layer = tracing_subscriber::fmt::layer()
                 .event_format(formatter)
+                .with_ansi(trace_color)
                 .with_filter(EnvFilter::new(filter));
 
             tracing_subscriber::registry()
@@ -392,10 +493,17 @@ mod tests {
     /// Emits an info event inside `depth` nested spans and returns the
     /// captured formatter output.
     fn render_event_at_depth(depth: usize) -> String {
+        render_at_depth_with(depth, false)
+    }
+
+    /// Emits an info event inside `depth` nested spans, with or without
+    /// coloring, returning the captured formatter output.
+    fn render_at_depth_with(depth: usize, color: bool) -> String {
         let capture = CapturingWriter::default();
         let subscriber = tracing_subscriber::registry().with(
             tracing_subscriber::fmt::layer()
-                .event_format(CompactSpans::PLAIN)
+                .event_format(CompactSpans { color })
+                .with_ansi(color)
                 .with_writer(capture.clone()),
         );
 
@@ -430,16 +538,18 @@ mod tests {
     }
 
     #[rstest::rstest]
+    #[case(false)]
+    #[case(true)]
     #[test]
-    fn formatter_renders_depth_marker_and_innermost_span() {
+    fn formatter_renders_depth_marker_and_innermost_span(#[case] color: bool) {
         // Given a subscriber with the compact formatter and 20 nested spans.
-        let output = render_event_at_depth(20);
+        let output = render_at_depth_with(20, color);
 
         // When formatting an event inside those spans (rendered above).
 
         // Then the depth marker counts all spans (outer + 20 nested).
         assert!(
-            output.contains("…×21 "),
+            output.replace("\x1b[2m", "").replace("\x1b[0m", "").contains("…×21 "),
             "expected depth marker, got: {output}"
         );
         // And only the innermost span name and fields are rendered.
@@ -488,7 +598,7 @@ mod tests {
         let capture = CapturingWriter::default();
         let subscriber = tracing_subscriber::registry().with(
             tracing_subscriber::fmt::layer()
-                .event_format(CompactSpans::PLAIN)
+                .event_format(CompactSpans { color: false })
                 .with_writer(capture.clone()),
         );
 
@@ -513,6 +623,79 @@ mod tests {
         assert!(
             output.contains("jinn::tracing:"),
             "expected target, got: {output}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn formatter_without_color_emits_no_escapes() {
+        // Given the compact formatter with coloring disabled.
+        let output = render_at_depth_with(3, false);
+
+        // When formatting an event (rendered above).
+
+        // Then the rendered line contains no ANSI escape sequences.
+        assert!(
+            !output.contains('\x1b'),
+            "expected no escapes, got: {output:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn formatter_with_color_emits_level_color_and_styles() {
+        // Given the compact formatter with coloring enabled.
+        let output = render_at_depth_with(3, true);
+
+        // When formatting an INFO event (rendered above).
+
+        // Then the level token carries its green foreground code (bold+green
+        // renders as `1;32` in a single SGR sequence).
+        assert!(
+            output.contains("\x1b[1;32m INFO\x1b[0m"),
+            "expected colored INFO level, got: {output:?}"
+        );
+        // And the timestamp and span name are styled.
+        assert!(
+            output.contains("\x1b[2m"),
+            "expected dimmed segments, got: {output:?}"
+        );
+        assert!(
+            output.contains("\x1b[1mactor.handle_message\x1b[0m"),
+            "expected bold span name, got: {output:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn formatter_with_color_keeps_level_padding() {
+        // Given colored and plain renderings of the same event.
+        let plain = render_at_depth_with(3, false);
+        let colored = render_at_depth_with(3, true);
+
+        // When locating the level token in each (stripping escapes from the
+        // colored one).
+
+        // Then both place the level in the same columns — the escape bytes
+        // never shift the padding.
+        let strip = |s: &str| {
+            let line = s.lines().next().expect("one line");
+            let idx = line.find(" INFO").expect("level token in output");
+            line[idx..].to_owned()
+        };
+        assert!(
+            strip(&plain).starts_with(" INFO "),
+            "plain level alignment broken: {plain:?}"
+        );
+        let colored_plain = colored
+            .replace("\x1b[1;32m", "")
+            .replace("\x1b[2m", "")
+            .replace("\x1b[0m", "")
+            .replace("\x1b[1m", "")
+            .replace("\x1b[3m", "");
+        assert!(
+            strip(&colored_plain).starts_with(" INFO "),
+            "colored level alignment broken: {colored:?}"
         );
     }
 
