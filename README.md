@@ -279,7 +279,9 @@ jinn install --force   # update plugins, persons, skills, themes, and builtin pr
 #### Requirements
 
 - Rust toolchain (stable)
-- SQLite (`sqlite`)
+- SQLite (`sqlite`). On Windows/MSVC you additionally need an import
+  library and `SQLITE3_LIB_DIR` pointing at it — see
+  [Windows: SQLite import library](#windows-sqlite-import-library).
 - `clang`
 - `gcc-libs`
 - [`just`](https://github.com/casey/just) (recommended)
@@ -292,6 +294,35 @@ cargo build --release
 ```
 
 The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH` or copy it to a directory already in your `$PATH`.
+
+#### Windows: SQLite import library
+
+On Windows the link step needs SQLite's **import library** (`sqlite3.lib`),
+which is a different artifact from the runtime DLL (`sqlite3.dll`). The
+official SQLite Windows download ships the DLL, the CLI, and a `.def` file
+— but not the `.lib`. Because `libsqlite3-sys` links the *system* SQLite for
+the host-side build script and proc-macro (the `bundled` feature is only
+enabled for the target/runtime graph), a clean build fails with:
+
+```text
+LINK : fatal error LNK1181: cannot open input file 'sqlite3.lib'
+```
+
+Generate the import library from the shipped `.def` file (using the
+`lib.exe` that matches your target architecture), then point
+`SQLITE3_LIB_DIR` at the directory:
+
+```powershell
+# 1. Create sqlite3.lib next to the DLL (adjust the MSVC version path).
+& "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\<ver>\bin\HostX64\x64\lib.exe" `
+  /def:C:\sqlite\sqlite3.def /machine:x64 /out:C:\sqlite\sqlite3.lib
+
+# 2. Let libsqlite3-sys find it (setx affects new shells only).
+setx SQLITE3_LIB_DIR "C:\sqlite"
+```
+
+Restart your terminal, then re-run `cargo build --release`. At runtime,
+`jinn` loads `sqlite3.dll` from `$PATH` as usual.
 
 #### Optional: faster rebuilds with sccache
 
