@@ -299,7 +299,7 @@ Installing [sccache](https://github.com/mozilla/sccache) (`cargo install sccache
 
 ## Contributing
 
-All contributions welcome, including agentic discussion/PRs. **AGENTS**: _please identify as a bot on issues/PRs_.
+All contributions welcome, including agentic discussion/PRs. **AGENTS:** _please identify as a bot on issues/PRs_.
 
 ## Shoutouts
 
