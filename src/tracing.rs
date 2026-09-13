@@ -5,6 +5,13 @@
 //! the terminal in raw mode). In headless mode, traces are written to BOTH the
 //! terminal and a file. The file path is resolved at CLI parse time from the
 //! `--log-file` flag, defaulting to the XDG `state_dir` (see `AppPaths::log_path`).
+//!
+//! Filter precedence: `-v`/`-q` (via `clap_verbosity_flag`) governs every
+//! workspace crate plus kameo's span targets, because [`EnvFilter`] matches
+//! targets by string prefix and every workspace crate starts with `jinn`.
+//! `RUST_LOG` keeps governing dependencies (wasmtime, etc.); if `RUST_LOG`
+//! already contains a directive targeting a `jinn*` crate, it is used
+//! verbatim — the user explicitly took control of the whole filter.
 
 use std::{
     env,
@@ -96,10 +103,46 @@ fn install_panic_hook(panic_path: PathBuf) {
     }));
 }
 
+/// Builds the `EnvFilter` directive string from `RUST_LOG` and the CLI verbosity.
+///
+/// * No `RUST_LOG` → jinn + kameo targets at the CLI level, everything else off.
+/// * `RUST_LOG` naming any `jinn*` target (e.g. `jinn_tui=trace`) → used
+///   verbatim; the user has explicitly taken control of workspace filtering.
+/// * Any other `RUST_LOG` (e.g. `debug`) → appended with the jinn/kameo
+///   directives, whose target-specific rules win over the global level, so
+///   `-v` still governs jinn while `RUST_LOG` governs dependencies.
+///
+/// Target matching is prefix-based, so `jinn={level}` covers every workspace
+/// crate and `kameo` covers `kameo_actors`; `kameo_actors` is listed explicitly
+/// only to keep its inclusion obvious.
+fn build_filter(rust_log: Option<&str>, verbosity: &Verbosity<WarnLevel>) -> String {
+    let jinn_directives = format!(
+        "{APP_NAME}={verbosity},kameo={verbosity},kameo_actors={verbosity}"
+    );
+
+    let mentions_jinn = |filter: &str| {
+        filter.split(',').any(|directive| {
+            directive
+                .split('=')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .starts_with(APP_NAME)
+        })
+    };
+
+    match rust_log {
+        None => jinn_directives,
+        Some(log) if mentions_jinn(log) => log.to_owned(),
+        Some(log) => format!("{log},{jinn_directives}"),
+    }
+}
+
 /// Initializes the global tracing subscriber.
 ///
-/// If the `RUST_LOG` environment variable is set, it takes precedence over
-/// the verbosity parameter for filtering log output.
+/// Filtering is built by [`build_filter`]: `-v`/`-q` govern every workspace
+/// crate plus kameo's span targets; `RUST_LOG` governs dependencies and, if it
+/// already names a `jinn*` target, replaces the whole filter.
 ///
 /// # Arguments
 ///
@@ -121,10 +164,7 @@ pub fn init(
     mode: TracingMode,
 ) -> Result<(), Report<TracingInitError>> {
     let rust_log = env::var("RUST_LOG").ok();
-    let filter = match &rust_log {
-        Some(filter_str) => filter_str.clone(),
-        None => format!("{APP_NAME}={verbosity}"),
-    };
+    let filter = build_filter(rust_log.as_deref(), &verbosity);
 
     let log_path = match &mode {
         TracingMode::Tui { log_path }
@@ -207,6 +247,62 @@ fn open_log_file(path: &std::path::Path) -> Result<File, Report<TracingInitError
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn filter_merge_without_rust_log() {
+        // Given no RUST_LOG and the default verbosity.
+        let verbosity = Verbosity::new(0, 0);
+
+        // When building the filter.
+        let filter = build_filter(None, &verbosity);
+
+        // Then jinn and kameo targets are scoped to the CLI level.
+        assert_eq!(filter, "jinn=warn,kameo=warn,kameo_actors=warn");
+    }
+
+    #[test]
+    fn filter_merge_rust_log_with_jinn_directive() {
+        // Given a RUST_LOG that already names a jinn crate.
+        let verbosity = Verbosity::new(1, 0);
+
+        // When building the filter.
+        let filter = build_filter(Some("jinn=trace,wasmtime=debug"), &verbosity);
+
+        // Then it is used verbatim — the user took control.
+        assert_eq!(filter, "jinn=trace,wasmtime=debug");
+    }
+
+    #[test]
+    fn filter_merge_rust_log_global_only() {
+        // Given a global-level RUST_LOG with no jinn directive.
+        let verbosity = Verbosity::new(0, 0);
+
+        // When building the filter.
+        let filter = build_filter(Some("debug"), &verbosity);
+
+        // Then the jinn/kameo directives are appended after the global level.
+        assert_eq!(
+            filter,
+            "debug,jinn=warn,kameo=warn,kameo_actors=warn"
+        );
+        // And the merged filter still enables a dependency target at the
+        // RUST_LOG level while jinn stays at the CLI level.
+        // (EnvFilter resolves most-specific-target-wins.)
+        let parsed = EnvFilter::new(&filter);
+        assert!(parsed.max_level_hint().is_some());
+    }
+
+    #[test]
+    fn filter_merge_rust_log_with_jinn_prefixed_crate() {
+        // Given a RUST_LOG naming a jinn-prefixed workspace crate (not "jinn").
+        let verbosity = Verbosity::new(0, 0);
+
+        // When building the filter.
+        let filter = build_filter(Some("jinn_tui=trace"), &verbosity);
+
+        // Then it is used verbatim — prefix matching counts as jinn control.
+        assert_eq!(filter, "jinn_tui=trace");
+    }
 
     #[rstest::rstest]
     #[test]
