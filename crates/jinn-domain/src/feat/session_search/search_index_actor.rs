@@ -2,22 +2,26 @@
 //!
 //! Owns no `AppState` fields — its writes go to the database (the
 //! `session_fts` index table), not to shared state. Dirty sessions are
-//! recorded by triggers on the `sessions` table (schema v26); this actor
-//! drives the drain itself: once at startup (backfill after an upgrade),
-//! then on a fixed interval, reindexing sessions one at a time and
-//! publishing the remaining pending count to the `search-index` dashboard
-//! row around every drain. Search results may trail the newest saves by one
+//! recorded by triggers on the `sessions` table (schema v26); this actor is
+//! a message-driven state machine over an in-memory queue of dirty
+//! sessions: each heartbeat refreshes the queue from the durable marker
+//! table when idle, then reindexes at most one batch of sessions,
+//! publishing the remaining count to the `search-index` dashboard row
+//! after every session. Search results may trail the newest saves by one
 //! interval; the agent's own current-turn entries are in its context
 //! regardless.
 //!
-//! Each tick's drain is bounded by a time budget ([`REINDEX_BUDGET`] in
-//! production) so a large pending queue (e.g. the first-launch backfill
-//! after the schema upgrade, hundreds of sessions) drains cooperatively:
-//! the tick handler returns promptly, the actor stays stoppable, and
-//! session persists interleave with backfill writes instead of starving
-//! behind them. The `fts_dirty` table is the durable queue, so a budget
-//! that expires simply resumes on the next tick.
+//! Batching replaces a time budget: one batch per heartbeat keeps the
+//! handler short so the mailbox — and with it the supervised shutdown
+//! handshake — stays responsive between batches, while a large backfill
+//! (e.g. the first launch after the schema upgrade, hundreds of sessions)
+//! drains across heartbeats. The durable `fts_dirty` table remains the
+//! source of truth; the in-memory queue is only a cache, refreshed whenever
+//! the heartbeat finds it empty. A session re-marked while queued is a
+//! no-op (the set dedupes), and one re-marked after processing re-enters
+//! the queue on the next idle refresh.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use kameo::actor::{ActorRef, Spawn};
@@ -25,25 +29,25 @@ use kameo::prelude::{Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
+use crate::protocol::SessionId;
 
-/// How often the actor drains the dirty set in production.
+/// How often the actor beats in production.
 pub const REINDEX_INTERVAL: Duration = Duration::from_secs(5);
 
-/// How long one tick's drain may reindex before yielding to the next tick.
+/// How many sessions one heartbeat reindexes before yielding to the mailbox.
 ///
-/// Bounds the per-tick write-lock hold so the drain never monopolizes the
-/// database: startup stays responsive, the tick handler returns inside
-/// shutdown timeouts, and session persists interleave with backfill work.
-/// The store chunks each session's rebuild ([`REINDEX_CHUNK`] entries per
-/// transaction), so the budget always bites within a bounded interval even
-/// when a single session is enormous.
-pub const REINDEX_BUDGET: Duration = Duration::from_secs(2);
+/// Bounds the handler's runtime without clock-watching: each heartbeat
+/// processes at most one batch, so the actor stays stoppable and responsive
+/// between batches, and a large backfill drains across heartbeats. Within a
+/// session the store chunks the rebuild ([`REINDEX_CHUNK`] entries per
+/// transaction), so one enormous session still yields between chunks.
+pub const REINDEX_BATCH: usize = 10;
 
 /// How many entries one reindex chunk transaction may index.
 ///
 /// Small enough that a debug-build parse of a chunk (the expensive part —
-/// kind JSON of full tool outputs) stays well under the budget and the
-/// write lock is released between chunks for concurrent persists.
+/// kind JSON of full tool outputs) returns promptly and the write lock is
+/// released between chunks for concurrent persists.
 pub const REINDEX_CHUNK: usize = 500;
 
 /// Dashboard row this actor publishes reindex progress under. Must match the
@@ -58,24 +62,29 @@ pub const SEARCH_INDEX_ROW_NAME: &str = "search-index";
 pub struct SearchIndexActorDeps {
     /// Common actor dependencies (services + bus).
     pub deps: ActorDeps,
-    /// Poll interval. Production uses [`REINDEX_INTERVAL`]; tests inject a
-    /// small value so convergence assertions don't wait on the default.
+    /// Heartbeat interval. Production uses [`REINDEX_INTERVAL`]; tests
+    /// inject a small value so convergence assertions don't wait on the
+    /// default.
     pub interval: Duration,
-    /// Per-tick drain time budget. Production uses [`REINDEX_BUDGET`]; tests
-    /// inject `Duration::ZERO` (exactly one session per tick) or a large
-    /// value (drain everything in one tick).
-    pub budget: Duration,
+    /// Sessions reindexed per heartbeat. Production uses [`REINDEX_BATCH`];
+    /// tests inject `1` (one session per heartbeat) or a large value (drain
+    /// everything in one heartbeat).
+    pub batch: usize,
 }
 
 /// The search-index maintenance actor.
 ///
-/// Statelessness is deliberate: the `fts_dirty` table is the durable record
-/// of pending work, so a crash or a skipped drain costs freshness only, and
-/// the work is retried on the next tick (or the next startup).
+/// The in-memory queue is a cache of the durable `fts_dirty` table, not a
+/// source of truth: a crash or a skipped heartbeat costs freshness only, and
+/// the work is retried on the next heartbeat (or the next startup). The
+/// queue's count drives the dashboard label between refreshes; the durable
+/// table is consulted whenever the queue empties, so the row only reads
+/// "index up to date" when the marker table is genuinely clean.
 pub struct SearchIndexActor {
     deps: ActorDeps,
     interval: Duration,
-    budget: Duration,
+    batch: usize,
+    queue: HashSet<SessionId>,
 }
 
 impl kameo::Actor for SearchIndexActor {
@@ -88,12 +97,13 @@ impl kameo::Actor for SearchIndexActor {
         // the supervised spawn handshake — and with it the whole actor
         // wiring — would block until the first drain completes (a
         // multi-second freeze on a large pending queue). The spawn helper
-        // kicks the first tick after the handshake instead.
+        // kicks the first heartbeat after the handshake instead.
         let _ = actor_ref; // unused without the kick; keeps the signature stable
         Ok(Self {
             deps: args.deps,
             interval: args.interval,
-            budget: args.budget,
+            batch: args.batch,
+            queue: HashSet::new(),
         })
     }
 }
@@ -104,7 +114,8 @@ impl BusPublish for SearchIndexActor {
     }
 }
 
-/// A self-addressed tick that triggers one drain and schedules the next.
+/// A self-addressed heartbeat: refreshes the queue when idle, reindexes one
+/// batch when work is pending, then schedules the next heartbeat.
 #[derive(Debug)]
 pub struct ReindexTick;
 
@@ -112,45 +123,80 @@ impl Message<ReindexTick> for SearchIndexActor {
     type Reply = ();
 
     async fn handle(&mut self, _msg: ReindexTick, ctx: &mut Context<Self, Self::Reply>) {
-        self.drain_once().await;
-        // Schedule the next drain after this actor's interval. A failed send
-        // means the actor is stopping.
-        let interval = self.interval;
-        let actor_ref = ctx.actor_ref().clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(interval).await;
-            let _ = actor_ref.tell(ReindexTick).send().await;
-        });
+        if self.queue.is_empty() {
+            self.refresh_queue().await;
+        }
+        if self.queue.is_empty() {
+            self.publish_up_to_date().await;
+        } else {
+            self.publish_remaining().await;
+            self.process_batch().await;
+        }
+        self.reschedule(ctx);
     }
 }
 
 impl SearchIndexActor {
-    /// Drains the pending reindex queue within this tick's time budget,
-    /// then reports the remaining pending count to the dashboard.
+    /// Merges the store's dirty sessions into the local queue.
     ///
-    /// Work is chunked ([`REINDEX_CHUNK`] entries per transaction) and
-    /// resumable: the store's dirty-marker row records how far the current
-    /// session's rebuild has progressed, so a budget that expires mid-session
-    /// resumes exactly there — next tick or next launch. Publishes before the
-    /// first chunk so the row reflects the queue immediately. Log-and-continue:
-    /// a failed chunk is left at its old resume point and retried on a later
-    /// tick. An empty queue re-checks the authoritative pending count before
-    /// publishing, so the row reads "index up to date" only when the
-    /// dirty-marker table is genuinely clean.
-    async fn drain_once(&self) {
-        // Snapshot the queue once per tick: a failed chunk stays in place
-        // (resumed by a later tick) instead of spinning the loop.
-        let Ok(ids) = self.deps.services.session_store.dirty_session_ids().await else {
-            tracing::warn!("failed to read the reindex queue; will retry next tick");
-            return;
-        };
-        if ids.is_empty() {
-            self.publish_up_to_date().await;
-            return;
+    /// Merging (not replacing) keeps sessions found by an earlier refresh
+    /// that have since been re-marked, and makes re-marks of queued sessions
+    /// no-ops. On a read failure the current queue is kept — the durable
+    /// table is untouched by the actor, so the next heartbeat simply retries.
+    async fn refresh_queue(&mut self) {
+        match self.deps.services.session_store.dirty_session_ids().await {
+            Ok(ids) => self.queue.extend(ids),
+            Err(report) => {
+                tracing::warn!(
+                    error = ?report,
+                    "failed to read the reindex queue; keeping the current queue and retrying next heartbeat"
+                );
+            }
         }
-        self.publish_progress().await;
-        let deadline = tokio::time::Instant::now() + self.budget;
-        for id in &ids {
+    }
+
+    /// Reindexes at most one batch of queued sessions, publishing the
+    /// remaining count after every session.
+    ///
+    /// The batch is snapshotted before processing: a session that fails is
+    /// put back in the queue for a later heartbeat but is not re-processed
+    /// within this one — otherwise a persistently failing session would be
+    /// popped again immediately and starve the rest of the batch.
+    ///
+    /// Each session is reindexed chunk-wise to completion ([`REINDEX_CHUNK`]
+    /// entries per transaction, resumable via the store's dirty-marker
+    /// offset). A failed chunk keeps the session queued — the store keeps
+    /// its resume offset, and a later heartbeat retries it — while the rest
+    /// of the batch continues.
+    async fn process_batch(&mut self) {
+        let batch = self.take_batch();
+        for id in batch {
+            let finished = self.reindex_session(&id).await;
+            if !finished {
+                self.queue.insert(id);
+            }
+            self.publish_remaining().await;
+        }
+    }
+
+    /// Removes up to one batch's worth of sessions from the queue.
+    fn take_batch(&mut self) -> Vec<SessionId> {
+        (0..self.batch).map_while(|_| self.next_queued()).collect()
+    }
+
+    /// Removes and returns one queued session.
+    fn next_queued(&mut self) -> Option<SessionId> {
+        let id = self.queue.iter().next().cloned()?;
+        self.queue.remove(&id);
+        Some(id)
+    }
+
+    /// Reindexes one session to completion: chunk after chunk until the
+    /// store reports the session fully indexed. Returns `false` when a
+    /// chunk failed — the session did not finish and keeps its stored
+    /// resume offset for the retry.
+    async fn reindex_session(&self, id: &SessionId) -> bool {
+        loop {
             match self
                 .deps
                 .services
@@ -158,34 +204,33 @@ impl SearchIndexActor {
                 .reindex_session_chunk(id, REINDEX_CHUNK)
                 .await
             {
-                Ok(true) => tracing::debug!(session_id = %id, "FTS reindexed session"),
-                Ok(false) => tracing::debug!(
-                    session_id = %id,
-                    "FTS reindex chunk advanced the session's resume point"
-                ),
-                Err(report) => tracing::warn!(
-                    session_id = %id,
-                    error = ?report,
-                    "FTS reindex chunk failed; resuming from its stored offset next tick"
-                ),
-            }
-            if tokio::time::Instant::now() >= deadline {
-                self.publish_progress().await;
-                tracing::debug!("FTS reindex budget exhausted; resuming next tick");
-                return;
+                Ok(true) => {
+                    tracing::debug!(session_id = %id, "FTS reindexed session");
+                    return true;
+                }
+                Ok(false) => {} // chunk advanced; continue with the next chunk
+                Err(report) => {
+                    tracing::warn!(
+                        session_id = %id,
+                        error = ?report,
+                        "FTS reindex chunk failed; resuming from its stored offset next heartbeat"
+                    );
+                    return false;
+                }
             }
         }
-        // Budget not exhausted: the queue just drained. Report the idle state.
-        self.publish_progress().await;
     }
 
-    /// Publishes the live remaining pending count to the `search-index`
-    /// dashboard row: "N sessions pending", or "index up to date" once the
-    /// queue drains. A failed count publishes nothing — the previous message
-    /// stays up and the next publish retries.
-    async fn publish_progress(&self) {
-        if let Some(status) = self.pending_label().await {
-            self.publish_status(status).await;
+    /// Publishes the queue's remaining count: "N sessions pending", or —
+    /// once the in-memory queue empties — the authoritative up-to-date
+    /// check. A failed count publishes nothing; the previous message stays
+    /// up and the next publish retries.
+    async fn publish_remaining(&self) {
+        if self.queue.is_empty() {
+            self.publish_up_to_date().await;
+        } else {
+            self.publish_status(format!("{} sessions pending", self.queue.len()))
+                .await;
         }
     }
 
@@ -211,14 +256,6 @@ impl SearchIndexActor {
         }
     }
 
-    async fn pending_label(&self) -> Option<String> {
-        match self.deps.services.session_store.pending_dirty_count().await {
-            Ok(0) => Some("index up to date".to_owned()),
-            Ok(n) => Some(format!("{n} sessions pending")),
-            Err(_) => None,
-        }
-    }
-
     async fn publish_status(&self, status: String) {
         self.publish(jinn_slices::ServiceStatusUpdate {
             name: SEARCH_INDEX_ROW_NAME.to_owned(),
@@ -228,14 +265,26 @@ impl SearchIndexActor {
         })
         .await;
     }
+
+    /// Schedules the next heartbeat after this actor's interval. A failed
+    /// send means the actor is stopping.
+    fn reschedule(&self, ctx: &mut Context<SearchIndexActor, ()>) {
+        let interval = self.interval;
+        let actor_ref = ctx.actor_ref().clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(interval).await;
+            let _ = actor_ref.tell(ReindexTick).send().await;
+        });
+    }
 }
 
 /// Spawns the actor as a supervised child of the root and returns its ref.
 ///
-/// Kicks the first drain via a detached task **after** the supervised spawn
-/// handshake resolves, so the drain never blocks startup: the wiring moves
-/// on while the tick processes concurrently. (`spawn_search_index_actor`
-/// remains the single registration point the `spawn_tracked!` macro wraps.)
+/// Kicks the first heartbeat via a detached task **after** the supervised
+/// spawn handshake resolves, so the heartbeat never blocks startup: the
+/// wiring moves on while the tick processes concurrently.
+/// (`spawn_search_index_actor` remains the single registration point the
+/// `spawn_tracked!` macro wraps.)
 pub async fn spawn_search_index_actor(
     deps: SearchIndexActorDeps,
     supervisor: &crate::common::root_supervisor::RootSupervisorRef,
