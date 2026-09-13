@@ -1,6 +1,6 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
-## (development; unreleased)
+## 2026-09-13 v0.117.0
 
 - Report app name/id to OpenRouter.
 - Fix: `task` tool is now available in forked sessions at any depth and is automatically disabled for subagent sessions (unbound subagent storms are still impossible). Manually forking a subagent session re-activates the `task` tool automatically.
