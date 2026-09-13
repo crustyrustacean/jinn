@@ -220,6 +220,28 @@ pub async fn wait_for(what: &str, mut predicate: impl FnMut() -> bool) {
     panic!("timed out waiting for: {what}");
 }
 
+/// `wait_for` with a caller-chosen budget for tests that legitimately
+/// process large message batches (the default 2s window is sized for
+/// single-event propagation).
+///
+/// # Panics
+///
+/// Panics after `secs` when the predicate never holds.
+#[expect(
+    clippy::panic,
+    reason = "bounded wait: a never-true predicate is a test failure"
+)]
+pub async fn wait_for_bounded(what: &str, secs: u64, mut predicate: impl FnMut() -> bool) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(secs);
+    while tokio::time::Instant::now() < deadline {
+        if predicate() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("timed out waiting for: {what}");
+}
+
 /// Builds a plain (unmodified) character `KeyEvent`.
 #[must_use]
 pub fn plain(ch: char) -> jinn_domain::KeyEvent {

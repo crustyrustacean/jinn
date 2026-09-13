@@ -5,6 +5,7 @@
 
 #![allow(warnings, reason = "want to fail fast")]
 
+use std::path::Path;
 use std::path::PathBuf;
 
 fn main() {
@@ -25,7 +26,19 @@ fn main() {
         db_path.to_string_lossy()
     );
 
-    println!("cargo:rerun-if-changed=../jinn-session-schema/src/lib.rs");
-    println!("cargo:rerun-if-changed=../jinn-session-schema/src/migrate.rs");
-    println!("cargo:rerun-if-changed=../jinn-session-schema/src/legacy.rs");
+    // Schema sources: declared relative to this crate's manifest, never to
+    // the cwd. A rerun-if-changed path that does not exist makes cargo
+    // treat the build script as always-dirty (recompile on every build),
+    // silently and permanently — so the build aborts instead.
+    for name in ["lib.rs", "migrate.rs", "legacy.rs"] {
+        let path = Path::new(&std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"))
+            .join("../../jinn-session-schema/src")
+            .join(name);
+        assert!(
+            path.exists(),
+            "build script rerun path does not exist: {} (resolved from CARGO_MANIFEST_DIR)",
+            path.display()
+        );
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
 }

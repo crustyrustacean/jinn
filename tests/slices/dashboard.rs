@@ -9,7 +9,7 @@
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
-use crate::common::{composed_keymap, test_app, wait_for};
+use crate::common::{composed_keymap, test_app, wait_for, wait_for_bounded};
 use jinn_dashboard::dashboard_scope;
 use jinn_domain::common::slices::TypedCell;
 use jinn_domain::{Bridge, Intent, Key, KeyEvent, Modifiers};
@@ -400,6 +400,59 @@ async fn kernel_lifecycle_events_drive_the_dashboard_rows() {
     };
     assert_eq!(row.lifecycle, jinn_dashboard::ActorLifecycle::Running);
     assert_eq!(row.description.as_deref(), Some("regression probe"));
+}
+
+/// REGRESSION (BestEffort drop): a startup-scale flood of lifecycle
+/// events (more than kameo's default bounded-64 mailbox) must arrive
+/// complete at the dashboard. The forward relays used to spawn with
+/// the default bounded mailbox, so the bus's BestEffort `try_send`
+/// silently dropped events under the burst and the affected actors
+/// froze at `Starting` — a different random set on every launch.
+#[rstest::rstest]
+#[tokio::test]
+#[timeout(std::time::Duration::from_secs(30))]
+async fn lifecycle_flood_through_the_bridge_loses_no_events() {
+    // Given a composed app (dashboard relays subscribed, unbounded
+    // mailboxes) and its cell reader.
+    let app = test_app().await;
+    let slot = jinn_dashboard::dashboard_slot();
+    let cell: TypedCell<jinn_dashboard::DashboardState> =
+        app.services.slices.reader(&slot).expect("cell");
+
+    // When publishing 200 ActorStarting/ActorStarted pairs back to
+    // back through the bridge (the kernel path).
+    const PAIRS: usize = 200;
+    for i in 0..PAIRS {
+        let name = format!("flood-{i}");
+        let _ = app.core.bridge.send(Bridge::publish_closure(
+            jinn_domain::common::actor::protocol::event::ActorStarting {
+                name: name.clone(),
+                description: None,
+            },
+        ));
+        let _ = app.core.bridge.send(Bridge::publish_closure(
+            jinn_domain::common::actor::protocol::event::ActorStarted {
+                name,
+                description: None,
+            },
+        ));
+    }
+
+    // Then every flooded actor's row exists and reads Running.
+    wait_for_bounded("all flooded rows to reach Running", 20, || {
+        let reader = cell.read();
+        let missing: Vec<String> = (0..PAIRS)
+            .filter(|i| {
+                !reader.actors().iter().any(|e| {
+                    e.name == format!("flood-{i}")
+                        && e.lifecycle == jinn_dashboard::ActorLifecycle::Running
+                })
+            })
+            .map(|i| format!("flood-{i}"))
+            .collect();
+        missing.is_empty()
+    })
+    .await;
 }
 
 /// REGRESSION: a row born from a `ServiceStatusUpdate` without a
