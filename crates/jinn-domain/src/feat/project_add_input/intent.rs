@@ -59,7 +59,10 @@ pub fn handle_project_add_input_confirm(state: &mut AppState) -> IntentResult {
         .frontend
         .preferences
         .projects
-        .push(ProjectConfig { path: path.clone() });
+        .push(ProjectConfig {
+            path: path.clone(),
+            command_policy: Vec::new(),
+        });
 
     // Pop scope and clear state.
     state.frontend.scope_stack.pop();

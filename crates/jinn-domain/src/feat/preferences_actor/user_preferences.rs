@@ -703,6 +703,7 @@ pub(crate) mod tests {
             }],
             projects: vec![ProjectConfig {
                 path: "/tmp/fixture-project".into(),
+                command_policy: Vec::new(),
             }],
             mcp_server: [(
                 "fixture-server".to_owned(),
@@ -1551,6 +1552,37 @@ path = "~/code/legacy"
         // keyed [[projects]] list) and repeated saves add nothing.
         let second = std::fs::read_to_string(&path).expect("read second");
         assert_eq!(first, second);
+    }
+
+    #[rstest::rstest]
+    fn save_preserves_comments_when_command_policy_written() {
+        // Given a jinn.toml whose [[projects]] entry carries a hand-commented
+        // command policy (inline array of inline tables).
+        let original = concat!(
+            "# my banner\n",
+            "[[projects]]\n",
+            "path = \"~/code/jinn\"\n",
+            "# blocks slow builds\n",
+            "command_policy = [{pattern = \"cargo test -p\", message = \"use just test\"}]\n",
+        );
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, changing nothing, and saving back.
+        let prefs = load_preferences_from(&path).expect("load");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the policy survives the patch intact.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("command_policy"), "key lost: {written}");
+        assert!(written.contains("cargo test -p"), "pattern lost: {written}");
+        assert!(written.contains("use just test"), "message lost: {written}");
+        // And the comment above the policy is preserved.
+        assert!(
+            written.contains("# blocks slow builds"),
+            "policy comment lost: {written}"
+        );
     }
 
     #[rstest::rstest]
