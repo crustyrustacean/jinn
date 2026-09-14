@@ -486,6 +486,19 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return error_tool_result(call.id, call.name, "command is empty".to_owned());
         }
 
+        // Project command policy gate: a matching rule denies the command
+        // before any child spawns (same feedback shape as the empty-command
+        // check — nothing started, so no `ToolExecutionStarted` is emitted).
+        if let Some((pattern, message)) = ctx.command_policy.matched_message(&command) {
+            return error_tool_result(
+                call.id,
+                call.name,
+                format!(
+                    "Blocked by project command policy (pattern: `{pattern}`): {message}"
+                ),
+            );
+        }
+
         let cwd = ctx.cwd.clone();
 
         // Emit ToolExecutionStarted if we have a bus and session_id.
@@ -574,6 +587,7 @@ mod tests {
     fn test_ctx() -> ToolContext {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
+            command_policy: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -684,6 +698,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
+            command_policy: Default::default(),
             timeout: None,
             state: None,
             session_id: None,

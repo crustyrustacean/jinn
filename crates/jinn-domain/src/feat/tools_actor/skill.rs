@@ -189,6 +189,7 @@ mod tests {
     fn test_ctx() -> ToolContext {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
+            command_policy: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -249,6 +250,7 @@ mod tests {
         }
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
+            command_policy: Default::default(),
             timeout: None,
             state: Some(state),
             session_id: Some(session_id),
@@ -328,6 +330,7 @@ mod tests {
 
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
+            command_policy: Default::default(),
             timeout: None,
             state: Some(state),
             session_id: Some(session_id),
@@ -411,6 +414,7 @@ mod tests {
         };
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
+            command_policy: Default::default(),
             timeout: None,
             state: Some(state),
             session_id: Some(session_id),
@@ -499,6 +503,7 @@ mod tests {
 
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
+            command_policy: Default::default(),
             timeout: None,
             state: Some(state),
             session_id: Some(session_id),
@@ -577,6 +582,7 @@ mod tests {
         };
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
+            command_policy: Default::default(),
             timeout: None,
             state: Some(state),
             session_id: Some(session_id),
@@ -645,6 +651,7 @@ mod tests {
         };
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
+            command_policy: Default::default(),
             timeout: None,
             state: Some(state),
             session_id: Some(session_id),
@@ -706,6 +713,7 @@ mod tests {
 
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
+            command_policy: Default::default(),
             timeout: None,
             state: Some(state),
             session_id: Some(session_id),

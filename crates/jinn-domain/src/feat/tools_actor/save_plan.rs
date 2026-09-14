@@ -153,6 +153,7 @@ mod tests {
     fn test_ctx() -> ToolContext {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
+            command_policy: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -402,6 +403,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
+            command_policy: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
