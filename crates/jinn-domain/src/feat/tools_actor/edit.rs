@@ -308,7 +308,8 @@ mod tests {
     fn test_ctx() -> ToolContext {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
-            command_policy: Default::default(),
+            command_policy:
+                crate::feat::tools_actor::command_policy::CompiledCommandPolicy::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -329,7 +330,8 @@ mod tests {
     fn test_ctx_with_cwd(cwd: PathBuf) -> ToolContext {
         ToolContext {
             cwd,
-            command_policy: Default::default(),
+            command_policy:
+                crate::feat::tools_actor::command_policy::CompiledCommandPolicy::default(),
             timeout: None,
             state: None,
             session_id: None,
