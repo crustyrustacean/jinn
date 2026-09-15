@@ -1069,7 +1069,8 @@ mod timeout_tests {
     fn empty_ctx() -> ToolContext {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
-            command_policy: Default::default(),
+            command_policy:
+                crate::feat::tools_actor::command_policy::CompiledCommandPolicy::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -1323,7 +1324,8 @@ mod panic_safety_tests {
             tool_call.clone(),
             super::ToolContext {
                 cwd: std::path::PathBuf::from("/tmp"),
-                command_policy: Default::default(),
+                command_policy:
+                    crate::feat::tools_actor::command_policy::CompiledCommandPolicy::default(),
                 timeout: None,
                 state: None,
                 session_id: None,

@@ -1675,4 +1675,50 @@ path = "~/code/current"
         assert_eq!(prefs.projects[0].path.to_string_lossy(), "~/code/a");
         assert_eq!(prefs.projects[1].path.to_string_lossy(), "~/code/b");
     }
+
+    #[rstest::rstest]
+    fn save_project_without_policy_writes_no_command_policy_key() {
+        // Given a jinn.toml with a policy-less project and no other changes.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, "[[projects]]\npath = \"~/code/a\"\n").expect("write");
+
+        // When loading and saving back.
+        let prefs = load_preferences_from(&path).expect("load");
+        assert!(prefs.projects[0].command_policy.is_empty());
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the written file carries no `command_policy` key (the
+        // empty policy is skipped in serialization, so a save never
+        // introduces the key to existing config).
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            !written.contains("command_policy"),
+            "empty policy must not materialize on save: {written}"
+        );
+        // And the project entry survives intact.
+        assert!(written.contains("[[projects]]"), "{written}");
+        assert!(written.contains("~/code/a"), "{written}");
+    }
+
+    #[rstest::rstest]
+    fn load_reads_command_policy_from_project_entry() {
+        // Given a jinn.toml whose [[projects]] entry declares a command policy.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            "[[projects]]\npath = \"~/code/jinn\"\ncommand_policy = [{pattern = \"cargo test -p\", message = \"use just test\"}]\n",
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the policy deserializes with pattern and message intact.
+        assert_eq!(prefs.projects.len(), 1);
+        assert_eq!(prefs.projects[0].command_policy.len(), 1);
+        assert_eq!(prefs.projects[0].command_policy[0].pattern, "cargo test -p");
+        assert_eq!(prefs.projects[0].command_policy[0].message, "use just test");
+    }
 }

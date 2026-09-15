@@ -51,7 +51,7 @@ async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -
     let services = harness.services().await;
     ToolContext {
         cwd: std::path::PathBuf::from("/tmp"),
-        command_policy: Default::default(),
+        command_policy: crate::feat::tools_actor::command_policy::CompiledCommandPolicy::default(),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),

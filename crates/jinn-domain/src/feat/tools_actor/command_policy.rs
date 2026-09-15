@@ -111,3 +111,142 @@ fn expand_tilde(path: &Path, home: &Path) -> PathBuf {
         _ => path.to_path_buf(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
+
+    fn rule(pattern: &str, message: &str) -> CommandPolicyRule {
+        CommandPolicyRule {
+            pattern: pattern.to_owned(),
+            message: message.to_owned(),
+        }
+    }
+
+    fn project(path: &str, rules: Vec<CommandPolicyRule>) -> ProjectConfig {
+        ProjectConfig {
+            path: PathBuf::from(path),
+            command_policy: rules,
+        }
+    }
+
+    #[rstest::rstest]
+    #[case("/home/me/w/repo", true)]
+    #[case("/home/me/w/repo/sub/dir", true)]
+    #[case("/home/me/w/repo-sibling", false)]
+    #[case("/home/me/w", false)]
+    #[case("/elsewhere", false)]
+    fn cwd_inside_project_matches(#[case] cwd: &str, #[case] expected: bool) {
+        // Given a project configured with a tilde-prefixed path and a home dir.
+        let projects = [project("~/w/repo", vec![rule("a", "m")])];
+        let home = Path::new("/home/me");
+
+        // When resolving rules for a cwd.
+        let rules = resolve_project_rules(&projects, Path::new(cwd), home);
+
+        // Then membership follows the lexical prefix (component-wise).
+        assert_eq!(rules.is_empty(), !expected);
+    }
+
+    #[test]
+    fn tilde_only_path_expands_to_home_itself() {
+        // Given a project configured as bare `~`.
+        let projects = [project("~", vec![rule("a", "m")])];
+        let home = Path::new("/home/me");
+
+        // When resolving rules for a cwd directly inside home.
+        let rules = resolve_project_rules(&projects, Path::new("/home/me/notes"), home);
+
+        // Then the tilde expanded to home and the rules apply.
+        assert_eq!(rules.len(), 1);
+    }
+
+    #[test]
+    fn longest_prefix_project_wins_over_ancestor() {
+        // Given a nested pair of configured projects, each with a distinct rule.
+        let projects = [
+            project("/w", vec![rule("outer", "outer msg")]),
+            project("/w/repo", vec![rule("inner", "inner msg")]),
+        ];
+        let cwd = Path::new("/w/repo/src");
+
+        // When resolving rules for a cwd inside the inner project.
+        let rules = resolve_project_rules(&projects, cwd, Path::new("/"));
+
+        // Then the inner (longest prefix) project's rules win.
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].pattern, "inner");
+    }
+
+    #[rstest::rstest]
+    #[case("cargo test -p jinn-domain", true)]
+    #[case("cargo t -p foo", true)]
+    #[case("cargo test", false)]
+    #[case("rg \"cargo test\" notes.md", false)]
+    fn dash_p_policy_matches_only_dash_p_commands(#[case] command: &str, #[case] expected: bool) {
+        // Given a policy with the canonical `-p` guard regex.
+        let policy =
+            CompiledCommandPolicy::compile(&[rule(r"cargo\s+(test|t)\b.*\s-p\b", "use just test")]);
+
+        // When matching a command.
+        let matched = policy.matched_message(command);
+
+        // Then matches follow the pattern's intent: `-p` forms are blocked,
+        // plain and quoted forms are not.
+        assert_eq!(matched.is_some(), expected, "command: {command}");
+    }
+
+    #[test]
+    fn first_matching_rule_wins_in_config_order() {
+        // Given a policy whose two rules both match the command.
+        let policy = CompiledCommandPolicy::compile(&[
+            rule("first", "first message"),
+            rule("second", "second message"),
+        ]);
+
+        // When matching a command both rules match.
+        let matched = policy.matched_message("first and second");
+
+        // Then the first rule (config order) supplies pattern and message.
+        assert_eq!(matched, Some(("first", "first message")));
+    }
+
+    #[test]
+    fn empty_policy_matches_nothing() {
+        // Given a policy compiled from no rules.
+        let policy = CompiledCommandPolicy::default();
+
+        // When matching any command.
+        let matched = policy.matched_message("rm -rf /");
+
+        // Then nothing matches and the policy is empty.
+        assert!(matched.is_none());
+        assert!(policy.is_empty());
+    }
+
+    #[test]
+    fn invalid_regex_rule_is_inert_but_sibling_still_enforces() {
+        // Given a policy with one invalid regex followed by one valid rule.
+        let policy = CompiledCommandPolicy::compile(&[
+            rule("([unclosed", "never compiles"),
+            rule("forbidden", "blocked"),
+        ]);
+
+        // When matching a command the invalid rule would have caught.
+        let invalid_hit = policy.matched_message("([unclosed thing");
+        // And a command the valid rule catches.
+        let valid_hit = policy.matched_message("run forbidden now");
+
+        // Then the invalid rule is silently inert (warned at compile).
+        assert!(invalid_hit.is_none());
+        // And the valid rule still enforces.
+        assert_eq!(valid_hit, Some(("forbidden", "blocked")));
+    }
+}
