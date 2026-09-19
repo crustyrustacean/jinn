@@ -3,7 +3,6 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use error_stack::Report;
-use kameo::actor::Spawn;
 use tokio::runtime::{Handle, Runtime};
 
 use crate::feat::provider_infra::{
@@ -272,21 +271,8 @@ impl TestServices {
         let bus = if let Some(override_bus) = self.bus_override {
             override_bus
         } else {
-            let bus_actor = kameo_actors::message_bus::MessageBus::new(
-                kameo_actors::DeliveryStrategy::BestEffort,
-            );
-            // MessageBus::spawn calls tokio::spawn internally.
-            // If we're already inside a tokio runtime, use it directly.
-            // Otherwise, enter the shared test runtime via block_on.
-            let bus_ref = if tokio::runtime::Handle::try_current().is_ok() {
-                kameo_actors::message_bus::MessageBus::spawn(bus_actor)
-            } else {
-                TEST_RUNTIME
-                    .block_on(async { kameo_actors::message_bus::MessageBus::spawn(bus_actor) })
-            };
             super::bus_service::BusService::new_trouper(
                 trouper::system::ActorSystem::new(trouper::system::SystemConfig::production()),
-                Some(bus_ref),
             )
         };
         let bridge = if bus.is_recording() {
@@ -294,20 +280,6 @@ impl TestServices {
             crate::common::bridge::Bridge::new_dummy(&handle)
         } else {
             crate::common::bridge::Bridge::with_handle(bus.clone(), &handle)
-        };
-
-        // RootSupervisor::spawn calls tokio::spawn internally — same runtime
-        // detection as the bus spawn above.
-        let root_supervisor = if tokio::runtime::Handle::try_current().is_ok() {
-            crate::common::root_supervisor::RootSupervisor::spawn(
-                crate::common::root_supervisor::RootSupervisor,
-            )
-        } else {
-            TEST_RUNTIME.block_on(async {
-                crate::common::root_supervisor::RootSupervisor::spawn(
-                    crate::common::root_supervisor::RootSupervisor,
-                )
-            })
         };
 
         Services {
@@ -341,7 +313,6 @@ impl TestServices {
             tempdir,
             bus,
             bridge,
-            root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: crate::common::request_dump::RequestDumpService::default(),

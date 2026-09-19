@@ -3,9 +3,8 @@
 //! Production publishes onto the **trouper actor system**: every message is
 //! wrapped as a schema-tagged [`trouper::envelope::Event`] and sent onto a
 //! topic — the `jinn.domain` topic for kernel-domain traffic, or a slice's
-//! own topic when a route registers one. Converted (trouper-native) actors
-//! subscribe their topic directly; kameo actors still on the old bus are
-//! fed by the transitional relay leg.
+//! own topic when a route registers one. Actors subscribe their topic
+//! directly.
 //!
 //! In tests, [`BusService`] can operate in **recording mode** via
 //! [`BusService::new_recording()`], which captures all `publish()` calls
@@ -16,9 +15,6 @@ use std::fmt;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
-
-use kameo::actor::ActorRef;
-use kameo_actors::message_bus::{MessageBus, Publish, Register};
 
 use crate::common::bus::BusMessage;
 
@@ -54,18 +50,12 @@ pub struct BusService {
 
 #[derive(Clone)]
 enum BusInner {
-    /// Trouper-native fabric (production direction) with an optional
-    /// transitional kameo leg: publishes go onto schema-routed trouper
-    /// topics; the kameo leg, when present, still receives every publish
-    /// so un-ported bus actors keep working until they convert.
+    /// Trouper-native fabric: publishes go onto schema-routed trouper
+    /// topics.
     Troupe {
         system: trouper::system::ActorSystem,
         routes: Arc<Mutex<Vec<RouteRule>>>,
-        kameo_leg: Option<ActorRef<MessageBus>>,
     },
-    /// Legacy kameo-only bus: the transitional shape for test code that
-    /// spawns kameo actors against the harness without a trouper fabric.
-    Kameo(ActorRef<MessageBus>),
     Recording(Arc<Mutex<Vec<RecordedMessage>>>),
 }
 
@@ -83,33 +73,13 @@ impl RouteRule {
 
 impl BusService {
     /// Creates a bus service backed by the trouper fabric.
-    ///
-    /// `kameo_leg` wires the transitional relay: when present, every
-    /// publish is also told to the kameo bus so not-yet-ported actors keep
-    /// receiving messages until they convert. Pass `None` once the kameo
-    /// population is gone.
     #[must_use]
-    pub fn new_trouper(
-        system: trouper::system::ActorSystem,
-        kameo_leg: Option<ActorRef<MessageBus>>,
-    ) -> Self {
+    pub fn new_trouper(system: trouper::system::ActorSystem) -> Self {
         Self {
             inner: BusInner::Troupe {
                 system,
                 routes: Arc::new(Mutex::new(Vec::new())),
-                kameo_leg,
             },
-        }
-    }
-
-    /// Creates a bus service wrapping the given kameo actor ref.
-    ///
-    /// Transitional: used by test code and the legacy harness while the
-    /// kameo population is being ported.
-    #[must_use]
-    pub fn new(bus: ActorRef<MessageBus>) -> Self {
-        Self {
-            inner: BusInner::Kameo(bus),
         }
     }
 
@@ -128,22 +98,9 @@ impl BusService {
     pub fn system_ref(&self) -> &trouper::system::ActorSystem {
         match &self.inner {
             BusInner::Troupe { system, .. } => system,
-            BusInner::Kameo(_) | BusInner::Recording(_) => {
-                panic!("system_ref() called on a BusService without a trouper fabric")
+            BusInner::Recording(_) => {
+                panic!("system_ref() called on a recording bus (test-only)")
             }
-        }
-    }
-
-    /// The transitional kameo bus leg, when this service carries one.
-    ///
-    /// Un-ported kameo actors receive publishes through this leg; it dies
-    /// with the demolition phase.
-    #[must_use]
-    pub fn kameo_leg_ref(&self) -> Option<&ActorRef<MessageBus>> {
-        match &self.inner {
-            BusInner::Troupe { kameo_leg, .. } => kameo_leg.as_ref(),
-            BusInner::Kameo(bus) => Some(bus),
-            BusInner::Recording(_) => None,
         }
     }
 
@@ -162,106 +119,10 @@ impl BusService {
         (service, audit)
     }
 
-    /// Returns a reference to the underlying bus actor ref.
-    ///
-    /// # Panics
-    ///
-    /// Panics if called on a recording-mode bus (tests should not need this).
-    /// A recipient handle for forwarding publishes of `M` to the
-    /// bus's subscribers — the seam the bridge's per-route relays
-    /// register through at activation time.
-    pub async fn register_recipient<M>(&self, recipient: kameo::actor::Recipient<M>)
-    where
-        M: crate::common::bus::BusMessage,
-    {
-        match &self.inner {
-            BusInner::Troupe { kameo_leg, .. } => {
-                if let Some(leg) = kameo_leg
-                    && let Err(err) = leg.ask(Register(recipient)).await
-                {
-                    tracing::warn!(?err, "bus recipient registration returned an error");
-                }
-            }
-            BusInner::Kameo(bus) => {
-                if let Err(err) = bus.ask(Register(recipient)).await {
-                    tracing::warn!(?err, "bus recipient registration returned an error");
-                }
-            }
-            BusInner::Recording(_) => {
-                let _ = recipient;
-            }
-        }
-    }
-
-    /// Returns the raw bus actor ref.
-    ///
-    /// # Panics
-    ///
-    /// Panics when called on a recording (test-only) bus: there is no
-    /// actor to return.
-    #[expect(
-        clippy::panic,
-        reason = "invariant: recording variant is test-only; calling actor_ref on it is programmer misuse"
-    )]
-    #[must_use]
-    pub fn actor_ref(&self) -> &ActorRef<MessageBus> {
-        match &self.inner {
-            BusInner::Troupe {
-                kameo_leg: Some(leg),
-                ..
-            } => leg,
-            BusInner::Kameo(bus) => bus,
-            BusInner::Troupe {
-                kameo_leg: None, ..
-            }
-            | BusInner::Recording(_) => {
-                panic!("actor_ref() called on a BusService without a kameo leg")
-            }
-        }
-    }
-
     /// Returns `true` if this bus is in recording mode (test-only).
     #[must_use]
     pub fn is_recording(&self) -> bool {
         matches!(&self.inner, BusInner::Recording(_))
-    }
-
-    /// Registers a recipient to receive messages of type `M` on the bus.
-    ///
-    /// No-op in recording mode.
-    pub async fn register<M: Clone + Send + 'static>(&self, recipient: kameo::actor::Recipient<M>) {
-        match &self.inner {
-            BusInner::Troupe { kameo_leg, .. } => {
-                if let Some(leg) = kameo_leg {
-                    if let Err(e) = leg.ask(Register(recipient)).await {
-                        tracing::warn!(
-                            error = ?e,
-                            "failed to register on bus; likely during shutdown"
-                        );
-                    }
-                }
-            }
-            BusInner::Kameo(bus) => {
-                if let Err(e) = bus.ask(Register(recipient)).await {
-                    tracing::warn!(error = ?e, "failed to register on bus; likely during shutdown");
-                }
-            }
-            BusInner::Recording(_) => {
-                // No-op in recording mode
-                let _ = recipient;
-            }
-        }
-    }
-
-    /// Registers an actor to receive messages of type `M` on the bus.
-    ///
-    /// Convenience wrapper that creates the recipient from the actor ref.
-    /// No-op in recording mode.
-    pub async fn subscribe<M: Clone + Send + 'static, A: kameo::message::Message<M>>(
-        &self,
-        actor_ref: &ActorRef<A>,
-    ) {
-        self.register(actor_ref.clone().recipient::<M>()).await;
     }
 
     /// Routes one message schema onto `topic`: every future publish of a
@@ -308,8 +169,29 @@ impl BusService {
         }
     }
 
-    /// The topic a message publishes onto: the last-registered route for
-    /// its schema id, else the shared `jinn.domain` topic.
+    /// Every topic routed for `schema_id` (all registrations, deduped,
+    /// preserving registration order) — the fan-out a publish performs.
+    fn topics_for(
+        routes: &Mutex<Vec<RouteRule>>,
+        schema_id: &trouper::schema::SchemaId,
+    ) -> Vec<trouper::topics::Topic> {
+        let routes = routes.lock();
+        let mut topics: Vec<trouper::topics::Topic> = Vec::new();
+        for rule in routes.iter().filter(|rule| rule.matches(schema_id)) {
+            if !topics.contains(&rule.topic) {
+                topics.push(rule.topic.clone());
+            }
+        }
+        if topics.is_empty() {
+            topics.push(jinn_domain_topic());
+        }
+        topics
+    }
+
+    /// The topic a publish of `M` currently rides: the last-registered
+    /// route for its schema id, else the shared `jinn.domain` topic.
+    /// Single-topic view for ask seams and test taps; `publish` itself
+    /// fans out over [`Self::topics_for`].
     fn topic_for(
         routes: &Mutex<Vec<RouteRule>>,
         schema_id: &trouper::schema::SchemaId,
@@ -326,33 +208,25 @@ impl BusService {
     /// Publishes a typed message onto the fabric.
     ///
     /// On the trouper fabric the message is wrapped as a schema-tagged
-    /// event and sent onto its routed topic. In recording mode, captures
-    /// the message for later assertion.
+    /// event and sent onto every topic routed for its schema id (the
+    /// relay era fanned one publish out to each registered route's
+    /// topic; multicast preserves that). With no route the shared
+    /// `jinn.domain` topic receives the event. In recording mode,
+    /// captures the message for later assertion.
     pub async fn publish<M: BusMessage + trouper::schema::Schema + serde::Serialize>(
         &self,
         msg: M,
     ) {
         match &self.inner {
-            BusInner::Troupe {
-                system,
-                routes,
-                kameo_leg,
-            } => {
-                let topic = Self::topic_for(routes, &M::schema_id());
+            BusInner::Troupe { system, routes } => {
                 let name = message_name::<M>();
-                tracing::debug!(message = name, topic = %topic, "trouper: {name} published");
                 let payload = serde_json::to_value(&msg).unwrap_or(serde_json::Value::Null);
                 let event = trouper::envelope::Event::new(M::schema_id(), payload);
-                let _ = system.send(system.envelope_to_topic(event, topic)).await;
-                if let Some(leg) = kameo_leg {
-                    let _ = leg.tell(Publish(msg)).await;
-                }
-            }
-            BusInner::Kameo(bus) => {
-                let name = message_name::<M>();
-                tracing::debug!(message = name, "kameo: {name} sent");
-                if let Err(e) = bus.tell(Publish(msg)).await {
-                    tracing::warn!(err = ?e, "bus publish failed");
+                for topic in Self::topics_for(routes, &M::schema_id()) {
+                    tracing::debug!(message = name, topic = %topic, "trouper: {name} published");
+                    let _ = system
+                        .send(system.envelope_to_topic(event.clone(), topic))
+                        .await;
                 }
             }
             BusInner::Recording(recorded) => {
@@ -370,25 +244,18 @@ impl BusService {
     ///
     /// The closure bridge's erased publish path: the message arrives as a
     /// schema id + JSON payload (the schema table supplies the routed
-    /// topic), so the delivery matches [`Self::publish`] exactly. Not
-    /// recorded — recording-mode tests publish typed messages directly.
+    /// topics), so the delivery matches [`Self::publish`] exactly — one
+    /// copy per routed topic, the shared `jinn.domain` topic when
+    /// unrouted. Not recorded — recording-mode tests publish typed
+    /// messages directly.
     pub async fn publish_event(&self, event: trouper::envelope::Event) {
-        if let BusInner::Troupe {
-            system, kameo_leg, ..
-        } = &self.inner
-        {
-            let topic = {
-                let schema_id = event.schema.clone();
-                match &self.inner {
-                    BusInner::Troupe { routes, .. } => Self::topic_for(routes, &schema_id),
-                    _ => jinn_domain_topic(),
-                }
-            };
-            tracing::debug!(schema = %event.schema, topic = %topic, "trouper: event published");
-            let _ = system.send(system.envelope_to_topic(event, topic)).await;
-            // The kameo leg cannot receive an erased event (it dispatches
-            // typed `Publish(msg)`s); erased traffic is trouper-native.
-            let _ = kameo_leg;
+        if let BusInner::Troupe { system, routes } = &self.inner {
+            for topic in Self::topics_for(routes, &event.schema) {
+                tracing::debug!(schema = %event.schema, topic = %topic, "trouper: event published");
+                let _ = system
+                    .send(system.envelope_to_topic(event.clone(), topic))
+                    .await;
+            }
         }
     }
 }
@@ -436,15 +303,9 @@ impl RouteTestProbe {
 impl fmt::Debug for BusService {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.inner {
-            BusInner::Troupe {
-                kameo_leg: Some(_), ..
-            } => f
-                .debug_struct("BusService<Troupe+kameo-leg>")
-                .finish_non_exhaustive(),
-            BusInner::Troupe {
-                kameo_leg: None, ..
-            } => f.debug_struct("BusService<Troupe>").finish_non_exhaustive(),
-            BusInner::Kameo(_) => f.debug_struct("BusService<Kameo>").finish_non_exhaustive(),
+            BusInner::Troupe { .. } => {
+                f.debug_struct("BusService<Troupe>").finish_non_exhaustive()
+            }
             BusInner::Recording(_) => f
                 .debug_struct("BusService<Recording>")
                 .finish_non_exhaustive(),
@@ -644,16 +505,6 @@ mod tests {
         assert!(betas.is_empty());
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn register_is_noop_in_recording_mode() {
-        let (bus, _audit) = BusService::new_recording();
-        // register is a no-op in recording mode — just verify it doesn't panic
-        // We can't easily create a Recipient without spawning an actor,
-        // so just verify the bus drops without panic.
-        drop(bus);
-    }
-
     /// A `MakeWriter` capturing formatted log output for assertions.
     #[derive(Clone, Default)]
     struct CapturingWriter(Arc<std::sync::Mutex<Vec<u8>>>);
@@ -691,16 +542,14 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn publish_on_real_bus_logs_sent_line() {
-        use kameo::actor::Spawn;
+    async fn publish_on_trouper_bus_logs_published_line() {
         use tracing_subscriber::Layer;
         use tracing_subscriber::layer::SubscriberExt;
 
-        // Given a real MessageBus-backed BusService and a subscriber
-        // capturing debug events.
-        let bus_actor = MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
-        let bus_ref = MessageBus::spawn(bus_actor);
-        let bus = BusService::new(bus_ref);
+        // Given a trouper-backed BusService and a subscriber capturing
+        // debug events.
+        let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
+        let bus = BusService::new_trouper(system);
 
         let capture = CapturingWriter::default();
         let subscriber = tracing_subscriber::registry().with(
@@ -714,16 +563,15 @@ mod tests {
         // When publishing a message.
         bus.publish(Alpha { val: 7 }).await;
 
-        // Then a debug line names the type as sent. Delivery into the bus
-        // actor is async, so poll briefly for the line to land.
+        // Then a debug line names the type as published with its topic.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         loop {
-            if capture.contents().contains("kameo: Alpha sent") {
+            if capture.contents().contains("trouper: Alpha published") {
                 return;
             }
             assert!(
                 std::time::Instant::now() < deadline,
-                "expected 'kameo: Alpha sent' in captured output, got: {}",
+                "expected 'trouper: Alpha published' in captured output, got: {}",
                 capture.contents()
             );
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;

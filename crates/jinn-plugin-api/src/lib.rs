@@ -5,7 +5,7 @@
 //! exchange newline-delimited JSON with the host over stdin/stdout; every line
 //! is an [`Envelope`] wrapping one tagged message.
 //!
-//! The contract is deliberately separate from jinn's internal kameo messages:
+//! The contract is deliberately separate from jinn's internal bus messages:
 //! internal messages are private and refactor freely, while these types are
 //! public and frozen-once-shipped. Evolution is additive only — new optional
 //! fields, new message variants — never renames or removals within a major

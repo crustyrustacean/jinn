@@ -4,6 +4,14 @@
 # caller-provided RUSTC_WRAPPER (set, or explicitly empty to disable) wins.
 export RUSTC_WRAPPER := env_var_or_default('RUSTC_WRAPPER', `command -v sccache 2>/dev/null || true`)
 
+# Default per-test timeout (seconds) for every #[rstest::rstest] test.
+# rstest reads this at COMPILE TIME (the proc macro bakes Duration::from_secs(N)
+# into the generated test), so it must be present whenever rustc runs — hence an
+# export here, and a mirror in .cargo/config.toml [env] for entrypoints that
+# bypass just (rust-analyzer, bare cargo in CI). Explicit #[timeout(...)] on a
+# test overrides this default; use that only when a test genuinely needs >10s.
+export RSTEST_TIMEOUT := "10"
+
 COPYRIGHT_NAME := "Jayson Lennon"
 COPYRIGHT_YEAR := "2026"
 

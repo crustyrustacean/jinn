@@ -556,7 +556,7 @@ mod tests {
         let outcome = spec.run_action("<tab>", &mut ctx);
 
         // Then the action ran (message recorded) and the picker stayed open.
-        assert_eq!(outcome.message_names, ["alloc::string::String"]);
+        assert_eq!(outcome.message_names, ["RecordedToggle"]);
         assert!(!outcome.close);
     }
 

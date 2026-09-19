@@ -29,19 +29,18 @@ pub fn buffer_rows(buffer: &ratatui::buffer::Buffer, width: u16, height: u16) ->
 }
 
 // ---------------------------------------------------------------------------
-// Test fabric: a real kameo bus + trouper system, no kernel Services.
+// Test fabric: a real trouper system, no kernel Services.
 // ---------------------------------------------------------------------------
 
-/// A minimal two-fabric test harness: a real kameo message bus and a
-/// real trouper `ActorSystem`, with the publish/subscribe surface slice
-/// crates actually use. Slice-crate tests spin this up instead of the
-/// kernel's `Services`, which they must not depend on.
+/// A minimal test harness over a real trouper `ActorSystem`, with the
+/// spawn/send surface slice crates actually use. Slice-crate tests spin
+/// this up instead of the kernel's `Services`, which they must not
+/// depend on.
 ///
-/// Not `Default` — construction spawns actors on the ambient runtime,
-/// which is a deliberate, visible action (`new`), not a value default.
+/// Not `Default` — construction creates an actor system on the ambient
+/// runtime, which is a deliberate, visible action (`new`), not a value
+/// default.
 pub struct TestFabric {
-    /// The kameo bus actor ref.
-    bus: kameo::actor::ActorRef<kameo_actors::message_bus::MessageBus>,
     /// The trouper system.
     system: trouper::system::ActorSystem,
 }
@@ -53,33 +52,14 @@ impl TestFabric {
         &self.system
     }
 
-    /// Spawns a fresh bus + trouper system.
+    /// Creates a fresh trouper system.
     #[expect(
         clippy::new_without_default,
-        reason = "construction spawns actors on the ambient runtime — an action, not a value default"
+        reason = "construction creates an actor system on the ambient runtime — an action, not a value default"
     )]
     pub fn new() -> Self {
-        let bus = kameo::actor::Spawn::spawn(kameo_actors::message_bus::MessageBus::new(
-            kameo_actors::DeliveryStrategy::BestEffort,
-        ));
         let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-        Self { bus, system }
-    }
-
-    /// Publishes a typed message to all registered recipients.
-    pub async fn publish<M: jinn_slices::BusMessage>(&self, msg: M) {
-        let _ = self.bus.tell(kameo_actors::message_bus::Publish(msg)).await;
-    }
-
-    /// Registers a recipient for `M` on the bus.
-    pub async fn register<M: jinn_slices::BusMessage>(
-        &self,
-        recipient: kameo::actor::Recipient<M>,
-    ) {
-        let _ = self
-            .bus
-            .ask(kameo_actors::message_bus::Register(recipient))
-            .await;
+        Self { system }
     }
 
     /// Sends a typed message to the trouper `topic`.

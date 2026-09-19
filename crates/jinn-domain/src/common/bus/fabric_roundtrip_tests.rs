@@ -146,14 +146,14 @@ where
     );
 }
 
-/// A publish through a trouper-only `BusService` (kameo leg removed — the
+/// A publish through a trouper-only `BusService` (the trouper leg
 /// post-demolition shape) still routes onto the fabric, proving the trouper
-/// leg is the primary path, not a relay of the kameo bus.
+/// is the primary path.
 #[tokio::test]
-async fn publish_without_kameo_leg_still_routes_on_trouper() {
+async fn publish_on_trouper_only_bus_still_routes() {
     // Given a trouper-only fabric and a recorder for the message.
     let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-    let bus = BusService::new_trouper(system.clone(), None);
+    let bus = BusService::new_trouper(system.clone());
     let probe = RouteTestProbe::attach(&bus);
     let harness = TestHarness::from_parts(bus.clone(), system);
     let recorder = harness.spawn_recorder::<UserInteracted>().await;
@@ -184,7 +184,7 @@ async fn registered_route_moves_publishes_to_override_topic() {
     // Given a trouper-only fabric with a route for UserInteracted onto a
     // slice topic, and a recorder.
     let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-    let bus = BusService::new_trouper(system.clone(), None);
+    let bus = BusService::new_trouper(system.clone());
     let probe = RouteTestProbe::attach(&bus);
     bus.route_topic::<UserInteracted>(trouper::topics::Topic::new("session.slice"));
     let harness = TestHarness::from_parts(bus.clone(), system);
@@ -213,7 +213,7 @@ async fn registered_route_moves_publishes_to_override_topic() {
 }
 
 /// Recording mode keeps capturing publishes verbatim (test-mode parity with
-/// the pre-swap kameo bus).
+/// the schema-routed trouper topic).
 #[tokio::test]
 async fn recording_mode_captures_published_messages() {
     // Given a recording bus and one fixed message.

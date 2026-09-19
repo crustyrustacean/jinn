@@ -212,7 +212,6 @@ mod tests {
     use std::time::Duration;
 
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
-    use crate::feat::provider_infra::ProvidersConfig;
     use jinn_mcp_msg::McpServerConfig;
     use jinn_preferences_config::user_preferences::UserPreferences;
 

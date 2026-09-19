@@ -9,7 +9,7 @@
 //! eligibility-checked by the session actor) into one dispatch body:
 //! drain steering, normalize loop layout, begin the turn's phase writes,
 //! ask the context-assembly service, and publish `SendToLlmProvider` on
-//! the kameo bus.
+//! the kernel topic.
 //!
 //! Kernel dependency (see Cargo.toml): the queue actor writes through
 //! tcaps (State + SessionCap) and consumes session vocabulary, granted at
@@ -31,7 +31,7 @@ pub use jinn_turn_dispatch_msg::turn_dispatch_topic;
 /// event and the slice-owned [`DispatchTurn`] command.
 ///
 /// Composition drains the staged routes after activation (see
-/// [`bridge::drain_routes`]).
+/// [`bridge::install_topic_routes`]).
 ///
 /// # Panics
 ///

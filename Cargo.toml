@@ -97,8 +97,6 @@ jinn-picker = { workspace = true }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
-kameo = { workspace = true }
-kameo_actors = { workspace = true }
 trouper = { workspace = true }
 async-trait = { workspace = true }
 wherror = { workspace = true }
@@ -124,7 +122,6 @@ dotenvy = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 mockito = { workspace = true }
-kameo = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tempfile = { workspace = true }
 ctor = "0.8"
@@ -247,8 +244,6 @@ futures = "0.3"
 
 
 # Actor framework
-kameo = { version = "0.20", features = ["tracing"] }
-kameo_actors = "0.5"
 
 # The trouper actor runtime (published to crates.io; the SDK workspace
 # remains the development home — see .plans/actor-canvas/plan.md)

@@ -615,13 +615,23 @@ mod tests {
         );
 
         // And the session settles in Idle with a single cancel entry appended.
-        let s = state.read();
+        // The cancel completes asynchronously (actor mailbox), so poll until
+        // the terminal phase lands.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        let s = loop {
+            let s = state.read();
+            let phase = s.session.get_unchecked(&session_id).phase();
+            if phase == PhaseKind::Idle {
+                break s;
+            }
+            drop(s);
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "session did not settle to Idle after the cancel"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        };
         let session = s.session.get_unchecked(&session_id);
-        assert_eq!(
-            session.phase(),
-            PhaseKind::Idle,
-            "terminal phase after the cancel must be Idle"
-        );
         let cancelled_entries = session
             .history()
             .iter()
@@ -687,7 +697,7 @@ mod tests {
         }
 
         // The trouper spawn carries the deep mailbox (65_536, Block) the
-        // production wiring uses — the successor of the kameo unbounded
+        // production wiring uses — the successor of the unbounded
         // mailbox this test used to spawn with.
         SessionPersistenceActor::spawn(
             harness.system(),

@@ -93,8 +93,6 @@ dashmap = { workspace = true }
 jinn-session-schema = { workspace = true, features = ["testing"] }
 
 # Actor framework
-kameo = { workspace = true }
-kameo_actors = { workspace = true }
 
 # Actor canvas runtime (jinn slice actors ported onto it — see
 # .plans/actor-canvas/plan.md)

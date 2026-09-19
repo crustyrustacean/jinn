@@ -100,7 +100,7 @@ impl MsgHandler<SessionDiscoverySettled> for DiscoveryNotifier {
 }
 
 /// Renders the markdown summary of a settled discovery snapshot — the
-/// kameo notifier's `build_summary`, verbatim.
+/// kameo-era notifier's `build_summary`, verbatim.
 fn build_summary(event: &SessionDiscoverySettled) -> String {
     use std::fmt::Write as _;
 

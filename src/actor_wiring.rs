@@ -1,8 +1,8 @@
-//! Actor wiring — spawns all actors as kameo actors.
+//! Actor wiring — spawns all actors on the trouper runtime.
 //!
 //! This module encapsulates the one-time startup wiring: creating shared state,
-//! spawning each actor via kameo's `Spawn::spawn()`, building the bus and bridge,
-//! and waiting for the actor system to become ready. Called once from `App::dispatch`.
+//! spawning each actor via trouper, building the bus and bridge, and waiting
+//! for the actor system to become ready. Called once from `App::dispatch`.
 //!
 //! # Spawn order
 //!
@@ -10,8 +10,8 @@
 //! 2. Init actors (provider-init, preferences, scan actors).
 //! 3. Domain actors (session, tools, history workers, etc.).
 //!
-//! EnvInitActor is spawned first with `wait_for_startup()` so dependent actors
-//! can look it up in the kameo registry and pull config via `ask()`.
+//! EnvInitActor is spawned first so dependent actors can pull config from it
+//! via `ask()` on its path.
 
 use jinn_domain::ApiKeysService;
 use jinn_domain::AppState;
@@ -32,38 +32,6 @@ use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActo
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
 
 use jinn_domain::{AppCore, State};
-
-use kameo::actor::Spawn;
-
-/// Spawn a kameo actor and announce its lifecycle on the bus.
-///
-/// Publishes `ActorStarting` before the spawn future resolves and
-/// `ActorStarted` after, so the dashboard can display the lifecycle.
-macro_rules! spawn_tracked {
-    ($bus:expr, $name:expr, $desc:expr, $spawn:expr) => {{
-        let __bus = $bus.actor_ref();
-        let __name: &str = $name;
-        let __desc: &str = $desc;
-        let _ = __bus
-            .tell(kameo_actors::message_bus::Publish(
-                jinn_domain::common::actor::protocol::event::ActorStarting {
-                    name: __name.to_string(),
-                    description: Some(__desc.to_string()),
-                },
-            ))
-            .await;
-        let __actor = $spawn;
-        let _ = __bus
-            .tell(kameo_actors::message_bus::Publish(
-                jinn_domain::common::actor::protocol::event::ActorStarted {
-                    name: __name.to_string(),
-                    description: Some(__desc.to_string()),
-                },
-            ))
-            .await;
-        __actor
-    }};
-}
 
 /// The fixed (required) inputs to actor-system construction.
 #[derive(Clone)]
@@ -93,7 +61,7 @@ pub struct ActorSystemBuilderArgs {
     pub compaction_prompt: String,
 }
 
-/// Builds the actor system: spawns all actors via kameo.
+/// Builds the actor system: spawns all actors on trouper.
 ///
 /// Construct with [`ActorSystemBuilder::new`], then call
 /// [`ActorSystemBuilder::build`]. After spawning all actors, `build` blocks
@@ -107,7 +75,7 @@ impl ActorSystemBuilder {
     pub fn new(args: ActorSystemBuilderArgs) -> Self {
         Self { args }
     }
-    /// Spawn all actors via kameo, build the bus and bridge, and wait for readiness.
+    /// Spawn all actors on trouper, build the bus and bridge, and wait for readiness.
     pub async fn build(self) -> (AppCore, Services, jinn_discord::ActivatedDiscord) {
         let ActorSystemBuilderArgs {
             handle,
@@ -152,26 +120,19 @@ impl ActorSystemBuilder {
             (guard.active_session().session_id().clone(), cwd)
         };
 
-        // Create the message fabric: the trouper actor system (primary) and
-        // the transitional kameo bus leg, plus the closure bridge.
+        // Create the message fabric: the trouper actor system plus the
+        // closure bridge.
         let (bus, trouper_system) = {
             let system =
                 trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-            let bus_actor = kameo_actors::message_bus::MessageBus::new(
-                kameo_actors::DeliveryStrategy::BestEffort,
-            );
-            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
             (
                 jinn_domain::common::services::bus_service::BusService::new_trouper(
                     system.clone(),
-                    Some(bus_ref.clone()),
                 ),
                 system,
             )
         };
         let bridge = jinn_domain::common::bridge::Bridge::with_system(&bus, &handle);
-
-        let root = jinn_domain::common::root_supervisor::RootSupervisor::spawn_root().await;
 
         let mut services = Services {
             paths: paths.clone(),
@@ -187,7 +148,6 @@ impl ActorSystemBuilder {
             bus,
             bridge: bridge.clone(),
             trouper_system,
-            root_supervisor: root.clone(),
             mcp_coordinator: std::sync::Arc::new(std::sync::OnceLock::new()),
             interactive_term: std::sync::Arc::new(std::sync::OnceLock::new()),
             request_dump: jinn_domain::common::request_dump::RequestDumpService::new(dump_requests),
@@ -207,7 +167,7 @@ impl ActorSystemBuilder {
         // One relay per crossing message, registered on the bus in its
         // own on_start: publishes after the drains cannot be missed, so
         // the ordering constraint against slice activation is gone.
-        jinn_dashboard::bridge::drain_routes(&services).await;
+        jinn_dashboard::bridge::install_topic_routes(&services);
         jinn_quake_bar_drain(&services).await;
         jinn_discord_drain(&services).await;
 
@@ -252,9 +212,9 @@ impl ActorSystemBuilder {
         jinn_chat_input_activate(&mut services);
         jinn_cwd_activate(&mut services);
         jinn_preferences_activate(&mut services, state.clone()).await;
-        jinn_preferences::bridge::drain_routes(&services).await;
+        jinn_preferences::bridge::install_topic_routes(&services);
         jinn_sidebar_activate(&mut services, state.clone());
-        jinn_sidebar::bridge::drain_routes(&services).await;
+        jinn_sidebar::bridge::install_topic_routes(&services);
         jinn_theme_activate(&mut services);
 
         // Persona slice: activation scans the persona directories and
@@ -273,8 +233,8 @@ impl ActorSystemBuilder {
         jinn_term::activate(&mut services, &state);
 
         // Tools slice: activation mints the tools/registry cell (idempotent);
-        // the orchestrator actor is spawned below (it needs the announce
-        // supervisor and explicit ordering vs. the MCP coordinator).
+        // the orchestrator actor is spawned below (explicit ordering vs.
+        // the MCP coordinator — B1).
         jinn_tools::activate(&mut services, &state);
 
         // Quake bar slice: activation mints the cell, spawns the actor
@@ -290,7 +250,7 @@ impl ActorSystemBuilder {
         // this function: the supervisor's subscriptions must exist
         // before the first `EnvironmentLoaded` trigger.
         jinn_session_init_activate(&mut services, state.clone());
-        jinn_session_init::bridge::drain_routes(&services).await;
+        jinn_session_init::bridge::install_topic_routes(&services);
 
         // ── Infrastructure actors ──────────────────────────────────────────
 
@@ -353,7 +313,7 @@ impl ActorSystemBuilder {
         // cache is handed to the session actor (accumulation gate) and
         // the prune workers.
         let entry_token_cache = jinn_token_count_activate(&mut services, state.clone());
-        jinn_token_count::bridge::drain_routes(&services).await;
+        jinn_token_count::bridge::install_topic_routes(&services);
 
         // ── Turn-dispatch slice ─────────────────────────────────────
         // Activation spawns the queue actor (trouper ServiceActor, the
@@ -363,7 +323,7 @@ impl ActorSystemBuilder {
         // trigger (an `Idle` phase event or a `DispatchTurn` command)
         // is published.
         jinn_turn_dispatch_activate(&mut services, state.clone());
-        jinn_turn_dispatch::bridge::drain_routes(&services).await;
+        jinn_turn_dispatch::bridge::install_topic_routes(&services);
 
         // ── Inference slice ─────────────────────────────────────────
         // Activation spawns the inference actor (trouper ServiceActor,
@@ -372,7 +332,7 @@ impl ActorSystemBuilder {
         // forward relays for `SendToLlmProvider`/`CancelStream` must
         // exist before the first dispatch is published.
         jinn_inference_activate(&mut services);
-        jinn_inference::bridge::drain_routes(&services).await;
+        jinn_inference::bridge::install_topic_routes(&services);
 
         // ── Context-assembly slice ─────────────────────────────────────
         // Install the slice's actors on trouper (the stateless assembly
@@ -393,7 +353,7 @@ impl ActorSystemBuilder {
                 panic!("context-assembly slice finalize failed: {error}");
             }
         }
-        jinn_context_assembly::bridge::drain_routes(&services).await;
+        jinn_context_assembly::bridge::install_topic_routes(&services);
         let _session = jinn_domain::feat::session::session_actor::SessionPersistenceActor::spawn(
             &services.trouper_system,
             jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
@@ -517,24 +477,31 @@ impl ActorSystemBuilder {
         // Search index maintenance: message-driven reindex state machine —
         // refreshes its in-memory dirty-session queue when idle and
         // reindexes at most REINDEX_BATCH sessions per heartbeat,
-        // publishing the remaining count after every session. Trouper
-        // spawn: the macro tracks the row; the first tick self-kicks.
-        let _search_index = spawn_tracked!(
-            &services.bus,
-            jinn_session_store::search_index_actor::SEARCH_INDEX_ROW_NAME,
-            "SearchIndexActor",
-            async {
-                jinn_session_store::search_index_actor::SearchIndexActor::spawn(
-                    &services.trouper_system,
-                    jinn_session_store::search_index_actor::SearchIndexActorDeps {
-                        deps: actor_deps.clone(),
-                        interval: jinn_session_store::search_index_actor::REINDEX_INTERVAL,
-                        batch: jinn_session_store::search_index_actor::REINDEX_BATCH,
-                    },
-                )
-            }
-            .await
-        );
+        // publishing the remaining count after every session. The first
+        // tick self-kicks after the spawn handshake (B7).
+        services
+            .bus
+            .publish(jinn_domain::common::actor::protocol::event::ActorStarting {
+                name: jinn_session_store::search_index_actor::SEARCH_INDEX_ROW_NAME.to_owned(),
+                description: Some("SearchIndexActor".to_owned()),
+            })
+            .await;
+        let _search_index =
+            jinn_session_store::search_index_actor::SearchIndexActor::spawn(
+                &services.trouper_system,
+                jinn_session_store::search_index_actor::SearchIndexActorDeps {
+                    deps: actor_deps.clone(),
+                    interval: jinn_session_store::search_index_actor::REINDEX_INTERVAL,
+                    batch: jinn_session_store::search_index_actor::REINDEX_BATCH,
+                },
+            );
+        services
+            .bus
+            .publish(jinn_domain::common::actor::protocol::event::ActorStarted {
+                name: jinn_session_store::search_index_actor::SEARCH_INDEX_ROW_NAME.to_owned(),
+                description: Some("SearchIndexActor".to_owned()),
+            })
+            .await;
 
         // Context size actor: trouper, installed with the context-assembly
         // slice's install_actors call above.
@@ -657,8 +624,7 @@ fn jinn_scope_focus_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_scope_focus::activate(&mut host);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("scope-focus slice finalize failed: {error}");
     }
 }
@@ -675,8 +641,7 @@ fn jinn_chat_log_view_activate(services: &mut Services, state: &jinn_domain::Sta
         &services.trouper_system,
     );
     jinn_chat_log_view::activate(&mut host);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("chat-log-view slice finalize failed: {error}");
     }
     state.read().session.attach_slices(services.slices.clone());
@@ -694,8 +659,7 @@ fn jinn_sidebar_activate(services: &mut Services, state: jinn_domain::common::st
         &services.trouper_system,
     );
     jinn_sidebar::activate(&mut host, state);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("sidebar slice finalize failed: {error}");
     }
 }
@@ -709,8 +673,7 @@ fn jinn_cwd_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_cwd::activate(&mut host);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("cwd slice finalize failed: {error}");
     }
 }
@@ -734,8 +697,7 @@ async fn jinn_preferences_activate(
         &services.trouper_system,
     );
     jinn_preferences::activate(&mut host, &system, services_handle, state);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("preferences slice finalize failed: {error}");
     }
 }
@@ -749,8 +711,7 @@ fn jinn_chat_input_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_chat_input::activate(&mut host);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("chat-input slice finalize failed: {error}");
     }
 }
@@ -770,8 +731,7 @@ fn jinn_token_count_activate(
         &services.trouper_system,
     );
     let cache = jinn_token_count::activate(&mut host, state);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("token-count slice finalize failed: {error}");
     }
     cache
@@ -782,7 +742,7 @@ fn jinn_token_count_activate(
 /// stages their crossing routes, and drains them.
 ///
 /// Strategy enablement is a construction-time gate (the wiring shape the
-/// kameo spawns used) — a disabled strategy never reaches the prune
+/// kameo-era spawns used) — a disabled strategy never reaches the prune
 /// actor. The regex strategy additionally skips when its rule list is
 /// empty or any rule fails to compile (warn-and-skip, never a launch
 /// failure).
@@ -913,8 +873,7 @@ fn jinn_context_curation_activate(
         &services.trouper_system,
     );
     jinn_context_curation::activate(&mut host, workers, compaction_deps);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("context-curation slice finalize failed: {error}");
     }
 }
@@ -928,8 +887,7 @@ fn jinn_persona_activate(services: &mut Services) -> jinn_persona_msg::Personas 
         &services.trouper_system,
     );
     let scanned = jinn_persona::activate(&mut host, &services.paths.personas_dir());
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("persona slice finalize failed: {error}");
     }
     scanned
@@ -954,8 +912,7 @@ fn jinn_turn_dispatch_activate(services: &mut Services, state: jinn_domain::comm
         &services.trouper_system,
     );
     jinn_turn_dispatch::activate(&mut host, state, services_snapshot);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("turn-dispatch slice finalize failed: {error}");
     }
 }
@@ -979,8 +936,7 @@ fn jinn_inference_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_inference::activate(&mut host, services_snapshot);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("inference slice finalize failed: {error}");
     }
 }
@@ -1000,8 +956,7 @@ fn jinn_theme_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_theme_slice::activate(&mut host, &themes_dir, &system_themes_dir);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("theme slice finalize failed: {error}");
     }
 }
@@ -1015,8 +970,7 @@ fn jinn_status_bar_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_status_bar::activate(&mut host);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("status-bar slice finalize failed: {error}");
     }
 }
@@ -1030,31 +984,19 @@ fn jinn_quake_bar_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_quake_bar::activate(&mut host);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
+    if let Err(error) = host.finalize(&|_key| None) {
         panic!("quake-bar slice finalize failed: {error}");
     }
 }
 
 /// Drains the quake-bar slice's staged forward routes into per-route
-/// relays. Kernel-side: the relays are kameo actors.
+/// relays. Kernel-side: the route rules ride the fabric.
 async fn jinn_quake_bar_drain(services: &Services) {
     // Erased publishes (bridge closures) route natively on trouper: the
     // schema→topic rule mirrors the relay below.
     services
         .bus
         .route_topic::<jinn_quake_bar::SubmitQuakeBarCommand>(jinn_quake_bar::command::quake_bar_topic());
-    jinn_domain::common::trouper_bridge::spawn_one::<jinn_quake_bar::SubmitQuakeBarCommand>(
-        services,
-        &jinn_slices::host::RouteEntry {
-            schema_id:
-                <jinn_quake_bar::SubmitQuakeBarCommand as trouper::schema::Schema>::schema_id(),
-            name: "quake-bar",
-            topic: jinn_quake_bar::command::quake_bar_topic(),
-            direction: jinn_slices::host::Direction::Forward,
-        },
-    )
-    .await;
 }
 
 /// Drains the discord slice's staged forward routes into per-route
@@ -1086,53 +1028,12 @@ async fn jinn_discord_drain(services: &Services) {
     services
         .bus
         .route_topic::<DiscordThreadCreateFailed>(topic.clone());
-    let route = |schema_id| jinn_slices::host::RouteEntry {
-        schema_id,
-        name: "discord",
-        topic: topic.clone(),
-        direction: jinn_slices::host::Direction::Forward,
-    };
-    jinn_domain::common::trouper_bridge::spawn_one::<SessionPhaseChanged>(
-        services,
-        &route(<SessionPhaseChanged as trouper::schema::Schema>::schema_id()),
-    )
-    .await;
-    jinn_domain::common::trouper_bridge::spawn_one::<SessionSetupCompleted>(
-        services,
-        &route(<SessionSetupCompleted as trouper::schema::Schema>::schema_id()),
-    )
-    .await;
-    jinn_domain::common::trouper_bridge::spawn_one::<SessionTeardownFinished>(
-        services,
-        &route(<SessionTeardownFinished as trouper::schema::Schema>::schema_id()),
-    )
-    .await;
-    jinn_domain::common::trouper_bridge::spawn_one::<SessionArchived>(
-        services,
-        &route(<SessionArchived as trouper::schema::Schema>::schema_id()),
-    )
-    .await;
-    jinn_domain::common::trouper_bridge::spawn_one::<CreateThreadForSession>(
-        services,
-        &route(<CreateThreadForSession as trouper::schema::Schema>::schema_id()),
-    )
-    .await;
-    jinn_domain::common::trouper_bridge::spawn_one::<DiscordThreadCreated>(
-        services,
-        &route(<DiscordThreadCreated as trouper::schema::Schema>::schema_id()),
-    )
-    .await;
-    jinn_domain::common::trouper_bridge::spawn_one::<DiscordThreadCreateFailed>(
-        services,
-        &route(<DiscordThreadCreateFailed as trouper::schema::Schema>::schema_id()),
-    )
-    .await;
 }
 
 /// Activates the discord slice over the kernel's registries.
 ///
 /// Composition assembles the `SliceHost` borrows plus the services the
-/// slice's kameo-side bridge actor needs; the slice returns the parked
+/// slice's gateway task needs; the slice returns the parked
 /// gateway channels and its validated config for the frontend spawn.
 #[expect(
     clippy::panic,

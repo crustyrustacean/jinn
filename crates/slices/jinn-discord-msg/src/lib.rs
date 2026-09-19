@@ -1,7 +1,7 @@
 //! Discord crossing contracts.
 //!
 //! The EXPORT surface of the discord slice: every message that travels
-//! between jinn's kameo bus and the poise gateway task (or the discord
+//! between jinn's message fabric and the poise gateway task (or the discord
 //! status topic on the trouper fabric). The slice, whose single crate
 //! (`jinn-discord`) carries both the domain pieces and the poise
 //! gateway `backend` module, depends on this crate; the kernel never

@@ -1,7 +1,7 @@
 //! Session crossing contracts.
 //!
 //! The EXPORT surface of the session family: the discriminant and
-//! lifecycle events that cross the core bridge (kameo bus → trouper
+//! lifecycle events that cross the core bridge (trouper
 //! topic). Kernel publishers (session actors) and slice consumers
 //! (e.g. the discord bridge) both depend on this crate — the types
 //! have exactly one home.

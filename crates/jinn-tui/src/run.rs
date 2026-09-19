@@ -81,14 +81,18 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
     }
 
     // Coordinated actor shutdown: signal the root supervisor, then race the
-    // shutdown barrier against a 20-second timeout. Kameo cascades the stop
-    // signal to every supervised child (spawn.rs:216-227), running their
-    // `on_stop` hooks to flush buffers and finalize writes.
+    // shutdown barrier against a 20-second timeout. The trouper sweep
+    // fires every supervised child's shutdown watcher, letting each loop
+    // drain, run its `on_stop` hook (flush buffers, finalize writes), and
+    // tear down — hard-stopping stragglers at its 10s deadline.
     {
-        let root = app.services.root_supervisor.clone();
+        let system = app.services.trouper_system.clone();
         let result = app.services.handle.block_on(async {
-            let _ = root.stop_gracefully().await;
-            tokio::time::timeout(Duration::from_secs(20), root.wait_for_shutdown()).await
+            tokio::time::timeout(
+                Duration::from_secs(20),
+                system.shutdown_graceful(Duration::from_secs(10)),
+            )
+            .await
         });
         if result.is_err() {
             tracing::warn!("actor shutdown timed out after 20s; proceeding");
@@ -428,7 +432,6 @@ mod tests {
         let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
         let bus = jinn_domain::common::services::bus_service::BusService::new_trouper(
             system.clone(),
-            None,
         );
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let path = trouper::actor::ActorPath::new(format!(

@@ -3,7 +3,7 @@
 //! Every crossing this slice consumes arrives on the shared
 //! [`session_init_topic`](crate::session_init_topic): the four session
 //! lifecycle trigger events and the three manual rescan commands,
-//! forwarded from the kameo bus by the kernel bridge. The supervisor
+//! published onto the kernel topic. The supervisor
 //! reads each trigger's payload — the session id and its cwd travel
 //! with the event — applies the pending-cwd gate, and sends a
 //! path-addressed command to the discovery partition set's public

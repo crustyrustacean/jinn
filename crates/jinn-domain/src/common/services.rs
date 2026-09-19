@@ -15,7 +15,6 @@
 use std::sync::Arc;
 
 use derive_more::Debug;
-use kameo::actor::Spawn;
 
 use jinn_preferences_config::{
     AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
@@ -78,20 +77,12 @@ pub struct Services {
     #[debug(skip)]
     pub tempdir: Option<Arc<tempfile::TempDir>>,
 
-    /// Kameo message bus for type-based pub/sub routing.
+    /// Message fabric for schema-based pub/sub routing.
     #[debug(skip)]
     pub bus: bus_service::BusService,
 
     /// Kanal closure bridge from sync TUI to async bus.
     pub bridge: crate::common::bridge::Bridge,
-
-    /// Root supervision-tree actor.
-    ///
-    /// `Some` in production (spawned in `actor_wiring::build`) so the TUI
-    /// can gracefully shut down the actor system on exit. `None` in tests
-    /// that don't exercise the full shutdown path.
-    #[debug(skip)]
-    pub root_supervisor: crate::common::root_supervisor::RootSupervisorRef,
 
     #[debug(skip)]
     pub mcp_coordinator:
@@ -140,7 +131,7 @@ pub struct Services {
     /// Actor-canvas runtime system hosting the ported slice actors
     /// (dashboard, quake-bar). Built once here; slice `activate` functions
     /// spawn their canvas actors onto it and subscribe them to topics fed
-    /// by the kameo→trouper bridge. See `.plans/actor-canvas/plan.md`.
+    /// by the fabric canvas actor. See `.plans/actor-canvas/plan.md`.
     #[debug(skip)]
     pub trouper_system: trouper::system::ActorSystem,
 
@@ -176,17 +167,9 @@ impl Services {
         let (bus, trouper_system) = {
             let system =
                 trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-            let bus_actor = kameo_actors::message_bus::MessageBus::new(
-                kameo_actors::DeliveryStrategy::BestEffort,
-            );
-            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
-            (
-                bus_service::BusService::new_trouper(system.clone(), Some(bus_ref)),
-                system,
-            )
+            (bus_service::BusService::new_trouper(system.clone()), system)
         };
         let bridge = crate::common::bridge::Bridge::new(bus.clone());
-        let root_supervisor = crate::common::root_supervisor::RootSupervisor::spawn_root().await;
 
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
@@ -220,7 +203,6 @@ impl Services {
             tempdir: Some(tempdir),
             bus,
             bridge,
-            root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
@@ -264,7 +246,6 @@ impl Services {
         let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
 
         let bridge = crate::common::bridge::Bridge::new_for_test();
-        let root_supervisor = crate::common::root_supervisor::RootSupervisor::spawn_root().await;
         let trouper_system =
             trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
 
@@ -300,7 +281,6 @@ impl Services {
             tempdir: Some(tempdir),
             bus,
             bridge,
-            root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),

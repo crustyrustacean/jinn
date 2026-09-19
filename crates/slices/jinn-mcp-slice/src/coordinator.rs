@@ -14,11 +14,10 @@
 //! - [`SessionClosed`] / [`SessionArchived`] / [`SessionTeardownFinished`] —
 //!   the session is gone; kill all its actors.
 //!
-//! Each `McpActor` is a supervised child of the root supervisor
-//! ([`kameo::Actor::supervise`]) with [`RestartPolicy::Never`], so a single
-//! dead server's crash never cascades and never restarts (the user re-enables
-//! it). Disabling a server (or closing the session) calls
-//! [`ActorRef::stop_gracefully`], which triggers the `McpActor::on_stop` hook
+//! Each `McpActor` is spawned on the trouper system with no restart
+//! policy, so a single dead server's crash never cascades and never
+//! restarts (the user re-enables it). Disabling a server (or closing the
+//! session) kills the actor, which triggers the `McpActor::on_stop` hook
 //! that shuts the child process down.
 
 use std::collections::{BTreeSet, HashMap};
@@ -412,7 +411,7 @@ impl MsgHandler<RestartMcpServer> for McpCoordinatorActor {
 }
 
 /// Wire payload for the restart ask's reply (JSON-friendly twin of the
-/// kameo-era `Result<(), RestartError>`).
+/// kameo-era `Result<(), RestartError>` reply shape).
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
 pub struct RestartOutcome {
     pub ok: bool,
@@ -723,7 +722,12 @@ mod lifecycle_tests {
 
     /// A 1ms `restart_one` timeout fires before the new actor can finish
     /// `on_start` (connect + tools/list), so it returns `Err(Timeout)`.
+    ///
+    /// `#[timeout]` is load-bearing: the `sleep 60` handshake never
+    /// completes, so any unbounded await in the restart path would wedge
+    /// the whole test binary without it.
     #[rstest::rstest]
+    #[timeout(std::time::Duration::from_secs(20))]
     #[tokio::test]
     async fn restart_one_times_out_when_startup_exceeds_the_timeout() {
         // Given a coordinator with a server that hangs forever on the MCP handshake.

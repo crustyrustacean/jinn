@@ -8,11 +8,11 @@ use jinn_slices::RouteResult;
 ///
 /// Messages are erased publish closures in the exact shape the kernel's
 /// drain task already consumes ([`PublishClosure`], minted through
-/// [`RouteResult`]'s constructors so this crate needs no kameo dependency).
+/// [`RouteResult`]'s constructors so this crate stays publish-agnostic).
 /// `close` pops the picker's scope after the messages publish.
 #[derive(Default)]
 pub struct PickerOutcome {
-    /// Typed message closures to publish to the kameo bus.
+    /// Typed message closures to publish onto the fabric.
     pub messages: Vec<PublishClosure>,
     /// Type names of the messages, for test inspection.
     pub message_names: Vec<&'static str>,

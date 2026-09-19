@@ -1,16 +1,16 @@
 //! The session-init slice — per-session environment discovery on the
 //! trouper fabric.
 //!
-//! Replaces the kameo scan trio + discovery coordinator + discovery
+//! Replaces the kameo-era scan trio + discovery coordinator + discovery
 //! notifier with a true keyed-actor topology: one supervisor
 //! translates session-lifecycle triggers and manual rescan commands
 //! into keyed commands, and a partition set activates one discovery
 //! worker per session, owning that session's skills, prompt, and
-//! context-file scans plus the settle coalescing the kameo coordinator
+//! context-file scans plus the settle coalescing the kameo-era coordinator
 //! used to do across four actors. A notifier actor posts the settled
 //! summary entry into the session's chat log.
 //!
-//! Discovery results return to the kameo bus via reverse relays
+//! Discovery results return to the kernel topic via route rules
 //! (`SkillsLoaded`, `PromptTemplatesLoaded`, `ContextFilesLoaded`) so
 //! kernel consumers — the session actor and the subagent task-settle
 //! listener — are unchanged.
@@ -37,7 +37,7 @@ use trouper::topics::Topic;
 use wherror::Error;
 
 /// The trouper topic session-lifecycle triggers and manual rescans
-/// cross on (kameo bus → supervisor).
+/// cross on (kernel topic → supervisor).
 #[must_use]
 pub fn session_init_topic() -> Topic {
     Topic::new("jinn.session-init")
@@ -67,7 +67,7 @@ pub fn settled_topic() -> Topic {
 ///
 /// The 7 triggers forward onto the shared [`session_init_topic`]; the 3
 /// loaded events return via reverse relays, each publishing onto its
-/// schema-named topic — the exact topics [`bridge::drain_routes`]
+/// schema-named topic — the exact topics [`bridge::install_topic_routes`]
 /// subscribes its relays to.
 fn stage_routes(host: &mut AppSliceHost<'_>) {
     let topic = session_init_topic();
@@ -121,10 +121,10 @@ pub struct SliceActivateError;
 /// Activates the session-init slice: install the discovery partition
 /// set, spawn the supervisor and notifier on the trouper fabric, and
 /// stage this slice's crossing routes (the forward triggers on
-/// [`session_init_topic`], the reverse results back onto the kameo bus).
+/// [`session_init_topic`], the reverse results back onto the kernel topic).
 ///
 /// Composition drains the staged routes after activation (see
-/// [`bridge::drain_routes`]); both call sites must precede the
+/// [`bridge::install_topic_routes`]); both call sites must precede the
 /// readiness `EnvironmentLoaded` publish so no trigger is missed.
 ///
 /// # Errors
@@ -266,7 +266,7 @@ pub fn install_partition_set_with_args(
     Ok(())
 }
 
-/// The supervision budget for one discovery entity: the kameo actors'
+/// The supervision budget for one discovery entity: the actors'
 /// convention — restart on crash until the restart budget (5 within a
 /// 10 s sliding window) is exhausted, then escalate to the supervisor.
 fn entity_restart_budget() -> trouper::supervision::RestartBudget {

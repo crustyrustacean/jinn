@@ -8,7 +8,7 @@
 //! 2. published on the trouper `jinn.discord` topic (the slice's
 //!    EXPORT face — no forward bridge route exists for this type),
 //! 3. translated into the dashboard's generic
-//!    [`ServiceStatusUpdate`] vocabulary and published on the kameo
+//!    [`ServiceStatusUpdate`] vocabulary and published on the
 //!    bus, whose forward relay still feeds the fabric events topic.
 //!
 //! The gateway task is a plain tokio task, so the channel stays kanal;
@@ -88,7 +88,7 @@ pub fn fold_connection(state: &mut ConnectionState, update: &DiscordStatusUpdate
 ///
 /// Spawns its drain loop from construction: read each gateway update,
 /// fold it into the cell, publish the native event on the trouper
-/// topic, and republish the generic translation on the kameo bus.
+/// topic, and republish the generic translation on the fabric.
 pub struct DiscordStatusActor {
     /// Handle for the spawned drain loop (abort on drop semantics are
     /// not needed — the loop lives as long as the channels).
@@ -103,7 +103,7 @@ pub struct DiscordStatusActorDeps {
     /// The write handle for discord's connection cell — the drain loop
     /// is its single writer.
     pub cell: TypedCell<ConnectionState>,
-    /// The kameo bus, for the dashboard's generic vocabulary.
+    /// The message bus, for the dashboard's generic vocabulary.
     pub bus: jinn_domain::common::services::bus_service::BusService,
     /// The trouper system, for the native topic publish + schema
     /// registration.
@@ -143,7 +143,7 @@ impl ServiceActor for DiscordStatusActor {
 /// Background drain loop: reads discord status updates from the kanal
 /// channel, folds the connection fact into the cell, publishes the
 /// native event on the trouper topic, and republishes the generic
-/// translation on the kameo bus.
+/// translation on the fabric.
 async fn drain_status_channel(
     rx: kanal::AsyncReceiver<DiscordStatusUpdate>,
     cell: TypedCell<ConnectionState>,

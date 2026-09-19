@@ -21,7 +21,7 @@
 //! single sink.
 //!
 //! The actor runs on the trouper runtime ([`ServiceActor`] tier: a
-//! stateless fold into shared state, no journaling). The kameo→canvas
+//! stateless fold into shared state, no journaling). The fabric→canvas
 //! bridge ([`crate::common::trouper_bridge`]) translates the bus messages
 //! onto its topics; the cell handle cannot ride the runtime's JSON start
 //! args, so it is injected through the builder's
@@ -467,7 +467,7 @@ mod tests {
 
     /// The lifecycle events the dashboard folds are the **same Rust
     /// types** the kernel publishes (`jinn_slices::fabric` re-exported
-    /// here via `fabric_events`) — kameo bus dispatch is by `TypeId`,
+    /// here via `fabric_events`) — fabric dispatch is by schema id,
     /// so schema-id-equal mirrors would silently drop every event.
     /// This pins the shared identity plus the wire schema id.
     #[rstest::rstest]

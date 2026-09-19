@@ -8,8 +8,6 @@
 
 use std::path::PathBuf;
 
-use kameo::prelude::Spawn;
-
 use crate::common::actor_deps::ActorDeps;
 use crate::common::app_paths::AppPaths;
 use crate::common::app_state::AppState;

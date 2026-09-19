@@ -30,7 +30,7 @@
 //!
 //! Actions return a [`RouteResult`]: erased publish closures plus an
 //! optional scope transition. The closures carry real bus publications
-//! (this crate depends on kameo for the publish shape); only the
+//! (this crate stays publish-agnostic); only the
 //! kernel's *intent enum* stays out of reach. State access goes
 //! through the [`SliceActionState`] trait — the kernel's application
 //! state is its sole implementor, so a slice crate declares the
@@ -301,7 +301,7 @@ pub enum EditIntent {
 /// writer) *before* the messages publish, so a slice that opens itself
 /// pushes its scope before any bus message a subscriber could observe.
 pub struct RouteResult {
-    /// Typed message closures to publish to the kameo bus.
+    /// Typed message closures to publish onto the fabric.
     pub messages: Vec<PublishClosure>,
     /// Type names of messages, for test inspection.
     pub message_names: Vec<&'static str>,
@@ -404,8 +404,17 @@ impl RouteResult {
                 let payload = serde_json::to_value(&msg).unwrap_or(serde_json::Value::Null);
                 sink.publish_schema(M::schema_id(), payload, std::any::type_name::<M>());
             }));
-        self.message_names.push(std::any::type_name::<M>());
+        // Record the short type name (e.g. "PushChatEntry") — the same
+        // spelling recording-mode assertions use.
+        self.message_names
+            .push(short_type_name::<M>());
     }
+}
+
+/// The short type name of a message (e.g. `"PushChatEntry"`).
+fn short_type_name<M: 'static>() -> &'static str {
+    let full = std::any::type_name::<M>();
+    full.rsplit("::").next().unwrap_or(full)
 }
 
 /// A row action: produces the route result (messages + optional scope

@@ -6,41 +6,19 @@
 //! names, the kernel must not depend on slice crates).
 
 use jinn_domain::Services;
-use jinn_slices::host::Direction;
-use jinn_slices::host::RouteEntry;
 
 use crate::inference_topic;
 
 /// Drains the inference slice's forward routes into bridge relays:
 /// `SendToLlmProvider` and `CancelStream` dispatch commands, plus the
-/// actor's own `StreamCompleted` echo (all kameo bus → `jinn.inference`).
+/// actor's own `StreamCompleted` echo (all onto `jinn.inference`).
 ///
 /// Slice-local drain, called by composition after activation. Relays
 /// register on the bus in their own `on_start`, so drain ordering
 /// relative to publishers is free.
-pub async fn drain_routes(services: &Services) {
-    forward::<jinn_inference_msg::SendToLlmProvider>(services).await;
-    forward::<jinn_inference_msg::CancelStream>(services).await;
-    forward::<jinn_inference_msg::StreamCompleted>(services).await;
+pub fn install_topic_routes(services: &Services) {
+    services.bus.route_topic::<jinn_inference_msg::SendToLlmProvider>(inference_topic());
+    services.bus.route_topic::<jinn_inference_msg::CancelStream>(inference_topic());
+    services.bus.route_topic::<jinn_inference_msg::StreamCompleted>(inference_topic());
 }
 
-/// Spawns the forward relay for `M` on the inference topic.
-async fn forward<M>(services: &Services)
-where
-    M: jinn_slices::BusMessage + jinn_slices::host::ForwardMessage,
-{
-    // Erased publishes (bridge closures) route natively on trouper: the
-    // schema→topic rule mirrors the relay below.
-    services.bus.route_topic::<M>(inference_topic());
-
-    jinn_domain::common::trouper_bridge::spawn_one::<M>(
-        services,
-        &RouteEntry {
-            schema_id: <M as trouper::schema::Schema>::schema_id(),
-            name: "inference",
-            topic: inference_topic(),
-            direction: Direction::Forward,
-        },
-    )
-    .await;
-}

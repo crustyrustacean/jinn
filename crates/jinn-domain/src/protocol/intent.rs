@@ -362,7 +362,7 @@ impl std::fmt::Display for Intent {
 /// so behavior is unchanged; only the definition's home moved.
 ///
 /// Carries typed message closures to be dispatched to the actor system
-/// via the kameo message bus, plus an optional scope transition. The
+/// onto the message fabric, plus an optional scope transition. The
 /// scope signal is applied by the handler (an exempt scope-stack
 /// writer) *before* the messages publish, so a slice that opens itself
 /// pushes its scope before any bus message a subscriber could observe.

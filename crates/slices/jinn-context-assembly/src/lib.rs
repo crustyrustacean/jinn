@@ -56,7 +56,7 @@ pub fn install_actors(
 /// Stages the slice's crossing routes on the host: the kernel
 /// context-affecting events forward onto
 /// [`bridge::context_assembly_topic`]. Composition drains the staged
-/// routes after activation (see [`bridge::drain_routes`]).
+/// routes after activation (see [`bridge::install_topic_routes`]).
 pub fn stage_routes(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     let topic = bridge::context_assembly_topic();
     host.forward::<jinn_session_history_msg::HistoryAppended, _>(topic.clone(), || {

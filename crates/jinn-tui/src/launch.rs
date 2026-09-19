@@ -168,7 +168,7 @@ fn register_slice_wiring(
     >,
 ) {
     // Slice activation happens in the actor-system bootstrap
-    // (`actor_wiring`), which is the async context kameo spawns need and
+    // (`actor_wiring`), which is the async context actor spawns need and
     // the only place that can put the dashboard first in spawn order.
     // This function runs after it, so every slice's rows exist by now.
     crate::keymap_gen::bind_route_rows(&services.key_routes, keymap);

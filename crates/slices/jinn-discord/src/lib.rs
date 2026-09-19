@@ -145,7 +145,7 @@ pub async fn activate(
     // Forward routes: the session-family messages this slice consumes
     // cross the core bridge onto `jinn.session`. Composition drains the
     // staged set into per-route relays; the relay is just one more bus
-    // subscriber, so existing kameo consumers are unaffected.
+    // subscriber, so existing consumers are unaffected.
     let topic = jinn_session_msg::session_topic();
     host.forward::<jinn_session_msg::SessionPhaseChanged, _>(topic.clone(), || {
         <jinn_session_msg::SessionPhaseChanged as trouper::schema::Schema>::schema_def()

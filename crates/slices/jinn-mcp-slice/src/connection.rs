@@ -75,7 +75,7 @@ pub struct McpActor {
 
 /// Dependencies for [`McpActor`].
 ///
-/// Implements [`Clone`] so the actor can be spawned under kameo's
+/// Implements [`Clone`] so the actor can be spawned under trouper's
 /// supervision tree. The optional injected client lives behind a shared slot
 /// (`Arc<Mutex<Option<McpClient>>>`) so cloning the deps clones the *handle* to
 /// the slot, not the client itself; `on_start` drains the slot once.

@@ -82,10 +82,8 @@ impl App {
         runner: crate::runner::Runner,
         store: &jinn_domain::SessionStoreService,
     ) -> Result<(), Report<AppError>> {
-        // Extract the root supervisor ref and the trouper system handle
-        // before the runner is consumed, so we can coordinate shutdowns
-        // after the event loop exits.
-        let root = runner.root_supervisor();
+        // Extract the trouper system handle before the runner is consumed,
+        // so the graceful shutdown sweep can run after the event loop exits.
         let trouper_system = runner.trouper_system();
 
         // Run the runner, but don't short-circuit shutdown on its error.
@@ -96,31 +94,11 @@ impl App {
         // trouble the caller should see).
         let run_result = runner.run().change_context(AppError);
 
-        // Coordinated actor shutdown: signal the root supervisor to stop, which
-        // cascades a graceful shutdown to every supervised child actor (kameo's
-        // lifecycle calls each child's `on_stop`). Race the barrier against a
-        // 20-second timeout; on timeout we proceed regardless so a wedged actor
-        // can't prevent process exit.
-        if let Some(root) = root {
-            self.runtime.block_on(async {
-                root.stop_gracefully().await.ok();
-                if tokio::time::timeout(
-                    std::time::Duration::from_secs(20),
-                    root.wait_for_shutdown(),
-                )
-                .await
-                .is_err()
-                {
-                    tracing::warn!("actor shutdown timed out after 20s; proceeding");
-                }
-            });
-        }
-
-        // The trouper fabric drains second: kameo producers are down, so
-        // the sweep's barrier sees a quiet bus and every on_stop hook
-        // runs before the store checkpoint. Capped at 10s — a wedged
-        // trouper actor can't prevent process exit (the sweep hard-stops
-        // stragglers at the deadline).
+        // Graceful shutdown: the trouper sweep fires every supervised
+        // child's shutdown watcher (each loop drains, runs its `on_stop`
+        // hook, and tears down), races the drain against a 10s deadline,
+        // then flushes the store. A wedged actor can't prevent process
+        // exit — the sweep hard-stops stragglers at the deadline.
         if let Some(trouper_system) = trouper_system {
             self.runtime.block_on(async {
                 if tokio::time::timeout(

@@ -672,7 +672,7 @@ mod tests {
             .map(|c| c.read().live_terms.contains(chat))
             .unwrap_or(false)
     }
-    use jinn_domain::common::bus::test_harness::{GetRecorded, TestHarness};
+    use jinn_domain::common::bus::test_harness::TestHarness;
 
     const QUIET: Duration = Duration::from_millis(150);
     const CAP: Duration = Duration::from_secs(2);
@@ -1371,15 +1371,11 @@ let SpawnTermOutcome::Started { .. } = outcome else {
             .await;
 
         // Then each screen change streamed a TermScreenUpdated to the bus.
-        // (`GetRecorded` DRAINS the recorder, so poll until the first wave lands.)
+        // (`drain` DRAINS the recorder, so poll until the first wave lands.)
         let mut collected: Vec<TermScreenUpdated> = Vec::new();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         while collected.iter().all(|s| !s.screen.contains("two")) {
-            let batch = recorder
-                .ask(GetRecorded::new())
-                .await
-                .unwrap_or_default();
-            collected.extend(batch);
+            collected.extend(recorder.drain());
             if tokio::time::Instant::now() >= deadline {
                 break;
             }

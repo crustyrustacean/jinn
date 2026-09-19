@@ -3,7 +3,7 @@
 //! Subscribes to [`AllActorsSpawned`] events. When received, sends `()` on
 //! a `oneshot::Sender` to unblock the main thread's `wait_for_system_ready` call.
 //!
-//! In the kameo system, all actors are spawned in `actor_wiring.rs`. After the
+//! All actors are spawned in `actor_wiring.rs`. After the
 //! last actor is spawned, the wiring code publishes `AllActorsSpawned` to the bus.
 //! This actor receives it and signals readiness.
 
@@ -107,7 +107,6 @@ mod tests {
 
     use super::*;
     use crate::common::bus::test_harness::TestHarness;
-    use kameo::actor::Spawn;
 
     #[rstest::rstest]
     #[tokio::test]

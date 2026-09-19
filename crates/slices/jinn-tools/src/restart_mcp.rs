@@ -87,7 +87,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
     async move {
         //
-        // kameo flattens a `Result<(), RestartError>` Reply: awaiting yields
+        // the kameo-era bus flattened a `Result<(), RestartError>` Reply: awaiting yields
         // `Result<(), SendError<M, RestartError>>`, where
         // `SendError::HandlerError(e)` carries our domain error variants.
         // The handle bounds the ask internally (old ASK_TIMEOUT semantics

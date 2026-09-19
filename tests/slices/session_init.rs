@@ -1,13 +1,11 @@
 //! End-to-end crossing test for the session-init slice: kernel publishes
-//! on the kameo bus → forward relays → trouper supervisor → keyed worker
-//! → per-resource `*Loaded` events → reverse relays → kameo bus.
+//! `SessionCreated` → trouper supervisor → keyed worker → per-resource
+//! `*Loaded` events on the slice's topics.
 //!
-//! This is the TypeId/topic-identity contract the whole design leans on:
-//! a mirrored (shape-equal but distinct) type would silently drop every
-//! event at the reverse relay. The subscriber here is a recording actor
-//! registered on the real bus, so only a republish of the *exact* kernel
-//! event type can satisfy the assertions — the same types
-//! `SessionPersistenceActor` and `TaskSettleListenerActor` subscribe to.
+//! The subscriber here is a harness recorder tapping the exact schema
+//! topic, so only a publish of the *exact* kernel event type can satisfy
+//! the assertions — the same types `SessionPersistenceActor` and
+//! `TaskSettleListenerActor` subscribe to.
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
@@ -53,19 +51,31 @@ async fn composed_app_with_project()
     (app, project, session_id)
 }
 
-/// Spawns a [`Recorder`] for `M` and registers it on the app's bus.
-async fn recorder_for<M: Clone + Send + 'static>(
+/// Spawns a [`Recorder`] for `M` tapped on the app's fabric topic.
+async fn recorder_for<M>(
     app: &TuiApp,
-) -> kameo::actor::ActorRef<Recorder<M>> {
-    let recorder = <Recorder<M> as kameo::actor::Spawn>::spawn(());
-    app.services.bus.subscribe::<M, _>(&recorder).await;
-    recorder
+) -> Recorder<M>
+where
+    M: Clone
+        + Send
+        + 'static
+        + jinn_slices::BusMessage
+        + trouper::schema::Schema
+        + serde::Serialize
+        + serde::de::DeserializeOwned,
+{
+    jinn_domain::common::bus::test_harness::TestHarness::from_parts(
+        app.services.bus.clone(),
+        app.services.trouper_system.clone(),
+    )
+    .spawn_recorder::<M>()
+    .await
 }
 
 #[rstest::rstest]
 #[tokio::test]
 #[timeout(Duration::from_secs(30))]
-async fn session_created_triggers_discovery_and_loaded_events_reach_the_kameo_bus() {
+async fn session_created_triggers_discovery_and_loaded_events_land_on_slice_topics() {
     // Given a composed app with a real project tree, a resolved cwd,
     // and recorders on the bus for the three kernel event types.
     let (app, project, session_id) = composed_app_with_project().await;
@@ -77,7 +87,7 @@ async fn session_created_triggers_discovery_and_loaded_events_reach_the_kameo_bu
         recorder_for::<jinn_domain::feat::context::protocol::event::ContextFilesLoaded>(&app).await;
 
     // When the kernel publishes `SessionCreated` (the lifecycle event
-    // the old kameo scan actors subscribed): forward relay → supervisor
+    // the old kameo-era scan actors subscribed): supervisor
     // → keyed worker → Loaded events → reverse relays → this bus.
     let _ = app
         .core

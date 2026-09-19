@@ -26,9 +26,7 @@ daow = { workspace = true }
 rusqlite = { workspace = true }
 async-trait = { workspace = true }
 parking_lot = { workspace = true }
-# The search-index actor still runs on the kameo fabric (trouper port is a
-# later phase of the kameo-bigbang plan).
-kameo = { workspace = true }
+# The search-index actor runs on the trouper fabric (actor-migration big bang).
 serde = { workspace = true }
 serde_json = { workspace = true }
 jiff = { workspace = true }

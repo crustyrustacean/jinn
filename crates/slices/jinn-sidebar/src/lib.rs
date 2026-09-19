@@ -26,7 +26,7 @@ use trouper::schema::Schema;
 /// forward route (kernel `SessionClosed` → `jinn.sidebar`).
 ///
 /// Composition drains the staged route after activation (see
-/// [`bridge::drain_routes`]).
+/// [`bridge::install_topic_routes`]).
 ///
 /// # Panics
 ///

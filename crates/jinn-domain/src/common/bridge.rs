@@ -55,7 +55,7 @@ impl Bridge {
     /// The closure minted by
     /// [`Bridge::publish_closure`](Self::publish_closure) publishes through
     /// the service, so the delivery path (topic routing + the transitional
-    /// kameo leg feeding un-ported actors) matches every other emitter.
+    /// trouper system) matches every other emitter.
     #[must_use]
     pub fn with_system(
         bus: &crate::common::services::bus_service::BusService,
@@ -129,7 +129,7 @@ impl PublishSink for BusService {
         payload: serde_json::Value,
         name: &'static str,
     ) {
-        // The event rides the schema's routed topic. The kameo leg (when
+        // The event rides the schema's routed topic. The publishing shape (when
         // present) receives the event too — un-ported bus actors keep
         // consuming while the port is in flight.
         let event = trouper::envelope::Event::new(schema_id, payload);

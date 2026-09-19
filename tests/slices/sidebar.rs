@@ -1,5 +1,5 @@
 //! End-to-end crossing test for the sidebar slice: kernel publishes
-//! `SessionClosed` on the kameo bus → forward relay → `jinn.sidebar`
+//! `SessionClosed` on the kernel topic → route rule → `jinn.sidebar`
 //! topic → the slice's trouper state actor → sidebar cursor clamped.
 //!
 //! The cursor is observable through the sidebar sections cell — the same
@@ -78,3 +78,4 @@ async fn session_closed_crosses_to_sidebar_and_clamps_cursor() {
     .await;
     assert_eq!(clamped, 1);
 }
+

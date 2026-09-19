@@ -3,13 +3,14 @@
 //! The three bus-travelling lifecycle events ([`ActorStarting`],
 //! [`ActorStarted`], [`ActorShutdownCompleted`]) are defined in
 //! `jinn-slices` ([`jinn_slices::fabric`]) and re-exported here:
-//! kameo bus dispatch is by `TypeId`, so the kernel publishers and
-//! every subscriber must share one Rust type. [`AllActorsSpawned`]
-//! never crosses to a slice, so it stays kernel-resident.
+//! kernel publishers and every subscriber must share one Rust type.
+//! [`AllActorsSpawned`] never crosses to a slice, so it stays
+//! kernel-resident.
 
 pub use jinn_slices::fabric::ActorShutdownCompleted;
 pub use jinn_slices::fabric::ActorStarted;
 pub use jinn_slices::fabric::ActorStarting;
+
 
 use serde::{Deserialize, Serialize};
 

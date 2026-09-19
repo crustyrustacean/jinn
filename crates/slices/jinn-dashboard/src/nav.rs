@@ -7,7 +7,7 @@
 //! [`DashboardNav`], and the bus delivers it to the dashboard actor —
 //! its sole subscriber, which folds the navigation into the slice cell.
 //!
-//! Sole-subscriber note: kameo's bus is broadcast, so "routing to the
+//! Sole-subscriber note: the fabric is broadcast, so "routing to the
 //! dashboard actor" relies on it being the only subscriber for this
 //! type. That pairing is asserted by test; keep `DashboardNav` reserved
 //! for the dashboard actor's consumption.

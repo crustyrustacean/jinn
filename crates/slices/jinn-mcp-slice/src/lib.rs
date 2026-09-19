@@ -9,11 +9,11 @@
 //! Kernel dep (Cargo.toml): the coordinator writes
 //! `ChatSession.mcp_server_status` through a `SessionCap` and consumes
 //! session lifecycle events (`SessionCreated`, `SessionClosed`, …) — the
-//! sync `SliceActionState` capability pattern does not fit async kameo
+//! sync `SliceActionState` capability pattern does not fit async actor
 //! actors (sidebar precedent).
 //!
 //! The wire contracts live in `jinn-slices::mcp_contracts` (single
-//! definition — kameo dispatches by `TypeId`); the kernel reaches the
+//! definition — trouper dispatches by schema id); the kernel reaches the
 //! coordinator through `jinn_mcp_msg::McpCoordinatorHandle`, minted by
 //! [`mcp_coordinator_handle`] at spawn.
 

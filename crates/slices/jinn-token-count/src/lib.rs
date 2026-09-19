@@ -36,7 +36,7 @@ pub fn token_count_topic() -> trouper::topics::Topic {
 /// kernel consumers (session actor, prune workers).
 ///
 /// Composition drains the staged routes after activation (see
-/// [`bridge::drain_routes`]).
+/// [`bridge::install_topic_routes`]).
 ///
 /// # Panics
 ///

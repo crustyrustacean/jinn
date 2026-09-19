@@ -2,9 +2,9 @@
 //! on trouper.
 //!
 //! A [`ServiceActor`] subscribed to the `jinn.session` topic (fed by
-//! the core bridge's forward routes). It replaces the former kameo
+//! the core bridge's forward routes). It replaces the former in-kernel
 //! bridge actor: the crossing is now bus → relay → topic (kernel
-//! wiring) + this subscriber (slice folding), and no kameo actor lives
+//! wiring) + this subscriber (slice folding), and no relay actor lives
 //! in the slice.
 //!
 //! # What it folds

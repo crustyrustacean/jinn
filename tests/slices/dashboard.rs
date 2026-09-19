@@ -347,7 +347,7 @@ async fn dashboard_tab_has_no_em_dash_separator() {
 /// kernel's `spawn_tracked!` (the **kernel** `ActorStarting`/
 /// `ActorStarted` types from `protocol::event`) must reach the
 /// dashboard actor's rows. The slice used to subscribe to
-/// schema-identical but distinct Rust types — kameo dispatches by
+/// schema-identical but distinct Rust types — trouper dispatches by
 /// `TypeId`, so every lifecycle event silently dropped and only
 /// `ServiceStatusUpdate` rows ever appeared.
 #[rstest::rstest]
@@ -402,7 +402,7 @@ async fn kernel_lifecycle_events_drive_the_dashboard_rows() {
 }
 
 /// REGRESSION (BestEffort drop): a startup-scale flood of lifecycle
-/// events (more than kameo's default bounded-64 mailbox) must arrive
+/// events (more than a small default mailbox) must arrive
 /// complete at the dashboard. The forward relays used to spawn with
 /// the default bounded mailbox, so the bus's BestEffort `try_send`
 /// silently dropped events under the burst and the affected actors

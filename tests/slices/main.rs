@@ -12,8 +12,8 @@
 //! - [`discord`] — discord's rows in the composed keymap
 //! - [`quake_bar`] — quake-bar's rows in the composed keymap
 //! - [`dashboard`] — dashboard's scope, cell, actor, rendering
-//! - [`session_init`] — the discovery relay chain (kameo → trouper →
-//!   keyed worker → reverse relays → kameo)
+//! - [`session_init`] — the discovery chain (kernel → trouper →
+//!   keyed worker → per-resource Loaded events)
 //! - [`composition`] — the shared seam (every slice's rows attached)
 //!
 //! Coverage split:

@@ -1,7 +1,7 @@
 //! The quake bar's crossing command.
 //!
 //! [`SubmitQuakeBarCommand`] is the message the input-hook submit action
-//! publishes on the kameo bus; the forward bridge (route staged at this
+//! publishes onto the fabric; the route rule (registered at this
 //! slice's activation) translates it onto the `jinn.quake-bar` topic,
 //! where [`QuakeBarCanvasActor`](crate::canvas_actor::QuakeBarCanvasActor)
 //! subscribes. This crate owns the type and its `Schema` definition and

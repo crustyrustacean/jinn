@@ -4,7 +4,7 @@
 //! [`ServiceStatusUpdate`] is the kernel-surface vocabulary every feature
 //! publishes (it lives in `jinn-slices`, re-exported here). The lifecycle
 //! events are shared Rust types from `jinn_slices::fabric`, re-exported by
-//! [`crate::fabric_events`]: kameo bus dispatch is by `TypeId`, so
+//! [`crate::fabric_events`]: fabric delivery is by schema id, so
 //! wire-shape mirrors would silently drop every event — one type,
 //! imported by both sides.
 

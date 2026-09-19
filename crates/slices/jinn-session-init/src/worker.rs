@@ -4,10 +4,10 @@
 //! The worker owns a session's whole discovery boundary: the three
 //! resource scans (skills, prompt templates, context files), the state
 //! writes for each result, the per-resource `*Loaded` publications, and
-//! the settle coalescing the kameo `DiscoveryCoordinatorActor` used to
+//! the settle coalescing the kameo-era `DiscoveryCoordinatorActor` used to
 //! perform across four separate actors. Keying by session id makes
 //! per-session settlement native: the coordinator existed only because
-//! kameo has no keyed actors; here the latch is a local join.
+//! the kameo-era design had no keyed actors; here the latch is a local join.
 //!
 //! Settle semantics (recorded behavior, preserved):
 //! - a [`RunDiscovery`] arms a settle waiter joining the three scans
@@ -26,9 +26,8 @@
 //!   waiter no-ops (the coordinator's `started_at` check, renamed to a
 //!   run counter).
 //!
-//! Resource events publish onto each schema-named trouper topic — the
-//! topic the kernel's reverse relay subscribes — and return to the
-//! kameo bus as the exact kernel types kernel consumers already
+//! Resource events publish onto the shared kernel topic
+//! (`jinn.domain`) as the exact kernel types kernel consumers already
 //! subscribe to.
 
 use std::path::PathBuf;
@@ -683,7 +682,7 @@ fn write_skills(
         }
     });
 
-    // Reload the picker from the now-updated session data — the kameo
+    // Reload the picker from the now-updated session data — the kameo-era
     // actor's post-scan sequence, verbatim.
     let (discovered, disabled, sample_theme) = {
         let r = state.read();
@@ -731,15 +730,17 @@ fn write_context(
     });
 }
 
-/// Publishes `msg` onto its schema-named trouper topic — the topic the
-/// kernel's reverse relay subscribes. Called from resource tasks (after
-/// the actor's handle has moved on), so it goes through the captured
-/// system handle rather than an actor context.
+/// Publishes `msg` onto the shared kernel topic (`jinn.domain`) — the
+/// topic every kernel consumer of these results subscribes (the same
+/// resolution `BusService::publish` performs with no route override).
+/// Called from resource tasks (after the actor's handle has moved on),
+/// so it goes through the captured system handle rather than an actor
+/// context.
 async fn publish<M>(system: &ActorSystem, msg: M)
 where
     M: trouper::schema::Schema + serde::Serialize,
 {
-    let topic = trouper::topics::Topic::new(M::schema_def().name.as_str());
+    let topic = trouper::topics::Topic::new("jinn.domain");
     let payload = serde_json::to_value(&msg).unwrap_or(serde_json::Value::Null);
     let event = trouper::envelope::Event::new(M::schema_id(), payload);
     let envelope = system.envelope_to_topic(event, topic);

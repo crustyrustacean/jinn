@@ -16,10 +16,10 @@ use trouper::schema::SchemaDef;
 use trouper::schema::SchemaId;
 use trouper::topics::Topic;
 
-/// A message that can cross kameo → trouper (forward).
+/// A message forwarded from the kernel topic onto a slice topic.
 pub trait ForwardMessage: Schema + serde::Serialize + Clone + Send + 'static {}
 
-/// A message that can cross trouper → kameo (reverse).
+/// A message delivered from a slice topic back onto the kernel topic.
 pub trait ReverseMessage:
     Schema + serde::Serialize + serde::de::DeserializeOwned + Clone + Send + 'static
 {
@@ -49,9 +49,9 @@ pub struct RouteEntry {
 /// Which way a message crosses the fabrics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
-    /// kameo bus → trouper topic.
+    /// kernel topic → slice topic.
     Forward,
-    /// trouper topic → kameo bus.
+    /// slice topic → kernel topic.
     Reverse,
 }
 

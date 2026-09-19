@@ -12,7 +12,7 @@ jinn-inference-msg = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }
 # Kernel dep (token-count precedent): the inference actor publishes on the
-# kameo bus and resolves LLM factories through Services (llm_service,
+# fabric and resolves LLM factories through Services (llm_service,
 # provider_registry, api_keys, request_dump, user_preferences_storage) —
 # granted at slice activation. The converter fn for retry config lives
 # kernel-side (jinn-preferences-config must not dep jinn-provider).
@@ -33,7 +33,6 @@ reasoning-parser = { workspace = true }
 async-trait = { workspace = true }
 
 [dev-dependencies]
-kameo = { workspace = true }
 rstest = { workspace = true }
 serde_json = { workspace = true }
 jinn-domain = { workspace = true, features = ["test-harness"] }

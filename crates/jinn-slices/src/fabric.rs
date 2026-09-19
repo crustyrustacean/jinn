@@ -1,12 +1,11 @@
 //! Shared fabric lifecycle events: the kernel's actor announcements.
 //!
-//! These types are published by kernel wiring ([`crate::BusMessage`]
-//! publishes on the kameo bus) and consumed by the dashboard slice —
-//! they live in this crate because **kameo bus dispatch is by
-//! [`TypeId`]**: a subscriber and a publisher must name the *same Rust
-//! type*, not merely schema-equal ones. Schema-id-equal mirror structs
-//! silently drop every event, which is exactly the failure mode this
-//! co-location prevents. Same precedent as [`crate::ServiceStatusUpdate`].
+//! These types are published by kernel wiring (through
+//! [`crate::BusService`] publishes) and consumed by the dashboard slice
+//! — they live in this crate because kernel publishers and slice
+//! subscribers must name the *same Rust type*: schema-id-equal mirror
+//! structs silently drop every event. Same precedent as
+//! [`crate::ServiceStatusUpdate`].
 
 use serde::Deserialize;
 use serde::Serialize;

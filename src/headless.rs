@@ -41,12 +41,6 @@ impl HeadlessApp {
         }
     }
 
-    /// Returns a handle to the root supervisor actor ref.
-    #[must_use]
-    pub fn root_supervisor(&self) -> jinn_domain::common::root_supervisor::RootSupervisorRef {
-        self.services.root_supervisor.clone()
-    }
-
     /// Returns the trouper system handle, for the graceful shutdown
     /// sweep at exit.
     #[must_use]
@@ -147,13 +141,16 @@ impl HeadlessApp {
 
     /// Shuts down the actor system gracefully.
     ///
-    /// Signals the root supervisor to stop, cascading to all supervised child
-    /// actors, then races the shutdown barrier against a 20-second timeout.
+    /// Runs the trouper graceful sweep (drain + on_stop hooks + store
+    /// flush), hard-capped at a 10-second deadline.
     pub fn shutdown(&self) {
-        let root = self.services.root_supervisor.clone();
+        let system = self.services.trouper_system.clone();
         let result = self.services.handle.block_on(async {
-            let _ = root.stop_gracefully().await;
-            tokio::time::timeout(Duration::from_secs(20), root.wait_for_shutdown()).await
+            tokio::time::timeout(
+                Duration::from_secs(20),
+                system.shutdown_graceful(Duration::from_secs(10)),
+            )
+            .await
         });
         if result.is_err() {
             tracing::warn!("headless actor shutdown timed out after 20s; proceeding");

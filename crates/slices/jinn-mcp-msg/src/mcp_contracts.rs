@@ -1,6 +1,6 @@
 //! MCP wire contracts shared between the kernel and the MCP slice.
 //!
-//! Kameo dispatches by [`TypeId`](std::any::TypeId), so every publisher and
+//! Trouper dispatches by schema id, so every publisher and
 //! subscriber must use the *same* type — mirrors would silently drop events
 //! (the fabric lesson). These types therefore live in `jinn-slices`, the
 //! shared-vocabulary home: the kernel publishes

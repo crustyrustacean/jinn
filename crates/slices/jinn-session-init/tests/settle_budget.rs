@@ -12,6 +12,7 @@
 )]
 
 use std::future::Future;
+use std::sync::Arc;
 use std::time::Duration;
 
 use jinn_domain::common::app_paths::AppPaths;
@@ -146,21 +147,32 @@ fn write_skill(base: &std::path::Path, name: &str) {
 
 /// Blocks the prompts scan past the injected budget: a `stuck.md` in
 /// the project's prompts dir is a named pipe whose writer only exits
-/// (releasing the scanner's blocked read) when [`StalledScan::release`]
-/// runs. The prompt scanner reads every `*.md` it finds — no type gate
-/// — so the fifo parks its `read` call.
+/// (releasing the scanner's blocked read) when the scan is released.
+/// The prompt scanner reads every `*.md` it finds — no type gate — so
+/// the fifo parks its `read` call.
+///
+/// The release must never leave the writer parked on its barrier: a
+/// parked writer keeps the scanner's blocking read alive, and tokio
+/// waits for in-flight blocking tasks at teardown — which would wedge
+/// the test binary past any timeout. [`Drop`] therefore releases the
+/// writer on a detached thread on every exit path, including a timeout
+/// panic unwinding past `release`.
 ///
 /// Unix-only: the stall needs a fifo.
 #[cfg(unix)]
 struct StalledScan {
     fifo: std::path::PathBuf,
     release: std::sync::Arc<std::sync::Barrier>,
+    /// Set by `release` so `Drop` becomes a no-op after an explicit
+    /// release (the payload has already been consumed by the scanner).
+    released: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[cfg(unix)]
 impl StalledScan {
     fn new(project: &std::path::Path) -> Self {
         use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
 
         let prompts_dir = project.join(".agents").join("prompts");
         std::fs::create_dir_all(&prompts_dir).expect("create prompts dir");
@@ -176,27 +188,70 @@ impl StalledScan {
             waiter.wait();
             drop(file);
         });
-        Self { fifo, release }
+        Self {
+            fifo,
+            release,
+            released: Arc::new(AtomicBool::new(false)),
+        }
     }
 
-    /// Releases the stalled scan: writes the template content into the
-    /// pipe (the blocked scanner read consumes it) and closes the
-    /// write end, so the late prompts scan parses one prompt.
-    fn release(self) {
+    /// Releases the stalled scan: writes the late prompt into the pipe
+    /// (the blocked scanner read consumes it) and closes the write end,
+    /// so the late prompts scan parses one prompt. Runs off the runtime
+    /// thread — a sync-blocked runtime thread cannot poll the rstest
+    /// timeout future, so this inline would turn a stall into an
+    /// infinite hang instead of a timeout failure.
+    async fn release(self) {
+        let fifo = self.fifo.clone();
+        let release = Arc::clone(&self.release);
+        let released = Arc::clone(&self.released);
+        tokio::task::spawn_blocking(move || {
+            Self::write_and_close(&fifo, &release, LATE_PROMPT);
+            released.store(true, std::sync::atomic::Ordering::SeqCst);
+        })
+        .await
+        .expect("release task");
+    }
+
+    /// The unblocking write, shared by `release` and `Drop`.
+    fn write_and_close(
+        fifo: &std::path::Path,
+        release: &std::sync::Arc<std::sync::Barrier>,
+        content: &[u8],
+    ) {
         use std::io::Write as _;
 
-        self.release.wait();
-        // Writing through a fresh handle keeps the pipe open until the
+        release.wait();
+        // Opening a fresh write end keeps the pipe open until the
         // content is flushed; dropping it then yields EOF.
-        let mut writer = std::fs::OpenOptions::new()
-            .write(true)
-            .open(&self.fifo)
-            .expect("reopen fifo write end");
-        writer
-            .write_all(b"+++\nname = \"late\"\ndescription = \"Late\"\n+++\nLate!")
-            .expect("write template content");
-        drop(writer);
-        std::thread::sleep(Duration::from_millis(50));
+        if let Ok(mut writer) = std::fs::OpenOptions::new().write(true).open(fifo) {
+            let _ = writer.write_all(content);
+        }
+    }
+}
+
+/// Content `release` feeds the scanner so the late prompts scan parses
+/// exactly one prompt.
+#[cfg(unix)]
+const LATE_PROMPT: &[u8] = b"+++\nname = \"late\"\ndescription = \"Late\"\n+++\nLate!";
+
+#[cfg(unix)]
+impl Drop for StalledScan {
+    fn drop(&mut self) {
+        use std::sync::atomic::Ordering;
+
+        if self.released.load(Ordering::SeqCst) {
+            return;
+        }
+        // Detached thread: drop cannot block (a timeout panic unwind
+        // must land fast) and cannot fail the test. Filler bytes let
+        // the blocked scanner read finish so tokio teardown can join
+        // its blocking task instead of waiting forever.
+        let fifo = self.fifo.clone();
+        let release = Arc::clone(&self.release);
+        std::thread::spawn(move || {
+            Self::write_and_close(&fifo, &release, b"+++\nname = \"d\"\ndescription = \"d\"\n+++\nd");
+        });
     }
 }
 
@@ -217,7 +272,6 @@ fn mkfifo(path: &std::path::Path) {
 
 #[rstest::rstest]
 #[tokio::test]
-#[timeout(Duration::from_secs(15))]
 #[cfg(unix)]
 async fn budget_timeout_settles_with_delayed_reason_naming_missing_resources() {
     // Given a partition set whose prompts scan stalls past the
@@ -243,7 +297,7 @@ async fn budget_timeout_settles_with_delayed_reason_naming_missing_resources() {
 
     // And releasing the stall lets the late prompts scan still land —
     // state written and event published after the settle.
-    stalled.release();
+    stalled.release().await;
     wait_for(|| wired.published_schema("PromptTemplatesLoaded")).await;
     wait_for(|| {
         let guard = wired.state.read();
@@ -257,7 +311,6 @@ async fn budget_timeout_settles_with_delayed_reason_naming_missing_resources() {
 
 #[rstest::rstest]
 #[tokio::test]
-#[timeout(Duration::from_secs(15))]
 #[cfg(unix)]
 async fn timed_settle_snapshot_counts_finished_resources() {
     // Given a stalled prompts scan and real content for the other two
@@ -281,12 +334,11 @@ async fn timed_settle_snapshot_counts_finished_resources() {
     assert!(text.contains("1 skill(s)"), "{text}");
     assert!(text.contains("1 AGENTS.md / context file(s)"), "{text}");
     assert!(!text.contains("prompt(s)"), "{text}");
-    stalled.release();
+    stalled.release().await;
 }
 
 #[rstest::rstest]
 #[tokio::test]
-#[timeout(Duration::from_secs(10))]
 async fn full_discovery_settles_without_a_delay_note() {
     // Given a wired partition set whose project tree has one skill, one
     // prompt, and one AGENTS.md — all scans finish inside the budget.
@@ -386,7 +438,6 @@ async fn manual_prompt_rescan_settles_with_a_summary() {
 
 #[rstest::rstest]
 #[tokio::test]
-#[timeout(Duration::from_secs(15))]
 #[cfg(unix)]
 async fn stalled_manual_rescan_settles_at_the_budget() {
     // Given a wired partition set whose prompts scan stalls past the
@@ -408,7 +459,7 @@ async fn stalled_manual_rescan_settles_at_the_budget() {
         text.contains("discovery delayed by prompts"),
         "delayed reason must name the scanned-but-stalled resource: {text}"
     );
-    stalled.release();
+    stalled.release().await;
 }
 
 /// Waits until the notifier has written its summary entry.
@@ -448,6 +499,9 @@ async fn worker_live(fabric: &jinn_testutil::TestFabric, session_id: &SessionId)
 /// next trigger re-activates it: the scan completes and the summary
 /// posts again (the notifier's observable side effect).
 #[rstest::rstest]
+// 30s, not the 10s default: the test waits out the worker's 5s idle
+// passivation window (plus scans) and its own 20s retry budget only
+// fits under 30.
 #[timeout(Duration::from_secs(30))]
 #[tokio::test]
 async fn idle_worker_passivates_and_reactivates_on_next_trigger() {

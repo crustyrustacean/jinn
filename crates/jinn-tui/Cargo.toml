@@ -49,8 +49,6 @@ serde_json = { workspace = true }
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
 tempfile = { workspace = true }
-kameo = { workspace = true }
-kameo_actors = { workspace = true }
 
 [lints]
 workspace = true

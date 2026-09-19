@@ -1,18 +1,18 @@
 //! The inference slice — the actor that drives LLM provider streams.
 //!
 //! Hosts the trouper [`ServiceActor`] inference actor (converted from the
-//! kernel kameo `LlmActor`). It consumes the slice-owned dispatch commands
+//! kernel `LlmActor`). It consumes the slice-owned dispatch commands
 //! ([`SendToLlmProvider`], [`CancelStream`]) and its own [`StreamCompleted`]
 //! echo over the [`inference_topic`] trouper topic, builds/opens the provider
 //! stream via the `LlmService` factory in `Services`, and republishes stream
 //! facts (`StreamToken`, `StreamCompleted`, tool-stream events, error/cancel
-//! entries) on the kameo bus — the single write point the session actor's
+//! entries) on the fabric — the single write point the session actor's
 //! folds already consume.
 //!
 //! Streaming runs as plain tokio tasks *outside* the actor loop; the actor
 //! loop only sees the three crossing messages (plus tombstone bookkeeping).
 //!
-//! Kernel dependency (see Cargo.toml): the actor publishes on the kameo bus
+//! Kernel dependency (see Cargo.toml): the actor publishes on the fabric
 //! and resolves LLM factories through `Services`, granted at activation.
 
 mod session;
@@ -33,10 +33,10 @@ pub use jinn_inference_msg::inference_topic;
 /// it to the [`inference_topic`] (the readiness point), then stages the
 /// slice's three forward routes — the dispatch commands and the
 /// actor's own `StreamCompleted` echo (the actor publishes completion on the
-/// kameo bus and re-consumes it to finalize per-session tracking).
+/// fabric and re-consumes it to finalize per-session tracking).
 ///
 /// Composition drains the staged routes after activation (see
-/// [`bridge::drain_routes`]).
+/// [`bridge::install_topic_routes`]).
 ///
 /// # Panics
 ///

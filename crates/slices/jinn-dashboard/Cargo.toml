@@ -16,7 +16,6 @@ jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }
 jinn-core-types = { workspace = true }
 trouper = { workspace = true }
-kameo = { workspace = true }
 ratatui = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

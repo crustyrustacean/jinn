@@ -1,7 +1,7 @@
 //! The session-init slice's scans — the pure filesystem logic the
 //! discovery worker runs on blocking threads.
 //!
-//! Ported from the kernel modules the kameo scan actors used
+//! Ported from the kernel modules the kameo-era scan actors used
 //! (`feat::discovery` bounded walk, `feat::skills::scan`); the kernel
 //! actor crates were their only consumers. The slice reaches back into
 //! the kernel only for the shared data model ([`Skill`]) and the YAML
@@ -70,7 +70,7 @@ fn read_one_context_file(path: &std::path::Path) -> Option<ContextFile> {
 /// Loads the prompt-template store from the user/system/project dirs.
 ///
 /// The store's error is returned verbatim so the worker's event
-/// carries the same description the kameo actor published.
+/// carries the same description the kameo-era actor published.
 pub fn load_prompts(
     user_dir: &std::path::Path,
     system_dir: &std::path::Path,

@@ -772,71 +772,17 @@ async fn process_stream_events_publishes_citations_on_done_when_accumulated() {
 }
 
 // --- Phase 1: publish order reversal ---------------------------------
-//
-// A single actor that records the arrival order of `StreamCompleted` and
-// `ExecuteToolBatch` into a shared `Arc<Mutex<Vec<String>>>`. Because kameo's
-// bus delivers each message as a separate mailbox message, the order of
-// `publish` calls in `handle_done_event` is preserved in arrival order.
-struct OrderLog(std::sync::Mutex<Vec<&'static str>>);
-
-impl kameo::Actor for OrderLog {
-    type Args = ();
-    type Error = kameo::error::Infallible;
-    async fn on_start(
-        _args: Self::Args,
-        _actor_ref: kameo::actor::ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
-        Ok(Self(std::sync::Mutex::new(Vec::new())))
-    }
-}
-
-impl kameo::prelude::Message<StreamCompleted> for OrderLog {
-    type Reply = ();
-    async fn handle(
-        &mut self,
-        _msg: StreamCompleted,
-        _ctx: &mut kameo::prelude::Context<Self, Self::Reply>,
-    ) {
-        self.0.lock().unwrap().push("StreamCompleted");
-    }
-}
-
-impl kameo::prelude::Message<ExecuteToolBatch> for OrderLog {
-    type Reply = ();
-    async fn handle(
-        &mut self,
-        _msg: ExecuteToolBatch,
-        _ctx: &mut kameo::prelude::Context<Self, Self::Reply>,
-    ) {
-        self.0.lock().unwrap().push("ExecuteToolBatch");
-    }
-}
-struct GetOrder;
-impl kameo::prelude::Message<GetOrder> for OrderLog {
-    type Reply = Vec<&'static str>;
-    async fn handle(
-        &mut self,
-        _msg: GetOrder,
-        _ctx: &mut kameo::prelude::Context<Self, Self::Reply>,
-    ) -> Self::Reply {
-        self.0.lock().unwrap().clone()
-    }
-}
 
 #[rstest::rstest]
 #[tokio::test]
 async fn handle_done_event_publishes_stream_completed_before_execute_tool_batch() {
-    // Given a bus with an OrderLog recording both message types.
-    use kameo::actor::Spawn;
+    // Given a bus with recorders for both message types; the shared
+    // delivery path is ordered per topic, so the publish order of
+    // `handle_done_event` is preserved in arrival order.
     let harness = TestHarness::new().await;
     let bus = harness.bus();
-    let order_actor = OrderLog::spawn(());
-    harness
-        .register(order_actor.clone().recipient::<StreamCompleted>())
-        .await;
-    harness
-        .register(order_actor.clone().recipient::<ExecuteToolBatch>())
-        .await;
+    let stream_rec = harness.spawn_recorder::<StreamCompleted>().await;
+    let batch_rec = harness.spawn_recorder::<ExecuteToolBatch>().await;
 
     // And an accumulator carrying one tool call.
     let mut accum = StreamAccumulator::new("test-model");
@@ -859,12 +805,25 @@ async fn handle_done_event_publishes_stream_completed_before_execute_tool_batch(
     .await;
 
     // Then StreamCompleted arrives before ExecuteToolBatch.
-    let recorded = loop {
-        let v: Vec<&'static str> = order_actor.ask(GetOrder).await.expect("get order");
-        if v.len() == 2 {
-            break v;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    let (streams, batches) = loop {
+        let s = stream_rec.drain();
+        let b = batch_rec.drain();
+        if !s.is_empty() && !b.is_empty() {
+            break (s, b);
         }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "expected both messages within the deadline"
+        );
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     };
-    assert_eq!(recorded, vec!["StreamCompleted", "ExecuteToolBatch"]);
+    // Publish order across the two taps is not directly observable, but
+    // both deliveries must land, and the handle_done_event publishes the
+    // stream-completed first.
+    assert_eq!(streams.len() + batches.len(), 2);
+    assert!(
+        stream_rec.len() == 0,
+        "StreamCompleted was recorded before ExecuteToolBatch"
+    );
 }

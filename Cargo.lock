@@ -1038,12 +1038,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
-name = "downcast-rs"
-version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "117240f60069e65410b3ae1bb213295bd828f707b5bec6596a1afc8793ce0cbc"
-
-[[package]]
 name = "dtor"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1965,8 +1959,6 @@ dependencies = [
  "jinn-tools-msg",
  "jinn-tui",
  "jinn-turn-dispatch",
- "kameo",
- "kameo_actors",
  "kanal",
  "mockito",
  "nu-ansi-term",
@@ -2184,7 +2176,6 @@ dependencies = [
  "jinn-testutil",
  "jinn-theme",
  "jinn-theme-msg",
- "kameo",
  "ratatui",
  "rstest",
  "serde",
@@ -2211,8 +2202,6 @@ dependencies = [
  "jinn-session-store",
  "jinn-slices",
  "jinn-testutil",
- "kameo",
- "kameo_actors",
  "kanal",
  "parking_lot",
  "poise",
@@ -2293,8 +2282,6 @@ dependencies = [
  "jinn-token-count-msg",
  "jinn-tools-msg",
  "jinn-turn-dispatch-msg",
- "kameo",
- "kameo_actors",
  "kanal",
  "kill_tree",
  "libc",
@@ -2349,7 +2336,6 @@ dependencies = [
  "jinn-session-history-msg",
  "jinn-slices",
  "jinn-tools-msg",
- "kameo",
  "reasoning-parser",
  "rstest",
  "serde_json",
@@ -2424,7 +2410,6 @@ dependencies = [
  "jinn-slices",
  "jinn-tools",
  "jinn-tools-msg",
- "kameo",
  "libc",
  "parking_lot",
  "rstest",
@@ -2696,7 +2681,6 @@ dependencies = [
  "jinn-session-schema",
  "jinn-slices",
  "jinn-tools-msg",
- "kameo",
  "parking_lot",
  "rstest",
  "rusqlite",
@@ -2784,8 +2768,6 @@ dependencies = [
  "jinn-core-types",
  "jinn-provider",
  "jinn-theme",
- "kameo",
- "kameo_actors",
  "parking_lot",
  "ratatui",
  "ratatui-which-key",
@@ -2842,7 +2824,6 @@ dependencies = [
  "jinn-term-msg",
  "jinn-theme",
  "jinn-tools-msg",
- "kameo",
  "parking_lot",
  "portable-pty",
  "ratatui",
@@ -2863,7 +2844,6 @@ dependencies = [
  "async-trait",
  "jinn-core-types",
  "jinn-slices",
- "kameo",
  "parking_lot",
  "ratatui",
  "ratatui-which-key",
@@ -2878,8 +2858,6 @@ name = "jinn-testutil"
 version = "0.118.0"
 dependencies = [
  "jinn-slices",
- "kameo",
- "kameo_actors",
  "ratatui",
  "serde",
  "serde_json",
@@ -2976,7 +2954,6 @@ dependencies = [
  "jinn-skills-msg",
  "jinn-term-msg",
  "jinn-tools-msg",
- "kameo",
  "rand 0.9.5",
  "regex",
  "rstest",
@@ -2997,7 +2974,6 @@ dependencies = [
  "jiff",
  "jinn-core-types",
  "jinn-slices",
- "kameo",
  "rand 0.9.5",
  "regex",
  "rstest",
@@ -3039,8 +3015,6 @@ dependencies = [
  "jinn-theme-msg",
  "jinn-token-count-msg",
  "jinn-tools-msg",
- "kameo",
- "kameo_actors",
  "kanal",
  "parking_lot",
  "ratatui",
@@ -3128,46 +3102,6 @@ dependencies = [
  "futures-util",
  "once_cell",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "kameo"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1dfd134d7a2c6ec05ee696dcbf3f7a034bdb97ecc623e981014652dcd124d77"
-dependencies = [
- "downcast-rs 2.0.2",
- "dyn-clone",
- "futures",
- "kameo_macros",
- "serde",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "kameo_actors"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "220bdd75769f0a9b752a91123e58bf42f595e3c36ff4b13818d7a87d962076e6"
-dependencies = [
- "futures",
- "glob",
- "kameo",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
-name = "kameo_macros"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16c9002c9ecd16e1636f566c0bf62db48e70d86ed0d0a91b398955e883217a23"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
 ]
 
 [[package]]
@@ -3922,7 +3856,7 @@ checksum = "b4a596a2b3d2752d94f51fac2d4a96737b8705dddd311a32b9af47211f08671e"
 dependencies = [
  "anyhow",
  "bitflags 1.3.2",
- "downcast-rs 1.2.1",
+ "downcast-rs",
  "filedescriptor",
  "lazy_static",
  "libc",
@@ -5610,7 +5544,6 @@ dependencies = [
  "signal-hook-registry",
  "socket2 0.6.5",
  "tokio-macros",
- "tracing",
  "windows-sys 0.61.2",
 ]
 
