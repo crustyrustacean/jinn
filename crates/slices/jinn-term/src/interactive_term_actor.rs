@@ -58,16 +58,6 @@ const TRANSCRIPT_TAIL_SCREENS: usize = 20;
 /// Static path the coordinator spawns at (one instance per process).
 pub const INTERACTIVE_TERM_PATH: &str = "jinn.term.coordinator";
 
-/// Per-chat-session control holders: who may drive each terminal right now.
-///
-/// Shared between the actor (authoritative writer — mints `Agent` on spawn,
-/// removes the entry on teardown) and the takeover UI (the `IntentHandler`
-/// flips the active session's holder synchronously so an in-flight tool
-/// call's settle sees the takeover on its next poll — mailbox-sequential
-/// message handling cannot deliver that). Polled from async settle loops:
-/// plain mutex, never held across an await. Sessions with no entry default
-/// to [`ControlHolder::Agent`].
-
 /// A live interactive session owned by the actor.
 struct TermSession {
     /// The pty child; also reaches the shared emulator and screen task.
@@ -139,9 +129,8 @@ impl ServiceActor for InteractiveTermActor {
         // Never called: spawned via `spawn`'s start_with (typed deps can't
         // ride the JSON args).
         let _ = _args;
-        Err(Report::new(RegistryError::InvalidSpec).attach(
-            "InteractiveTermActor is spawned via start_with with typed deps",
-        ))
+        Err(Report::new(RegistryError::InvalidSpec)
+            .attach("InteractiveTermActor is spawned via start_with with typed deps"))
     }
 }
 
@@ -784,7 +773,9 @@ mod tests {
 
     /// Spawns `cat` for a chat session (the most common test fixture).
     async fn spawn_cat(client: &TermAskClient, chat: &jinn_core_types::SessionId) {
-        let outcome = client.ask::<_, SpawnTermOutcome>(spawn_msg(chat.clone(), "cat")).await;
+        let outcome = client
+            .ask::<_, SpawnTermOutcome>(spawn_msg(chat.clone(), "cat"))
+            .await;
         let SpawnTermOutcome::Started { .. } = outcome else {
             panic!("expected Started");
         };
@@ -865,10 +856,7 @@ mod tests {
 
         // When spawning `echo`.
         let reply = actor
-            .ask::<_, SpawnTermOutcome>(spawn_msg(
-                jinn_core_types::SessionId::new(),
-                "echo hello",
-            ))
+            .ask::<_, SpawnTermOutcome>(spawn_msg(jinn_core_types::SessionId::new(), "echo hello"))
             .await;
 
         // Then the outcome is a session with the echoed text on screen.
@@ -1039,8 +1027,7 @@ mod tests {
         // When sending input to a chat session with no terminal.
         let reply = actor
             .ask::<_, SendTermOutcome>(send_msg(jinn_core_types::SessionId::new()))
-            .await
-            ;
+            .await;
 
         // Then the outcome is UnknownSession.
         assert!(matches!(reply, SendTermOutcome::UnknownSession));
@@ -1112,7 +1099,7 @@ mod tests {
                     "printf waiting; IFS= read -rsn1 k; printf got-input; sleep 30",
                 ))
                 .await;
-let SpawnTermOutcome::Started { .. } = outcome else {
+            let SpawnTermOutcome::Started { .. } = outcome else {
                 panic!("expected Started");
             };
         }
@@ -1160,7 +1147,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
                     "for i in 1 2 3 4 5 6; do echo tick-$i; sleep 0.25; done",
                 ))
                 .await;
-let SpawnTermOutcome::Started { .. } = outcome else {
+            let SpawnTermOutcome::Started { .. } = outcome else {
                 panic!("expected Started");
             };
         }
@@ -1402,9 +1389,8 @@ let SpawnTermOutcome::Started { .. } = outcome else {
         let chat = jinn_core_types::SessionId::new();
 
         // When the spawn reply already observed the exit.
-        let SpawnTermOutcome::Started { screen, .. } = actor
-            .ask(spawn_msg(chat, "sh -c 'echo bye; exit 7'"))
-            .await
+        let SpawnTermOutcome::Started { screen, .. } =
+            actor.ask(spawn_msg(chat, "sh -c 'echo bye; exit 7'")).await
         else {
             panic!("expected Started");
         };
@@ -1419,14 +1405,11 @@ let SpawnTermOutcome::Started { .. } = outcome else {
     async fn screen_updates_mirror_into_frontend_state() {
         // Given a coordinator actor wired to a readable shared state.
         let harness = TestHarness::new().await;
-        let (actor, state) =
-            spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let (actor, state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
         let chat = jinn_core_types::SessionId::new();
 
         // When spawning a program that prints to the screen.
-        let _: SpawnTermOutcome = actor
-            .ask(spawn_msg(chat.clone(), "echo mirror-me"))
-            .await;
+        let _: SpawnTermOutcome = actor.ask(spawn_msg(chat.clone(), "echo mirror-me")).await;
 
         // Then the frontend terminal mirror carries the rendered screen.
         let guard = state.read();
@@ -1447,8 +1430,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
         // Given a coordinator wired to a readable shared state and a program
         // printing an ANSI-colored word.
         let harness = TestHarness::new().await;
-        let (actor, state) =
-            spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let (actor, state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
         let chat = jinn_core_types::SessionId::new();
 
         // When spawning a program that emits red text.
@@ -1502,8 +1484,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
     async fn send_updates_mirror_with_new_screen() {
         // Given a coordinator with a live `cat` session.
         let harness = TestHarness::new().await;
-        let (actor, state) =
-            spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let (actor, state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
         let chat = jinn_core_types::SessionId::new();
         spawn_cat(&actor, &chat).await;
 
@@ -1526,8 +1507,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
     async fn resize_updates_session_and_mirror() {
         // Given a coordinator with a live `cat` session.
         let harness = TestHarness::new().await;
-        let (actor, state) =
-            spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let (actor, state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
         let chat = jinn_core_types::SessionId::new();
         spawn_cat(&actor, &chat).await;
 
@@ -1569,8 +1549,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
         // Given a coordinator with two live terminals in different chat
         // sessions.
         let harness = TestHarness::new().await;
-        let (actor, state) =
-            spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let (actor, state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
         let chat_a = jinn_core_types::SessionId::new();
         let chat_b = jinn_core_types::SessionId::new();
         spawn_cat(&actor, &chat_a).await;
@@ -1603,8 +1582,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
     async fn resize_without_session_is_noop() {
         // Given a coordinator with no sessions.
         let harness = TestHarness::new().await;
-        let (actor, _state) =
-            spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let (actor, _state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
 
         // When sending a resize with no chat session named.
         actor
@@ -1616,7 +1594,6 @@ let SpawnTermOutcome::Started { .. } = outcome else {
 
         // Then it is accepted silently (no arbitrary target): the ask path
         // (which the tool layer uses) would report; tell can't fail.
-
     }
 
     #[rstest::rstest]
@@ -1624,8 +1601,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
     async fn resize_of_unknown_chat_session_is_noop() {
         // Given a coordinator with a live terminal in another chat session.
         let harness = TestHarness::new().await;
-        let (actor, _state) =
-            spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let (actor, _state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
         let live = jinn_core_types::SessionId::new();
         spawn_cat(&actor, &live).await;
 
@@ -1639,7 +1615,6 @@ let SpawnTermOutcome::Started { .. } = outcome else {
 
         // Then it is accepted silently: an unknown target is a no-op in the
         // handler, and a tell cannot fail in trouper.
-
     }
 
     // ── v2: one terminal per chat session ──────────────────────────────────
@@ -1775,8 +1750,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
     async fn live_flag_mirrors_spawn_and_kill() {
         // Given a coordinator wired to a readable state.
         let harness = TestHarness::new().await;
-        let (actor, state) =
-            spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let (actor, state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
         let chat = jinn_core_types::SessionId::new();
         spawn_cat(&actor, &chat).await;
 
@@ -1805,8 +1779,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
     async fn natural_exit_clears_the_live_flag() {
         // Given a coordinator with a short-lived terminal (`true` exits at once).
         let harness = TestHarness::new().await;
-        let (actor, state) =
-            spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let (actor, state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
         let chat = jinn_core_types::SessionId::new();
         {
             let outcome = actor
@@ -1832,8 +1805,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
     async fn mirror_updates_without_any_tool_call_in_flight() {
         // Given a coordinator with a live terminal printing on a timer.
         let harness = TestHarness::new().await;
-        let (actor, state) =
-            spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let (actor, state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
         let chat = jinn_core_types::SessionId::new();
         {
             let outcome = actor
@@ -1842,7 +1814,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
                     "sleep 0.2; echo realtime-echo; sleep 30",
                 ))
                 .await;
-let SpawnTermOutcome::Started { .. } = outcome else {
+            let SpawnTermOutcome::Started { .. } = outcome else {
                 panic!("expected Started");
             };
         }
@@ -1953,8 +1925,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
         // there is no cross-session address to reach, not even by accident.
         let reply = actor
             .ask::<_, SendTermOutcome>(send_msg(jinn_core_types::SessionId::new()))
-            .await
-            ;
+            .await;
         assert!(matches!(reply, SendTermOutcome::UnknownSession));
     }
 
@@ -1970,9 +1941,7 @@ let SpawnTermOutcome::Started { .. } = outcome else {
         spawn_cat(&actor, &chat_b).await;
 
         // When respawning B.
-        let reply = actor
-            .ask(spawn_msg(chat_b, "echo respawn-b"))
-            .await;
+        let reply = actor.ask(spawn_msg(chat_b, "echo respawn-b")).await;
 
         // Then B's respawn reports the kill, and A's terminal stays live
         // (A's program still answers input).

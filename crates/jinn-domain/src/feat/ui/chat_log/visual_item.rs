@@ -39,6 +39,10 @@ pub const DEFAULT_MIN_COLLAPSE_COUNT: usize = 3;
 /// - Contiguous ignored runs whose first entry's ID is in `shown_ignored_blocks`
 ///   are shown as individual `Entry` items.
 /// - All other contiguous ignored runs become a single `CollapsedIgnoredBlock`.
+/// # Panics
+///
+/// Panics if the visual item list construction encounters an entry id
+/// not present in `history` — unreachable by construction of the caller.
 #[expect(clippy::expect_used, reason = "infallible")]
 pub fn build_visual_items(
     history: &[ChatEntry],

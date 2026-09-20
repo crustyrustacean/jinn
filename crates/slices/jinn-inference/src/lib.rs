@@ -58,7 +58,7 @@ pub fn activate(
     host.forward::<SendToLlmProvider, _>(inference_topic(), || {
         <SendToLlmProvider as Schema>::schema_def()
     });
-    host.forward::<CancelStream, _>(inference_topic(), || <CancelStream as Schema>::schema_def());
+    host.forward::<CancelStream, _>(inference_topic(), <CancelStream as Schema>::schema_def);
     host.forward::<StreamCompleted, _>(inference_topic(), || {
         <StreamCompleted as Schema>::schema_def()
     });

@@ -40,6 +40,7 @@ trouper = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+jinn-domain = { workspace = true, features = ["test-harness"] }
 
 # The build script creates the compile-time SQL validation DB (schema-crate
 # pattern; mirrors jinn-domain/build.rs).

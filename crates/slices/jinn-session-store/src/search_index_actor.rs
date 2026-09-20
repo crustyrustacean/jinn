@@ -113,6 +113,10 @@ impl SearchIndexActor {
     /// The heartbeat self-addresses through the same path, so the first
     /// tick is kicked by a detached task **after** this call resolves:
     /// the wiring moves on while the tick processes concurrently.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "port convention: spawn takes owned deps and clones into start_with"
+    )]
     pub fn spawn(system: &ActorSystem, deps: SearchIndexActorDeps) -> ActorPath {
         let path = ActorPath::new(SEARCH_INDEX_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)

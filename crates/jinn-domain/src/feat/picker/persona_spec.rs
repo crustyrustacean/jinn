@@ -65,6 +65,10 @@ pub fn persona_spec() -> PickerSpec<PersonaEntry> {
 
 /// Enter on the persona picker: set the active persona, bind it to the
 /// session, close, and persist both updates via messages.
+#[expect(
+    clippy::expect_used,
+    reason = "domain host lends AppState; a wrong downcast is a wiring bug"
+)]
 fn confirm_persona(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     let (persona_name, session_id) = {
         let state = ctx
@@ -220,8 +224,11 @@ mod tests {
         let mut host = AppStatePickerHost::new(&mut state);
         let mut ctx = ActionCtx::new(jinn_picker::PickerId::new(PERSONA_ID), &mut host);
         let outcome = spec.run_open(&mut ctx);
+        #[expect(
+            clippy::drop_non_drop,
+            reason = "explicit scope end for the mutable-borrow chain"
+        )]
         drop(ctx);
-        drop(host);
 
         // Then the load command is emitted.
         assert!(

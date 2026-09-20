@@ -95,6 +95,10 @@ mod composition_ask_tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    #[expect(
+        clippy::expect_used,
+        reason = "test helper: a failed ask fails the test"
+    )]
     async fn minimal_ask_reproduces_resolution() {
         let services = crate::Services::new_fake().await;
         // Composition parity: production wiring spawns this exact service

@@ -157,6 +157,14 @@ impl Services {
         clippy::expect_used,
         reason = "test-only defaults, panics are acceptable"
     )]
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "async signature symmetry; body has no await"
+    )]
+    #[expect(
+        clippy::unused_async,
+        reason = "async signature symmetry; body has no await"
+    )]
     pub async fn new_fake() -> Self {
         let handle = test_services::shared_test_handle();
 
@@ -241,6 +249,14 @@ impl Services {
     /// reloads fail — test infrastructure initialization must abort.
     #[cfg(any(test, feature = "test-harness"))]
     #[expect(clippy::expect_used, reason = "test infrastructure initialization")]
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "async signature symmetry; body has no await"
+    )]
+    #[expect(
+        clippy::unused_async,
+        reason = "async signature symmetry; body has no await"
+    )]
     pub async fn new_fake_with_bus(bus: bus_service::BusService) -> Self {
         let handle = test_services::shared_test_handle();
         let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
@@ -319,6 +335,10 @@ impl Services {
     /// services' trouper system, mirroring production composition.
     /// (The slice crate is a dev-dependency; the production spawn lives
     /// in `src/actor_wiring.rs`.)
+    #[expect(
+        clippy::unused_async,
+        reason = "async for API symmetry with production wiring"
+    )]
     pub async fn spawn_context_assembly_for_test(&mut self) {
         let _ = jinn_context_assembly::service::spawn(&self.trouper_system);
     }

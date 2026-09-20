@@ -75,12 +75,8 @@ impl RouteStagingDescriptor {
 pub fn install_topic_routes(services: &jinn_domain::Services) {
     // Erased publishes (bridge closures) route natively on trouper: the
     // schema→topic rules mirror the relays below.
-    services
-        .bus
-        .route_topic::<ActorStarting>(fabric_topic());
-    services
-        .bus
-        .route_topic::<ActorStarted>(fabric_topic());
+    services.bus.route_topic::<ActorStarting>(fabric_topic());
+    services.bus.route_topic::<ActorStarted>(fabric_topic());
     services
         .bus
         .route_topic::<ActorShutdownCompleted>(fabric_topic());
@@ -89,4 +85,3 @@ pub fn install_topic_routes(services: &jinn_domain::Services) {
         .route_topic::<ServiceStatusUpdate>(fabric_topic());
     services.bus.route_topic::<DashboardNav>(dashboard_topic());
 }
-

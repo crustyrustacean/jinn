@@ -170,7 +170,7 @@ mod tests {
         // Then the result carries a DashboardNav message.
         assert_eq!(
             result.message_names,
-            vec![std::any::type_name::<super::DashboardNav>()],
+            vec!["DashboardNav"],
             "dashboard nav message name"
         );
     }

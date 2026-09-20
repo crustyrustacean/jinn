@@ -154,6 +154,14 @@ impl SessionPersistenceActor {
         clippy::expect_used,
         reason = "a failed topic subscription is a wiring bug that must abort launch"
     )]
+    /// # Panics
+    ///
+    /// Panics if the actor's path is already taken or its topic
+    /// subscription fails — both mean a wiring bug at composition.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "port convention: spawn takes owned deps and clones into start_with"
+    )]
     pub fn spawn(system: &ActorSystem, deps: SessionPersistenceActorDeps) -> ActorPath {
         let path = ActorPath::new(SESSION_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
@@ -235,7 +243,10 @@ impl SessionPersistenceActor {
             // Deep mailbox with Block: this actor is the single sink for
             // every streaming token burst. Block backpressures rather than
             // drops, so the terminal `StreamCompleted` can never be lost.
-            .mailbox(SESSION_MAILBOX_CAPACITY, trouper::inbox::OverloadPolicy::Block)
+            .mailbox(
+                SESSION_MAILBOX_CAPACITY,
+                trouper::inbox::OverloadPolicy::Block,
+            )
             .start();
         // One topic suffices: trouper dispatches by schema id at the typed
         // adapter, and every publisher reaches this actor through the

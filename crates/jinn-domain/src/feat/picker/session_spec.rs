@@ -37,6 +37,10 @@ pub fn session_spec() -> PickerSpec<SessionTreeEntry> {
 
 /// The domain state behind an [`ActionCtx`]. The kernel's host lens always
 /// lends `AppState`; this downcast is the spec's single sanctioned escape.
+#[expect(
+    clippy::expect_used,
+    reason = "domain host lends AppState; a wrong downcast is a wiring bug"
+)]
 fn state_of<'a>(ctx: &'a mut ActionCtx<'_>) -> &'a mut AppState {
     ctx.state_any()
         .downcast_mut::<AppState>()
@@ -44,6 +48,10 @@ fn state_of<'a>(ctx: &'a mut ActionCtx<'_>) -> &'a mut AppState {
 }
 
 /// The read-only domain state behind a [`StatusCtx`].
+#[expect(
+    clippy::expect_used,
+    reason = "domain host lends AppState; a wrong downcast is a wiring bug"
+)]
 fn state_ref_of<'a>(ctx: &'a StatusCtx<'_>) -> &'a AppState {
     ctx.state_any_ref()
         .downcast_ref::<AppState>()
@@ -128,11 +136,7 @@ mod tests {
         let result = handle_open_picker(&mut state, PickerKind::Session, &registry);
 
         // Then the load request is dispatched to the actor.
-        assert!(
-            result
-                .message_names
-                .contains(&"jinn_domain::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries")
-        );
+        assert!(result.message_names.contains(&"LoadSessionPickerEntries"));
     }
 
     #[rstest::rstest]
@@ -182,9 +186,7 @@ mod tests {
 
         // Then the switch command is dispatched and the picker closes.
         assert!(
-            result
-                .message_names
-                .contains(&"jinn_domain::feat::session::protocol::session_load_requested::SessionLoadRequested"),
+            result.message_names.contains(&"SessionLoadRequested"),
             "switch command dispatched: {:?}",
             result.message_names
         );

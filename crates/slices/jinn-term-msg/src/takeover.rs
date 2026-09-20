@@ -18,6 +18,15 @@ use crate::command::ControlHolder;
 /// async settle loops: plain mutex, never held across an await. Sessions
 /// with no entry default to [`ControlHolder::Agent`].
 #[derive(Debug, Clone, Default)]
+/// Per-chat-session control holders: who may drive each terminal right now.
+///
+/// Shared between the term actor (authoritative writer — mints `Agent` on
+/// spawn, removes the entry on teardown) and the takeover UI (the
+/// `IntentHandler` flips the active session's holder synchronously so an
+/// in-flight tool call's settle sees the takeover on its next poll —
+/// mailbox-sequential message handling cannot deliver that). Polled from
+/// async settle loops: plain mutex, never held across an await. Sessions
+/// with no entry default to [`ControlHolder::Agent`].
 pub struct TermControls(Arc<Mutex<HashMap<SessionId, ControlHolder>>>);
 
 impl TermControls {

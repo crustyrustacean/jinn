@@ -69,6 +69,6 @@ pub fn activate(
         .expect("sidebar state actor subscribes to the sidebar topic");
     host.forward::<jinn_domain::feat::session::protocol::session_closed::SessionClosed, _>(
         sections::sidebar_state_actor::sidebar_topic(),
-        || jinn_domain::feat::session::protocol::session_closed::SessionClosed::schema_def(),
+        jinn_domain::feat::session::protocol::session_closed::SessionClosed::schema_def,
     );
 }

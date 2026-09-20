@@ -160,7 +160,6 @@ pub struct SendTermKey {
     pub bytes: Vec<u8>,
 }
 
-
 impl BusMessage for SpawnTerm {}
 
 jinn_slices::crossing_schema!(SpawnTerm, "SpawnTerm",

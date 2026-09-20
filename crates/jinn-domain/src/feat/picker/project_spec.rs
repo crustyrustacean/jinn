@@ -41,6 +41,10 @@ fn project_row(entry: &ProjectEntry, ctx: &RowCtx<'_>) -> Line<'static> {
 }
 
 /// Downcasts the host's `Any` state to `AppState`.
+#[expect(
+    clippy::expect_used,
+    reason = "domain host lends AppState; a wrong downcast is a wiring bug"
+)]
 fn state_of<'a>(ctx: &'a mut ActionCtx<'_>) -> &'a mut AppState
 where
 {

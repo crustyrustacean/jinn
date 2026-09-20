@@ -428,14 +428,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     // Settle gate: give the discovery actors (context files, skills, prompt
     // templates, MCP servers) a bounded chance to land so the child's first
     // prompt is complete. Only delays — never fails the spawn.
-    await_discovery_settlement(
-        &system,
-        &bus,
-        &child_id,
-        &expected_servers,
-        SETTLE_BUDGET,
-    )
-    .await;
+    await_discovery_settlement(&system, &bus, &child_id, &expected_servers, SETTLE_BUDGET).await;
 
     bus.publish(EnqueueUserMessage {
         session_id: child_id.clone(),

@@ -96,8 +96,12 @@ pub fn mcp_coordinator_handle(
                         });
                     match (outcome.ok, outcome.error.as_deref()) {
                         (true, _) => Ok(()),
-                        (false, Some("UnknownServer")) => Err(jinn_mcp_msg::RestartError::UnknownServer),
-                        (false, Some("ConnectFailed")) => Err(jinn_mcp_msg::RestartError::ConnectFailed),
+                        (false, Some("UnknownServer")) => {
+                            Err(jinn_mcp_msg::RestartError::UnknownServer)
+                        }
+                        (false, Some("ConnectFailed")) => {
+                            Err(jinn_mcp_msg::RestartError::ConnectFailed)
+                        }
                         (false, Some("Timeout")) => Err(jinn_mcp_msg::RestartError::Timeout),
                         _ => Err(jinn_mcp_msg::RestartError::Mailbox),
                     }

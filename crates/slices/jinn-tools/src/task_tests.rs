@@ -1061,10 +1061,7 @@ async fn listener_stops_on_channel_close() {
     let mut stopped = false;
     while tokio::time::Instant::now() < deadline {
         let export = harness.system().export().await;
-        let alive = export
-            .actors
-            .iter()
-            .any(|a| a.path == listener);
+        let alive = export.actors.iter().any(|a| a.path == listener);
         if !alive {
             stopped = true;
             break;

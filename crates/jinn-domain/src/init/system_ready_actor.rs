@@ -35,10 +35,13 @@ pub struct SystemReadyActorDeps {
 }
 
 impl ServiceActor for SystemReadyActor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "ServiceActor::start is async by trait contract"
+    )]
     async fn start(_args: &serde_json::Value) -> Result<Self, Report<RegistryError>> {
         // Never called: spawned via `spawn`'s start_with (typed deps can't
         // ride the JSON args).
-        let _ = _args;
         Err(Report::new(RegistryError::InvalidSpec)
             .attach("SystemReadyActor spawns via start_with"))
     }
@@ -50,6 +53,18 @@ pub const SYSTEM_READY_PATH: &str = "jinn.init.system-ready";
 impl SystemReadyActor {
     /// Spawns the system-ready actor onto the trouper system; its
     /// `AllActorsSpawned` subscription is live when this returns.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "port convention: spawn takes owned deps and clones into start_with"
+    )]
+    /// # Panics
+    ///
+    /// Panics if the actor's path is already taken or its topic
+    /// subscription fails — both mean a wiring bug at composition.
+    #[expect(
+        clippy::expect_used,
+        reason = "a failed topic subscription is a wiring bug that must abort spawn"
+    )]
     pub fn spawn(system: &trouper::system::ActorSystem, deps: SystemReadyActorDeps) -> ActorPath {
         let path = ActorPath::new(SYSTEM_READY_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
@@ -81,6 +96,10 @@ impl SystemReadyActor {
 }
 
 impl MsgHandler<AllActorsSpawned> for SystemReadyActor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "async signature symmetry; body has no await"
+    )]
     async fn handle(&mut self, _msg: AllActorsSpawned, _ctx: &mut MsgCtx<'_>) {
         tracing::info!("actor system ready — all actors spawned");
         if let Some(tx) = self.ready_tx.take() {

@@ -682,6 +682,10 @@ impl ChatSessionState {
 
     /// Raw tail push used by the history editor. Applies user-entry token
     /// expansion and cursor/scroll bookkeeping. Do not call directly.
+    #[expect(
+        clippy::same_name_method,
+        reason = "trait impl delegates to this inherent method; callers use both"
+    )]
     pub(in crate::feat::session) fn push_entry_raw(&mut self, entry: &mut ChatEntry) -> usize {
         self.core.last_history_activity_at = Timestamp::now();
         let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
@@ -713,6 +717,10 @@ impl ChatSessionState {
     /// Removes the history entry at `index`. Returns whether it existed.
     ///
     /// Editor-only. Callers must remove in descending index order.
+    #[expect(
+        clippy::same_name_method,
+        reason = "trait impl delegates to this inherent method; callers use both"
+    )]
     pub(in crate::feat::session) fn remove_history_entry_at(&mut self, index: usize) -> bool {
         if index < self.core.history.len() {
             self.core.history.remove(index);
@@ -726,6 +734,10 @@ impl ChatSessionState {
     ///
     /// In-place writes (streaming lifecycle) can never reorder entries or
     /// split a tool loop, so the editor exposes them without chunk logic.
+    #[expect(
+        clippy::same_name_method,
+        reason = "trait impl delegates to this inherent method; callers use both"
+    )]
     pub(in crate::feat::session) fn history_get_mut(
         &mut self,
         index: usize,
@@ -797,6 +809,10 @@ impl ChatSessionState {
     }
 
     /// Read-only access to the conversation history.
+    #[expect(
+        clippy::same_name_method,
+        reason = "trait impl delegates to this inherent method; callers use both"
+    )]
     pub fn history(&self) -> &[ChatEntry] {
         &self.core.history
     }
@@ -1134,6 +1150,10 @@ impl ChatSessionState {
     /// reference positions >= the insertion point.
     ///
     /// Returns the index where the entry was inserted.
+    #[expect(
+        clippy::same_name_method,
+        reason = "trait impl delegates to this inherent method; callers use both"
+    )]
     pub fn insert_entry_at(&mut self, index: usize, entry: ChatEntry) -> usize {
         let clamped = index.min(self.core.history.len());
         self.core.history.insert(clamped, entry);

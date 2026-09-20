@@ -479,6 +479,10 @@ async fn resolve_thread(
 }
 
 /// Post a single plain message to a channel.
+#[expect(
+    clippy::result_large_err,
+    reason = "serenity::Error is the crate-wide error type; boxing it would ripple through every call site for no gain"
+)]
 async fn post_message(
     http: &serenity::Http,
     channel: serenity::ChannelId,
@@ -488,6 +492,10 @@ async fn post_message(
 }
 
 /// Split a final reply into ≤2000-char chunks and post each to a channel.
+#[expect(
+    clippy::result_large_err,
+    reason = "serenity::Error is the crate-wide error type; boxing it would ripple through every call site for no gain"
+)]
 async fn post_reply(
     http: &serenity::Http,
     channel: serenity::ChannelId,

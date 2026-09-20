@@ -161,10 +161,7 @@ fn confirm_valid_dir_appends_project_optimistically_and_emits_update() {
     let result = confirm_project_add(&mut cx, &cell);
 
     // Then one UpdatePreferences is published and the scope pops.
-    assert_eq!(
-        result.message_names,
-        vec!["jinn_preferences_config::protocol::command::UpdatePreferences"]
-    );
+    assert_eq!(result.message_names, vec!["UpdatePreferences"]);
     assert_eq!(result.messages.len(), 1);
     assert!(matches!(result.scope_signal, Some(ScopeSignal::PopIf(_))));
     // And the optimistic write appended the project to kernel state.

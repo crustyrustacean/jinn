@@ -42,10 +42,6 @@ impl TestHarness {
 
     /// Create a new harness like [`Self::new`] (kept for call-site
     /// compatibility; the fabric is trouper-only now).
-    #[expect(
-        clippy::unused_async,
-        reason = "API symmetry with `new`"
-    )]
     pub async fn new_best_effort() -> Self {
         Self::new().await
     }
@@ -84,12 +80,16 @@ impl TestHarness {
         clippy::unused_async,
         reason = "API symmetry with other async harness methods"
     )]
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "ServiceActor::start is async by trait contract"
+    )]
     pub async fn spawn_recorder<M>(&self) -> Recorder<M>
     where
         M: BusMessage + trouper::schema::Schema + serde::Serialize + serde::de::DeserializeOwned,
     {
         let recorder = Recorder::<M>::default();
-        self.spawn_trouper_recorder::<M>(recorder.clone());
+        self.spawn_trouper_recorder::<M>(&recorder);
         recorder
     }
 
@@ -99,7 +99,7 @@ impl TestHarness {
     /// Each tap gets a unique path (a process-wide counter) so parallel
     /// tests never share tap state; the buffer is `Arc`-shared between the
     /// tap and the returned handle.
-    fn spawn_trouper_recorder<M>(&self, recorder: Recorder<M>)
+    fn spawn_trouper_recorder<M>(&self, recorder: &Recorder<M>)
     where
         M: BusMessage + trouper::schema::Schema + serde::Serialize + serde::de::DeserializeOwned,
     {
@@ -119,17 +119,19 @@ impl TestHarness {
                 + serde::Serialize
                 + serde::de::DeserializeOwned,
         {
+            #[expect(
+                clippy::unused_async_trait_impl,
+                reason = "async signature symmetry; body has no await"
+            )]
             async fn start(
                 _args: &serde_json::Value,
             ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
                 // Never called: spawned via `spawn_service_builder` + `start_with`
                 // (the typed buffer can't ride JSON args).
-                Err(
-                    error_stack::IntoReport::into_report(
-                        trouper::registry::RegistryError::InvalidSpec,
-                    )
-                    .attach("TroupeTap is spawned via start_with"),
+                Err(error_stack::IntoReport::into_report(
+                    trouper::registry::RegistryError::InvalidSpec,
                 )
+                .attach("TroupeTap is spawned via start_with"))
             }
         }
 

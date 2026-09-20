@@ -78,4 +78,3 @@ async fn session_closed_crosses_to_sidebar_and_clamps_cursor() {
     .await;
     assert_eq!(clamped, 1);
 }
-

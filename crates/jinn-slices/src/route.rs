@@ -73,7 +73,12 @@ pub trait PublishableMessage:
 }
 
 impl<M> PublishableMessage for M where
-    M: Clone + Send + 'static + trouper::schema::Schema + serde::Serialize + serde::de::DeserializeOwned
+    M: Clone
+        + Send
+        + 'static
+        + trouper::schema::Schema
+        + serde::Serialize
+        + serde::de::DeserializeOwned
 {
 }
 
@@ -399,15 +404,13 @@ impl RouteResult {
     where
         M: PublishableMessage,
     {
-        self.messages
-            .push(Box::new(move |sink: &dyn PublishSink| {
-                let payload = serde_json::to_value(&msg).unwrap_or(serde_json::Value::Null);
-                sink.publish_schema(M::schema_id(), payload, std::any::type_name::<M>());
-            }));
+        self.messages.push(Box::new(move |sink: &dyn PublishSink| {
+            let payload = serde_json::to_value(&msg).unwrap_or(serde_json::Value::Null);
+            sink.publish_schema(M::schema_id(), payload, std::any::type_name::<M>());
+        }));
         // Record the short type name (e.g. "PushChatEntry") — the same
         // spelling recording-mode assertions use.
-        self.message_names
-            .push(short_type_name::<M>());
+        self.message_names.push(short_type_name::<M>());
     }
 }
 

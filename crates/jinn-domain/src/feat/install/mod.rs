@@ -1286,7 +1286,7 @@ mod tests {
             .filter_map(|rest| {
                 let end = rest.find('`')?;
                 let name = rest.get(..end)?;
-                (name.ends_with(".md")).then_some(name)
+                name.to_ascii_lowercase().ends_with(".md").then_some(name)
             })
             .collect();
 
@@ -1324,7 +1324,7 @@ mod tests {
             for file in std::fs::read_dir(&refs).expect("read references") {
                 let file = file.expect("read reference");
                 let name = file.file_name().to_string_lossy().to_string();
-                if name.ends_with(".md") {
+                if name.to_ascii_lowercase().ends_with(".md") {
                     disk_files.push(format!("jinn-usage/references/{name}"));
                 }
             }

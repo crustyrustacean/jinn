@@ -126,9 +126,7 @@ impl ActorSystemBuilder {
             let system =
                 trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
             (
-                jinn_domain::common::services::bus_service::BusService::new_trouper(
-                    system.clone(),
-                ),
+                jinn_domain::common::services::bus_service::BusService::new_trouper(system.clone()),
                 system,
             )
         };
@@ -363,7 +361,8 @@ impl ActorSystemBuilder {
                 frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 counter: token_counter,
                 token_cache: entry_token_cache.clone(),
-                builtin_registry: jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
+                builtin_registry:
+                    jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
                 shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
                 image_converter: jinn_domain::feat::image_convert::ImageConverterService::system(),
             },
@@ -441,27 +440,26 @@ impl ActorSystemBuilder {
                 },
             )
             .await;
-        let _ = services.interactive_term.set(std::sync::Arc::new(
-            ActorTermHandle::new(
+        let _ = services
+            .interactive_term
+            .set(std::sync::Arc::new(ActorTermHandle::new(
                 services.trouper_system.clone(),
                 term_coordinator_path,
-            ),
-        ));
+            )));
         // Install the shared registry for the IntentHandler's takeover
         // intents (synchronous flips that in-flight tool calls observe
         // mid-drain).
         let _ = jinn_term_msg::TERM_CONTROLS.set(term_controls);
 
         // Directory lister actor (`@path` file popup).
-        let _directory_lister =
-            jinn_domain::feat::file_lister::DirectoryListerActor::spawn(
-                &services.trouper_system,
-                jinn_domain::feat::file_lister::DirectoryListerActorDeps {
-                    deps: actor_deps.clone(),
-                    state: state.clone(),
-                    frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
-                },
-            );
+        let _directory_lister = jinn_domain::feat::file_lister::DirectoryListerActor::spawn(
+            &services.trouper_system,
+            jinn_domain::feat::file_lister::DirectoryListerActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+                frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
+            },
+        );
 
         // Provider actor.
         let _provider = jinn_domain::feat::provider::provider_actor::ProviderActor::spawn(
@@ -486,15 +484,14 @@ impl ActorSystemBuilder {
                 description: Some("SearchIndexActor".to_owned()),
             })
             .await;
-        let _search_index =
-            jinn_session_store::search_index_actor::SearchIndexActor::spawn(
-                &services.trouper_system,
-                jinn_session_store::search_index_actor::SearchIndexActorDeps {
-                    deps: actor_deps.clone(),
-                    interval: jinn_session_store::search_index_actor::REINDEX_INTERVAL,
-                    batch: jinn_session_store::search_index_actor::REINDEX_BATCH,
-                },
-            );
+        let _search_index = jinn_session_store::search_index_actor::SearchIndexActor::spawn(
+            &services.trouper_system,
+            jinn_session_store::search_index_actor::SearchIndexActorDeps {
+                deps: actor_deps.clone(),
+                interval: jinn_session_store::search_index_actor::REINDEX_INTERVAL,
+                batch: jinn_session_store::search_index_actor::REINDEX_BATCH,
+            },
+        );
         services
             .bus
             .publish(jinn_domain::common::actor::protocol::event::ActorStarted {
@@ -538,10 +535,12 @@ impl ActorSystemBuilder {
             // now that every actor (the session actor subscribes to
             // `PersonasLoaded`) is spawned.
             if !persona_entries.entries.is_empty() {
-                bus.publish(jinn_domain::feat::context::protocol::event::PersonasLoaded {
-                    personas: persona_entries.entries.clone(),
-                    error: None,
-                })
+                bus.publish(
+                    jinn_domain::feat::context::protocol::event::PersonasLoaded {
+                        personas: persona_entries.entries.clone(),
+                        error: None,
+                    },
+                )
                 .await;
             }
 
@@ -566,8 +565,10 @@ impl ActorSystemBuilder {
                 .config
                 {
                     Some(config) => {
-                        bus.publish(jinn_domain::init::env_init_actor::EnvironmentLoaded { config })
-                            .await;
+                        bus.publish(jinn_domain::init::env_init_actor::EnvironmentLoaded {
+                            config,
+                        })
+                        .await;
                     }
                     None => {
                         tracing::warn!("no provider config found — skipping EnvironmentLoaded");
@@ -582,10 +583,12 @@ impl ActorSystemBuilder {
             // supervisor routes from payloads, not shared state. This publish
             // triggers the initial session's discovery through the same
             // payload path as every other session.
-            bus.publish(jinn_domain::feat::session_lifecycle::protocol::event::SessionCwdChanged {
-                session_id: initial_session_id,
-                cwd: initial_cwd,
-            })
+            bus.publish(
+                jinn_domain::feat::session_lifecycle::protocol::event::SessionCwdChanged {
+                    session_id: initial_session_id,
+                    cwd: initial_cwd,
+                },
+            )
             .await;
         }
 
@@ -839,7 +842,7 @@ fn jinn_context_curation_activate(
         workers.push(Box::new(TrivialAssistantAutoPruneWorker {
             config: trivial_config,
             token_cache: entry_token_cache.clone(),
-            counter: counter.clone(),
+            counter,
         }));
     }
 
@@ -996,7 +999,9 @@ async fn jinn_quake_bar_drain(services: &Services) {
     // schema→topic rule mirrors the relay below.
     services
         .bus
-        .route_topic::<jinn_quake_bar::SubmitQuakeBarCommand>(jinn_quake_bar::command::quake_bar_topic());
+        .route_topic::<jinn_quake_bar::SubmitQuakeBarCommand>(
+            jinn_quake_bar::command::quake_bar_topic(),
+        );
 }
 
 /// Drains the discord slice's staged forward routes into per-route
@@ -1013,8 +1018,12 @@ async fn jinn_discord_drain(services: &Services) {
     let topic = session_topic();
     // Erased publishes (bridge closures) route natively on trouper: the
     // schema→topic rules mirror the relays below.
-    services.bus.route_topic::<SessionPhaseChanged>(topic.clone());
-    services.bus.route_topic::<SessionSetupCompleted>(topic.clone());
+    services
+        .bus
+        .route_topic::<SessionPhaseChanged>(topic.clone());
+    services
+        .bus
+        .route_topic::<SessionSetupCompleted>(topic.clone());
     services
         .bus
         .route_topic::<SessionTeardownFinished>(topic.clone());

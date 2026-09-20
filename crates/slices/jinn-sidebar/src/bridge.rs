@@ -17,6 +17,9 @@ use crate::sections::sidebar_state_actor::sidebar_topic;
 /// register on the bus in their own `on_start`, so drain ordering
 /// relative to publishers is free.
 pub fn install_topic_routes(services: &Services) {
-    services.bus.route_topic::<jinn_domain::feat::session::protocol::session_closed::SessionClosed>(sidebar_topic());
+    services
+        .bus
+        .route_topic::<jinn_domain::feat::session::protocol::session_closed::SessionClosed>(
+            sidebar_topic(),
+        );
 }
-

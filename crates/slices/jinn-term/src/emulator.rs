@@ -271,7 +271,6 @@ fn normalize_hvp(bytes: &[u8]) -> Vec<u8> {
 }
 
 /// A styled snapshot of the visible screen's cells.
-
 /// Converts vt100's palette color into the wire `TermColor`.
 fn term_color(color: vt100::Color) -> TermColor {
     match color {

@@ -76,7 +76,7 @@ pub fn activate(
     });
     host.forward::<jinn_domain::feat::session::protocol::session_closed::SessionClosed, _>(
         token_count_topic(),
-        || jinn_domain::feat::session::protocol::session_closed::SessionClosed::schema_def(),
+        jinn_domain::feat::session::protocol::session_closed::SessionClosed::schema_def,
     );
 
     cache

@@ -64,7 +64,7 @@ pub fn stage_routes(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     });
     host.forward::<jinn_domain::feat::context::protocol::event::ContextOverrideChanged, _>(
         topic.clone(),
-        || jinn_domain::feat::context::protocol::event::ContextOverrideChanged::schema_def(),
+        jinn_domain::feat::context::protocol::event::ContextOverrideChanged::schema_def,
     );
     host.forward::<jinn_domain::protocol::system::ActiveSessionChanged, _>(
         topic.clone(),

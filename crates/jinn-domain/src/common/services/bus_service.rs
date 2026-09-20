@@ -56,6 +56,13 @@ enum BusInner {
         system: trouper::system::ActorSystem,
         routes: Arc<Mutex<Vec<RouteRule>>>,
     },
+    #[cfg_attr(
+        not(any(test, feature = "test-harness")),
+        expect(
+            dead_code,
+            reason = "recording mode is test-only but lives in the shared bus type"
+        )
+    )]
     Recording(Arc<Mutex<Vec<RecordedMessage>>>),
 }
 
@@ -146,6 +153,22 @@ impl BusService {
     /// join the fabric with the routed topic resolved from the schema —
     /// the same path composition's `system.subscribe` calls take, exposed
     /// through the bus so the topic constant lives in one place.
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "async signature symmetry; body has no await"
+    )]
+    #[expect(
+        clippy::unused_async,
+        reason = "async signature symmetry; body has no await"
+    )]
+    #[expect(
+        clippy::expect_used,
+        reason = "a failed topic subscription is a wiring bug that must abort spawn"
+    )]
+    /// # Panics
+    ///
+    /// Panics if the target path has no slot — a runtime-spawned actor
+    /// must exist (spawned) before this call.
     pub async fn subscribe_topic<M: trouper::schema::Schema>(
         &self,
         path: &trouper::actor::ActorPath,
@@ -192,6 +215,13 @@ impl BusService {
     /// route for its schema id, else the shared `jinn.domain` topic.
     /// Single-topic view for ask seams and test taps; `publish` itself
     /// fans out over [`Self::topics_for`].
+    #[cfg_attr(
+        not(any(test, feature = "test-harness")),
+        expect(
+            dead_code,
+            reason = "single-topic view is consumed by the test-harness probe"
+        )
+    )]
     fn topic_for(
         routes: &Mutex<Vec<RouteRule>>,
         schema_id: &trouper::schema::SchemaId,
@@ -201,8 +231,7 @@ impl BusService {
             .iter()
             .rev()
             .find(|rule| rule.matches(schema_id))
-            .map(|rule| rule.topic.clone())
-            .unwrap_or_else(jinn_domain_topic)
+            .map_or_else(jinn_domain_topic, |rule| rule.topic.clone())
     }
 
     /// Publishes a typed message onto the fabric.
@@ -303,9 +332,7 @@ impl RouteTestProbe {
 impl fmt::Debug for BusService {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.inner {
-            BusInner::Troupe { .. } => {
-                f.debug_struct("BusService<Troupe>").finish_non_exhaustive()
-            }
+            BusInner::Troupe { .. } => f.debug_struct("BusService<Troupe>").finish_non_exhaustive(),
             BusInner::Recording(_) => f
                 .debug_struct("BusService<Recording>")
                 .finish_non_exhaustive(),

@@ -1188,7 +1188,7 @@ mod panic_safety_tests {
                 interactive_term: None,
                 task_spawns: None,
                 session_store: None,
-            trouper_system: None,
+                trouper_system: None,
             },
         ))
         .catch_unwind()
@@ -1356,9 +1356,7 @@ mod mcp_dispatch_gate_tests {
 
     const PROVIDER: &str = "mcp__stub__";
 
-    async fn spawn_orchestrator(
-        state: &State,
-    ) -> (TestHarness, ()) {
+    async fn spawn_orchestrator(state: &State) -> (TestHarness, ()) {
         let harness = TestHarness::new().await;
         let services = harness.services().await;
         ToolOrchestratorActor::spawn(

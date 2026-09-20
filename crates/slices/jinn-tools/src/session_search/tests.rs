@@ -228,7 +228,7 @@ fn tool_ctx(store: SessionStoreService, session_id: Option<SessionId>) -> ToolCo
         interactive_term: None,
         task_spawns: None,
         session_store: Some(store),
-            trouper_system: None,
+        trouper_system: None,
     }
 }
 
@@ -610,7 +610,7 @@ async fn missing_session_store_fails_gracefully() {
     );
     let ctx = ToolContext {
         session_store: None,
-            trouper_system: None,
+        trouper_system: None,
         ..ctx
     };
 

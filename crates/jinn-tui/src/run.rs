@@ -392,6 +392,10 @@ mod tests {
     }
 
     impl trouper::actor::ServiceActor for CwdRecorder {
+        #[expect(
+            clippy::unreachable,
+            reason = "trouper ServiceActor contract: this actor is spawned via start_with; JSON-arg start is never called"
+        )]
         async fn start(
             _args: &serde_json::Value,
         ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
@@ -400,11 +404,7 @@ mod tests {
     }
 
     impl trouper::actor::MsgHandler<SetSessionCwd> for CwdRecorder {
-        async fn handle(
-            &mut self,
-            msg: SetSessionCwd,
-            _ctx: &mut trouper::context::MsgCtx<'_>,
-        ) {
+        async fn handle(&mut self, msg: SetSessionCwd, _ctx: &mut trouper::context::MsgCtx<'_>) {
             self.buffer.lock().unwrap().push(msg);
         }
     }
@@ -430,9 +430,8 @@ mod tests {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-        let bus = jinn_domain::common::services::bus_service::BusService::new_trouper(
-            system.clone(),
-        );
+        let bus =
+            jinn_domain::common::services::bus_service::BusService::new_trouper(system.clone());
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let path = trouper::actor::ActorPath::new(format!(
             "test.cwd-recorder.{}",

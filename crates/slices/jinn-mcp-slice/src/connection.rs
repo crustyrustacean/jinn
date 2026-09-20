@@ -238,6 +238,10 @@ fn expand_server_headers(
 /// connected but list failed) and must be shut down by the caller; returns
 /// `Err(None)` when the failure was at connect time (nothing to shut down).
 /// On success returns the client and its mapped tool definitions together.
+#[expect(
+    clippy::result_large_err,
+    reason = "the Err carries the live client back to the caller on failed handshake; boxing would complicate the reconnect path"
+)]
 async fn acquire_client(
     services: &Services,
     name: &str,
@@ -368,113 +372,113 @@ async fn start_mcp(args: McpActorDeps) -> Result<McpActor, std::convert::Infalli
 
     publish_status(&deps, &session_id, &name, McpConnectionStatus::Starting).await;
 
-        // Drain any test-injected client from the shared slot. Production is
-        // always `None` here, so the actor spawns the server process. Tests
-        // inject a pre-connected client so no child is spawned.
-        let injected_client = client_override.lock().take();
+    // Drain any test-injected client from the shared slot. Production is
+    // always `None` here, so the actor spawns the server process. Tests
+    // inject a pre-connected client so no child is spawned.
+    let injected_client = client_override.lock().take();
 
-        // Obtain a connected client + its tool definitions. Failure (connect or
-        // list) is non-fatal to the process: the actor runs idle, the lifecycle
-        // actor / dashboard surfaces the dead status, and a later enable/disable
-        // cycle can respawn.
-        let (mut client, definitions) =
-            match acquire_client(&deps.services, &name, &server, injected_client).await {
-                Ok(ready) => ready,
-                Err(half_open) => {
-                    if let Some(mut half_open) = half_open {
-                        half_open.shutdown().await;
-                    }
-                    publish_status(&deps, &session_id, &name, McpConnectionStatus::Dead).await;
-                    return Ok(McpActor {
-                        deps,
-                        session_id,
-                        name,
-                        client: None,
-                        stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
-                        liveness_task_shutdown: Arc::new(AtomicBool::new(false)),
-                        child_task_shutdown: None,
-                    });
+    // Obtain a connected client + its tool definitions. Failure (connect or
+    // list) is non-fatal to the process: the actor runs idle, the lifecycle
+    // actor / dashboard surfaces the dead status, and a later enable/disable
+    // cycle can respawn.
+    let (mut client, definitions) =
+        match acquire_client(&deps.services, &name, &server, injected_client).await {
+            Ok(ready) => ready,
+            Err(half_open) => {
+                if let Some(mut half_open) = half_open {
+                    half_open.shutdown().await;
                 }
-            };
-
-        let provider = provider_name(&name);
-        tracing::info!(
-            server = %name,
-            session_id = %session_id,
-            tool_count = definitions.len(),
-            "MCP actor: connected, registering tools"
-        );
-
-        let () = deps
-            .services
-            .bus
-            .publish(RegisterTools {
-                provider,
-                definitions,
-                session_id: Some(session_id.clone()),
-            })
-            .await;
-
-        // Tools registered + connection live: we're Running.
-        publish_status(&deps, &session_id, &name, McpConnectionStatus::Running).await;
-        // Surface any stderr emitted during startup (e.g. `npm warn`).
-        publish_log(&deps, &session_id, &name, &client.stderr_tail()).await;
-
-        // Spawn the live stderr-debounce task. It polls the client's tail every
-        // `STDERR_DEBOUNCE` and republishes `McpServerLog` when the tail changed,
-        // so subscribers (the inspector) see stderr update in near-real time.
-        // The task exits when `stderr_task_shutdown` is set in `on_stop`.
-        let stderr_task_shutdown = Arc::new(AtomicBool::new(false));
-        spawn_stderr_debounce(
-            stderr_task_shutdown.clone(),
-            client.stderr_buffer(),
-            deps.clone(),
-            session_id.clone(),
-            name.clone(),
-        );
-
-        // Spawn the liveness-watch task. It polls the client's transport
-        // close signal every `STDERR_DEBOUNCE` and publishes `Dead` when the
-        // connection drops post-connect, so the sidebar/picker stop showing
-        // "running" for a dead server. It owns a cheap `LivenessProbe` cloned
-        // from the client (no shared borrow). Exits via its shutdown flag in
-        // `on_stop` (which does its own `Dead` publish).
-        let liveness_task_shutdown = Arc::new(AtomicBool::new(false));
-        spawn_liveness_watch(
-            liveness_task_shutdown.clone(),
-            client.liveness_probe(),
-            client.stderr_buffer(),
-            stderr_task_shutdown.clone(),
-            deps.clone(),
-            session_id.clone(),
-            name.clone(),
-        );
-
-        // Spawn the HTTP child-exit watcher — only for HTTP-mode connections,
-        // where jinn owns the child directly. stdio (rmcp owns the child) and
-        // remote (no child) return None from take_child(), so no watcher is
-        // spawned and child_task_shutdown stays None.
-        let child_task_shutdown = Arc::new(AtomicBool::new(false));
-        let cancel_token = client.cancel_token();
-        let child_watch_spawned = match client.take_child() {
-            Some(child) => {
-                spawn_child_watch(child_task_shutdown.clone(), child, cancel_token);
-                true
+                publish_status(&deps, &session_id, &name, McpConnectionStatus::Dead).await;
+                return Ok(McpActor {
+                    deps,
+                    session_id,
+                    name,
+                    client: None,
+                    stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
+                    liveness_task_shutdown: Arc::new(AtomicBool::new(false)),
+                    child_task_shutdown: None,
+                });
             }
-            None => false,
         };
-        let child_task_shutdown = child_watch_spawned.then_some(child_task_shutdown);
 
-        Ok(McpActor {
-            deps,
-            session_id,
-            name,
-            client: Some(client),
-            stderr_task_shutdown,
-            liveness_task_shutdown,
-            child_task_shutdown,
+    let provider = provider_name(&name);
+    tracing::info!(
+        server = %name,
+        session_id = %session_id,
+        tool_count = definitions.len(),
+        "MCP actor: connected, registering tools"
+    );
+
+    let () = deps
+        .services
+        .bus
+        .publish(RegisterTools {
+            provider,
+            definitions,
+            session_id: Some(session_id.clone()),
         })
-    }
+        .await;
+
+    // Tools registered + connection live: we're Running.
+    publish_status(&deps, &session_id, &name, McpConnectionStatus::Running).await;
+    // Surface any stderr emitted during startup (e.g. `npm warn`).
+    publish_log(&deps, &session_id, &name, &client.stderr_tail()).await;
+
+    // Spawn the live stderr-debounce task. It polls the client's tail every
+    // `STDERR_DEBOUNCE` and republishes `McpServerLog` when the tail changed,
+    // so subscribers (the inspector) see stderr update in near-real time.
+    // The task exits when `stderr_task_shutdown` is set in `on_stop`.
+    let stderr_task_shutdown = Arc::new(AtomicBool::new(false));
+    spawn_stderr_debounce(
+        stderr_task_shutdown.clone(),
+        client.stderr_buffer(),
+        deps.clone(),
+        session_id.clone(),
+        name.clone(),
+    );
+
+    // Spawn the liveness-watch task. It polls the client's transport
+    // close signal every `STDERR_DEBOUNCE` and publishes `Dead` when the
+    // connection drops post-connect, so the sidebar/picker stop showing
+    // "running" for a dead server. It owns a cheap `LivenessProbe` cloned
+    // from the client (no shared borrow). Exits via its shutdown flag in
+    // `on_stop` (which does its own `Dead` publish).
+    let liveness_task_shutdown = Arc::new(AtomicBool::new(false));
+    spawn_liveness_watch(
+        liveness_task_shutdown.clone(),
+        client.liveness_probe(),
+        client.stderr_buffer(),
+        stderr_task_shutdown.clone(),
+        deps.clone(),
+        session_id.clone(),
+        name.clone(),
+    );
+
+    // Spawn the HTTP child-exit watcher — only for HTTP-mode connections,
+    // where jinn owns the child directly. stdio (rmcp owns the child) and
+    // remote (no child) return None from take_child(), so no watcher is
+    // spawned and child_task_shutdown stays None.
+    let child_task_shutdown = Arc::new(AtomicBool::new(false));
+    let cancel_token = client.cancel_token();
+    let child_watch_spawned = match client.take_child() {
+        Some(child) => {
+            spawn_child_watch(child_task_shutdown.clone(), child, cancel_token);
+            true
+        }
+        None => false,
+    };
+    let child_task_shutdown = child_watch_spawned.then_some(child_task_shutdown);
+
+    Ok(McpActor {
+        deps,
+        session_id,
+        name,
+        client: Some(client),
+        stderr_task_shutdown,
+        liveness_task_shutdown,
+        child_task_shutdown,
+    })
+}
 
 /// Publishes a connection-status transition for this (session × server).
 async fn publish_status(

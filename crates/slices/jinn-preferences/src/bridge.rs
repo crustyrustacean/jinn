@@ -24,7 +24,14 @@ pub fn preferences_topic() -> trouper::topics::Topic {
 /// relative to publishers is free — the actors' own subscribes (the
 /// readiness point) happen in `activate`, before any publish.
 pub fn install_topic_routes(services: &Services) {
-    services.bus.route_topic::<jinn_preferences_config::protocol::command::UpdatePreferences>(preferences_topic());
-    services.bus.route_topic::<jinn_preferences_config::protocol::app_state_command::UpdateAppState>(preferences_topic());
+    services
+        .bus
+        .route_topic::<jinn_preferences_config::protocol::command::UpdatePreferences>(
+            preferences_topic(),
+        );
+    services
+        .bus
+        .route_topic::<jinn_preferences_config::protocol::app_state_command::UpdateAppState>(
+            preferences_topic(),
+        );
 }
-

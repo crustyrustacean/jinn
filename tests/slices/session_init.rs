@@ -52,9 +52,7 @@ async fn composed_app_with_project()
 }
 
 /// Spawns a [`Recorder`] for `M` tapped on the app's fabric topic.
-async fn recorder_for<M>(
-    app: &TuiApp,
-) -> Recorder<M>
+async fn recorder_for<M>(app: &TuiApp) -> Recorder<M>
 where
     M: Clone
         + Send

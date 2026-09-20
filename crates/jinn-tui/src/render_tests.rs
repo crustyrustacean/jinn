@@ -247,6 +247,7 @@ async fn gutter_area_is_not_selectable() {
 
 #[rstest::rstest]
 #[tokio::test]
+#[expect(clippy::panic, reason = "test: a failed finalize must fail the test")]
 async fn cwd_input_popup_renders_and_is_selectable() {
     // Given a TuiApp rendered with the cwd popup's dynamic scope, the cwd
     // slice activated so its overlay + cell are registered.

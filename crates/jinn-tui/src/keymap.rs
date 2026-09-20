@@ -64,6 +64,7 @@ fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Inte
 /// Builds and returns the full keymap with all scope bindings.
 #[must_use]
 #[rustfmt::skip]
+#[expect(clippy::too_many_lines, reason = "declarative keymap table; splitting it would obscure the binding overview")]
 pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     let mut keymap = Keymap::new();
 

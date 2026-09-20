@@ -45,6 +45,10 @@ pub fn session_lifecycle_spec() -> PickerSpec<SessionLifecycleEntry> {
 
 /// The domain state behind an [`ActionCtx`]. The kernel's host lens always
 /// lends `AppState`; this downcast is the spec's single sanctioned escape.
+#[expect(
+    clippy::expect_used,
+    reason = "domain host lends AppState; a wrong downcast is a wiring bug"
+)]
 fn state_of<'a>(ctx: &'a mut ActionCtx<'_>) -> &'a mut AppState {
     ctx.state_any()
         .downcast_mut::<AppState>()

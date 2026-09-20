@@ -22,4 +22,3 @@ pub fn install_topic_routes(services: &Services) {
         .bus
         .route_topic::<jinn_turn_dispatch_msg::DispatchTurn>(turn_dispatch_topic());
 }
-

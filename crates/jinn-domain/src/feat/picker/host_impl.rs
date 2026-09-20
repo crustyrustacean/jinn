@@ -187,6 +187,10 @@ impl PickerHost for AppStateRenderHost<'_> {
         }
     }
 
+    #[expect(
+        clippy::unreachable,
+        reason = "trait contract: render host is read-only; render specs must not mutate state"
+    )]
     fn state_any(&mut self) -> &mut dyn std::any::Any {
         unreachable!("AppStateRenderHost is read-only; specs must not call state_any in render")
     }

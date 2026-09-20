@@ -3,10 +3,10 @@
 use std::path::PathBuf;
 
 use error_stack::Report;
+use serde::{Deserialize, Serialize};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
-use serde::{Deserialize, Serialize};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
@@ -67,10 +67,13 @@ impl BusPublish for DirectoryListerActor {
 }
 
 impl ServiceActor for DirectoryListerActor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "ServiceActor::start is async by trait contract"
+    )]
     async fn start(_args: &serde_json::Value) -> Result<Self, Report<RegistryError>> {
         // Never called: spawned via `spawn`'s start_with (typed deps can't
         // ride the JSON args).
-        let _ = _args;
         Err(Report::new(RegistryError::InvalidSpec)
             .attach("DirectoryListerActor spawns via start_with"))
     }
@@ -82,7 +85,23 @@ pub const DIRECTORY_LISTER_PATH: &str = "jinn.file_lister.actor";
 impl DirectoryListerActor {
     /// Spawns the lister onto the trouper system; its subscription is
     /// live when this returns.
-    pub fn spawn(system: &trouper::system::ActorSystem, deps: DirectoryListerActorDeps) -> ActorPath {
+    ///
+    /// # Panics
+    ///
+    /// Panics if the actor's path is already taken or its topic
+    /// subscription fails — both mean a wiring bug at composition.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "port convention: spawn takes owned deps and clones into start_with"
+    )]
+    #[expect(
+        clippy::expect_used,
+        reason = "a failed topic subscription is a wiring bug that must abort spawn"
+    )]
+    pub fn spawn(
+        system: &trouper::system::ActorSystem,
+        deps: DirectoryListerActorDeps,
+    ) -> ActorPath {
         let path = ActorPath::new(DIRECTORY_LISTER_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())

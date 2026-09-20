@@ -22,7 +22,6 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-
 use crate::connection::{McpActor, McpActorDeps};
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_domain::protocol::SessionId;

@@ -243,6 +243,7 @@ async fn wait_for_list_complete(state: &State) {
     }
 }
 
+#[expect(clippy::unused_async, reason = "async for test-helper symmetry")]
 async fn spawn_actor(deps: &ActorDeps, state: &State) -> trouper::actor::ActorPath {
     // The path is a placeholder; the actor self-subscribes to the domain
     // topic at its static path. Tests drive it via bus publishes only.

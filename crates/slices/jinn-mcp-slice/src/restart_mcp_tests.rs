@@ -125,7 +125,7 @@ fn ctx_with_coordinator(
         interactive_term: None,
         task_spawns: None,
         session_store: None,
-            trouper_system: None,
+        trouper_system: None,
     }
 }
 
@@ -144,7 +144,9 @@ async fn restart_one_returns_connect_failed_for_unrunnable_command() {
     let session_id = SessionId::new();
 
     // When asking the coordinator to restart that server (via the seam).
-    let reply = coordinator.restart(session_id, "unrunnable".to_owned()).await;
+    let reply = coordinator
+        .restart(session_id, "unrunnable".to_owned())
+        .await;
 
     // Then the reply is a domain-level ConnectFailed.
     assert!(
@@ -199,7 +201,7 @@ async fn execute_fails_when_coordinator_ref_is_none() {
         interactive_term: None,
         task_spawns: None,
         session_store: None,
-            trouper_system: None,
+        trouper_system: None,
     };
 
     // When executing.

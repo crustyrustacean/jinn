@@ -85,5 +85,4 @@ pub trait BusPublish {
             bus.publish(msg).await;
         })
     }
-
 }

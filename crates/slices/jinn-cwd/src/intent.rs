@@ -255,8 +255,10 @@ mod tests {
     #[rstest::rstest]
     fn open_seeds_input_from_session_cwd_and_pushes_scope() {
         // Given a fake state whose session cwd is an absolute path.
-        let mut state = FakeState::default();
-        state.cwd = std::path::PathBuf::from("/tmp/some-project");
+        let mut state = FakeState {
+            cwd: std::path::PathBuf::from("/tmp/some-project"),
+            ..FakeState::default()
+        };
         let (slices, cell) = cell();
         let cx = ctx(&mut state, &slices);
 
@@ -273,9 +275,11 @@ mod tests {
     #[rstest::rstest]
     fn open_seeds_tilde_compressed_path_when_cwd_under_home() {
         // Given a session cwd under $HOME.
-        let mut state = FakeState::default();
         let home = dirs::home_dir().expect("home dir exists");
-        state.cwd = home.join("projects/my-app");
+        let mut state = FakeState {
+            cwd: home.join("projects/my-app"),
+            ..FakeState::default()
+        };
         let (slices, cell) = cell();
         let cx = ctx(&mut state, &slices);
 
@@ -292,8 +296,10 @@ mod tests {
         // with the tempdir's basename.
         let temp = tempfile::tempdir().expect("tempdir");
         let target = temp.path();
-        let mut state = FakeState::default();
-        state.cwd = target.parent().expect("parent").to_path_buf();
+        let mut state = FakeState {
+            cwd: target.parent().expect("parent").to_path_buf(),
+            ..FakeState::default()
+        };
         let (slices, cell) = cell();
         cell.update(|s| {
             s.text.set(
@@ -320,8 +326,10 @@ mod tests {
     #[rstest::rstest]
     fn confirm_nonexistent_path_stays_open_unchanged() {
         // Given a popup seeded with a path that does not exist.
-        let mut state = FakeState::default();
-        state.cwd = std::path::PathBuf::from("/tmp");
+        let mut state = FakeState {
+            cwd: std::path::PathBuf::from("/tmp"),
+            ..FakeState::default()
+        };
         let (slices, cell) = cell();
         cell.update(|s| s.text.set("/this/does/not/exist".to_owned()));
         let mut cx = ctx(&mut state, &slices);
@@ -339,8 +347,10 @@ mod tests {
     #[rstest::rstest]
     fn confirm_empty_input_is_noop() {
         // Given a popup with empty input.
-        let mut state = FakeState::default();
-        state.cwd = std::path::PathBuf::from("/tmp");
+        let mut state = FakeState {
+            cwd: std::path::PathBuf::from("/tmp"),
+            ..FakeState::default()
+        };
         let (slices, cell) = cell();
         let mut cx = ctx(&mut state, &slices);
 

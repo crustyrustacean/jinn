@@ -139,7 +139,6 @@ mod tests {
         reason = "test code"
     )]
     use crate::common::app_state::{AppState, FocusScope};
-    use jinn_preferences_config::protocol::command::UpdatePreferences;
 
     use super::*;
 
@@ -199,10 +198,7 @@ mod tests {
         let result = handle_confirm(&mut state);
 
         // Then exactly one UpdatePreferences message is emitted.
-        assert_eq!(
-            result.message_names,
-            vec![std::any::type_name::<UpdatePreferences>()]
-        );
+        assert_eq!(result.message_names, vec!["UpdatePreferences"]);
         // And the scope is popped back.
         assert!(matches!(state.frontend.scope(), FocusScope::Normal));
         // And input state is cleared.
@@ -356,10 +352,7 @@ mod tests {
         let result = handle_confirm(&mut state);
 
         // Then exactly one UpdatePreferences message is emitted.
-        assert_eq!(
-            result.message_names,
-            vec![std::any::type_name::<UpdatePreferences>()]
-        );
+        assert_eq!(result.message_names, vec!["UpdatePreferences"]);
         // And scope is popped back.
         assert!(matches!(state.frontend.scope(), FocusScope::Normal));
     }

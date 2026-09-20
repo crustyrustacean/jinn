@@ -43,6 +43,10 @@ pub fn tool_spec() -> PickerSpec<ToolEntry> {
 
 /// The domain state behind an [`ActionCtx`]. The kernel's host lens always
 /// lends `AppState`; this downcast is the spec's single sanctioned escape.
+#[expect(
+    clippy::expect_used,
+    reason = "domain host lends AppState; a wrong downcast is a wiring bug"
+)]
 fn state_of<'a>(ctx: &'a mut ActionCtx<'_>) -> &'a mut AppState {
     ctx.state_any()
         .downcast_mut::<AppState>()
@@ -50,6 +54,10 @@ fn state_of<'a>(ctx: &'a mut ActionCtx<'_>) -> &'a mut AppState {
 }
 
 /// The read-only domain state behind a [`StatusCtx`].
+#[expect(
+    clippy::expect_used,
+    reason = "domain host lends AppState; a wrong downcast is a wiring bug"
+)]
 fn state_ref_of<'a>(ctx: &'a StatusCtx<'_>) -> &'a AppState {
     ctx.state_any_ref()
         .downcast_ref::<AppState>()

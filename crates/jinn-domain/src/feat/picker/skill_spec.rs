@@ -64,6 +64,10 @@ pub fn skill_spec() -> PickerSpec<SkillEntry> {
 
 /// The domain state behind an [`ActionCtx`]. The kernel's host lens always
 /// lends `AppState`; this downcast is the spec's single sanctioned escape.
+#[expect(
+    clippy::expect_used,
+    reason = "domain host lends AppState; a wrong downcast is a wiring bug"
+)]
 fn state_of<'a>(ctx: &'a mut ActionCtx<'_>) -> &'a mut AppState {
     ctx.state_any()
         .downcast_mut::<AppState>()
@@ -71,6 +75,10 @@ fn state_of<'a>(ctx: &'a mut ActionCtx<'_>) -> &'a mut AppState {
 }
 
 /// The read-only domain state behind a [`StatusCtx`].
+#[expect(
+    clippy::expect_used,
+    reason = "domain host lends AppState; a wrong downcast is a wiring bug"
+)]
 fn state_ref_of<'a>(ctx: &'a StatusCtx<'_>) -> &'a AppState {
     ctx.state_any_ref()
         .downcast_ref::<AppState>()
@@ -420,6 +428,14 @@ fn load_skill_picker_entries(state: &mut AppState) {
 #[cfg(test)]
 impl SkillEntry {
     #[must_use]
+    /// # Panics
+    ///
+    /// Panics if the domain host lends a non-`AppState` handle — a
+    /// wiring bug, not a runtime condition.
+    #[expect(
+        clippy::expect_used,
+        reason = "domain host lends AppState; a wrong downcast is a wiring bug"
+    )]
     pub fn spec_for_tests() -> PickerSpec<Self> {
         PickerSpec::new(PickerId::new(crate::feat::picker::registry::SKILL_ID))
             .title(" Skills (test) ")
@@ -561,7 +577,8 @@ mod tests {
 
         // When rendering with a match range covering "b c" (bytes 2..5,
         // crossing the name/description boundary).
-        let row = skill_row(&entry, &RowCtx::flat(false, &[2..5]));
+        let ranges = [2..5, 0..0];
+        let row = skill_row(&entry, &RowCtx::flat(false, &ranges));
 
         // Then the row still names the skill (highlighting clamped, not
         // crashing, on the boundary-crossing range).

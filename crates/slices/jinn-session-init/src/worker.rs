@@ -516,7 +516,7 @@ impl SessionDiscoveryWorker {
                     (snapshot_of_finished(&finished), delayed_reason(&missing))
                 }
             };
-            publish(
+            publish_settled(
                 &system,
                 SessionDiscoverySettled {
                     session_id,
@@ -741,6 +741,20 @@ where
     M: trouper::schema::Schema + serde::Serialize,
 {
     let topic = trouper::topics::Topic::new("jinn.domain");
+    publish_on_topic(system, msg, topic).await;
+}
+
+/// Publishes onto the slice-internal settle topic — the topic the
+/// notifier subscribes (relay-era parity: the deleted bridge used to
+/// carry the settle event from the kernel topic to this one).
+async fn publish_settled(system: &ActorSystem, msg: SessionDiscoverySettled) {
+    publish_on_topic(system, msg, crate::settled_topic()).await;
+}
+
+async fn publish_on_topic<M>(system: &ActorSystem, msg: M, topic: trouper::topics::Topic)
+where
+    M: trouper::schema::Schema + serde::Serialize,
+{
     let payload = serde_json::to_value(&msg).unwrap_or(serde_json::Value::Null);
     let event = trouper::envelope::Event::new(M::schema_id(), payload);
     let envelope = system.envelope_to_topic(event, topic);

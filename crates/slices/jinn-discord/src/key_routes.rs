@@ -206,7 +206,7 @@ mod tests {
         // Then the result carries the CreateThreadForSession bus command.
         assert_eq!(
             result.message_names,
-            vec![std::any::type_name::<crate::CreateThreadForSession>()],
+            vec!["CreateThreadForSession"],
             "to-thread command name"
         );
     }

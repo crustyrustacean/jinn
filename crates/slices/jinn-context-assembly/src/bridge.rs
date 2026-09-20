@@ -22,14 +22,25 @@ pub fn context_assembly_topic() -> trouper::topics::Topic {
 /// register on the bus in their own `on_start`, so drain ordering
 /// relative to publishers is free.
 pub fn install_topic_routes(services: &Services) {
-    services.bus.route_topic::<jinn_session_history_msg::HistoryAppended>(context_assembly_topic());
-    services.bus.route_topic::<jinn_domain::feat::context::protocol::event::ContextOverrideChanged>(context_assembly_topic());
-    services.bus.route_topic::<jinn_domain::protocol::system::ActiveSessionChanged>(context_assembly_topic());
-    services.bus.route_topic::<jinn_session_history_msg::ChatEntryPinChanged>(context_assembly_topic());
+    services
+        .bus
+        .route_topic::<jinn_session_history_msg::HistoryAppended>(context_assembly_topic());
+    services
+        .bus
+        .route_topic::<jinn_domain::feat::context::protocol::event::ContextOverrideChanged>(
+            context_assembly_topic(),
+        );
+    services
+        .bus
+        .route_topic::<jinn_domain::protocol::system::ActiveSessionChanged>(
+            context_assembly_topic(),
+        );
+    services
+        .bus
+        .route_topic::<jinn_session_history_msg::ChatEntryPinChanged>(context_assembly_topic());
     services
         .bus
         .route_topic::<jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted>(
             context_assembly_topic(),
         );
 }
-

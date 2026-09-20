@@ -29,9 +29,9 @@
 use std::collections::BTreeSet;
 
 use trouper::actor::ActorPath;
-use trouper::context::MsgCtx;
 use trouper::actor::MsgHandler;
 use trouper::actor::ServiceActor;
+use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
 use jinn_domain::common::services::bus_service::BusService;

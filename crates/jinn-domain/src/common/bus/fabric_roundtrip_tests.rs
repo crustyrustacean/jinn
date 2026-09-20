@@ -136,11 +136,20 @@ where
 
     // Then the recorder receives exactly that message, decoded. Equality is
     // asserted through the serde representation — the fabric's wire format.
+    #[expect(
+        clippy::expect_used,
+        reason = "test helper: serialization failures fail the test"
+    )]
     let as_json = |m: &S::Message| serde_json::to_value(m).expect("message serializes");
     let messages = await_recorded(&recorder, 1, Duration::from_secs(5)).await;
     assert_eq!(messages.len(), 1, "exactly one delivery expected");
+    #[expect(
+        clippy::expect_used,
+        reason = "test helper: missing delivery fails the test"
+    )]
+    let first = messages.first().expect("exactly one delivery expected");
     assert_eq!(
-        as_json(&messages[0]),
+        as_json(first),
         as_json(&expected),
         "delivered payload must equal the published message"
     );
@@ -149,6 +158,7 @@ where
 /// A publish through a trouper-only `BusService` (the trouper leg
 /// post-demolition shape) still routes onto the fabric, proving the trouper
 /// is the primary path.
+#[rstest::rstest]
 #[tokio::test]
 async fn publish_on_trouper_only_bus_still_routes() {
     // Given a trouper-only fabric and a recorder for the message.
@@ -168,7 +178,12 @@ async fn publish_on_trouper_only_bus_still_routes() {
     // Then the recorder receives the message.
     let messages = await_recorded(&recorder, 1, Duration::from_secs(5)).await;
     assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].session_id, session);
+    #[expect(
+        clippy::expect_used,
+        reason = "test helper: missing delivery fails the test"
+    )]
+    let first = messages.first().expect("one delivery");
+    assert_eq!(first.session_id, session);
     // And the publish rode the shared domain topic.
     assert_eq!(
         probe.topic_for::<UserInteracted>(),
@@ -179,6 +194,7 @@ async fn publish_on_trouper_only_bus_still_routes() {
 /// A route registered for a message's schema moves its publishes off the
 /// default topic onto the routed one (slice-topic override) without
 /// affecting other messages' routing.
+#[rstest::rstest]
 #[tokio::test]
 async fn registered_route_moves_publishes_to_override_topic() {
     // Given a trouper-only fabric with a route for UserInteracted onto a
@@ -214,6 +230,7 @@ async fn registered_route_moves_publishes_to_override_topic() {
 
 /// Recording mode keeps capturing publishes verbatim (test-mode parity with
 /// the schema-routed trouper topic).
+#[rstest::rstest]
 #[tokio::test]
 async fn recording_mode_captures_published_messages() {
     // Given a recording bus and one fixed message.

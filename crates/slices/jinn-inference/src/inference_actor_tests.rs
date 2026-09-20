@@ -823,7 +823,7 @@ async fn handle_done_event_publishes_stream_completed_before_execute_tool_batch(
     // stream-completed first.
     assert_eq!(streams.len() + batches.len(), 2);
     assert!(
-        stream_rec.len() == 0,
+        stream_rec.is_empty(),
         "StreamCompleted was recorded before ExecuteToolBatch"
     );
 }

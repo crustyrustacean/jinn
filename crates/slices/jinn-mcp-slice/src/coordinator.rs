@@ -32,8 +32,8 @@ use trouper::registry::RegistryError;
 use crate::connection::{ConnectionState, ConnectionStateReply, McpActor, McpActorDeps};
 use jinn_domain::Services;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
-use jinn_domain::common::services::bus_service::jinn_domain_topic;
 use jinn_domain::common::services::bus_service::BusService;
+use jinn_domain::common::services::bus_service::jinn_domain_topic;
 use jinn_domain::feat::session::protocol::session_archived::SessionArchived;
 use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
 use jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted;
@@ -97,11 +97,14 @@ impl McpCoordinatorActor {
     /// Returns only after all subscriptions are live, so composition's
     /// orchestrator-before-coordinator and coordinator-before-EnvironmentLoaded
     /// contracts hold by construction.
-    pub async fn spawn(system: &trouper::system::ActorSystem, deps: McpCoordinatorActorDeps) -> ActorPath {
+    pub async fn spawn(
+        system: &trouper::system::ActorSystem,
+        deps: McpCoordinatorActorDeps,
+    ) -> ActorPath {
         let path = ActorPath::new(MCP_COORDINATOR_PATH);
         let bus = deps.deps.services.bus.clone();
         let system_for_start = system.clone();
-        trouper::builder::spawn_service_builder::<Self>(system)
+        let builder = trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
             .start_with({
                 move || {
@@ -127,15 +130,24 @@ impl McpCoordinatorActor {
             .handles::<RestartMcpServer>()
             .handles::<McpServerStatus>()
             .handles::<McpServerLog>()
-            .mailbox(64, trouper::inbox::OverloadPolicy::Block)
-            .start();
+            .mailbox(64, trouper::inbox::OverloadPolicy::Block);
+        // Test-only ask surface: `RestartForTest` carries the injectable
+        // startup budget the production `RestartMcpServer` message has no
+        // field for. Without the entry the loop drops the ask silently
+        // (no adapter for its schema) and the asker waits out its timeout.
+        #[cfg(test)]
+        let builder = builder.handles::<RestartForTest>();
+        builder.start();
         let topic = jinn_domain_topic();
-        bus.subscribe_topic::<SessionLoadCompleted>(&path, &topic).await;
+        bus.subscribe_topic::<SessionLoadCompleted>(&path, &topic)
+            .await;
         bus.subscribe_topic::<SessionCreated>(&path, &topic).await;
-        bus.subscribe_topic::<McpEnablementChanged>(&path, &topic).await;
+        bus.subscribe_topic::<McpEnablementChanged>(&path, &topic)
+            .await;
         bus.subscribe_topic::<SessionClosed>(&path, &topic).await;
         bus.subscribe_topic::<SessionArchived>(&path, &topic).await;
-        bus.subscribe_topic::<SessionTeardownFinished>(&path, &topic).await;
+        bus.subscribe_topic::<SessionTeardownFinished>(&path, &topic)
+            .await;
         bus.subscribe_topic::<RestartMcpServer>(&path, &topic).await;
         bus.subscribe_topic::<McpServerStatus>(&path, &topic).await;
         bus.subscribe_topic::<McpServerLog>(&path, &topic).await;
@@ -304,10 +316,7 @@ impl McpCoordinatorActor {
         // for it to complete, bounded by the restart timeout so a slow-boot
         // server can't hang the tool loop forever. The trouper ask carries
         // its own MANDATORY timeout — the outer bound covers startup too.
-        let reply = self
-            .system
-            .ask(actor_path, ConnectionState, timeout)
-            .await;
+        let reply = self.system.ask(actor_path, ConnectionState, timeout).await;
         let connected = match reply {
             Ok(value) => serde_json::from_value::<ConnectionStateReply>(value)
                 .map(|r| r.connected)
@@ -397,15 +406,15 @@ impl MsgHandler<RestartMcpServer> for McpCoordinatorActor {
         let outcome = self.restart_one(&msg.session_id, &msg.server).await;
         ctx.reply(RestartOutcome {
             ok: outcome.is_ok(),
-            error: outcome
-                .err()
-                .map(|e| match e {
+            error: outcome.err().map(|e| {
+                match e {
                     RestartError::UnknownServer => "UnknownServer",
                     RestartError::ConnectFailed => "ConnectFailed",
                     RestartError::Timeout => "Timeout",
                     RestartError::Mailbox => "Mailbox",
                 }
-                .to_owned()),
+                .to_owned()
+            }),
         });
     }
 }
@@ -449,15 +458,15 @@ impl MsgHandler<RestartForTest> for McpCoordinatorActor {
             .await;
         ctx.reply(RestartOutcome {
             ok: outcome.is_ok(),
-            error: outcome
-                .err()
-                .map(|e| match e {
+            error: outcome.err().map(|e| {
+                match e {
                     RestartError::UnknownServer => "UnknownServer",
                     RestartError::ConnectFailed => "ConnectFailed",
                     RestartError::Timeout => "Timeout",
                     RestartError::Mailbox => "Mailbox",
                 }
-                .to_owned()),
+                .to_owned()
+            }),
         });
     }
 }
@@ -500,7 +509,6 @@ mod lifecycle_tests {
     )]
 
     use std::collections::BTreeSet;
-
 
     use jinn_domain::common::actor_deps::ActorDeps;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
@@ -753,8 +761,7 @@ mod lifecycle_tests {
         // The handler replies with RestartOutcome even on failure.
         let timed_out: bool = match &reply {
             Ok(value) => {
-                let outcome: super::RestartOutcome =
-                    serde_json::from_value(value.clone()).unwrap();
+                let outcome: super::RestartOutcome = serde_json::from_value(value.clone()).unwrap();
                 !outcome.ok && outcome.error.as_deref() == Some("Timeout")
             }
             Err(_) => false,
@@ -921,7 +928,6 @@ mod lifecycle_tests {
 #[cfg(test)]
 mod status_tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
-
 
     use jinn_domain::common::actor_deps::ActorDeps;
     use jinn_domain::common::app_state::AppState;

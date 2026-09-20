@@ -17,8 +17,13 @@ use crate::inference_topic;
 /// register on the bus in their own `on_start`, so drain ordering
 /// relative to publishers is free.
 pub fn install_topic_routes(services: &Services) {
-    services.bus.route_topic::<jinn_inference_msg::SendToLlmProvider>(inference_topic());
-    services.bus.route_topic::<jinn_inference_msg::CancelStream>(inference_topic());
-    services.bus.route_topic::<jinn_inference_msg::StreamCompleted>(inference_topic());
+    services
+        .bus
+        .route_topic::<jinn_inference_msg::SendToLlmProvider>(inference_topic());
+    services
+        .bus
+        .route_topic::<jinn_inference_msg::CancelStream>(inference_topic());
+    services
+        .bus
+        .route_topic::<jinn_inference_msg::StreamCompleted>(inference_topic());
 }
-

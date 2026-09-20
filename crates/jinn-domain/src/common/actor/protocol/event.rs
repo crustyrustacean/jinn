@@ -11,7 +11,6 @@ pub use jinn_slices::fabric::ActorShutdownCompleted;
 pub use jinn_slices::fabric::ActorStarted;
 pub use jinn_slices::fabric::ActorStarting;
 
-
 use serde::{Deserialize, Serialize};
 
 /// All actors have been spawned.

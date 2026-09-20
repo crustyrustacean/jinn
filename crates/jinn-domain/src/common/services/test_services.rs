@@ -271,9 +271,9 @@ impl TestServices {
         let bus = if let Some(override_bus) = self.bus_override {
             override_bus
         } else {
-            super::bus_service::BusService::new_trouper(
-                trouper::system::ActorSystem::new(trouper::system::SystemConfig::production()),
-            )
+            super::bus_service::BusService::new_trouper(trouper::system::ActorSystem::new(
+                trouper::system::SystemConfig::production(),
+            ))
         };
         let bridge = if bus.is_recording() {
             // Recording mode — no real bus, no bridge needed.

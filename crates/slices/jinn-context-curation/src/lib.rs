@@ -38,6 +38,14 @@ use jinn_slices::SliceHost;
 ///
 /// Composition drains the staged routes after activation (the wiring
 /// helper's `finalize` + drain pattern).
+/// # Panics
+///
+/// Panics if any worker's trouper spawn or topic subscription fails —
+/// both are wiring bugs that must abort composition.
+#[expect(
+    clippy::expect_used,
+    reason = "a failed topic subscription is a wiring bug that must abort composition"
+)]
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
     prune_workers: Vec<Box<dyn worker::HistoryWorker>>,

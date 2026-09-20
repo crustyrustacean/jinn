@@ -250,7 +250,11 @@ impl Drop for StalledScan {
         let fifo = self.fifo.clone();
         let release = Arc::clone(&self.release);
         std::thread::spawn(move || {
-            Self::write_and_close(&fifo, &release, b"+++\nname = \"d\"\ndescription = \"d\"\n+++\nd");
+            Self::write_and_close(
+                &fifo,
+                &release,
+                b"+++\nname = \"d\"\ndescription = \"d\"\n+++\nd",
+            );
         });
     }
 }
@@ -469,7 +473,7 @@ async fn wait_for_summary(wired: &Wired) {
 
 /// Polls `check` until it passes or the retry budget runs out.
 async fn wait_for(check: impl Fn() -> bool) {
-    for _ in 0..300 {
+    for _ in 0..1200 {
         if check() {
             return;
         }
@@ -498,10 +502,10 @@ async fn worker_live(fabric: &jinn_testutil::TestFabric, session_id: &SessionId)
 /// Passivation clears the entity from the export's actor list, and the
 /// next trigger re-activates it: the scan completes and the summary
 /// posts again (the notifier's observable side effect).
-#[rstest::rstest]
 // 30s, not the 10s default: the test waits out the worker's 5s idle
 // passivation window (plus scans) and its own 20s retry budget only
 // fits under 30.
+#[rstest::rstest]
 #[timeout(Duration::from_secs(30))]
 #[tokio::test]
 async fn idle_worker_passivates_and_reactivates_on_next_trigger() {

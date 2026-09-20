@@ -77,6 +77,10 @@ pub fn scan(themes_dir: &Path, system_themes_dir: &Path) -> ThemeEntries {
 }
 
 /// Merges one directory's discoveries into the accumulated set.
+#[expect(
+    clippy::print_stderr,
+    reason = "host-side diagnostics: the theme loader runs before tracing exists"
+)]
 fn merge_dir(
     defs: &mut std::collections::BTreeMap<String, jinn_theme::Theme>,
     found: Vec<(String, std::path::PathBuf)>,
@@ -94,6 +98,10 @@ fn merge_dir(
 }
 
 /// Notes a directory scan failure on stderr (host-side diagnostics).
+#[expect(
+    clippy::print_stderr,
+    reason = "host-side diagnostics before tracing is available in the theme loader"
+)]
 fn note_scan_failure(dir: &Path, report: &error_stack::Report<jinn_theme::ThemeError>) {
     eprintln!("theme-slice: scan failed for {}: {report}", dir.display());
 }

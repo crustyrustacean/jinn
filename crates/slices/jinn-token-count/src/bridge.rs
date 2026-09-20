@@ -17,7 +17,9 @@ use crate::token_count_topic;
 /// register on the bus in their own `on_start`, so drain ordering
 /// relative to publishers is free.
 pub fn install_topic_routes(services: &Services) {
-    services.bus.route_topic::<jinn_session_history_msg::HistoryAppended>(token_count_topic());
+    services
+        .bus
+        .route_topic::<jinn_session_history_msg::HistoryAppended>(token_count_topic());
     services.bus.route_topic::<jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted>(token_count_topic());
     services
         .bus
@@ -25,4 +27,3 @@ pub fn install_topic_routes(services: &Services) {
             token_count_topic(),
         );
 }
-
