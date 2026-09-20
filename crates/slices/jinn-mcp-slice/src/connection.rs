@@ -38,7 +38,6 @@ use trouper::registry::RegistryError;
 use error_stack::{Report, ResultExt as _};
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
-use jinn_domain::common::services::bus_service::jinn_domain_topic;
 use jinn_domain::protocol::SessionId;
 use jinn_mcp_msg::{McpConnectionStatus, McpServerLog, McpServerStatus};
 use jinn_mcp_msg::{McpServerConfig, TransportKind};
@@ -657,7 +656,6 @@ impl McpActor {
             deps.session_id,
             SEQ.fetch_add(1, Ordering::SeqCst)
         ));
-        let bus = deps.deps.services.bus.clone();
         let deps_for_start = deps.clone();
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
@@ -665,12 +663,11 @@ impl McpActor {
                 let deps = deps_for_start.clone();
                 Box::pin(async move { start_mcp(deps).await.map_err(|e| match e {}) })
             })
+            .subscribe::<ExecuteTool>()
             .handles::<ExecuteTool>()
             .handles::<ConnectionState>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        bus.subscribe_topic::<ExecuteTool>(&path, &jinn_domain_topic())
-            .await;
         path
     }
 }

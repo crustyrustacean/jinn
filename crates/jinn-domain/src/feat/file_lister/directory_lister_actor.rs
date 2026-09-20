@@ -94,10 +94,6 @@ impl DirectoryListerActor {
         clippy::needless_pass_by_value,
         reason = "port convention: spawn takes owned deps and clones into start_with"
     )]
-    #[expect(
-        clippy::expect_used,
-        reason = "a failed topic subscription is a wiring bug that must abort spawn"
-    )]
     pub fn spawn(
         system: &trouper::system::ActorSystem,
         deps: DirectoryListerActorDeps,
@@ -118,16 +114,10 @@ impl DirectoryListerActor {
                     })
                 }
             })
+            .subscribe::<ListDirectory>()
             .handles::<ListDirectory>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        system
-            .subscribe(
-                &path,
-                &crate::common::services::bus_service::jinn_domain_topic(),
-                None,
-            )
-            .expect("directory lister subscribes the domain topic");
         path
     }
 }

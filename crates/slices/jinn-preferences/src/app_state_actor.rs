@@ -74,6 +74,7 @@ impl AppStateActor {
                     })
                 }
             })
+            .subscribe::<UpdateAppState>()
             .start()
     }
 

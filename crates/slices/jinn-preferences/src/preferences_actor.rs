@@ -80,6 +80,7 @@ impl PreferencesActor {
                     })
                 }
             })
+            .subscribe::<UpdatePreferences>()
             .start()
     }
 

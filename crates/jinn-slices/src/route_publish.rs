@@ -2,7 +2,7 @@
 //! drains against.
 //!
 //! Implemented by the kernel's bus wrapper (`BusService`); slice crates
-//! only ever see this trait, so the fabric's routing table and its
+//! only ever see this trait, so the fabric's subscriber registry and its
 //! recording mode stay kernel-private while closures publish through
 //! the exact same path as every other emitter.
 

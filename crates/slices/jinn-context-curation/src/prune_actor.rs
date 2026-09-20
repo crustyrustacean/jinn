@@ -95,6 +95,7 @@ impl PruneActor {
                     })
                 }
             })
+            .subscribe::<HistoryAppended>()
             .handles::<HistoryAppended>()
             .start()
     }

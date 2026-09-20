@@ -169,20 +169,15 @@ impl InteractiveTermActor {
             .handles::<SendTermInput>()
             .handles::<KillTerm>()
             .handles::<SendTermKey>()
+            .subscribe::<SendTermKey>()
             .handles::<ResizeTerm>()
+            .subscribe::<jinn_domain::feat::session::protocol::session_closed::SessionClosed>()
+            // Teardown sub: a closed chat session takes its terminal with
+            // it (the pty drop kills the process group) instead of
+            // outliving the session until app exit.
             .handles::<jinn_domain::feat::session::protocol::session_closed::SessionClosed>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        // Teardown sub: a closed chat session takes its terminal with it
-        // (the pty drop kills the process group) instead of outliving the
-        // session until app exit.
-        system
-            .subscribe(
-                &path,
-                &jinn_domain::common::services::bus_service::jinn_domain_topic(),
-                None,
-            )
-            .expect("term coordinator subscribes the domain topic");
         (path, controls)
     }
 }

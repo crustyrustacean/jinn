@@ -49,7 +49,7 @@ impl DiscoveryNotifier {
     /// Panics if the topic subscription fails, which can only happen on
     /// a broken actor system.
     pub fn spawn(system: &ActorSystem, state: State) -> ActorPath {
-        let path = trouper::builder::spawn_service_builder::<Self>(system)
+        trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(crate::NOTIFIER_PATH))
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start_with({
@@ -63,17 +63,9 @@ impl DiscoveryNotifier {
                     })
                 }
             })
+            .subscribe::<SessionDiscoverySettled>()
             .handles::<SessionDiscoverySettled>()
-            .start();
-
-        #[expect(
-            clippy::expect_used,
-            reason = "subscription failure is a broken actor system, not a caller bug"
-        )]
-        system
-            .subscribe(&path, &crate::settled_topic(), None)
-            .expect("discovery notifier subscribes to the settled topic");
-        path
+            .start()
     }
 
     /// Writes the summary entry into the session, dropping silently if

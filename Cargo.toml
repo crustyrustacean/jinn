@@ -46,6 +46,7 @@ debug = 0
 
 [patch.crates-io]
 tiktoken = { path = "vendor/tiktoken" }
+trouper = { path = "/mnt/zed/repos/trouper/trouper-sdk/crates/trouper" }
 
 [lib]
 path = "src/lib.rs"
@@ -247,7 +248,8 @@ futures = "0.3"
 
 # The trouper actor runtime (published to crates.io; the SDK workspace
 # remains the development home — see .plans/actor-canvas/plan.md)
-trouper = "0.2.0"
+trouper = "0.3.4"
+
 
 # PTY + terminal emulation (interactive_term tool)
 portable-pty = "0.9"
@@ -445,3 +447,6 @@ verbose_file_reads = "warn"
 
 indexing_slicing = "deny"
 
+# trouper patched to the local SDK checkout: publishing privileges are
+# currently unavailable and 0.3.7 (one-Sent-fact-per-broadcast) is not on
+# crates.io — see .plans/schema-pubsub/notes.md.

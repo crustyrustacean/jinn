@@ -128,6 +128,8 @@ impl QueueActor {
                     })
                 }
             })
+            .subscribe::<SessionPhaseChanged>()
+            .subscribe::<DispatchTurn>()
             .handles::<SessionPhaseChanged>()
             .handles::<DispatchTurn>()
             .start()

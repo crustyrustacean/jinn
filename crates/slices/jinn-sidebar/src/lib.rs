@@ -10,7 +10,6 @@
 //! activation; a de-activated sidebar is inert by construction (no
 //! rows, no bindings, no cell, no actor).
 
-pub mod bridge;
 pub mod key_routes;
 pub mod overlay;
 pub mod sections;
@@ -18,15 +17,11 @@ pub mod sections;
 pub use jinn_sidebar_msg::sidebar_sections_slot;
 
 use jinn_slices::SliceHost;
-use trouper::schema::Schema;
 
 /// Activates the slice: mints the sidebar sections cell, attaches
-/// the sidebar's keybind rows plus the rename input hook, spawns the
-/// sessions-cursor clamp actor on trouper, and stages the slice's
-/// forward route (kernel `SessionClosed` → `jinn.sidebar`).
-///
-/// Composition drains the staged route after activation (see
-/// [`bridge::install_topic_routes`]).
+/// the sidebar's keybind rows plus the rename input hook, and spawns
+/// the sessions-cursor clamp actor on trouper (its `.subscribe`
+/// declaration of `SessionClosed` is the readiness point).
 ///
 /// # Panics
 ///
@@ -64,11 +59,5 @@ pub fn activate(
     // The sessions-cursor clamp actor: trouper, fed by the forward
     // route staged below. Subscribe is the readiness point — through
     // the host verb, so the slice never touches the system directly.
-    let path = sections::sidebar_state_actor::SidebarStateActor::spawn(host.system(), state);
-    host.subscribe_service(&path, &sections::sidebar_state_actor::sidebar_topic())
-        .expect("sidebar state actor subscribes to the sidebar topic");
-    host.forward::<jinn_domain::feat::session::protocol::session_closed::SessionClosed, _>(
-        sections::sidebar_state_actor::sidebar_topic(),
-        jinn_domain::feat::session::protocol::session_closed::SessionClosed::schema_def,
-    );
+    let _path = sections::sidebar_state_actor::SidebarStateActor::spawn(host.system(), state);
 }

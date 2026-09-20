@@ -50,12 +50,6 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         reason = "bootstrap assertion: a broken pairing must abort launch, not render blank"
     )]
     {
-        // Forward-bridge routes drain per slice: each relay registers on
-        // the bus in its own on_start, so spawns may land before or after
-        // the activations they serve. The dashboard's canvas actor
-        // consumes the fabric + nav topics through these relays.
-        jinn_dashboard::bridge::install_topic_routes(&services);
-        drain_quake_bar_routes(&services);
         let activated = jinn_dashboard::activate(&mut jinn_dashboard::SliceCtx {
             slices: &services.slices,
             key_routes: &services.key_routes,
@@ -183,15 +177,6 @@ fn activate_status_bar(services: &mut jinn_domain::Services) {
     }
 }
 
-/// Registers the quake-bar slice's schema→topic route rule.
-fn drain_quake_bar_routes(services: &jinn_domain::Services) {
-    services
-        .bus
-        .route_topic::<jinn_quake_bar::SubmitQuakeBarCommand>(
-            jinn_quake_bar::command::quake_bar_topic(),
-        );
-}
-
 /// Activates the session-init slice over the kernel's registries and
 /// drains its crossing routes.
 ///
@@ -205,24 +190,10 @@ fn drain_quake_bar_routes(services: &jinn_domain::Services) {
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 async fn activate_session_init(services: &mut jinn_domain::Services, core: &jinn_domain::AppCore) {
-    // `Services` is cheap to clone (Arc fields); the clone side-steps
-    // the host's mutable viewport borrow for the activation call.
-    let services_snapshot = services.clone();
     let state = core.state.clone();
-    let mut host = jinn_slices::SliceHost::new(
-        &services.slices,
-        &mut services.viewport,
-        &services.overlay_views,
-        &services.key_routes,
-        &services.trouper_system,
-    );
-    if let Err(error) = jinn_session_init::activate(&mut host, &services_snapshot, state) {
+    if let Err(error) = jinn_session_init::activate(services, state) {
         panic!("session-init slice activation failed: {error}");
     }
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("session-init slice finalize failed: {error}");
-    }
-    jinn_session_init::bridge::install_topic_routes(services);
 }
 
 /// A composed [`TuiApp`]: fake services plus every slice activated.
@@ -363,7 +334,6 @@ pub async fn activate_sidebar(services: &mut jinn_domain::Services, state: jinn_
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("sidebar slice finalize failed: {error}");
     }
-    jinn_sidebar::bridge::install_topic_routes(services);
 }
 
 /// Activates the token-count slice on the harness services. Async because
@@ -380,7 +350,6 @@ pub async fn activate_token_count(services: &mut jinn_domain::Services, state: j
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("token-count slice finalize failed: {error}");
     }
-    jinn_token_count::bridge::install_topic_routes(services);
 }
 
 /// Activates the turn-dispatch slice on the harness services (the queue
@@ -406,7 +375,6 @@ pub async fn activate_turn_dispatch(
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("turn-dispatch slice finalize failed: {error}");
     }
-    jinn_turn_dispatch::bridge::install_topic_routes(services);
 }
 
 /// Activates the inference slice: spawns the inference actor (trouper
@@ -426,7 +394,6 @@ pub async fn activate_inference(services: &mut jinn_domain::Services) {
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("inference slice finalize failed: {error}");
     }
-    jinn_inference::bridge::install_topic_routes(services);
 }
 
 pub fn activate_persona(services: &mut jinn_domain::Services) {

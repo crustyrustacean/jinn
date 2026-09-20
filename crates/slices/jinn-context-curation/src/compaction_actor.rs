@@ -99,6 +99,7 @@ impl CompactionActor {
                     })
                 }
             })
+            .subscribe::<TriggerCompaction>()
             .handles::<TriggerCompaction>()
             .start()
     }

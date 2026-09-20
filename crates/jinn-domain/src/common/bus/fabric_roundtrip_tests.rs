@@ -1,13 +1,15 @@
-//! Fabric roundtrip tests — the delivery contract of the `BusService` swap.
+//! Fabric roundtrip tests — the delivery contract of the schema-addressed
+//! bus.
 //!
-//! Every routed message must survive `publish` → trouper topic → schema
-//! adapter decode → subscriber. These tests validate the fabric itself, not
-//! any actor's behavior: a message goes in typed, comes out typed, intact.
+//! Every published message must survive `publish` → schema broadcast →
+//! adapter decode → subscriber. These tests validate the fabric itself,
+//! not any actor's behavior: a message goes in typed, comes out typed,
+//! intact.
 
 use std::time::Duration;
 
 use crate::common::bus::test_harness::{TestHarness, await_recorded};
-use crate::common::services::bus_service::{BusService, JINN_DOMAIN_TOPIC, RouteTestProbe};
+use crate::common::services::bus_service::BusService;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::provider::protocol::event::ProviderSwitched;
 use crate::feat::session::protocol::UserInteracted;
@@ -95,10 +97,10 @@ fn sample_tool_result() -> ToolResult {
 }
 
 // ---------------------------------------------------------------------------
-// Roundtrip: publish → topic → tap → decoded message
+// Roundtrip: publish → broadcast → tap → decoded message
 // ---------------------------------------------------------------------------
 
-/// One publish of each routed message arrives at the subscriber decoded and
+/// One publish of each message arrives at the subscriber decoded and
 /// intact — the fabric carries the message without loss or mutation.
 #[rstest::rstest]
 #[case::chat_entry_submitted(ChatEntrySubmittedSample(ChatEntrySubmitted {
@@ -155,16 +157,15 @@ where
     );
 }
 
-/// A publish through a trouper-only `BusService` (the trouper leg
-/// post-demolition shape) still routes onto the fabric, proving the trouper
-/// is the primary path.
+/// A publish through the `BusService` still delivers on the fabric
+/// without any route registration — the schema declaration on the
+/// subscriber is the only wiring a publish needs.
 #[rstest::rstest]
 #[tokio::test]
 async fn publish_on_trouper_only_bus_still_routes() {
-    // Given a trouper-only fabric and a recorder for the message.
+    // Given a fabric with no routes and a recorder for the message.
     let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
     let bus = BusService::new_trouper(system.clone());
-    let probe = RouteTestProbe::attach(&bus);
     let harness = TestHarness::from_parts(bus.clone(), system);
     let recorder = harness.spawn_recorder::<UserInteracted>().await;
     let session = fresh_session();
@@ -184,52 +185,10 @@ async fn publish_on_trouper_only_bus_still_routes() {
     )]
     let first = messages.first().expect("one delivery");
     assert_eq!(first.session_id, session);
-    // And the publish rode the shared domain topic.
-    assert_eq!(
-        probe.topic_for::<UserInteracted>(),
-        Some(JINN_DOMAIN_TOPIC.to_owned())
-    );
 }
 
-/// A route registered for a message's schema moves its publishes off the
-/// default topic onto the routed one (slice-topic override) without
-/// affecting other messages' routing.
-#[rstest::rstest]
-#[tokio::test]
-async fn registered_route_moves_publishes_to_override_topic() {
-    // Given a trouper-only fabric with a route for UserInteracted onto a
-    // slice topic, and a recorder.
-    let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-    let bus = BusService::new_trouper(system.clone());
-    let probe = RouteTestProbe::attach(&bus);
-    bus.route_topic::<UserInteracted>(trouper::topics::Topic::new("session.slice"));
-    let harness = TestHarness::from_parts(bus.clone(), system);
-    let recorder = harness.spawn_recorder::<UserInteracted>().await;
-    let session = fresh_session();
-
-    // When publishing the routed message.
-    bus.publish(UserInteracted {
-        session_id: session.clone(),
-    })
-    .await;
-
-    // Then delivery still completes.
-    let messages = await_recorded(&recorder, 1, Duration::from_secs(5)).await;
-    assert_eq!(messages.len(), 1);
-    // And the publish rode the override topic, not the default.
-    assert_eq!(
-        probe.topic_for::<UserInteracted>(),
-        Some("session.slice".to_owned())
-    );
-    // And unrouted schemas kept the default topic.
-    assert_eq!(
-        probe.topic_for::<ProviderSwitched>(),
-        Some(JINN_DOMAIN_TOPIC.to_owned())
-    );
-}
-
-/// Recording mode keeps capturing publishes verbatim (test-mode parity with
-/// the schema-routed trouper topic).
+/// Recording mode keeps capturing publishes verbatim (test-mode parity
+/// with the schema broadcast).
 #[rstest::rstest]
 #[tokio::test]
 async fn recording_mode_captures_published_messages() {

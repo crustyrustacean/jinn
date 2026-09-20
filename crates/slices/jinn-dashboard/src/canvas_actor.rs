@@ -74,7 +74,7 @@ impl DashboardCanvasActor {
     /// Panics if the topic subscriptions fail, which can only happen on a
     /// broken actor system; the spawn-then-activate ordering relies on it.
     pub fn spawn(system: &ActorSystem, cell: &TypedCell<DashboardState>) -> ActorPath {
-        let path = trouper::builder::spawn_service_builder::<Self>(system)
+        trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("dashboard"))
             // Deep inbox: the startup lifecycle burst (hundreds of
             // events in under a second) must not fill the dashboard's
@@ -85,27 +85,17 @@ impl DashboardCanvasActor {
                 let cell = cell.clone();
                 move || Box::pin(async move { Ok(Self { cell }) })
             })
+            .subscribe::<ActorStarting>()
+            .subscribe::<ActorStarted>()
+            .subscribe::<ActorShutdownCompleted>()
+            .subscribe::<ServiceStatusUpdate>()
+            .subscribe::<DashboardNav>()
             .handles::<ActorStarting>()
             .handles::<ActorStarted>()
             .handles::<ActorShutdownCompleted>()
             .handles::<ServiceStatusUpdate>()
             .handles::<DashboardNav>()
-            .start();
-        #[expect(
-            clippy::expect_used,
-            reason = "subscription failure is a broken actor system, not a caller bug;                       the spawn-then-activate ordering relies on the cursor being registered"
-        )]
-        system
-            .subscribe(&path, &crate::bridge::fabric_topic(), None)
-            .expect("dashboard actor subscribes to the fabric topic");
-        #[expect(
-            clippy::expect_used,
-            reason = "subscription failure is a broken actor system, not a caller bug"
-        )]
-        system
-            .subscribe(&path, &crate::bridge::dashboard_topic(), None)
-            .expect("dashboard actor subscribes to the dashboard topic");
-        path
+            .start()
     }
 
     /// Folds an [`ActorStarting`] into the cell.
@@ -265,7 +255,7 @@ mod tests {
                     name: "llm".to_owned(),
                     description: None,
                 },
-                &crate::bridge::fabric_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 
@@ -288,7 +278,7 @@ mod tests {
                     name: "llm".to_owned(),
                     description: Some("LlmActor".to_owned()),
                 },
-                &crate::bridge::fabric_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
         wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
@@ -300,7 +290,7 @@ mod tests {
                     name: "llm".to_owned(),
                     description: Some("LlmActor".to_owned()),
                 },
-                &crate::bridge::fabric_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 
@@ -333,7 +323,7 @@ mod tests {
                     name: "llm".to_owned(),
                     description: Some("LlmActor".to_owned()),
                 },
-                &crate::bridge::fabric_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
         wait_for(|| {
@@ -348,7 +338,7 @@ mod tests {
                     name: "llm".to_owned(),
                     description: Some("LlmActor".to_owned()),
                 },
-                &crate::bridge::fabric_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
         wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
@@ -374,7 +364,7 @@ mod tests {
                     name: "llm".to_owned(),
                     description: None,
                 },
-                &crate::bridge::fabric_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
         wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
@@ -385,7 +375,7 @@ mod tests {
                 &ActorShutdownCompleted {
                     name: "llm".to_owned(),
                 },
-                &crate::bridge::fabric_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 
@@ -408,7 +398,7 @@ mod tests {
                     name: "sample-actor".to_owned(),
                     description: None,
                 },
-                &crate::bridge::fabric_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
         wait_for(|| dashboard_entry(&cell, "sample-actor").is_some()).await;
@@ -422,7 +412,7 @@ mod tests {
                     lifecycle: None,
                     status_message: Some("3 urls verified".to_owned()),
                 },
-                &crate::bridge::fabric_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 
@@ -447,7 +437,7 @@ mod tests {
                         name: name.to_owned(),
                         description: None,
                     },
-                    &crate::bridge::fabric_topic(),
+                    &trouper::topics::Topic::new("unused"),
                 )
                 .await;
         }
@@ -455,10 +445,10 @@ mod tests {
 
         // When DashboardNav::Down envelopes arrive twice.
         fabric
-            .send_to_topic(&DashboardNav::Down, &crate::bridge::dashboard_topic())
+            .send_to_topic(&DashboardNav::Down, &trouper::topics::Topic::new("unused"))
             .await;
         fabric
-            .send_to_topic(&DashboardNav::Down, &crate::bridge::dashboard_topic())
+            .send_to_topic(&DashboardNav::Down, &trouper::topics::Topic::new("unused"))
             .await;
 
         // Then the cursor lands on the third row.

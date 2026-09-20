@@ -91,6 +91,8 @@ impl TokenCountActor {
                     })
                 }
             })
+            .subscribe::<HistoryAppended>()
+            .subscribe::<SessionLoadCompleted>()
             .handles::<HistoryAppended>()
             .handles::<SessionLoadCompleted>()
             .start()

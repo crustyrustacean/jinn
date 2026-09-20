@@ -446,16 +446,10 @@ mod tests {
                     Box::pin(async move { Ok(CwdRecorder { buffer }) })
                 }
             })
+            .subscribe::<SetSessionCwd>()
             .handles::<SetSessionCwd>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        system
-            .subscribe(
-                &path,
-                &jinn_domain::common::services::bus_service::jinn_domain_topic(),
-                None,
-            )
-            .expect("recorder subscribes the domain topic");
         let bridge = Bridge::with_handle(bus.clone(), handle);
         (bus, bridge, buffer)
     }

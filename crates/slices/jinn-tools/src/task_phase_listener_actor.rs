@@ -27,7 +27,6 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::common::services::bus_service::jinn_domain_topic;
 use jinn_domain::feat::session::phase_machine::PhaseKind;
 use jinn_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use jinn_domain::protocol::SessionId;
@@ -76,7 +75,6 @@ impl TaskPhaseListenerActor {
             "jinn.tools.task-phase-listener.{}",
             SEQ.fetch_add(1, Ordering::SeqCst)
         ));
-        let bus = deps.bus.clone();
         let child_id = deps.child_id.clone();
         let completion = deps.completion;
         trouper::builder::spawn_service_builder::<Self>(&deps.system)
@@ -91,14 +89,12 @@ impl TaskPhaseListenerActor {
                     })
                 })
             })
+            .subscribe::<SessionPhaseChanged>()
             .handles::<SessionPhaseChanged>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        // Subscribe via the bus so routed topics stay the single source of
-        // truth. The `task` tool publishes `SessionCreated` only after this
-        // subscribe returns.
-        bus.subscribe_topic::<SessionPhaseChanged>(&path, &jinn_domain_topic())
-            .await;
+        // The declaration is the readiness point: the `task` tool
+        // publishes phase events only after this returns.
         path
     }
 }

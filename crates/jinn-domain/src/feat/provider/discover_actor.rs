@@ -71,10 +71,6 @@ impl DiscoverActor {
     ///
     /// Panics if the actor's path is already taken or its topic
     /// subscription fails — both mean a wiring bug at composition.
-    #[expect(
-        clippy::expect_used,
-        reason = "a failed topic subscription is a wiring bug that must abort spawn"
-    )]
     pub fn spawn(system: &trouper::system::ActorSystem, deps: DiscoverActorDeps) -> ActorPath {
         let path = ActorPath::new(DISCOVER_ACTOR_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
@@ -94,13 +90,6 @@ impl DiscoverActor {
             .handles::<RefreshModels>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        system
-            .subscribe(
-                &path,
-                &crate::common::services::bus_service::jinn_domain_topic(),
-                None,
-            )
-            .expect("discover actor subscribes the domain topic");
         path
     }
 }
@@ -265,7 +254,8 @@ mod tests {
     use crate::feat::provider::protocol::command::RefreshModels;
     use crate::feat::provider::protocol::event::ModelsRefreshed;
 
-    use super::{DiscoverActor, DiscoverActorDeps};
+    use super::{DISCOVER_ACTOR_PATH, DiscoverActor, DiscoverActorDeps};
+    use trouper::actor::ActorPath;
 
     #[rstest::rstest]
     #[tokio::test]
@@ -283,8 +273,13 @@ mod tests {
         );
         let recorder = harness.spawn_recorder::<ModelsRefreshed>().await;
 
-        // When publishing RefreshModels.
-        harness.publish(RefreshModels).await;
+        // When telling the actor to refresh (RefreshModels is a COMMAND:
+        // point-to-point to the actor's path, not a broadcast).
+        harness
+            .system()
+            .tell(ActorPath::new(DISCOVER_ACTOR_PATH), RefreshModels)
+            .await
+            .expect("command delivers to the discover actor");
 
         // Then a ModelsRefreshed event is emitted (with empty results).
         let events = await_recorded(&recorder, 1, Duration::from_secs(2)).await;

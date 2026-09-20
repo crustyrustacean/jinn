@@ -736,29 +736,18 @@ fn write_context(
 /// Called from resource tasks (after the actor's handle has moved on),
 /// so it goes through the captured system handle rather than an actor
 /// context.
+/// Broadcasts the event by schema: every `.subscribe` declarant
+/// receives it (the notifier and the task settle listener among them).
 async fn publish<M>(system: &ActorSystem, msg: M)
 where
     M: trouper::schema::Schema + serde::Serialize,
 {
-    let topic = trouper::topics::Topic::new("jinn.domain");
-    publish_on_topic(system, msg, topic).await;
+    system.publish(&msg).await;
 }
 
-/// Publishes onto the slice-internal settle topic — the topic the
-/// notifier subscribes (relay-era parity: the deleted bridge used to
-/// carry the settle event from the kernel topic to this one).
+/// Settled is published the same way — its subscriber is the notifier.
 async fn publish_settled(system: &ActorSystem, msg: SessionDiscoverySettled) {
-    publish_on_topic(system, msg, crate::settled_topic()).await;
-}
-
-async fn publish_on_topic<M>(system: &ActorSystem, msg: M, topic: trouper::topics::Topic)
-where
-    M: trouper::schema::Schema + serde::Serialize,
-{
-    let payload = serde_json::to_value(&msg).unwrap_or(serde_json::Value::Null);
-    let event = trouper::envelope::Event::new(M::schema_id(), payload);
-    let envelope = system.envelope_to_topic(event, topic);
-    let _ = system.send(envelope).await;
+    system.publish(&msg).await;
 }
 
 impl MsgHandler<RunDiscovery> for SessionDiscoveryWorker {

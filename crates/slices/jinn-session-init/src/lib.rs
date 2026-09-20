@@ -15,7 +15,6 @@
 //! kernel consumers — the session actor and the subagent task-settle
 //! listener — are unchanged.
 
-pub mod bridge;
 pub mod commands;
 pub mod contracts;
 pub mod notifier;
@@ -31,17 +30,7 @@ pub use contracts::DiscoverySnapshot;
 pub use contracts::SessionDiscoverySettled;
 
 use jinn_domain::common::state::State;
-use jinn_slices::AppSliceHost;
-use trouper::schema::Schema;
-use trouper::topics::Topic;
 use wherror::Error;
-
-/// The trouper topic session-lifecycle triggers and manual rescans
-/// cross on (kernel topic → supervisor).
-#[must_use]
-pub fn session_init_topic() -> Topic {
-    Topic::new("jinn.session-init")
-}
 
 /// The public path of the discovery partition set. Keyed commands are
 /// addressed here; the kernel resolves `<public>/<session_id>` and
@@ -57,89 +46,28 @@ pub const SUPERVISOR_PATH: &str = "session-init-supervisor";
 /// The discovery notifier's static path.
 pub const NOTIFIER_PATH: &str = "discovery-notifier";
 
-/// The trouper topic the settled event crosses on (worker → notifier).
-#[must_use]
-pub fn settled_topic() -> Topic {
-    Topic::new("SessionDiscoverySettled")
-}
-
-/// Stages the slice's crossing routes on the host.
-///
-/// The 7 triggers forward onto the shared [`session_init_topic`]; the 3
-/// loaded events return via reverse relays, each publishing onto its
-/// schema-named topic — the exact topics [`bridge::install_topic_routes`]
-/// subscribes its relays to.
-fn stage_routes(host: &mut AppSliceHost<'_>) {
-    let topic = session_init_topic();
-
-    host.forward::<jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated, _>(
-        topic.clone(),
-        jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated::schema_def,
-    );
-    host.forward::<jinn_session_msg::SessionSetupCompleted, _>(topic.clone(), || {
-        jinn_session_msg::SessionSetupCompleted::schema_def()
-    });
-    host.forward::<jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted, _>(topic.clone(), || {
-        jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted::schema_def()
-    });
-    host.forward::<jinn_domain::feat::session_lifecycle::protocol::event::SessionCwdChanged, _>(
-        topic.clone(),
-        jinn_domain::feat::session_lifecycle::protocol::event::SessionCwdChanged::schema_def,
-    );
-    host.forward::<crate::commands::RunDiscovery, _>(topic.clone(), || {
-        crate::commands::RunDiscovery::schema_def()
-    });
-    host.forward::<crate::commands::RescanSkills, _>(topic.clone(), || {
-        crate::commands::RescanSkills::schema_def()
-    });
-    host.forward::<crate::commands::RescanPrompts, _>(topic.clone(), || {
-        crate::commands::RescanPrompts::schema_def()
-    });
-    host.forward::<crate::commands::RescanContext, _>(topic, || {
-        crate::commands::RescanContext::schema_def()
-    });
-
-    host.reverse::<jinn_skills_msg::SkillsLoaded, _>(
-        Topic::new("SkillsLoaded"),
-        jinn_skills_msg::SkillsLoaded::schema_def,
-    );
-    host.reverse::<jinn_domain::feat::provider::protocol::event::PromptTemplatesLoaded, _>(
-        Topic::new("PromptTemplatesLoaded"),
-        jinn_domain::feat::provider::protocol::event::PromptTemplatesLoaded::schema_def,
-    );
-    host.reverse::<jinn_domain::feat::context::protocol::event::ContextFilesLoaded, _>(
-        Topic::new("ContextFilesLoaded"),
-        jinn_domain::feat::context::protocol::event::ContextFilesLoaded::schema_def,
-    );
-}
-
 /// Error activating the session-init slice.
 #[derive(Debug, Error)]
 #[error(debug)]
 pub struct SliceActivateError;
 
-/// Activates the session-init slice: install the discovery partition
-/// set, spawn the supervisor and notifier on the trouper fabric, and
-/// stage this slice's crossing routes (the forward triggers on
-/// [`session_init_topic`], the reverse results back onto the kernel topic).
+/// Activates the session-init slice: installs the discovery partition
+/// set and spawns the supervisor + notifier on the trouper fabric (their
+/// `.subscribe` declarations are the readiness point).
 ///
-/// Composition drains the staged routes after activation (see
-/// [`bridge::install_topic_routes`]); both call sites must precede the
-/// readiness `EnvironmentLoaded` publish so no trigger is missed.
+/// Must precede the readiness `EnvironmentLoaded` publish so no trigger
+/// is missed.
 ///
 /// # Errors
 ///
 /// Returns [`SliceActivateError`] when the partition set install
 /// fails — its shard-key declaration is validated at install.
 pub fn activate(
-    host: &mut AppSliceHost<'_>,
     services: &jinn_domain::Services,
     state: State,
 ) -> Result<(), error_stack::Report<SliceActivateError>> {
     let system = services.trouper_system.clone();
     install_actors(&system, services.paths.clone(), state)?;
-
-    stage_routes(host);
 
     Ok(())
 }

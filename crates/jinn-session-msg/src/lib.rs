@@ -111,12 +111,6 @@ pub struct SessionArchived {
 
 // ── wire contracts ──────────────────────────────────────────────────
 
-/// The trouper topic the session family's events cross on.
-#[must_use]
-pub fn session_topic() -> trouper::topics::Topic {
-    trouper::topics::Topic::new("jinn.session")
-}
-
 impl jinn_slices::BusMessage for PhaseKind {}
 impl jinn_slices::BusMessage for SessionPhaseChanged {}
 impl jinn_slices::BusMessage for SessionSetupCompleted {}

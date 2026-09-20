@@ -5,22 +5,19 @@
 //!
 //! 1. folded into the authoritative connection cell
 //!    ([`discord_connection_slot`]),
-//! 2. published on the trouper `jinn.discord` topic (the slice's
-//!    EXPORT face — no forward bridge route exists for this type),
+//! 2. broadcast on the fabric by schema (the slice's EXPORT face),
 //! 3. translated into the dashboard's generic
 //!    [`ServiceStatusUpdate`] vocabulary and published on the
-//!    bus, whose forward relay still feeds the fabric events topic.
+//!    bus.
 //!
 //! The gateway task is a plain tokio task, so the channel stays kanal;
 //! the drain loop is spawned from the actor's construction and the
 //! actor path doubles as the readiness point.
 
 use jinn_discord_msg::DiscordStatusUpdate;
-use jinn_discord_msg::discord_topic;
 use jinn_slices::ServiceStatusUpdate;
 use jinn_slices::TypedCell;
 use trouper::actor::ServiceActor;
-use trouper::envelope::Event;
 use trouper::system::ActorSystem;
 
 /// Discord's own connection fact, folded by [`DiscordStatusActor`].
@@ -152,24 +149,12 @@ async fn drain_status_channel(
 ) {
     while let Ok(update) = rx.recv().await {
         cell.update(|state| fold_connection(state, &update));
-        // Native event on the fabric: the dashboard subscribes the
-        // topic directly (this is why no forward route exists for the
-        // type).
-        let payload = serde_json::to_value(&update).unwrap_or(serde_json::Value::Null);
-        let event = Event::new(
-            <DiscordStatusUpdate as trouper::schema::Schema>::schema_id(),
-            payload,
-        );
-        if let Err(_unroutable) = system
-            .send(system.envelope_to_topic(event, discord_topic()))
-            .await
-        {
-            tracing::warn!("discord status topic send was unroutable");
-        }
+        // Native event on the fabric: every declarant subscriber
+        // receives it.
+        system.publish(&update).await;
         // The dashboard consumes only the generic projection; discord's
         // row identity travels inside it, so the dashboard stays
-        // feature-agnostic. The forward relay (drained at composition)
-        // carries it to the fabric events topic.
+        // feature-agnostic.
         let () = bus.publish(to_service_update(&update)).await;
     }
 }
@@ -305,8 +290,8 @@ mod tests {
             .start();
         fabric
             .system()
-            .subscribe(&probe_path, &jinn_discord_msg::discord_topic(), None)
-            .expect("probe subscribes");
+            .declare_subscriber::<DiscordStatusUpdate>(&probe_path)
+            .expect("probe declares its subscription");
         let deps = DiscordStatusActorDeps {
             status_rx: rx.to_async(),
             cell: connection,

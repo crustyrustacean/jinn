@@ -28,12 +28,6 @@ pub struct TriggerCompaction {
     pub compact_all: bool,
 }
 
-/// The trouper topic the context-curation slice's contracts cross on.
-#[must_use]
-pub fn curation_topic() -> trouper::topics::Topic {
-    trouper::topics::Topic::new("jinn.context-curation")
-}
-
 impl jinn_slices::BusMessage for TriggerCompaction {}
 
 jinn_slices::crossing_schema!(TriggerCompaction, "TriggerCompaction",

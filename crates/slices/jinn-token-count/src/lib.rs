@@ -11,32 +11,18 @@
 //! Kernel dependency (see Cargo.toml): both actors write through tcaps
 //! (State + SessionCap), granted at activation.
 
-pub mod bridge;
 pub mod count_actor;
 pub mod eviction_actor;
-
-use trouper::schema::Schema;
 
 use jinn_slices::SliceHost;
 
 pub use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 pub use jinn_token_count_msg::token_cache_slot;
 
-/// The token-count slice's crossing topic (`jinn.token-count`): kernel
-/// session events forward onto it for the slice's actors.
-#[must_use]
-pub fn token_count_topic() -> trouper::topics::Topic {
-    trouper::topics::Topic::new("jinn.token-count")
-}
-
 /// Activates the slice: registers the shared token-cache cell, spawns the
-/// count + eviction actors on trouper and subscribes them to the
-/// [`token_count_topic`] (the readiness point), stages the slice's three
-/// forward routes, and returns the cache for composition to hand to the
-/// kernel consumers (session actor, prune workers).
-///
-/// Composition drains the staged routes after activation (see
-/// [`bridge::install_topic_routes`]).
+/// count + eviction actors on trouper (their `.subscribe` declarations
+/// are the readiness point), and returns the cache for composition to
+/// hand to the kernel consumers (session actor, prune workers).
 ///
 /// # Panics
 ///
@@ -55,30 +41,11 @@ pub fn activate(
         .register_cell(token_cache_slot(), cache.clone())
         .expect("token-count slot is registered exactly once at wiring");
 
-    let count_path = count_actor::TokenCountActor::spawn(host.system(), state);
-    host.subscribe_service(&count_path, &token_count_topic())
-        .expect("token count actor subscribes to the token-count topic");
-    let eviction_path = eviction_actor::HistoryWorkerChatEntryTokenCacheEvictionActor::spawn(
+    let _count_path = count_actor::TokenCountActor::spawn(host.system(), state);
+    let _eviction_path = eviction_actor::HistoryWorkerChatEntryTokenCacheEvictionActor::spawn(
         host.system(),
         cache.clone(),
     );
-    host.subscribe_service(&eviction_path, &token_count_topic())
-        .expect("token cache eviction actor subscribes to the token-count topic");
-
-    host.forward::<jinn_session_history_msg::HistoryAppended, _>(token_count_topic(), || {
-        jinn_session_history_msg::HistoryAppended::schema_def()
-    });
-    host.forward::<
-        jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted,
-        _,
-    >(token_count_topic(), || {
-        jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted::schema_def()
-    });
-    host.forward::<jinn_domain::feat::session::protocol::session_closed::SessionClosed, _>(
-        token_count_topic(),
-        jinn_domain::feat::session::protocol::session_closed::SessionClosed::schema_def,
-    );
-
     cache
 }
 

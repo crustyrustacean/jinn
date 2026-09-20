@@ -11,12 +11,6 @@ use jinn_core_types::SessionId;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// The trouper topic the discord status event crosses on.
-#[must_use]
-pub fn discord_topic() -> trouper::topics::Topic {
-    trouper::topics::Topic::new("jinn.discord")
-}
-
 /// The Discord session id (a string) tied to a jinn [`SessionId`].
 ///
 /// Kept as a plain `String` because Discord ids arrive as strings from

@@ -33,7 +33,6 @@ use crate::connection::{ConnectionState, ConnectionStateReply, McpActor, McpActo
 use jinn_domain::Services;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::common::services::bus_service::jinn_domain_topic;
 use jinn_domain::feat::session::protocol::session_archived::SessionArchived;
 use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
 use jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted;
@@ -102,7 +101,6 @@ impl McpCoordinatorActor {
         deps: McpCoordinatorActorDeps,
     ) -> ActorPath {
         let path = ActorPath::new(MCP_COORDINATOR_PATH);
-        let bus = deps.deps.services.bus.clone();
         let system_for_start = system.clone();
         let builder = trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
@@ -121,6 +119,15 @@ impl McpCoordinatorActor {
                     })
                 }
             })
+            .subscribe::<SessionLoadCompleted>()
+            .subscribe::<SessionCreated>()
+            .subscribe::<McpEnablementChanged>()
+            .subscribe::<SessionClosed>()
+            .subscribe::<SessionArchived>()
+            .subscribe::<SessionTeardownFinished>()
+            .subscribe::<RestartMcpServer>()
+            .subscribe::<McpServerStatus>()
+            .subscribe::<McpServerLog>()
             .handles::<SessionLoadCompleted>()
             .handles::<SessionCreated>()
             .handles::<McpEnablementChanged>()
@@ -138,19 +145,6 @@ impl McpCoordinatorActor {
         #[cfg(test)]
         let builder = builder.handles::<RestartForTest>();
         builder.start();
-        let topic = jinn_domain_topic();
-        bus.subscribe_topic::<SessionLoadCompleted>(&path, &topic)
-            .await;
-        bus.subscribe_topic::<SessionCreated>(&path, &topic).await;
-        bus.subscribe_topic::<McpEnablementChanged>(&path, &topic)
-            .await;
-        bus.subscribe_topic::<SessionClosed>(&path, &topic).await;
-        bus.subscribe_topic::<SessionArchived>(&path, &topic).await;
-        bus.subscribe_topic::<SessionTeardownFinished>(&path, &topic)
-            .await;
-        bus.subscribe_topic::<RestartMcpServer>(&path, &topic).await;
-        bus.subscribe_topic::<McpServerStatus>(&path, &topic).await;
-        bus.subscribe_topic::<McpServerLog>(&path, &topic).await;
         path
     }
 }

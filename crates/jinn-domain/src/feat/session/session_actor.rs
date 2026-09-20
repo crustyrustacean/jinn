@@ -30,16 +30,22 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::common::services::bus_service::{BusService, jinn_domain_topic};
+use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
     EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage,
 };
+use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
+use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
-use crate::feat::provider::protocol::event::{ModelsRefreshed, PromptTemplatesLoaded};
+use crate::feat::provider::protocol::event::{
+    ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched,
+};
+use crate::feat::session::protocol::SessionArchived;
+use crate::feat::session::protocol::UserInteracted;
 use crate::feat::session::protocol::archive_session::ArchiveSession;
 use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
 use crate::feat::session::protocol::citations_received::CitationsReceived;
@@ -49,6 +55,7 @@ use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteract
 use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session::protocol::task_list_updated::TaskListUpdated;
@@ -58,10 +65,17 @@ use crate::feat::session_lifecycle::protocol::command::{
     CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
     RunSessionTeardown, SetSessionCwd,
 };
+use crate::feat::session_lifecycle::protocol::event::{SessionCreated, SessionCwdChanged};
 use crate::feat::skills::SkillsLoaded;
 use crate::init::EnvironmentLoaded;
-use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
+use crate::protocol::system::ActiveSessionChanged;
+use jinn_context_curation_msg::TriggerCompaction;
+use jinn_inference_msg::{CancelStream, SendToLlmProvider, StreamCompleted, StreamToken};
+use jinn_mcp_msg::{McpEnablementChanged, McpServerLog, McpServerStatus};
+use jinn_preferences_config::protocol::app_state_command::UpdateAppState;
+use jinn_preferences_config::protocol::command::UpdatePreferences;
 use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry, UnpinChatEntry};
+use jinn_session_msg::{SessionPhaseChanged, SessionSetupCompleted, SessionTeardownFinished};
 use jinn_tools_msg::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered, ToolsUnregistered,
@@ -150,10 +164,6 @@ impl SessionPersistenceActor {
     /// readiness point, so publishes after this call resolves cannot be
     /// missed (B4: the orchestrator's builtin registration in its own
     /// `start` lands in a running session actor).
-    #[expect(
-        clippy::expect_used,
-        reason = "a failed topic subscription is a wiring bug that must abort launch"
-    )]
     /// # Panics
     ///
     /// Panics if the actor's path is already taken or its topic
@@ -161,6 +171,10 @@ impl SessionPersistenceActor {
     #[expect(
         clippy::needless_pass_by_value,
         reason = "port convention: spawn takes owned deps and clones into start_with"
+    )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "the session actor's 46-message declaration surface reads best as one flat builder chain"
     )]
     pub fn spawn(system: &ActorSystem, deps: SessionPersistenceActorDeps) -> ActorPath {
         let path = ActorPath::new(SESSION_PATH);
@@ -219,6 +233,50 @@ impl SessionPersistenceActor {
             .handles::<PinChatEntry>()
             .handles::<UnpinChatEntry>()
             .handles::<LoadPersonaPickerEntries>()
+            // Events (also broadcast targets — every publish of these
+            // schemas reaches this actor, whatever slice emitted it).
+            .subscribe::<StreamToken>()
+            .subscribe::<StreamCompleted>()
+            .subscribe::<ToolUseStarted>()
+            .subscribe::<ToolCallReceived>()
+            .subscribe::<ToolCallStreaming>()
+            .subscribe::<ToolExecutionCompleted>()
+            .subscribe::<ToolBatchCompleted>()
+            .subscribe::<ToolExecutionStarted>()
+            .subscribe::<ToolExecutionOutput>()
+            .subscribe::<CitationsReceived>()
+            .subscribe::<ChatEntryPinChanged>()
+            .subscribe::<TaskListUpdated>()
+            .subscribe::<ModelsRefreshed>()
+            .subscribe::<SkillsLoaded>()
+            .subscribe::<EnvironmentLoaded>()
+            .subscribe::<ToolsRegistered>()
+            .subscribe::<ToolsUnregistered>()
+            .subscribe::<SessionClosed>()
+            .subscribe::<PromptTemplatesLoaded>()
+            .subscribe::<PersonasLoaded>()
+            .subscribe::<ActiveSessionChanged>()
+            .subscribe::<SessionCreated>()
+            .subscribe::<SessionLoadCompleted>()
+            .subscribe::<SessionCwdChanged>()
+            .subscribe::<SessionPhaseChanged>()
+            .subscribe::<SessionSetupCompleted>()
+            .subscribe::<SessionTeardownFinished>()
+            .subscribe::<SessionArchived>()
+            .subscribe::<McpEnablementChanged>()
+            .subscribe::<McpServerStatus>()
+            .subscribe::<McpServerLog>()
+            .subscribe::<UpdatePreferences>()
+            .subscribe::<UpdateAppState>()
+            .subscribe::<SendToLlmProvider>()
+            .subscribe::<CancelStream>()
+            .subscribe::<ProviderSwitched>()
+            .subscribe::<SetSessionCwd>()
+            .subscribe::<UserInteracted>()
+            .subscribe::<PushChatEntry>()
+            .subscribe::<ChatEntrySubmitted>()
+            .subscribe::<TriggerCompaction>()
+            .subscribe::<ContextOverrideChanged>()
             // Events.
             .handles::<StreamToken>()
             .handles::<StreamCompleted>()
@@ -248,12 +306,6 @@ impl SessionPersistenceActor {
                 trouper::inbox::OverloadPolicy::Block,
             )
             .start();
-        // One topic suffices: trouper dispatches by schema id at the typed
-        // adapter, and every publisher reaches this actor through the
-        // `jinn.domain` default (BusService publishes and bridge closures).
-        system
-            .subscribe(&path, &jinn_domain_topic(), None)
-            .expect("session actor subscribes the jinn.domain topic");
         path
     }
 }

@@ -73,10 +73,6 @@ impl ProviderInitActor {
     ///
     /// Panics if the actor's path is already taken or its topic
     /// subscription fails — both mean a wiring bug at composition.
-    #[expect(
-        clippy::expect_used,
-        reason = "a failed topic subscription is a wiring bug that must abort spawn"
-    )]
     pub fn spawn(system: &trouper::system::ActorSystem, deps: ProviderInitActorDeps) -> ActorPath {
         let path = ActorPath::new(PROVIDER_INIT_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
@@ -94,16 +90,10 @@ impl ProviderInitActor {
                     })
                 }
             })
+            .subscribe::<EnvironmentLoaded>()
             .handles::<EnvironmentLoaded>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        system
-            .subscribe(
-                &path,
-                &crate::common::services::bus_service::jinn_domain_topic(),
-                None,
-            )
-            .expect("provider-init subscribes the domain topic");
         path
     }
 }

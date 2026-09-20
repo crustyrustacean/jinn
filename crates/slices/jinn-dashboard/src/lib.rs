@@ -10,7 +10,6 @@
 //! composition; commenting that call removes the slice with no other
 //! edits (removability).
 
-pub mod bridge;
 pub mod canvas_actor;
 pub mod contracts;
 pub mod fabric_events;

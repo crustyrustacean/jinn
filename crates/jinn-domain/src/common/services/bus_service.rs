@@ -1,10 +1,11 @@
 //! Service wrapper for the message fabric.
 //!
-//! Production publishes onto the **trouper actor system**: every message is
-//! wrapped as a schema-tagged [`trouper::envelope::Event`] and sent onto a
-//! topic — the `jinn.domain` topic for kernel-domain traffic, or a slice's
-//! own topic when a route registers one. Actors subscribe their topic
-//! directly.
+//! Production publishes onto the **trouper actor system**: every message
+//! is broadcast by its schema id to EVERY actor that declared
+//! `.subscribe::<M>()` at spawn. Publishing and subscribing are two
+//! independent declarations — no route table, no topic resolution, no
+//! way for one slice's registration to divert another consumer's
+//! traffic.
 //!
 //! In tests, [`BusService`] can operate in **recording mode** via
 //! [`BusService::new_recording()`], which captures all `publish()` calls
@@ -17,20 +18,6 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 use crate::common::bus::BusMessage;
-
-/// The trouper topic kernel-domain messages publish onto.
-///
-/// One shared topic suffices during the fabric swap: trouper dispatches by
-/// schema id at the typed adapter, so distinct messages never collide even
-/// on one topic. Slices that already own a topic keep it — a route entry
-/// overrides the default for its message.
-pub const JINN_DOMAIN_TOPIC: &str = "jinn.domain";
-
-/// The kernel-domain topic as a [`Topic`](trouper::topics::Topic).
-#[must_use]
-pub fn jinn_domain_topic() -> trouper::topics::Topic {
-    trouper::topics::Topic::new(JINN_DOMAIN_TOPIC)
-}
 
 // ---------------------------------------------------------------------------
 // BusService
@@ -50,11 +37,10 @@ pub struct BusService {
 
 #[derive(Clone)]
 enum BusInner {
-    /// Trouper-native fabric: publishes go onto schema-routed trouper
-    /// topics.
+    /// Trouper-native fabric: publishes broadcast by schema to every
+    /// declarant subscriber.
     Troupe {
         system: trouper::system::ActorSystem,
-        routes: Arc<Mutex<Vec<RouteRule>>>,
     },
     #[cfg_attr(
         not(any(test, feature = "test-harness")),
@@ -66,27 +52,12 @@ enum BusInner {
     Recording(Arc<Mutex<Vec<RecordedMessage>>>),
 }
 
-/// One schema→topic routing rule.
-struct RouteRule {
-    schema_id: trouper::schema::SchemaId,
-    topic: trouper::topics::Topic,
-}
-
-impl RouteRule {
-    fn matches(&self, schema_id: &trouper::schema::SchemaId) -> bool {
-        &self.schema_id == schema_id
-    }
-}
-
 impl BusService {
     /// Creates a bus service backed by the trouper fabric.
     #[must_use]
     pub fn new_trouper(system: trouper::system::ActorSystem) -> Self {
         Self {
-            inner: BusInner::Troupe {
-                system,
-                routes: Arc::new(Mutex::new(Vec::new())),
-            },
+            inner: BusInner::Troupe { system },
         }
     }
 
@@ -104,7 +75,7 @@ impl BusService {
     #[must_use]
     pub fn system_ref(&self) -> &trouper::system::ActorSystem {
         match &self.inner {
-            BusInner::Troupe { system, .. } => system,
+            BusInner::Troupe { system } => system,
             BusInner::Recording(_) => {
                 panic!("system_ref() called on a recording bus (test-only)")
             }
@@ -132,27 +103,14 @@ impl BusService {
         matches!(&self.inner, BusInner::Recording(_))
     }
 
-    /// Routes one message schema onto `topic`: every future publish of a
-    /// message with this schema id lands on the topic instead of the
-    /// default `jinn.domain` topic.
-    ///
-    /// Registered by slice drains for messages whose slice already owns a
-    /// trouper topic (the message is a `ForwardMessage` there).
-    pub fn route_topic<M: trouper::schema::Schema>(&self, topic: trouper::topics::Topic) {
-        if let BusInner::Troupe { routes, .. } = &self.inner {
-            routes.lock().push(RouteRule {
-                schema_id: M::schema_id(),
-                topic,
-            });
-        }
-    }
-
-    /// Subscribes a trouper actor path to `topic` for message type `M`.
+    /// Declares that the trouper actor at `path` receives every publish
+    /// of message type `M`.
     ///
     /// Runtime-spawned actors (task listeners, MCP servers) use this to
-    /// join the fabric with the routed topic resolved from the schema —
-    /// the same path composition's `system.subscribe` calls take, exposed
-    /// through the bus so the topic constant lives in one place.
+    /// join the fabric after spawn: the actor's builder is not at hand
+    /// here, so the declaration registers directly against the spawned
+    /// path — the same registry entry a builder `.subscribe::<M>()`
+    /// records.
     #[expect(
         clippy::unused_async_trait_impl,
         reason = "async signature symmetry; body has no await"
@@ -163,100 +121,37 @@ impl BusService {
     )]
     #[expect(
         clippy::expect_used,
-        reason = "a failed topic subscription is a wiring bug that must abort spawn"
+        reason = "a failed declaration is a wiring bug that must abort spawn"
     )]
     /// # Panics
     ///
     /// Panics if the target path has no slot — a runtime-spawned actor
     /// must exist (spawned) before this call.
-    pub async fn subscribe_topic<M: trouper::schema::Schema>(
-        &self,
-        path: &trouper::actor::ActorPath,
-        topic: &trouper::topics::Topic,
-    ) {
-        if let BusInner::Troupe { system, .. } = &self.inner {
+    pub async fn subscribe<M: trouper::schema::Schema>(&self, path: &trouper::actor::ActorPath) {
+        if let BusInner::Troupe { system } = &self.inner {
             system
-                .subscribe(path, topic, None)
-                .expect("runtime actor subscribes its topic");
+                .declare_subscriber::<M>(path)
+                .expect("runtime actor declares its subscription");
         }
-    }
-
-    /// The topic a publish of `M` currently rides (the route resolution
-    /// `publish` uses) — inspection for test harnesses.
-    #[cfg(any(test, feature = "test-harness"))]
-    #[must_use]
-    pub fn routed_topic<M: trouper::schema::Schema>(&self) -> trouper::topics::Topic {
-        match &self.inner {
-            BusInner::Troupe { routes, .. } => Self::topic_for(routes, &M::schema_id()),
-            _ => jinn_domain_topic(),
-        }
-    }
-
-    /// Every topic routed for `schema_id` (all registrations, deduped,
-    /// preserving registration order) — the fan-out a publish performs.
-    fn topics_for(
-        routes: &Mutex<Vec<RouteRule>>,
-        schema_id: &trouper::schema::SchemaId,
-    ) -> Vec<trouper::topics::Topic> {
-        let routes = routes.lock();
-        let mut topics: Vec<trouper::topics::Topic> = Vec::new();
-        for rule in routes.iter().filter(|rule| rule.matches(schema_id)) {
-            if !topics.contains(&rule.topic) {
-                topics.push(rule.topic.clone());
-            }
-        }
-        if topics.is_empty() {
-            topics.push(jinn_domain_topic());
-        }
-        topics
-    }
-
-    /// The topic a publish of `M` currently rides: the last-registered
-    /// route for its schema id, else the shared `jinn.domain` topic.
-    /// Single-topic view for ask seams and test taps; `publish` itself
-    /// fans out over [`Self::topics_for`].
-    #[cfg_attr(
-        not(any(test, feature = "test-harness")),
-        expect(
-            dead_code,
-            reason = "single-topic view is consumed by the test-harness probe"
-        )
-    )]
-    fn topic_for(
-        routes: &Mutex<Vec<RouteRule>>,
-        schema_id: &trouper::schema::SchemaId,
-    ) -> trouper::topics::Topic {
-        let routes = routes.lock();
-        routes
-            .iter()
-            .rev()
-            .find(|rule| rule.matches(schema_id))
-            .map_or_else(jinn_domain_topic, |rule| rule.topic.clone())
     }
 
     /// Publishes a typed message onto the fabric.
     ///
-    /// On the trouper fabric the message is wrapped as a schema-tagged
-    /// event and sent onto every topic routed for its schema id (the
-    /// relay era fanned one publish out to each registered route's
-    /// topic; multicast preserves that). With no route the shared
-    /// `jinn.domain` topic receives the event. In recording mode,
-    /// captures the message for later assertion.
+    /// The message broadcasts by its schema id to every actor that
+    /// declared `.subscribe::<M>()`; zero subscribers is a silent no-op.
+    /// In recording mode, captures the message for later assertion.
     pub async fn publish<M: BusMessage + trouper::schema::Schema + serde::Serialize>(
         &self,
         msg: M,
     ) {
         match &self.inner {
-            BusInner::Troupe { system, routes } => {
-                let name = message_name::<M>();
-                let payload = serde_json::to_value(&msg).unwrap_or(serde_json::Value::Null);
-                let event = trouper::envelope::Event::new(M::schema_id(), payload);
-                for topic in Self::topics_for(routes, &M::schema_id()) {
-                    tracing::debug!(message = name, topic = %topic, "trouper: {name} published");
-                    let _ = system
-                        .send(system.envelope_to_topic(event.clone(), topic))
-                        .await;
-                }
+            BusInner::Troupe { system } => {
+                tracing::debug!(
+                    message = message_name::<M>(),
+                    "trouper: {} published",
+                    message_name::<M>()
+                );
+                system.publish(&msg).await;
             }
             BusInner::Recording(recorded) => {
                 let type_id = TypeId::of::<M>();
@@ -268,25 +163,6 @@ impl BusService {
             }
         }
     }
-
-    /// Publishes a pre-built schema-tagged event onto the fabric.
-    ///
-    /// The closure bridge's erased publish path: the message arrives as a
-    /// schema id + JSON payload (the schema table supplies the routed
-    /// topics), so the delivery matches [`Self::publish`] exactly — one
-    /// copy per routed topic, the shared `jinn.domain` topic when
-    /// unrouted. Not recorded — recording-mode tests publish typed
-    /// messages directly.
-    pub async fn publish_event(&self, event: trouper::envelope::Event) {
-        if let BusInner::Troupe { system, routes } = &self.inner {
-            for topic in Self::topics_for(routes, &event.schema) {
-                tracing::debug!(schema = %event.schema, topic = %topic, "trouper: event published");
-                let _ = system
-                    .send(system.envelope_to_topic(event.clone(), topic))
-                    .await;
-            }
-        }
-    }
 }
 
 /// The short type name of a bus message (e.g. `"PushChatEntry"`).
@@ -295,38 +171,6 @@ fn message_name<M: BusMessage>() -> &'static str {
         .rsplit("::")
         .next()
         .unwrap_or(std::any::type_name::<M>())
-}
-
-/// Test-only probe of the fabric's routing decisions.
-///
-/// Asks the bus directly which topic a schema currently routes onto — the
-/// same resolution `publish` performs — so fabric tests can assert
-/// schema→topic routing without inspecting the trouper system.
-#[cfg(any(test, feature = "test-harness"))]
-pub struct RouteTestProbe {
-    bus: BusService,
-}
-
-#[cfg(any(test, feature = "test-harness"))]
-impl RouteTestProbe {
-    /// Attaches a probe to the given bus.
-    #[must_use]
-    pub fn attach(bus: &BusService) -> Self {
-        Self { bus: bus.clone() }
-    }
-
-    /// The topic a publish of `M` currently rides.
-    #[must_use]
-    pub fn topic_for<M: trouper::schema::Schema>(&self) -> Option<String> {
-        match &self.bus.inner {
-            BusInner::Troupe { routes, .. } => Some(
-                BusService::topic_for(routes, &M::schema_id())
-                    .as_str()
-                    .to_owned(),
-            ),
-            _ => None,
-        }
-    }
 }
 
 impl fmt::Debug for BusService {
@@ -590,7 +434,7 @@ mod tests {
         // When publishing a message.
         bus.publish(Alpha { val: 7 }).await;
 
-        // Then a debug line names the type as published with its topic.
+        // Then a debug line names the type as published.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         loop {
             if capture.contents().contains("trouper: Alpha published") {

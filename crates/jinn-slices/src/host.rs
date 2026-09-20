@@ -11,20 +11,16 @@
 //! arrives as a consumer of this surface, not a parallel system.
 //!
 //! The host borrows the kernel's registries for the duration of
-//! activation and adds three of its own: the bridge route registry
-//! ([`RouteRegistry`]), the input-hook registry ([`HookRegistry`]), and
-//! the config-section set ([`SectionSet`]). All three stage during
-//! activation and are drained by composition afterwards:
+//! activation and adds two of its own: the input-hook registry
+//! ([`HookRegistry`]) and the config-section set ([`SectionSet`]). Both
+//! stage during activation and are drained by composition afterwards:
 //!
 //! - hooks install into the kernel's [`KeyRoutes`] once every slice has
 //!   activated;
 //! - sections convert against the kernel's user-preferences document at
 //!   `finalize` time, where a missing section or malformed TOML aborts
 //!   launch — activation-time fail-fast, concentrated in one checked
-//!   step;
-//! - routes are the manifest the bridge drain wiring consumes (see
-//!   [`StagedRoutes`]; the drain actors themselves belong to the
-//!   kernel's bridge task).
+//!   step.
 //!
 //! The host is constructed per activation and never stored on
 //! `Services`.
@@ -49,19 +45,12 @@ use crate::view::Viewport;
 
 pub mod host_config;
 pub mod host_input;
-pub mod host_routes;
 pub mod host_view;
 
 pub use host_config::ConfigSection;
 pub use host_config::ConfigSectionError;
 pub use host_config::DynamicConfigSection;
 pub use host_config::SectionError;
-pub use host_routes::Direction;
-pub use host_routes::ForwardMessage;
-pub use host_routes::ReverseMessage;
-pub use host_routes::RouteConflict;
-pub use host_routes::RouteEntry;
-pub use host_routes::StagedRoutes;
 pub use host_view::HostView;
 
 /// The kernel registries a [`SliceHost`] borrows for one activation.
@@ -71,7 +60,6 @@ pub struct SliceHost<'a, C: 'static> {
     overlay_views: &'a OverlayViews<C>,
     key_routes: &'a KeyRoutes,
     system: &'a ActorSystem,
-    routes: host_routes::RouteRegistry,
     hooks: host_input::HookRegistry,
     sections: host_config::SectionSet,
 }
@@ -92,7 +80,6 @@ impl<'a, C: 'static> SliceHost<'a, C> {
             overlay_views,
             key_routes,
             system,
-            routes: host_routes::RouteRegistry::default(),
             hooks: host_input::HookRegistry::default(),
             sections: host_config::SectionSet::default(),
         }
@@ -154,24 +141,23 @@ impl<'a, C: 'static> SliceHost<'a, C> {
             .start()
     }
 
-    /// Subscribes an already-spawned trouper service actor to a topic.
-    /// Subscribe is the readiness point: topic cursors register
-    /// synchronously, so publishes after this call cannot be missed.
-    /// Kept on the host so slices stage their actor wiring (spawn +
-    /// subscribe) through one seam instead of touching the system
-    /// directly.
+    /// Declares that the already-spawned trouper service actor at
+    /// `path` receives every publish of `M`. The declaration is the
+    /// readiness point: it registers synchronously, so publishes after
+    /// this call cannot be missed. Kept on the host so slices stage
+    /// their runtime wiring (spawn + declare) through one seam instead
+    /// of touching the system directly.
     ///
     /// # Errors
     ///
     /// Returns [`trouper::registry::RegistryError::UnknownPath`] when
-    /// the actor has not been spawned yet — subscribe before
+    /// the actor has not been spawned yet — declare before
     /// [`Self::spawn_service`].
-    pub fn subscribe_service(
+    pub fn subscribe_service<M: trouper::schema::Schema>(
         &self,
         path: &ActorPath,
-        topic: &trouper::topics::Topic,
-    ) -> Result<u64, error_stack::Report<trouper::registry::RegistryError>> {
-        self.system.subscribe(path, topic, None)
+    ) -> Result<(), error_stack::Report<trouper::registry::RegistryError>> {
+        self.system.declare_subscriber::<M>(path)
     }
 
     /// Attaches route rows to the key-route table.
@@ -264,28 +250,6 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         self.sections.add_dynamic(key)
     }
 
-    /// Declares a forward bridge route: bus publishes of `M` cross to
-    /// trouper `topic`.
-    ///
-    /// The `Schema` impl is supplied as a thunk because schema
-    /// definitions belong to the message-owning crate; id equality is
-    /// checked eagerly, the definition is taken verbatim.
-    pub fn forward<M: ForwardMessage, S>(&mut self, topic: trouper::topics::Topic, schema: S)
-    where
-        S: FnOnce() -> trouper::schema::SchemaDef,
-    {
-        self.routes.forward::<M, S>(topic, schema);
-    }
-
-    /// Declares a reverse bridge route: trouper `topic` publishes of
-    /// `M` cross to the bus.
-    pub fn reverse<M: ReverseMessage, S>(&mut self, topic: trouper::topics::Topic, schema: S)
-    where
-        S: FnOnce() -> trouper::schema::SchemaDef,
-    {
-        self.routes.reverse::<M, S>(topic, schema);
-    }
-
     /// Drains staged input hooks into the kernel's route table via
     /// `install`. Called by composition after all slices activate.
     pub fn install_hooks<I>(self, install: I)
@@ -314,21 +278,15 @@ impl<'a, C: 'static> SliceHost<'a, C> {
     }
 
     /// Applies staged config sections through `sink` (composition
-    /// provides the lookup into the user-preferences document) and
-    /// returns the staged bridge routes for the drain wiring.
+    /// provides the lookup into the user-preferences document).
     ///
     /// # Errors
     ///
     /// Returns [`SectionError`] for a missing required section or a
     /// malformed table — the activation-time fail-fast gate.
-    pub fn finalize(
-        self,
-        sink: &dyn Fn(&str) -> Option<toml::Table>,
-    ) -> Result<StagedRoutes, SectionError> {
-        let routes = self.routes;
+    pub fn finalize(self, sink: &dyn Fn(&str) -> Option<toml::Table>) -> Result<(), SectionError> {
         let sections = self.sections;
-        sections.apply(sink)?;
-        Ok(StagedRoutes::from_registry(routes))
+        sections.apply(sink)
     }
 }
 

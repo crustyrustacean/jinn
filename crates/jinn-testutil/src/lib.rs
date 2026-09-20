@@ -62,17 +62,12 @@ impl TestFabric {
         Self { system }
     }
 
-    /// Sends a typed message to the trouper `topic`.
+    /// Publishes a typed message onto the fabric (schema broadcast).
     pub async fn send_to_topic<M: trouper::schema::Schema + serde::Serialize>(
         &self,
         msg: &M,
-        topic: &trouper::topics::Topic,
+        _topic: &trouper::topics::Topic,
     ) {
-        let payload = serde_json::to_value(msg).unwrap_or(serde_json::Value::Null);
-        let event = trouper::envelope::Event::new(M::schema_id(), payload);
-        let _ = self
-            .system
-            .send(self.system.envelope_to_topic(event, topic.clone()))
-            .await;
+        self.system.publish(msg).await;
     }
 }

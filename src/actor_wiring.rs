@@ -161,14 +161,6 @@ impl ActorSystemBuilder {
             services: services.clone(),
         };
 
-        // ── Forward-bridge route drains ───────────────────────────────
-        // One relay per crossing message, registered on the bus in its
-        // own on_start: publishes after the drains cannot be missed, so
-        // the ordering constraint against slice activation is gone.
-        jinn_dashboard::bridge::install_topic_routes(&services);
-        jinn_quake_bar_drain(&services).await;
-        jinn_discord_drain(&services).await;
-
         // ── Dashboard slice ───────────────────────────────────────────
         // Activation mints the cell, spawns the canvas actor FIRST
         // (subscribe is the readiness point, so no lifecycle event from
@@ -210,9 +202,7 @@ impl ActorSystemBuilder {
         jinn_chat_input_activate(&mut services);
         jinn_cwd_activate(&mut services);
         jinn_preferences_activate(&mut services, state.clone()).await;
-        jinn_preferences::bridge::install_topic_routes(&services);
         jinn_sidebar_activate(&mut services, state.clone());
-        jinn_sidebar::bridge::install_topic_routes(&services);
         jinn_theme_activate(&mut services);
 
         // Persona slice: activation scans the persona directories and
@@ -248,7 +238,6 @@ impl ActorSystemBuilder {
         // this function: the supervisor's subscriptions must exist
         // before the first `EnvironmentLoaded` trigger.
         jinn_session_init_activate(&mut services, state.clone());
-        jinn_session_init::bridge::install_topic_routes(&services);
 
         // ── Infrastructure actors ──────────────────────────────────────────
 
@@ -311,7 +300,6 @@ impl ActorSystemBuilder {
         // cache is handed to the session actor (accumulation gate) and
         // the prune workers.
         let entry_token_cache = jinn_token_count_activate(&mut services, state.clone());
-        jinn_token_count::bridge::install_topic_routes(&services);
 
         // ── Turn-dispatch slice ─────────────────────────────────────
         // Activation spawns the queue actor (trouper ServiceActor, the
@@ -321,7 +309,6 @@ impl ActorSystemBuilder {
         // trigger (an `Idle` phase event or a `DispatchTurn` command)
         // is published.
         jinn_turn_dispatch_activate(&mut services, state.clone());
-        jinn_turn_dispatch::bridge::install_topic_routes(&services);
 
         // ── Inference slice ─────────────────────────────────────────
         // Activation spawns the inference actor (trouper ServiceActor,
@@ -330,7 +317,6 @@ impl ActorSystemBuilder {
         // forward relays for `SendToLlmProvider`/`CancelStream` must
         // exist before the first dispatch is published.
         jinn_inference_activate(&mut services);
-        jinn_inference::bridge::install_topic_routes(&services);
 
         // ── Context-assembly slice ─────────────────────────────────────
         // Install the slice's actors on trouper (the stateless assembly
@@ -338,20 +324,6 @@ impl ActorSystemBuilder {
         // routes; the drain below spawns the relays. The size actor
         // holds `Services` for the assembly ask.
         jinn_context_assembly::install_actors(&services.trouper_system, state.clone(), &services);
-        {
-            let mut host = jinn_slices::SliceHost::new(
-                &services.slices,
-                &mut services.viewport,
-                &services.overlay_views,
-                &services.key_routes,
-                &services.trouper_system,
-            );
-            jinn_context_assembly::stage_routes(&mut host);
-            if let Err(error) = host.finalize(&|_key| None) {
-                panic!("context-assembly slice finalize failed: {error}");
-            }
-        }
-        jinn_context_assembly::bridge::install_topic_routes(&services);
         let _session = jinn_domain::feat::session::session_actor::SessionPersistenceActor::spawn(
             &services.trouper_system,
             jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
@@ -992,53 +964,6 @@ fn jinn_quake_bar_activate(services: &mut Services) {
     }
 }
 
-/// Drains the quake-bar slice's staged forward routes into per-route
-/// relays. Kernel-side: the route rules ride the fabric.
-async fn jinn_quake_bar_drain(services: &Services) {
-    // Erased publishes (bridge closures) route natively on trouper: the
-    // schema→topic rule mirrors the relay below.
-    services
-        .bus
-        .route_topic::<jinn_quake_bar::SubmitQuakeBarCommand>(
-            jinn_quake_bar::command::quake_bar_topic(),
-        );
-}
-
-/// Drains the discord slice's staged forward routes into per-route
-/// relays on the shared `jinn.session` topic.
-async fn jinn_discord_drain(services: &Services) {
-    use jinn_discord_msg::{
-        CreateThreadForSession, DiscordThreadCreateFailed, DiscordThreadCreated,
-    };
-    use jinn_session_msg::{
-        SessionArchived, SessionPhaseChanged, SessionSetupCompleted, SessionTeardownFinished,
-        session_topic,
-    };
-
-    let topic = session_topic();
-    // Erased publishes (bridge closures) route natively on trouper: the
-    // schema→topic rules mirror the relays below.
-    services
-        .bus
-        .route_topic::<SessionPhaseChanged>(topic.clone());
-    services
-        .bus
-        .route_topic::<SessionSetupCompleted>(topic.clone());
-    services
-        .bus
-        .route_topic::<SessionTeardownFinished>(topic.clone());
-    services.bus.route_topic::<SessionArchived>(topic.clone());
-    services
-        .bus
-        .route_topic::<CreateThreadForSession>(topic.clone());
-    services
-        .bus
-        .route_topic::<DiscordThreadCreated>(topic.clone());
-    services
-        .bus
-        .route_topic::<DiscordThreadCreateFailed>(topic.clone());
-}
-
 /// Activates the discord slice over the kernel's registries.
 ///
 /// Composition assembles the `SliceHost` borrows plus the services the
@@ -1088,21 +1013,8 @@ async fn jinn_discord_activate(
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 fn jinn_session_init_activate(services: &mut Services, state: jinn_domain::common::state::State) {
-    // `Services` is cheap to clone (Arc fields); the clone side-steps
-    // the host's mutable viewport borrow for the activation call.
-    let services_snapshot = services.clone();
-    let mut host = jinn_slices::SliceHost::new(
-        &services.slices,
-        &mut services.viewport,
-        &services.overlay_views,
-        &services.key_routes,
-        &services.trouper_system,
-    );
-    if let Err(error) = jinn_session_init::activate(&mut host, &services_snapshot, state) {
+    if let Err(error) = jinn_session_init::activate(services, state) {
         panic!("session-init slice activation failed: {error}");
-    }
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("session-init slice finalize failed: {error}");
     }
 }
 

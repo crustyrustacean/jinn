@@ -107,7 +107,7 @@ async fn session_created_triggers_discovery_for_that_session() {
                 session_id: wired.session_id.clone(),
                 cwd: wired.home.clone(),
             },
-            &jinn_session_init::session_init_topic(),
+            &trouper::topics::Topic::new("unused"),
         )
         .await;
 
@@ -137,7 +137,7 @@ async fn pending_cwd_session_produces_no_scan() {
                 session_id: wired.session_id.clone(),
                 cwd: std::path::PathBuf::from("."),
             },
-            &jinn_session_init::session_init_topic(),
+            &trouper::topics::Topic::new("unused"),
         )
         .await;
 
@@ -163,7 +163,7 @@ async fn scan_skills_command_threads_cwd_to_the_worker() {
                 session_id: wired.session_id.clone(),
                 cwd: wired.home.clone(),
             },
-            &jinn_session_init::session_init_topic(),
+            &trouper::topics::Topic::new("unused"),
         )
         .await;
 

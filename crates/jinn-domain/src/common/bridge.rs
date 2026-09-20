@@ -4,7 +4,7 @@
 //! accepts typed message closures through a kanal channel (sync send), then
 //! an async drain task calls each closure with the fabric's publish sink —
 //! the same `BusService` every actor publishes through. Each closure's
-//! publication therefore rides the identical path (schema-id routing,
+//! publication therefore rides the identical path (schema broadcast,
 //! recording mode, delivery semantics) as a direct `publish`.
 
 use jinn_slices::PublishSink;
@@ -54,8 +54,8 @@ impl Bridge {
     ///
     /// The closure minted by
     /// [`Bridge::publish_closure`](Self::publish_closure) publishes through
-    /// the service, so the delivery path (topic routing + the transitional
-    /// trouper system) matches every other emitter.
+    /// the service, so the delivery path (schema broadcast to every
+    /// declarant subscriber) matches every other emitter.
     #[must_use]
     pub fn with_system(
         bus: &crate::common::services::bus_service::BusService,
@@ -118,10 +118,10 @@ impl Bridge {
 
 /// Implements the slice-facing publish surface over the kernel bus.
 ///
-/// Publishing serializes nothing twice (the closure hands over the JSON
-/// payload) and resolves the routed topic exactly like `BusService::publish`,
-/// so every closure-driven publication is indistinguishable from a
-/// direct actor publish.
+/// The closure hands over the JSON payload already serialized; the
+/// broadcast fans out by schema id to every declarant subscriber —
+/// identical delivery to a typed [`BusService::publish`], only the
+/// serialization timing differs.
 impl PublishSink for BusService {
     fn publish_schema(
         &self,
@@ -129,14 +129,10 @@ impl PublishSink for BusService {
         payload: serde_json::Value,
         name: &'static str,
     ) {
-        // The event rides the schema's routed topic. The publishing shape (when
-        // present) receives the event too — un-ported bus actors keep
-        // consuming while the port is in flight.
-        let event = trouper::envelope::Event::new(schema_id, payload);
         tracing::debug!(message = name, "bridge publish");
-        let bus = self.clone();
+        let system = self.system_ref().clone();
         tokio::spawn(async move {
-            bus.publish_event(event).await;
+            system.deliver_schema_value(schema_id, payload).await;
         });
     }
 }

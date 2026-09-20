@@ -58,6 +58,7 @@ impl HistoryWorkerChatEntryTokenCacheEvictionActor {
                     })
                 }
             })
+            .subscribe::<SessionClosed>()
             .handles::<SessionClosed>()
             .start()
     }

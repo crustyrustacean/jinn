@@ -247,12 +247,6 @@ fields: [
     "dispatched_at" => trouper::schema::FieldTy::Json
 ]);
 
-/// The trouper topic the inference slice's crossing messages travel on.
-#[must_use]
-pub fn inference_topic() -> trouper::topics::Topic {
-    trouper::topics::Topic::new("jinn.inference")
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, reason = "test code")]

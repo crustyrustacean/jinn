@@ -58,7 +58,6 @@ pub use fabric::ActorStarted;
 pub use fabric::ActorStarting;
 pub use focus::{FocusScope, ScopeStack};
 pub use host::ConfigSectionError;
-pub use host::Direction;
 pub use host::SliceHost;
 pub use key::{Key, KeyEvent, Modifiers};
 pub use line_input::LineInput;

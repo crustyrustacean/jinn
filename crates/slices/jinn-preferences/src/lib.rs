@@ -13,7 +13,6 @@
 //! `jinn-preferences-config` crate.
 
 pub mod app_state_actor;
-pub mod bridge;
 mod preferences_actor;
 mod project_add;
 
@@ -78,16 +77,12 @@ pub fn activate(
         state.clone(),
         jinn_domain::common::tcaps::mint::mint_frontend_cap(),
     );
-    system
-        .subscribe(&prefs_path, &bridge::preferences_topic(), None)
-        .expect("preferences actor subscribes to the preferences topic");
+    drop(prefs_path);
     let app_state_path = AppStateActor::spawn(
         system,
         services,
         state,
         jinn_domain::common::tcaps::mint::mint_frontend_cap(),
     );
-    system
-        .subscribe(&app_state_path, &bridge::preferences_topic(), None)
-        .expect("app-state actor subscribes to the preferences topic");
+    drop(app_state_path);
 }

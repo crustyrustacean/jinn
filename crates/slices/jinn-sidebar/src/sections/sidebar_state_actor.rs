@@ -19,13 +19,6 @@ use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
 /// The sidebar state actor's static trouper path.
 pub const SIDEBAR_STATE_PATH: &str = "sidebar-state";
 
-/// The sidebar slice's crossing topic (`jinn.sidebar`): kernel session
-/// events forward onto it for the slice's actors.
-#[must_use]
-pub fn sidebar_topic() -> trouper::topics::Topic {
-    trouper::topics::Topic::new("jinn.sidebar")
-}
-
 /// Actor that adjusts sidebar cursor state in response to session close.
 ///
 /// Holds the shared [`State`] handle and the two write capabilities —
@@ -68,6 +61,7 @@ impl SidebarStateActor {
                     })
                 }
             })
+            .subscribe::<SessionClosed>()
             .handles::<SessionClosed>()
             .start()
     }

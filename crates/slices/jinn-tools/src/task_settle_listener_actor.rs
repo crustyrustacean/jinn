@@ -35,7 +35,6 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::common::services::bus_service::jinn_domain_topic;
 use jinn_domain::feat::context::protocol::event::ContextFilesLoaded;
 use jinn_domain::feat::provider::protocol::event::PromptTemplatesLoaded;
 use jinn_domain::protocol::SessionId;
@@ -94,7 +93,6 @@ impl TaskSettleListenerActor {
             "jinn.tools.task-settle-listener.{}",
             SEQ.fetch_add(1, Ordering::SeqCst)
         ));
-        let bus = deps.bus.clone();
         trouper::builder::spawn_service_builder::<Self>(&deps.system)
             .at(path.clone())
             .start_with({
@@ -116,23 +114,18 @@ impl TaskSettleListenerActor {
                     })
                 }
             })
+            .subscribe::<ContextFilesLoaded>()
+            .subscribe::<SkillsLoaded>()
+            .subscribe::<PromptTemplatesLoaded>()
+            .subscribe::<McpServerStatus>()
             .handles::<ContextFilesLoaded>()
             .handles::<SkillsLoaded>()
             .handles::<PromptTemplatesLoaded>()
             .handles::<McpServerStatus>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        // Subscribe via the bus so routed topics stay the single source of
-        // truth. The `task` tool publishes `SessionCreated` only after this
-        // subscribe returns.
-        bus.subscribe_topic::<ContextFilesLoaded>(&path, &jinn_domain_topic())
-            .await;
-        bus.subscribe_topic::<SkillsLoaded>(&path, &jinn_domain_topic())
-            .await;
-        bus.subscribe_topic::<PromptTemplatesLoaded>(&path, &jinn_domain_topic())
-            .await;
-        bus.subscribe_topic::<McpServerStatus>(&path, &jinn_domain_topic())
-            .await;
+        // The declarations are the readiness point: the discovery
+        // workers publish their results only after this returns.
         path
     }
 }

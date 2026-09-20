@@ -78,9 +78,16 @@ impl SessionInitSupervisor {
     /// a broken actor system; the activate-before-first-trigger
     /// ordering relies on the cursor being registered.
     pub fn spawn(system: &ActorSystem) -> ActorPath {
-        let path = trouper::builder::spawn_service_builder::<Self>(system)
+        trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(crate::SUPERVISOR_PATH))
             .mailbox(1024, trouper::inbox::OverloadPolicy::Block)
+            .subscribe::<SessionCreated>()
+            .subscribe::<SessionSetupCompleted>()
+            .subscribe::<SessionLoadCompleted>()
+            .subscribe::<SessionCwdChanged>()
+            .subscribe::<ScanSkills>()
+            .subscribe::<RescanPromptTemplates>()
+            .subscribe::<ScanContextFiles>()
             .handles::<SessionCreated>()
             .handles::<SessionSetupCompleted>()
             .handles::<SessionLoadCompleted>()
@@ -88,16 +95,7 @@ impl SessionInitSupervisor {
             .handles::<ScanSkills>()
             .handles::<RescanPromptTemplates>()
             .handles::<ScanContextFiles>()
-            .start();
-
-        #[expect(
-            clippy::expect_used,
-            reason = "subscription failure is a broken actor system, not a caller bug;                       the activate-before-first-trigger ordering relies on the cursor"
-        )]
-        system
-            .subscribe(&path, &crate::session_init_topic(), None)
-            .expect("session-init supervisor subscribes to the trigger topic");
-        path
+            .start()
     }
 
     /// Sends a keyed command to the discovery partition set. The

@@ -165,6 +165,9 @@ impl InferenceActor {
                     })
                 }
             })
+            .subscribe::<SendToLlmProvider>()
+            .subscribe::<CancelStream>()
+            .subscribe::<StreamCompleted>()
             .handles::<SendToLlmProvider>()
             .handles::<CancelStream>()
             .handles::<StreamCompleted>()

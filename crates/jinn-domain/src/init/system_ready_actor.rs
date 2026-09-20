@@ -61,10 +61,6 @@ impl SystemReadyActor {
     ///
     /// Panics if the actor's path is already taken or its topic
     /// subscription fails — both mean a wiring bug at composition.
-    #[expect(
-        clippy::expect_used,
-        reason = "a failed topic subscription is a wiring bug that must abort spawn"
-    )]
     pub fn spawn(system: &trouper::system::ActorSystem, deps: SystemReadyActorDeps) -> ActorPath {
         let path = ActorPath::new(SYSTEM_READY_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
@@ -81,16 +77,10 @@ impl SystemReadyActor {
                     })
                 }
             })
+            .subscribe::<AllActorsSpawned>()
             .handles::<AllActorsSpawned>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        system
-            .subscribe(
-                &path,
-                &crate::common::services::bus_service::jinn_domain_topic(),
-                None,
-            )
-            .expect("system-ready subscribes the domain topic");
         path
     }
 }

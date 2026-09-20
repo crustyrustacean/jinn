@@ -79,6 +79,11 @@ impl ContextSizeActor {
                     })
                 }
             })
+            .subscribe::<HistoryAppended>()
+            .subscribe::<ContextOverrideChanged>()
+            .subscribe::<ActiveSessionChanged>()
+            .subscribe::<ChatEntryPinChanged>()
+            .subscribe::<SessionLoadCompleted>()
             .handles::<HistoryAppended>()
             .handles::<ContextOverrideChanged>()
             .handles::<ActiveSessionChanged>()

@@ -96,10 +96,6 @@ impl ProviderActor {
     ///
     /// Panics if the actor's path is already taken or its topic
     /// subscription fails — both mean a wiring bug at composition.
-    #[expect(
-        clippy::expect_used,
-        reason = "a failed topic subscription is a wiring bug that must abort spawn"
-    )]
     pub fn spawn(system: &trouper::system::ActorSystem, deps: ProviderActorDeps) -> ActorPath {
         let path = ActorPath::new(PROVIDER_ACTOR_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
@@ -123,17 +119,12 @@ impl ProviderActor {
             .handles::<LoadProviderPickerEntries>()
             .handles::<LoadEndpointPickerEntries>()
             .handles::<RefreshEndpointPickerEntries>()
+            .subscribe::<ModelsRefreshed>()
+            .subscribe::<ModelCacheLoaded>()
             .handles::<ModelsRefreshed>()
             .handles::<ModelCacheLoaded>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        system
-            .subscribe(
-                &path,
-                &crate::common::services::bus_service::jinn_domain_topic(),
-                None,
-            )
-            .expect("provider actor subscribes the domain topic");
         path
     }
 }
@@ -493,13 +484,16 @@ mod tests {
         InputModalities, ModelCache, ModelInfo, ProviderEntry, ProvidersConfig,
     };
 
-    use super::{ModelCacheLoaded, ModelsRefreshed, ProviderActor, ProviderActorDeps};
+    use super::{
+        ModelCacheLoaded, ModelsRefreshed, PROVIDER_ACTOR_PATH, ProviderActor, ProviderActorDeps,
+    };
     use crate::common::actor_deps::ActorDeps;
     use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
     use crate::feat::provider::protocol::command::ProviderSwitch;
     use crate::feat::provider::protocol::event::ProviderSwitched;
     use crate::feat::ui::picker_states::PickerExt;
     use jinn_core_types::model_selection::ModelSelection;
+    use trouper::actor::ActorPath;
 
     async fn create_harness() -> (TestHarness, State) {
         let harness = TestHarness::new().await;
@@ -1411,13 +1405,20 @@ mod tests {
         spawn_actor(&harness, &state, harness.actor_deps().await).await;
         let session_id = state.read().session.active_session_id().clone();
 
-        // When publishing ProviderSwitch via bus.
-        harness
-            .publish(ProviderSwitch {
-                session_id: session_id.clone(),
-                provider_id: ModelSelection::Single("ollama/llama3".to_owned()),
-            })
-            .await;
+        // When telling the actor to switch (ProviderSwitch is a COMMAND:
+        // point-to-point to the actor's path).
+        let services = harness.services().await;
+        services
+            .trouper_system
+            .tell(
+                ActorPath::new(PROVIDER_ACTOR_PATH),
+                ProviderSwitch {
+                    session_id: session_id.clone(),
+                    provider_id: ModelSelection::Single("ollama/llama3".to_owned()),
+                },
+            )
+            .await
+            .expect("switch command delivers");
 
         // Then the session model is updated.
         let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
@@ -1442,8 +1443,17 @@ mod tests {
         deps.services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
-        // When publishing LoadProviderPickerEntries.
-        harness.publish(LoadProviderPickerEntries).await;
+        // When telling the actor to load (a COMMAND: point-to-point).
+        harness
+            .services()
+            .await
+            .trouper_system
+            .tell(
+                ActorPath::new(PROVIDER_ACTOR_PATH),
+                LoadProviderPickerEntries,
+            )
+            .await
+            .expect("load command delivers");
 
         // Give the actor time to process.
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -1475,10 +1485,17 @@ mod tests {
             .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
         state.write_test_no_cap().frontend.pickers.endpoint_loading = true;
 
-        // When publishing LoadEndpointPickerEntries.
+        // When telling the actor to load (a COMMAND: point-to-point).
         harness
-            .publish(crate::feat::provider::protocol::command::LoadEndpointPickerEntries)
-            .await;
+            .services()
+            .await
+            .trouper_system
+            .tell(
+                ActorPath::new(PROVIDER_ACTOR_PATH),
+                crate::feat::provider::protocol::command::LoadEndpointPickerEntries,
+            )
+            .await
+            .expect("load command delivers");
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Then loading is cleared (no stuck spinner) and a placeholder row shows.

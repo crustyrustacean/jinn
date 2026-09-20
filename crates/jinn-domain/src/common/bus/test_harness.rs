@@ -73,9 +73,9 @@ impl TestHarness {
     }
 
     /// Spawn a [`Recorder`] for type `M`: a `harness.publish::<M>()`
-    /// round-trips through `BusService`, its topic routing, and the schema
-    /// adapter before the recorder sees the decoded message — tests
-    /// validate the real delivery path.
+    /// round-trips through `BusService` and the schema broadcast before
+    /// the recorder sees the decoded message — tests validate the real
+    /// delivery path.
     #[expect(
         clippy::unused_async,
         reason = "API symmetry with other async harness methods"
@@ -165,16 +165,10 @@ impl TestHarness {
                     })
                 })
             })
+            .subscribe::<M>()
             .handles::<M>()
             .mailbox(1024, trouper::inbox::OverloadPolicy::Block)
             .start();
-        // The tap follows the schema's current route resolution: normally
-        // the shared domain topic, or the override a test/slice route
-        // registered for `M`.
-        let topic = self.bus.routed_topic::<M>();
-        self.system
-            .subscribe(&path, &topic, None)
-            .expect("tap subscribes the schema's routed topic");
     }
 
     /// Build a [`Services`] with the harness bus wired into a test instance.

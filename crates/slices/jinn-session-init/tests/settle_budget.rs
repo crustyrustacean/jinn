@@ -124,12 +124,12 @@ impl Wired {
         })
     }
 
-    /// Whether a publish crossed a topic for `schema_name` (the
-    /// worker's per-resource publishes are topic publishes; the tap
-    /// records each as `TopicPublished`).
+    /// Whether a broadcast of `schema_name` crossed the fabric (the
+    /// worker's per-resource publishes are schema broadcasts; the tap
+    /// records each delivery as a `Sent` fact addressed to the schema).
     fn published_schema(&self, schema_name: &str) -> bool {
         self.fabric.system().tap_facts().iter().any(|fact| {
-            matches!(&fact.kind, FactKind::TopicPublished { schema, .. } if schema.name() == schema_name)
+            matches!(&fact.kind, FactKind::Sent { schema, dest: trouper::envelope::Address::Schema(_), .. } if schema.name() == schema_name)
         })
     }
 }
@@ -383,10 +383,9 @@ async fn worker_publishes_onto_schema_named_topics() {
     // When a full discovery runs.
     wired.run_discovery().await;
 
-    // Then a SkillsLoaded event was delivered on its schema-named
-    // topic — the exact topic the kernel's reverse relay subscribes.
+    // Then a SkillsLoaded broadcast crossed the fabric.
     wait_for(|| wired.published_schema("SkillsLoaded")).await;
-    // And the other two resources crossed their own topics.
+    // And the other two resources broadcast as well.
     wait_for(|| wired.published_schema("PromptTemplatesLoaded")).await;
     wait_for(|| wired.published_schema("ContextFilesLoaded")).await;
 }

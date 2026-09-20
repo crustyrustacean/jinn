@@ -92,7 +92,7 @@ impl DiscordBridgeSubscriber {
             state,
             session_cap,
         } = deps;
-        let path = trouper::builder::spawn_service_builder::<Self>(system)
+        trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("discord-bridge"))
             .start_with({
                 move || {
@@ -106,6 +106,13 @@ impl DiscordBridgeSubscriber {
                     })
                 }
             })
+            .subscribe::<SessionPhaseChanged>()
+            .subscribe::<SessionSetupCompleted>()
+            .subscribe::<SessionTeardownFinished>()
+            .subscribe::<SessionArchived>()
+            .subscribe::<CreateThreadForSession>()
+            .subscribe::<DiscordThreadCreated>()
+            .subscribe::<DiscordThreadCreateFailed>()
             .handles::<SessionPhaseChanged>()
             .handles::<SessionSetupCompleted>()
             .handles::<SessionTeardownFinished>()
@@ -113,16 +120,7 @@ impl DiscordBridgeSubscriber {
             .handles::<CreateThreadForSession>()
             .handles::<DiscordThreadCreated>()
             .handles::<DiscordThreadCreateFailed>()
-            .start();
-
-        #[expect(
-            clippy::expect_used,
-            reason = "subscription failure is a broken actor system, not a caller bug;                       the channel-parked-before-gateway ordering relies on the cursor"
-        )]
-        system
-            .subscribe(&path, &jinn_session_msg::session_topic(), None)
-            .expect("discord bridge subscriber subscribes to the session topic");
-        path
+            .start()
     }
 }
 
@@ -521,7 +519,7 @@ mod tests {
                     old_phase: PhaseKind::Streaming,
                     new_phase: PhaseKind::Idle,
                 },
-                &jinn_session_msg::session_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 
@@ -561,7 +559,7 @@ mod tests {
                     old_phase: PhaseKind::Idle,
                     new_phase: PhaseKind::Streaming,
                 },
-                &jinn_session_msg::session_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 
@@ -603,7 +601,7 @@ mod tests {
                     cwd: std::path::PathBuf::from("/repo"),
                     error: Some("boom".to_owned()),
                 },
-                &jinn_session_msg::session_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 
@@ -648,7 +646,7 @@ mod tests {
                     session_id: sid.clone(),
                     error: Some("boom".to_owned()),
                 },
-                &jinn_session_msg::session_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 
@@ -687,7 +685,7 @@ mod tests {
                 &SessionArchived {
                     session_id: sid.clone(),
                 },
-                &jinn_session_msg::session_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 
@@ -726,7 +724,7 @@ mod tests {
                     session_id: sid.clone(),
                     title: "my thread".to_owned(),
                 },
-                &jinn_session_msg::session_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 
@@ -768,7 +766,7 @@ mod tests {
                     session_id: sid.clone(),
                     title: "Threaded".to_owned(),
                 },
-                &jinn_session_msg::session_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 

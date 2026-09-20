@@ -62,22 +62,15 @@ impl QuakeBarCanvasActor {
     /// Panics if the topic subscription fails — a broken actor system;
     /// the activation ordering relies on the cursor being registered.
     pub fn spawn(system: &ActorSystem, cell: &TypedCell<QuakeBarState>) -> ActorPath {
-        let path = trouper::builder::spawn_service_builder::<Self>(system)
+        trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("quake-bar"))
             .start_with({
                 let cell = cell.clone();
                 move || Box::pin(async move { Ok(Self { cell }) })
             })
+            .subscribe::<SubmitQuakeBarCommand>()
             .handles::<SubmitQuakeBarCommand>()
-            .start();
-        #[expect(
-            clippy::expect_used,
-            reason = "subscription failure is a broken actor system, not a caller bug"
-        )]
-        system
-            .subscribe(&path, &crate::command::quake_bar_topic(), None)
-            .expect("quake-bar actor subscribes to its topic");
-        path
+            .start()
     }
 
     /// Appends the submitted text to the command log.
@@ -152,7 +145,7 @@ mod tests {
                 &SubmitQuakeBarCommand {
                     text: "hello".to_owned(),
                 },
-                &crate::command::quake_bar_topic(),
+                &trouper::topics::Topic::new("unused"),
             )
             .await;
 

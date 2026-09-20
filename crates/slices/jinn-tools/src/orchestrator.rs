@@ -225,6 +225,12 @@ impl ToolOrchestratorActor {
                     Box::pin(async move { Ok(Self::initialize(deps)) })
                 }
             })
+            .subscribe::<ToolExecutionCompleted>()
+            .subscribe::<SessionClosed>()
+            .subscribe::<ToolsUnregistered>()
+            .subscribe::<RegisterTools>()
+            .subscribe::<ExecuteToolBatch>()
+            .subscribe::<CancelToolBatch>()
             .handles::<RegisterTools>()
             .handles::<ExecuteToolBatch>()
             .handles::<CancelToolBatch>()
@@ -233,13 +239,6 @@ impl ToolOrchestratorActor {
             .handles::<ToolsUnregistered>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        system
-            .subscribe(
-                &path,
-                &jinn_domain::common::services::bus_service::jinn_domain_topic(),
-                None,
-            )
-            .expect("orchestrator subscribes the domain topic");
     }
 
     /// Constructs the actor and registers builtins (the old `on_start`
