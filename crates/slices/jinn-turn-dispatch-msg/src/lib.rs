@@ -48,12 +48,6 @@ pub struct DispatchTurn {
     pub session_id: SessionId,
 }
 
-/// The trouper topic the turn-dispatch slice's commands cross on.
-#[must_use]
-pub fn turn_dispatch_topic() -> trouper::topics::Topic {
-    trouper::topics::Topic::new("jinn.turn-dispatch")
-}
-
 impl jinn_slices::BusMessage for DispatchTurn {}
 
 jinn_slices::crossing_schema!(DispatchTurn, "DispatchTurn",
