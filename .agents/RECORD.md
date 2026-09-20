@@ -401,3 +401,7 @@ Entries are added or amended **only with human approval**.
 - (skills) The skills slice owns skill vocabulary and parsing (Skill/SkillSource, frontmatter, scan, prompt formatting, loaded-name labels); the UI-bound trio (picker entry, preview cache, picker reload) stays kernel, and session-init publishes SkillsLoaded through its reverse relays.
 - (curation) Prune and compaction run as two trouper ServiceActors in jinn-context-curation; the prune actor snapshots history internally on HistoryAppended and HistorySnapshotReady no longer exists.
 - (curation) Compaction trigger and prune workers publish SubmitHistoryMutations; the kernel session actor's accumulation gate batches only prune ForcedExclude mutations and applies everything else immediately.
+- (arch) All actors run on the trouper runtime; the kameo bus, its bridge relays, and every forward/reverse route are removed.
+- (session) The session family (turn progression, lifecycle, pins, history) lives in jinn-domain as one trouper SessionActor — the planned jinn-session crate split was abandoned because the vocabulary is spine, not leaf (crate cycle); jinn-session-store still owns SQLite persistence and the search index.
+- (arch) Actor messages route as schema-id-tagged events on trouper topics; BusService publishes into that fabric and keeps a recording mode for tests.
+- (plugins) The plugin host infrastructure is torn down: no coordinator actor, no workspace members, no kameo; plugin code stays in-tree unplugged pending re-integration.
