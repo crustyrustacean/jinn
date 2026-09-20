@@ -716,9 +716,8 @@ fn jinn_token_count_activate(
 /// strategy list, spawns the two curation troupers (prune + compaction),
 /// stages their crossing routes, and drains them.
 ///
-/// Strategy enablement is a construction-time gate (the wiring shape the
-/// kameo-era spawns used) — a disabled strategy never reaches the prune
-/// actor. The regex strategy additionally skips when its rule list is
+/// Strategy enablement is a construction-time gate — a disabled
+/// strategy never reaches the prune actor. The regex strategy additionally skips when its rule list is
 /// empty or any rule fails to compile (warn-and-skip, never a launch
 /// failure).
 #[expect(

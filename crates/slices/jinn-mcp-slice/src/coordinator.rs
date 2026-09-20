@@ -413,8 +413,8 @@ impl MsgHandler<RestartMcpServer> for McpCoordinatorActor {
     }
 }
 
-/// Wire payload for the restart ask's reply (JSON-friendly twin of the
-/// kameo-era `Result<(), RestartError>` reply shape).
+/// Wire payload for the restart ask's reply (a JSON-friendly
+/// success/error pair).
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
 pub struct RestartOutcome {
     pub ok: bool,

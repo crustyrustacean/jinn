@@ -87,11 +87,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
     async move {
         //
-        // the kameo-era bus flattened a `Result<(), RestartError>` Reply: awaiting yields
-        // `Result<(), SendError<M, RestartError>>`, where
-        // `SendError::HandlerError(e)` carries our domain error variants.
-        // The handle bounds the ask internally (old ASK_TIMEOUT semantics
-        // moved into the seam): Timeout/Mailbox surface as domain errors.
+        // the reply is a JSON-friendly success/error pair: awaiting
+        // yields the decoded outcome, where the error side carries our
+        // domain error variants. The handle bounds the ask internally:
+        // Timeout/Mailbox surface as domain errors.
         match coordinator.restart(session_id.clone(), server.clone()).await {
             // Outer timeout: coordinator never replied.
             Err(RestartError::Timeout) => {

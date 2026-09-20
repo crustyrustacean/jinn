@@ -1,18 +1,16 @@
 //! The session-init slice — per-session environment discovery on the
 //! trouper fabric.
 //!
-//! Replaces the kameo-era scan trio + discovery coordinator + discovery
-//! notifier with a true keyed-actor topology: one supervisor
+//! A keyed-actor topology: one supervisor
 //! translates session-lifecycle triggers and manual rescan commands
 //! into keyed commands, and a partition set activates one discovery
 //! worker per session, owning that session's skills, prompt, and
-//! context-file scans plus the settle coalescing the kameo-era coordinator
-//! used to do across four actors. A notifier actor posts the settled
-//! summary entry into the session's chat log.
+//! context-file scans plus settle coalescing. A notifier actor posts
+//! the settled summary entry into the session's chat log.
 //!
-//! Discovery results return to the kernel topic via route rules
-//! (`SkillsLoaded`, `PromptTemplatesLoaded`, `ContextFilesLoaded`) so
-//! kernel consumers — the session actor and the subagent task-settle
+//! Discovery results broadcast as `SkillsLoaded`,
+//! `PromptTemplatesLoaded`, and `ContextFilesLoaded` events, so kernel
+//! consumers — the session actor and the subagent task-settle
 //! listener — are unchanged.
 
 pub mod commands;

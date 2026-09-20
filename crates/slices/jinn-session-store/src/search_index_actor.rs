@@ -155,9 +155,9 @@ impl SearchIndexActor {
     /// Re-delivers one heartbeat to this actor after `interval`.
     ///
     /// The self-addressed tick keeps the "tick processes concurrently"
-    /// semantics the kameo-era self-tell gave: the next heartbeat is queued
-    /// while the current one may still be running its I/O, and the inbox
-    /// (Block policy) backpressures rather than dropping.
+    /// semantics: the next heartbeat is queued while the current one may
+    /// still be running its I/O, and the inbox (Block policy)
+    /// backpressures rather than dropping.
     fn reschedule(&self) {
         let system = self.system.clone();
         let path = ActorPath::new(SEARCH_INDEX_PATH);

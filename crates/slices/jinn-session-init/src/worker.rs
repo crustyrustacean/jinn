@@ -4,10 +4,9 @@
 //! The worker owns a session's whole discovery boundary: the three
 //! resource scans (skills, prompt templates, context files), the state
 //! writes for each result, the per-resource `*Loaded` publications, and
-//! the settle coalescing the kameo-era `DiscoveryCoordinatorActor` used to
-//! perform across four separate actors. Keying by session id makes
-//! per-session settlement native: the coordinator existed only because
-//! the kameo-era design had no keyed actors; here the latch is a local join.
+//! the settle coalescing across the three resource scans. Keying by
+//! session id makes per-session settlement native: the latch is a local
+//! join.
 //!
 //! Settle semantics (recorded behavior, preserved):
 //! - a [`RunDiscovery`] arms a settle waiter joining the three scans
@@ -682,8 +681,7 @@ fn write_skills(
         }
     });
 
-    // Reload the picker from the now-updated session data — the kameo-era
-    // actor's post-scan sequence, verbatim.
+    // Reload the picker from the now-updated session data.
     let (discovered, disabled, sample_theme) = {
         let r = state.read();
         let session = r.session.get(session_id);

@@ -85,8 +85,8 @@ async fn session_created_triggers_discovery_and_loaded_events_land_on_slice_topi
         recorder_for::<jinn_domain::feat::context::protocol::event::ContextFilesLoaded>(&app).await;
 
     // When the kernel publishes `SessionCreated` (the lifecycle event
-    // the old kameo-era scan actors subscribed): supervisor
-    // → keyed worker → Loaded events → reverse relays → this bus.
+    // that drives discovery): supervisor → keyed worker → Loaded
+    // events → this bus.
     let _ = app
         .core
         .bridge

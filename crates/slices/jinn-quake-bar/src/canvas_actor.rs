@@ -1,13 +1,9 @@
 //! The quake bar's canvas actor — the log writer on trouper.
 //!
-//! The kameo-era counterpart of this actor was the first port to the
-//! the `trouper` runtime ([`ServiceActor`] tier: stateless
-//! side-effectful fold, no journaling). It subscribes to the
-//! `jinn.quake-bar` trouper topic — fed by the fabric
-//! (`jinn.quake-bar`) — and appends each
-//! [`SubmitQuakeBarCommand`] to the slice cell's log, exactly as the
-//! kameo-era actor did. The cell handle cannot ride the runtime's JSON
-//! start args, so it is injected through the builder's
+//! A [`ServiceActor`] (stateless side-effectful fold, no journaling).
+//! It subscribes to `SubmitQuakeBarCommand` broadcasts and appends
+//! each to the slice cell's log. The cell handle cannot ride the
+//! runtime's JSON start args, so it is injected through the builder's
 //! [`start_with`](trouper::builder::ServiceBuilder::start_with)
 //! override.
 
