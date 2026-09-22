@@ -409,3 +409,6 @@ Entries are added or amended **only with human approval**.
 - (arch) Actor message schemas are declared with trouper's #[derive(Command)]/#[derive(Event)] macros; enum-shaped messages carry hand-written Schema + PayloadValue impls
 - (arch) Publish fans out to every actor declaring .handles on the schema; trouper has no separate subscription declaration and jinn declares no .emits beyond handler ctx effects.
 - (arch) An actor handler's outbound messages (ctx.send/reply) must appear in the spawning builder's .emits; undeclared ones are dead-lettered as UndeclaredEmit.
+- (session) Forking a session persists the source session before forking, so the fork always reflects the source's current history and includes the entry it was forked from.
+- (input) In the rename popup, ctrl+c clears the buffer and closes the popup when the buffer is already empty; escape always closes.
+- (session) Pinning or unpinning a chat entry marks the session interacted, so the pin change persists even on a session that was never sent to.
