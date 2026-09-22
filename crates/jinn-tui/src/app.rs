@@ -10,7 +10,7 @@ use derive_more::Debug;
 use jinn_domain::AppCore;
 use jinn_domain::AppUiRegistry;
 use jinn_domain::IntentHandler;
-use jinn_domain::{FocusScope, Intent, PickerKind};
+use jinn_domain::{FocusScope, KernelIntent, PickerKind};
 use jinn_sidebar::sections::Sidebar;
 use ratatui::Frame;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
@@ -27,7 +27,7 @@ pub use builder::TuiAppBuilder;
 
 /// Type alias for the which-key state parameterized for jinn.
 pub type WhichKeyInstance =
-    WhichKeyState<jinn_domain::KeyEvent, Scope, Intent, crate::keymap::KeyCategory>;
+    WhichKeyState<jinn_domain::KeyEvent, Scope, KernelIntent, crate::keymap::KeyCategory>;
 
 /// Top-level application state and event loop.
 #[derive(Debug)]
@@ -158,7 +158,7 @@ impl TuiApp {
                         self.route_intent(intent);
                     }
                     crossterm::event::Event::Paste(text) => {
-                        self.route_intent(jinn_domain::Intent::PasteText { text });
+                        self.route_intent(jinn_domain::KernelIntent::PasteText { text });
                     }
                     _ => {}
                 }
@@ -218,7 +218,7 @@ impl TuiApp {
         clippy::needless_pass_by_value,
         reason = "public entry point consumed inside via IntentHandler::handle"
     )]
-    pub fn route_intent(&mut self, intent: Intent) {
+    pub fn route_intent(&mut self, intent: KernelIntent) {
         // Step 1-3: Handle intent, collect results, release lock.
         let (messages, signals) = {
             let mut state = self.core.state.write(&self.intent_handler_cap);
@@ -232,7 +232,10 @@ impl TuiApp {
             );
 
             // Cancel selection when mode changes away from Picker.
-            if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape) {
+            if matches!(
+                intent,
+                KernelIntent::EnterNormalMode | KernelIntent::NormalEscape
+            ) {
                 self.selection = mem::take(&mut self.selection).cancel();
             }
 

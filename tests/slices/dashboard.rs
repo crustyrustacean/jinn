@@ -12,7 +12,7 @@
 use crate::common::{composed_keymap, test_app, wait_for, wait_for_bounded};
 use jinn_dashboard::dashboard_scope;
 use jinn_domain::common::slices::TypedCell;
-use jinn_domain::{Bridge, Intent, Key, KeyEvent, Modifiers};
+use jinn_domain::{Bridge, KernelIntent, Key, KeyEvent, Modifiers};
 use jinn_tui::Scope;
 
 /// The composed keymap carries the terminal-overlay toggle in the
@@ -41,7 +41,7 @@ fn alt_t_resolves_in_the_dashboard_dynamic_scope() {
     assert!(
         matches!(
             &intent,
-            Some(Intent::Dynamic(d))
+            Some(KernelIntent::Dynamic(d))
                 if d.slice == jinn_term_msg::view_scope() && d.action == "toggle-overlay"
         ),
         "dashboard scope: expected the term toggle-overlay dynamic intent, got {intent:?}"

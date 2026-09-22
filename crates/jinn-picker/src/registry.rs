@@ -457,9 +457,9 @@ mod tests {
 
     /// A schema'd stand-in message for action-closure assertions.
     #[derive(Clone, serde::Serialize, serde::Deserialize)]
-    pub(super) struct RecordedToggle;
+    pub(super) struct PickerRecordedToggle;
 
-    jinn_slices::crossing_schema!(RecordedToggle, "PickerRecordedToggle",
+    jinn_slices::crossing_schema!(PickerRecordedToggle, "PickerRecordedToggle",
         trouper::schema::SchemaKind::Event,
         description: "Picker registry action test message.",
         fields: []);
@@ -546,7 +546,7 @@ mod tests {
         registry.register(PickerSpec::<Entry>::new(PickerId::new("dispatch")).bind(
             "<tab>",
             "toggle",
-            |_ctx: &mut ActionCtx<'_>| PickerOutcome::new_message(RecordedToggle),
+            |_ctx: &mut ActionCtx<'_>| PickerOutcome::new_message(PickerRecordedToggle),
         ));
         let spec = registry.get("dispatch").expect("registered");
 

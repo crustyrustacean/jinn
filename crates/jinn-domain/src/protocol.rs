@@ -19,8 +19,8 @@ pub mod system;
 // Re-export primary types
 pub use crate::common::bus::BusMessage;
 pub use intent::CwdRoot;
-pub use intent::Intent;
 pub use intent::IntentResult;
+pub use intent::KernelIntent;
 pub use intent::ScopeSignal;
 pub use key::{Key, KeyEvent, Modifiers};
 pub use mode::Mode;

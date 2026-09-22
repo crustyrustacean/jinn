@@ -1961,7 +1961,7 @@ fn ctrl_clear_input_empties_chat_input_via_handler() {
     // Given a state in Input scope with text in the buffer.
     use crate::common::app_state::FocusScope;
     use crate::feat::intent::handler::IntentHandler;
-    use crate::protocol::Intent;
+    use crate::protocol::KernelIntent;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -1982,7 +1982,7 @@ fn ctrl_clear_input_empties_chat_input_via_handler() {
 
     // When handling CtrlClear via the IntentHandler.
     let result = IntentHandler::handle(
-        &Intent::CtrlClear,
+        &KernelIntent::CtrlClear,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2017,7 +2017,7 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
     // Given a state in Input scope with empty buffer.
     use crate::common::app_state::FocusScope;
     use crate::feat::intent::handler::IntentHandler;
-    use crate::protocol::Intent;
+    use crate::protocol::KernelIntent;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -2029,7 +2029,7 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
 
     // When handling CtrlClear via the IntentHandler.
     let result = IntentHandler::handle(
-        &Intent::CtrlClear,
+        &KernelIntent::CtrlClear,
         &mut state,
         &empty_slices(),
         &empty_routes(),

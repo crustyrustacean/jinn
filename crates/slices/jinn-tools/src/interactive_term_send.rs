@@ -20,7 +20,7 @@ use futures::FutureExt;
 use crate::interactive_term::StreamCtx;
 use crate::tool_types::ToolContext;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use jinn_term_msg::ExitInfo;
+use jinn_term_msg::TermExitInfo;
 use jinn_term_msg::command::{SendTermOutcome, TermScreen};
 use jinn_term_msg::settle::default_max_wait;
 
@@ -188,7 +188,7 @@ fn format_exited(tool_call_id: &str, tool_name: &str, screen: &TermScreen) -> To
     let code = screen
         .exited
         .as_ref()
-        .map_or_else(|| "exited".to_owned(), ExitInfo::summary);
+        .map_or_else(|| "exited".to_owned(), TermExitInfo::summary);
     let mut result = success_result(
         tool_call_id,
         tool_name,

@@ -90,9 +90,9 @@ mod tests {
 
     /// A schema'd stand-in message for closure-recording assertions.
     #[derive(Clone, serde::Serialize, serde::Deserialize)]
-    struct Recorded;
+    struct PickerOutcomeRecorded;
 
-    jinn_slices::crossing_schema!(Recorded, "PickerOutcomeRecorded",
+    jinn_slices::crossing_schema!(PickerOutcomeRecorded, "PickerOutcomeRecorded",
         trouper::schema::SchemaKind::Event,
         description: "Picker outcome closure test message.",
         fields: []);
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn new_message_records_the_message_type() {
         // Given a message outcome.
-        let outcome = PickerOutcome::new_message(Recorded);
+        let outcome = PickerOutcome::new_message(PickerOutcomeRecorded);
 
         // When inspecting the recorded names.
         // Then the message type name is recorded for test inspection.
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn merge_combines_messages_and_close_wins() {
         // Given an open outcome and a closing outcome.
-        let open = PickerOutcome::new_message(Recorded);
+        let open = PickerOutcome::new_message(PickerOutcomeRecorded);
         let closing = PickerOutcome::empty().close();
 
         // When merging them.

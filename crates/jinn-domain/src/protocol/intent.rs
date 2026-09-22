@@ -10,7 +10,7 @@ pub use jinn_slices::cwd_root::CwdRoot;
 /// Every keymap binding and mouse event produces exactly one [`Intent`] variant.
 /// The keymap decides the intent; the `IntentHandler` decides what to do with it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum Intent {
+pub enum KernelIntent {
     /// Insert a character at the cursor position.
     InsertChar {
         /// The character to insert.
@@ -240,114 +240,126 @@ pub enum Intent {
     SwitchTab,
 }
 
-impl jinn_slices::BusMessage for Intent {}
+impl jinn_slices::BusMessage for KernelIntent {}
 
-jinn_slices::crossing_schema!(Intent, "KernelIntent",
+jinn_slices::crossing_schema!(KernelIntent, "KernelIntent",
     trouper::schema::SchemaKind::Command,
     description: "A user-initiated action produced by the keymap (dispatched dynamically between slices).",
     fields: []);
 
-impl std::fmt::Display for Intent {
+impl std::fmt::Display for KernelIntent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Intent::InsertChar { ch } => write!(f, "insert '{ch}'"),
-            Intent::DeleteGrapheme => write!(f, "delete"),
-            Intent::DeleteGraphemeForward => write!(f, "forward delete"),
-            Intent::SubmitMessage => write!(f, "submit message"),
-            Intent::ToggleInputMode => write!(f, "toggle input mode"),
-            Intent::MoveCursorLeft => write!(f, "cursor left"),
-            Intent::MoveCursorRight => write!(f, "cursor right"),
-            Intent::MoveCursorToStart => write!(f, "cursor home"),
-            Intent::MoveCursorToEnd => write!(f, "cursor end"),
-            Intent::MoveCursorWordLeft => write!(f, "cursor word left"),
-            Intent::MoveCursorWordRight => write!(f, "cursor word right"),
-            Intent::MoveCursorUp => write!(f, "cursor up"),
-            Intent::MoveCursorDown => write!(f, "cursor down"),
-            Intent::AutocompleteConfirm => write!(f, "autocomplete confirm"),
-            Intent::PasteText { text } => {
+            KernelIntent::InsertChar { ch } => write!(f, "insert '{ch}'"),
+            KernelIntent::DeleteGrapheme => write!(f, "delete"),
+            KernelIntent::DeleteGraphemeForward => write!(f, "forward delete"),
+            KernelIntent::SubmitMessage => write!(f, "submit message"),
+            KernelIntent::ToggleInputMode => write!(f, "toggle input mode"),
+            KernelIntent::MoveCursorLeft => write!(f, "cursor left"),
+            KernelIntent::MoveCursorRight => write!(f, "cursor right"),
+            KernelIntent::MoveCursorToStart => write!(f, "cursor home"),
+            KernelIntent::MoveCursorToEnd => write!(f, "cursor end"),
+            KernelIntent::MoveCursorWordLeft => write!(f, "cursor word left"),
+            KernelIntent::MoveCursorWordRight => write!(f, "cursor word right"),
+            KernelIntent::MoveCursorUp => write!(f, "cursor up"),
+            KernelIntent::MoveCursorDown => write!(f, "cursor down"),
+            KernelIntent::AutocompleteConfirm => write!(f, "autocomplete confirm"),
+            KernelIntent::PasteText { text } => {
                 let line_count = text.lines().count();
                 write!(f, "paste ({line_count} lines)")
             }
-            Intent::ScrollUp => write!(f, "scroll up"),
-            Intent::ScrollDown => write!(f, "scroll down"),
-            Intent::MouseScrollUp => write!(f, "mouse scroll up"),
-            Intent::MouseScrollDown => write!(f, "mouse scroll down"),
-            Intent::ScrollToTop => write!(f, "scroll to top"),
-            Intent::ScrollToBottom => write!(f, "scroll to bottom"),
-            Intent::EditInput => write!(f, "edit in $EDITOR"),
-            Intent::Quit => write!(f, "quit"),
-            Intent::Interrupt { .. } => write!(f, "interrupt"),
-            Intent::CtrlClear => write!(f, "ctrl-c clear"),
-            Intent::EnterInsertMode => write!(f, "enter insert mode"),
-            Intent::EnterNormalMode => write!(f, "enter normal mode"),
-            Intent::ToggleWhichkey => write!(f, "toggle which-key"),
-            Intent::NormalEscape => write!(f, "escape"),
-            Intent::NoOp => write!(f, "no-op"),
-            Intent::OpenPicker { kind } => write!(f, "search {kind}"),
-            Intent::PickerInsertChar { ch } => write!(f, "picker insert '{ch}'"),
-            Intent::PickerBackspace => write!(f, "picker backspace"),
-            Intent::PickerConfirm => write!(f, "picker confirm"),
-            Intent::PickerAction { picker, action } => {
+            KernelIntent::ScrollUp => write!(f, "scroll up"),
+            KernelIntent::ScrollDown => write!(f, "scroll down"),
+            KernelIntent::MouseScrollUp => write!(f, "mouse scroll up"),
+            KernelIntent::MouseScrollDown => write!(f, "mouse scroll down"),
+            KernelIntent::ScrollToTop => write!(f, "scroll to top"),
+            KernelIntent::ScrollToBottom => write!(f, "scroll to bottom"),
+            KernelIntent::EditInput => write!(f, "edit in $EDITOR"),
+            KernelIntent::Quit => write!(f, "quit"),
+            KernelIntent::Interrupt { .. } => write!(f, "interrupt"),
+            KernelIntent::CtrlClear => write!(f, "ctrl-c clear"),
+            KernelIntent::EnterInsertMode => write!(f, "enter insert mode"),
+            KernelIntent::EnterNormalMode => write!(f, "enter normal mode"),
+            KernelIntent::ToggleWhichkey => write!(f, "toggle which-key"),
+            KernelIntent::NormalEscape => write!(f, "escape"),
+            KernelIntent::NoOp => write!(f, "no-op"),
+            KernelIntent::OpenPicker { kind } => write!(f, "search {kind}"),
+            KernelIntent::PickerInsertChar { ch } => write!(f, "picker insert '{ch}'"),
+            KernelIntent::PickerBackspace => write!(f, "picker backspace"),
+            KernelIntent::PickerConfirm => write!(f, "picker confirm"),
+            KernelIntent::PickerAction { picker, action } => {
                 write!(f, "picker action {action} ({picker})")
             }
-            Intent::PickerMoveUp => write!(f, "picker move up"),
-            Intent::PickerMoveDown => write!(f, "picker move down"),
-            Intent::PickerPageUp => write!(f, "picker page up"),
-            Intent::PickerPageDown => write!(f, "picker page down"),
-            Intent::PickerMoveCursorLeft => write!(f, "picker cursor left"),
-            Intent::PickerMoveCursorRight => write!(f, "picker cursor right"),
-            Intent::SessionNew => write!(f, "new session"),
-            Intent::RefreshModels => write!(f, "refresh models"),
-            Intent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
-            Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
+            KernelIntent::PickerMoveUp => write!(f, "picker move up"),
+            KernelIntent::PickerMoveDown => write!(f, "picker move down"),
+            KernelIntent::PickerPageUp => write!(f, "picker page up"),
+            KernelIntent::PickerPageDown => write!(f, "picker page down"),
+            KernelIntent::PickerMoveCursorLeft => write!(f, "picker cursor left"),
+            KernelIntent::PickerMoveCursorRight => write!(f, "picker cursor right"),
+            KernelIntent::SessionNew => write!(f, "new session"),
+            KernelIntent::RefreshModels => write!(f, "refresh models"),
+            KernelIntent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
+            KernelIntent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
 
-            Intent::ChatEntrySelectNext => write!(f, "select next entry"),
-            Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
-            Intent::ChatEntryJumpNextCompaction => write!(f, "next compaction"),
-            Intent::ChatEntryJumpPrevCompaction => write!(f, "previous compaction"),
-            Intent::ChatEntryJumpNextUserEntry => write!(f, "next user message"),
-            Intent::ChatEntryJumpPrevUserEntry => write!(f, "previous user message"),
-            Intent::ChatEntryJumpNextPinned => write!(f, "next pinned entry"),
-            Intent::ChatEntryJumpPrevPinned => write!(f, "previous pinned entry"),
-            Intent::ChatEntryJumpNextSources => write!(f, "next sources entry"),
-            Intent::ChatEntryJumpPrevSources => write!(f, "previous sources entry"),
-            Intent::LoadSubagentSession => write!(f, "open subagent session"),
-            Intent::SidebarSessionClose => write!(f, "close session"),
-            Intent::SidebarSessionArchiveTree => write!(f, "archive session tree"),
-            Intent::SidebarSessionTeardownTree => write!(f, "teardown session tree"),
-            Intent::ChatEntryPinSelected => write!(f, "pin entry"),
-            Intent::ExpandToolEntry => write!(f, "expand tool entry"),
-            Intent::ToggleAuditPopup => write!(f, "toggle audit popup"),
-            Intent::ToggleIgnoredBlockVisibility => write!(f, "toggle ignored block visibility"),
-            Intent::ForkFromEntry => write!(f, "fork from entry"),
-            Intent::NewSessionFromEntry => write!(f, "new session from entry"),
-            Intent::YankSelectedEntry => write!(f, "yank entry"),
-            Intent::ChatEntryIgnoreSelected => write!(f, "toggle entry in/out of context"),
-            Intent::ChatEntryResetSelected => write!(f, "reset entry to default context"),
-            Intent::ChatEntryIsolateSelected => write!(f, "isolate selected entry in context"),
+            KernelIntent::ChatEntrySelectNext => write!(f, "select next entry"),
+            KernelIntent::ChatEntrySelectPrev => write!(f, "select prev entry"),
+            KernelIntent::ChatEntryJumpNextCompaction => write!(f, "next compaction"),
+            KernelIntent::ChatEntryJumpPrevCompaction => write!(f, "previous compaction"),
+            KernelIntent::ChatEntryJumpNextUserEntry => write!(f, "next user message"),
+            KernelIntent::ChatEntryJumpPrevUserEntry => write!(f, "previous user message"),
+            KernelIntent::ChatEntryJumpNextPinned => write!(f, "next pinned entry"),
+            KernelIntent::ChatEntryJumpPrevPinned => write!(f, "previous pinned entry"),
+            KernelIntent::ChatEntryJumpNextSources => write!(f, "next sources entry"),
+            KernelIntent::ChatEntryJumpPrevSources => write!(f, "previous sources entry"),
+            KernelIntent::LoadSubagentSession => write!(f, "open subagent session"),
+            KernelIntent::SidebarSessionClose => write!(f, "close session"),
+            KernelIntent::SidebarSessionArchiveTree => write!(f, "archive session tree"),
+            KernelIntent::SidebarSessionTeardownTree => write!(f, "teardown session tree"),
+            KernelIntent::ChatEntryPinSelected => write!(f, "pin entry"),
+            KernelIntent::ExpandToolEntry => write!(f, "expand tool entry"),
+            KernelIntent::ToggleAuditPopup => write!(f, "toggle audit popup"),
+            KernelIntent::ToggleIgnoredBlockVisibility => {
+                write!(f, "toggle ignored block visibility")
+            }
+            KernelIntent::ForkFromEntry => write!(f, "fork from entry"),
+            KernelIntent::NewSessionFromEntry => write!(f, "new session from entry"),
+            KernelIntent::YankSelectedEntry => write!(f, "yank entry"),
+            KernelIntent::ChatEntryIgnoreSelected => write!(f, "toggle entry in/out of context"),
+            KernelIntent::ChatEntryResetSelected => write!(f, "reset entry to default context"),
+            KernelIntent::ChatEntryIsolateSelected => {
+                write!(f, "isolate selected entry in context")
+            }
 
-            Intent::SessionLifecycleSetup { lifecycle_name, .. } => {
+            KernelIntent::SessionLifecycleSetup { lifecycle_name, .. } => {
                 write!(f, "session lifecycle setup: {lifecycle_name}")
             }
-            Intent::SessionClose => write!(f, "session close"),
-            Intent::ArgInputConfirm => write!(f, "arg input confirm"),
-            Intent::OpenPrunerAccumulationInput => write!(f, "set pruner accumulation threshold"),
-            Intent::PrunerAccumulationConfirm => write!(f, "pruner accumulation confirm"),
-            Intent::PrunerAccumulationLeave => write!(f, "pruner accumulation leave"),
-            Intent::PrunerAccumulationInsertChar { ch } => {
+            KernelIntent::SessionClose => write!(f, "session close"),
+            KernelIntent::ArgInputConfirm => write!(f, "arg input confirm"),
+            KernelIntent::OpenPrunerAccumulationInput => {
+                write!(f, "set pruner accumulation threshold")
+            }
+            KernelIntent::PrunerAccumulationConfirm => write!(f, "pruner accumulation confirm"),
+            KernelIntent::PrunerAccumulationLeave => write!(f, "pruner accumulation leave"),
+            KernelIntent::PrunerAccumulationInsertChar { ch } => {
                 write!(f, "pruner accumulation insert '{ch}'")
             }
-            Intent::PrunerAccumulationCursorLeft => write!(f, "pruner accumulation cursor left"),
-            Intent::PrunerAccumulationCursorRight => write!(f, "pruner accumulation cursor right"),
-            Intent::PrunerAccumulationDeleteGrapheme => write!(f, "pruner accumulation delete"),
-            Intent::PrunerAccumulationDeleteForward => {
+            KernelIntent::PrunerAccumulationCursorLeft => {
+                write!(f, "pruner accumulation cursor left")
+            }
+            KernelIntent::PrunerAccumulationCursorRight => {
+                write!(f, "pruner accumulation cursor right")
+            }
+            KernelIntent::PrunerAccumulationDeleteGrapheme => {
+                write!(f, "pruner accumulation delete")
+            }
+            KernelIntent::PrunerAccumulationDeleteForward => {
                 write!(f, "pruner accumulation forward delete")
             }
 
-            Intent::ChangeCwd { root } => write!(f, "change cwd from '{root}'"),
+            KernelIntent::ChangeCwd { root } => write!(f, "change cwd from '{root}'"),
 
-            Intent::Dynamic(dynamic) => write!(f, "{dynamic}"),
-            Intent::SwitchTab => write!(f, "switch tab"),
+            KernelIntent::Dynamic(dynamic) => write!(f, "{dynamic}"),
+            KernelIntent::SwitchTab => write!(f, "switch tab"),
         }
     }
 }

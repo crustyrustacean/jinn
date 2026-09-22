@@ -3,7 +3,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::protocol::SessionId;
-use crate::protocol::{Intent, IntentResult};
+use crate::protocol::{IntentResult, KernelIntent};
 use jinn_inference_msg::CancelStream;
 
 use super::validator;
@@ -67,7 +67,7 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
 /// - `RenameSessionInput`  -> clear input, or if already empty, redispatch `RenameSessionLeave`.
 ///
 /// Returns `(IntentResult, Option<Intent>)` matching the `PickerConfirm` redispatch pattern.
-pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<Intent>) {
+pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<KernelIntent>) {
     use crate::common::app_state::ArgInputState;
     use crate::common::focus::FocusScope;
 
@@ -79,7 +79,7 @@ pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<Intent>)
         FocusScope::Picker { .. } => {
             if let Some(picker) = state.active_picker_ops() {
                 if picker.is_filter_empty() {
-                    (IntentResult::empty(), Some(Intent::EnterNormalMode))
+                    (IntentResult::empty(), Some(KernelIntent::EnterNormalMode))
                 } else {
                     picker.clear_filter();
                     (IntentResult::empty(), None)
@@ -349,7 +349,7 @@ mod tests {
     // CtrlClear tests
     // ============================================================
 
-    fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<Intent>) {
+    fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<KernelIntent>) {
         super::handle_ctrl_clear(state)
     }
 
@@ -432,7 +432,7 @@ mod tests {
 
         // When handling CtrlClear via the IntentHandler (exercises redispatch).
         let result = IntentHandler::handle(
-            &Intent::CtrlClear,
+            &KernelIntent::CtrlClear,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -518,7 +518,7 @@ mod tests {
 
         // First press: filter is non-empty, so it should be cleared.
         let result1 = IntentHandler::handle(
-            &Intent::CtrlClear,
+            &KernelIntent::CtrlClear,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -535,7 +535,7 @@ mod tests {
 
         // Second press: filter is now empty, so picker should close.
         let result2 = IntentHandler::handle(
-            &Intent::CtrlClear,
+            &KernelIntent::CtrlClear,
             &mut state,
             &empty_slices(),
             &empty_routes(),

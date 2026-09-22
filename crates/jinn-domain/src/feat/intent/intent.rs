@@ -1,2 +1,2 @@
 //! Re-export [`Intent`] from `crate::protocol`.
-pub use crate::Intent;
+pub use crate::KernelIntent;

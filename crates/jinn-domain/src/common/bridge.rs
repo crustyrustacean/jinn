@@ -156,13 +156,13 @@ mod tests {
 
     /// A single message type for testing: small, schema'd, serde-roundtrippable.
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-    struct TestMsg {
+    struct BridgeTestMsg {
         value: u32,
     }
 
-    impl BusMessage for TestMsg {}
+    impl BusMessage for BridgeTestMsg {}
 
-    jinn_slices::crossing_schema!(TestMsg, "BridgeTestMsg",
+    jinn_slices::crossing_schema!(BridgeTestMsg, "BridgeTestMsg",
         trouper::schema::SchemaKind::Event,
         description: "Bridge delivery test message.",
         fields: ["value" => trouper::schema::FieldTy::Int]);
@@ -177,15 +177,15 @@ mod tests {
         rt.block_on(async {
             // Given a trouper-backed harness and a recorder for the message.
             let harness = TestHarness::new().await;
-            let recorder = harness.spawn_recorder::<TestMsg>().await;
+            let recorder = harness.spawn_recorder::<BridgeTestMsg>().await;
             let bridge = Bridge::new(harness.bus());
 
             // When sending a closure through the bridge.
-            let closure = Bridge::publish_closure(TestMsg { value: 99 });
+            let closure = Bridge::publish_closure(BridgeTestMsg { value: 99 });
             bridge.send(closure).expect("send");
 
             // Then the recorder eventually receives the message.
-            let received = crate::common::bus::test_harness::await_recorded::<TestMsg>(
+            let received = crate::common::bus::test_harness::await_recorded::<BridgeTestMsg>(
                 &recorder,
                 1,
                 std::time::Duration::from_secs(2),

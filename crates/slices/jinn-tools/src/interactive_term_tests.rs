@@ -117,7 +117,7 @@ async fn spawn_without_a_command_is_rejected() {
 fn started_result_surfaces_the_kill_notice() {
     // Given a started outcome describing a replaced terminal.
     let killed = jinn_term_msg::command::KilledPrevious {
-        exited: jinn_term_msg::ExitInfo {
+        exited: jinn_term_msg::TermExitInfo {
             code: 0,
             signal: None,
         },
@@ -379,7 +379,7 @@ impl jinn_term_msg::TermHandle for FakeTermHandle {
         Ok(jinn_term_msg::KillTermOutcome::Killed {
             screen: String::new(),
             transcript_tail: String::new(),
-            exited: jinn_term_msg::ExitInfo {
+            exited: jinn_term_msg::TermExitInfo {
                 code: 0,
                 signal: None,
             },

@@ -142,7 +142,7 @@ mod tests {
     use crate::sections::section_trait::{
         EnterFrom, SectionNavResult, SidebarIntent, SidebarSection,
     };
-    use jinn_domain::Intent;
+    use jinn_domain::KernelIntent;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::render_ctx::RenderCtx;
     use jinn_domain::feat::persona::Persona;
@@ -228,7 +228,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When navigating with an action intent.
-        let result = navigate(&SidebarIntent::Action(Intent::Quit), &mut state);
+        let result = navigate(&SidebarIntent::Action(KernelIntent::Quit), &mut state);
 
         // Then the result is Moved.
         assert_eq!(result, SectionNavResult::Moved);

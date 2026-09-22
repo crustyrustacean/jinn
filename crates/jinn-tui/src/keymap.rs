@@ -6,7 +6,7 @@
 
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
-use jinn_domain::Intent;
+use jinn_domain::KernelIntent;
 use jinn_domain::PickerKind;
 use jinn_domain::protocol::CwdRoot;
 use jinn_domain::{Key, KeyEvent};
@@ -40,21 +40,47 @@ pub enum KeyCategory {
 ///
 /// Includes: escape, confirm, navigation (up/down), cursor (left/right),
 /// backspace, new session, and catch-all char input.
-fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Intent, KeyCategory>) {
-    b.bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
-        .bind("<enter>", Intent::PickerConfirm, KeyCategory::Model)
-        .bind("<up>", Intent::PickerMoveUp, KeyCategory::Navigation)
-        .bind("<down>", Intent::PickerMoveDown, KeyCategory::Navigation)
-        .bind("<pgup>", Intent::PickerPageUp, KeyCategory::Navigation)
-        .bind("<pgdn>", Intent::PickerPageDown, KeyCategory::Navigation)
-        .bind("<left>", Intent::PickerMoveCursorLeft, KeyCategory::Input)
-        .bind("<right>", Intent::PickerMoveCursorRight, KeyCategory::Input)
-        .bind("<backspace>", Intent::PickerBackspace, KeyCategory::Input)
-        .bind("<c-n>", Intent::SessionNew, KeyCategory::General)
-        .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
+fn add_picker_base(
+    b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, KernelIntent, KeyCategory>,
+) {
+    b.bind("<esc>", KernelIntent::EnterNormalMode, KeyCategory::General)
+        .bind("<enter>", KernelIntent::PickerConfirm, KeyCategory::Model)
+        .bind("<up>", KernelIntent::PickerMoveUp, KeyCategory::Navigation)
+        .bind(
+            "<down>",
+            KernelIntent::PickerMoveDown,
+            KeyCategory::Navigation,
+        )
+        .bind(
+            "<pgup>",
+            KernelIntent::PickerPageUp,
+            KeyCategory::Navigation,
+        )
+        .bind(
+            "<pgdn>",
+            KernelIntent::PickerPageDown,
+            KeyCategory::Navigation,
+        )
+        .bind(
+            "<left>",
+            KernelIntent::PickerMoveCursorLeft,
+            KeyCategory::Input,
+        )
+        .bind(
+            "<right>",
+            KernelIntent::PickerMoveCursorRight,
+            KeyCategory::Input,
+        )
+        .bind(
+            "<backspace>",
+            KernelIntent::PickerBackspace,
+            KeyCategory::Input,
+        )
+        .bind("<c-n>", KernelIntent::SessionNew, KeyCategory::General)
+        .bind("<c-c>", KernelIntent::CtrlClear, KeyCategory::General)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
-                Some(Intent::PickerInsertChar { ch: c })
+                Some(KernelIntent::PickerInsertChar { ch: c })
             } else {
                 None
             }
@@ -65,7 +91,7 @@ fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Inte
 #[must_use]
 #[rustfmt::skip]
 #[expect(clippy::too_many_lines, reason = "declarative keymap table; splitting it would obscure the binding overview")]
-pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
+pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
     let mut keymap = Keymap::new();
 
     keymap
@@ -73,91 +99,91 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .scope(Scope::Normal, |b| {
             b
             // General - app control
-            .bind("q", Intent::Quit, KeyCategory::General)
-            .bind("<c-c>", Intent::Quit, KeyCategory::General)
-            .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
+            .bind("q", KernelIntent::Quit, KeyCategory::General)
+            .bind("<c-c>", KernelIntent::Quit, KeyCategory::General)
+            .bind("?", KernelIntent::ToggleWhichkey, KeyCategory::General)
             .describe_group_with_category("<leader>s", "search", KeyCategory::General)
-            .bind("<leader>sm", Intent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
-            .bind("<leader>ss", Intent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
-            .bind("<leader>se", Intent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
-            .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
-            .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
-            .bind("<leader>sM", Intent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
-            .bind("<leader>sP", Intent::OpenPicker { kind: PickerKind::Plugin }, KeyCategory::General)
-            .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
-            .bind("<leader>sr", Intent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
+            .bind("<leader>sm", KernelIntent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
+            .bind("<leader>ss", KernelIntent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
+            .bind("<leader>se", KernelIntent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
+            .bind("<leader>st", KernelIntent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
+            .bind("<leader>sk", KernelIntent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
+            .bind("<leader>sM", KernelIntent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
+            .bind("<leader>sP", KernelIntent::OpenPicker { kind: PickerKind::Plugin }, KeyCategory::General)
+            .bind("<leader>sh", KernelIntent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
+            .bind("<leader>sr", KernelIntent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
             // OpenRouter routing endpoint pin (Single + OpenRouter models only).
-            .bind("<leader>sE", Intent::OpenPicker { kind: PickerKind::Endpoint }, KeyCategory::General)
+            .bind("<leader>sE", KernelIntent::OpenPicker { kind: PickerKind::Endpoint }, KeyCategory::General)
             // Projects - curated directory list for quick session creation
-            .bind("<leader>so", Intent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
+            .bind("<leader>so", KernelIntent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
             // Input - enter input mode
-            .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
-            .bind("<c-j>", Intent::EnterInsertMode, KeyCategory::Input)
+            .bind("i", KernelIntent::EnterInsertMode, KeyCategory::Input)
+            .bind("<c-j>", KernelIntent::EnterInsertMode, KeyCategory::Input)
             // Navigation - scrolling and tab switching
-            .bind("k", Intent::ChatEntrySelectPrev, KeyCategory::Navigation)
-            .bind("j", Intent::ChatEntrySelectNext, KeyCategory::Navigation)
-            .bind("<Tab>", Intent::SwitchTab, KeyCategory::Navigation)
+            .bind("k", KernelIntent::ChatEntrySelectPrev, KeyCategory::Navigation)
+            .bind("j", KernelIntent::ChatEntrySelectNext, KeyCategory::Navigation)
+            .bind("<Tab>", KernelIntent::SwitchTab, KeyCategory::Navigation)
 
-            .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
-            .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
+            .bind("<c-u>", KernelIntent::ScrollUp, KeyCategory::Navigation)
+            .bind("<c-d>", KernelIntent::ScrollDown, KeyCategory::Navigation)
             // Change CWD - search from session CWD
-            .bind("<M-c>", Intent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
+            .bind("<M-c>", KernelIntent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
             // Change CWD - search from home directory
-            .bind("<M-d>", Intent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
+            .bind("<M-d>", KernelIntent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
             // g prefix - general commands and model management
             .describe_group_with_category("g", "general", KeyCategory::General)
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
-            .bind("<leader>sl", Intent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
+            .bind("<leader>sl", KernelIntent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
             .describe_group_with_category("<leader>c", "change", KeyCategory::General)
-            .bind("gg", Intent::ScrollToTop, KeyCategory::Navigation)
-            .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
-            .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
-            .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
-            .bind("gcp", Intent::OpenPrunerAccumulationInput, KeyCategory::Context)
+            .bind("gg", KernelIntent::ScrollToTop, KeyCategory::Navigation)
+            .bind("G", KernelIntent::ScrollToBottom, KeyCategory::Navigation)
+            .bind("gmr", KernelIntent::RefreshModels, KeyCategory::Model)
+            .bind("gcr", KernelIntent::RescanPromptTemplates, KeyCategory::Context)
+            .bind("gcp", KernelIntent::OpenPrunerAccumulationInput, KeyCategory::Context)
             // Isolate selected entry: force-include its tool loop, force-exclude the rest
-            .bind("gci", Intent::ChatEntryIsolateSelected, KeyCategory::Context)
+            .bind("gci", KernelIntent::ChatEntryIsolateSelected, KeyCategory::Context)
             // Minimap navigation
             // Pin selected entry
-            .bind("p", Intent::ChatEntryPinSelected, KeyCategory::ChatHistory)
-            .bind("x", Intent::ChatEntryIgnoreSelected, KeyCategory::ChatHistory)
+            .bind("p", KernelIntent::ChatEntryPinSelected, KeyCategory::ChatHistory)
+            .bind("x", KernelIntent::ChatEntryIgnoreSelected, KeyCategory::ChatHistory)
             // Reset selected entry to default context
-            .bind("r", Intent::ChatEntryResetSelected, KeyCategory::ChatHistory)
+            .bind("r", KernelIntent::ChatEntryResetSelected, KeyCategory::ChatHistory)
             // Expand/collapse tool entry
-            .bind("e", Intent::ExpandToolEntry, KeyCategory::ChatHistory)
+            .bind("e", KernelIntent::ExpandToolEntry, KeyCategory::ChatHistory)
             // Toggle audit popup for the selected entry
-            .bind("a", Intent::ToggleAuditPopup, KeyCategory::ChatHistory)
+            .bind("a", KernelIntent::ToggleAuditPopup, KeyCategory::ChatHistory)
             // Toggle ignored block visibility
-            .bind("h", Intent::ToggleIgnoredBlockVisibility, KeyCategory::ChatHistory)
+            .bind("h", KernelIntent::ToggleIgnoredBlockVisibility, KeyCategory::ChatHistory)
             // Fork session from selected entry
-            .bind("f", Intent::ForkFromEntry, KeyCategory::ChatHistory)
+            .bind("f", KernelIntent::ForkFromEntry, KeyCategory::ChatHistory)
             // New session seeded with selected entry (no inherited history)
-            .bind("F", Intent::NewSessionFromEntry, KeyCategory::ChatHistory)
+            .bind("F", KernelIntent::NewSessionFromEntry, KeyCategory::ChatHistory)
             // Yank (copy) selected entry to clipboard
-            .bind("y", Intent::YankSelectedEntry, KeyCategory::ChatHistory)
+            .bind("y", KernelIntent::YankSelectedEntry, KeyCategory::ChatHistory)
             // Open the selected task call's subagent session
-            .bind("<enter>", Intent::LoadSubagentSession, KeyCategory::ChatHistory)
+            .bind("<enter>", KernelIntent::LoadSubagentSession, KeyCategory::ChatHistory)
             // Jump to next/previous compaction summary entry
             .describe_group_with_category("]", "next", KeyCategory::ChatHistory)
             .describe_group_with_category("[", "previous", KeyCategory::ChatHistory)
-            .bind("]c", Intent::ChatEntryJumpNextCompaction, KeyCategory::ChatHistory)
-            .bind("[c", Intent::ChatEntryJumpPrevCompaction, KeyCategory::ChatHistory)
-            .bind("]u", Intent::ChatEntryJumpNextUserEntry, KeyCategory::ChatHistory)
-            .bind("[u", Intent::ChatEntryJumpPrevUserEntry, KeyCategory::ChatHistory)
-            .bind("]p", Intent::ChatEntryJumpNextPinned, KeyCategory::ChatHistory)
-            .bind("[p", Intent::ChatEntryJumpPrevPinned, KeyCategory::ChatHistory)
+            .bind("]c", KernelIntent::ChatEntryJumpNextCompaction, KeyCategory::ChatHistory)
+            .bind("[c", KernelIntent::ChatEntryJumpPrevCompaction, KeyCategory::ChatHistory)
+            .bind("]u", KernelIntent::ChatEntryJumpNextUserEntry, KeyCategory::ChatHistory)
+            .bind("[u", KernelIntent::ChatEntryJumpPrevUserEntry, KeyCategory::ChatHistory)
+            .bind("]p", KernelIntent::ChatEntryJumpNextPinned, KeyCategory::ChatHistory)
+            .bind("[p", KernelIntent::ChatEntryJumpPrevPinned, KeyCategory::ChatHistory)
             // Jump to next/previous Sources (annotation) entry
-            .bind("]s", Intent::ChatEntryJumpNextSources, KeyCategory::ChatHistory)
-            .bind("[s", Intent::ChatEntryJumpPrevSources, KeyCategory::ChatHistory)
+            .bind("]s", KernelIntent::ChatEntryJumpNextSources, KeyCategory::ChatHistory)
+            .bind("[s", KernelIntent::ChatEntryJumpPrevSources, KeyCategory::ChatHistory)
             // Session creation
-            .bind("n", Intent::SessionNew, KeyCategory::General)
-            .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
+            .bind("n", KernelIntent::SessionNew, KeyCategory::General)
+            .bind("N", KernelIntent::SessionNewWithLifecycle, KeyCategory::General)
             // Escape: cancel selection
-            .bind("<esc>", Intent::NormalEscape, KeyCategory::General)
+            .bind("<esc>", KernelIntent::NormalEscape, KeyCategory::General)
             // Unmapped character keys produce NoOp to dismiss confirmation prompts
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(_) = key.key {
-                    Some(Intent::NoOp)
+                    Some(KernelIntent::NoOp)
                 } else {
                     None
                 }
@@ -175,38 +201,38 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
-            b.bind("<enter>", Intent::SubmitMessage, KeyCategory::Input)
-                .bind("<M-q>", Intent::ToggleInputMode, KeyCategory::Input)
-            .bind("<s-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
-            .bind("<c-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
-            .bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
-            .bind("<c-k>", Intent::EnterNormalMode, KeyCategory::General)
-            .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
-            .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
+            b.bind("<enter>", KernelIntent::SubmitMessage, KeyCategory::Input)
+                .bind("<M-q>", KernelIntent::ToggleInputMode, KeyCategory::Input)
+            .bind("<s-enter>", KernelIntent::InsertChar { ch: '\n' }, KeyCategory::Input)
+            .bind("<c-enter>", KernelIntent::InsertChar { ch: '\n' }, KeyCategory::Input)
+            .bind("<esc>", KernelIntent::EnterNormalMode, KeyCategory::General)
+            .bind("<c-k>", KernelIntent::EnterNormalMode, KeyCategory::General)
+            .bind("<c-c>", KernelIntent::CtrlClear, KeyCategory::General)
+            .bind("<c-e>", KernelIntent::EditInput, KeyCategory::Input)
             // <c-g> consensus one-shot removed (workflow system deprecated)
             // Change CWD - search from session CWD
-            .bind("<M-c>", Intent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
+            .bind("<M-c>", KernelIntent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
             // Change CWD - search from home directory
-            .bind("<M-d>", Intent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
-            .bind("<f1>", Intent::ToggleWhichkey, KeyCategory::General)
-            .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
-            .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
-            .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
-            .bind("<home>", Intent::MoveCursorToStart, KeyCategory::Input)
-            .bind("<end>", Intent::MoveCursorToEnd, KeyCategory::Input)
-            .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
-            .bind("<c-left>", Intent::MoveCursorWordLeft, KeyCategory::Input)
-            .bind("<c-right>", Intent::MoveCursorWordRight, KeyCategory::Input)
-            .bind("<up>", Intent::MoveCursorUp, KeyCategory::Input)
-            .bind("<down>", Intent::MoveCursorDown, KeyCategory::Input)
-            .bind("<tab>", Intent::AutocompleteConfirm, KeyCategory::Input)
-            .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
-            .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
+            .bind("<M-d>", KernelIntent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
+            .bind("<f1>", KernelIntent::ToggleWhichkey, KeyCategory::General)
+            .bind("<backspace>", KernelIntent::DeleteGrapheme, KeyCategory::Input)
+            .bind("<left>", KernelIntent::MoveCursorLeft, KeyCategory::Input)
+            .bind("<right>", KernelIntent::MoveCursorRight, KeyCategory::Input)
+            .bind("<home>", KernelIntent::MoveCursorToStart, KeyCategory::Input)
+            .bind("<end>", KernelIntent::MoveCursorToEnd, KeyCategory::Input)
+            .bind("<delete>", KernelIntent::DeleteGraphemeForward, KeyCategory::Input)
+            .bind("<c-left>", KernelIntent::MoveCursorWordLeft, KeyCategory::Input)
+            .bind("<c-right>", KernelIntent::MoveCursorWordRight, KeyCategory::Input)
+            .bind("<up>", KernelIntent::MoveCursorUp, KeyCategory::Input)
+            .bind("<down>", KernelIntent::MoveCursorDown, KeyCategory::Input)
+            .bind("<tab>", KernelIntent::AutocompleteConfirm, KeyCategory::Input)
+            .bind("<c-u>", KernelIntent::ScrollUp, KeyCategory::Navigation)
+            .bind("<c-d>", KernelIntent::ScrollDown, KeyCategory::Navigation)
 
-            .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
+            .bind("<c-j>", KernelIntent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(c) = key.key {
-                    Some(Intent::InsertChar { ch: c })
+                    Some(KernelIntent::InsertChar { ch: c })
                 } else {
                     None
                 }
@@ -275,17 +301,17 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         // (composition); no slice openers: `<M-`>` is a shell character
         // and this scope has an InsertChar guard — an unresolved key
         // would mutate arg text.
-        b.bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
-        .bind("<enter>", Intent::ArgInputConfirm, KeyCategory::Input)
-        .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
-        .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
-        .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
-        .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
-        .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
-        .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
+        b.bind("<esc>", KernelIntent::EnterNormalMode, KeyCategory::General)
+        .bind("<enter>", KernelIntent::ArgInputConfirm, KeyCategory::Input)
+        .bind("<left>", KernelIntent::MoveCursorLeft, KeyCategory::Input)
+        .bind("<right>", KernelIntent::MoveCursorRight, KeyCategory::Input)
+        .bind("<backspace>", KernelIntent::DeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", KernelIntent::DeleteGraphemeForward, KeyCategory::Input)
+        .bind("<c-j>", KernelIntent::InsertChar { ch: '\n' }, KeyCategory::Input)
+        .bind("<c-c>", KernelIntent::CtrlClear, KeyCategory::General)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
-                Some(Intent::InsertChar { ch: c })
+                Some(KernelIntent::InsertChar { ch: c })
             } else {
                 None
             }
@@ -295,16 +321,16 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     // PrunerAccumulationInput scope — numeric-only threshold input.
     keymap.scope(Scope::PrunerAccumulationInput, |b| {
         b
-        .bind("<esc>", Intent::PrunerAccumulationLeave, KeyCategory::General)
-        .bind("<enter>", Intent::PrunerAccumulationConfirm, KeyCategory::Input)
-        .bind("<left>", Intent::PrunerAccumulationCursorLeft, KeyCategory::Input)
-        .bind("<right>", Intent::PrunerAccumulationCursorRight, KeyCategory::Input)
-        .bind("<backspace>", Intent::PrunerAccumulationDeleteGrapheme, KeyCategory::Input)
-        .bind("<delete>", Intent::PrunerAccumulationDeleteForward, KeyCategory::Input)
-        .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
+        .bind("<esc>", KernelIntent::PrunerAccumulationLeave, KeyCategory::General)
+        .bind("<enter>", KernelIntent::PrunerAccumulationConfirm, KeyCategory::Input)
+        .bind("<left>", KernelIntent::PrunerAccumulationCursorLeft, KeyCategory::Input)
+        .bind("<right>", KernelIntent::PrunerAccumulationCursorRight, KeyCategory::Input)
+        .bind("<backspace>", KernelIntent::PrunerAccumulationDeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", KernelIntent::PrunerAccumulationDeleteForward, KeyCategory::Input)
+        .bind("<c-c>", KernelIntent::CtrlClear, KeyCategory::General)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
-                Some(Intent::PrunerAccumulationInsertChar { ch: c })
+                Some(KernelIntent::PrunerAccumulationInsertChar { ch: c })
             } else {
                 None
             }
@@ -318,8 +344,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
         match mouse.kind {
-            MouseEventKind::ScrollUp => Some(Intent::MouseScrollUp),
-            MouseEventKind::ScrollDown => Some(Intent::MouseScrollDown),
+            MouseEventKind::ScrollUp => Some(KernelIntent::MouseScrollUp),
+            MouseEventKind::ScrollDown => Some(KernelIntent::MouseScrollDown),
             _ => None,
         }
     })
@@ -394,7 +420,10 @@ mod tests {
 
         // Then it fires ChatEntryPinSelected (not a chord prefix).
         assert!(
-            matches!(intent, Some(jinn_domain::Intent::ChatEntryPinSelected)),
+            matches!(
+                intent,
+                Some(jinn_domain::KernelIntent::ChatEntryPinSelected)
+            ),
             "'p' in Normal scope should fire ChatEntryPinSelected; got {intent:?}",
         );
     }
@@ -420,7 +449,7 @@ mod tests {
         });
 
         // Then it fires the project spec's remove action.
-        let Some(jinn_domain::Intent::PickerAction { picker, action }) = intent else {
+        let Some(jinn_domain::KernelIntent::PickerAction { picker, action }) = intent else {
             panic!("<c-d> in PickerProject should fire the project remove action; got {intent:?}");
         };
         assert_eq!(picker, "project");
@@ -447,7 +476,7 @@ mod tests {
         assert!(
             matches!(
                 intent,
-                Some(jinn_domain::Intent::PickerInsertChar { ch: 'd' })
+                Some(jinn_domain::KernelIntent::PickerInsertChar { ch: 'd' })
             ),
             "bare 'd' in PickerProject should type into the filter; got {intent:?}",
         );
@@ -473,7 +502,7 @@ mod tests {
         assert!(
             matches!(
                 intent,
-                Some(jinn_domain::Intent::PickerInsertChar { ch: 'a' })
+                Some(jinn_domain::KernelIntent::PickerInsertChar { ch: 'a' })
             ),
             "bare 'a' in PickerProject should type into the filter, not add cwd; got {intent:?}",
         );
@@ -509,7 +538,7 @@ mod tests {
             NodeResult::Leaf { action } => assert!(
                 matches!(
                     action,
-                    Intent::OpenPicker {
+                    KernelIntent::OpenPicker {
                         kind: PickerKind::ReasoningEffort
                     }
                 ),
@@ -546,7 +575,7 @@ mod tests {
             panic!("esc must be a leaf");
         };
         assert!(
-            matches!(esc_action, Intent::EnterNormalMode),
+            matches!(esc_action, KernelIntent::EnterNormalMode),
             "esc must resolve to EnterNormalMode, got {esc_action:?}"
         );
 
@@ -557,7 +586,7 @@ mod tests {
             panic!("enter must be a leaf");
         };
         assert!(
-            matches!(enter_action, Intent::PickerConfirm),
+            matches!(enter_action, KernelIntent::PickerConfirm),
             "enter must resolve to PickerConfirm, got {enter_action:?}"
         );
     }
@@ -590,7 +619,7 @@ mod tests {
             panic!("esc must be a leaf");
         };
         assert!(
-            matches!(esc_action, Intent::EnterNormalMode),
+            matches!(esc_action, KernelIntent::EnterNormalMode),
             "esc must resolve to EnterNormalMode, got {esc_action:?}"
         );
 
@@ -601,7 +630,7 @@ mod tests {
             panic!("enter must be a leaf");
         };
         assert!(
-            matches!(enter_action, Intent::PickerConfirm),
+            matches!(enter_action, KernelIntent::PickerConfirm),
             "enter must resolve to PickerConfirm, got {enter_action:?}"
         );
     }
@@ -635,7 +664,7 @@ mod tests {
             NodeResult::Leaf { action } => assert!(
                 matches!(
                     action,
-                    Intent::OpenPicker {
+                    KernelIntent::OpenPicker {
                         kind: PickerKind::Persona
                     }
                 ),
@@ -674,7 +703,7 @@ mod tests {
             NodeResult::Leaf { action } => assert!(
                 matches!(
                     action,
-                    Intent::OpenPicker {
+                    KernelIntent::OpenPicker {
                         kind: PickerKind::Plugin
                     }
                 ),
@@ -709,7 +738,7 @@ mod tests {
         // Then it resolves to ChatEntryJumpNextCompaction.
         match next_result {
             NodeResult::Leaf { action } => assert!(
-                matches!(action, Intent::ChatEntryJumpNextCompaction),
+                matches!(action, KernelIntent::ChatEntryJumpNextCompaction),
                 "]c must resolve to ChatEntryJumpNextCompaction; got {action:?}",
             ),
             other => panic!("]c must be a leaf, got branch: {other:?}"),
@@ -733,7 +762,7 @@ mod tests {
         // Then it resolves to ChatEntryJumpPrevCompaction.
         match prev_result {
             NodeResult::Leaf { action } => assert!(
-                matches!(action, Intent::ChatEntryJumpPrevCompaction),
+                matches!(action, KernelIntent::ChatEntryJumpPrevCompaction),
                 "[c must resolve to ChatEntryJumpPrevCompaction; got {action:?}",
             ),
             other => panic!("[c must be a leaf, got branch: {other:?}"),
@@ -764,7 +793,7 @@ mod tests {
         // The `]c` jump intents are therefore unreachable in Input scope.
         let intent = intent.expect("] in Input scope must fire an intent (catch-all)");
         assert!(
-            matches!(intent, Intent::InsertChar { ch: ']' }),
+            matches!(intent, KernelIntent::InsertChar { ch: ']' }),
             "] in Input scope must insert a literal ], not start the jump chord; got {intent:?}",
         );
     }
@@ -794,7 +823,7 @@ mod tests {
         // Then it resolves to ChatEntryJumpNextPinned.
         match next_result {
             NodeResult::Leaf { action } => assert!(
-                matches!(action, Intent::ChatEntryJumpNextPinned),
+                matches!(action, KernelIntent::ChatEntryJumpNextPinned),
                 "]p must resolve to ChatEntryJumpNextPinned; got {action:?}",
             ),
             other => panic!("]p must be a leaf, got branch: {other:?}"),
@@ -818,7 +847,7 @@ mod tests {
         // Then it resolves to ChatEntryJumpPrevPinned.
         match prev_result {
             NodeResult::Leaf { action } => assert!(
-                matches!(action, Intent::ChatEntryJumpPrevPinned),
+                matches!(action, KernelIntent::ChatEntryJumpPrevPinned),
                 "[p must resolve to ChatEntryJumpPrevPinned; got {action:?}",
             ),
             other => panic!("[p must be a leaf, got branch: {other:?}"),
@@ -850,7 +879,7 @@ mod tests {
         // Then it resolves to ChatEntryJumpNextSources.
         match next_result {
             NodeResult::Leaf { action } => assert!(
-                matches!(action, Intent::ChatEntryJumpNextSources),
+                matches!(action, KernelIntent::ChatEntryJumpNextSources),
                 "]s must resolve to ChatEntryJumpNextSources; got {action:?}",
             ),
             other => panic!("]s must be a leaf, got branch: {other:?}"),
@@ -874,7 +903,7 @@ mod tests {
         // Then it resolves to ChatEntryJumpPrevSources.
         match prev_result {
             NodeResult::Leaf { action } => assert!(
-                matches!(action, Intent::ChatEntryJumpPrevSources),
+                matches!(action, KernelIntent::ChatEntryJumpPrevSources),
                 "[s must resolve to ChatEntryJumpPrevSources; got {action:?}",
             ),
             other => panic!("[s must be a leaf, got branch: {other:?}"),
@@ -899,7 +928,7 @@ mod leak_check {
         let keymap: WKKeymap<
             jinn_domain::KeyEvent,
             Scope,
-            jinn_domain::Intent,
+            jinn_domain::KernelIntent,
             crate::keymap::KeyCategory,
         > = init();
         let groups = keymap.bindings_for_scope(Scope::Normal);
@@ -941,7 +970,7 @@ mod leak_check {
         // Then it resolves to PickerPageUp.
         let intent = intent.expect("PageUp in PickerPersona must fire an intent");
         assert!(
-            matches!(intent, jinn_domain::Intent::PickerPageUp),
+            matches!(intent, jinn_domain::KernelIntent::PickerPageUp),
             "PageUp must resolve to PickerPageUp; got {intent:?}",
         );
     }
@@ -970,7 +999,7 @@ mod leak_check {
         // Then it resolves to PickerPageDown.
         let intent = intent.expect("PageDown in PickerPersona must fire an intent");
         assert!(
-            matches!(intent, jinn_domain::Intent::PickerPageDown),
+            matches!(intent, jinn_domain::KernelIntent::PickerPageDown),
             "PageDown must resolve to PickerPageDown; got {intent:?}",
         );
     }
@@ -999,7 +1028,7 @@ mod leak_check {
         // Then it resolves to PickerPageUp (list paging), not a picker action.
         let intent = intent.expect("PageUp in PickerSkill must fire an intent");
         assert!(
-            matches!(intent, jinn_domain::Intent::PickerPageUp),
+            matches!(intent, jinn_domain::KernelIntent::PickerPageUp),
             "PageUp in PickerSkill must route to list paging; got {intent:?}",
         );
     }
@@ -1030,7 +1059,7 @@ mod leak_check {
         assert!(
             matches!(
                 &intent,
-                jinn_domain::Intent::PickerAction { picker, action }
+                jinn_domain::KernelIntent::PickerAction { picker, action }
                     if picker == "tool" && action == "<tab>"
             ),
             "Tab in PickerTool must fire the spec toggle action; got {intent:?}",
@@ -1041,7 +1070,7 @@ mod leak_check {
     #[test]
     fn lifecycle_scope_binds_base_intents() {
         // Given the default keymap.
-        use jinn_domain::Intent;
+        use jinn_domain::KernelIntent;
         use jinn_domain::{Key, KeyEvent, Modifiers};
         use ratatui_which_key::NodeResult;
         let keymap = init();
@@ -1068,7 +1097,7 @@ mod leak_check {
             panic!("esc must be a leaf");
         };
         assert!(
-            matches!(esc_action, Intent::EnterNormalMode),
+            matches!(esc_action, KernelIntent::EnterNormalMode),
             "esc must resolve to EnterNormalMode, got {esc_action:?}"
         );
         let NodeResult::Leaf {
@@ -1078,7 +1107,7 @@ mod leak_check {
             panic!("enter must be a leaf");
         };
         assert!(
-            matches!(enter_action, Intent::PickerConfirm),
+            matches!(enter_action, KernelIntent::PickerConfirm),
             "enter must resolve to PickerConfirm, got {enter_action:?}"
         );
     }
@@ -1109,7 +1138,7 @@ mod leak_check {
         assert!(
             matches!(
                 &intent,
-                jinn_domain::Intent::PickerAction { picker, action }
+                jinn_domain::KernelIntent::PickerAction { picker, action }
                     if picker == "mcp-server" && action == "<tab>"
             ),
             "Tab in PickerMcpServer must fire the spec toggle action; got {intent:?}",
@@ -1142,7 +1171,7 @@ mod leak_check {
         assert!(
             matches!(
                 &intent,
-                jinn_domain::Intent::PickerAction { picker, action }
+                jinn_domain::KernelIntent::PickerAction { picker, action }
                     if picker == "mcp-server" && action == "<c-r>"
             ),
             "Ctrl+R in PickerMcpServer must fire the spec restart action; got {intent:?}",
@@ -1175,7 +1204,7 @@ mod leak_check {
         assert!(
             matches!(
                 &intent,
-                jinn_domain::Intent::PickerAction { picker, action }
+                jinn_domain::KernelIntent::PickerAction { picker, action }
                     if picker == "mcp-server" && action == "<c-t>"
             ),
             "Ctrl+T in PickerMcpServer must fire the spec logs/tools action; got {intent:?}",
@@ -1208,7 +1237,7 @@ mod leak_check {
         assert!(
             matches!(
                 &intent,
-                jinn_domain::Intent::PickerAction { picker, action }
+                jinn_domain::KernelIntent::PickerAction { picker, action }
                     if picker == "skill" && action == "<c-u>"
             ),
             "Ctrl+U in PickerSkill must fire the spec paging action; got {intent:?}",
@@ -1240,7 +1269,7 @@ mod leak_check {
         assert!(
             matches!(
                 &intent,
-                Some(jinn_domain::Intent::PickerAction { picker, action })
+                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
                     if picker == "skill" && action == "<c-l>"
             ),
             "Ctrl+L in PickerSkill should fire the spec load action; got {intent:?}",
@@ -1269,7 +1298,7 @@ mod leak_check {
 
         // Then it resolves to LoadSubagentSession.
         assert!(
-            matches!(intent, Some(jinn_domain::Intent::LoadSubagentSession)),
+            matches!(intent, Some(jinn_domain::KernelIntent::LoadSubagentSession)),
             "<enter> in Normal scope should fire LoadSubagentSession; got {intent:?}",
         );
     }

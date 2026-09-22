@@ -268,7 +268,7 @@ pub(crate) fn success_result(
     tool_call_id: &str,
     tool_name: &str,
     screen: &str,
-    exited: Option<&jinn_term_msg::ExitInfo>,
+    exited: Option<&jinn_term_msg::TermExitInfo>,
     killed_previous: Option<&jinn_term_msg::command::KilledPrevious>,
 ) -> ToolResult {
     let exit_line = exited

@@ -10,7 +10,7 @@
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
 use crate::common::composed_keymap;
-use jinn_domain::{Intent, Key, KeyEvent, Modifiers};
+use jinn_domain::{KernelIntent, Key, KeyEvent, Modifiers};
 use jinn_quake_bar::quake_scope;
 use jinn_tui::Scope;
 
@@ -42,7 +42,7 @@ fn quake_backtick_toggles_open_in_normal_and_close_in_quake_scope() {
     // Then it resolves to the quake open action.
     let intent = intent.expect("<M-`> must open the quake bar from Normal");
     assert!(
-        matches!(&intent, Intent::Dynamic(d) if d.action == "open"),
+        matches!(&intent, KernelIntent::Dynamic(d) if d.action == "open"),
         "expected the quake open action, got {intent:?}"
     );
 
@@ -53,7 +53,7 @@ fn quake_backtick_toggles_open_in_normal_and_close_in_quake_scope() {
         .handle_key(alt_backtick())
         .expect("<M-`> must resolve in QuakeBar");
     assert!(
-        matches!(&intent, Intent::Dynamic(d) if d.action == "close"),
+        matches!(&intent, KernelIntent::Dynamic(d) if d.action == "close"),
         "expected the quake close action, got {intent:?}"
     );
 }
@@ -76,7 +76,7 @@ fn esc_fires_quake_close_in_quake_scope() {
     // Then it resolves to the quake close action (which pops the scope).
     let intent = intent.expect("ESC in QuakeBar scope must fire an intent");
     assert!(
-        matches!(&intent, Intent::Dynamic(d) if d.action == "close"),
+        matches!(&intent, KernelIntent::Dynamic(d) if d.action == "close"),
         "ESC must resolve to the quake close action; got {intent:?}"
     );
 }
@@ -100,7 +100,7 @@ fn printable_char_synthesizes_insert_char_in_quake_hook_scope() {
     // Then which-key synthesizes the generic editing intent for the hook
     // scopes (the handler's hook consult routes it to the slice writer).
     assert!(
-        matches!(intent, Some(Intent::InsertChar { ch: 'x' })),
+        matches!(intent, Some(KernelIntent::InsertChar { ch: 'x' })),
         "printable char must synthesize InsertChar for the slice input hook; got {intent:?}"
     );
 }
@@ -123,7 +123,7 @@ fn pgup_fires_quake_scroll_up_in_quake_scope() {
     // Then it resolves to the quake scroll-up action.
     let intent = intent.expect("PageUp in QuakeBar scope must fire an intent");
     assert!(
-        matches!(&intent, Intent::Dynamic(d) if d.action == "scroll-up"),
+        matches!(&intent, KernelIntent::Dynamic(d) if d.action == "scroll-up"),
         "PageUp must resolve to the quake scroll-up action; got {intent:?}"
     );
 }

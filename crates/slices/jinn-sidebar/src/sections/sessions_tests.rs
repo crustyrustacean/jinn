@@ -198,7 +198,7 @@ fn navigate_up_at_top_returns_exhausted() {
 fn navigate_action_returns_moved() {
     let mut state = AppState::default_with_scope_focus();
     let result = navigate(
-        &SidebarIntent::Action(jinn_domain::Intent::Quit),
+        &SidebarIntent::Action(jinn_domain::KernelIntent::Quit),
         &mut state,
     );
     assert_eq!(result, SectionNavResult::Moved);
@@ -1240,7 +1240,7 @@ fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
 
     // When handling the intent via IntentHandler.
     let result = jinn_domain::feat::intent::IntentHandler::handle(
-        &jinn_domain::Intent::SessionNewWithLifecycle,
+        &jinn_domain::KernelIntent::SessionNewWithLifecycle,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -1267,7 +1267,7 @@ fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
 
     // When handling the intent via IntentHandler.
     let result = jinn_domain::feat::intent::IntentHandler::handle(
-        &jinn_domain::Intent::SessionNewWithLifecycle,
+        &jinn_domain::KernelIntent::SessionNewWithLifecycle,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2639,7 +2639,7 @@ fn archive_tree_members_rejected_when_wrong_section() {
 // ---------------------------------------------------------------------------
 
 use jinn_domain::feat::intent::IntentHandler;
-use jinn_domain::protocol::Intent;
+use jinn_domain::protocol::KernelIntent;
 
 #[rstest::rstest]
 fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
@@ -2649,7 +2649,7 @@ fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
 
     // When handling the first SidebarSessionArchiveTree.
     let result = IntentHandler::handle(
-        &Intent::SidebarSessionArchiveTree,
+        &KernelIntent::SidebarSessionArchiveTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2681,7 +2681,7 @@ fn archive_tree_arm_sets_busy_prompt_when_subtree_busy() {
 
     // When handling the first SidebarSessionArchiveTree.
     let result = IntentHandler::handle(
-        &Intent::SidebarSessionArchiveTree,
+        &KernelIntent::SidebarSessionArchiveTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2703,7 +2703,7 @@ fn archive_tree_second_press_emits_archive_command() {
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
     IntentHandler::handle(
-        &Intent::SidebarSessionArchiveTree,
+        &KernelIntent::SidebarSessionArchiveTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2712,7 +2712,7 @@ fn archive_tree_second_press_emits_archive_command() {
 
     // When handling a second SidebarSessionArchiveTree.
     let result = IntentHandler::handle(
-        &Intent::SidebarSessionArchiveTree,
+        &KernelIntent::SidebarSessionArchiveTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2738,7 +2738,7 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
     let (mut state, [.., grandchild_id, _survivor]) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
     IntentHandler::handle(
-        &Intent::SidebarSessionArchiveTree,
+        &KernelIntent::SidebarSessionArchiveTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2752,7 +2752,7 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
 
     // When handling a second SidebarSessionArchiveTree.
     let result = IntentHandler::handle(
-        &Intent::SidebarSessionArchiveTree,
+        &KernelIntent::SidebarSessionArchiveTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2781,7 +2781,7 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
     IntentHandler::handle(
-        &Intent::SidebarSessionArchiveTree,
+        &KernelIntent::SidebarSessionArchiveTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2790,7 +2790,7 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
 
     // When handling a different intent.
     let _result = IntentHandler::handle(
-        &Intent::SessionNew,
+        &KernelIntent::SessionNew,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2808,7 +2808,7 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
 
     // When handling SidebarSessionArchiveTree.
     let result = IntentHandler::handle(
-        &Intent::SidebarSessionArchiveTree,
+        &KernelIntent::SidebarSessionArchiveTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2828,7 +2828,7 @@ fn teardown_tree_arm_sets_confirm_prompt_with_action() {
 
     // When handling the first SidebarSessionTeardownTree.
     let result = IntentHandler::handle(
-        &Intent::SidebarSessionTeardownTree,
+        &KernelIntent::SidebarSessionTeardownTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2860,7 +2860,7 @@ fn teardown_tree_arm_sets_busy_prompt_when_subtree_busy() {
 
     // When handling the first SidebarSessionTeardownTree.
     let result = IntentHandler::handle(
-        &Intent::SidebarSessionTeardownTree,
+        &KernelIntent::SidebarSessionTeardownTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2882,7 +2882,7 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
     IntentHandler::handle(
-        &Intent::SidebarSessionTeardownTree,
+        &KernelIntent::SidebarSessionTeardownTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2891,7 +2891,7 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
 
     // When handling a second SidebarSessionTeardownTree.
     let result = IntentHandler::handle(
-        &Intent::SidebarSessionTeardownTree,
+        &KernelIntent::SidebarSessionTeardownTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2926,7 +2926,7 @@ fn teardown_tree_other_intent_dismisses_prompt() {
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
     IntentHandler::handle(
-        &Intent::SidebarSessionTeardownTree,
+        &KernelIntent::SidebarSessionTeardownTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2935,7 +2935,7 @@ fn teardown_tree_other_intent_dismisses_prompt() {
 
     // When handling a different intent.
     let _result = IntentHandler::handle(
-        &Intent::SessionNew,
+        &KernelIntent::SessionNew,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2955,7 +2955,7 @@ fn busy_tree_prompt_dismisses_on_other_intent() {
 
     // When handling a different intent.
     let _result = IntentHandler::handle(
-        &Intent::SessionNew,
+        &KernelIntent::SessionNew,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -2975,7 +2975,7 @@ fn busy_tree_prompt_still_confirms_on_tree_key() {
 
     // When handling SidebarSessionTeardownTree (the notice's own key).
     let result = IntentHandler::handle(
-        &Intent::SidebarSessionTeardownTree,
+        &KernelIntent::SidebarSessionTeardownTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -3001,7 +3001,7 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
     IntentHandler::handle(
-        &Intent::SidebarSessionTeardownTree,
+        &KernelIntent::SidebarSessionTeardownTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -3010,7 +3010,7 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
 
     // When handling SidebarSessionArchiveTree (the sibling tree key).
     let _result = IntentHandler::handle(
-        &Intent::SidebarSessionArchiveTree,
+        &KernelIntent::SidebarSessionArchiveTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -3033,7 +3033,7 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
     IntentHandler::handle(
-        &Intent::SidebarSessionArchiveTree,
+        &KernelIntent::SidebarSessionArchiveTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -3042,7 +3042,7 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
 
     // When handling SidebarSessionTeardownTree (the sibling tree key).
     let _result = IntentHandler::handle(
-        &Intent::SidebarSessionTeardownTree,
+        &KernelIntent::SidebarSessionTeardownTree,
         &mut state,
         &empty_slices(),
         &empty_routes(),

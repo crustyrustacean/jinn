@@ -10,7 +10,7 @@ use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
 use jinn_core_types::model_selection::ModelSelection;
 
-use crate::protocol::{Intent, IntentResult, PickerKind};
+use crate::protocol::{IntentResult, KernelIntent, PickerKind};
 
 use super::geometry::active_viewport;
 use super::validator;
@@ -112,7 +112,7 @@ pub fn handle_backspace(state: &mut AppState) -> IntentResult {
 pub fn handle_picker_confirm(
     state: &mut AppState,
     pickers: &jinn_picker::PickerRegistry,
-) -> (IntentResult, Option<Intent>) {
+) -> (IntentResult, Option<KernelIntent>) {
     if validator::validate_picker_confirm(state).is_err() {
         return (IntentResult::empty(), None);
     }

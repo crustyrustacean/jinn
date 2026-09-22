@@ -2,7 +2,7 @@
 
 use jinn_domain::common::render_ctx::RenderCtx;
 
-use jinn_domain::Intent;
+use jinn_domain::KernelIntent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
@@ -41,7 +41,7 @@ pub enum SidebarIntent {
     /// Move selection up within the section.
     MoveUp,
     /// A section-specific action, wrapping the app-level intent.
-    Action(Intent),
+    Action(KernelIntent),
 }
 
 /// A pluggable section within the sidebar.

@@ -163,7 +163,7 @@ fn register_slice_wiring(
     keymap: &mut ratatui_which_key::Keymap<
         jinn_domain::KeyEvent,
         Scope,
-        jinn_domain::Intent,
+        jinn_domain::KernelIntent,
         KeyCategory,
     >,
 ) {

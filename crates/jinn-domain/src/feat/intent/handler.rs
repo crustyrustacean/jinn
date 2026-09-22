@@ -34,7 +34,7 @@ use jinn_term_msg::command::ControlHolder;
 
 use crate::protocol::{PickerKind, ScopeSignal};
 
-use crate::Intent;
+use crate::KernelIntent;
 use crate::feat;
 
 use crate::IntentResult;
@@ -77,7 +77,7 @@ fn apply_scope_signal(result: &mut IntentResult, state: &mut AppState) {
 /// (or the hook declines the intent) — the caller falls through to the
 /// built-in arms.
 fn try_slice_input_hook(
-    intent: &Intent,
+    intent: &KernelIntent,
     state: &mut AppState,
     routes: &crate::common::slices::key_routes::KeyRoutes,
 ) -> Option<IntentResult> {
@@ -175,7 +175,7 @@ impl IntentHandler {
     /// into `frontend` directly.
     /// Returns commands and events for the actor system.
     pub fn handle(
-        intent: &Intent,
+        intent: &KernelIntent,
         state: &mut AppState,
         slices: &crate::common::slices::Slices,
         routes: &crate::common::slices::key_routes::KeyRoutes,
@@ -229,7 +229,7 @@ impl IntentHandler {
         reason = "exhaustive match on all Intent variants"
     )]
     fn handle_inner(
-        intent: &Intent,
+        intent: &KernelIntent,
         state: &mut AppState,
         slices: &crate::common::slices::Slices,
         routes: &crate::common::slices::key_routes::KeyRoutes,
@@ -243,7 +243,7 @@ impl IntentHandler {
         // against the handler's own borrows (`ActionCtx`): it writes
         // the same `&mut AppState` guard — never a second lock — and
         // resolves slice cells through the same registry.
-        if let Intent::Dynamic(dynamic) = intent
+        if let KernelIntent::Dynamic(dynamic) = intent
             && let Some(mut result) = routes.action_for(
                 dynamic,
                 crate::common::slices::key_routes::ActionCtx {
@@ -270,7 +270,7 @@ impl IntentHandler {
         // Clear ignore sweep state when the user performs any action other than
         // pressing x. This ensures the sweep only continues during consecutive
         // x presses within 100ms.
-        if !matches!(intent, Intent::ChatEntryIgnoreSelected) {
+        if !matches!(intent, KernelIntent::ChatEntryIgnoreSelected) {
             state.active_session_mut().clear_ignore_sweep();
         }
 
@@ -297,7 +297,7 @@ impl IntentHandler {
         }
 
         match intent {
-            Intent::InsertChar { ch }
+            KernelIntent::InsertChar { ch }
                 if matches!(
                     state.frontend.scope(),
                     crate::common::app_state::FocusScope::ArgInput
@@ -305,7 +305,7 @@ impl IntentHandler {
             {
                 feat::session_lifecycle::intent::handle_arg_input_insert_char(state, *ch)
             }
-            Intent::DeleteGrapheme
+            KernelIntent::DeleteGrapheme
                 if matches!(
                     state.frontend.scope(),
                     crate::common::app_state::FocusScope::ArgInput
@@ -313,7 +313,7 @@ impl IntentHandler {
             {
                 feat::session_lifecycle::intent::handle_arg_input_delete(state)
             }
-            Intent::MoveCursorLeft
+            KernelIntent::MoveCursorLeft
                 if matches!(
                     state.frontend.scope(),
                     crate::common::app_state::FocusScope::ArgInput
@@ -321,7 +321,7 @@ impl IntentHandler {
             {
                 feat::session_lifecycle::intent::handle_arg_input_cursor_left(state)
             }
-            Intent::MoveCursorRight
+            KernelIntent::MoveCursorRight
                 if matches!(
                     state.frontend.scope(),
                     crate::common::app_state::FocusScope::ArgInput
@@ -329,7 +329,7 @@ impl IntentHandler {
             {
                 feat::session_lifecycle::intent::handle_arg_input_cursor_right(state)
             }
-            Intent::DeleteGraphemeForward
+            KernelIntent::DeleteGraphemeForward
                 if matches!(
                     state.frontend.scope(),
                     crate::common::app_state::FocusScope::ArgInput
@@ -337,7 +337,7 @@ impl IntentHandler {
             {
                 feat::session_lifecycle::intent::handle_arg_input_delete_forward(state)
             }
-            Intent::EnterNormalMode
+            KernelIntent::EnterNormalMode
                 if matches!(
                     state.frontend.scope(),
                     crate::common::app_state::FocusScope::ArgInput
@@ -351,32 +351,32 @@ impl IntentHandler {
 
 
 
-            Intent::InsertChar { ch } => feat::chat_input::intent::handle_insert_char(*ch, state),
-            Intent::DeleteGrapheme => feat::chat_input::intent::handle_delete_grapheme(state),
-            Intent::DeleteGraphemeForward => {
+            KernelIntent::InsertChar { ch } => feat::chat_input::intent::handle_insert_char(*ch, state),
+            KernelIntent::DeleteGrapheme => feat::chat_input::intent::handle_delete_grapheme(state),
+            KernelIntent::DeleteGraphemeForward => {
                 feat::chat_input::intent::handle_delete_grapheme_forward(state)
             }
-            Intent::SubmitMessage => feat::chat_input::intent::handle_submit_message(state),
-            Intent::ToggleInputMode => feat::chat_input::intent::handle_toggle_input_mode(state),
-            Intent::AutocompleteConfirm => {
+            KernelIntent::SubmitMessage => feat::chat_input::intent::handle_submit_message(state),
+            KernelIntent::ToggleInputMode => feat::chat_input::intent::handle_toggle_input_mode(state),
+            KernelIntent::AutocompleteConfirm => {
                 feat::chat_input::intent::handle_autocomplete_confirm(state)
             }
-            Intent::MoveCursorLeft => feat::chat_input::intent::handle_move_cursor_left(state),
-            Intent::MoveCursorRight => feat::chat_input::intent::handle_move_cursor_right(state),
-            Intent::MoveCursorToStart => {
+            KernelIntent::MoveCursorLeft => feat::chat_input::intent::handle_move_cursor_left(state),
+            KernelIntent::MoveCursorRight => feat::chat_input::intent::handle_move_cursor_right(state),
+            KernelIntent::MoveCursorToStart => {
                 feat::chat_input::intent::handle_move_cursor_to_start(state)
             }
-            Intent::MoveCursorToEnd => feat::chat_input::intent::handle_move_cursor_to_end(state),
-            Intent::MoveCursorWordLeft => {
+            KernelIntent::MoveCursorToEnd => feat::chat_input::intent::handle_move_cursor_to_end(state),
+            KernelIntent::MoveCursorWordLeft => {
                 feat::chat_input::intent::handle_move_cursor_word_left(state)
             }
-            Intent::MoveCursorWordRight => {
+            KernelIntent::MoveCursorWordRight => {
                 feat::chat_input::intent::handle_move_cursor_word_right(state)
             }
-            Intent::MoveCursorUp => feat::chat_input::intent::handle_move_cursor_up(state),
-            Intent::MoveCursorDown => feat::chat_input::intent::handle_move_cursor_down(state),
+            KernelIntent::MoveCursorUp => feat::chat_input::intent::handle_move_cursor_up(state),
+            KernelIntent::MoveCursorDown => feat::chat_input::intent::handle_move_cursor_down(state),
 
-            Intent::PasteText { text } => match state.frontend.scope() {
+            KernelIntent::PasteText { text } => match state.frontend.scope() {
                 crate::common::app_state::FocusScope::Input => {
                     feat::chat_input::intent::handle_paste_text(text, state)
                 }
@@ -388,37 +388,37 @@ impl IntentHandler {
                 }
                 _ => IntentResult::empty(),
             },
-            Intent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
-            Intent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
-            Intent::MouseScrollUp => feat::navigation::intent::handle_mouse_scroll_up(state),
-            Intent::MouseScrollDown => feat::navigation::intent::handle_mouse_scroll_down(state),
-            Intent::ScrollToTop => feat::navigation::intent::handle_scroll_to_top(state),
-            Intent::ScrollToBottom => feat::navigation::intent::handle_scroll_to_bottom(state),
+            KernelIntent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
+            KernelIntent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
+            KernelIntent::MouseScrollUp => feat::navigation::intent::handle_mouse_scroll_up(state),
+            KernelIntent::MouseScrollDown => feat::navigation::intent::handle_mouse_scroll_down(state),
+            KernelIntent::ScrollToTop => feat::navigation::intent::handle_scroll_to_top(state),
+            KernelIntent::ScrollToBottom => feat::navigation::intent::handle_scroll_to_bottom(state),
 
-            Intent::EditInput => feat::navigation::intent::handle_edit_input(state),
+            KernelIntent::EditInput => feat::navigation::intent::handle_edit_input(state),
 
-            Intent::Quit => feat::global::intent::handle_quit(state),
-            Intent::Interrupt { session_id } => {
+            KernelIntent::Quit => feat::global::intent::handle_quit(state),
+            KernelIntent::Interrupt { session_id } => {
                 feat::global::intent::handle_interrupt(state, session_id.as_ref())
             }
-            Intent::EnterInsertMode => feat::chat_input::intent::handle_enter_insert_mode(state),
-            Intent::EnterNormalMode => {
+            KernelIntent::EnterInsertMode => feat::chat_input::intent::handle_enter_insert_mode(state),
+            KernelIntent::EnterNormalMode => {
                 feat::chat_input::intent::handle_enter_normal_mode_with_pickers(state, pickers)
             }
-            Intent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
-            Intent::ToggleAuditPopup => feat::global::intent::handle_toggle_audit_popup(state),
-            Intent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
-            Intent::NoOp => IntentResult::empty(),
+            KernelIntent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
+            KernelIntent::ToggleAuditPopup => feat::global::intent::handle_toggle_audit_popup(state),
+            KernelIntent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
+            KernelIntent::NoOp => IntentResult::empty(),
 
-            Intent::OpenPicker { kind } => {
+            KernelIntent::OpenPicker { kind } => {
                 feat::picker::intent::handle_open_picker(state, *kind, pickers)
             }
-            Intent::PickerAction { picker, action } => {
+            KernelIntent::PickerAction { picker, action } => {
                 feat::picker::action::run_action(state, pickers, picker, action)
             }
-            Intent::PickerInsertChar { ch } => feat::picker::intent::handle_insert_char(state, *ch),
-            Intent::PickerBackspace => feat::picker::intent::handle_backspace(state),
-            Intent::PickerConfirm => {
+            KernelIntent::PickerInsertChar { ch } => feat::picker::intent::handle_insert_char(state, *ch),
+            KernelIntent::PickerBackspace => feat::picker::intent::handle_backspace(state),
+            KernelIntent::PickerConfirm => {
                 let (result, maybe_intent) =
                     feat::picker::intent::handle_picker_confirm(state, pickers);
                 if let Some(intent) = maybe_intent {
@@ -428,7 +428,7 @@ impl IntentHandler {
                     result
                 }
             }
-            Intent::CtrlClear => {
+            KernelIntent::CtrlClear => {
                 let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state, slices, routes, pickers);
@@ -437,123 +437,123 @@ impl IntentHandler {
                     result
                 }
             }
-            Intent::PickerMoveUp => feat::picker::intent::handle_move_up(state, pickers),
-            Intent::PickerMoveDown => feat::picker::intent::handle_move_down(state, pickers),
-            Intent::PickerPageUp => feat::picker::intent::handle_page_up(state, pickers),
-            Intent::PickerPageDown => feat::picker::intent::handle_page_down(state, pickers),
-            Intent::PickerMoveCursorLeft => feat::picker::intent::handle_move_cursor_left(state),
-            Intent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
-            Intent::SessionNew => feat::session::intent::handle_session_new(state),
-            Intent::RefreshModels => feat::session::intent::handle_refresh_models(state),
-            Intent::RescanPromptTemplates => {
+            KernelIntent::PickerMoveUp => feat::picker::intent::handle_move_up(state, pickers),
+            KernelIntent::PickerMoveDown => feat::picker::intent::handle_move_down(state, pickers),
+            KernelIntent::PickerPageUp => feat::picker::intent::handle_page_up(state, pickers),
+            KernelIntent::PickerPageDown => feat::picker::intent::handle_page_down(state, pickers),
+            KernelIntent::PickerMoveCursorLeft => feat::picker::intent::handle_move_cursor_left(state),
+            KernelIntent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
+            KernelIntent::SessionNew => feat::session::intent::handle_session_new(state),
+            KernelIntent::RefreshModels => feat::session::intent::handle_refresh_models(state),
+            KernelIntent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)
             }
 
-            Intent::SessionNewWithLifecycle => feat::picker::intent::handle_open_picker(
+            KernelIntent::SessionNewWithLifecycle => feat::picker::intent::handle_open_picker(
                 state,
                 PickerKind::SessionLifecycle,
                 pickers,
             ),
-            Intent::LoadSubagentSession => {
+            KernelIntent::LoadSubagentSession => {
                 crate::feat::session::sessions_list::load_subagent::handle_load_subagent_session(
                     state,
                 )
             }
 
-            Intent::SidebarSessionClose => {
+            KernelIntent::SidebarSessionClose => {
                 // First press - show confirmation prompt.
                 // The interceptor (try_handle_close_session_prompt) handles the second press.
                 state.frontend.close_session_prompt = true;
                 IntentResult::empty()
             }
-            Intent::SidebarSessionArchiveTree => {
+            KernelIntent::SidebarSessionArchiveTree => {
                 crate::feat::session::sessions_list::archive_tree::handle_session_tree_action_arm(
                     state,
                     crate::feat::session::sessions_list::archive_tree::TreePromptAction::Archive,
                 )
             }
-            Intent::SidebarSessionTeardownTree => {
+            KernelIntent::SidebarSessionTeardownTree => {
                 crate::feat::session::sessions_list::archive_tree::handle_session_tree_action_arm(
                     state,
                     crate::feat::session::sessions_list::archive_tree::TreePromptAction::TeardownAndArchive,
                 )
             }
 
-            Intent::ChatEntrySelectNext => {
+            KernelIntent::ChatEntrySelectNext => {
                 feat::chat_entry_selection::intent::handle_select_next(state)
             }
-            Intent::ChatEntrySelectPrev => {
+            KernelIntent::ChatEntrySelectPrev => {
                 feat::chat_entry_selection::intent::handle_select_prev(state)
             }
-            Intent::ChatEntryJumpNextCompaction => {
+            KernelIntent::ChatEntryJumpNextCompaction => {
                 feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_compaction()
                 })
             }
-            Intent::ChatEntryJumpPrevCompaction => {
+            KernelIntent::ChatEntryJumpPrevCompaction => {
                 feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_compaction()
                 })
             }
-            Intent::ChatEntryJumpNextUserEntry => {
+            KernelIntent::ChatEntryJumpNextUserEntry => {
                 feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_user()
                 })
             }
-            Intent::ChatEntryJumpPrevUserEntry => {
+            KernelIntent::ChatEntryJumpPrevUserEntry => {
                 feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_user()
                 })
             }
-            Intent::ChatEntryJumpNextPinned => {
+            KernelIntent::ChatEntryJumpNextPinned => {
                 feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_pinned()
                 })
             }
-            Intent::ChatEntryJumpPrevPinned => {
+            KernelIntent::ChatEntryJumpPrevPinned => {
                 feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_pinned()
                 })
             }
-            Intent::ChatEntryJumpNextSources => {
+            KernelIntent::ChatEntryJumpNextSources => {
                 feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_annotation()
                 })
             }
-            Intent::ChatEntryJumpPrevSources => {
+            KernelIntent::ChatEntryJumpPrevSources => {
                 feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_annotation()
                 })
             }
-            Intent::ChatEntryPinSelected => {
+            KernelIntent::ChatEntryPinSelected => {
                 feat::chat_entry_selection::intent::handle_pin_selected(state)
             }
-            Intent::ExpandToolEntry => {
+            KernelIntent::ExpandToolEntry => {
                 feat::chat_entry_selection::intent::handle_expand_tool_entry(state)
             }
-            Intent::ToggleIgnoredBlockVisibility => {
+            KernelIntent::ToggleIgnoredBlockVisibility => {
                 feat::chat_entry_selection::intent::handle_toggle_ignored_block(state)
             }
-            Intent::ForkFromEntry => {
+            KernelIntent::ForkFromEntry => {
                 feat::chat_entry_selection::intent::handle_fork_from_entry(state)
             }
-            Intent::NewSessionFromEntry => {
+            KernelIntent::NewSessionFromEntry => {
                 feat::chat_entry_selection::intent::handle_new_session_from_entry(state)
             }
-            Intent::YankSelectedEntry => {
+            KernelIntent::YankSelectedEntry => {
                 feat::chat_entry_selection::intent::handle_yank_selected(state)
             }
-            Intent::ChatEntryIgnoreSelected => {
+            KernelIntent::ChatEntryIgnoreSelected => {
                 feat::chat_entry_selection::intent::handle_ignore_selected(state)
             }
-            Intent::ChatEntryResetSelected => {
+            KernelIntent::ChatEntryResetSelected => {
                 feat::chat_entry_selection::intent::handle_reset_selected(state)
             }
-            Intent::ChatEntryIsolateSelected => {
+            KernelIntent::ChatEntryIsolateSelected => {
                 feat::chat_entry_selection::isolate::handle_isolate_selected(state)
             }
 
-            Intent::SessionLifecycleSetup {
+            KernelIntent::SessionLifecycleSetup {
                 lifecycle_name,
                 args,
             } => feat::session_lifecycle::intent::handle_session_lifecycle_setup(
@@ -562,52 +562,52 @@ impl IntentHandler {
                 args,
                 None,
             ),
-            Intent::SessionClose => feat::session_lifecycle::intent::handle_session_close(state),
-            Intent::ArgInputConfirm => {
+            KernelIntent::SessionClose => feat::session_lifecycle::intent::handle_session_close(state),
+            KernelIntent::ArgInputConfirm => {
                 feat::session_lifecycle::intent::handle_arg_input_confirm(state)
             }
 
 
-            Intent::OpenPrunerAccumulationInput => {
+            KernelIntent::OpenPrunerAccumulationInput => {
                 feat::pruner_accumulation_input::intent::handle_enter(state)
             }
-            Intent::PrunerAccumulationConfirm => {
+            KernelIntent::PrunerAccumulationConfirm => {
                 feat::pruner_accumulation_input::intent::handle_confirm(state)
             }
-            Intent::PrunerAccumulationLeave => {
+            KernelIntent::PrunerAccumulationLeave => {
                 feat::pruner_accumulation_input::intent::handle_leave(state)
             }
-            Intent::PrunerAccumulationInsertChar { ch } => {
+            KernelIntent::PrunerAccumulationInsertChar { ch } => {
                 feat::pruner_accumulation_input::intent::handle_insert_char(state, *ch)
             }
-            Intent::PrunerAccumulationCursorLeft => {
+            KernelIntent::PrunerAccumulationCursorLeft => {
                 feat::pruner_accumulation_input::intent::handle_cursor_left(state)
             }
-            Intent::PrunerAccumulationCursorRight => {
+            KernelIntent::PrunerAccumulationCursorRight => {
                 feat::pruner_accumulation_input::intent::handle_cursor_right(state)
             }
-            Intent::PrunerAccumulationDeleteGrapheme => {
+            KernelIntent::PrunerAccumulationDeleteGrapheme => {
                 feat::pruner_accumulation_input::intent::handle_delete(state)
             }
-            Intent::PrunerAccumulationDeleteForward => {
+            KernelIntent::PrunerAccumulationDeleteForward => {
                 feat::pruner_accumulation_input::intent::handle_delete_forward(state)
             }
 
 
 
-            Intent::Dynamic(_) => {
+            KernelIntent::Dynamic(_) => {
                 // Unregistered dynamic intents are inert by construction:
                 // a slice that never attached a route row for this action
                 // must not fall into a built-in arm.
                 tracing::debug!("dynamic intent arrived with no route row attached");
                 IntentResult::empty()
             }
-            Intent::ChangeCwd { root } => {
+            KernelIntent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
             }
 
             // ── Tabs ──
-            Intent::SwitchTab => {
+            KernelIntent::SwitchTab => {
                 // Tab cycle across the registered tab scopes: the
                 // composition-owned helper resolves the next base scope
                 // from the slices' tab registry (chat when no dynamic
@@ -647,7 +647,10 @@ impl IntentHandler {
 /// - Any other intent dismisses the prompt and returns `None` (fall through to normal processing).
 ///
 /// Returns `None` if the prompt is not showing or was dismissed.
-fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Option<IntentResult> {
+fn try_handle_cancel_stream_prompt(
+    intent: &KernelIntent,
+    state: &mut AppState,
+) -> Option<IntentResult> {
     if !state.frontend.cancel_stream_prompt {
         return None;
     }
@@ -655,7 +658,7 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
     // Dismiss the prompt regardless of which intent triggered it.
     state.frontend.cancel_stream_prompt = false;
 
-    if !matches!(intent, Intent::NormalEscape) {
+    if !matches!(intent, KernelIntent::NormalEscape) {
         // Any other key — dismiss prompt, fall through to normal processing.
         return None;
     }
@@ -693,7 +696,10 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 /// - Any other intent dismisses the prompt and returns `None` (fall through to normal processing).
 ///
 /// Returns `None` if the prompt is not showing or was dismissed.
-fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Option<IntentResult> {
+fn try_handle_close_session_prompt(
+    intent: &KernelIntent,
+    state: &mut AppState,
+) -> Option<IntentResult> {
     if !state.frontend.close_session_prompt {
         return None;
     }
@@ -701,7 +707,7 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
     // Dismiss the prompt regardless of which intent triggered it.
     state.frontend.close_session_prompt = false;
 
-    if !matches!(intent, Intent::SidebarSessionClose) {
+    if !matches!(intent, KernelIntent::SidebarSessionClose) {
         // Any other key - dismiss prompt, fall through to normal processing.
         return None;
     }
@@ -724,7 +730,10 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
 ///   to normal processing).
 ///
 /// Returns `None` if the prompt is not showing or was dismissed.
-fn try_handle_archive_tree_prompt(intent: &Intent, state: &mut AppState) -> Option<IntentResult> {
+fn try_handle_archive_tree_prompt(
+    intent: &KernelIntent,
+    state: &mut AppState,
+) -> Option<IntentResult> {
     use crate::feat::session::sessions_list::archive_tree::{
         ArchiveTreeError, ArchiveTreePrompt, TreePromptAction, archive_tree_members,
         handle_session_tree_action_confirm,
@@ -733,9 +742,9 @@ fn try_handle_archive_tree_prompt(intent: &Intent, state: &mut AppState) -> Opti
     let prompt = state.frontend.archive_tree_prompt.as_ref()?;
 
     // Which tree key was pressed, if either.
-    let pressed = if matches!(intent, Intent::SidebarSessionArchiveTree) {
+    let pressed = if matches!(intent, KernelIntent::SidebarSessionArchiveTree) {
         Some(TreePromptAction::Archive)
-    } else if matches!(intent, Intent::SidebarSessionTeardownTree) {
+    } else if matches!(intent, KernelIntent::SidebarSessionTeardownTree) {
         Some(TreePromptAction::TeardownAndArchive)
     } else {
         None
@@ -830,7 +839,7 @@ mod tests {
     }
     use crate::common::app_state::{AppState, FocusScope};
     use crate::feat::intent::IntentHandler;
-    use crate::protocol::{ChatEntry, Intent};
+    use crate::protocol::{ChatEntry, KernelIntent};
 
     #[rstest::rstest]
     fn paste_text_ignored_in_normal_scope() {
@@ -840,7 +849,7 @@ mod tests {
 
         // When handling PasteText.
         let result = IntentHandler::handle(
-            &Intent::PasteText {
+            &KernelIntent::PasteText {
                 text: "hello".into(),
             },
             &mut state,
@@ -868,7 +877,7 @@ mod tests {
 
         // When handling PasteText.
         let result = IntentHandler::handle(
-            &Intent::PasteText {
+            &KernelIntent::PasteText {
                 text: "hello\nworld".into(),
             },
             &mut state,
@@ -897,7 +906,7 @@ mod tests {
 
         // When handling InsertChar.
         let _result = IntentHandler::handle(
-            &Intent::InsertChar { ch: 'x' },
+            &KernelIntent::InsertChar { ch: 'x' },
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -935,7 +944,7 @@ mod tests {
 
         // When handling InsertChar.
         let _result = IntentHandler::handle(
-            &Intent::InsertChar { ch: 'o' },
+            &KernelIntent::InsertChar { ch: 'o' },
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -961,7 +970,7 @@ mod tests {
 
         // When handling InsertChar.
         let _result = IntentHandler::handle(
-            &Intent::InsertChar { ch: 'x' },
+            &KernelIntent::InsertChar { ch: 'x' },
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -998,7 +1007,7 @@ mod tests {
 
         // When handling DeleteGrapheme.
         let _result = IntentHandler::handle(
-            &Intent::DeleteGrapheme,
+            &KernelIntent::DeleteGrapheme,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1026,7 +1035,7 @@ mod tests {
 
         // When handling MoveCursorLeft.
         let _result = IntentHandler::handle(
-            &Intent::MoveCursorLeft,
+            &KernelIntent::MoveCursorLeft,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1054,7 +1063,7 @@ mod tests {
 
         // When handling MoveCursorRight.
         let _result = IntentHandler::handle(
-            &Intent::MoveCursorRight,
+            &KernelIntent::MoveCursorRight,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1082,7 +1091,7 @@ mod tests {
 
         // When handling DeleteGraphemeForward.
         let _result = IntentHandler::handle(
-            &Intent::DeleteGraphemeForward,
+            &KernelIntent::DeleteGraphemeForward,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1110,7 +1119,7 @@ mod tests {
 
         // When handling EnterNormalMode.
         let _result = IntentHandler::handle(
-            &Intent::EnterNormalMode,
+            &KernelIntent::EnterNormalMode,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1133,7 +1142,7 @@ mod tests {
 
         // When handling PasteText.
         let _result = IntentHandler::handle(
-            &Intent::PasteText {
+            &KernelIntent::PasteText {
                 text: "hello".into(),
             },
             &mut state,
@@ -1155,7 +1164,7 @@ mod tests {
 
         // When handling NormalEscape.
         let result = IntentHandler::handle(
-            &Intent::NormalEscape,
+            &KernelIntent::NormalEscape,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1183,7 +1192,7 @@ mod tests {
 
         // When handling a different intent (InsertChar).
         let _result = IntentHandler::handle(
-            &Intent::InsertChar { ch: 'a' },
+            &KernelIntent::InsertChar { ch: 'a' },
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1203,7 +1212,7 @@ mod tests {
 
         // When handling NormalEscape.
         let _result = IntentHandler::handle(
-            &Intent::NormalEscape,
+            &KernelIntent::NormalEscape,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1224,7 +1233,7 @@ mod tests {
 
         // When handling a different intent (ScrollUp).
         let _result = IntentHandler::handle(
-            &Intent::ScrollUp,
+            &KernelIntent::ScrollUp,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1244,7 +1253,7 @@ mod tests {
 
         // When handling NoOp (unmapped key).
         let result = IntentHandler::handle(
-            &Intent::NoOp,
+            &KernelIntent::NoOp,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1272,7 +1281,7 @@ mod tests {
 
         // When handling NoOp (unmapped key).
         let _result = IntentHandler::handle(
-            &Intent::NoOp,
+            &KernelIntent::NoOp,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1291,7 +1300,7 @@ mod tests {
 
         // When handling NoOp.
         let result = IntentHandler::handle(
-            &Intent::NoOp,
+            &KernelIntent::NoOp,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1324,7 +1333,7 @@ mod tests {
         // verify no event. Then manually switch and verify event.
         state.session.set_active(first_id);
         let result = IntentHandler::handle(
-            &Intent::ChatEntrySelectNext,
+            &KernelIntent::ChatEntrySelectNext,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1353,7 +1362,7 @@ mod tests {
 
         // When switching tabs.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1419,7 +1428,7 @@ mod tests {
 
         // When handling any other intent.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &slices,
             &empty_routes(),
@@ -1437,7 +1446,7 @@ mod tests {
 
         // When switching tabs.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1461,7 +1470,7 @@ mod tests {
 
         // When switching tabs twice.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &slices,
             &empty_routes(),
@@ -1475,7 +1484,7 @@ mod tests {
 
         // When switching tabs again.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &slices,
             &empty_routes(),
@@ -1501,7 +1510,7 @@ mod tests {
 
         // When switching tabs.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1551,7 +1560,7 @@ mod tests {
         // active session directly (set_active on a loaded child) regardless
         // of the open overlay.
         IntentHandler::handle(
-            &Intent::LoadSubagentSession,
+            &KernelIntent::LoadSubagentSession,
             &mut state,
             &slices,
             &empty_routes(),
@@ -1619,7 +1628,7 @@ mod tests {
 
         // When switching the active session.
         IntentHandler::handle(
-            &Intent::LoadSubagentSession,
+            &KernelIntent::LoadSubagentSession,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1662,7 +1671,7 @@ mod tests {
 
         // When the sidebar toggle activates the session and opens the overlay
         // in the same intent.
-        let intent = Intent::Dynamic(jinn_slices::DynamicIntent::new(
+        let intent = KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
             jinn_term_msg::view_scope(),
             "toggle-for-selected",
             "toggle terminal",

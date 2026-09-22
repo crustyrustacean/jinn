@@ -1026,7 +1026,7 @@ mod tests {
         use crate::common::slices::Slices;
         use crate::common::slices::key_routes::KeyRoutes;
         use crate::feat::intent::handler::IntentHandler;
-        use crate::protocol::Intent;
+        use crate::protocol::KernelIntent;
 
         // Given an open skill picker (real registry, real handler) with a
         // toggled disable staged on top of the snapshot.
@@ -1040,7 +1040,7 @@ mod tests {
 
         // When handling the ESC intent through the IntentHandler.
         let _ = IntentHandler::handle(
-            &Intent::EnterNormalMode,
+            &KernelIntent::EnterNormalMode,
             &mut state,
             &Slices::new(),
             &KeyRoutes::new(),

@@ -665,7 +665,7 @@ impl McpActor {
             })
             .subscribe::<ExecuteTool>()
             .handles::<ExecuteTool>()
-            .handles::<ConnectionState>()
+            .handles::<McpConnectionStateProbe>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
         path
@@ -774,31 +774,31 @@ impl MsgHandler<ExecuteTool> for McpActor {
 /// whether the newly-spawned actor connected successfully, *without* relying on
 /// bus-event ordering (the old status-event approach was race-prone).
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
-pub struct ConnectionState;
+pub struct McpConnectionStateProbe;
 
-impl jinn_slices::BusMessage for ConnectionState {}
+impl jinn_slices::BusMessage for McpConnectionStateProbe {}
 
-jinn_slices::crossing_schema!(ConnectionState, "McpConnectionStateProbe",
+jinn_slices::crossing_schema!(McpConnectionStateProbe, "McpConnectionStateProbe",
     trouper::schema::SchemaKind::Command,
     description: "Post-startup probe: is the server's client still connected?",
     fields: []);
 
 /// Boolean probe reply payload (JSON-friendly twin of `bool`).
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
-pub struct ConnectionStateReply {
+pub struct McpConnectionStateReply {
     pub connected: bool,
 }
 
-impl jinn_slices::BusMessage for ConnectionStateReply {}
+impl jinn_slices::BusMessage for McpConnectionStateReply {}
 
-jinn_slices::crossing_schema!(ConnectionStateReply, "McpConnectionStateReply",
+jinn_slices::crossing_schema!(McpConnectionStateReply, "McpConnectionStateReply",
     trouper::schema::SchemaKind::Event,
     description: "Reply payload for the connection-state probe.",
     fields: ["connected" => trouper::schema::FieldTy::Bool]);
 
-impl MsgHandler<ConnectionState> for McpActor {
-    async fn handle(&mut self, _msg: ConnectionState, ctx: &mut MsgCtx<'_>) {
-        ctx.reply(ConnectionStateReply {
+impl MsgHandler<McpConnectionStateProbe> for McpActor {
+    async fn handle(&mut self, _msg: McpConnectionStateProbe, ctx: &mut MsgCtx<'_>) {
+        ctx.reply(McpConnectionStateReply {
             connected: self.client.is_some(),
         });
     }

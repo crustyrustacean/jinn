@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use jinn_core_types::SessionId;
 use jinn_slices::BusMessage;
 
-use crate::ExitInfo;
+use crate::TermExitInfo;
 
 /// Who may send input to the session right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -23,7 +23,7 @@ pub struct TermScreen {
     /// The rendered screen (plain text, trailing blank rows trimmed).
     pub screen: String,
     /// Set when the process exited during (or before) this call.
-    pub exited: Option<ExitInfo>,
+    pub exited: Option<TermExitInfo>,
 }
 
 /// Spawn a new interactive session running `command`.
@@ -66,7 +66,7 @@ pub enum SpawnTermOutcome {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KilledPrevious {
     /// Captured exit info from the kill.
-    pub exited: ExitInfo,
+    pub exited: TermExitInfo,
 }
 
 /// Send input to a session and wait for the screen to settle.
@@ -116,7 +116,7 @@ pub enum KillTermOutcome {
         /// Transcript tail (sequence of observed screens).
         transcript_tail: String,
         /// Captured exit info.
-        exited: ExitInfo,
+        exited: TermExitInfo,
     },
     /// The session id is unknown.
     UnknownSession,

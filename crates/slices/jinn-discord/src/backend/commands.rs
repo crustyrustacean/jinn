@@ -13,7 +13,7 @@ use std::time::Duration;
 use crate::authorize;
 use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
 use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
-use jinn_domain::protocol::Intent;
+use jinn_domain::protocol::KernelIntent;
 use jinn_domain::{Bridge, SessionId};
 use jinn_preferences_config::schemas::SessionLifecycle;
 use poise::serenity_prelude as serenity;
@@ -117,7 +117,7 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
             },
         );
         let result = jinn_domain::feat::intent::IntentHandler::handle(
-            &Intent::SessionLifecycleSetup {
+            &KernelIntent::SessionLifecycleSetup {
                 lifecycle_name: lifecycle.clone(),
                 args: args.clone(),
             },

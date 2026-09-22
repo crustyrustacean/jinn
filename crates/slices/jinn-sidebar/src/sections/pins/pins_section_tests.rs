@@ -458,7 +458,7 @@ fn session_new_works_when_sidebar_sessions_focused() {
 
     // When handling SessionNew via IntentHandler.
     let result = jinn_domain::feat::intent::IntentHandler::handle(
-        &jinn_domain::Intent::SessionNew,
+        &jinn_domain::KernelIntent::SessionNew,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -490,7 +490,7 @@ fn session_new_works_when_not_in_sidebar() {
 
     // When handling SessionNew via IntentHandler.
     let _result = jinn_domain::feat::intent::IntentHandler::handle(
-        &jinn_domain::Intent::SessionNew,
+        &jinn_domain::KernelIntent::SessionNew,
         &mut state,
         &empty_slices(),
         &empty_routes(),

@@ -21,20 +21,20 @@ use ratatui_which_key::parse_key_sequence;
 
 use crate::keymap::KeyCategory;
 use crate::scope::Scope;
-use jinn_domain::Intent;
+use jinn_domain::KernelIntent;
 
 /// Resolves a static row's [`RouteId`] to the composition intent it
 /// binds. Slice keybind blocks used to hardcode these — the table is
 /// now the single central record of slice keys that are plain static
 /// intents (shared-chrome keys like `q` → quit).
-fn static_intent(route_id: &str) -> Option<Intent> {
+fn static_intent(route_id: &str) -> Option<KernelIntent> {
     match route_id {
-        "dashboard:quit" | "sidebar:quit" | "term:quit" => Some(Intent::Quit),
-        "dashboard:switch-tab" => Some(Intent::SwitchTab),
+        "dashboard:quit" | "sidebar:quit" | "term:quit" => Some(KernelIntent::Quit),
+        "dashboard:switch-tab" => Some(KernelIntent::SwitchTab),
         "dashboard:which-key" | "sidebar:which-key" | "term:which-key" => {
-            Some(Intent::ToggleWhichkey)
+            Some(KernelIntent::ToggleWhichkey)
         }
-        "quake-bar:ctrl-clear" | "sidebar:ctrl-clear" => Some(Intent::CtrlClear),
+        "quake-bar:ctrl-clear" | "sidebar:ctrl-clear" => Some(KernelIntent::CtrlClear),
         _ => None,
     }
 }
@@ -48,7 +48,7 @@ fn static_intent(route_id: &str) -> Option<Intent> {
 /// keymap, keybind line, and geometry all derive from the same data.
 pub fn bind_picker_spec_rows(
     registry: &jinn_picker::PickerRegistry,
-    keymap: &mut Keymap<KeyEvent, Scope, Intent, KeyCategory>,
+    keymap: &mut Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>,
 ) {
     for spec in registry.all() {
         let Some(scope) = picker_spec_scope(spec.id()) else {
@@ -59,7 +59,7 @@ pub fn bind_picker_spec_rows(
             continue;
         };
         for row in spec.binds() {
-            let intent = Intent::PickerAction {
+            let intent = KernelIntent::PickerAction {
                 picker: spec.id().as_str().to_owned(),
                 action: row.notation.to_owned(),
             };
@@ -220,7 +220,7 @@ pub fn dynamic_scopes(routes: &KeyRoutes) -> Vec<SliceScopeId> {
 /// without a scoped leaf keep the group visible.
 fn derive_groups_from_rows(
     rows: &[RouteRow],
-    keymap: &mut Keymap<KeyEvent, Scope, Intent, KeyCategory>,
+    keymap: &mut Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>,
 ) {
     let mut prefixes: Vec<(String, &'static str)> = Vec::new();
     for row in rows {
@@ -280,7 +280,7 @@ fn describe_prefix(tokens: &[KeyEvent]) -> String {
 /// same tree as the built-in scope bindings.
 pub fn bind_route_rows(
     routes: &KeyRoutes,
-    keymap: &mut Keymap<KeyEvent, Scope, Intent, KeyCategory>,
+    keymap: &mut Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>,
 ) {
     let rows = routes.rows();
     let input_hooks = routes.input_hook_scopes();
@@ -316,7 +316,7 @@ pub fn bind_route_rows(
             RouteOutcome::Action {
                 action, display, ..
             } => {
-                let intent = Intent::Dynamic(jinn_slices::DynamicIntent::new(
+                let intent = KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
                     row.scope.clone(),
                     action,
                     display,
@@ -338,26 +338,34 @@ pub fn bind_route_rows(
     // their catch-all encodes keys for the slice's own consumer.
     for hook in input_hooks {
         keymap.scope(Scope::Dynamic(hook.clone()), |b| {
-            b.bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
-                .bind(
-                    "<delete>",
-                    Intent::DeleteGraphemeForward,
-                    KeyCategory::Input,
-                )
-                .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
-                .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
-                .bind("<home>", Intent::MoveCursorToStart, KeyCategory::Input)
-                .bind("<end>", Intent::MoveCursorToEnd, KeyCategory::Input)
-                .catch_all(|key: KeyEvent| {
-                    if let KeyEvent {
-                        key: Key::Char(c), ..
-                    } = &key
-                    {
-                        Some(Intent::InsertChar { ch: *c })
-                    } else {
-                        None
-                    }
-                });
+            b.bind(
+                "<backspace>",
+                KernelIntent::DeleteGrapheme,
+                KeyCategory::Input,
+            )
+            .bind(
+                "<delete>",
+                KernelIntent::DeleteGraphemeForward,
+                KeyCategory::Input,
+            )
+            .bind("<left>", KernelIntent::MoveCursorLeft, KeyCategory::Input)
+            .bind("<right>", KernelIntent::MoveCursorRight, KeyCategory::Input)
+            .bind(
+                "<home>",
+                KernelIntent::MoveCursorToStart,
+                KeyCategory::Input,
+            )
+            .bind("<end>", KernelIntent::MoveCursorToEnd, KeyCategory::Input)
+            .catch_all(|key: KeyEvent| {
+                if let KeyEvent {
+                    key: Key::Char(c), ..
+                } = &key
+                {
+                    Some(KernelIntent::InsertChar { ch: *c })
+                } else {
+                    None
+                }
+            });
         });
     }
     // Key-hook catch-alls: a slice key hook captures *every* unbound key
@@ -370,7 +378,7 @@ pub fn bind_route_rows(
             continue;
         };
         keymap.scope(Scope::Dynamic(hook.clone()), move |b| {
-            b.catch_all(move |key: KeyEvent| hook_fn(&key).map(Intent::Dynamic));
+            b.catch_all(move |key: KeyEvent| hook_fn(&key).map(KernelIntent::Dynamic));
         });
     }
 }
@@ -391,7 +399,7 @@ mod tests {
     use crate::app::WhichKeyInstance;
     use crate::keymap::KeyCategory;
     use crate::scope::Scope;
-    use jinn_domain::Intent;
+    use jinn_domain::KernelIntent;
     use jinn_domain::KeyEvent;
     use jinn_domain::common::slices::key_routes::ActionFn;
     use jinn_domain::common::slices::key_routes::BindSite;
@@ -506,7 +514,7 @@ mod tests {
         let intent = static_intent("dashboard:quit");
 
         // Then it resolves to the shared-chrome Quit intent.
-        assert_eq!(intent, Some(Intent::Quit));
+        assert_eq!(intent, Some(KernelIntent::Quit));
         // And an unknown route id resolves to nothing (unbound, not guessed).
         assert_eq!(static_intent("dashboard:unknown"), None);
     }
@@ -529,10 +537,10 @@ mod tests {
     }
 
     fn leaf_at(
-        keymap: &Keymap<KeyEvent, Scope, Intent, KeyCategory>,
+        keymap: &Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>,
         keys: &[KeyEvent],
         scope: &Scope,
-    ) -> Option<Intent> {
+    ) -> Option<KernelIntent> {
         match keymap.navigate(keys, scope) {
             Some(ratatui_which_key::NodeResult::Leaf { action }) => Some(action),
             _ => None,
@@ -540,7 +548,7 @@ mod tests {
     }
 
     fn at_path(
-        keymap: &Keymap<KeyEvent, Scope, Intent, KeyCategory>,
+        keymap: &Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>,
         keys: &[KeyEvent],
         scope: &Scope,
     ) -> Vec<(KeyEvent, String)> {
@@ -747,7 +755,7 @@ mod tests {
         // Then the full sequence resolves to the row's dynamic intent.
         let leaf = leaf_at(&keymap, &[key("g"), key("d"), key("c")], &Scope::Normal);
         assert!(
-            matches!(&leaf, Some(Intent::Dynamic(d)) if d.action == "to-thread"),
+            matches!(&leaf, Some(KernelIntent::Dynamic(d)) if d.action == "to-thread"),
             "gdc should resolve to the synthetic action, got {leaf:?}"
         );
         // And the `g` prefix derives a group labeled for the owning slice,
@@ -814,7 +822,7 @@ mod tests {
         assert!(
             matches!(
                 &intent,
-                Some(Intent::Dynamic(d))
+                Some(KernelIntent::Dynamic(d))
                     if d.slice == SliceScopeId::new("term", "view")
                         && d.action == "toggle-overlay"
             ),
@@ -865,7 +873,7 @@ mod tests {
         assert!(
             matches!(
                 &leaf,
-                Some(Intent::Dynamic(d))
+                Some(KernelIntent::Dynamic(d))
                     if d.slice == SliceScopeId::new("term", "view")
                         && d.action == "toggle-overlay"
             ),
@@ -927,13 +935,13 @@ mod tests {
         // intents in the hook scope (trunk parity: Backspace et al.
         // bound explicitly, not left to the char catch-all).
         let dynamic = Scope::Dynamic(hook_scope);
-        let expected: [(&str, Intent); 6] = [
-            ("backspace", Intent::DeleteGrapheme),
-            ("delete", Intent::DeleteGraphemeForward),
-            ("left", Intent::MoveCursorLeft),
-            ("right", Intent::MoveCursorRight),
-            ("home", Intent::MoveCursorToStart),
-            ("end", Intent::MoveCursorToEnd),
+        let expected: [(&str, KernelIntent); 6] = [
+            ("backspace", KernelIntent::DeleteGrapheme),
+            ("delete", KernelIntent::DeleteGraphemeForward),
+            ("left", KernelIntent::MoveCursorLeft),
+            ("right", KernelIntent::MoveCursorRight),
+            ("home", KernelIntent::MoveCursorToStart),
+            ("end", KernelIntent::MoveCursorToEnd),
         ];
         for (notation, intent) in expected {
             let leaf = leaf_at(&keymap, &[key(notation)], &dynamic);
@@ -980,7 +988,7 @@ mod tests {
         assert!(
             matches!(
                 &leaf,
-                Some(Intent::Dynamic(d))
+                Some(KernelIntent::Dynamic(d))
                     if d.slice == SliceScopeId::new("term", "view")
                         && d.action == "toggle-overlay"
             ),
@@ -1053,7 +1061,7 @@ mod tests {
         assert!(
             matches!(
                 &intent,
-                Some(Intent::Dynamic(d))
+                Some(KernelIntent::Dynamic(d))
                     if d.slice == SliceScopeId::navigation("term", "control")
                         && d.action == "send-key"
             ),
@@ -1108,7 +1116,7 @@ mod picker_spec_row_tests {
         assert!(
             matches!(
                 &intent,
-                Some(jinn_domain::Intent::PickerAction { picker, action })
+                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
                     if picker == "skill" && action == "<tab>"
             ),
             "<Tab> must land as the spec's picker action; got {intent:?}",
@@ -1141,7 +1149,7 @@ mod picker_spec_row_tests {
         assert!(
             matches!(
                 &intent,
-                Some(jinn_domain::Intent::PickerAction { picker, action })
+                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
                     if picker == "skill" && action == "<c-u>"
             ),
             "<c-u> must land as the spec's navigation action; got {intent:?}",
@@ -1192,7 +1200,7 @@ mod real_registry_spec_rows {
             assert!(
                 matches!(
                     &intent,
-                    Some(jinn_domain::Intent::PickerAction { picker, action })
+                    Some(jinn_domain::KernelIntent::PickerAction { picker, action })
                         if picker == "project" && action == notation
                 ),
                 "{notation} must land as the project spec's action; got {intent:?}",
@@ -1221,7 +1229,7 @@ mod real_registry_spec_rows {
         assert!(
             matches!(
                 &intent,
-                Some(jinn_domain::Intent::PickerAction { picker, action })
+                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
                     if picker == "endpoint" && action == "<c-r>"
             ),
             "<c-r> must land as the endpoint spec's refresh action; got {intent:?}",
@@ -1255,7 +1263,7 @@ mod real_registry_spec_rows {
         assert!(
             matches!(
                 &tab_intent,
-                Some(jinn_domain::Intent::PickerAction { picker, action })
+                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
                     if picker == "provider" && action == "<tab>"
             ),
             "<Tab> must land as the provider spec's toggle; got {tab_intent:?}",
@@ -1263,7 +1271,7 @@ mod real_registry_spec_rows {
         assert!(
             matches!(
                 &a_intent,
-                Some(jinn_domain::Intent::PickerAction { picker, action })
+                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
                     if picker == "provider" && action == "<c-a>"
             ),
             "<c-a> must land as the provider spec's alloy toggle; got {a_intent:?}",

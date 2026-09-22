@@ -386,7 +386,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "general",
         "toggle terminal",
         sync(|_state| {
-            IntentResult::new_message(jinn_domain::protocol::intent::Intent::Dynamic(
+            IntentResult::new_message(jinn_domain::protocol::intent::KernelIntent::Dynamic(
                 jinn_slices::DynamicIntent::new(
                     jinn_term_msg::view_scope(),
                     "toggle-for-selected",

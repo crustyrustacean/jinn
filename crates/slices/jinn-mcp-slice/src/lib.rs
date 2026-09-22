@@ -89,8 +89,8 @@ pub fn mcp_coordinator_handle(
             .await
             {
                 Ok(Ok(value)) => {
-                    let outcome = serde_json::from_value::<coordinator::RestartOutcome>(value)
-                        .unwrap_or(coordinator::RestartOutcome {
+                    let outcome = serde_json::from_value::<coordinator::McpRestartOutcome>(value)
+                        .unwrap_or(coordinator::McpRestartOutcome {
                             ok: false,
                             error: Some("Mailbox".to_owned()),
                         });

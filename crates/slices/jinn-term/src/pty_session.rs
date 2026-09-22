@@ -21,15 +21,15 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Captures `portable_pty`'s exit status into the wire `ExitInfo`.
-fn exit_info_from_status(status: &portable_pty::ExitStatus) -> ExitInfo {
-    ExitInfo {
+fn exit_info_from_status(status: &portable_pty::ExitStatus) -> TermExitInfo {
+    TermExitInfo {
         code: status.exit_code(),
         signal: status.signal().map(str::to_owned),
     }
 }
 
 use error_stack::Report;
-pub use jinn_term_msg::ExitInfo;
+pub use jinn_term_msg::TermExitInfo;
 use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use wherror::Error;
 
@@ -103,7 +103,7 @@ pub struct PtySession {
 
 /// The reaped exit status of a pty child, shared between the watcher thread
 /// and the session.
-struct ExitSlot(std::sync::Mutex<Option<ExitInfo>>);
+struct ExitSlot(std::sync::Mutex<Option<TermExitInfo>>);
 
 /// Owns the pty child on a dedicated thread, blocking in `wait()`.
 ///
@@ -140,7 +140,7 @@ impl ExitWatcher {
                     Ok(status) => exit_info_from_status(&status),
                     Err(err) => {
                         tracing::warn!(err = %err, "interactive_term: child wait failed");
-                        ExitInfo {
+                        TermExitInfo {
                             code: 0,
                             signal: None,
                         }
@@ -163,7 +163,7 @@ impl ExitWatcher {
     }
 
     /// The child's exit info once reaped; `None` while still running.
-    fn exit(&self) -> Option<ExitInfo> {
+    fn exit(&self) -> Option<TermExitInfo> {
         let guard = self.slot.0.lock().ok()?;
         guard.clone()
     }
@@ -336,7 +336,7 @@ impl PtySession {
     /// Polls the reaped exit without blocking. Returns `Some` once the child
     /// terminated (and the watcher thread has reaped it).
     #[must_use]
-    pub fn try_wait(&self) -> Option<ExitInfo> {
+    pub fn try_wait(&self) -> Option<TermExitInfo> {
         self.exit_watcher.exit()
     }
 
@@ -351,7 +351,7 @@ impl PtySession {
     ///
     /// Returns an error if the watcher thread died before publishing (its
     /// `wait` syscall failed); the child may or may not have exited.
-    pub fn exit(&self) -> Result<ExitInfo, Report<PtyError>> {
+    pub fn exit(&self) -> Result<TermExitInfo, Report<PtyError>> {
         let deadline = Instant::now() + EXIT_POLL_TIMEOUT;
         loop {
             if let Some(info) = self.exit_watcher.exit() {

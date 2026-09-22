@@ -21,7 +21,7 @@ use jinn_domain::common::slices::key_routes::BindSite;
 use jinn_domain::common::slices::key_routes::KeyRoutes;
 use jinn_domain::common::slices::key_routes::RouteOutcome;
 use jinn_domain::common::slices::key_routes::RouteRow;
-use jinn_domain::protocol::Intent;
+use jinn_domain::protocol::KernelIntent;
 
 /// Route ids for the discord slice's rows (composition resolution +
 /// diagnostics).
@@ -46,8 +46,8 @@ pub fn discord_scope() -> SliceScopeId {
 
 /// Builds the dynamic intent for the slice's to-thread action.
 #[must_use]
-pub fn to_thread_intent_action() -> Intent {
-    Intent::Dynamic(jinn_slices::DynamicIntent::new(
+pub fn to_thread_intent_action() -> KernelIntent {
+    KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
         discord_scope(),
         "to-thread",
         "continue in Discord thread",
@@ -91,7 +91,7 @@ mod tests {
     use jinn_domain::common::slices::key_routes::KeyRoutes;
     use jinn_domain::common::slices::key_routes::RouteOutcome;
     use jinn_domain::protocol::ChatEntryKind;
-    use jinn_domain::protocol::Intent;
+    use jinn_domain::protocol::KernelIntent;
 
     fn routed() -> KeyRoutes {
         let routes = KeyRoutes::new();
@@ -103,7 +103,7 @@ mod tests {
     /// `Intent` wrapper the keymap produces.
     fn to_thread_dynamic() -> jinn_slices::DynamicIntent {
         match to_thread_intent_action() {
-            Intent::Dynamic(dynamic) => dynamic,
+            KernelIntent::Dynamic(dynamic) => dynamic,
             other => panic!("to-thread action must be a dynamic intent, got {other:?}"),
         }
     }

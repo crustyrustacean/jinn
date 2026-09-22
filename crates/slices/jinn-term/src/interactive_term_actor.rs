@@ -41,7 +41,7 @@ use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
-use crate::pty_session::{ExitInfo, PtySession};
+use crate::pty_session::{PtySession, TermExitInfo};
 use crate::screen_task::{ScreenHandle, ScreenWiring};
 use crate::settle::{encode_input, should_settle};
 use jinn_domain::common::services::bus_service::BusService;
@@ -63,7 +63,7 @@ struct TermSession {
     /// The pty child; also reaches the shared emulator and screen task.
     pty: PtySession,
     /// Captured once the process terminated.
-    exited: Option<ExitInfo>,
+    exited: Option<TermExitInfo>,
     /// Last screen text the *actor* returned/published (ask results); the
     /// screen task's mirror publication is keyed off its own tracker.
     last_screen: String,
@@ -264,7 +264,7 @@ impl InteractiveTermActor {
         let killed_previous = if self.sessions.contains_key(&msg.chat_session_id) {
             self.remove_session(&msg.chat_session_id).map(|removed| {
                 jinn_term_msg::command::KilledPrevious {
-                    exited: removed.exited.unwrap_or(ExitInfo {
+                    exited: removed.exited.unwrap_or(TermExitInfo {
                         code: 0,
                         signal: None,
                     }),
@@ -466,7 +466,7 @@ impl InteractiveTermActor {
         session.sync_transcript();
         let (screen, _, _cursor, _hidden) = session.snapshot();
         session.last_screen = screen;
-        let exited = session.exited.clone().unwrap_or(ExitInfo {
+        let exited = session.exited.clone().unwrap_or(TermExitInfo {
             code: 0,
             signal: None,
         });
@@ -487,7 +487,7 @@ impl InteractiveTermActor {
 
 /// What `remove_session` reports about the torn-down session.
 struct RemovedSession {
-    exited: Option<ExitInfo>,
+    exited: Option<TermExitInfo>,
 }
 
 impl MsgHandler<SpawnTerm> for InteractiveTermActor {

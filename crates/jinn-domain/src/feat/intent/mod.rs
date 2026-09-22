@@ -20,4 +20,4 @@ pub mod intent;
 
 pub use crate::IntentResult;
 pub use handler::IntentHandler;
-pub use intent::Intent;
+pub use intent::KernelIntent;

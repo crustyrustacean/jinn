@@ -1000,7 +1000,7 @@ mod tests {
     fn new_message_records_type_name_and_closure() {
         // Given an empty route result.
         // When building it from one typed message.
-        let result = RouteResult::new_message(RecordedTestMessage);
+        let result = RouteResult::new_message(RouteResultTestMessage);
 
         // Then the message name is recorded for inspection.
         assert_eq!(result.message_names.len(), 1);
@@ -1012,11 +1012,11 @@ mod tests {
 
     /// A schema'd stand-in message for closure-recording assertions.
     #[derive(Clone, serde::Serialize, serde::Deserialize)]
-    struct RecordedTestMessage;
+    struct RouteResultTestMessage;
 
-    impl crate::route::BusMessage for RecordedTestMessage {}
+    impl crate::route::BusMessage for RouteResultTestMessage {}
 
-    crate::crossing_schema!(RecordedTestMessage, "RouteResultTestMessage",
+    crate::crossing_schema!(RouteResultTestMessage, "RouteResultTestMessage",
         trouper::schema::SchemaKind::Event,
         description: "Route result closure test message.",
         fields: []);

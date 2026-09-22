@@ -29,7 +29,7 @@ use trouper::actor::ServiceActor;
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
-use crate::connection::{ConnectionState, ConnectionStateReply, McpActor, McpActorDeps};
+use crate::connection::{McpActor, McpActorDeps, McpConnectionStateProbe, McpConnectionStateReply};
 use jinn_domain::Services;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
@@ -143,7 +143,7 @@ impl McpCoordinatorActor {
         // field for. Without the entry the loop drops the ask silently
         // (no adapter for its schema) and the asker waits out its timeout.
         #[cfg(test)]
-        let builder = builder.handles::<RestartForTest>();
+        let builder = builder.handles::<McpRestartForTest>();
         builder.start();
         path
     }
@@ -310,9 +310,12 @@ impl McpCoordinatorActor {
         // for it to complete, bounded by the restart timeout so a slow-boot
         // server can't hang the tool loop forever. The trouper ask carries
         // its own MANDATORY timeout — the outer bound covers startup too.
-        let reply = self.system.ask(actor_path, ConnectionState, timeout).await;
+        let reply = self
+            .system
+            .ask(actor_path, McpConnectionStateProbe, timeout)
+            .await;
         let connected = match reply {
-            Ok(value) => serde_json::from_value::<ConnectionStateReply>(value)
+            Ok(value) => serde_json::from_value::<McpConnectionStateReply>(value)
                 .map(|r| r.connected)
                 .unwrap_or(false),
             Err(_) => return Err(RestartError::Timeout),
@@ -398,7 +401,7 @@ impl MsgHandler<SessionTeardownFinished> for McpCoordinatorActor {
 impl MsgHandler<RestartMcpServer> for McpCoordinatorActor {
     async fn handle(&mut self, msg: RestartMcpServer, ctx: &mut MsgCtx<'_>) {
         let outcome = self.restart_one(&msg.session_id, &msg.server).await;
-        ctx.reply(RestartOutcome {
+        ctx.reply(McpRestartOutcome {
             ok: outcome.is_ok(),
             error: outcome.err().map(|e| {
                 match e {
@@ -416,14 +419,14 @@ impl MsgHandler<RestartMcpServer> for McpCoordinatorActor {
 /// Wire payload for the restart ask's reply (a JSON-friendly
 /// success/error pair).
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
-pub struct RestartOutcome {
+pub struct McpRestartOutcome {
     pub ok: bool,
     pub error: Option<String>,
 }
 
-impl jinn_slices::BusMessage for RestartOutcome {}
+impl jinn_slices::BusMessage for McpRestartOutcome {}
 
-jinn_slices::crossing_schema!(RestartOutcome, "McpRestartOutcome",
+jinn_slices::crossing_schema!(McpRestartOutcome, "McpRestartOutcome",
     trouper::schema::SchemaKind::Event,
     description: "Reply payload for the restart ask.",
     fields: ["ok" => trouper::schema::FieldTy::Bool, "error" => trouper::schema::FieldTy::Str]);
@@ -432,25 +435,25 @@ jinn_slices::crossing_schema!(RestartOutcome, "McpRestartOutcome",
 /// Test-only message: restart with an injectable timeout so tests can
 /// exercise the `Err(Timeout)` path without a 60s wait.
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
-pub struct RestartForTest {
+pub struct McpRestartForTest {
     pub session_id: SessionId,
     pub server: String,
     pub timeout: std::time::Duration,
 }
 
 #[cfg(test)]
-jinn_slices::crossing_schema!(RestartForTest, "McpRestartForTest",
+jinn_slices::crossing_schema!(McpRestartForTest, "McpRestartForTest",
     trouper::schema::SchemaKind::Command,
     description: "Test-only restart ask with an injectable timeout.",
     fields: []);
 
 #[cfg(test)]
-impl MsgHandler<RestartForTest> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: RestartForTest, ctx: &mut MsgCtx<'_>) {
+impl MsgHandler<McpRestartForTest> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: McpRestartForTest, ctx: &mut MsgCtx<'_>) {
         let outcome = self
             .restart_one_with_timeout(&msg.session_id, &msg.server, msg.timeout)
             .await;
-        ctx.reply(RestartOutcome {
+        ctx.reply(McpRestartOutcome {
             ok: outcome.is_ok(),
             error: outcome.err().map(|e| {
                 match e {
@@ -744,7 +747,7 @@ mod lifecycle_tests {
             .trouper_system
             .ask(
                 actor,
-                super::RestartForTest {
+                super::McpRestartForTest {
                     session_id,
                     server: "hanging".to_owned(),
                     timeout: std::time::Duration::from_millis(1),
@@ -755,7 +758,8 @@ mod lifecycle_tests {
         // The handler replies with RestartOutcome even on failure.
         let timed_out: bool = match &reply {
             Ok(value) => {
-                let outcome: super::RestartOutcome = serde_json::from_value(value.clone()).unwrap();
+                let outcome: super::McpRestartOutcome =
+                    serde_json::from_value(value.clone()).unwrap();
                 !outcome.ok && outcome.error.as_deref() == Some("Timeout")
             }
             Err(_) => false,
