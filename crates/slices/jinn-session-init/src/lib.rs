@@ -209,7 +209,7 @@ fn entity_backoff() -> trouper::supervision::Backoff {
     }
 }
 
-/// The supervised spawn closure type trouper's [`ChildSpec`] carries.
+/// The supervised spawn closure type trouper's [`trouper::supervision::ActorSpec`] carries.
 type ChildSpawnFn = std::sync::Arc<
     dyn Fn(&trouper::system::ActorSystem, &trouper::actor::ActorPath, &trouper::json::Json)
         + Send
@@ -217,8 +217,8 @@ type ChildSpawnFn = std::sync::Arc<
 >;
 
 /// The entity's supervised spawn closure: re-runs the factory spawn
-/// (a full spawn — slot insert included) at the same path. Passed to
-/// both `spawn_child` at activation and the supervision engine's
+/// (a full spawn — slot insert included) at the same path. Registered
+/// on the spec at activation and reused by the supervision engine's
 /// restart path.
 ///
 /// The merged genesis args may carry a `settle_budget_ms` override

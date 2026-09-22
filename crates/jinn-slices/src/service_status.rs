@@ -21,8 +21,8 @@ use jinn_core_types::ActorLifecycle;
 /// never needs to know a feature exists.
 ///
 /// This is a bridge-crossing type: the forward relay serializes it onto
-/// `jinn.fabric` under its [`crossing_schema`] contract, so the canvas
-/// actor's topic subscription can decode it.
+/// `jinn.fabric` as a schema broadcast, so the canvas actor's
+/// subscription decodes it.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
 #[schema(
     description = "A feature's projection onto its dashboard row (optional lifecycle, description, status message)."

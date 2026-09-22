@@ -405,3 +405,7 @@ Entries are added or amended **only with human approval**.
 - (session) The session family (turn progression, lifecycle, pins, history) lives in jinn-domain as one trouper SessionActor — the planned jinn-session crate split was abandoned because the vocabulary is spine, not leaf (crate cycle); jinn-session-store still owns SQLite persistence and the search index.
 - (arch) Actor messages route as schema-id-tagged events on trouper topics; BusService publishes into that fabric and keeps a recording mode for tests.
 - (plugins) The plugin host infrastructure is torn down: no coordinator actor, no workspace members, no kameo; plugin code stays in-tree unplugged pending re-integration.
+
+- (arch) Actor message schemas are declared with trouper's #[derive(Command)]/#[derive(Event)] macros; enum-shaped messages carry hand-written Schema + PayloadValue impls
+- (arch) Publish fans out to every actor declaring .handles on the schema; trouper has no separate subscription declaration and jinn declares no .emits beyond handler ctx effects.
+- (arch) An actor handler's outbound messages (ctx.send/reply) must appear in the spawning builder's .emits; undeclared ones are dead-lettered as UndeclaredEmit.
