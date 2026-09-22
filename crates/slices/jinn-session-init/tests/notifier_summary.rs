@@ -13,7 +13,6 @@ use std::time::Duration;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::state::State;
 use jinn_session_init::contracts::{DiscoverySnapshot, SessionDiscoverySettled};
-use trouper::topics::Topic;
 
 /// Polls `check` until it passes or the retry budget runs out.
 async fn wait_for(check: impl Fn() -> bool) {
@@ -76,19 +75,16 @@ async fn settled_event_posts_one_transient_summary_entry() {
     // When a settled event with discovered resources crosses.
     wired
         .fabric
-        .send_to_topic(
-            &SessionDiscoverySettled {
-                session_id: wired.session_id.clone(),
-                snapshot: DiscoverySnapshot {
-                    skill_count: 2,
-                    prompt_count: 1,
-                    context_file_count: 1,
-                    ..Default::default()
-                },
-                delayed: None,
+        .send_to_topic(&SessionDiscoverySettled {
+            session_id: wired.session_id.clone(),
+            snapshot: DiscoverySnapshot {
+                skill_count: 2,
+                prompt_count: 1,
+                context_file_count: 1,
+                ..Default::default()
             },
-            &Topic::new("SessionDiscoverySettled"),
-        )
+            delayed: None,
+        })
         .await;
 
     // Then exactly one transient entry lands, with the counts listed.
@@ -109,14 +105,11 @@ async fn empty_discovery_says_no_resources() {
     // When a settled event with an empty snapshot crosses.
     wired
         .fabric
-        .send_to_topic(
-            &SessionDiscoverySettled {
-                session_id: wired.session_id.clone(),
-                snapshot: DiscoverySnapshot::default(),
-                delayed: None,
-            },
-            &Topic::new("SessionDiscoverySettled"),
-        )
+        .send_to_topic(&SessionDiscoverySettled {
+            session_id: wired.session_id.clone(),
+            snapshot: DiscoverySnapshot::default(),
+            delayed: None,
+        })
         .await;
 
     // Then the message says no project resources found.
@@ -133,17 +126,14 @@ async fn delayed_reason_surfaces_in_summary() {
     // When a settled event carries a delayed reason.
     wired
         .fabric
-        .send_to_topic(
-            &SessionDiscoverySettled {
-                session_id: wired.session_id.clone(),
-                snapshot: DiscoverySnapshot {
-                    skill_count: 2,
-                    ..Default::default()
-                },
-                delayed: Some("discovery delayed by context".to_owned()),
+        .send_to_topic(&SessionDiscoverySettled {
+            session_id: wired.session_id.clone(),
+            snapshot: DiscoverySnapshot {
+                skill_count: 2,
+                ..Default::default()
             },
-            &Topic::new("SessionDiscoverySettled"),
-        )
+            delayed: Some("discovery delayed by context".to_owned()),
+        })
         .await;
 
     // Then the reason surfaces in the message.
@@ -160,18 +150,15 @@ async fn failed_scan_notes_error_in_summary() {
     // When a settled event carries a skills scan error.
     wired
         .fabric
-        .send_to_topic(
-            &SessionDiscoverySettled {
-                session_id: wired.session_id.clone(),
-                snapshot: DiscoverySnapshot {
-                    skill_count: 0,
-                    skill_error: Some("permission denied".to_owned()),
-                    ..Default::default()
-                },
-                delayed: None,
+        .send_to_topic(&SessionDiscoverySettled {
+            session_id: wired.session_id.clone(),
+            snapshot: DiscoverySnapshot {
+                skill_count: 0,
+                skill_error: Some("permission denied".to_owned()),
+                ..Default::default()
             },
-            &Topic::new("SessionDiscoverySettled"),
-        )
+            delayed: None,
+        })
         .await;
 
     // Then the failure is noted in the message.

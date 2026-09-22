@@ -20,7 +20,8 @@ use serde::{Deserialize, Serialize};
 /// compaction actor receives this command, runs the compaction worker,
 /// and submits the resulting mutations via `SubmitHistoryMutations`
 /// (plus feedback system entries for queued/skipped/failed outcomes).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Ask the context-curation slice to compact a session's history.")]
 pub struct TriggerCompaction {
     /// The session to compact.
     pub session_id: SessionId,
@@ -29,12 +30,6 @@ pub struct TriggerCompaction {
 }
 
 impl jinn_slices::BusMessage for TriggerCompaction {}
-
-jinn_slices::crossing_schema!(TriggerCompaction, "TriggerCompaction",
-trouper::schema::SchemaKind::Command,
-description: "Ask the context-curation slice to compact a session's history.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,
-         "compact_all" => trouper::schema::FieldTy::Bool]);
 
 #[cfg(test)]
 mod tests {
@@ -87,10 +82,9 @@ mod tests {
         // Given the command's schema definition.
         let schema = <TriggerCompaction as trouper::schema::Schema>::schema_def();
 
-        // Then it is a version-1 command named TriggerCompaction with the
-        // two fields.
+        // Then it is a command named TriggerCompaction with the two
+        // fields.
         assert_eq!(schema.name, "TriggerCompaction");
-        assert_eq!(schema.version, 1);
         assert!(matches!(schema.kind, trouper::schema::SchemaKind::Command));
         assert_eq!(schema.fields.len(), 2);
         let first = schema.fields.first().expect("at least one field");

@@ -89,11 +89,12 @@ pub fn mcp_coordinator_handle(
             .await
             {
                 Ok(Ok(value)) => {
-                    let outcome = serde_json::from_value::<coordinator::McpRestartOutcome>(value)
-                        .unwrap_or(coordinator::McpRestartOutcome {
+                    let outcome = value.decode::<coordinator::McpRestartOutcome>().unwrap_or(
+                        coordinator::McpRestartOutcome {
                             ok: false,
                             error: Some("Mailbox".to_owned()),
-                        });
+                        },
+                    );
                     match (outcome.ok, outcome.error.as_deref()) {
                         (true, _) => Ok(()),
                         (false, Some("UnknownServer")) => {

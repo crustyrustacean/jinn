@@ -47,30 +47,17 @@ pub struct AssemblyInputs {
 }
 
 /// Ask message: assemble a prompt from these inputs.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Command)]
+#[schema(description = "Assemble a system prompt + messages from caller-provided inputs.")]
 pub struct AssembleContext {
     pub inputs: AssemblyInputs,
 }
 
 /// Reply: the assembled prompt (deserialized from the trouper reply
 /// payload). `AssembledPrompt` is the shared type in `jinn-slices`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Event)]
+#[schema(description = "The assembled prompt reply from the context-assembly service.")]
 pub struct AssembledResponse {
     pub session_id: SessionId,
     pub prompt: crate::AssembledPrompt,
 }
-
-jinn_slices::crossing_schema!(AssembleContext, "AssembleContext",
-trouper::schema::SchemaKind::Command,
-description: "Assemble a system prompt + messages from caller-provided inputs.",
-fields: [
-    "inputs" => trouper::schema::FieldTy::Json,
-]);
-
-jinn_slices::crossing_schema!(AssembledResponse, "AssembledResponse",
-trouper::schema::SchemaKind::Event,
-description: "The assembled prompt reply from the context-assembly service.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "prompt" => trouper::schema::FieldTy::Json,
-]);

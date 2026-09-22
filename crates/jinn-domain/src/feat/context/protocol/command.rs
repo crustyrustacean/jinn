@@ -8,15 +8,11 @@ use crate::BusMessage;
 use crate::protocol::SessionId;
 
 /// Load entries for the persona picker.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Load persona picker entries from the persona catalog.")]
 pub struct LoadPersonaPickerEntries;
 
 impl BusMessage for LoadPersonaPickerEntries {}
-
-jinn_slices::crossing_schema!(LoadPersonaPickerEntries, "LoadPersonaPickerEntries",
-trouper::schema::SchemaKind::Command,
-description: "Load persona picker entries from the persona catalog.",
-fields: []);
 
 /// Scan project context files (AGENTS.md/CLAUDE.md) for a specific session.
 ///
@@ -24,7 +20,8 @@ fields: []);
 /// (stopping at an exclusive `$HOME` or inclusive VCS root, whichever comes
 /// first), reads the first existing candidate per walked dir, and writes the
 /// result into that session's ephemeral discovered-context-files set.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Scan project context files for a session.")]
 pub struct ScanContextFiles {
     /// The session whose scan this is.
     pub session_id: SessionId,
@@ -34,11 +31,3 @@ pub struct ScanContextFiles {
 }
 
 impl BusMessage for ScanContextFiles {}
-
-jinn_slices::crossing_schema!(ScanContextFiles, "ScanContextFiles",
-trouper::schema::SchemaKind::Command,
-description: "Scan project context files for a session.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "cwd" => trouper::schema::FieldTy::Str,
-]);

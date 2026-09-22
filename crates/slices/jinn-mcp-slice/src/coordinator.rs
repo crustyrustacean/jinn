@@ -82,7 +82,9 @@ pub struct McpCoordinatorActorDeps {
 }
 
 impl ServiceActor for McpCoordinatorActor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: spawned via `start_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
@@ -119,15 +121,6 @@ impl McpCoordinatorActor {
                     })
                 }
             })
-            .subscribe::<SessionLoadCompleted>()
-            .subscribe::<SessionCreated>()
-            .subscribe::<McpEnablementChanged>()
-            .subscribe::<SessionClosed>()
-            .subscribe::<SessionArchived>()
-            .subscribe::<SessionTeardownFinished>()
-            .subscribe::<RestartMcpServer>()
-            .subscribe::<McpServerStatus>()
-            .subscribe::<McpServerLog>()
             .handles::<SessionLoadCompleted>()
             .handles::<SessionCreated>()
             .handles::<McpEnablementChanged>()
@@ -137,6 +130,9 @@ impl McpCoordinatorActor {
             .handles::<RestartMcpServer>()
             .handles::<McpServerStatus>()
             .handles::<McpServerLog>()
+            // Restart-ask replies leave the handler through ctx.reply; the
+            // flush gate drops any outbound type not declared here.
+            .emits::<McpRestartOutcome>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block);
         // Test-only ask surface: `RestartForTest` carries the injectable
         // startup budget the production `RestartMcpServer` message has no
@@ -315,7 +311,8 @@ impl McpCoordinatorActor {
             .ask(actor_path, McpConnectionStateProbe, timeout)
             .await;
         let connected = match reply {
-            Ok(value) => serde_json::from_value::<McpConnectionStateReply>(value)
+            Ok(value) => value
+                .decode::<McpConnectionStateReply>()
                 .map(|r| r.connected)
                 .unwrap_or(false),
             Err(_) => return Err(RestartError::Timeout),
@@ -418,7 +415,8 @@ impl MsgHandler<RestartMcpServer> for McpCoordinatorActor {
 
 /// Wire payload for the restart ask's reply (a JSON-friendly
 /// success/error pair).
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, trouper::schema::Event)]
+#[schema(description = "Reply payload for the restart ask.")]
 pub struct McpRestartOutcome {
     pub ok: bool,
     pub error: Option<String>,
@@ -426,26 +424,16 @@ pub struct McpRestartOutcome {
 
 impl jinn_slices::BusMessage for McpRestartOutcome {}
 
-jinn_slices::crossing_schema!(McpRestartOutcome, "McpRestartOutcome",
-    trouper::schema::SchemaKind::Event,
-    description: "Reply payload for the restart ask.",
-    fields: ["ok" => trouper::schema::FieldTy::Bool, "error" => trouper::schema::FieldTy::Str]);
-
 #[cfg(test)]
 /// Test-only message: restart with an injectable timeout so tests can
 /// exercise the `Err(Timeout)` path without a 60s wait.
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, trouper::schema::Command)]
+#[schema(description = "Test-only restart ask with an injectable timeout.")]
 pub struct McpRestartForTest {
     pub session_id: SessionId,
     pub server: String,
     pub timeout: std::time::Duration,
 }
-
-#[cfg(test)]
-jinn_slices::crossing_schema!(McpRestartForTest, "McpRestartForTest",
-    trouper::schema::SchemaKind::Command,
-    description: "Test-only restart ask with an injectable timeout.",
-    fields: []);
 
 #[cfg(test)]
 impl MsgHandler<McpRestartForTest> for McpCoordinatorActor {
@@ -758,8 +746,7 @@ mod lifecycle_tests {
         // The handler replies with RestartOutcome even on failure.
         let timed_out: bool = match &reply {
             Ok(value) => {
-                let outcome: super::McpRestartOutcome =
-                    serde_json::from_value(value.clone()).unwrap();
+                let outcome: super::McpRestartOutcome = value.clone().decode().unwrap();
                 !outcome.ok && outcome.error.as_deref() == Some("Timeout")
             }
             Err(_) => false,

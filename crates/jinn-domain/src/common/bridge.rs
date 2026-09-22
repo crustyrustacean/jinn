@@ -132,7 +132,9 @@ impl PublishSink for BusService {
         tracing::debug!(message = name, "bridge publish");
         let system = self.system_ref().clone();
         tokio::spawn(async move {
-            system.deliver_schema_value(schema_id, payload).await;
+            system
+                .deliver_schema_value(schema_id, trouper::json::Json::from(payload))
+                .await;
         });
     }
 }
@@ -155,17 +157,15 @@ mod tests {
     use jinn_slices::BusMessage;
 
     /// A single message type for testing: small, schema'd, serde-roundtrippable.
-    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    #[derive(
+        Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, trouper::schema::Event,
+    )]
+    #[schema(description = "Bridge delivery test message.")]
     struct BridgeTestMsg {
         value: u32,
     }
 
     impl BusMessage for BridgeTestMsg {}
-
-    jinn_slices::crossing_schema!(BridgeTestMsg, "BridgeTestMsg",
-        trouper::schema::SchemaKind::Event,
-        description: "Bridge delivery test message.",
-        fields: ["value" => trouper::schema::FieldTy::Int]);
 
     #[rstest::rstest]
     #[test]

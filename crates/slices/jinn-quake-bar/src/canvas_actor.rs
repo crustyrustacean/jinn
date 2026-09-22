@@ -30,7 +30,9 @@ pub struct QuakeBarCanvasActor {
 impl ServiceActor for QuakeBarCanvasActor {
     // Never invoked: the spawn helper injects the cell via `start_with`,
     // and the trait-required signature has nothing to await.
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         async {}.await;
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
@@ -64,7 +66,6 @@ impl QuakeBarCanvasActor {
                 let cell = cell.clone();
                 move || Box::pin(async move { Ok(Self { cell }) })
             })
-            .subscribe::<SubmitQuakeBarCommand>()
             .handles::<SubmitQuakeBarCommand>()
             .start()
     }
@@ -137,12 +138,9 @@ mod tests {
 
         // When a SubmitQuakeBarCommand envelope lands on the topic.
         fabric
-            .send_to_topic(
-                &SubmitQuakeBarCommand {
-                    text: "hello".to_owned(),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&SubmitQuakeBarCommand {
+                text: "hello".to_owned(),
+            })
             .await;
 
         // Then the command reaches the cell log through the canvas.

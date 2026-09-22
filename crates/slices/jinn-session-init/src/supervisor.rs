@@ -54,7 +54,9 @@ pub struct SessionInitSupervisor {
 }
 
 impl ServiceActor for SessionInitSupervisor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Stateless: the partition set's path is a compile-time constant
         // of the slice, so no injected handles are needed.
         Ok(Self {
@@ -81,13 +83,6 @@ impl SessionInitSupervisor {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(crate::SUPERVISOR_PATH))
             .mailbox(1024, trouper::inbox::OverloadPolicy::Block)
-            .subscribe::<SessionCreated>()
-            .subscribe::<SessionSetupCompleted>()
-            .subscribe::<SessionLoadCompleted>()
-            .subscribe::<SessionCwdChanged>()
-            .subscribe::<ScanSkills>()
-            .subscribe::<RescanPromptTemplates>()
-            .subscribe::<ScanContextFiles>()
             .handles::<SessionCreated>()
             .handles::<SessionSetupCompleted>()
             .handles::<SessionLoadCompleted>()
@@ -95,6 +90,12 @@ impl SessionInitSupervisor {
             .handles::<ScanSkills>()
             .handles::<RescanPromptTemplates>()
             .handles::<ScanContextFiles>()
+            // Discovery commands leave the handler through ctx.send; the
+            // flush gate drops any outbound type not declared here.
+            .emits::<RunDiscovery>()
+            .emits::<RescanSkills>()
+            .emits::<RescanPrompts>()
+            .emits::<RescanContext>()
             .start()
     }
 

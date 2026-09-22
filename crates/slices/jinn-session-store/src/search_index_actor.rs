@@ -97,7 +97,9 @@ impl ServiceActor for SearchIndexActor {
         clippy::unused_async_trait_impl,
         reason = "trait contract: start is never called (spawn uses start_with)"
     )]
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the deps via `start_with`
         // (ActorDeps carries typed handles that cannot ride JSON args).
         Err(
@@ -171,13 +173,11 @@ impl SearchIndexActor {
 
 /// A self-addressed heartbeat: refreshes the queue when idle, reindexes one
 /// batch when work is pending, then schedules the next heartbeat.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Command)]
+#[schema(
+    description = "Search index heartbeat: refresh the dirty queue when idle, reindex one batch."
+)]
 pub struct ReindexTick;
-
-jinn_slices::crossing_schema!(ReindexTick, "ReindexTick",
-    trouper::schema::SchemaKind::Command,
-    description: "Search index heartbeat: refresh the dirty queue when idle, reindex one batch.",
-    fields: []);
 
 impl MsgHandler<ReindexTick> for SearchIndexActor {
     async fn handle(&mut self, _msg: ReindexTick, _ctx: &mut MsgCtx<'_>) {

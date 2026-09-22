@@ -134,7 +134,7 @@ impl ServiceActor for InferenceActor {
         reason = "trait contract: start is never called (spawn uses start_with)"
     )]
     async fn start(
-        _args: &serde_json::Value,
+        _args: &trouper::json::Json,
     ) -> Result<Self, Report<trouper::registry::RegistryError>> {
         // Never called: the spawn helper injects services via `start_with`.
         Err(
@@ -165,9 +165,6 @@ impl InferenceActor {
                     })
                 }
             })
-            .subscribe::<SendToLlmProvider>()
-            .subscribe::<CancelStream>()
-            .subscribe::<StreamCompleted>()
             .handles::<SendToLlmProvider>()
             .handles::<CancelStream>()
             .handles::<StreamCompleted>()

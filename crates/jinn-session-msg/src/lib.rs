@@ -58,7 +58,8 @@ pub struct PhaseKindParseError(String);
 ///
 /// The QueueActor subscribes to this event to react to `Idle`
 /// transitions and pop the turn dispatch queue.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's phase transitioned.")]
 pub struct SessionPhaseChanged {
     /// The session whose phase changed.
     pub session_id: SessionId,
@@ -74,7 +75,8 @@ pub struct SessionPhaseChanged {
 /// setup command. On success, `cwd` is the directory reported by the
 /// command. On failure, `cwd` is the default CWD and `error` contains
 /// the failure details.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's setup command completed (success or failure).")]
 pub struct SessionSetupCompleted {
     /// The session that was being set up.
     pub session_id: SessionId,
@@ -90,7 +92,8 @@ pub struct SessionSetupCompleted {
 /// teardown command. On success, the session has already been removed
 /// from the sessions map. On failure, the session is still open and
 /// `error` describes the problem.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's teardown command finished (success or failure).")]
 pub struct SessionTeardownFinished {
     /// The session that was being torn down.
     pub session_id: SessionId,
@@ -103,7 +106,8 @@ pub struct SessionTeardownFinished {
 /// Emitted by the session-persistence actor after marking a session as
 /// archived in SQLite. Emitted before the session-closed event so
 /// consumers can distinguish archived closes from empty-session closes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session was archived in persistent storage.")]
 pub struct SessionArchived {
     /// The session that was archived.
     pub session_id: SessionId,
@@ -116,37 +120,6 @@ impl jinn_slices::BusMessage for SessionPhaseChanged {}
 impl jinn_slices::BusMessage for SessionSetupCompleted {}
 impl jinn_slices::BusMessage for SessionTeardownFinished {}
 impl jinn_slices::BusMessage for SessionArchived {}
-
-jinn_slices::crossing_schema!(SessionPhaseChanged, "SessionPhaseChanged",
-trouper::schema::SchemaKind::Event,
-description: "A session's phase transitioned.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "old_phase" => trouper::schema::FieldTy::Str,
-    "new_phase" => trouper::schema::FieldTy::Str,
-]);
-
-jinn_slices::crossing_schema!(SessionSetupCompleted, "SessionSetupCompleted",
-trouper::schema::SchemaKind::Event,
-description: "A session's setup command completed (success or failure).",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "cwd" => trouper::schema::FieldTy::Str,
-    "error" => trouper::schema::FieldTy::Str,
-]);
-
-jinn_slices::crossing_schema!(SessionTeardownFinished, "SessionTeardownFinished",
-trouper::schema::SchemaKind::Event,
-description: "A session's teardown command finished (success or failure).",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "error" => trouper::schema::FieldTy::Str,
-]);
-
-jinn_slices::crossing_schema!(SessionArchived, "SessionArchived",
-    trouper::schema::SchemaKind::Event,
-    description: "A session was archived in persistent storage.",
-    fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
 
 #[cfg(test)]
 mod tests {

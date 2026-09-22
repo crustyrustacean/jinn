@@ -31,7 +31,9 @@ impl ServiceActor for HistoryWorkerChatEntryTokenCacheEvictionActor {
         clippy::unused_async_trait_impl,
         reason = "trait contract: start is never called (spawn uses start_with)"
     )]
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the cache via
         // `start_with`.
         Err(
@@ -58,7 +60,6 @@ impl HistoryWorkerChatEntryTokenCacheEvictionActor {
                     })
                 }
             })
-            .subscribe::<SessionClosed>()
             .handles::<SessionClosed>()
             .start()
     }

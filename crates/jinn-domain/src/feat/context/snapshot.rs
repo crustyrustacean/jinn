@@ -76,7 +76,7 @@ pub async fn assemble_via_service(
             ASSEMBLE_TIMEOUT,
         )
         .await?;
-    let response: AssembledResponse = serde_json::from_value(reply).map_err(|e| {
+    let response: AssembledResponse = reply.decode().map_err(|e| {
         error_stack::Report::new(trouper::context::AskError::Unresolved(
             "assembled response deserialization failed".to_owned(),
         ))

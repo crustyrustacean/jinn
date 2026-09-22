@@ -16,7 +16,8 @@ use crate::BusMessage;
 use crate::protocol::SessionId;
 
 /// Tear down a session, then archive its subtree (resolved by the actor).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Tear down a subtree root and archive its members.")]
 pub struct TeardownSessionTree {
     /// The root of the subtree to tear down and archive (the sidebar
     /// selection at confirm time).
@@ -24,8 +25,3 @@ pub struct TeardownSessionTree {
 }
 
 impl BusMessage for TeardownSessionTree {}
-
-jinn_slices::crossing_schema!(TeardownSessionTree, "TeardownSessionTree",
-trouper::schema::SchemaKind::Command,
-description: "Tear down a subtree root and archive its members.",
-fields: ["root" => trouper::schema::FieldTy::Uuid,]);

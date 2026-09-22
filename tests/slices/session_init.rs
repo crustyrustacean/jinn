@@ -60,7 +60,8 @@ where
         + jinn_slices::BusMessage
         + trouper::schema::Schema
         + serde::Serialize
-        + serde::de::DeserializeOwned,
+        + serde::de::DeserializeOwned
+        + trouper::envelope::PayloadValue,
 {
     jinn_domain::common::bus::test_harness::TestHarness::from_parts(
         app.services.bus.clone(),

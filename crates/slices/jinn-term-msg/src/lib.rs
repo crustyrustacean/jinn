@@ -31,7 +31,10 @@ pub use tab_state::*;
 pub use takeover::*;
 
 /// Captured exit info from a terminated terminal child.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, trouper::schema::Event,
+)]
+#[schema(description = "Captured exit info from a terminated terminal child.")]
 pub struct TermExitInfo {
     /// The process exit code (0 on success; signal deaths report 1 plus a
     /// signal name).
@@ -41,11 +44,6 @@ pub struct TermExitInfo {
 }
 
 impl jinn_slices::BusMessage for TermExitInfo {}
-
-jinn_slices::crossing_schema!(TermExitInfo, "TermExitInfo",
-    trouper::schema::SchemaKind::Event,
-    description: "Captured exit info from a terminated terminal child.",
-    fields: ["code" => trouper::schema::FieldTy::Int, "signal" => trouper::schema::FieldTy::Str]);
 
 impl TermExitInfo {
     /// One-line human summary, e.g. `exited with code 1` or `killed by SIGTERM`.

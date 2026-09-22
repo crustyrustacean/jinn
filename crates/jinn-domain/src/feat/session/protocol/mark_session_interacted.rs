@@ -15,15 +15,11 @@ use crate::protocol::SessionId;
 /// Once handled, the session becomes eligible for persistence to disk.
 /// Sessions that have never received this command are "scratch" sessions
 /// that should not be persisted.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Mark a session as interacted by the user.")]
 pub struct MarkSessionInteracted {
     /// The session the user interacted with.
     pub session_id: SessionId,
 }
 
 impl crate::common::bus::BusMessage for MarkSessionInteracted {}
-
-jinn_slices::crossing_schema!(MarkSessionInteracted, "MarkSessionInteracted",
-trouper::schema::SchemaKind::Command,
-description: "Mark a session as interacted by the user.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);

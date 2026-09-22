@@ -35,7 +35,8 @@ use crate::protocol::SessionId;
 /// `SendToLlmProvider` dispatch (single write point, so any dispatch path
 /// counts) and `StreamCompleted` clears it — making a stale or bogus request
 /// a no-op by construction.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Re-dispatch a turn whose stream stalled.")]
 pub struct RetryStalledSession {
     /// The session whose turn has stalled.
     pub session_id: SessionId,
@@ -49,8 +50,3 @@ pub struct RetryStalledSession {
 }
 
 impl crate::common::bus::BusMessage for RetryStalledSession {}
-
-jinn_slices::crossing_schema!(RetryStalledSession, "RetryStalledSession",
-trouper::schema::SchemaKind::Command,
-description: "Re-dispatch a turn whose stream stalled.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);

@@ -63,10 +63,16 @@ impl TestFabric {
     }
 
     /// Publishes a typed message onto the fabric (schema broadcast).
-    pub async fn send_to_topic<M: trouper::schema::Schema + serde::Serialize>(
+    pub async fn send_to_topic<
+        M: trouper::schema::Schema
+            + serde::Serialize
+            + Clone
+            + Send
+            + Sync
+            + trouper::envelope::PayloadValue,
+    >(
         &self,
         msg: &M,
-        _topic: &trouper::topics::Topic,
     ) {
         self.system.publish(msg).await;
     }

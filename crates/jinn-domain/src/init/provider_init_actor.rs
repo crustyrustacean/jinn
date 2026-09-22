@@ -51,7 +51,7 @@ impl ServiceActor for ProviderInitActor {
         clippy::unused_async_trait_impl,
         reason = "ServiceActor::start is async by trait contract"
     )]
-    async fn start(_args: &serde_json::Value) -> Result<Self, Report<RegistryError>> {
+    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
         // Never called: spawned via `spawn`'s start_with (typed deps can't
         // ride the JSON args).
         Err(Report::new(RegistryError::InvalidSpec)
@@ -90,7 +90,6 @@ impl ProviderInitActor {
                     })
                 }
             })
-            .subscribe::<EnvironmentLoaded>()
             .handles::<EnvironmentLoaded>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();

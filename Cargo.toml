@@ -247,7 +247,7 @@ futures = "0.3"
 
 # The trouper actor runtime (published to crates.io; the SDK workspace
 # remains the development home — see .plans/actor-canvas/plan.md)
-trouper = "0.3.7"
+trouper = "0.8.2"
 
 
 # PTY + terminal emulation (interactive_term tool)

@@ -54,7 +54,9 @@ pub struct TaskPhaseListenerActor {
 }
 
 impl ServiceActor for TaskPhaseListenerActor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: spawned via `start_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
@@ -89,7 +91,6 @@ impl TaskPhaseListenerActor {
                     })
                 })
             })
-            .subscribe::<SessionPhaseChanged>()
             .handles::<SessionPhaseChanged>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();

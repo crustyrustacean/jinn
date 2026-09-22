@@ -97,7 +97,9 @@ impl ServiceActor for QueueActor {
         clippy::unused_async_trait_impl,
         reason = "trait contract: start is never called (spawn uses start_with)"
     )]
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects state and services via
         // `start_with`.
         Err(
@@ -128,8 +130,6 @@ impl QueueActor {
                     })
                 }
             })
-            .subscribe::<SessionPhaseChanged>()
-            .subscribe::<DispatchTurn>()
             .handles::<SessionPhaseChanged>()
             .handles::<DispatchTurn>()
             .start()

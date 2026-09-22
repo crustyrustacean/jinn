@@ -11,7 +11,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 /// An actor is starting up.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "An actor is starting up.")]
 pub struct ActorStarting {
     /// The actor's name.
     pub name: String,
@@ -20,7 +21,8 @@ pub struct ActorStarting {
 }
 
 /// An actor has finished starting up.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "An actor has finished starting up.")]
 pub struct ActorStarted {
     /// The actor's name.
     pub name: String,
@@ -29,7 +31,8 @@ pub struct ActorStarted {
 }
 
 /// An actor has completed shutdown.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "An actor has completed shutdown.")]
 pub struct ActorShutdownCompleted {
     /// The actor's name.
     pub name: String,
@@ -37,18 +40,6 @@ pub struct ActorShutdownCompleted {
 
 impl crate::BusMessage for ActorStarting {}
 
-crate::crossing_schema!(ActorStarting, "ActorStarting", trouper::schema::SchemaKind::Event,
-    description: "An actor is starting up.",
-    fields: ["name" => trouper::schema::FieldTy::Str]);
-
 impl crate::BusMessage for ActorStarted {}
 
-crate::crossing_schema!(ActorStarted, "ActorStarted", trouper::schema::SchemaKind::Event,
-    description: "An actor has finished starting up.",
-    fields: ["name" => trouper::schema::FieldTy::Str]);
-
 impl crate::BusMessage for ActorShutdownCompleted {}
-
-crate::crossing_schema!(ActorShutdownCompleted, "ActorShutdownCompleted", trouper::schema::SchemaKind::Event,
-    description: "An actor has completed shutdown.",
-    fields: ["name" => trouper::schema::FieldTy::Str]);

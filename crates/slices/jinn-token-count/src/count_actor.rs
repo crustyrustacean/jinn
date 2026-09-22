@@ -61,7 +61,9 @@ impl ServiceActor for TokenCountActor {
         clippy::unused_async_trait_impl,
         reason = "trait contract: start is never called (spawn uses start_with)"
     )]
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the state handle and
         // capability via `start_with`.
         Err(
@@ -91,8 +93,6 @@ impl TokenCountActor {
                     })
                 }
             })
-            .subscribe::<HistoryAppended>()
-            .subscribe::<SessionLoadCompleted>()
             .handles::<HistoryAppended>()
             .handles::<SessionLoadCompleted>()
             .start()

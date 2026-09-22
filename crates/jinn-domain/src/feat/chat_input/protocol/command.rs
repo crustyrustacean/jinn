@@ -12,7 +12,8 @@ use crate::protocol::SessionId;
 /// Enqueue a user message for processing by the message queue.
 ///
 /// Submitted instead of directly pushing a chat entry when the queue is active.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Enqueue a fully built user entry for dispatch.")]
 pub struct EnqueueUserMessage {
     /// The session this message belongs to.
     pub session_id: SessionId,
@@ -22,28 +23,19 @@ pub struct EnqueueUserMessage {
 
 impl BusMessage for EnqueueUserMessage {}
 
-jinn_slices::crossing_schema!(EnqueueUserMessage, "EnqueueUserMessage",
-trouper::schema::SchemaKind::Command,
-description: "Enqueue a fully built user entry for dispatch.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
-
 /// Enqueue a manual resume for a session: re-assemble current history and
 /// re-send to the provider. Adds no user message.
 ///
 /// Submitted instead of pushing a fresh user entry when the user wants to
 /// resume after an error or after restarting the app mid-stream.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Resume dispatching turns for an idle session.")]
 pub struct EnqueueResumeTurn {
     /// The session to resume.
     pub session_id: SessionId,
 }
 
 impl BusMessage for EnqueueResumeTurn {}
-
-jinn_slices::crossing_schema!(EnqueueResumeTurn, "EnqueueResumeTurn",
-trouper::schema::SchemaKind::Command,
-description: "Resume dispatching turns for an idle session.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 
 /// Append a fragment to a session's steering buffer.
 ///
@@ -55,7 +47,8 @@ fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 /// for routing to [`EnqueueUserMessage`] instead.
 ///
 /// See [`crate::feat::session::steering_buffer::SteeringBuffer`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Append a steering fragment to a busy session.")]
 pub struct SubmitSteeringMessage {
     /// The session whose steering buffer to append to.
     pub session_id: SessionId,
@@ -64,8 +57,3 @@ pub struct SubmitSteeringMessage {
 }
 
 impl crate::common::bus::BusMessage for SubmitSteeringMessage {}
-
-jinn_slices::crossing_schema!(SubmitSteeringMessage, "SubmitSteeringMessage",
-trouper::schema::SchemaKind::Command,
-description: "Append a steering fragment to a busy session.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);

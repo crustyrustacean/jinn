@@ -54,7 +54,9 @@ impl ServiceActor for CompactionActor {
         clippy::unused_async_trait_impl,
         reason = "trait contract: start is never called (spawn uses start_with)"
     )]
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects deps via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
@@ -99,7 +101,6 @@ impl CompactionActor {
                     })
                 }
             })
-            .subscribe::<TriggerCompaction>()
             .handles::<TriggerCompaction>()
             .start()
     }

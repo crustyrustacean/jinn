@@ -192,7 +192,9 @@ impl WorkerDeps {
 }
 
 impl ServiceActor for SessionDiscoveryWorker {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // The caps and State cannot ride JSON args; entities spawn via
         // the partition factory's `start_with` closure (see `spawn`).
         Err(
@@ -738,7 +740,12 @@ fn write_context(
 /// receives it (the notifier and the task settle listener among them).
 async fn publish<M>(system: &ActorSystem, msg: M)
 where
-    M: trouper::schema::Schema + serde::Serialize,
+    M: trouper::schema::Schema
+        + serde::Serialize
+        + Clone
+        + Send
+        + Sync
+        + trouper::envelope::PayloadValue,
 {
     system.publish(&msg).await;
 }

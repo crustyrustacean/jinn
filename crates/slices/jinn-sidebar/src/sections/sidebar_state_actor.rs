@@ -31,7 +31,9 @@ pub struct SidebarStateActor {
 }
 
 impl ServiceActor for SidebarStateActor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the state handle and
         // capabilities via `start_with`.
         Err(
@@ -61,7 +63,6 @@ impl SidebarStateActor {
                     })
                 }
             })
-            .subscribe::<SessionClosed>()
             .handles::<SessionClosed>()
             .start()
     }

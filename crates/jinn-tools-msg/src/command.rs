@@ -13,7 +13,8 @@ use jiff::Timestamp;
 /// When `session_id` is `None`, the tools are global (visible to every
 /// session); when `Some`, they are scoped to that session only (e.g.
 /// per-session MCP server tools).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Register tool definitions globally or for one session.")]
 pub struct RegisterTools {
     /// The name of the actor providing these tools.
     pub provider: String,
@@ -28,7 +29,8 @@ pub struct RegisterTools {
 ///
 /// Sent by the LLM actor when the LLM produces tool calls.
 /// Routed to the tool orchestrator.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Execute a batch of tool calls for a session.")]
 pub struct ExecuteToolBatch {
     /// The session requesting tool execution.
     pub session_id: SessionId,
@@ -43,7 +45,8 @@ pub struct ExecuteToolBatch {
 /// Sent by the tool orchestrator to the actor that registered the tool.
 /// Carries the session ID so the provider actor can include it in its
 /// response event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Execute one tool call for a session.")]
 pub struct ExecuteTool {
     /// The session this execution belongs to.
     pub session_id: SessionId,
@@ -65,7 +68,8 @@ pub struct ExecuteTool {
 ///
 /// Sent by the LLM actor when a stream is cancelled while tool results
 /// are pending. Routed to the tool orchestrator.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Cancel a session's in-flight tool batch.")]
 pub struct CancelToolBatch {
     /// The session whose tool executions should be cancelled.
     pub session_id: SessionId,
@@ -73,25 +77,8 @@ pub struct CancelToolBatch {
 
 impl jinn_slices::BusMessage for RegisterTools {}
 
-jinn_slices::crossing_schema!(RegisterTools, "RegisterTools",
-trouper::schema::SchemaKind::Command,
-description: "Register tool definitions globally or for one session.",
-fields: []);
 impl jinn_slices::BusMessage for ExecuteToolBatch {}
 
-jinn_slices::crossing_schema!(ExecuteToolBatch, "ExecuteToolBatch",
-trouper::schema::SchemaKind::Command,
-description: "Execute a batch of tool calls for a session.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 impl jinn_slices::BusMessage for ExecuteTool {}
 
-jinn_slices::crossing_schema!(ExecuteTool, "ExecuteTool",
-trouper::schema::SchemaKind::Command,
-description: "Execute one tool call for a session.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
 impl jinn_slices::BusMessage for CancelToolBatch {}
-
-jinn_slices::crossing_schema!(CancelToolBatch, "CancelToolBatch",
-trouper::schema::SchemaKind::Command,
-description: "Cancel a session's in-flight tool batch.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);

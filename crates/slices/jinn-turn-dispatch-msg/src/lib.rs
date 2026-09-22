@@ -42,18 +42,14 @@ use serde::{Deserialize, Serialize};
 /// Queued items (busy-session sends) are deliberately *not* drained by
 /// this command — they wait for the next `SessionPhaseChanged → Idle`
 /// transition, which the queue actor handles on its own subscription.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Ask the turn-dispatch slice to dispatch the session's prepared turn.")]
 pub struct DispatchTurn {
     /// The session whose prepared turn should be dispatched.
     pub session_id: SessionId,
 }
 
 impl jinn_slices::BusMessage for DispatchTurn {}
-
-jinn_slices::crossing_schema!(DispatchTurn, "DispatchTurn",
-trouper::schema::SchemaKind::Command,
-description: "Ask the turn-dispatch slice to dispatch the session's prepared turn.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
 
 #[cfg(test)]
 mod tests {
@@ -86,10 +82,9 @@ mod tests {
         // Given the command's schema definition.
         let schema = <DispatchTurn as trouper::schema::Schema>::schema_def();
 
-        // Then it is a version-1 command named DispatchTurn with the
-        // session_id field.
+        // Then it is a command named DispatchTurn with the session_id
+        // field.
         assert_eq!(schema.name, "DispatchTurn");
-        assert_eq!(schema.version, 1);
         assert!(matches!(schema.kind, trouper::schema::SchemaKind::Command));
         assert_eq!(schema.fields.len(), 1);
         let field = schema.fields.first().expect("exactly one field");

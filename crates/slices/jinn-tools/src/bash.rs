@@ -161,7 +161,10 @@ async fn flush_buffer(
 async fn emit_stream_event(
     bus: Option<&BusService>,
     session_id: Option<&SessionId>,
-    event: impl jinn_domain::common::bus::BusMessage + trouper::schema::Schema + serde::Serialize,
+    event: impl jinn_domain::common::bus::BusMessage
+    + trouper::schema::Schema
+    + serde::Serialize
+    + trouper::envelope::PayloadValue,
 ) {
     if let (Some(bus), Some(_)) = (bus, session_id) {
         bus.publish(event).await;

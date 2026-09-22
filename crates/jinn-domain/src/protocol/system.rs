@@ -32,15 +32,11 @@ impl BusMessage for KeyDown {}
 impl BusMessage for KeyUp {}
 
 /// The active session changed.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "The active session changed.")]
 pub struct ActiveSessionChanged {
     /// The new active session ID.
     pub session_id: crate::protocol::SessionId,
 }
 
 impl BusMessage for ActiveSessionChanged {}
-
-jinn_slices::crossing_schema!(ActiveSessionChanged, "ActiveSessionChanged",
-trouper::schema::SchemaKind::Event,
-description: "The active session changed.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);

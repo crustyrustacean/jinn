@@ -16,7 +16,8 @@ use jinn_skills::Skill;
 ///
 /// On success, `skills` contains the discovered skills and `error` is `None`.
 /// On failure, `skills` is empty and `error` contains a description.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "Skills have been scanned and loaded for a session.")]
 pub struct SkillsLoaded {
     /// The session whose cwd drove the scan.
     pub session_id: jinn_core_types::SessionId,
@@ -32,7 +33,8 @@ pub struct SkillsLoaded {
 /// Carries the session's cwd: the discovery worker scans global +
 /// project dirs discovered via the bounded walk, and writes the merged
 /// result into that session's ephemeral discovered-skills set.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Trigger a skills scan for a session.")]
 pub struct ScanSkills {
     /// The session whose scan this is.
     pub session_id: jinn_core_types::SessionId,
@@ -43,20 +45,4 @@ pub struct ScanSkills {
 
 impl jinn_slices::BusMessage for SkillsLoaded {}
 
-jinn_slices::crossing_schema!(SkillsLoaded, "SkillsLoaded",
-trouper::schema::SchemaKind::Event,
-description: "Skills have been scanned and loaded for a session.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "skills" => trouper::schema::FieldTy::List(Box::new(trouper::schema::FieldTy::Json)),
-]);
-
 impl jinn_slices::BusMessage for ScanSkills {}
-
-jinn_slices::crossing_schema!(ScanSkills, "ScanSkills",
-trouper::schema::SchemaKind::Command,
-description: "Trigger a skills scan for a session.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "cwd" => trouper::schema::FieldTy::Str,
-]);

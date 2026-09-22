@@ -8,7 +8,8 @@ use crate::protocol::SessionId;
 /// The active provider was switched.
 ///
 /// Emitted after a successful [`ProviderSwitch`](super::ProviderSwitch) command.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session switched to a new provider.")]
 pub struct ProviderSwitched {
     /// The session that switched provider.
     pub session_id: SessionId,
@@ -18,14 +19,9 @@ pub struct ProviderSwitched {
 
 impl crate::common::bus::BusMessage for ProviderSwitched {}
 
-jinn_slices::crossing_schema!(ProviderSwitched, "ProviderSwitched",
-trouper::schema::SchemaKind::Event,
-description: "A session switched to a new provider.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,
-"provider_name" => trouper::schema::FieldTy::Str]);
-
 /// Models refresh completed with results and errors.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "Model discovery finished across providers.")]
 pub struct ModelsRefreshed {
     /// The session that triggered the refresh (for routing the result back).
     pub session_id: SessionId,
@@ -37,17 +33,13 @@ pub struct ModelsRefreshed {
 
 impl crate::common::bus::BusMessage for ModelsRefreshed {}
 
-jinn_slices::crossing_schema!(ModelsRefreshed, "ModelsRefreshed",
-trouper::schema::SchemaKind::Event,
-description: "Model discovery finished across providers.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
-
 /// Model cache loaded from disk at startup.
 ///
 /// Emitted by `ProviderInitActor` after loading the cache from disk.
 /// `ProviderActor` handles this by writing the cache into AppState and
 /// reloading picker entries.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "Model cache was loaded from disk.")]
 pub struct ModelCacheLoaded {
     /// The loaded model cache.
     pub cache: crate::feat::provider_infra::ModelCache,
@@ -55,17 +47,13 @@ pub struct ModelCacheLoaded {
 
 impl crate::common::bus::BusMessage for ModelCacheLoaded {}
 
-jinn_slices::crossing_schema!(ModelCacheLoaded, "ModelCacheLoaded",
-trouper::schema::SchemaKind::Event,
-description: "Model cache was loaded from disk.",
-fields: []);
-
 /// Prompt templates loaded after a rescan.
 ///
 /// Emitted by the prompt scan actor after scanning the prompts directory.
 /// On success, `templates` contains the loaded templates and `error` is `None`.
 /// On failure, `templates` is empty and `error` contains a description.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "Prompt templates loaded after a rescan.")]
 pub struct PromptTemplatesLoaded {
     /// The session whose cwd drove the scan.
     pub session_id: crate::SessionId,
@@ -77,11 +65,3 @@ pub struct PromptTemplatesLoaded {
 }
 
 impl crate::common::bus::BusMessage for PromptTemplatesLoaded {}
-
-jinn_slices::crossing_schema!(PromptTemplatesLoaded, "PromptTemplatesLoaded",
-trouper::schema::SchemaKind::Event,
-description: "Prompt templates loaded after a rescan.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "templates" => trouper::schema::FieldTy::List(Box::new(trouper::schema::FieldTy::Json)),
-]);

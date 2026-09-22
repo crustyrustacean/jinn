@@ -89,13 +89,9 @@ mod tests {
     use super::*;
 
     /// A schema'd stand-in message for closure-recording assertions.
-    #[derive(Clone, serde::Serialize, serde::Deserialize)]
+    #[derive(Clone, serde::Serialize, serde::Deserialize, trouper::schema::Event)]
+    #[schema(description = "Picker outcome closure test message.")]
     struct PickerOutcomeRecorded;
-
-    jinn_slices::crossing_schema!(PickerOutcomeRecorded, "PickerOutcomeRecorded",
-        trouper::schema::SchemaKind::Event,
-        description: "Picker outcome closure test message.",
-        fields: []);
 
     #[rstest::rstest]
     #[test]

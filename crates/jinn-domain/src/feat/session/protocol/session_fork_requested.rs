@@ -16,7 +16,8 @@ use crate::protocol::SessionId;
 /// Creates a new session with all entries from the source session up to and
 /// including `at_ordinal`. Entry data is shared (not duplicated) via the
 /// SQLite junction table.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Fork a session at an entry ordinal.")]
 pub struct SessionForkRequested {
     /// The session to fork from.
     pub source_session_id: SessionId,
@@ -25,8 +26,3 @@ pub struct SessionForkRequested {
 }
 
 impl BusMessage for SessionForkRequested {}
-
-jinn_slices::crossing_schema!(SessionForkRequested, "SessionForkRequested",
-trouper::schema::SchemaKind::Command,
-description: "Fork a session at an entry ordinal.",
-fields: ["source_session_id" => trouper::schema::FieldTy::Uuid,]);

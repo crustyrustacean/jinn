@@ -29,7 +29,8 @@ use jinn_slices::BusMessage;
 /// enable/disable toggle through the picker. The respawn only proceeds if the
 /// server is still present in the session's `enabled_mcp_servers` set;
 /// otherwise it's a no-op.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Restart one MCP server actor for a session.")]
 pub struct RestartMcpServer {
     /// The session whose actor should restart.
     pub session_id: SessionId,
@@ -38,11 +39,6 @@ pub struct RestartMcpServer {
 }
 
 impl BusMessage for RestartMcpServer {}
-
-jinn_slices::crossing_schema!(RestartMcpServer, "RestartMcpServer",
-trouper::schema::SchemaKind::Command,
-description: "Restart one MCP server actor for a session.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 
 /// Outcome of a [`RestartMcpServer`] request, returned by the coordinator.
 ///
@@ -73,7 +69,8 @@ pub enum RestartError {
 /// This is per-session — each session maintains its own enablement, and each
 /// enabled (session × server) pair owns an independent connection actor +
 /// child process.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's enabled MCP server set changed.")]
 pub struct McpEnablementChanged {
     /// The session whose enablement set changed.
     pub session_id: SessionId,
@@ -82,11 +79,6 @@ pub struct McpEnablementChanged {
 }
 
 impl BusMessage for McpEnablementChanged {}
-
-jinn_slices::crossing_schema!(McpEnablementChanged, "McpEnablementChanged",
-trouper::schema::SchemaKind::Event,
-description: "A session's enabled MCP server set changed.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 
 /// Coarse connection state of one connection actor's child process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,7 +99,8 @@ pub enum McpConnectionStatus {
 ///
 /// Published at every transition. Subscribers can build a live view of every
 /// MCP process in the app (the sidebar's MCP servers section does).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "An MCP server's connection state changed.")]
 pub struct McpServerStatus {
     /// The session the actor serves.
     pub session_id: SessionId,
@@ -119,18 +112,14 @@ pub struct McpServerStatus {
 
 impl BusMessage for McpServerStatus {}
 
-jinn_slices::crossing_schema!(McpServerStatus, "McpServerStatus",
-trouper::schema::SchemaKind::Event,
-description: "An MCP server's connection state changed.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
-
 /// Captured stderr tail for one (session × server) connection actor.
 ///
 /// Published whenever new child-process stderr is drained (debounced while
 /// Running). The payload is the bounded tail (newest content); subscribers
 /// keep a live view for a future log viewer. Published best-effort, alongside
 /// status transitions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "An MCP server produced stderr log output.")]
 pub struct McpServerLog {
     /// The session the actor serves.
     pub session_id: SessionId,
@@ -141,11 +130,6 @@ pub struct McpServerLog {
 }
 
 impl BusMessage for McpServerLog {}
-
-jinn_slices::crossing_schema!(McpServerLog, "McpServerLog",
-trouper::schema::SchemaKind::Event,
-description: "An MCP server produced stderr log output.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 
 /// Kernel-side seam to the MCP coordinator actor.
 ///

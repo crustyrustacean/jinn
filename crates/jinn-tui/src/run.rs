@@ -397,7 +397,7 @@ mod tests {
             reason = "trouper ServiceActor contract: this actor is spawned via start_with; JSON-arg start is never called"
         )]
         async fn start(
-            _args: &serde_json::Value,
+            _args: &trouper::json::Json,
         ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
             unreachable!("spawned via start_with");
         }
@@ -446,7 +446,6 @@ mod tests {
                     Box::pin(async move { Ok(CwdRecorder { buffer }) })
                 }
             })
-            .subscribe::<SetSessionCwd>()
             .handles::<SetSessionCwd>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();

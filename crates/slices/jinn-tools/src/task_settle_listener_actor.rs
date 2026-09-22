@@ -72,7 +72,9 @@ pub struct TaskSettleListenerActor {
 }
 
 impl ServiceActor for TaskSettleListenerActor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: spawned via `start_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
@@ -114,10 +116,6 @@ impl TaskSettleListenerActor {
                     })
                 }
             })
-            .subscribe::<ContextFilesLoaded>()
-            .subscribe::<SkillsLoaded>()
-            .subscribe::<PromptTemplatesLoaded>()
-            .subscribe::<McpServerStatus>()
             .handles::<ContextFilesLoaded>()
             .handles::<SkillsLoaded>()
             .handles::<PromptTemplatesLoaded>()

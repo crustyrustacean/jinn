@@ -12,15 +12,11 @@ use serde::{Deserialize, Serialize};
 use crate::{BusMessage, protocol::SessionId};
 
 /// Close a session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Close a session (running teardown when due).")]
 pub struct CloseSession {
     /// The session to close.
     pub session_id: SessionId,
 }
 
 impl BusMessage for CloseSession {}
-
-jinn_slices::crossing_schema!(CloseSession, "CloseSession",
-trouper::schema::SchemaKind::Command,
-description: "Close a session (running teardown when due).",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);

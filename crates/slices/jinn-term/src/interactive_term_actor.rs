@@ -125,7 +125,7 @@ pub struct InteractiveTermActorDeps {
 }
 
 impl ServiceActor for InteractiveTermActor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, Report<RegistryError>> {
+    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
         // Never called: spawned via `spawn`'s start_with (typed deps can't
         // ride the JSON args).
         let _ = _args;
@@ -169,13 +169,16 @@ impl InteractiveTermActor {
             .handles::<SendTermInput>()
             .handles::<KillTerm>()
             .handles::<SendTermKey>()
-            .subscribe::<SendTermKey>()
             .handles::<ResizeTerm>()
-            .subscribe::<jinn_domain::feat::session::protocol::session_closed::SessionClosed>()
             // Teardown sub: a closed chat session takes its terminal with
             // it (the pty drop kills the process group) instead of
             // outliving the session until app exit.
             .handles::<jinn_domain::feat::session::protocol::session_closed::SessionClosed>()
+            // Ask replies leave the handlers through ctx.reply; the flush
+            // gate drops any outbound type not declared here.
+            .emits::<SpawnTermOutcome>()
+            .emits::<SendTermOutcome>()
+            .emits::<KillTermOutcome>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
         (path, controls)
@@ -688,7 +691,12 @@ mod tests {
     impl TermAskClient {
         async fn ask<M, R>(&self, msg: M) -> R
         where
-            M: serde::Serialize + trouper::schema::Schema,
+            M: serde::Serialize
+                + trouper::schema::Schema
+                + Clone
+                + Send
+                + Sync
+                + trouper::envelope::PayloadValue,
             R: serde::de::DeserializeOwned,
         {
             let reply = self
@@ -696,12 +704,20 @@ mod tests {
                 .ask(self.path.clone(), msg, std::time::Duration::from_secs(30))
                 .await
                 .expect("term ask round trip");
-            serde_json::from_value(reply).expect("term ask reply decodes")
+            reply.decode().expect("term ask reply decodes")
         }
 
         /// Fire-and-forget tell (fire-and-forget tests only need delivery,
         /// not a reply — sleeps after covers the async drain).
-        async fn tell<M: serde::Serialize + trouper::schema::Schema>(&self, msg: M) {
+        async fn tell<M>(&self, msg: M)
+        where
+            M: serde::Serialize
+                + trouper::schema::Schema
+                + Clone
+                + Send
+                + Sync
+                + trouper::envelope::PayloadValue,
+        {
             let _ = self.system.tell(self.path.clone(), msg).await;
         }
     }

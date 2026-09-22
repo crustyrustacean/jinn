@@ -65,10 +65,16 @@ impl TestHarness {
     }
 
     /// Publish a typed message on the fabric (the `BusService`'s legs).
-    pub async fn publish<M: BusMessage + trouper::schema::Schema + serde::Serialize>(
-        &self,
-        msg: M,
-    ) {
+    pub async fn publish<M>(&self, msg: M)
+    where
+        M: BusMessage
+            + trouper::schema::Schema
+            + serde::Serialize
+            + Clone
+            + Send
+            + Sync
+            + trouper::envelope::PayloadValue,
+    {
         self.bus.publish(msg).await;
     }
 
@@ -86,7 +92,14 @@ impl TestHarness {
     )]
     pub async fn spawn_recorder<M>(&self) -> Recorder<M>
     where
-        M: BusMessage + trouper::schema::Schema + serde::Serialize + serde::de::DeserializeOwned,
+        M: BusMessage
+            + trouper::schema::Schema
+            + serde::Serialize
+            + serde::de::DeserializeOwned
+            + Clone
+            + Send
+            + Sync
+            + trouper::envelope::PayloadValue,
     {
         let recorder = Recorder::<M>::default();
         self.spawn_trouper_recorder::<M>(&recorder);
@@ -101,7 +114,14 @@ impl TestHarness {
     /// tap and the returned handle.
     fn spawn_trouper_recorder<M>(&self, recorder: &Recorder<M>)
     where
-        M: BusMessage + trouper::schema::Schema + serde::Serialize + serde::de::DeserializeOwned,
+        M: BusMessage
+            + trouper::schema::Schema
+            + serde::Serialize
+            + serde::de::DeserializeOwned
+            + Clone
+            + Send
+            + Sync
+            + trouper::envelope::PayloadValue,
     {
         use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 
@@ -124,7 +144,7 @@ impl TestHarness {
                 reason = "async signature symmetry; body has no await"
             )]
             async fn start(
-                _args: &serde_json::Value,
+                _args: &trouper::json::Json,
             ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
                 // Never called: spawned via `spawn_service_builder` + `start_with`
                 // (the typed buffer can't ride JSON args).
@@ -165,7 +185,6 @@ impl TestHarness {
                     })
                 })
             })
-            .subscribe::<M>()
             .handles::<M>()
             .mailbox(1024, trouper::inbox::OverloadPolicy::Block)
             .start();

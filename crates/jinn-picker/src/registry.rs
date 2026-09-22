@@ -456,13 +456,9 @@ mod tests {
     )]
 
     /// A schema'd stand-in message for action-closure assertions.
-    #[derive(Clone, serde::Serialize, serde::Deserialize)]
+    #[derive(Clone, serde::Serialize, serde::Deserialize, trouper::schema::Event)]
+    #[schema(description = "Picker registry action test message.")]
     pub(super) struct PickerRecordedToggle;
-
-    jinn_slices::crossing_schema!(PickerRecordedToggle, "PickerRecordedToggle",
-        trouper::schema::SchemaKind::Event,
-        description: "Picker registry action test message.",
-        fields: []);
 
     use super::*;
     use crate::builder::PickerSpec;

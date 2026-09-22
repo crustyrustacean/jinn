@@ -14,15 +14,11 @@ use crate::BusMessage;
 use crate::protocol::SessionId;
 
 /// Archive a session without running teardown.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Archive a session without running teardown.")]
 pub struct ArchiveSession {
     /// The session to archive.
     pub session_id: SessionId,
 }
 
 impl BusMessage for ArchiveSession {}
-
-jinn_slices::crossing_schema!(ArchiveSession, "ArchiveSession",
-trouper::schema::SchemaKind::Command,
-description: "Archive a session without running teardown.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);

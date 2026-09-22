@@ -37,7 +37,8 @@ pub struct DiscoverySnapshot {
 /// 3000ms). It is `Some("discovery delayed by <resource>")` when the
 /// safety-net timer fired before all three arrived — surfaced so consumers
 /// can show the reason (relevant on slow disks, e.g. ZFS raidz2 on spinners).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's three resource scans have settled (or the budget expired).")]
 pub struct SessionDiscoverySettled {
     /// The session whose discovery settled.
     pub session_id: SessionId,
@@ -49,15 +50,6 @@ pub struct SessionDiscoverySettled {
 }
 
 impl jinn_slices::BusMessage for SessionDiscoverySettled {}
-
-jinn_slices::crossing_schema!(SessionDiscoverySettled, "SessionDiscoverySettled",
-trouper::schema::SchemaKind::Event,
-description: "A session's three resource scans have settled (or the budget expired).",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "snapshot" => trouper::schema::FieldTy::Json,
-    "delayed" => trouper::schema::FieldTy::Str,
-]);
 
 #[cfg(test)]
 mod tests {

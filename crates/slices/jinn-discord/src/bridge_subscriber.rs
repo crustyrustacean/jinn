@@ -106,13 +106,6 @@ impl DiscordBridgeSubscriber {
                     })
                 }
             })
-            .subscribe::<SessionPhaseChanged>()
-            .subscribe::<SessionSetupCompleted>()
-            .subscribe::<SessionTeardownFinished>()
-            .subscribe::<SessionArchived>()
-            .subscribe::<CreateThreadForSession>()
-            .subscribe::<DiscordThreadCreated>()
-            .subscribe::<DiscordThreadCreateFailed>()
             .handles::<SessionPhaseChanged>()
             .handles::<SessionSetupCompleted>()
             .handles::<SessionTeardownFinished>()
@@ -125,7 +118,9 @@ impl DiscordBridgeSubscriber {
 }
 
 impl ServiceActor for DiscordBridgeSubscriber {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the channels, state,
         // and capability via `start_with`.
         Err(
@@ -513,14 +508,11 @@ mod tests {
 
         // When an Idle phase change is published on the session topic.
         fabric
-            .send_to_topic(
-                &SessionPhaseChanged {
-                    session_id: sid.clone(),
-                    old_phase: PhaseKind::Streaming,
-                    new_phase: PhaseKind::Idle,
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&SessionPhaseChanged {
+                session_id: sid.clone(),
+                old_phase: PhaseKind::Streaming,
+                new_phase: PhaseKind::Idle,
+            })
             .await;
 
         // Then exactly one TurnFinished was forwarded.
@@ -553,14 +545,11 @@ mod tests {
 
         // When a non-idle phase change is published on the session topic.
         fabric
-            .send_to_topic(
-                &SessionPhaseChanged {
-                    session_id: sid.clone(),
-                    old_phase: PhaseKind::Idle,
-                    new_phase: PhaseKind::Streaming,
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&SessionPhaseChanged {
+                session_id: sid.clone(),
+                old_phase: PhaseKind::Idle,
+                new_phase: PhaseKind::Streaming,
+            })
             .await;
 
         // Then nothing is forwarded within a settle window.
@@ -595,14 +584,11 @@ mod tests {
 
         // When a failed setup completion is published on the session topic.
         fabric
-            .send_to_topic(
-                &SessionSetupCompleted {
-                    session_id: sid.clone(),
-                    cwd: std::path::PathBuf::from("/repo"),
-                    error: Some("boom".to_owned()),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&SessionSetupCompleted {
+                session_id: sid.clone(),
+                cwd: std::path::PathBuf::from("/repo"),
+                error: Some("boom".to_owned()),
+            })
             .await;
 
         // Then exactly one SetupCompleted was forwarded with the payload.
@@ -641,13 +627,10 @@ mod tests {
 
         // When a failed teardown finish is published on the session topic.
         fabric
-            .send_to_topic(
-                &SessionTeardownFinished {
-                    session_id: sid.clone(),
-                    error: Some("boom".to_owned()),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&SessionTeardownFinished {
+                session_id: sid.clone(),
+                error: Some("boom".to_owned()),
+            })
             .await;
 
         // Then exactly one TeardownFinished was forwarded with the payload.
@@ -681,12 +664,9 @@ mod tests {
 
         // When an archive event is published on the session topic.
         fabric
-            .send_to_topic(
-                &SessionArchived {
-                    session_id: sid.clone(),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&SessionArchived {
+                session_id: sid.clone(),
+            })
             .await;
 
         // Then exactly one Archived was forwarded.
@@ -719,13 +699,10 @@ mod tests {
 
         // When a CreateThreadForSession command is published on the session topic.
         fabric
-            .send_to_topic(
-                &CreateThreadForSession {
-                    session_id: sid.clone(),
-                    title: "my thread".to_owned(),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&CreateThreadForSession {
+                session_id: sid.clone(),
+                title: "my thread".to_owned(),
+            })
             .await;
 
         // Then exactly one GatewayRequest::CreateThreadForSession landed on
@@ -761,13 +738,10 @@ mod tests {
 
         // When the gateway's thread-created event crosses the session topic.
         fabric
-            .send_to_topic(
-                &DiscordThreadCreated {
-                    session_id: sid.clone(),
-                    title: "Threaded".to_owned(),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&DiscordThreadCreated {
+                session_id: sid.clone(),
+                title: "Threaded".to_owned(),
+            })
             .await;
 
         // Then the session's history gained a System entry mentioning the title.

@@ -118,7 +118,7 @@ enum Scope {
 
 /// Parses and validates raw JSON arguments.
 fn parse_args(raw: &str) -> Result<SearchArgs, String> {
-    let args: serde_json::Value =
+    let args: trouper::json::Json =
         serde_json::from_str(raw).map_err(|e| format!("invalid JSON arguments: {e}"))?;
 
     let query = args
@@ -182,7 +182,10 @@ fn parse_args(raw: &str) -> Result<SearchArgs, String> {
 }
 
 /// Parses an optional ISO date/datetime string argument into a UTC instant.
-fn parse_date_arg(args: &serde_json::Value, key: &str) -> Result<Option<jiff::Timestamp>, String> {
+fn parse_date_arg(
+    args: &trouper::json::Json,
+    key: &str,
+) -> Result<Option<jiff::Timestamp>, String> {
     let Some(raw) = args.get(key).and_then(serde_json::Value::as_str) else {
         return Ok(None);
     };

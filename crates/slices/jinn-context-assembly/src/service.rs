@@ -24,7 +24,7 @@ impl ServiceActor for ContextAssemblyService {
         clippy::unused_async_trait_impl,
         reason = "stateless service: start has nothing to await"
     )]
-    async fn start(_args: &serde_json::Value) -> Result<Self, Report<RegistryError>> {
+    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
         Ok(Self)
     }
 }
@@ -47,6 +47,9 @@ pub fn spawn(system: &trouper::system::ActorSystem) -> ActorPath {
     trouper::builder::spawn_service_builder::<ContextAssemblyService>(system)
         .at(ActorPath::new(CONTEXT_ASSEMBLY_PATH))
         .handles::<AssembleContext>()
+        // Ask replies leave the handler through ctx.reply; the flush gate
+        // drops any outbound type not declared here.
+        .emits::<AssembledResponse>()
         .mailbox(64, trouper::inbox::OverloadPolicy::Block)
         .start()
 }
@@ -96,7 +99,7 @@ mod tests {
             )
             .await
             .expect("ask succeeds");
-        let response: AssembledResponse = serde_json::from_value(reply).expect("reply decodes");
+        let response: AssembledResponse = reply.decode().expect("reply decodes");
         assert_eq!(response.prompt.session_id, session_id);
         assert!(
             !response.prompt.messages.is_empty(),

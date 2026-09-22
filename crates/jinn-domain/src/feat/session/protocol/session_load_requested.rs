@@ -14,15 +14,11 @@ use crate::protocol::SessionId;
 /// Request to load a full session from disk by session ID.
 ///
 /// Carries the session ID so the actor can load it directly from SQLite.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Load a session from the store by id.")]
 pub struct SessionLoadRequested {
     /// The session to load.
     pub session_id: SessionId,
 }
 
 impl BusMessage for SessionLoadRequested {}
-
-jinn_slices::crossing_schema!(SessionLoadRequested, "SessionLoadRequested",
-trouper::schema::SchemaKind::Command,
-description: "Load a session from the store by id.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);

@@ -14,36 +14,44 @@ use serde::{Deserialize, Serialize};
 
 /// Scan all three resources for a session (skills, prompt templates,
 /// context files) and settle the run.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Scan all three discovery resources for a session and settle the run.")]
 pub struct RunDiscovery {
     /// The session whose environment drives the scans.
+    #[schema(ty = "uuid", shard_key)]
     pub session_id: SessionId,
     /// The working directory driving the scans.
     pub cwd: PathBuf,
 }
 
 /// Re-run only the skills scan for a session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Re-run the skills scan for a session.")]
 pub struct RescanSkills {
     /// The session whose environment drives the scan.
+    #[schema(ty = "uuid", shard_key)]
     pub session_id: SessionId,
     /// The working directory driving the scan.
     pub cwd: PathBuf,
 }
 
 /// Re-run only the prompt-templates scan for a session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Re-run the prompt-templates scan for a session.")]
 pub struct RescanPrompts {
     /// The session whose environment drives the scan.
+    #[schema(ty = "uuid", shard_key)]
     pub session_id: SessionId,
     /// The working directory driving the scan.
     pub cwd: PathBuf,
 }
 
 /// Re-run only the context-files scan for a session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Re-run the context-files scan for a session.")]
 pub struct RescanContext {
     /// The session whose environment drives the scan.
+    #[schema(ty = "uuid", shard_key)]
     pub session_id: SessionId,
     /// The working directory driving the scan.
     pub cwd: PathBuf,
@@ -53,72 +61,6 @@ impl jinn_slices::BusMessage for RunDiscovery {}
 impl jinn_slices::BusMessage for RescanSkills {}
 impl jinn_slices::BusMessage for RescanPrompts {}
 impl jinn_slices::BusMessage for RescanContext {}
-
-impl trouper::schema::Schema for RunDiscovery {
-    fn schema_def() -> trouper::schema::SchemaDef {
-        trouper::schema::SchemaDef {
-            name: "RunDiscovery".to_owned(),
-            version: 1,
-            kind: trouper::schema::SchemaKind::Command,
-            fields: vec![
-                trouper::schema::FieldDef::required("session_id", trouper::schema::FieldTy::Uuid)
-                    .as_shard_key(),
-                trouper::schema::FieldDef::required("cwd", trouper::schema::FieldTy::Str),
-            ],
-            description: Some(
-                "Scan all three discovery resources for a session and settle the run.".to_owned(),
-            ),
-        }
-    }
-}
-
-impl trouper::schema::Schema for RescanSkills {
-    fn schema_def() -> trouper::schema::SchemaDef {
-        trouper::schema::SchemaDef {
-            name: "RescanSkills".to_owned(),
-            version: 1,
-            kind: trouper::schema::SchemaKind::Command,
-            fields: vec![
-                trouper::schema::FieldDef::required("session_id", trouper::schema::FieldTy::Uuid)
-                    .as_shard_key(),
-                trouper::schema::FieldDef::required("cwd", trouper::schema::FieldTy::Str),
-            ],
-            description: Some("Re-run the skills scan for a session.".to_owned()),
-        }
-    }
-}
-
-impl trouper::schema::Schema for RescanPrompts {
-    fn schema_def() -> trouper::schema::SchemaDef {
-        trouper::schema::SchemaDef {
-            name: "RescanPrompts".to_owned(),
-            version: 1,
-            kind: trouper::schema::SchemaKind::Command,
-            fields: vec![
-                trouper::schema::FieldDef::required("session_id", trouper::schema::FieldTy::Uuid)
-                    .as_shard_key(),
-                trouper::schema::FieldDef::required("cwd", trouper::schema::FieldTy::Str),
-            ],
-            description: Some("Re-run the prompt-templates scan for a session.".to_owned()),
-        }
-    }
-}
-
-impl trouper::schema::Schema for RescanContext {
-    fn schema_def() -> trouper::schema::SchemaDef {
-        trouper::schema::SchemaDef {
-            name: "RescanContext".to_owned(),
-            version: 1,
-            kind: trouper::schema::SchemaKind::Command,
-            fields: vec![
-                trouper::schema::FieldDef::required("session_id", trouper::schema::FieldTy::Uuid)
-                    .as_shard_key(),
-                trouper::schema::FieldDef::required("cwd", trouper::schema::FieldTy::Str),
-            ],
-            description: Some("Re-run the context-files scan for a session.".to_owned()),
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -154,7 +96,7 @@ mod tests {
             session_id: id.clone(),
             cwd: std::env::temp_dir(),
         };
-        let payload = serde_json::to_value(&command).expect("serialize");
+        let payload = trouper::json::Json::of(&command);
 
         // When the kernel extracts the shard key from the payload.
         let key =

@@ -200,7 +200,9 @@ fn build_openrouter_web_search_definition(config: &OpenrouterWebSearchConfig) ->
 pub const ORCHESTRATOR_PATH: &str = "jinn.tools.orchestrator";
 
 impl ServiceActor for ToolOrchestratorActor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: spawned via `start_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
@@ -225,12 +227,6 @@ impl ToolOrchestratorActor {
                     Box::pin(async move { Ok(Self::initialize(deps)) })
                 }
             })
-            .subscribe::<ToolExecutionCompleted>()
-            .subscribe::<SessionClosed>()
-            .subscribe::<ToolsUnregistered>()
-            .subscribe::<RegisterTools>()
-            .subscribe::<ExecuteToolBatch>()
-            .subscribe::<CancelToolBatch>()
             .handles::<RegisterTools>()
             .handles::<ExecuteToolBatch>()
             .handles::<CancelToolBatch>()

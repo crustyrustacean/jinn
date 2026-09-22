@@ -40,12 +40,16 @@ impl ActorDeps {
     /// ```ignore
     /// self.deps.publish(MyMessage { ... }).await;
     /// ```
-    pub async fn publish<
-        M: crate::common::bus::BusMessage + trouper::schema::Schema + serde::Serialize,
-    >(
-        &self,
-        msg: M,
-    ) {
+    pub async fn publish<M>(&self, msg: M)
+    where
+        M: crate::common::bus::BusMessage
+            + trouper::schema::Schema
+            + serde::Serialize
+            + Clone
+            + Send
+            + Sync
+            + trouper::envelope::PayloadValue,
+    {
         self.services.bus.publish(msg).await;
     }
 }
@@ -76,10 +80,19 @@ pub trait BusPublish {
     /// Publish a typed message to the bus.
     ///
     /// Fire-and-forget: logs a warning on delivery failure but does not propagate.
-    fn publish<M: crate::common::bus::BusMessage + trouper::schema::Schema + serde::Serialize>(
+    fn publish<M>(
         &self,
         msg: M,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>>
+    where
+        M: crate::common::bus::BusMessage
+            + trouper::schema::Schema
+            + serde::Serialize
+            + Clone
+            + Send
+            + Sync
+            + trouper::envelope::PayloadValue,
+    {
         let bus = self.bus().clone();
         Box::pin(async move {
             bus.publish(msg).await;

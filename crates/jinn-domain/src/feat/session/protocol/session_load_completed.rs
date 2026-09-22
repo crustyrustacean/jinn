@@ -25,7 +25,8 @@ use crate::{common::bus::BusMessage, protocol::SessionId};
 /// (system message, model, CWD, context size). External subscribers
 /// (token-count actor, sidebar) use `session_id()` to look up the session
 /// from state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session was loaded from disk and inserted into state.")]
 pub struct SessionLoadCompleted {
     /// The fully loaded session from disk.
     pub session: ChatSessionState,
@@ -39,8 +40,3 @@ impl SessionLoadCompleted {
 }
 
 impl BusMessage for SessionLoadCompleted {}
-
-jinn_slices::crossing_schema!(SessionLoadCompleted, "SessionLoadCompleted",
-trouper::schema::SchemaKind::Event,
-description: "A session was loaded from disk and inserted into state.",
-fields: ["session" => trouper::schema::FieldTy::Json]);

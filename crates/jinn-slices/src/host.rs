@@ -141,25 +141,6 @@ impl<'a, C: 'static> SliceHost<'a, C> {
             .start()
     }
 
-    /// Declares that the already-spawned trouper service actor at
-    /// `path` receives every publish of `M`. The declaration is the
-    /// readiness point: it registers synchronously, so publishes after
-    /// this call cannot be missed. Kept on the host so slices stage
-    /// their runtime wiring (spawn + declare) through one seam instead
-    /// of touching the system directly.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`trouper::registry::RegistryError::UnknownPath`] when
-    /// the actor has not been spawned yet — declare before
-    /// [`Self::spawn_service`].
-    pub fn subscribe_service<M: trouper::schema::Schema>(
-        &self,
-        path: &ActorPath,
-    ) -> Result<(), error_stack::Report<trouper::registry::RegistryError>> {
-        self.system.declare_subscriber::<M>(path)
-    }
-
     /// Attaches route rows to the key-route table.
     pub fn attach_rows<R>(&self, rows: R)
     where

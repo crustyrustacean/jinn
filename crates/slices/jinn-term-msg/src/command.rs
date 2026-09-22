@@ -1,6 +1,7 @@
 //! Request messages the coordinator actor answers.
 
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use jinn_core_types::SessionId;
 use jinn_slices::BusMessage;
@@ -18,7 +19,8 @@ pub enum ControlHolder {
 }
 
 /// Outcome of a settle wait for a spawn or send.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A settled terminal screen capture.")]
 pub struct TermScreen {
     /// The rendered screen (plain text, trailing blank rows trimmed).
     pub screen: String,
@@ -32,7 +34,8 @@ pub struct TermScreen {
 /// live terminal kills the old one first (reported in the outcome). The
 /// terminal overlay and sidebar symbol are keyed by this chat session id —
 /// it *is* the terminal's identity; there is no separate term id.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Spawn an interactive pty session for a chat session.")]
 pub struct SpawnTerm {
     /// The chat session that owns this terminal.
     pub chat_session_id: SessionId,
@@ -63,14 +66,16 @@ pub enum SpawnTermOutcome {
 
 /// What happened to a chat session's previous terminal when a new one took
 /// its place (one terminal per chat session).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "The replaced terminal's exit info.")]
 pub struct KilledPrevious {
     /// Captured exit info from the kill.
     pub exited: TermExitInfo,
 }
 
 /// Send input to a session and wait for the screen to settle.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Send text/keys to a session's pty and wait for settle.")]
 pub struct SendTermInput {
     /// The chat session whose terminal receives the input.
     pub chat_session_id: SessionId,
@@ -100,7 +105,8 @@ pub enum SendTermOutcome {
 }
 
 /// Kill a session (its whole process group) and collect the final state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Kill a chat session's pty process group.")]
 pub struct KillTerm {
     /// The chat session whose terminal is killed.
     pub chat_session_id: SessionId,
@@ -124,16 +130,12 @@ pub enum KillTermOutcome {
 
 impl BusMessage for SendTermKey {}
 
-jinn_slices::crossing_schema!(SendTermKey, "SendTermKey",
-trouper::schema::SchemaKind::Command,
-description: "Forward one key event's bytes to a session's pty.",
-fields: ["chat_session_id" => trouper::schema::FieldTy::Uuid]);
-
 /// Resize a session's pty + emulator to the terminal overlay's inner rect.
 ///
 /// Published by the render layer when the terminal overlay's inner rect
 /// changes. Fire-and-forget; the actor clamps to sane bounds.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Resize a session's pty and emulator.")]
 pub struct ResizeTerm {
     /// The chat session whose terminal resizes. `None` is a no-op (the
     /// render layer always names the active session; it never broadcasts).
@@ -144,15 +146,11 @@ pub struct ResizeTerm {
 
 impl BusMessage for ResizeTerm {}
 
-jinn_slices::crossing_schema!(ResizeTerm, "ResizeTerm",
-trouper::schema::SchemaKind::Command,
-description: "Resize a session's pty and emulator.",
-fields: ["chat_session_id" => trouper::schema::FieldTy::Uuid]);
-
 /// Forward one key event's bytes to a chat session's pty (user control mode).
 ///
 /// Fire-and-forget: keystrokes must not queue behind screen settle waits.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Forward one key event's bytes to a session's pty.")]
 pub struct SendTermKey {
     /// The chat session whose terminal receives the bytes.
     pub chat_session_id: SessionId,
@@ -162,56 +160,91 @@ pub struct SendTermKey {
 
 impl BusMessage for SpawnTerm {}
 
-jinn_slices::crossing_schema!(SpawnTerm, "SpawnTerm",
-trouper::schema::SchemaKind::Command,
-description: "Spawn an interactive pty session for a chat session.",
-fields: ["chat_session_id" => trouper::schema::FieldTy::Uuid, "command" => trouper::schema::FieldTy::Str]);
-
 impl BusMessage for SpawnTermOutcome {}
 
-jinn_slices::crossing_schema!(SpawnTermOutcome, "SpawnTermOutcome",
-trouper::schema::SchemaKind::Event,
-description: "Reply payload for the spawn ask.",
-fields: []);
+impl trouper::schema::Schema for SpawnTermOutcome {
+    fn schema_def() -> trouper::schema::SchemaDef {
+        trouper::schema::SchemaDef {
+            name: "SpawnTermOutcome".to_owned(),
+            kind: trouper::schema::SchemaKind::Event,
+            fields: vec![],
+            description: Some("Reply payload for the spawn ask.".to_owned()),
+        }
+    }
+}
+
+impl trouper::envelope::PayloadValue for SpawnTermOutcome {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn field(&self, _name: &str) -> Option<String> {
+        None
+    }
+
+    fn to_json_bytes(&self) -> Arc<[u8]> {
+        trouper::envelope::payload_value_json_bytes(self)
+    }
+}
 
 impl BusMessage for KilledPrevious {}
 
-jinn_slices::crossing_schema!(KilledPrevious, "KilledPrevious",
-trouper::schema::SchemaKind::Event,
-description: "The replaced terminal's exit info.",
-fields: []);
-
 impl BusMessage for SendTermInput {}
-
-jinn_slices::crossing_schema!(SendTermInput, "SendTermInput",
-trouper::schema::SchemaKind::Command,
-description: "Send text/keys to a session's pty and wait for settle.",
-fields: ["chat_session_id" => trouper::schema::FieldTy::Uuid]);
 
 impl BusMessage for SendTermOutcome {}
 
-jinn_slices::crossing_schema!(SendTermOutcome, "SendTermOutcome",
-trouper::schema::SchemaKind::Event,
-description: "Reply payload for the send-input ask.",
-fields: []);
+impl trouper::schema::Schema for SendTermOutcome {
+    fn schema_def() -> trouper::schema::SchemaDef {
+        trouper::schema::SchemaDef {
+            name: "SendTermOutcome".to_owned(),
+            kind: trouper::schema::SchemaKind::Event,
+            fields: vec![],
+            description: Some("Reply payload for the send-input ask.".to_owned()),
+        }
+    }
+}
+
+impl trouper::envelope::PayloadValue for SendTermOutcome {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn field(&self, _name: &str) -> Option<String> {
+        None
+    }
+
+    fn to_json_bytes(&self) -> Arc<[u8]> {
+        trouper::envelope::payload_value_json_bytes(self)
+    }
+}
 
 impl BusMessage for KillTerm {}
 
-jinn_slices::crossing_schema!(KillTerm, "KillTerm",
-trouper::schema::SchemaKind::Command,
-description: "Kill a chat session's pty process group.",
-fields: ["chat_session_id" => trouper::schema::FieldTy::Uuid]);
-
 impl BusMessage for KillTermOutcome {}
 
-jinn_slices::crossing_schema!(KillTermOutcome, "KillTermOutcome",
-trouper::schema::SchemaKind::Event,
-description: "Reply payload for the kill ask.",
-fields: []);
+impl trouper::schema::Schema for KillTermOutcome {
+    fn schema_def() -> trouper::schema::SchemaDef {
+        trouper::schema::SchemaDef {
+            name: "KillTermOutcome".to_owned(),
+            kind: trouper::schema::SchemaKind::Event,
+            fields: vec![],
+            description: Some("Reply payload for the kill ask.".to_owned()),
+        }
+    }
+}
+
+impl trouper::envelope::PayloadValue for KillTermOutcome {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn field(&self, _name: &str) -> Option<String> {
+        None
+    }
+
+    fn to_json_bytes(&self) -> Arc<[u8]> {
+        trouper::envelope::payload_value_json_bytes(self)
+    }
+}
 
 impl BusMessage for TermScreen {}
-
-jinn_slices::crossing_schema!(TermScreen, "TermScreen",
-trouper::schema::SchemaKind::Event,
-description: "A settled terminal screen capture.",
-fields: ["screen" => trouper::schema::FieldTy::Str]);

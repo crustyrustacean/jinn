@@ -44,13 +44,13 @@ struct Wired {
 
 impl Wired {
     async fn wire() -> Self {
-        Self::wire_with_args(serde_json::json!({})).await
+        Self::wire_with_args(trouper::json!({})).await
     }
 
     /// Wires with a custom args template (merged with the entity key),
     /// letting tests shorten the settle budget. Spawns the notifier so
     /// settles surface as summary entries.
-    async fn wire_with_args(args_template: serde_json::Value) -> Self {
+    async fn wire_with_args(args_template: trouper::json::Json) -> Self {
         let dir = Box::new(tempfile::tempdir().expect("temp dir"));
         let home = dir.path().to_path_buf();
         let project = home.join("proj");
@@ -281,7 +281,7 @@ async fn budget_timeout_settles_with_delayed_reason_naming_missing_resources() {
     // Given a partition set whose prompts scan stalls past the
     // injected budget (stuck.md is a blocked fifo; skills + context
     // have nothing to scan, so they finish fast).
-    let wired = Wired::wire_with_args(serde_json::json!({
+    let wired = Wired::wire_with_args(trouper::json!({
         SETTLE_BUDGET_ARG: TEST_BUDGET_MS,
     }))
     .await;
@@ -319,7 +319,7 @@ async fn budget_timeout_settles_with_delayed_reason_naming_missing_resources() {
 async fn timed_settle_snapshot_counts_finished_resources() {
     // Given a stalled prompts scan and real content for the other two
     // resources, so skills + context finish within the budget.
-    let wired = Wired::wire_with_args(serde_json::json!({
+    let wired = Wired::wire_with_args(trouper::json!({
         SETTLE_BUDGET_ARG: TEST_BUDGET_MS,
     }))
     .await;
@@ -346,7 +346,7 @@ async fn timed_settle_snapshot_counts_finished_resources() {
 async fn full_discovery_settles_without_a_delay_note() {
     // Given a wired partition set whose project tree has one skill, one
     // prompt, and one AGENTS.md — all scans finish inside the budget.
-    let wired = Wired::wire_with_args(serde_json::json!({
+    let wired = Wired::wire_with_args(trouper::json!({
         SETTLE_BUDGET_ARG: TEST_BUDGET_MS,
     }))
     .await;
@@ -388,6 +388,16 @@ async fn worker_publishes_onto_schema_named_topics() {
     // And the other two resources broadcast as well.
     wait_for(|| wired.published_schema("PromptTemplatesLoaded")).await;
     wait_for(|| wired.published_schema("ContextFilesLoaded")).await;
+    // And the flush gate dead-lettered nothing: the supervisor's
+    // `.emits` surface covers every command its handlers send.
+    let dead = wired.fabric.system().drain_dead_letters();
+    assert!(
+        dead.is_empty(),
+        "discovery must not dead-letter: {:?}",
+        dead.iter()
+            .map(|l| l.schema.to_string())
+            .collect::<Vec<_>>()
+    );
 }
 
 #[rstest::rstest]
@@ -445,7 +455,7 @@ async fn manual_prompt_rescan_settles_with_a_summary() {
 async fn stalled_manual_rescan_settles_at_the_budget() {
     // Given a wired partition set whose prompts scan stalls past the
     // injected budget.
-    let wired = Wired::wire_with_args(serde_json::json!({
+    let wired = Wired::wire_with_args(trouper::json!({
         SETTLE_BUDGET_ARG: TEST_BUDGET_MS,
     }))
     .await;

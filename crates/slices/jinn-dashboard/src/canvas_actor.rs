@@ -50,7 +50,9 @@ pub struct DashboardCanvasActor {
 }
 
 impl ServiceActor for DashboardCanvasActor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the cell via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
@@ -85,11 +87,6 @@ impl DashboardCanvasActor {
                 let cell = cell.clone();
                 move || Box::pin(async move { Ok(Self { cell }) })
             })
-            .subscribe::<ActorStarting>()
-            .subscribe::<ActorStarted>()
-            .subscribe::<ActorShutdownCompleted>()
-            .subscribe::<ServiceStatusUpdate>()
-            .subscribe::<DashboardNav>()
             .handles::<ActorStarting>()
             .handles::<ActorStarted>()
             .handles::<ActorShutdownCompleted>()
@@ -250,13 +247,10 @@ mod tests {
 
         // When an ActorStarting envelope lands on the fabric topic.
         fabric
-            .send_to_topic(
-                &ActorStarting {
-                    name: "llm".to_owned(),
-                    description: None,
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&ActorStarting {
+                name: "llm".to_owned(),
+                description: None,
+            })
             .await;
 
         // Then the dashboard shows the actor as Starting.
@@ -273,25 +267,19 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(
-                &ActorStarting {
-                    name: "llm".to_owned(),
-                    description: Some("LlmActor".to_owned()),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&ActorStarting {
+                name: "llm".to_owned(),
+                description: Some("LlmActor".to_owned()),
+            })
             .await;
         wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
 
         // When the ActorStarted envelope arrives.
         fabric
-            .send_to_topic(
-                &ActorStarted {
-                    name: "llm".to_owned(),
-                    description: Some("LlmActor".to_owned()),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&ActorStarted {
+                name: "llm".to_owned(),
+                description: Some("LlmActor".to_owned()),
+            })
             .await;
 
         // Then the entry promotes to Running with the description.
@@ -318,13 +306,10 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(
-                &ActorStarted {
-                    name: "llm".to_owned(),
-                    description: Some("LlmActor".to_owned()),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&ActorStarted {
+                name: "llm".to_owned(),
+                description: Some("LlmActor".to_owned()),
+            })
             .await;
         wait_for(|| {
             dashboard_entry(&cell, "llm").is_some_and(|(l, _, _)| l == ActorLifecycle::Running)
@@ -333,13 +318,10 @@ mod tests {
 
         // When the racing ActorStarting envelope lands afterwards.
         fabric
-            .send_to_topic(
-                &ActorStarting {
-                    name: "llm".to_owned(),
-                    description: Some("LlmActor".to_owned()),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&ActorStarting {
+                name: "llm".to_owned(),
+                description: Some("LlmActor".to_owned()),
+            })
             .await;
         wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
 
@@ -359,24 +341,18 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(
-                &ActorStarted {
-                    name: "llm".to_owned(),
-                    description: None,
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&ActorStarted {
+                name: "llm".to_owned(),
+                description: None,
+            })
             .await;
         wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
 
         // When the ActorShutdownCompleted envelope arrives.
         fabric
-            .send_to_topic(
-                &ActorShutdownCompleted {
-                    name: "llm".to_owned(),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&ActorShutdownCompleted {
+                name: "llm".to_owned(),
+            })
             .await;
 
         // Then the entry is Dead.
@@ -393,27 +369,21 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(
-                &ActorStarted {
-                    name: "sample-actor".to_owned(),
-                    description: None,
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&ActorStarted {
+                name: "sample-actor".to_owned(),
+                description: None,
+            })
             .await;
         wait_for(|| dashboard_entry(&cell, "sample-actor").is_some()).await;
 
         // When a ServiceStatusUpdate projection arrives with a status message.
         fabric
-            .send_to_topic(
-                &ServiceStatusUpdate {
-                    name: "sample-actor".to_owned(),
-                    description: None,
-                    lifecycle: None,
-                    status_message: Some("3 urls verified".to_owned()),
-                },
-                &trouper::topics::Topic::new("unused"),
-            )
+            .send_to_topic(&ServiceStatusUpdate {
+                name: "sample-actor".to_owned(),
+                description: None,
+                lifecycle: None,
+                status_message: Some("3 urls verified".to_owned()),
+            })
             .await;
 
         // Then the Notes column carries the message.
@@ -432,24 +402,17 @@ mod tests {
         let cell = wire_actor(&fabric);
         for name in ["a", "b", "c"] {
             fabric
-                .send_to_topic(
-                    &ActorStarted {
-                        name: name.to_owned(),
-                        description: None,
-                    },
-                    &trouper::topics::Topic::new("unused"),
-                )
+                .send_to_topic(&ActorStarted {
+                    name: name.to_owned(),
+                    description: None,
+                })
                 .await;
         }
         wait_for(|| cell.read().actors().len() == 3).await;
 
         // When DashboardNav::Down envelopes arrive twice.
-        fabric
-            .send_to_topic(&DashboardNav::Down, &trouper::topics::Topic::new("unused"))
-            .await;
-        fabric
-            .send_to_topic(&DashboardNav::Down, &trouper::topics::Topic::new("unused"))
-            .await;
+        fabric.send_to_topic(&DashboardNav::Down).await;
+        fabric.send_to_topic(&DashboardNav::Down).await;
 
         // Then the cursor lands on the third row.
         wait_for(|| cell.read().selected_index() == 2).await;
@@ -473,10 +436,11 @@ mod tests {
         let roundtripped: ActorStarting =
             serde_json::from_value(serde_json::to_value(&starting).unwrap()).unwrap();
 
-        // Then the payload survived and the schema id is name@1.
+        // Then the payload survived and the schema id is the bare name
+        // (trouper 0.8 dropped the version component).
         assert_eq!(roundtripped.name, "llm");
         let id = ActorStarting::schema_id().to_string();
-        assert!(id.starts_with("ActorStarting@"), "id was {id}");
+        assert_eq!(id, "ActorStarting", "id was {id}");
         // And the dashboard's import surface IS the shared fabric type.
         let _: jinn_slices::fabric::ActorStarting = starting;
     }

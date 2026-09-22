@@ -15,15 +15,11 @@ use crate::BusMessage;
 use crate::protocol::SessionId;
 
 /// Archive a session and all of its descendants (resolved by the actor).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Archive a session and its whole subtree.")]
 pub struct ArchiveSessionTree {
     /// The root of the subtree to archive (the sidebar selection at confirm time).
     pub root: SessionId,
 }
 
 impl BusMessage for ArchiveSessionTree {}
-
-jinn_slices::crossing_schema!(ArchiveSessionTree, "ArchiveSessionTree",
-trouper::schema::SchemaKind::Command,
-description: "Archive a session and its whole subtree.",
-fields: ["root" => trouper::schema::FieldTy::Uuid,]);

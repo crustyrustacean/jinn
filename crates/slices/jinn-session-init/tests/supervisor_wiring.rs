@@ -102,13 +102,10 @@ async fn session_created_triggers_discovery_for_that_session() {
     // When SessionCreated carrying that cwd crosses on the trigger topic.
     wired
         .fabric
-        .send_to_topic(
-            &SessionCreated {
-                session_id: wired.session_id.clone(),
-                cwd: wired.home.clone(),
-            },
-            &trouper::topics::Topic::new("unused"),
-        )
+        .send_to_topic(&SessionCreated {
+            session_id: wired.session_id.clone(),
+            cwd: wired.home.clone(),
+        })
         .await;
 
     // Then the worker discovers the skill into the session.
@@ -132,13 +129,10 @@ async fn pending_cwd_session_produces_no_scan() {
     // When SessionCreated crosses with the pending-cwd sentinel.
     wired
         .fabric
-        .send_to_topic(
-            &SessionCreated {
-                session_id: wired.session_id.clone(),
-                cwd: std::path::PathBuf::from("."),
-            },
-            &trouper::topics::Topic::new("unused"),
-        )
+        .send_to_topic(&SessionCreated {
+            session_id: wired.session_id.clone(),
+            cwd: std::path::PathBuf::from("."),
+        })
         .await;
 
     // Then no scan runs: the discovered set stays empty.
@@ -158,13 +152,10 @@ async fn scan_skills_command_threads_cwd_to_the_worker() {
     // When ScanSkills carrying that cwd crosses on the trigger topic.
     wired
         .fabric
-        .send_to_topic(
-            &jinn_skills_msg::ScanSkills {
-                session_id: wired.session_id.clone(),
-                cwd: wired.home.clone(),
-            },
-            &trouper::topics::Topic::new("unused"),
-        )
+        .send_to_topic(&jinn_skills_msg::ScanSkills {
+            session_id: wired.session_id.clone(),
+            cwd: wired.home.clone(),
+        })
         .await;
 
     // Then the manual rescan ran against the payload cwd: the skill is

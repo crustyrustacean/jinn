@@ -126,6 +126,8 @@ where
         + serde::de::DeserializeOwned
         + std::fmt::Debug
         + Send
+        + Sync
+        + trouper::envelope::PayloadValue
         + 'static,
 {
     // Given a harness with a recorder subscribed on the trouper fabric.

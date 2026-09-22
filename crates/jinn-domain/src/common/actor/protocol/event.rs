@@ -18,12 +18,8 @@ use serde::{Deserialize, Serialize};
 /// Emitted after the wiring code finishes spawning every actor.
 /// The system-ready actor waits for this event before checking whether
 /// its running count of `ActorStarted` events matches the total.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "All actors have been spawned; the system is ready.")]
 pub struct AllActorsSpawned;
 
 impl crate::common::bus::BusMessage for AllActorsSpawned {}
-
-jinn_slices::crossing_schema!(AllActorsSpawned, "AllActorsSpawned",
-trouper::schema::SchemaKind::Event,
-description: "All actors have been spawned; the system is ready.",
-fields: []);

@@ -26,7 +26,8 @@ pub struct EnvInitError;
 /// Emitted after the env init actor has populated `ApiKeysService`.
 /// Published at runtime for environment reloads (not during startup).
 /// Downstream actors should use `ask(GetEnvironmentConfig)` for initial config.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Event)]
+#[schema(description = "The environment has been loaded and API keys are available.")]
 pub struct EnvironmentLoaded {
     /// The parsed provider configuration from `providers.toml`.
     pub config: ProvidersConfig,
@@ -34,29 +35,15 @@ pub struct EnvironmentLoaded {
 
 impl BusMessage for EnvironmentConfigReply {}
 
-jinn_slices::crossing_schema!(EnvironmentConfigReply, "EnvironmentConfigReply",
-trouper::schema::SchemaKind::Event,
-description: "Reply payload for the GetEnvironmentConfig ask.",
-fields: ["config" => trouper::schema::FieldTy::Json]);
-
 impl BusMessage for EnvironmentLoaded {}
-
-jinn_slices::crossing_schema!(EnvironmentLoaded, "EnvironmentLoaded",
-trouper::schema::SchemaKind::Event,
-description: "The environment has been loaded and API keys are available.",
-fields: ["config" => trouper::schema::FieldTy::Json]);
 
 /// Ask message to retrieve the loaded environment config.
 ///
 /// Downstream actors use this during their `on_start` to pull config
 /// directly from the EnvInitActor via the actor registry.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Command)]
+#[schema(description = "Ask the env-init actor for the parsed provider configuration.")]
 pub struct GetEnvironmentConfig;
-
-jinn_slices::crossing_schema!(GetEnvironmentConfig, "GetEnvironmentConfig",
-trouper::schema::SchemaKind::Command,
-description: "Ask the env-init actor for the parsed provider configuration.",
-fields: []);
 
 /// The environment initialization actor.
 ///
@@ -78,7 +65,8 @@ pub struct EnvInitActorDeps {
 
 /// The reply payload of the `GetEnvironmentConfig` ask (JSON-friendly twin
 /// of `Option<ProvidersConfig>`).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Event)]
+#[schema(description = "Reply payload for the GetEnvironmentConfig ask.")]
 pub struct EnvironmentConfigReply {
     /// The loaded config, or `None` when the file is missing/unreadable.
     pub config: Option<ProvidersConfig>,
@@ -89,7 +77,7 @@ impl ServiceActor for EnvInitActor {
         clippy::unused_async_trait_impl,
         reason = "ServiceActor::start is async by trait contract"
     )]
-    async fn start(_args: &serde_json::Value) -> Result<Self, Report<RegistryError>> {
+    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
         // Never called: spawned via `spawn`'s start_with (typed deps can't
         // ride the JSON args).
         Err(Report::new(RegistryError::InvalidSpec).attach("EnvInitActor spawns via start_with"))
@@ -123,6 +111,9 @@ impl EnvInitActor {
             })
             .handles::<GetEnvironmentConfig>()
             .handles::<EnvironmentLoaded>()
+            // Ask replies leave the handler through ctx.reply; the flush
+            // gate drops any outbound type not declared here.
+            .emits::<EnvironmentConfigReply>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
         path
@@ -271,7 +262,7 @@ mod tests {
             .ask(path, GetEnvironmentConfig, Duration::from_secs(5))
             .await
             .expect("ask succeeds");
-        let loaded: EnvironmentConfigReply = serde_json::from_value(reply).expect("decode reply");
+        let loaded: EnvironmentConfigReply = reply.decode().expect("decode reply");
 
         // Then startup succeeded and the referenced key landed in the store.
         assert!(loaded.config.is_some(), "config should load");
@@ -305,7 +296,7 @@ mod tests {
             .ask(path, GetEnvironmentConfig, Duration::from_secs(5))
             .await
             .expect("ask succeeds");
-        let loaded: EnvironmentConfigReply = serde_json::from_value(reply).expect("decode reply");
+        let loaded: EnvironmentConfigReply = reply.decode().expect("decode reply");
 
         // Then startup still succeeds (silent skip).
         assert!(loaded.config.is_some(), "config should load");

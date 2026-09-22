@@ -530,11 +530,10 @@ impl ActorSystemBuilder {
                 .ask(env_init_path.clone(), GetEnvironmentConfig, ENV_ASK_TIMEOUT)
                 .await
             {
-                Ok(value) => match serde_json::from_value::<
-                    jinn_domain::init::env_init_actor::EnvironmentConfigReply,
-                >(value)
-                .expect("env reply decodes")
-                .config
+                Ok(value) => match value
+                    .decode::<jinn_domain::init::env_init_actor::EnvironmentConfigReply>()
+                    .expect("env reply decodes")
+                    .config
                 {
                     Some(config) => {
                         bus.publish(jinn_domain::init::env_init_actor::EnvironmentLoaded {
@@ -1109,10 +1108,10 @@ const TERM_ASK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(75)
 /// Decodes a trouper ask reply into the typed outcome, mapping transport
 /// failure to the domain-level [`jinn_term_msg::TermAskError`].
 fn decode_reply<T: serde::de::DeserializeOwned>(
-    reply: Result<serde_json::Value, error_stack::Report<trouper::context::AskError>>,
+    reply: Result<trouper::json::Json, error_stack::Report<trouper::context::AskError>>,
 ) -> Result<T, jinn_term_msg::TermAskError> {
     reply
         .ok()
-        .and_then(|value| serde_json::from_value(value).ok())
+        .and_then(|value| value.decode::<T>().ok())
         .ok_or(jinn_term_msg::TermAskError)
 }

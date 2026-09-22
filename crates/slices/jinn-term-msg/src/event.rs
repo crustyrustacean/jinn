@@ -12,7 +12,8 @@ use jinn_slices::BusMessage;
 /// identity as the frontend mirror. This is the bus-side mirror of screen
 /// changes; the tool-call keepalive is separate (`ToolExecutionOutput`,
 /// published by the tool layer's `with_keepalive` pacer).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A chat session's terminal screen changed.")]
 pub struct TermScreenUpdated {
     /// The chat session whose screen changed.
     pub chat_session_id: SessionId,
@@ -27,8 +28,3 @@ pub struct TermScreenUpdated {
 }
 
 impl BusMessage for TermScreenUpdated {}
-
-jinn_slices::crossing_schema!(TermScreenUpdated, "TermScreenUpdated",
-trouper::schema::SchemaKind::Event,
-description: "A chat session's terminal screen changed.",
-fields: ["chat_session_id" => trouper::schema::FieldTy::Uuid]);

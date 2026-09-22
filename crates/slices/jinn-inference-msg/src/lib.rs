@@ -26,24 +26,21 @@ use jinn_slices::SystemPrompt;
 use serde::{Deserialize, Serialize};
 
 /// Cancel the active provider stream for a session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Cancel the active provider stream for a session.")]
 pub struct CancelStream {
     /// The session whose stream should be cancelled.
     pub session_id: SessionId,
 }
 impl jinn_slices::BusMessage for CancelStream {}
 
-jinn_slices::crossing_schema!(CancelStream, "CancelStream",
-trouper::schema::SchemaKind::Command,
-description: "Cancel the active provider stream for a session.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
-
 /// Command to send conversation context to the LLM provider.
 ///
 /// Emitted by the dispatch layer when a turn becomes sendable.
 /// Carries the assembled system prompt and the conversation history as
 /// pre-converted messages; the message array never contains system content.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Send assembled conversation context to the LLM for streaming.")]
 pub struct SendToLlmProvider {
     /// The session this request belongs to.
     pub session_id: SessionId,
@@ -91,23 +88,6 @@ pub struct SendToLlmProvider {
 
 impl jinn_slices::BusMessage for SendToLlmProvider {}
 
-jinn_slices::crossing_schema!(SendToLlmProvider, "SendToLlmProvider",
-trouper::schema::SchemaKind::Command,
-description: "Send assembled conversation context to the LLM for streaming.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "messages" => trouper::schema::FieldTy::Json,
-    "system_prompt" => trouper::schema::FieldTy::Json,
-    "tool_definitions" => trouper::schema::FieldTy::Json,
-    "provider_id" => trouper::schema::FieldTy::Json,
-    "estimated_tokens" => trouper::schema::FieldTy::Json,
-    "model_used" => trouper::schema::FieldTy::Json,
-    "reasoning_effort" => trouper::schema::FieldTy::Json,
-    "endpoint_tag" => trouper::schema::FieldTy::Json,
-    "dispatched_at" => trouper::schema::FieldTy::Json,
-    "origin" => trouper::schema::FieldTy::Json
-]);
-
 /// Where an LLM request originated, from the tool loop's perspective.
 ///
 /// The inference actor uses this to enforce the cancel tombstone: after
@@ -142,7 +122,8 @@ pub enum StreamCompletedReason {
 }
 
 /// Streaming response completed for a session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A provider stream reached its terminal boundary for a session.")]
 pub struct StreamCompleted {
     /// The session whose stream completed.
     pub session_id: SessionId,
@@ -195,28 +176,12 @@ pub struct StreamCompleted {
 
 impl jinn_slices::BusMessage for StreamCompleted {}
 
-jinn_slices::crossing_schema!(StreamCompleted, "StreamCompleted",
-trouper::schema::SchemaKind::Event,
-description: "A provider stream reached its terminal boundary for a session.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "reason" => trouper::schema::FieldTy::Json,
-    "assistant_content" => trouper::schema::FieldTy::Json,
-    "tool_calls" => trouper::schema::FieldTy::Json,
-    "cost" => trouper::schema::FieldTy::Json,
-    "provider_completion_tokens" => trouper::schema::FieldTy::Json,
-    "provider_prompt_tokens" => trouper::schema::FieldTy::Json,
-    "cached_tokens" => trouper::schema::FieldTy::Json,
-    "thinking_content" => trouper::schema::FieldTy::Json,
-    "model_used" => trouper::schema::FieldTy::Json,
-    "dispatched_at" => trouper::schema::FieldTy::Json
-]);
-
 /// A single token from a streaming LLM response.
 ///
 /// Emitted by the inference actor during streaming. Handlers append
 /// the token to the active session's assistant entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A fragment of streamed text or thinking content from the LLM.")]
 pub struct StreamToken {
     /// The session this token belongs to.
     pub session_id: SessionId,
@@ -235,17 +200,6 @@ pub struct StreamToken {
 }
 
 impl jinn_slices::BusMessage for StreamToken {}
-
-jinn_slices::crossing_schema!(StreamToken, "StreamToken",
-trouper::schema::SchemaKind::Event,
-description: "A fragment of streamed text or thinking content from the LLM.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "index" => trouper::schema::FieldTy::Json,
-    "token" => trouper::schema::FieldTy::Json,
-    "is_thinking" => trouper::schema::FieldTy::Json,
-    "dispatched_at" => trouper::schema::FieldTy::Json
-]);
 
 #[cfg(test)]
 mod tests {

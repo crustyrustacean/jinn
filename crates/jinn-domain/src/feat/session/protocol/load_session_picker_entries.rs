@@ -8,12 +8,8 @@ use crate::BusMessage;
 ///
 /// The session persistence actor receives this, loads summaries from the session
 /// store, and writes them into `AppState`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Load session picker entries from the session store.")]
 pub struct LoadSessionPickerEntries;
 
 impl BusMessage for LoadSessionPickerEntries {}
-
-jinn_slices::crossing_schema!(LoadSessionPickerEntries, "LoadSessionPickerEntries",
-trouper::schema::SchemaKind::Command,
-description: "Load session picker entries from the session store.",
-fields: []);

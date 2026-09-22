@@ -6236,9 +6236,9 @@ checksum = "1b2cb4fbb9995eeb36ac86fadf24031ccd58f99d6b4b2d7b911db70bddb80d90"
 
 [[package]]
 name = "trouper"
-version = "0.3.7"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "852fa7f8fc808a6dbafd366565478fc787d51be673641b267173090c91ff758e"
+checksum = "f154138a90603d061ea422eb5294fa912767d65a460445c070a71e56460056a5"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -6247,10 +6247,23 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
+ "smallvec",
  "tokio",
  "tracing",
+ "trouper_macros",
  "uuid",
  "wherror",
+]
+
+[[package]]
+name = "trouper_macros"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26c599ae2327656ce9d09ea640965315ae6ae4e126dbf438b96dfdfab2a92ad8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

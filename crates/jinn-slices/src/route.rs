@@ -1011,13 +1011,9 @@ mod tests {
     }
 
     /// A schema'd stand-in message for closure-recording assertions.
-    #[derive(Clone, serde::Serialize, serde::Deserialize)]
+    #[derive(Clone, serde::Serialize, serde::Deserialize, trouper::schema::Event)]
+    #[schema(description = "Route result closure test message.")]
     struct RouteResultTestMessage;
 
     impl crate::route::BusMessage for RouteResultTestMessage {}
-
-    crate::crossing_schema!(RouteResultTestMessage, "RouteResultTestMessage",
-        trouper::schema::SchemaKind::Event,
-        description: "Route result closure test message.",
-        fields: []);
 }

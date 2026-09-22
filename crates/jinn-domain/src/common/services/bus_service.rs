@@ -2,10 +2,9 @@
 //!
 //! Production publishes onto the **trouper actor system**: every message
 //! is broadcast by its schema id to EVERY actor that declared
-//! `.subscribe::<M>()` at spawn. Publishing and subscribing are two
-//! independent declarations — no route table, no topic resolution, no
-//! way for one slice's registration to divert another consumer's
-//! traffic.
+//! `.handles::<M>()` at spawn. Publishing is schema-broadcast — no route
+//! table, no topic resolution, no way for one slice's registration to
+//! divert another consumer's traffic.
 //!
 //! In tests, [`BusService`] can operate in **recording mode** via
 //! [`BusService::new_recording()`], which captures all `publish()` calls
@@ -103,47 +102,21 @@ impl BusService {
         matches!(&self.inner, BusInner::Recording(_))
     }
 
-    /// Declares that the trouper actor at `path` receives every publish
-    /// of message type `M`.
-    ///
-    /// Runtime-spawned actors (task listeners, MCP servers) use this to
-    /// join the fabric after spawn: the actor's builder is not at hand
-    /// here, so the declaration registers directly against the spawned
-    /// path — the same registry entry a builder `.subscribe::<M>()`
-    /// records.
-    #[expect(
-        clippy::unused_async_trait_impl,
-        reason = "async signature symmetry; body has no await"
-    )]
-    #[expect(
-        clippy::unused_async,
-        reason = "async signature symmetry; body has no await"
-    )]
-    #[expect(
-        clippy::expect_used,
-        reason = "a failed declaration is a wiring bug that must abort spawn"
-    )]
-    /// # Panics
-    ///
-    /// Panics if the target path has no slot — a runtime-spawned actor
-    /// must exist (spawned) before this call.
-    pub async fn subscribe<M: trouper::schema::Schema>(&self, path: &trouper::actor::ActorPath) {
-        if let BusInner::Troupe { system } = &self.inner {
-            system
-                .declare_subscriber::<M>(path)
-                .expect("runtime actor declares its subscription");
-        }
-    }
-
     /// Publishes a typed message onto the fabric.
     ///
     /// The message broadcasts by its schema id to every actor that
-    /// declared `.subscribe::<M>()`; zero subscribers is a silent no-op.
+    /// declared `.handles::<M>()`; zero receivers is a silent no-op.
     /// In recording mode, captures the message for later assertion.
-    pub async fn publish<M: BusMessage + trouper::schema::Schema + serde::Serialize>(
-        &self,
-        msg: M,
-    ) {
+    pub async fn publish<M>(&self, msg: M)
+    where
+        M: BusMessage
+            + trouper::schema::Schema
+            + serde::Serialize
+            + Clone
+            + Send
+            + Sync
+            + trouper::envelope::PayloadValue,
+    {
         match &self.inner {
             BusInner::Troupe { system } => {
                 tracing::debug!(
@@ -286,27 +259,23 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[derive(
+        Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, trouper::schema::Event,
+    )]
+    #[schema(description = "Bus test message alpha.")]
     struct Alpha {
         val: u32,
     }
     impl crate::common::bus::BusMessage for Alpha {}
 
-    jinn_slices::crossing_schema!(Alpha, "Alpha",
-    trouper::schema::SchemaKind::Event,
-    description: "Bus test message alpha.",
-    fields: ["val" => trouper::schema::FieldTy::Int]);
-
-    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[derive(
+        Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, trouper::schema::Event,
+    )]
+    #[schema(description = "Bus test message beta.")]
     struct Beta {
         text: String,
     }
     impl crate::common::bus::BusMessage for Beta {}
-
-    jinn_slices::crossing_schema!(Beta, "Beta",
-    trouper::schema::SchemaKind::Event,
-    description: "Bus test message beta.",
-    fields: ["text" => trouper::schema::FieldTy::Str]);
 
     #[rstest::rstest]
     #[tokio::test]

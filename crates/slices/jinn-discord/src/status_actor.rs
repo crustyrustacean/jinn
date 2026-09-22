@@ -128,7 +128,7 @@ impl DiscordStatusActor {
 
 impl ServiceActor for DiscordStatusActor {
     async fn start(
-        _args: &serde_json::Value,
+        _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
         // Never called: `spawn` constructs the actor directly (its
         // state is the drain task's captured handles, not message
@@ -238,7 +238,7 @@ mod tests {
 
     impl trouper::actor::ServiceActor for TopicProbe {
         async fn start(
-            _args: &serde_json::Value,
+            _args: &trouper::json::Json,
         ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
             Err(
                 error_stack::IntoReport::into_report(trouper::registry::RegistryError::InvalidSpec)
@@ -277,7 +277,7 @@ mod tests {
         let (tx, rx) = kanal::bounded::<DiscordStatusUpdate>(8);
         let fabric = jinn_testutil::TestFabric::new();
         let seen: Arc<parking_lot::Mutex<Vec<DiscordStatusUpdate>>> = Arc::default();
-        let probe_path = trouper::builder::spawn_service_builder::<TopicProbe>(fabric.system())
+        let _probe_path = trouper::builder::spawn_service_builder::<TopicProbe>(fabric.system())
             .at(trouper::actor::ActorPath::new("discord-status-probe"))
             .start_with({
                 let seen = seen.clone();
@@ -288,10 +288,6 @@ mod tests {
             })
             .handles::<DiscordStatusUpdate>()
             .start();
-        fabric
-            .system()
-            .declare_subscriber::<DiscordStatusUpdate>(&probe_path)
-            .expect("probe declares its subscription");
         let deps = DiscordStatusActorDeps {
             status_rx: rx.to_async(),
             cell: connection,

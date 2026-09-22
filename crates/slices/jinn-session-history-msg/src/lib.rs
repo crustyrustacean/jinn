@@ -25,7 +25,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// Any component or actor can send this to add an entry to the chat log.
 /// (Formerly `jinn-domain` `chat_input` protocol.)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Add a chat entry to a session's history.")]
 pub struct PushChatEntry {
     /// The session this entry belongs to.
     pub session_id: SessionId,
@@ -35,18 +36,14 @@ pub struct PushChatEntry {
 
 impl jinn_slices::BusMessage for PushChatEntry {}
 
-jinn_slices::crossing_schema!(PushChatEntry, "PushChatEntry",
-trouper::schema::SchemaKind::Command,
-description: "Add a chat entry to a session's history.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
-
 /// Emitted when a new entry is appended to the session history.
 ///
 /// Carries no token count - the compaction actor reads `context_size()`
 /// directly from session state, which uses the tiktoken-based count
 /// from the last prompt assembly. This ensures the threshold check
 /// and the status bar display use the same value.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A new entry was appended to a session's history.")]
 pub struct HistoryAppended {
     /// The session whose history was appended to.
     pub session_id: SessionId,
@@ -54,18 +51,14 @@ pub struct HistoryAppended {
 
 impl jinn_slices::BusMessage for HistoryAppended {}
 
-jinn_slices::crossing_schema!(HistoryAppended, "HistoryAppended",
-trouper::schema::SchemaKind::Event,
-description: "A new entry was appended to a session's history.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
-
 /// Submit a batch of history mutations for deferred application.
 ///
 /// Workers produce `Vec<HistoryMutation>` batches and send them via this
 /// command. The session actor queues these in `pending_mutations`. They are
 /// applied at the next safe drain point (tool batch completion or stream
 /// completion).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Queue a batch of history mutations for deferred application.")]
 pub struct SubmitHistoryMutations {
     /// The session to apply mutations to.
     pub session_id: SessionId,
@@ -75,15 +68,11 @@ pub struct SubmitHistoryMutations {
 
 impl jinn_slices::BusMessage for SubmitHistoryMutations {}
 
-jinn_slices::crossing_schema!(SubmitHistoryMutations, "SubmitHistoryMutations",
-trouper::schema::SchemaKind::Command,
-description: "Queue a batch of history mutations for deferred application.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
-
 /// Pin a chat entry so it survives context management strategies.
 ///
 /// The entry will be positioned according to `position` in the assembled prompt.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Pin a chat entry so it survives context management.")]
 pub struct PinChatEntry {
     /// The session containing the entry.
     pub session_id: SessionId,
@@ -95,15 +84,11 @@ pub struct PinChatEntry {
 
 impl jinn_slices::BusMessage for PinChatEntry {}
 
-jinn_slices::crossing_schema!(PinChatEntry, "PinChatEntry",
-trouper::schema::SchemaKind::Command,
-description: "Pin a chat entry so it survives context management.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
-
 /// Remove the pin from a chat entry, allowing normal context management.
 ///
 /// If the entry is not pinned, this is a no-op.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Remove a chat entry's pin.")]
 pub struct UnpinChatEntry {
     /// The session containing the entry.
     pub session_id: SessionId,
@@ -113,13 +98,9 @@ pub struct UnpinChatEntry {
 
 impl jinn_slices::BusMessage for UnpinChatEntry {}
 
-jinn_slices::crossing_schema!(UnpinChatEntry, "UnpinChatEntry",
-trouper::schema::SchemaKind::Command,
-description: "Remove a chat entry's pin.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
-
 /// A chat entry's pin state changed.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A chat entry's pin state changed.")]
 pub struct ChatEntryPinChanged {
     /// The session whose pin state changed.
     pub session_id: SessionId,
@@ -127,18 +108,14 @@ pub struct ChatEntryPinChanged {
 
 impl jinn_slices::BusMessage for ChatEntryPinChanged {}
 
-jinn_slices::crossing_schema!(ChatEntryPinChanged, "ChatEntryPinChanged",
-trouper::schema::SchemaKind::Event,
-description: "A chat entry's pin state changed.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
-
 /// Emitted by the LLM actor when a completed stream accumulated one or more
 /// `url_citation` annotations.
 ///
 /// Carries the full citation list so the session actor can record a single
 /// grouped `Annotation` entry for the turn. Annotations never re-enter LLM
 /// context.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A completed stream accumulated url_citation annotations.")]
 pub struct CitationsReceived {
     /// The session the citations belong to.
     pub session_id: SessionId,
@@ -148,28 +125,19 @@ pub struct CitationsReceived {
 
 impl jinn_slices::BusMessage for CitationsReceived {}
 
-jinn_slices::crossing_schema!(CitationsReceived, "CitationsReceived",
-trouper::schema::SchemaKind::Event,
-description: "A completed stream accumulated url_citation annotations.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
-
 /// A task list mutation was applied successfully.
 ///
 /// Broadcast after any todo list tool modifies the task list (add phase, add task,
 /// complete task, postpone task, postpone to phase, or set list).
 /// The session actor subscribes to this event to persist the updated task list.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A task list mutation was applied to a session.")]
 pub struct TaskListUpdated {
     /// The session whose task list was updated.
     pub session_id: SessionId,
 }
 
 impl jinn_slices::BusMessage for TaskListUpdated {}
-
-jinn_slices::crossing_schema!(TaskListUpdated, "TaskListUpdated",
-trouper::schema::SchemaKind::Event,
-description: "A task list mutation was applied to a session.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);
 
 #[cfg(test)]
 mod tests {

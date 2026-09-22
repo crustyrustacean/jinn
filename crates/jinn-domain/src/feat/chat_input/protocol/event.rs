@@ -6,7 +6,8 @@ use crate::protocol::ChatEntry;
 use crate::protocol::SessionId;
 
 /// A chat entry was added to the conversation history.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A chat entry was added to the conversation history.")]
 pub struct ChatEntrySubmitted {
     /// The session this entry belongs to.
     pub session_id: SessionId,
@@ -15,8 +16,3 @@ pub struct ChatEntrySubmitted {
 }
 
 impl crate::common::bus::BusMessage for ChatEntrySubmitted {}
-
-jinn_slices::crossing_schema!(ChatEntrySubmitted, "ChatEntrySubmitted",
-trouper::schema::SchemaKind::Event,
-description: "A chat entry was added to the conversation history.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);

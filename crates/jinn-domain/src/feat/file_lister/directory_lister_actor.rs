@@ -20,7 +20,8 @@ use super::file_picker_state::FileEntry;
 /// `request_id` is the staleness token. The actor writes its result only when
 /// this matches `frontend.file_picker.expected_request_id`, so an earlier,
 /// slow read cannot overwrite a newer one.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "List a directory for the file picker popup.")]
 pub struct ListDirectory {
     /// The session whose popup this listing is for.
     pub session_id: crate::SessionId,
@@ -31,12 +32,6 @@ pub struct ListDirectory {
 }
 
 impl crate::common::bus::BusMessage for ListDirectory {}
-
-jinn_slices::crossing_schema!(ListDirectory, "ListDirectory",
-trouper::schema::SchemaKind::Command,
-description: "List a directory for the file picker popup.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,
-"request_id" => trouper::schema::FieldTy::Int,]);
 
 /// Dependencies for [`DirectoryListerActor`].
 #[derive(Clone)]
@@ -71,7 +66,7 @@ impl ServiceActor for DirectoryListerActor {
         clippy::unused_async_trait_impl,
         reason = "ServiceActor::start is async by trait contract"
     )]
-    async fn start(_args: &serde_json::Value) -> Result<Self, Report<RegistryError>> {
+    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
         // Never called: spawned via `spawn`'s start_with (typed deps can't
         // ride the JSON args).
         Err(Report::new(RegistryError::InvalidSpec)
@@ -114,7 +109,6 @@ impl DirectoryListerActor {
                     })
                 }
             })
-            .subscribe::<ListDirectory>()
             .handles::<ListDirectory>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();

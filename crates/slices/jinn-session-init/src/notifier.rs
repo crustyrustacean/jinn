@@ -30,7 +30,9 @@ pub struct DiscoveryNotifier {
 }
 
 impl ServiceActor for DiscoveryNotifier {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // The state handle and cap cannot ride JSON args; spawn
         // injects them via `start_with` (see `spawn`).
         Err(
@@ -63,7 +65,6 @@ impl DiscoveryNotifier {
                     })
                 }
             })
-            .subscribe::<SessionDiscoverySettled>()
             .handles::<SessionDiscoverySettled>()
             .start()
     }

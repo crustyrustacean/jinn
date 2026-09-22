@@ -18,7 +18,8 @@ pub use jinn_session_msg::SessionTeardownFinished;
 /// Emitted by the intent handler when `handle_session_lifecycle_setup()` inserts
 /// a new session into the sessions map. Other actors subscribe to this event
 /// to run side effects (e.g., lifecycle scripts).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A new chat session was created.")]
 pub struct SessionCreated {
     /// The newly created session's ID.
     pub session_id: SessionId,
@@ -32,7 +33,8 @@ pub struct SessionCreated {
 /// Emitted by the session-persistence actor when it applies a `SetSessionCwd`
 /// command. The discovery scan actors subscribe to this to re-scan skills,
 /// prompts, and context files for the session's new cwd.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's working directory changed.")]
 pub struct SessionCwdChanged {
     /// The session whose cwd changed.
     pub session_id: SessionId,
@@ -43,22 +45,6 @@ pub struct SessionCwdChanged {
 impl crate::common::bus::BusMessage for SessionCwdChanged {}
 
 impl crate::common::bus::BusMessage for SessionCreated {}
-
-jinn_slices::crossing_schema!(SessionCreated, "SessionCreated",
-trouper::schema::SchemaKind::Event,
-description: "A new chat session was created.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "cwd" => trouper::schema::FieldTy::Str,
-]);
-
-jinn_slices::crossing_schema!(SessionCwdChanged, "SessionCwdChanged",
-trouper::schema::SchemaKind::Event,
-description: "A session's working directory changed.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "cwd" => trouper::schema::FieldTy::Str,
-]);
 
 #[cfg(test)]
 mod tests {

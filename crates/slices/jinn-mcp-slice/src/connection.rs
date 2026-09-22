@@ -308,7 +308,9 @@ fn format_result_content(result: &CallToolResult) -> String {
 }
 
 impl ServiceActor for McpActor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: spawned via `start_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
@@ -663,9 +665,11 @@ impl McpActor {
                 let deps = deps_for_start.clone();
                 Box::pin(async move { start_mcp(deps).await.map_err(|e| match e {}) })
             })
-            .subscribe::<ExecuteTool>()
             .handles::<ExecuteTool>()
             .handles::<McpConnectionStateProbe>()
+            // Probe replies leave the handler through ctx.reply; the flush
+            // gate drops any outbound type not declared here.
+            .emits::<McpConnectionStateReply>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
         path
@@ -773,28 +777,20 @@ impl MsgHandler<ExecuteTool> for McpActor {
 /// Used by `McpCoordinatorActor::restart_one` after `wait_for_startup` to learn
 /// whether the newly-spawned actor connected successfully, *without* relying on
 /// bus-event ordering (the old status-event approach was race-prone).
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, trouper::schema::Command)]
+#[schema(description = "Post-startup probe: is the server's client still connected?")]
 pub struct McpConnectionStateProbe;
 
 impl jinn_slices::BusMessage for McpConnectionStateProbe {}
 
-jinn_slices::crossing_schema!(McpConnectionStateProbe, "McpConnectionStateProbe",
-    trouper::schema::SchemaKind::Command,
-    description: "Post-startup probe: is the server's client still connected?",
-    fields: []);
-
 /// Boolean probe reply payload (JSON-friendly twin of `bool`).
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, trouper::schema::Event)]
+#[schema(description = "Reply payload for the connection-state probe.")]
 pub struct McpConnectionStateReply {
     pub connected: bool,
 }
 
 impl jinn_slices::BusMessage for McpConnectionStateReply {}
-
-jinn_slices::crossing_schema!(McpConnectionStateReply, "McpConnectionStateReply",
-    trouper::schema::SchemaKind::Event,
-    description: "Reply payload for the connection-state probe.",
-    fields: ["connected" => trouper::schema::FieldTy::Bool]);
 
 impl MsgHandler<McpConnectionStateProbe> for McpActor {
     async fn handle(&mut self, _msg: McpConnectionStateProbe, ctx: &mut MsgCtx<'_>) {

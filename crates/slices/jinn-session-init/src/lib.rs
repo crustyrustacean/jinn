@@ -125,7 +125,7 @@ fn partition_spec_with_args(
     system: &trouper::system::ActorSystem,
     paths: &jinn_domain::common::app_paths::AppPaths,
     state: &State,
-    args_template: serde_json::Value,
+    args_template: trouper::json::Json,
 ) -> trouper::pool::PartitionSpec {
     let paths = paths.clone();
     let state = state.clone();
@@ -155,7 +155,7 @@ fn partition_spec(
     paths: &jinn_domain::common::app_paths::AppPaths,
     state: &State,
 ) -> trouper::pool::PartitionSpec {
-    partition_spec_with_args(system, paths, state, serde_json::json!({}))
+    partition_spec_with_args(system, paths, state, trouper::json::Json::default())
 }
 
 /// Installs the discovery partition set with a custom entity args
@@ -172,7 +172,7 @@ pub fn install_partition_set_with_args(
     system: &trouper::system::ActorSystem,
     paths: &jinn_domain::common::app_paths::AppPaths,
     state: &State,
-    args_template: serde_json::Value,
+    args_template: trouper::json::Json,
 ) -> Result<(), error_stack::Report<SliceActivateError>> {
     use error_stack::ResultExt;
 
@@ -211,7 +211,7 @@ fn entity_backoff() -> trouper::supervision::Backoff {
 
 /// The supervised spawn closure type trouper's [`ChildSpec`] carries.
 type ChildSpawnFn = std::sync::Arc<
-    dyn Fn(&trouper::system::ActorSystem, &trouper::actor::ActorPath, &serde_json::Value)
+    dyn Fn(&trouper::system::ActorSystem, &trouper::actor::ActorPath, &trouper::json::Json)
         + Send
         + Sync,
 >;
@@ -235,7 +235,7 @@ fn entity_spawn_fn(
     std::sync::Arc::new(
         move |system: &trouper::system::ActorSystem,
               path: &trouper::actor::ActorPath,
-              args: &serde_json::Value| {
+              args: &trouper::json::Json| {
             let session_id = entity_key(args);
             let settle_budget = settle_budget_from_args(args);
             let deps = worker::WorkerDeps::for_session_with_budget(
@@ -251,7 +251,7 @@ fn entity_spawn_fn(
 }
 
 /// Reads the optional `settle_budget_ms` genesis-arg override.
-fn settle_budget_from_args(args: &serde_json::Value) -> Option<std::time::Duration> {
+fn settle_budget_from_args(args: &trouper::json::Json) -> Option<std::time::Duration> {
     args.get(worker::SETTLE_BUDGET_ARG)
         .and_then(serde_json::Value::as_u64)
         .map(std::time::Duration::from_millis)
@@ -263,11 +263,11 @@ fn settle_budget_from_args(args: &serde_json::Value) -> Option<std::time::Durati
 fn supervise_entity(
     system: &trouper::system::ActorSystem,
     path: &trouper::actor::ActorPath,
-    args: &serde_json::Value,
+    args: &trouper::json::Json,
     parent: &trouper::actor::ActorPath,
     spawn: ChildSpawnFn,
 ) {
-    system.spawn_child(trouper::supervision::ChildSpec {
+    system.spawn(trouper::supervision::ActorSpec {
         path: path.clone(),
         parent: Some(parent.clone()),
         restart: trouper::supervision::RestartPolicy::Permanent,
@@ -285,7 +285,7 @@ fn supervise_entity(
 /// session that cannot exist (no state entry, every scan gated), so a
 /// placeholder is safer than a panic inside the kernel's activation
 /// path.
-fn entity_key(args: &serde_json::Value) -> jinn_core_types::SessionId {
+fn entity_key(args: &trouper::json::Json) -> jinn_core_types::SessionId {
     args.get("key")
         .and_then(serde_json::Value::as_str)
         .and_then(jinn_core_types::SessionId::try_from_string)

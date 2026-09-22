@@ -1,4 +1,6 @@
 //! The [`Intent`] enum - one variant per user-initiated action.
+use std::sync::Arc;
+
 use crate::protocol::{PickerKind, SessionId};
 
 /// The search root for the directory picker (shared vocabulary from
@@ -242,11 +244,38 @@ pub enum KernelIntent {
 
 impl jinn_slices::BusMessage for KernelIntent {}
 
-jinn_slices::crossing_schema!(KernelIntent, "KernelIntent",
-    trouper::schema::SchemaKind::Command,
-    description: "A user-initiated action produced by the keymap (dispatched dynamically between slices).",
-    fields: []);
+impl trouper::schema::Schema for KernelIntent {
+    fn schema_def() -> trouper::schema::SchemaDef {
+        trouper::schema::SchemaDef {
+            name: "KernelIntent".to_owned(),
+            kind: trouper::schema::SchemaKind::Command,
+            fields: vec![],
+            description: Some(
+                "A user-initiated action produced by the keymap (dispatched dynamically between slices)."
+                    .to_owned(),
+            ),
+        }
+    }
+}
 
+impl trouper::envelope::PayloadValue for KernelIntent {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn field(&self, _name: &str) -> Option<String> {
+        None
+    }
+
+    fn to_json_bytes(&self) -> Arc<[u8]> {
+        trouper::envelope::payload_value_json_bytes(self)
+    }
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "one arm per intent variant; splitting hides the mapping"
+)]
 impl std::fmt::Display for KernelIntent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -45,18 +45,14 @@ impl AppStateUpdate {
 /// Carries a batch of [`AppStateUpdate`] diffs. The `AppStateActor`
 /// loads current state, applies all diffs, saves, and syncs the
 /// frontend theme/sidebar/persona fields inline.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Apply a batch of atomic app-state diffs.")]
 pub struct UpdateAppState {
     /// The atomic diffs to apply.
     pub updates: Vec<AppStateUpdate>,
 }
 
 impl jinn_slices::BusMessage for UpdateAppState {}
-
-jinn_slices::crossing_schema!(UpdateAppState, "UpdateAppState",
-trouper::schema::SchemaKind::Command,
-description: "Apply a batch of atomic app-state diffs.",
-fields: ["updates" => trouper::schema::FieldTy::List(Box::new(trouper::schema::FieldTy::Json))]);
 
 #[cfg(test)]
 mod tests {

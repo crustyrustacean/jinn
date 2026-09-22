@@ -12,7 +12,8 @@ use jiff::Timestamp;
 /// Emitted by the tool orchestrator when every tool call in a batch
 /// has finished (success or failure). The LLM actor listens for this
 /// to continue the multi-turn tool loop.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A batch of tool calls finished executing.")]
 pub struct ToolBatchCompleted {
     /// The session this batch belongs to.
     pub session_id: SessionId,
@@ -24,7 +25,8 @@ pub struct ToolBatchCompleted {
 ///
 /// Emitted by provider actors after executing a tool.
 /// The tool orchestrator aggregates these into a `ToolBatchCompleted`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A single tool execution completed.")]
 pub struct ToolExecutionCompleted {
     /// The session this execution belongs to.
     pub session_id: SessionId,
@@ -35,7 +37,8 @@ pub struct ToolExecutionCompleted {
 /// Tools were registered by an actor.
 ///
 /// Emitted after an actor sends `RegisterTools` to confirm registration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "An actor registered tool definitions.")]
 pub struct ToolsRegistered {
     /// The name of the actor that registered tools.
     pub provider: String,
@@ -51,7 +54,8 @@ pub struct ToolsRegistered {
 /// Emitted when a provider tears down its tool registrations for a session
 /// (e.g. an `McpActor` stops on disable, session close, or restart). Tool
 /// registries and context caches prune the provider's matching entries.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A provider's session-scoped tools were removed.")]
 pub struct ToolsUnregistered {
     /// The name of the actor that previously registered the tools
     /// (e.g. `mcp__excalimate`).
@@ -65,7 +69,8 @@ pub struct ToolsUnregistered {
 ///
 /// Emitted by the LLM actor when the backend signals tool use start.
 /// The chat log creates a placeholder entry for this tool call.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A tool call started in the LLM stream.")]
 pub struct ToolUseStarted {
     /// The session this tool call belongs to.
     pub session_id: SessionId,
@@ -83,7 +88,8 @@ pub struct ToolUseStarted {
 ///
 /// Emitted by the LLM actor when a complete tool call arrives in the stream.
 /// The chat log uses this to finalize the tool call entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A complete tool call was received from the stream.")]
 pub struct ToolCallReceived {
     /// The session this tool call belongs to.
     pub session_id: SessionId,
@@ -97,7 +103,8 @@ pub struct ToolCallReceived {
 ///
 /// Emitted by the LLM actor as tool call arguments stream in.
 /// The chat log uses this to render in-progress tool call arguments.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "Tool call arguments streamed in as a partial JSON delta.")]
 pub struct ToolCallStreaming {
     /// The session this tool call belongs to.
     pub session_id: SessionId,
@@ -112,7 +119,8 @@ pub struct ToolCallStreaming {
 /// Emitted by the tool orchestrator when a streaming tool begins actual execution
 /// (after arguments are complete). The session actor creates a pending
 /// ToolResult entry. Only emitted for streaming tools (e.g., bash).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A streaming tool began executing.")]
 pub struct ToolExecutionStarted {
     /// The session this execution belongs to.
     pub session_id: SessionId,
@@ -142,7 +150,8 @@ pub enum ToolOutputKind {
 /// Emitted by streaming tools as they produce output. Each event carries
 /// a delta (new lines), not the accumulated total. The session actor
 /// appends to the pending ToolResult entry's content.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A streamed tool produced incremental output.")]
 pub struct ToolExecutionOutput {
     /// The session this output belongs to.
     pub session_id: SessionId,
@@ -158,55 +167,18 @@ pub struct ToolExecutionOutput {
 
 impl jinn_slices::BusMessage for ToolBatchCompleted {}
 
-jinn_slices::crossing_schema!(ToolBatchCompleted, "ToolBatchCompleted",
-trouper::schema::SchemaKind::Event,
-description: "A batch of tool calls finished executing.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 impl jinn_slices::BusMessage for ToolExecutionCompleted {}
 
-jinn_slices::crossing_schema!(ToolExecutionCompleted, "ToolExecutionCompleted",
-trouper::schema::SchemaKind::Event,
-description: "A single tool execution completed.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 impl jinn_slices::BusMessage for ToolsRegistered {}
 
-jinn_slices::crossing_schema!(ToolsRegistered, "ToolsRegistered",
-trouper::schema::SchemaKind::Event,
-description: "An actor registered tool definitions.",
-fields: []);
 impl jinn_slices::BusMessage for ToolsUnregistered {}
 
-jinn_slices::crossing_schema!(ToolsUnregistered, "ToolsUnregistered",
-trouper::schema::SchemaKind::Event,
-description: "A provider's session-scoped tools were removed.",
-fields: []);
 impl jinn_slices::BusMessage for ToolUseStarted {}
 
-jinn_slices::crossing_schema!(ToolUseStarted, "ToolUseStarted",
-trouper::schema::SchemaKind::Event,
-description: "A tool call started in the LLM stream.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 impl jinn_slices::BusMessage for ToolCallReceived {}
 
-jinn_slices::crossing_schema!(ToolCallReceived, "ToolCallReceived",
-trouper::schema::SchemaKind::Event,
-description: "A complete tool call was received from the stream.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 impl jinn_slices::BusMessage for ToolCallStreaming {}
 
-jinn_slices::crossing_schema!(ToolCallStreaming, "ToolCallStreaming",
-trouper::schema::SchemaKind::Event,
-description: "Tool call arguments streamed in as a partial JSON delta.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 impl jinn_slices::BusMessage for ToolExecutionStarted {}
 
-jinn_slices::crossing_schema!(ToolExecutionStarted, "ToolExecutionStarted",
-trouper::schema::SchemaKind::Event,
-description: "A streaming tool began executing.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);
 impl jinn_slices::BusMessage for ToolExecutionOutput {}
-
-jinn_slices::crossing_schema!(ToolExecutionOutput, "ToolExecutionOutput",
-trouper::schema::SchemaKind::Event,
-description: "A streamed tool produced incremental output.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid,]);

@@ -11,15 +11,11 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::SessionId;
 
 /// Session closed and removed from the sessions map.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session was closed and removed from the sessions map.")]
 pub struct SessionClosed {
     /// The session that was closed.
     pub session_id: SessionId,
 }
 
 impl crate::common::bus::BusMessage for SessionClosed {}
-
-jinn_slices::crossing_schema!(SessionClosed, "SessionClosed",
-trouper::schema::SchemaKind::Event,
-description: "A session was closed and removed from the sessions map.",
-fields: ["session_id" => trouper::schema::FieldTy::Uuid]);

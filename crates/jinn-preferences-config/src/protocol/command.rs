@@ -53,18 +53,14 @@ impl PreferenceUpdate {
 /// Carries a batch of [`PreferenceUpdate`] diffs. The `PreferencesActor`
 /// loads current prefs, applies all diffs, saves, and writes the result
 /// into `frontend.preferences` inline.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Apply a batch of atomic preference diffs.")]
 pub struct UpdatePreferences {
     /// The atomic diffs to apply.
     pub updates: Vec<PreferenceUpdate>,
 }
 
 impl jinn_slices::BusMessage for UpdatePreferences {}
-
-jinn_slices::crossing_schema!(UpdatePreferences, "UpdatePreferences",
-trouper::schema::SchemaKind::Command,
-description: "Apply a batch of atomic preference diffs.",
-fields: ["updates" => trouper::schema::FieldTy::List(Box::new(trouper::schema::FieldTy::Json))]);
 
 #[cfg(test)]
 mod tests {
