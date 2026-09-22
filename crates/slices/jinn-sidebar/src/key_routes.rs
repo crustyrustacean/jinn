@@ -273,7 +273,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         sync(sessions::handle_session_close_arm),
     ));
     routes.attach(row(
-        "session-teardown-tree",
+        jinn_sidebar_msg::TREE_TEARDOWN_ACTION,
         sessions_scope.clone(),
         "X",
         "general",
@@ -343,6 +343,15 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "cancel rename",
         sync(rename::handle_rename_session_leave),
     ));
+    routes.attach(RouteRow {
+        route_id: RouteId::new("sidebar:ctrl-clear"),
+        scope: rename_scope(),
+        key: "<c-c>",
+        category: "general",
+        site: BindSite::OwnScope,
+        feature: "sidebar",
+        outcome: RouteOutcome::StaticIntent(RouteId::new("sidebar:ctrl-clear")),
+    });
     routes.attach(row(
         "session-archive",
         sessions_scope.clone(),
@@ -352,7 +361,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         sync(sessions::handle_session_archive),
     ));
     routes.attach(row(
-        "session-archive-tree",
+        jinn_sidebar_msg::TREE_ARCHIVE_ACTION,
         sessions_scope.clone(),
         "A",
         "general",
@@ -565,4 +574,48 @@ pub fn register_rename_input_hook(
         Some(result)
     });
     routes.register_input_hook(&rename_scope(), hook);
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use super::*;
+
+    /// The sidebar's rows bind `<c-c>` in the rename popup's dynamic scope
+    /// (as a static-intent row resolving to the kernel's CtrlClear). The
+    /// popup's input-hook typing carve-out does not cover `<c-c>`, so this
+    /// row is the only way ctrl-clear reaches the rename arm of
+    /// `handle_ctrl_clear`.
+    #[rstest::rstest]
+    #[test]
+    fn attach_sidebar_rows_binds_ctrl_clear_in_the_rename_scope() {
+        // Given an empty shared route table.
+        let routes = KeyRoutes::new();
+
+        // When the sidebar's rows are attached.
+        attach_sidebar_rows(&routes);
+
+        // Then some row binds <c-c> in the rename scope as the
+        // sidebar:ctrl-clear static intent.
+        let ctrl_clear_in_rename = routes.rows().iter().any(|row| {
+            row.scope == rename_scope()
+                && row.key == "<c-c>"
+                && matches!(
+                    row.outcome,
+                    jinn_slices::RouteOutcome::StaticIntent(ref id)
+                        if id.as_str() == "sidebar:ctrl-clear"
+                )
+        });
+        assert!(
+            ctrl_clear_in_rename,
+            "rename scope must carry a <c-c> sidebar:ctrl-clear row"
+        );
+    }
 }

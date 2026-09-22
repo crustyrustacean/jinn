@@ -37,6 +37,11 @@ fn sorted_pinned_ids_from_session(
 
 impl SessionPersistenceActor {
     /// PinChatEntry: pin entry in session.
+    ///
+    /// Pinning is an interaction: the session is marked interacted so the
+    /// pin (and the entry it anchors) reaches the store — a pin on a
+    /// brand-new, never-sent-to session would otherwise be silently dropped
+    /// by the `is_persistable` guard.
     pub(in crate::feat::session::session_actor) async fn handle_pin_chat_entry(
         &self,
         payload: &PinChatEntry,
@@ -44,6 +49,7 @@ impl SessionPersistenceActor {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             session.pin_entry(&payload.entry_id, payload.position);
+            session.mark_interacted();
         });
         self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
@@ -52,6 +58,9 @@ impl SessionPersistenceActor {
     }
 
     /// UnpinChatEntry: unpin entry in session.
+    ///
+    /// Like pinning, unpinning is an interaction and marks the session
+    /// interacted so the removal persists.
     pub(in crate::feat::session::session_actor) async fn handle_unpin_chat_entry(
         &self,
         payload: &UnpinChatEntry,
@@ -75,6 +84,7 @@ impl SessionPersistenceActor {
 
                     let session = view.session.map().get_or_create(&payload.session_id);
                     session.unpin_entry(&payload.entry_id);
+                    session.mark_interacted();
 
                     if is_active {
                         let new_sorted =
@@ -286,6 +296,7 @@ mod tests {
         reason = "test code"
     )]
 
+    use super::super::super::helpers::test_actor_with_store_recording;
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::services::BusAudit;
@@ -893,6 +904,43 @@ mod tests {
         assert!(
             audit.contains_name("ChatEntryPinChanged"),
             "expected ChatEntryPinChanged event"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn pinning_entry_persists_previously_unsaved_session() {
+        // Given a non-interacted (not-yet-persistable) session with an entry.
+        let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+        let entry_id = {
+            let mut guard = actor.state.write_test_no_cap();
+            let session = guard.active_session_mut();
+            let entry = crate::protocol::ChatEntry::user("hello");
+            let id = entry.id.clone();
+            session.push_entry(entry);
+            id
+        };
+        assert!(
+            store.last_saved_session(&session_id).is_none(),
+            "test setup: nothing saved yet"
+        );
+
+        // When pinning the entry, then the actor's ChatEntryPinChanged
+        // reaction (persist) runs - the same save the bus dispatch triggers.
+        actor
+            .handle_pin_chat_entry(&PinChatEntry {
+                session_id: session_id.clone(),
+                entry_id,
+                position: PinPosition::Top,
+            })
+            .await;
+        actor.save_active_session(&session_id).await;
+
+        // Then the session reaches the store (the pin persists).
+        assert!(
+            store.last_saved_session(&session_id).is_some(),
+            "pinning a chat entry must persist the session"
         );
     }
 

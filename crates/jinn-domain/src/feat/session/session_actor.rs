@@ -79,6 +79,15 @@ pub const SESSION_PATH: &str = "session";
 /// rather than dropping, so the terminal `StreamCompleted` is never lost.
 pub const SESSION_MAILBOX_CAPACITY: usize = 65_536;
 
+/// Constructs a default auto-pruner entry token cache.
+///
+/// The cache type lives in a msg crate `jinn-tools` does not depend on;
+/// this constructor spares cross-crate test wiring.
+#[cfg(any(test, feature = "test-harness"))]
+pub fn default_token_cache() -> jinn_token_count_msg::HistoryWorkerChatEntryTokenCache {
+    jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default()
+}
+
 /// Session lifecycle and persistence actor.
 ///
 /// Handles session-related commands and events, mutates [`State`],

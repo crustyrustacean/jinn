@@ -121,6 +121,19 @@ impl SessionPersistenceActor {
     ) {
         let store = &self.services.session_store;
 
+        // Persist the source first: the store keeps the disk representation,
+        // and `fork` copies from the stored rows. A never-saved session (no
+        // rows) would fail the fork outright, and a stale snapshot would
+        // silently truncate the fork to the last save. Pinning the source's
+        // current state (interaction + fresh save) guarantees the fork sees
+        // the full history up to the entry the user picked.
+        self.state.with_session(&self.cap, |view| {
+            if let Some(session) = view.session.map().get_mut(&payload.source_session_id) {
+                session.mark_interacted();
+            }
+        });
+        self.save_active_session(&payload.source_session_id).await;
+
         // Fork in SQLite.
         let new_id = match store
             .fork(&payload.source_session_id, payload.at_ordinal)
@@ -262,6 +275,133 @@ mod tests {
         assert!(
             !audit.contains_name("ScanContextFiles"),
             "should not emit ScanContextFiles"
+        );
+    }
+
+    // ============================================================
+    // Fork: persist-before-fork
+    // ============================================================
+
+    use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
+
+    /// The store's persisted snapshot (what fork/load see) entry count for
+    /// the session.
+    fn store_entry_count(
+        store: &std::sync::Arc<super::super::super::helpers::PopulatedFakeStore>,
+        session_id: &crate::protocol::SessionId,
+    ) -> usize {
+        store
+            .stored_session(session_id)
+            .map_or(0, |s| s.history().len())
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn fork_of_unsaved_source_persists_the_source_then_forks() {
+        // Given a live session that has never been persisted (fresh, interacted,
+        // with history) — and an empty store.
+        let (actor, store, audit) =
+            super::super::super::helpers::test_actor_with_store_recording(vec![]).await;
+        let source_id = {
+            let mut state = actor.state.write_test_no_cap();
+            let session = state.active_session_mut();
+            session.mark_interacted();
+            session.push_entry(ChatEntry::user("first"));
+            session.push_entry(ChatEntry::assistant("reply"));
+            session.session_id().clone()
+        };
+
+        // When a fork from the last entry is requested.
+        actor
+            .on_session_fork_requested(&SessionForkRequested {
+                source_session_id: source_id.clone(),
+                at_ordinal: 1,
+            })
+            .await;
+
+        // Then the source was persisted before forking (the store holds it —
+        // the SQL fork would have failed with "source session not found").
+        let saved_source = store.stored_session(&source_id);
+        assert!(
+            saved_source.is_some(),
+            "fork must persist an unsaved source before forking"
+        );
+
+        // And a forked session was created, loaded, and announced.
+        assert!(
+            audit.contains_name("SessionLoadCompleted"),
+            "fork flow must complete with a SessionLoadCompleted for the new session"
+        );
+        let state = actor.state.read();
+        let forked_count = state
+            .session
+            .iter()
+            .filter(|(id, s)| **id != source_id && s.parent_session().as_ref() == Some(&source_id))
+            .count();
+        assert_eq!(
+            forked_count, 1,
+            "the forked session must be inserted into the session map"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn fork_after_unsaved_reply_includes_that_reply() {
+        // Given a source whose stored snapshot predates its latest assistant
+        // reply: the store holds one entry, the live session holds two.
+        let mut stored = ChatSessionState::new();
+        stored.mark_interacted();
+        stored.push_entry(ChatEntry::user("question"));
+        let source_id = stored.session_id().clone();
+        let (actor, store, _audit) =
+            super::super::super::helpers::test_actor_with_store_recording(vec![stored]).await;
+        let mut live = ChatSessionState::new();
+        live.set_session_id(source_id.clone());
+        live.mark_interacted();
+        live.push_entry(ChatEntry::user("question"));
+        live.push_entry(ChatEntry::assistant("fresh answer"));
+        {
+            let mut state = actor.state.write_test_no_cap();
+            state.session.insert(live);
+            state.session.set_active(source_id.clone());
+        }
+        assert_eq!(
+            store_entry_count(&store, &source_id),
+            1,
+            "precondition: the store's snapshot is stale (1 entry)"
+        );
+
+        // When a fork from the newest entry (ordinal 1) is requested.
+        actor
+            .on_session_fork_requested(&SessionForkRequested {
+                source_session_id: source_id.clone(),
+                at_ordinal: 1,
+            })
+            .await;
+
+        // Then the source was re-persisted with its full history first, and
+        // the forked session's history includes the fresh reply.
+        let saved = store
+            .stored_session(&source_id)
+            .expect("source must be re-persisted before forking");
+        assert_eq!(
+            saved.history().len(),
+            2,
+            "the re-persisted source must reflect the live history"
+        );
+
+        // And the forked child (in state) carries both entries.
+        let state = actor.state.read();
+        let forked = state
+            .session
+            .iter()
+            .find(|(id, s)| **id != source_id && s.parent_session().as_ref() == Some(&source_id))
+            .map(|(_, s)| s)
+            .expect("forked session inserted");
+        assert_eq!(
+            forked.history().len(),
+            2,
+            "the fork must include the entry it was forked from"
         );
     }
 }

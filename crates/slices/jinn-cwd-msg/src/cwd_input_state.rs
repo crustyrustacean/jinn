@@ -235,15 +235,21 @@ mod tests {
         assert_eq!(res, CwdResolution::Ok(canonicalize(&parent)));
     }
 
+    /// Serializes HOME mutation across the suite: rstest runs tests on
+    /// parallel threads, and two tests racing `set_var`/`remove_var` on
+    /// HOME make expansion nondeterministically read the wrong value.
+    static HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[rstest]
     fn tilde_expands_to_home() {
+        let _guard = HOME_LOCK.lock().unwrap();
         // Point HOME at a temp dir so we control expansion and don't touch the
         // real (possibly read-only) home directory.
         let home = tempdir().unwrap();
         let name = format!("jinn_cwd_test_{}", std::process::id());
         let target = home.path().join(&name);
         fs::create_dir_all(&target).unwrap();
-        // SAFETY: single-threaded test; env var mutation is isolated to this test.
+        // SAFETY: guarded by HOME_LOCK so no other test mutates HOME concurrently.
         unsafe {
             std::env::set_var("HOME", home.path());
         }
@@ -257,8 +263,9 @@ mod tests {
 
     #[rstest]
     fn bare_tilde_resolves_to_home() {
+        let _guard = HOME_LOCK.lock().unwrap();
         let home = tempdir().unwrap();
-        // SAFETY: single-threaded test; env var mutation is isolated to this test.
+        // SAFETY: guarded by HOME_LOCK so no other test mutates HOME concurrently.
         unsafe {
             std::env::set_var("HOME", home.path());
         }

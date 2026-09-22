@@ -100,7 +100,7 @@ use parking_lot::Mutex;
 /// A fake session store that returns pre-loaded sessions for testing.
 pub(crate) struct PopulatedFakeStore {
     summaries: parking_lot::Mutex<Vec<crate::feat::session::session_summary::SessionSummary>>,
-    sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
+    sessions: parking_lot::Mutex<Vec<crate::feat::session::chat_session::ChatSessionState>>,
     archived: parking_lot::Mutex<Vec<crate::protocol::SessionId>>,
     saved: parking_lot::Mutex<Vec<crate::feat::session::chat_session::ChatSessionState>>,
     fail_load_summaries: parking_lot::Mutex<bool>,
@@ -123,7 +123,7 @@ impl PopulatedFakeStore {
             .collect();
         Self {
             summaries: Mutex::new(summaries),
-            sessions,
+            sessions: Mutex::new(sessions),
             archived: Mutex::new(Vec::new()),
             saved: Mutex::new(Vec::new()),
             fail_load_summaries: Mutex::new(false),
@@ -138,6 +138,19 @@ impl PopulatedFakeStore {
             .lock()
             .iter()
             .rev()
+            .find(|s| s.session_id() == id)
+            .cloned()
+    }
+
+    /// The store's current readable snapshot for `id` (what `load_session`
+    /// / `fork` would see) — not the save journal, the persisted rows.
+    pub(super) fn stored_session(
+        &self,
+        id: &crate::protocol::SessionId,
+    ) -> Option<crate::feat::session::chat_session::ChatSessionState> {
+        self.sessions
+            .lock()
+            .iter()
             .find(|s| s.session_id() == id)
             .cloned()
     }
@@ -175,6 +188,16 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
     ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
     {
         self.saved.lock().push(session.clone());
+        // Upsert into the readable sessions vec (the real store persists the
+        // session so later reads — fork, load — see it).
+        let mut sessions = self.sessions.lock();
+        match sessions
+            .iter_mut()
+            .find(|s| s.session_id() == session.session_id())
+        {
+            Some(existing) => *existing = session.clone(),
+            None => sessions.push(session.clone()),
+        }
         Ok(())
     }
 
@@ -201,6 +224,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
     > {
         Ok(self
             .sessions
+            .lock()
             .iter()
             .find(|s| s.session_id() == session_id)
             .cloned())
@@ -216,13 +240,50 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
 
     async fn fork(
         &self,
-        _source_session_id: &crate::protocol::SessionId,
-        _at_ordinal: usize,
+        source_session_id: &crate::protocol::SessionId,
+        at_ordinal: usize,
     ) -> Result<
         crate::protocol::SessionId,
         error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
     > {
-        Ok(crate::protocol::SessionId::new())
+        // Mirror the SQL fork's contract: error when the source is not in the
+        // store, otherwise copy entries up to and including `at_ordinal` into
+        // a new child session (fresh id, parent set).
+        let sessions = self.sessions.lock();
+        let Some(source) = sessions
+            .iter()
+            .find(|s| s.session_id() == source_session_id)
+            .cloned()
+        else {
+            return Err(error_stack::Report::new(
+                crate::feat::session::session_store::SessionStoreError,
+            ));
+        };
+        drop(sessions);
+        let new_id = crate::protocol::SessionId::new();
+        let mut forked = crate::feat::session::chat_session::ChatSessionState::new();
+        forked.set_session_id(new_id.clone());
+        forked.set_parent_session(source_session_id.clone());
+        if let Some(title) = source.title() {
+            forked.set_title(title.to_owned());
+        }
+        for entry in source.history().iter().take(at_ordinal + 1) {
+            forked.push_entry(entry.clone());
+        }
+        self.sessions.lock().push(forked);
+        // Keep summaries in sync so follow-up loads see the fork.
+        self.summaries
+            .lock()
+            .push(crate::feat::session::session_summary::SessionSummary {
+                session_id: new_id.clone(),
+                title: source.title().unwrap_or("Untitled Session").to_owned(),
+                updated_at: *source.updated_at(),
+                created_at: *source.created_at(),
+                session_state: crate::feat::session::chat_session::SessionState::Loaded,
+                parent_session: Some(source_session_id.clone()),
+                project: source.project().map(std::path::Path::to_path_buf),
+            });
+        Ok(new_id)
     }
 
     async fn set_archived(

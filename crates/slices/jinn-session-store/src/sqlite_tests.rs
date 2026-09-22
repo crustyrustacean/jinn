@@ -329,6 +329,44 @@ async fn fork_creates_new_session_with_entries_up_to_ordinal() {
     assert_eq!(forked.parent_session(), &Some(source_id.clone()));
 }
 
+/// Regression pin for the fork-inclusion contract: `ordinal <= at_ordinal`
+/// is inclusive, so forking at the newest entry's ordinal includes that
+/// entry. (The "fork truncates to the last user message" report was a
+/// stale-snapshot problem upstream of the store, not an exclusive bound
+/// here — this test fails if the bound ever becomes exclusive.)
+#[rstest::rstest]
+#[tokio::test]
+async fn fork_at_the_newest_entry_ordinal_includes_that_entry() {
+    // Given a store with a session whose newest entry is an assistant reply.
+    let (_dir, store) = make_store().await;
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new();
+    source.set_session_id(source_id.clone());
+    source.set_title("Stale-source regression".to_owned());
+    source.push_entry(ChatEntry::user("question"));
+    source.push_entry(ChatEntry::assistant("fresh answer"));
+    store.save(&source).await.expect("save source");
+
+    // When forking at the newest entry's ordinal (1).
+    let forked_id = store.fork(&source_id, 1).await.expect("fork");
+
+    // Then the fork includes the entry it was forked from.
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+    assert_eq!(
+        forked.history().len(),
+        2,
+        "fork at ordinal 1 must include both entries (inclusive bound)"
+    );
+    match &forked.history()[1].kind {
+        ChatEntryKind::Assistant(t) => assert_eq!(t, "fresh answer"),
+        other => panic!("expected Assistant, got {other:?}"),
+    }
+}
+
 #[rstest::rstest]
 #[tokio::test]
 async fn fork_does_not_modify_source() {

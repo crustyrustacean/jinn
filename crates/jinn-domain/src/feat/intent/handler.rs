@@ -235,6 +235,18 @@ impl IntentHandler {
         routes: &crate::common::slices::key_routes::KeyRoutes,
         pickers: &jinn_picker::PickerRegistry,
     ) -> IntentResult {
+        // Archive-tree confirmation intercept must precede the slice-route
+        // dispatch: the tree keys arm/confirm the prompt through dynamic
+        // intents (`Dynamic("archive subtree")` / `Dynamic("teardown+archive
+        // tree")`), and the route dispatch would otherwise re-run the arm
+        // action on every press while an armed prompt waits forever (no
+        // other key ever dismissed it). With the intercept first, the same
+        // action confirms the prompt and any other intent dismisses it and
+        // still processes normally.
+        if let Some(result) = try_handle_archive_tree_prompt(intent, state) {
+            return result;
+        }
+
         // Slice-registered routes go first: a dynamic intent is
         // delegated to its slice's action and never reaches the
         // built-in arms. An unregistered dynamic intent resolves to
@@ -285,14 +297,6 @@ impl IntentHandler {
         // x (SidebarSessionClose) confirms the close;
         // any other intent dismisses the prompt and continues processing.
         if let Some(result) = try_handle_close_session_prompt(intent, state) {
-            return result;
-        }
-
-        // Archive-tree confirmation intercept: if the prompt is showing,
-        // A (SidebarSessionArchiveTree) re-validates and confirms (or flips
-        // the prompt to the busy notice); any other intent dismisses the
-        // prompt and continues processing.
-        if let Some(result) = try_handle_archive_tree_prompt(intent, state) {
             return result;
         }
 
@@ -720,14 +724,19 @@ fn try_handle_close_session_prompt(
 /// Tree-action confirmation prompt intercept (`A` archive / `X` teardown).
 ///
 /// If the archive-tree prompt is showing:
-/// - Its own arming key (`SidebarSessionArchiveTree` for an archive prompt,
-///   `SidebarSessionTeardownTree` for a teardown prompt) re-validates the
-///   subtree: a still-idle subtree confirms (emits `ArchiveSessionTree` or
+/// - Its own arming action (`Dynamic(TREE_ARCHIVE_ACTION)` for an archive
+///   prompt, `Dynamic(TREE_TEARDOWN_ACTION)` for a teardown prompt — the
+///   sidebar route rows dispatch these) re-validates the subtree: a
+///   still-idle subtree confirms (emits `ArchiveSessionTree` or
 ///   `TeardownSessionTree`); a member that became busy flips the prompt to
 ///   the busy notice and consumes the key; a vanished selection dismisses
 ///   the prompt.
 /// - Any other intent dismisses the prompt and returns `None` (fall through
 ///   to normal processing).
+///
+/// Runs FIRST in the dispatch order (see `handle_inner`): the route-table
+/// dispatch would otherwise consume the dynamic tree keys before the
+/// interceptor could see them.
 ///
 /// Returns `None` if the prompt is not showing or was dismissed.
 fn try_handle_archive_tree_prompt(
@@ -738,16 +747,25 @@ fn try_handle_archive_tree_prompt(
         ArchiveTreeError, ArchiveTreePrompt, TreePromptAction, archive_tree_members,
         handle_session_tree_action_confirm,
     };
+    use jinn_sidebar_msg::{TREE_ARCHIVE_ACTION, TREE_TEARDOWN_ACTION};
 
     let prompt = state.frontend.archive_tree_prompt.as_ref()?;
 
-    // Which tree key was pressed, if either.
-    let pressed = if matches!(intent, KernelIntent::SidebarSessionArchiveTree) {
-        Some(TreePromptAction::Archive)
-    } else if matches!(intent, KernelIntent::SidebarSessionTeardownTree) {
-        Some(TreePromptAction::TeardownAndArchive)
-    } else {
-        None
+    // Which tree action was pressed, if either. The action strings are the
+    // route-table keys the sidebar's `A`/`X` rows mint into dynamic intents;
+    // the constants are shared with those rows so a rename cannot silently
+    // detach the confirm press.
+    let pressed = match intent {
+        KernelIntent::Dynamic(dynamic)
+            if dynamic.slice.slice() == "sidebar" && dynamic.slice.name() == "sessions" =>
+        {
+            match dynamic.action.as_str() {
+                TREE_ARCHIVE_ACTION => Some(TreePromptAction::Archive),
+                TREE_TEARDOWN_ACTION => Some(TreePromptAction::TeardownAndArchive),
+                _ => None,
+            }
+        }
+        _ => None,
     };
 
     // Only the prompt's own arming key confirms it; any other key (including
@@ -1773,5 +1791,201 @@ mod tests {
             entry.kind,
             crate::protocol::ChatEntryKind::User { .. }
         ));
+    }
+
+    // ============================================================
+    // Archive-tree prompt over dynamic intents (the sidebar route
+    // rows dispatch `Intent::Dynamic`, not static tree intents)
+    // ============================================================
+
+    /// A sessions-focused state with one selected, idle session. The
+    /// sessions sections cell is activated (as the sidebar slice's
+    /// `activate` does) so `sorted_open_sessions` sees the selection.
+    fn state_with_selected_session() -> AppState {
+        let state = AppState::default_with_scope_focus();
+        state
+            .frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_index = Some(0));
+        state
+    }
+
+    fn dynamic_tree_intent(action: &'static str) -> KernelIntent {
+        KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
+            action,
+            "test tree action",
+        ))
+    }
+
+    fn routes_with_tree_rows() -> crate::common::slices::key_routes::KeyRoutes {
+        use crate::common::slices::key_routes::{
+            ActionFn, BindSite, RouteId, RouteOutcome, RouteRow,
+        };
+        use crate::feat::session::sessions_list::archive_tree::{
+            TreePromptAction, handle_session_tree_action_arm,
+        };
+        let routes = crate::common::slices::key_routes::KeyRoutes::new();
+        let scope = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
+        routes.attach(RouteRow {
+            route_id: RouteId::new("sidebar:row"),
+            scope: scope.clone(),
+            key: "A",
+            category: "general",
+            site: BindSite::OwnScope,
+            feature: "sidebar",
+            outcome: RouteOutcome::Action {
+                action: "archive subtree",
+                display: "archive subtree",
+                run: ActionFn::new(|ctx| {
+                    let Some(state) = ctx
+                        .state
+                        .as_any_mut()
+                        .and_then(|any| any.downcast_mut::<AppState>())
+                    else {
+                        return crate::protocol::IntentResult::empty();
+                    };
+                    handle_session_tree_action_arm(state, TreePromptAction::Archive)
+                }),
+            },
+        });
+        routes.attach(RouteRow {
+            route_id: RouteId::new("sidebar:row"),
+            scope,
+            key: "j",
+            category: "navigation",
+            site: BindSite::OwnScope,
+            feature: "sidebar",
+            outcome: RouteOutcome::Action {
+                action: "move-down",
+                display: "cursor down",
+                run: ActionFn::new(|_ctx| crate::protocol::IntentResult::empty()),
+            },
+        });
+        routes
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn archive_tree_prompt_confirms_on_second_dynamic_archive_press() {
+        // Given a sessions-focused state with a selected idle session and the
+        // sidebar's archive-tree route row attached.
+        let mut state = state_with_selected_session();
+        let routes = routes_with_tree_rows();
+
+        // When the first archive-tree press arms the prompt.
+        let _first = IntentHandler::handle(
+            &dynamic_tree_intent("archive subtree"),
+            &mut state,
+            &empty_slices(),
+            &routes,
+            &empty_pickers(),
+        );
+        assert!(
+            state.frontend.archive_tree_prompt.is_some(),
+            "first press must arm the prompt"
+        );
+
+        // And the second identical press arrives (the user confirms).
+        let second = IntentHandler::handle(
+            &dynamic_tree_intent("archive subtree"),
+            &mut state,
+            &empty_slices(),
+            &routes,
+            &empty_pickers(),
+        );
+
+        // Then the ArchiveSessionTree command is emitted and the prompt is
+        // consumed.
+        assert!(
+            second
+                .message_names
+                .iter()
+                .any(|n| n.contains("ArchiveSessionTree")),
+            "confirm press must emit ArchiveSessionTree, got {:?}",
+            second.message_names
+        );
+        assert!(state.frontend.archive_tree_prompt.is_none());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn archive_tree_prompt_dismisses_on_other_intent_and_it_still_processes() {
+        use jinn_sidebar_msg::ArchiveTreePrompt;
+
+        // Given an armed archive-tree prompt.
+        let mut state = state_with_selected_session();
+        state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm {
+            count: 1,
+            action: crate::feat::session::sessions_list::archive_tree::TreePromptAction::Archive,
+        });
+        let routes = routes_with_tree_rows();
+        let sessions_before = state
+            .frontend
+            .with_sections(|s| s.sessions.selected_index, || None);
+
+        // When a navigation intent arrives (the sidebar's move-down row).
+        let result = IntentHandler::handle(
+            &dynamic_tree_intent("move-down"),
+            &mut state,
+            &empty_slices(),
+            &routes,
+            &empty_pickers(),
+        );
+
+        // Then the prompt is dismissed.
+        assert!(
+            state.frontend.archive_tree_prompt.is_none(),
+            "any non-arming intent must dismiss the prompt"
+        );
+        // And the intent still processed (the move-down action ran: no tree
+        // command was emitted and the row consumed the intent).
+        assert!(
+            !result
+                .message_names
+                .iter()
+                .any(|n| n.contains("ArchiveSessionTree")),
+            "dismiss must not emit the tree command"
+        );
+        // And the selection is untouched (move-down executed rather than the
+        // press being swallowed by the prompt).
+        assert_eq!(
+            state
+                .frontend
+                .with_sections(|s| s.sessions.selected_index, || None),
+            sessions_before,
+            "move-down ran (selection cannot move with a single session, but the intent was consumed, not dropped)"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn archive_tree_prompt_dismisses_on_escape_and_escape_still_processes() {
+        use jinn_sidebar_msg::ArchiveTreePrompt;
+
+        // Given an armed archive-tree prompt.
+        let mut state = state_with_selected_session();
+        state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm {
+            count: 1,
+            action: crate::feat::session::sessions_list::archive_tree::TreePromptAction::Archive,
+        });
+        let routes = routes_with_tree_rows();
+
+        // When ESC arrives.
+        let _result = IntentHandler::handle(
+            &KernelIntent::NormalEscape,
+            &mut state,
+            &empty_slices(),
+            &routes,
+            &empty_pickers(),
+        );
+
+        // Then the prompt is dismissed (no longer stuck following the cursor).
+        assert!(
+            state.frontend.archive_tree_prompt.is_none(),
+            "escape must dismiss the prompt"
+        );
     }
 }

@@ -2944,6 +2944,7 @@ dependencies = [
  "futures",
  "jiff",
  "jinn-common",
+ "jinn-context-assembly",
  "jinn-core-types",
  "jinn-domain",
  "jinn-inference-msg",

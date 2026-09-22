@@ -51,6 +51,19 @@ pub enum TreePromptAction {
     TeardownAndArchive,
 }
 
+/// The route-table action string for the archive-subtree key (`A`).
+///
+/// Shared by the sidebar's route row (which mints the
+/// [`crate::DynamicIntent`]) and the kernel's archive-tree-prompt
+/// interceptor (which re-keys prompts onto these strings), so a rename
+/// breaks compilation instead of silently detaching the confirm press.
+pub const TREE_ARCHIVE_ACTION: &str = "archive subtree";
+
+/// The route-table action string for the teardown+archive key (`X`).
+///
+/// See [`TREE_ARCHIVE_ACTION`] for why this is a shared constant.
+pub const TREE_TEARDOWN_ACTION: &str = "teardown+archive tree";
+
 /// State of the archive-tree confirmation prompt.
 ///
 /// OWNER: IntentHandler (armed on the first press of the arming key,

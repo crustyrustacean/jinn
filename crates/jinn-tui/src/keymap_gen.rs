@@ -481,6 +481,44 @@ mod tests {
         // OwnScope close row then shadows it by binding the same key).
     }
 
+    // RED-check note: this test passed immediately when written against the
+    // synthetic row alone — the binding mechanism it exercises is already
+    // proven (the section-scope ctrl-clear rows use it). The bug was that the
+    // sidebar's `attach_sidebar_rows` never attached this row for the rename
+    // scope; the data-side RED lives in jinn-sidebar's route-table test
+    // (`attach_sidebar_rows_binds_ctrl_clear_in_the_rename_scope`).
+    #[rstest::rstest]
+    #[test]
+    fn ctrl_clear_binds_inside_the_rename_popup_scope() {
+        // Given a route table carrying the sidebar's rename-scope ctrl-clear
+        // row (the shared `sidebar:ctrl-clear` static intent attached to the
+        // rename popup's dynamic scope).
+        let routes = KeyRoutes::new();
+        routes.attach(RouteRow {
+            route_id: RouteId::new("sidebar:ctrl-clear"),
+            scope: SliceScopeId::new("sidebar", "rename"),
+            key: "<c-c>",
+            category: "general",
+            site: BindSite::OwnScope,
+            feature: "sidebar",
+            outcome: RouteOutcome::StaticIntent(RouteId::new("sidebar:ctrl-clear")),
+        });
+
+        // When generating bindings into a fresh keymap.
+        let mut keymap = Keymap::new();
+        bind_route_rows(&routes, &mut keymap);
+
+        // Then <c-c> in the rename popup's dynamic scope resolves to
+        // CtrlClear (not swallowed by the typing carve-out catch-all).
+        let rename_scope = Scope::Dynamic(SliceScopeId::new("sidebar", "rename"));
+        let resolved = leaf_at(&keymap, &[key("c-c")], &rename_scope);
+        assert_eq!(
+            resolved,
+            Some(KernelIntent::CtrlClear),
+            "<c-c> must bind CtrlClear in the rename popup scope"
+        );
+    }
+
     #[rstest::rstest]
     #[test]
     fn global_toggle_row_binds_in_normal_scope() {

@@ -101,7 +101,7 @@ mod tests {
 
         // When inspecting the recorded names.
         // Then the message type name is recorded for test inspection.
-        assert_eq!(outcome.message_names, ["Recorded"]);
+        assert_eq!(outcome.message_names, ["PickerOutcomeRecorded"]);
         assert_eq!(outcome.messages.len(), 1);
         assert!(!outcome.close);
     }

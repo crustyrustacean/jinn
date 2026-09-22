@@ -808,6 +808,41 @@ mod lifecycle_tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn session_load_completed_spawns_actors_for_loaded_enablement() {
+        // Given a coordinator with one configured server and a loaded session
+        // whose enabled set contains it (the SessionLoadCompleted reconcile
+        // path — a session restored from disk).
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
+        let session = {
+            let app_state = state.read();
+            app_state
+                .session
+                .get(&session_id)
+                .expect("just inserted")
+                .clone()
+        };
+
+        // When publishing SessionLoadCompleted for that session.
+        harness
+            .publish(jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted { session })
+            .await;
+
+        // Then an McpActor was spawned for the loaded server (a Starting
+        // status arrives; Dead follows from the unrunnable command).
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(3)).await;
+        assert!(
+            !events.is_empty(),
+            "SessionLoadCompleted must reconcile against the loaded session's enabled set"
+        );
+        assert_eq!(events[0].server, "unrunnable");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn duplicate_created_and_enablement_messages_spawn_only_once() {
         // Given a coordinator, a server, and a pre-populated session.
         let harness = TestHarness::new().await;
