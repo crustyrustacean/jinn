@@ -49,7 +49,6 @@ Entries are added or amended **only with human approval**.
 - (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
 - (arch) `AppState` is the shared state; the frontend writes user input, domain actors write their owned fields, and the TUI renderer reads it on each tick.
 - (context) jinn has no memory subsystem by decision: durable cross-session facts are carried by AGENTS.md/CLAUDE.md files, personas, and skills; cross-session recall is via the `session_search` and `session_fetch` tools; planning state is carried by pinned plan files.
-- (chat) The queue actor drains the steering buffer before context assembly on both user-message dispatch and dispatch-resume.
 - (compaction) Compaction is gated by a context-size threshold: it skips when below, triggers when at or above, and uses a fallback context length when the model isn't in the cache.
 - (compaction) Compaction preserves pinned entries; the cut index walks backwards from a reserve and advances past complete tool loops to a valid opener.
 - (compaction) The compaction gate is re-evaluated on subsequent events and prevents double-compaction after the first; `threshold=0` always triggers and `threshold=1` requires the full context.
@@ -412,3 +411,5 @@ Entries are added or amended **only with human approval**.
 - (session) Forking a session persists the source session before forking, so the fork always reflects the source's current history and includes the entry it was forked from.
 - (input) In the rename popup, ctrl+c clears the buffer and closes the popup when the buffer is already empty; escape always closes.
 - (session) Pinning or unpinning a chat entry marks the session interacted, so the pin change persists even on a session that was never sent to.
+- (turn) At turn end the queue actor dispatches the steering buffer before the turn queue; a queued item waits for the next idle slot, and queued or resumed turns no longer absorb steering fragments — every user-visible message gets its own turn.
+- (preferences) The preferences and app-state actors declare UpdatePreferences/UpdateAppState via trouper .handles (the route registration); without the declaration, bridge-published TUI edits are silently dropped and never persisted to jinn.toml/state.toml.
