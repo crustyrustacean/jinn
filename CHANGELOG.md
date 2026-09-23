@@ -18,6 +18,9 @@
 - The `#gap-analysis` prompt should produce more concise reports.
 - Remove `anchor_shield` context worker.
 - Add `protect_latest` option for the `[auto_prune.todo]` context worker. Setting to `true` (default) will keep the latest `todo_*` tool result in context indefinitely and should help keep agents on task.
+- Fix context undercounting bug in status bar.
+  - This only impacts the `<percent>/<total>` (`5%/1M`) display. It was not counting tool results nor system prompts which could lead to 10%+ undercounting.
+  - Count now includes tool results, tool guidelines, tool schemas.
 
 - These plugins were move into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them:
   - `persona-loader`
