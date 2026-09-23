@@ -16,7 +16,9 @@ use jinn_domain::feat::context::env_context::{
     context_files_section, cwd_section, date_section, persona_section,
 };
 use jinn_domain::feat::context::protocol::inputs::AssemblyInputs;
-use jinn_domain::feat::context::strategy::token_estimator::TokenCounter;
+use jinn_domain::feat::context::strategy::token_estimator::{
+    IMAGE_ATTACHMENT_TOKENS, TokenCounter,
+};
 use jinn_domain::feat::context::tool_prompt::build_tool_context_block;
 use jinn_domain::protocol::{ChatEntry, LlmMessage, PinPosition, entries_to_messages};
 use jinn_skills::format_skills_for_prompt;
@@ -139,8 +141,15 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
     // trailing tool run so the pins land before the loop's assistant.
     insert_bottom_pins(&mut final_messages, bottom_messages);
 
-    // Count tokens: the system prompt plus every conversation message.
-    let estimated_tokens = count_messages(&system_prompt, &final_messages, counter);
+    // Count tokens: the system prompt, every conversation message, and the
+    // tool schemas actually shipped in the request. Providers bill the
+    // tools array alongside the messages, so leaving it out under-reports
+    // the request the same way the minimap's per-entry counts do not.
+    let estimated_tokens = {
+        let message_tokens = count_messages(&system_prompt, &final_messages, counter);
+        let schema_tokens = count_tool_schema_tokens(&tool_defs, counter);
+        message_tokens.saturating_add(u32::try_from(schema_tokens).unwrap_or(u32::MAX))
+    };
 
     AssembledPrompt {
         session_id: session_id.clone(),
@@ -205,6 +214,11 @@ fn insert_bottom_pins(final_messages: &mut Vec<LlmMessage>, bottom_messages: Vec
 }
 
 /// Counts tokens across the system prompt and all messages.
+///
+/// Mirrors the per-entry estimator's conventions (`estimate_entry_content_tokens`)
+/// so the assembled estimate always covers the sum of per-entry counts shown in
+/// the minimap: tool-call `name + arguments`, tool-result `name + content`, and
+/// the flat per-image attachment cost are all counted here.
 fn count_messages(
     system_prompt: &SystemPrompt,
     messages: &[LlmMessage],
@@ -214,12 +228,57 @@ fn count_messages(
     messages
         .iter()
         .map(|msg| match msg {
-            LlmMessage::User { content, .. }
-            | LlmMessage::Assistant { content, .. }
-            | LlmMessage::Tool { content, .. } => counter.count(content),
+            LlmMessage::User {
+                content,
+                attachments,
+            } => counter.count(content) + image_attachment_tokens(attachments),
+            LlmMessage::Assistant {
+                content,
+                tool_calls,
+            } => {
+                let calls: usize = tool_calls
+                    .iter()
+                    .flatten()
+                    .map(|call| counter.count(&call.name) + counter.count(&call.arguments))
+                    .sum();
+                counter.count(content) + calls
+            }
+            LlmMessage::Tool { name, content, .. } => counter.count(name) + counter.count(content),
         })
         .sum::<usize>()
         .wrapping_add(system_tokens) as u32
+}
+
+/// Flat per-image cost shared with the per-entry estimator, so the assembled
+/// estimate and the minimap's per-entry counts apply the same image price.
+fn image_attachment_tokens(attachments: &[jinn_provider::Attachment]) -> usize {
+    attachments
+        .iter()
+        .filter(|a| a.is_image())
+        .count()
+        .saturating_mul(IMAGE_ATTACHMENT_TOKENS)
+}
+
+/// Counts the tokens providers bill for a tool definition in the request's
+/// tools array: the serialized `{name, description, parameters}` projection.
+///
+/// `prompt_snippet` and `prompt_guidelines` are deliberately excluded — they
+/// ride only in the system prompt's tool block (see [`build_tool_context_block`]),
+/// whose tokens are already counted via `system_prompt`. Serializing the whole
+/// [`ToolDefinition`] would bill them twice.
+fn count_tool_schema_tokens(tools: &[ToolDefinition], counter: &dyn TokenCounter) -> usize {
+    tools
+        .iter()
+        .map(|def| {
+            let schema = serde_json::json!({
+                "name": def.name,
+                "description": def.description,
+                "parameters": def.parameters,
+            })
+            .to_string();
+            counter.count(&schema)
+        })
+        .sum()
 }
 
 #[cfg(test)]
@@ -280,6 +339,30 @@ mod tests {
             prompt_snippet: Some(format!("{name} does things")),
             prompt_guidelines: vec![],
             server_tool_type: None,
+        }
+    }
+
+    /// Counts tokens of `messages` alone (no system prompt, no tools) so
+    /// message-level tests can assert exact deltas.
+    fn count_messages_only(messages: &[LlmMessage]) -> u32 {
+        let counter = counter();
+        let system = SystemPrompt::new(String::new());
+        count_messages(&system, messages, &counter)
+    }
+
+    /// Bridges [`TiktokenCounter`] to the per-entry estimator trait so tests
+    /// can recompute minimap-style per-entry sums with the same tokenizer.
+    struct CounterAsEstimator<'a>(&'a TiktokenCounter);
+
+    impl jinn_domain::feat::context::strategy::token_estimator::TokenEstimator
+        for CounterAsEstimator<'_>
+    {
+        fn estimate(&self, text: &str) -> usize {
+            self.0.count(text)
+        }
+
+        fn name(&self) -> &'static str {
+            "counter_as_estimator"
         }
     }
 
@@ -753,12 +836,14 @@ mod tests {
             "token count should be positive"
         );
 
-        // Manual count: system prompt plus every message.
+        // Manual count for this fixture: system prompt plus message content.
+        // (No tools are registered, so the schema term is 0; the message has
+        // no tool calls or images, so content is the whole message cost.)
         let system_tokens = result
             .system_prompt
             .as_deref()
             .map_or(0, |c| counter.count(c));
-        let manual: usize = result
+        let message_tokens: usize = result
             .messages
             .iter()
             .map(|m| match m {
@@ -766,8 +851,9 @@ mod tests {
                 | LlmMessage::Assistant { content, .. }
                 | LlmMessage::Tool { content, .. } => counter.count(content),
             })
-            .sum::<usize>()
-            + system_tokens;
+            .sum::<usize>();
+        let schema_tokens = count_tool_schema_tokens(&result.tool_definitions, &counter);
+        let manual = system_tokens + message_tokens + schema_tokens;
         assert_eq!(result.estimated_tokens(), manual as u32);
     }
 
@@ -1430,6 +1516,296 @@ mod tests {
         assert_eq!(
             user_msg_count, 1,
             "top pinned user should appear exactly once, appeared {user_msg_count}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn count_messages_counts_assistant_tool_call_arguments() {
+        // Given two equal-content assistant messages, one carrying a tool call.
+        let plain = vec![LlmMessage::Assistant {
+            content: "thinking".to_owned(),
+            tool_calls: None,
+        }];
+        let with_call = vec![LlmMessage::Assistant {
+            content: "thinking".to_owned(),
+            tool_calls: Some(vec![jinn_core_types::tool_types::ToolCall {
+                id: "call-1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: r#"{"command":"ls -la /tmp"}"#.to_owned(),
+            }]),
+        }];
+
+        // When counting tokens for each message list.
+        let baseline = count_messages_only(&plain);
+        let counted = count_messages_only(&with_call);
+
+        // Then the tool call adds the token count of name + arguments, the
+        // same convention the per-entry estimator uses.
+        let counter = counter();
+        let expected_delta = {
+            let name = counter.count("bash");
+            let args = counter.count(r#"{"command":"ls -la /tmp"}"#);
+            name + args
+        };
+        assert_eq!(
+            usize::try_from(counted - baseline).unwrap_or(0),
+            expected_delta,
+            "tool call arguments must be counted (name + arguments), \
+             got delta {baseline} -> {counted}, expected +{expected_delta}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn count_messages_counts_tool_result_name() {
+        // Given two equal-content tool messages, one with a non-empty tool name.
+        let plain = vec![LlmMessage::Tool {
+            tool_call_id: "call-1".to_owned(),
+            name: String::new(),
+            content: "some tool output".to_owned(),
+        }];
+        let named = vec![LlmMessage::Tool {
+            tool_call_id: "call-1".to_owned(),
+            name: "bash".to_owned(),
+            content: "some tool output".to_owned(),
+        }];
+
+        // When counting tokens for each message list.
+        let baseline = count_messages_only(&plain);
+        let counted = count_messages_only(&named);
+
+        // Then the tool name adds its token count, matching the per-entry
+        // estimator's name + content convention for ToolResult entries.
+        let expected_delta = counter().count("bash");
+        assert_eq!(
+            usize::try_from(counted - baseline).unwrap_or(0),
+            expected_delta,
+            "tool result name must be counted alongside content"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn count_messages_adds_image_attachment_cost() {
+        // Given two equal-content user messages, one carrying an image attachment.
+        let plain = vec![LlmMessage::User {
+            content: "describe this".to_owned(),
+            attachments: vec![],
+        }];
+        let with_image = vec![LlmMessage::User {
+            content: "describe this".to_owned(),
+            attachments: vec![jinn_provider::Attachment::image(
+                "image/png".to_owned(),
+                vec![1, 2, 3],
+            )],
+        }];
+
+        // When counting tokens for each message list.
+        let baseline = count_messages_only(&plain);
+        let counted = count_messages_only(&with_image);
+
+        // Then the image adds the flat per-image cost used by the per-entry
+        // estimator (765), so both sides of the minimap invariant agree.
+        assert_eq!(
+            counted - baseline,
+            u32::try_from(
+                jinn_domain::feat::context::strategy::token_estimator::IMAGE_ATTACHMENT_TOKENS
+            )
+            .unwrap_or(0),
+            "image attachment must add the flat per-image cost"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn count_messages_adds_flat_cost_per_image_not_per_message() {
+        // Given a user message carrying two image attachments.
+        let with_images = vec![LlmMessage::User {
+            content: "describe these".to_owned(),
+            attachments: vec![
+                jinn_provider::Attachment::image("image/png".to_owned(), vec![1]),
+                jinn_provider::Attachment::image("image/jpeg".to_owned(), vec![2, 3]),
+            ],
+        }];
+
+        // When counting tokens for the message.
+        let counted = count_messages_only(&with_images);
+        let text_only = counter().count("describe these");
+
+        // Then the flat cost is added once per image.
+        let image_flat = u32::try_from(
+            jinn_domain::feat::context::strategy::token_estimator::IMAGE_ATTACHMENT_TOKENS,
+        )
+        .unwrap_or(0);
+        assert_eq!(
+            counted - text_only as u32,
+            image_flat * 2,
+            "two image attachments must add the flat cost twice"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn assemble_estimate_includes_tool_schema_tokens() {
+        // Given a state with one tool whose schema (name/description/parameters)
+        // carries substantial text, plus large snippet/guidelines that ride in
+        // the system prompt.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
+        {
+            let cell = {
+                state
+                    .read()
+                    .tool_registry()
+                    .expect("registry cell attached")
+            };
+            cell.update(|r| {
+                r.global.insert(
+                    "schema-heavy".to_owned(),
+                    ToolDefinition {
+                        name: "schema-heavy".to_owned(),
+                        description: "A".repeat(200),
+                        parameters: serde_json::json!({
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "description": "BBBB".repeat(20)}
+                            }
+                        }),
+                        prompt_snippet: Some("SNIPPET-ONLY-IN-SYSTEM-PROMPT".to_owned()),
+                        prompt_guidelines: vec!["GUIDELINE-ONLY-IN-SYSTEM-PROMPT".to_owned()],
+                        server_tool_type: None,
+                    },
+                );
+            });
+        }
+
+        // When assembling the prompt.
+        let counter = counter();
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter);
+
+        // Then the estimate at least covers the schema projection: the count
+        // of serializing name, description, and parameters (what providers
+        // actually receive in the tools array).
+        let schema_projection = {
+            let def = &result.tool_definitions[0];
+            serde_json::json!({
+                "name": def.name,
+                "description": def.description,
+                "parameters": def.parameters,
+            })
+            .to_string()
+        };
+        let schema_tokens = counter.count(&schema_projection);
+        let system_tokens = {
+            let system = result.system_prompt.to_string();
+            counter.count(&system)
+        };
+        let message_tokens: usize = result
+            .messages
+            .iter()
+            .map(|m| match m {
+                LlmMessage::User { content, .. }
+                | LlmMessage::Assistant { content, .. }
+                | LlmMessage::Tool { content, .. } => counter.count(content),
+            })
+            .sum::<usize>();
+        let floor = system_tokens + message_tokens + schema_tokens;
+        assert!(
+            result.estimated_tokens() >= floor as u32,
+            "estimate {} must cover system ({system_tokens}) + messages \
+             ({message_tokens}) + schema ({schema_tokens})",
+            result.estimated_tokens()
+        );
+
+        // And the estimate stays close to that floor: the snippet and
+        // guidelines are NOT double-counted on top of their system-prompt
+        // occurrence (only the ~few-token whitespace/JSON overhead above it).
+        let headroom = result.estimated_tokens() - floor as u32;
+        assert!(
+            headroom < 40,
+            "estimate exceeds schema floor by {headroom}; \
+             snippet/guidelines must not be double-counted"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn assembled_estimate_covers_in_context_minimap_sum() {
+        // Given a history exercising every in-context shape: user text, an
+        // image attachment, an assistant tool loop, a pinned entry, plus
+        // out-of-context entries the minimap must skip.
+        let mut image_user = ChatEntry::user("describe this screenshot");
+        if let jinn_domain::protocol::ChatEntryKind::User { attachments, .. } = &mut image_user.kind
+        {
+            attachments.push(jinn_provider::Attachment::image(
+                "image/png".to_owned(),
+                vec![1, 2, 3],
+            ));
+        }
+        let entries = vec![
+            ChatEntry::user("run the build"),
+            image_user,
+            ChatEntry::assistant("running it"),
+            ChatEntry::tool_call("call-1", "bash", r#"{"command":"cargo build"}"#),
+            ChatEntry::tool_result(
+                "call-1",
+                "bash",
+                "compiled fine",
+                jinn_domain::protocol::ToolResultStatus::Success,
+            ),
+            ChatEntry::user("always remember this").with_pin(PinPosition::Top),
+            // Out of context: excluded from both the prompt and the minimap.
+            ChatEntry::thinking("private reasoning"),
+            ChatEntry::transient("Welcome to jinn!"),
+        ];
+        let (state, session_id) = state_with_history(entries);
+        {
+            let cell = {
+                state
+                    .read()
+                    .tool_registry()
+                    .expect("registry cell attached")
+            };
+            cell.update(|r| {
+                r.global.insert("bash".to_owned(), make_tool("bash"));
+            });
+        }
+
+        // When assembling the prompt and summing per-entry token counts over
+        // in-context entries (the minimap's basis: persisted token_count is
+        // the per-entry content estimate, summed with is_in_context gating).
+        let counter = counter();
+        let estimator = CounterAsEstimator(&counter);
+        let minimap_sum: usize = {
+            let guard = state.read();
+            let history = guard
+                .session
+                .get(&session_id)
+                .expect("session exists")
+                .history()
+                .to_vec();
+            history
+                .iter()
+                .filter(|entry| entry.is_in_context())
+                .map(|entry| {
+                    jinn_domain::feat::context::strategy::token_estimator::
+                    estimate_entry_content_tokens(&estimator, entry)
+                })
+                .sum()
+        };
+        let result = {
+            let guard = state.read();
+            assemble_prompt(&guard, &session_id, &counter)
+        };
+
+        // Then the assembled estimate covers the minimap's in-context total
+        // (plus system prompt and tool schemas), so the status bar can never
+        // read below the minimap arrows.
+        assert!(
+            result.estimated_tokens() as usize >= minimap_sum,
+            "assembled estimate {} must cover minimap in-context sum {minimap_sum}",
+            result.estimated_tokens()
         );
     }
 }

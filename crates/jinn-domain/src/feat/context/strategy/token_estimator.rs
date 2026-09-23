@@ -101,7 +101,11 @@ pub fn estimate_entry_content_tokens(estimator: &dyn TokenEstimator, entry: &Cha
 /// Real per-provider image token math varies (Anthropic tile estimate,
 /// OpenAI tile-based, Gemini tiles); this flat heuristic keeps the budget
 /// honest enough that context assembly is not surprised by image cost.
-const IMAGE_ATTACHMENT_TOKENS: usize = 765;
+///
+/// Public so the message-side assembly counter applies the same per-image
+/// cost as this per-entry estimator — the two sides of the minimap
+/// invariant must never disagree on an entry's image cost.
+pub const IMAGE_ATTACHMENT_TOKENS: usize = 765;
 
 /// Returns the total flat token cost for the image attachments in a user entry.
 fn image_attachment_tokens(attachments: &[jinn_provider::Attachment]) -> usize {
