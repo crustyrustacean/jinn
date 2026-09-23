@@ -198,6 +198,8 @@ Entries are added or amended **only with human approval**.
 - (tokens) The status bar shows a cache-hit percentage (`⬢` glyph, leftmost) for OpenAI-compatible providers when cached prompt tokens are reported, computed over turns that reported usage.
 - (tokens) The status-bar cache-hit percentage is color-banded on its displayed value: >=95% uses theme.success, 90-94% uses theme.warning, below 90% uses theme.error_text.
 - (tokens) The session-tree aggregate applies the same cache-hit color bands, shown only when more than one session exists.
+- (tokens) The status-bar context percentage numerator is the assembled-prompt token estimate: system prompt, tool schemas (name/description/parameters), messages, tool-call arguments, and image attachments (o200k_base).
+- (ui) The minimap arrow shows per-entry o200k token counts summed over in-context entries above and below the cursor.
 - (tools) After a successful edit, a numbered snippet of the changed region is returned so the agent can chain edits without re-reading.
 - (tools) File edits, reads, and other built-in tool calls all funnel through the jinn-tools orchestrator chokepoint.
 - (tools) The `bash` tool accepts an optional `max_duration_secs` argument that overrides the default timeout; the schema exposes `max_duration_secs`, not a raw `timeout`.
