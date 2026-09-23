@@ -6,14 +6,15 @@
 //! `UpdatePreferences` diffs, saves, and writes the field inline) and
 //! [`AppStateActor`] owns `state.toml` persistence (applies
 //! `UpdateAppState` diffs and syncs the frontend theme/sidebar/persona
-//! fields inline). Both spawn at slice activation and subscribe to the
-//! slice's crossing topic (see [`bridge`]); the commands arrive via
-//! kernel bridge routes, the file schemas, storage traits, and protocol
-//! types they operate on live in the kernel-free
-//! `jinn-preferences-config` crate.
+//! fields inline). Both spawn at slice activation and declare their
+//! handled schemas via trouper's `.handles` (the route registration);
+//! the file schemas, storage traits, and protocol types they operate on
+//! live in the kernel-free `jinn-preferences-config` crate.
 
 pub mod app_state_actor;
 mod preferences_actor;
+#[cfg(test)]
+mod preferences_bus_tests;
 mod project_add;
 
 pub use app_state_actor::AppStateActor;
@@ -28,17 +29,17 @@ use jinn_slices::SliceHost;
 /// registers its overlay geometry/view, attaches the confirm/leave rows
 /// and the editing hook, binds the `<c-n>` opener in the project
 /// picker's scope, and spawns the two persistence actors on the
-/// system's trouper runtime, subscribing them to the preferences topic.
+/// system's trouper runtime (each declaring its handled command via
+/// trouper's `.handles`, which registers the delivery route).
 ///
-/// The subscribes are the readiness point: this function must complete
+/// The spawns are the readiness point: this function must complete
 /// before anything publishes `EnvironmentLoaded` (whose handlers emit
 /// `UpdateAppState`/`UpdatePreferences` on first boot).
 ///
 /// # Panics
 ///
 /// Panics if the popup slot is already registered — double activation is a
-/// wiring bug. Panics if an actor's topic subscription fails — a broken
-/// actor system, not a caller bug.
+/// wiring bug.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
@@ -69,8 +70,8 @@ pub fn activate(
     project_add::intent::register_project_add_input_hook(host.key_routes(), &cell);
 
     // Spawn the persistence actors (caps minted here — activation is
-    // the single writer grant for each) and subscribe them
-    // synchronously to the slice topic.
+    // the single writer grant for each). Each spawn declares its
+    // handled command via `.handles`, which registers the route.
     let prefs_path = PreferencesActor::spawn(
         system,
         services.clone(),

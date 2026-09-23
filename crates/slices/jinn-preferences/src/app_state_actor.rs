@@ -1,6 +1,6 @@
 //! App-state actor — persists runtime state to `state.toml`.
 //!
-//! A trouper [`ServiceActor`] subscribed to the preferences topic;
+//! A trouper [`ServiceActor`] declaring `UpdateAppState` as handled;
 //! handles [`UpdateAppState`] commands carrying batches of
 //! [`AppStateUpdate`] diffs. On each command, loads current state,
 //! applies all diffs, saves to disk, and syncs the frontend
@@ -53,10 +53,9 @@ impl ServiceActor for AppStateActor {
 }
 
 impl AppStateActor {
-    /// Spawns the actor at its static path. The caller subscribes the
-    /// returned path to the preferences topic (the slice's
-    /// `activate`) — subscribe is the readiness point, so it must
-    /// follow this call before any publish.
+    /// Spawns the actor at its static path, declaring `UpdateAppState`
+    /// as handled — the declaration registers the command's route (its
+    /// sole handler), so bridge-published commands deliver here.
     pub fn spawn(
         system: &ActorSystem,
         services: Services,
@@ -76,6 +75,7 @@ impl AppStateActor {
                     })
                 }
             })
+            .handles::<UpdateAppState>()
             .start()
     }
 

@@ -19,10 +19,12 @@
 //! topic (fed by the kernel bridge's forward routes). Two triggers, three
 //! dispatch bodies:
 //!
-//! - [`SessionPhaseChanged`] with a new phase of `Idle` — pops the next
-//!   item from the turn queue (falling back to the steering buffer):
-//!   `UserMessage` items run [`Self::dispatch_user_message`],
-//!   `ToolContinuation` items run [`Self::dispatch_resume`].
+//! - [`SessionPhaseChanged`] with a new phase of `Idle` — drains the
+//!   steering buffer FIRST (steering always becomes the next turn; the
+//!   queued item waits for the following idle slot), falling back to the
+//!   turn queue only when no fragment is pending: `UserMessage` items run
+//!   [`Self::dispatch_user_message`], `ToolContinuation` items run
+//!   [`Self::dispatch_resume`].
 //! - [`DispatchTurn`] — the session actor has prepared a turn (idle-direct
 //!   send, resume tail, stall-retry re-dispatch: eligibility checked,
 //!   entries pushed) and asks this slice to dispatch it:
@@ -33,16 +35,19 @@
 //! - `UserMessage` → vision gate, push entry, set title, begin sending,
 //!   assemble via the context-assembly service, publish
 //!   `SendToLlmProvider`, `ChatEntrySubmitted`, `PersistSession`
-//! - `ToolContinuation` (queued) → steering drain, normalize loop layout,
-//!   assemble, publish `SendToLlmProvider`
-//! - prepared turn → steering drain, normalize loop layout, assemble,
-//!   resolve model (mutating the alloy round-robin index), transition to
-//!   Streaming, push the outgoing token record, publish
-//!   `SendToLlmProvider`, `PersistSession`
+//! - `ToolContinuation` (queued) → normalize loop layout, assemble,
+//!   publish `SendToLlmProvider`
+//! - prepared turn → steering drain (a fragment landing between
+//!   preparation and dispatch still makes the turn), normalize loop
+//!   layout, assemble, resolve model (mutating the alloy round-robin
+//!   index), transition to Streaming, push the outgoing token record,
+//!   publish `SendToLlmProvider`, `PersistSession`
 //!
-//! Every path drains pending steering fragments into history before
-//! assembly and normalizes loop layout, so committed loops never contain
-//! interstitials in the request.
+//! Steering fragments are dispatched only from the idle transition and the
+//! prepared-turn drain — a queued/resumed turn never absorbs buffered
+//! fragments, so each submitted message gets its own turn and its own LLM
+//! response. All paths normalize loop layout, so committed loops never
+//! contain interstitials in the request.
 
 use trouper::actor::ActorPath;
 use trouper::actor::{MsgHandler, ServiceActor};
@@ -147,21 +152,22 @@ impl QueueActor {
         self.dispatch_prepared(&payload.session_id).await;
     }
 
-    /// Handle Idle transition — pop and dispatch the next queued item,
-    /// falling back to the steering buffer when the queue is empty.
+    /// Handle Idle transition — drain the steering buffer first (steering
+    /// always becomes the next turn), falling back to the queue only when
+    /// no fragment is pending.
     async fn handle_idle_transition(&self, session_id: &SessionId) {
         let item = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
-                // Queue takes priority. Fall back to the steering buffer so a fragment
-                // submitted mid-turn dispatches itself when the turn completes with an
-                // empty queue — same semantics as a queued user message.
-                session.dequeue().or_else(|| {
-                    session
-                        .steering_buffer_mut()
-                        .drain_into_entry()
-                        .map(|entry| QueueItem::UserMessage(Box::new(entry)))
-                })
+                // Steering takes priority: a steered fragment must become its
+                // own turn (with its own LLM response), so the queued item
+                // waits for the following idle slot. Fall back to the queue
+                // only when the buffer is empty.
+                session
+                    .steering_buffer_mut()
+                    .drain_into_entry()
+                    .map(|entry| QueueItem::UserMessage(Box::new(entry)))
+                    .or_else(|| session.dequeue())
             })
         };
 
@@ -254,16 +260,6 @@ impl QueueActor {
                     session.set_title(title);
                 }
                 session.push_entry(entry.clone());
-                // Drain any pending steering fragments into history before assembly.
-                if let Some(steer_entry) = session.steering_buffer_mut().drain_into_entry() {
-                    let entry_id = steer_entry.id.clone();
-                    session.push_entry(steer_entry);
-                    tracing::debug!(
-                        session_id = %session_id,
-                        entry_id = %entry_id,
-                        "drained steering entry into history at queue_actor::dispatch_user_message"
-                    );
-                }
                 // Normalize loop layout so committed loops never contain
                 // interstitials before assembly.
                 session.edit_history().normalize_loop_layout();
@@ -358,27 +354,18 @@ impl QueueActor {
         })
     }
 
-    /// Dispatch a queued tool continuation: steering drain, normalize loop
-    /// layout, assemble, publish `SendToLlmProvider`. No phase writes and
-    /// no token record — the session actor's tool-loop path owns those for
-    /// real continuations; a queued continuation is a re-send of the
-    /// current history from the Idle state.
+    /// Dispatch a queued tool continuation: normalize loop layout, assemble,
+    /// publish `SendToLlmProvider`. No history writes (a queued continuation
+    /// is a re-send of the current history from the Idle state), no phase
+    /// writes, and no token record — the session actor's tool-loop path owns
+    /// those for real continuations.
     async fn dispatch_resume(&self, session_id: &SessionId, origin: StreamOrigin) {
-        // Drain any pending steering fragments into history before assembly,
-        // then normalize loop layout so committed loops never contain
-        // interstitials before assembly.
+        // Normalize loop layout so committed loops never contain
+        // interstitials before assembly. Steering fragments are NOT drained
+        // here — steering waits for its own turn at the next idle slot.
         {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
-                if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
-                    let entry_id = entry.id.clone();
-                    session.push_entry(entry);
-                    tracing::debug!(
-                        session_id = %session_id,
-                        entry_id = %entry_id,
-                        "drained steering entry into history at queue_actor::dispatch_resume"
-                    );
-                }
                 session.edit_history().normalize_loop_layout();
             });
         }
@@ -409,23 +396,22 @@ impl QueueActor {
     }
 
     /// Dispatch the session's prepared turn (the [`DispatchTurn`] body):
-    /// drain any pending steering fragments (defensive — normally already
-    /// drained by an earlier transition, but a fragment can land between
-    /// that drain and this dispatch), assemble the prompt, resolve the
-    /// model (mutating the alloy round-robin index under write lock),
-    /// transition the phase to Streaming, push the outgoing token record,
-    /// publish `SessionPhaseChanged` (no-op safe), `SendToLlmProvider`,
-    /// and `PersistSession`.
+    /// drain any steering fragment submitted in the window between the
+    /// dispatching path's preparation and this command's execution (the
+    /// primary steer-first drain for this path), assemble the prompt,
+    /// resolve the model (mutating the alloy round-robin index under write
+    /// lock), transition the phase to Streaming, push the outgoing token
+    /// record, publish `SessionPhaseChanged` (no-op safe),
+    /// `SendToLlmProvider`, and `PersistSession`.
     ///
     /// The in-flight-stream guard is armed by the session actor's own
     /// `SendToLlmProvider` subscription — the single write point — not
     /// here.
     async fn dispatch_prepared(&self, session_id: &SessionId) {
-        // Defensive steering drain: the session actor drains before
-        // publishing on the paths that own history surgery, but a fragment
-        // submitted in the window between that drain and this command's
-        // execution must still make the turn. Same semantics as every
-        // other dispatch path.
+        // Steer-first drain: a fragment submitted in the window between the
+        // dispatching path's history push and this command's execution must
+        // still make this turn (it arrived while the turn was being
+        // prepared, so the user intended it to steer the ongoing dispatch).
         {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);

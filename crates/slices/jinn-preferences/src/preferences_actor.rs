@@ -1,6 +1,6 @@
 //! Preferences actor — persists user preferences to `jinn.toml`.
 //!
-//! A trouper [`ServiceActor`] subscribed to the preferences topic;
+//! A trouper [`ServiceActor`] declaring `UpdatePreferences` as handled;
 //! handles [`UpdatePreferences`] commands carrying batches of
 //! [`PreferenceUpdate`] diffs. On each command, loads current
 //! preferences, applies all diffs, saves to disk, and writes
@@ -59,10 +59,9 @@ impl ServiceActor for PreferencesActor {
 }
 
 impl PreferencesActor {
-    /// Spawns the actor at its static path. The caller subscribes the
-    /// returned path to the preferences topic (the slice's
-    /// `activate`) — subscribe is the readiness point, so it must
-    /// follow this call before any publish.
+    /// Spawns the actor at its static path, declaring `UpdatePreferences`
+    /// as handled — the declaration registers the command's route (its
+    /// sole handler), so bridge-published commands deliver here.
     pub fn spawn(
         system: &ActorSystem,
         services: Services,
@@ -82,6 +81,7 @@ impl PreferencesActor {
                     })
                 }
             })
+            .handles::<UpdatePreferences>()
             .start()
     }
 

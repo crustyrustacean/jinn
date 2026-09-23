@@ -227,7 +227,7 @@ async fn idle_with_empty_queue_and_empty_steering_does_nothing() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn idle_with_queued_item_and_steering_dispatches_queue_item_first() {
+async fn idle_with_both_buffers_dispatches_steering_first_and_keeps_queue() {
     // Given a session with BOTH a queued user message and a steering fragment.
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
@@ -241,28 +241,103 @@ async fn idle_with_queued_item_and_steering_dispatches_queue_item_first() {
     }
 
     // When receiving SessionPhaseChanged -> Idle.
-    let msg = SessionPhaseChanged {
-        session_id: sid.clone(),
-        old_phase: PhaseKind::Streaming,
-        new_phase: PhaseKind::Idle,
+    actor
+        .handle_session_phase_changed(&SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        })
+        .await;
+
+    // Then the steering entry won the idle slot: it is the submitted user
+    // message and the single dispatched turn.
+    let submitted: Vec<ChatEntrySubmitted> = audit.of_type::<ChatEntrySubmitted>();
+    assert_eq!(submitted.len(), 1, "exactly one turn dispatched");
+    let dispatched = match &submitted.first().expect("one submission").entry.kind {
+        jinn_domain::protocol::ChatEntryKind::User { expanded, .. } => expanded.as_str(),
+        other => panic!("expected a user entry dispatch, got {other:?}"),
     };
-    actor.handle_session_phase_changed(&msg).await;
-
-    // Then the queue item won dispatch (SendToLlmProvider x1).
-    let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
-    assert_eq!(sends.len(), 1, "queue item must win dispatch");
-
-    // And the queue is now empty.
+    assert_eq!(
+        dispatched, "stay focused",
+        "steering must win the idle slot over the queue"
+    );
+    // And the steering entry is in history.
     let state = state.read();
     let session = state.session(&sid);
+    let has_steering = session.history().iter().any(|e| {
+        matches!(
+            &e.kind,
+            jinn_domain::protocol::ChatEntryKind::User { expanded, .. } if expanded == "stay focused"
+        )
+    });
     assert!(
-        session.queue().is_empty(),
-        "queue must be drained after dispatch"
+        has_steering,
+        "dispatched steering entry must appear in history; history = {:?}",
+        session.history()
     );
-    // And the steering fragment was co-injected (buffer empty).
+    // And the queued item is still queued (waits for the next idle slot).
+    assert_eq!(
+        session.queue_len(),
+        1,
+        "queued item must stay queued while steering dispatches"
+    );
+    // And the steering buffer was drained (not orphaned).
     assert!(
         session.steering_buffer().is_empty(),
-        "steering must be co-injected, not orphaned"
+        "steering must be dispatched, not left buffered"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn queued_item_dispatches_after_steering_turn_completes() {
+    // Given a session with BOTH a queued user message and a steering fragment.
+    let (actor, state, audit) = create_actor().await;
+    let sid = session_id();
+    {
+        let mut state = state.write_test_no_cap();
+        let session = state.session_mut_or_create(&sid);
+        session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
+            "queued msg",
+        ))));
+        session.steering_buffer_mut().push_fragment("stay focused");
+    }
+
+    // When the idle slot opens (steering turn) and then opens again (the
+    // steering turn completed).
+    for _ in 0..2 {
+        actor
+            .handle_session_phase_changed(&SessionPhaseChanged {
+                session_id: sid.clone(),
+                old_phase: PhaseKind::Streaming,
+                new_phase: PhaseKind::Idle,
+            })
+            .await;
+    }
+
+    // Then the steering entry was submitted first and the queued message
+    // second — each as its own turn, in that order.
+    let submitted: Vec<ChatEntrySubmitted> = audit.of_type::<ChatEntrySubmitted>();
+    let texts: Vec<&str> = submitted
+        .iter()
+        .filter_map(|s| match &s.entry.kind {
+            jinn_domain::protocol::ChatEntryKind::User { expanded, .. } => Some(expanded.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        texts,
+        vec!["stay focused", "queued msg"],
+        "steering dispatches first; the queued item dispatches at the next idle slot"
+    );
+    // And the queue is empty after both turns.
+    let state = state.read();
+    let session = state.session(&sid);
+    assert!(session.queue().is_empty(), "queue fully consumed");
+    // And the steering buffer is empty after both turns.
+    assert!(
+        session.steering_buffer().is_empty(),
+        "steering buffer fully consumed"
     );
 }
 
@@ -499,8 +574,9 @@ async fn dispatch_user_message_provider_id_is_some_when_model_set() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn dispatch_user_message_drains_steering_buffer() {
-    // Given a session with steering fragments.
+async fn dispatch_user_message_does_not_absorb_steering_fragments() {
+    // Given a session with steering fragments pending (submitted mid-turn by
+    // the user) and a queued entry about to dispatch.
     let (actor, state, _audit) = create_actor().await;
     let sid = session_id();
     {
@@ -510,16 +586,59 @@ async fn dispatch_user_message_drains_steering_buffer() {
     }
     let entry = ChatEntry::user("hello");
 
-    // When dispatching a user message.
+    // When dispatching a user message from the queue.
     actor
         .dispatch_user_message(&sid, &entry, StreamOrigin::User)
         .await;
 
-    // Then the steering buffer was drained into history.
+    // Then ONLY the queued entry was pushed — the steering fragment is NOT
+    // co-injected into this turn's history push.
     let state = state.read();
     let session = state.session(&sid);
-    // At minimum: steering entry + user entry.
-    assert!(session.history().len() >= 2);
+    assert_eq!(
+        session.history().len(),
+        1,
+        "queued dispatch pushes exactly the queued entry; steering waits for the next idle slot"
+    );
+    // And the steering fragment is still buffered for its own turn.
+    assert_eq!(
+        session.steering_buffer().len(),
+        1,
+        "steering fragments must stay buffered, not absorbed into a queued dispatch"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dispatch_resume_does_not_absorb_steering_fragments() {
+    // Given a session with steering fragments pending.
+    let (actor, state, _audit) = create_actor().await;
+    let sid = session_id();
+    {
+        let mut state = state.write_test_no_cap();
+        state
+            .session_mut_or_create(&sid)
+            .steering_buffer_mut()
+            .push_fragment("system note");
+    }
+
+    // When dispatching a tool continuation (queued resume).
+    actor.dispatch_resume(&sid, StreamOrigin::User).await;
+
+    // Then no steering entry was pushed — the fragment stays buffered for
+    // the next idle slot (it will steer the following turn).
+    let state = state.read();
+    let session = state.session(&sid);
+    assert_eq!(
+        session.steering_buffer().len(),
+        1,
+        "queued resume must not absorb steering fragments"
+    );
+    assert!(
+        session.history().is_empty(),
+        "resume pushes no steering entry; history = {:?}",
+        session.history()
+    );
 }
 
 #[rstest::rstest]
@@ -569,23 +688,24 @@ async fn dispatch_resume_emits_send_to_llm_provider() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn dispatch_resume_drains_steering_buffer() {
-    // Given a session with steering fragments.
+async fn dispatch_resume_leaves_history_unchanged() {
+    // Given a session with existing history (prepared by the session actor).
     let (actor, state, _audit) = create_actor().await;
     let sid = session_id();
     {
         let mut state = state.write_test_no_cap();
         let session = state.session_mut_or_create(&sid);
-        session.steering_buffer_mut().push_fragment("system note");
+        session.push_entry(ChatEntry::user("earlier turn"));
     }
 
     // When dispatching a resume.
     actor.dispatch_resume(&sid, StreamOrigin::User).await;
 
-    // Then the steering buffer was drained into history.
+    // Then the history is unchanged — a queued resume only re-sends the
+    // current history (no entry push, no steering drain).
     let state = state.read();
     let session = state.session(&sid);
-    assert!(!session.history().is_empty());
+    assert_eq!(session.history().len(), 1);
 }
 
 #[rstest::rstest]
