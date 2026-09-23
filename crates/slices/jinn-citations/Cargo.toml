@@ -1,0 +1,33 @@
+[package]
+name = "jinn-citations"
+version.workspace = true
+edition.workspace = true
+description = "The citations slice: shape-based web-source detection from tool traffic, flushed once per finished turn."
+
+[features]
+test-harness = ["jinn-domain/test-harness"]
+
+[dependencies]
+jinn-inference-msg = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+jinn-tools-msg = { workspace = true }
+# The trouper runtime: ServiceActors, topics, schemas.
+trouper = { workspace = true }
+# Kernel dep (token-count precedent): the citations actor publishes on the
+# fabric through Services (bus) — granted at slice activation. Detection
+# is pure; no other kernel service is consulted.
+jinn-core-types = { workspace = true }
+jinn-domain = { workspace = true }
+jinn-slices = { workspace = true }
+serde_json = { workspace = true }
+form_urlencoded = { workspace = true }
+error-stack = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+jinn-domain = { workspace = true, features = ["test-harness"] }
+
+[lints]
+workspace = true

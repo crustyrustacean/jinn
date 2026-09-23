@@ -1,12 +1,12 @@
 //! Stall-retry handler — re-dispatches a turn whose LLM stream went silent.
 //!
 //! See [`SessionPersistenceActor::on_retry_stalled_session`]. The
-//! `stall-watchdog` plugin detects silence on an in-flight provider stream
-//! and pushes a mirrored `RestartStalledStream`, which the plugin
-//! coordinator translates into
-//! [`RetryStalledSession`](crate::feat::session::protocol::retry_stalled_session::RetryStalledSession).
-//! A hung stream is treated like a hard provider error: partial streaming
-//! entries are discarded and the turn is re-dispatched.
+//! stall-watchdog actor in the `jinn-watchdog` slice detects silence on an
+//! in-flight provider stream and publishes
+//! [`RetryStalledSession`](crate::feat::session::protocol::retry_stalled_session::RetryStalledSession)
+//! (alongside the visible retry marker entry). A hung stream is treated like
+//! a hard provider error: partial streaming entries are discarded and the
+//! turn is re-dispatched.
 
 use crate::common::actor_deps::BusPublish;
 use crate::feat::session::phase_machine::PhaseKind;
@@ -51,9 +51,10 @@ impl SessionPersistenceActor {
     /// Re-dispatch a stalled turn: discard partial streaming entries and
     /// re-send the existing history.
     ///
-    /// The visible retry marker is pushed by the `stall-watchdog` plugin
-    /// (via `InsertSystemEntry`, alongside the restart request) — this
-    /// handler only performs the history surgery and re-dispatch.
+    /// The visible retry marker is pushed by the stall-watchdog actor in
+    /// the `jinn-watchdog` slice (via `PushChatEntry`, alongside the
+    /// restart request) — this handler only performs the history surgery
+    /// and re-dispatch.
     ///
     /// The guard is *in-flight-stream*, not elapsed time: the handler acts
     /// only when the phase is `Sending`/`Streaming` **and**
@@ -63,13 +64,13 @@ impl SessionPersistenceActor {
     /// the single write point, covering every dispatch path) and cleared when
     /// the generation's `StreamCompleted` is consumed, so:
     ///
-    /// - a stream that self-resolved between the plugin's trip and this
+    /// - a stream that self-resolved between the watchdog's trip and this
     ///   handler running has a `None` timestamp → no-op (the self-resolved
     ///   race is closed by construction, not by timestamp comparison);
     /// - a session waiting on a tool batch has a `None` timestamp (the
     ///   generation completed with `ToolUse` before tools dispatch) → no-op:
     ///   a restart during tool execution is structurally impossible, even if
-    ///   a guest misfires.
+    ///   a misfire occurs.
     pub(in crate::feat::session::session_actor) async fn on_retry_stalled_session(
         &self,
         payload: &RetryStalledSession,
@@ -96,8 +97,8 @@ impl SessionPersistenceActor {
                     "retrying stalled turn"
                 );
                 // The re-dispatch below emits a fresh `SendToLlmProvider`,
-                // which the plugin host forwards as `stream_start` — the
-                // watchdog re-arms for the new generation automatically.
+                // whose receipt re-arms the stall watchdog for the new
+                // generation automatically.
                 true
             } else {
                 // A rejection is worth one warn line: silent no-ops here
@@ -237,7 +238,7 @@ mod tests {
     #[tokio::test]
     async fn handler_noops_when_no_stream_is_in_flight() {
         // Given a session whose stream generation was consumed between the
-        // plugin's trip and this handler running (the self-resolved shape:
+        // watchdog's trip and this handler running (the self-resolved shape:
         // `StreamCompleted` cleared `stream_dispatched_at`).
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();

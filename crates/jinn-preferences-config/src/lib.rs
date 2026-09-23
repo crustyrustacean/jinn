@@ -35,6 +35,9 @@ pub use user_preferences::{
 // types re-exported so the kernel's workers and every consumer keep one
 // import home for the `[auto_prune]` table.
 pub use schemas::auto_prune::{AnchoredAssistantAutoPruneConfig, TodoAutoPruneConfig};
+// Watchdog sections: consumed by the `jinn-watchdog` slice at activation.
+pub use schemas::StallWatchdogConfig;
+pub use schemas::ToolCallWatchdogConfig;
 pub use user_preferences_storage::{
     FilesystemUserPreferencesStorage, InMemoryUserPreferencesStorage, UserPreferencesStorage,
     UserPreferencesStorageService,

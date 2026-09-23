@@ -71,6 +71,8 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         activate_token_count(&mut services, core.state.clone()).await;
         activate_turn_dispatch(&mut services, core.state.clone()).await;
         activate_inference(&mut services).await;
+        activate_watchdog(&mut services, &core.state).await;
+        activate_citations(&mut services).await;
         jinn_tools::activate(&mut services, &core.state);
         core.state
             .write_test_no_cap()
@@ -393,6 +395,50 @@ pub async fn activate_inference(services: &mut jinn_domain::Services) {
     jinn_inference::activate(&mut host, services_snapshot);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("inference slice finalize failed: {error}");
+    }
+}
+
+/// Activates the watchdog slice: spawns the stall + tool-call watchdog
+/// actors (trouper ServiceActors) on the kernel's trouper system.
+///
+/// Watchdog knobs are read once from the `State` snapshot (the term-slice
+/// precedent); a test that wants a fast trip writes a smaller
+/// `[stall_watchdog].timeout_secs` into the snapshot's preferences
+/// *before* calling this helper.
+pub async fn activate_watchdog(services: &mut jinn_domain::Services, state: &jinn_domain::State) {
+    // `Services` is cheap to clone (Arc fields); the clone side-steps
+    // the host's mutable viewport borrow for the activation call.
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_watchdog::activate(&mut host, state, services_snapshot);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("watchdog slice finalize failed: {error}");
+    }
+    eprintln!("DIAG16 watchdog activation ran");
+}
+
+/// Activates the citations slice: spawns the citations actor (trouper
+/// ServiceActor) on the kernel's trouper system.
+pub async fn activate_citations(services: &mut jinn_domain::Services) {
+    // `Services` is cheap to clone (Arc fields); the clone side-steps
+    // the host's mutable viewport borrow for the activation call.
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_citations::activate(&mut host, services_snapshot);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("citations slice finalize failed: {error}");
     }
 }
 

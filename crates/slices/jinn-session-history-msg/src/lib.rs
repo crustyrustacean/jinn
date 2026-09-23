@@ -3,8 +3,7 @@
 //! The conversation-history message family, consolidated from three kernel
 //! protocol homes (chat_input, context, session) in the session-history
 //! window. Every publisher and consumer shares these plain
-//! `BusMessage` types — only the two events a plugin coordinator mirrors
-//! carry crossing schemas, unchanged.
+//! `BusMessage` types.
 //!
 //! Contracts:
 //!

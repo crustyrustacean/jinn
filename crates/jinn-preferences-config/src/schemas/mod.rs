@@ -15,6 +15,8 @@ pub mod plugin;
 pub mod project;
 pub mod request_retry;
 pub mod session_lifecycle;
+pub mod stall_watchdog;
+pub mod tool_call_watchdog;
 
 pub use auto_prune::{
     AutoPruneConfig, BrokenEditAutoPruneConfig, ConsecutiveReadsAutoPruneConfig,
@@ -29,3 +31,5 @@ pub use plugin::{PluginConfig, PluginPathGrant};
 pub use project::ProjectConfig;
 pub use request_retry::RequestRetryConfig;
 pub use session_lifecycle::{BuiltinId, LifecycleCommand, SessionLifecycle};
+pub use stall_watchdog::StallWatchdogConfig;
+pub use tool_call_watchdog::ToolCallWatchdogConfig;

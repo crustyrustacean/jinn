@@ -57,6 +57,9 @@ jinn-context-curation = { workspace = true }
 jinn-context-curation-msg = { workspace = true }
 jinn-turn-dispatch = { workspace = true }
 jinn-inference = { workspace = true }
+jinn-watchdog = { workspace = true }
+jinn-citations = { workspace = true }
+jinn-inference-msg = { workspace = true }
 jinn-mcp-slice = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
@@ -134,6 +137,9 @@ jinn-quake-bar = { workspace = true }
 jinn-discord = { workspace = true }
 jinn-session-init = { workspace = true }
 jinn-turn-dispatch = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+jinn-watchdog = { workspace = true, features = ["test-harness"] }
+jinn-provider = { workspace = true }
 jinn-chat-input = { workspace = true }
 jinn-chat-log-view = { workspace = true }
 jinn-scope-focus = { workspace = true }
@@ -215,6 +221,8 @@ jinn-skills = { path = "crates/slices/jinn-skills" }
 jinn-skills-msg = { path = "crates/slices/jinn-skills-msg" }
 jinn-inference-msg = { path = "crates/slices/jinn-inference-msg" }
 jinn-inference = { path = "crates/slices/jinn-inference" }
+jinn-watchdog = { path = "crates/slices/jinn-watchdog" }
+jinn-citations = { path = "crates/slices/jinn-citations" }
 jinn-context-curation-msg = { path = "crates/slices/jinn-context-curation-msg" }
 jinn-context-curation = { path = "crates/slices/jinn-context-curation" }
 jinn-mcp-msg = { path = "crates/slices/jinn-mcp-msg" }

@@ -318,6 +318,20 @@ impl ActorSystemBuilder {
         // exist before the first dispatch is published.
         jinn_inference_activate(&mut services);
 
+        // ── Watchdog slice ──────────────────────────────────────────
+        // Activation spawns the stall + tool-call watchdog actors
+        // (trouper ServiceActors). Must follow the inference activation
+        // (it consumes the inference slice's stream contracts) and can
+        // precede the env-init tail: the watchdogs only publish.
+        jinn_watchdog_activate(&mut services, state.clone());
+
+        // ── Citations slice ─────────────────────────────────────────
+        // Activation spawns the citations actor (trouper ServiceActor),
+        // which detects citable web sources in tool traffic and flushes
+        // `CitationsReceived` once per finished turn. Consumes the tools
+        // + inference contracts; only publishes.
+        jinn_citations_activate(&mut services);
+
         // ── Context-assembly slice ─────────────────────────────────────
         // Install the slice's actors on trouper (the stateless assembly
         // service + the context-size actor) and stage the crossing
@@ -911,6 +925,47 @@ fn jinn_inference_activate(services: &mut Services) {
     jinn_inference::activate(&mut host, services_snapshot);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("inference slice finalize failed: {error}");
+    }
+}
+
+/// Activates the watchdog slice: spawns the stall + tool-call watchdog
+/// actors (trouper ServiceActors) on the kernel's trouper system. The
+/// actors hold a `Services` clone for their bus publishes; the watchdog
+/// knobs are read once from the `State` snapshot at activation.
+fn jinn_watchdog_activate(services: &mut Services, state: jinn_domain::State) {
+    // `Services` is cheap to clone (Arc fields); the clone side-steps
+    // the host's mutable viewport borrow for the activation call.
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_watchdog::activate(&mut host, &state, services_snapshot);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("watchdog slice finalize failed: {error}");
+    }
+}
+
+/// Activates the citations slice: spawns the citations actor (trouper
+/// ServiceActor) on the kernel's trouper system. The actor holds a
+/// `Services` clone for its bus publishes.
+fn jinn_citations_activate(services: &mut Services) {
+    // `Services` is cheap to clone (Arc fields); the clone side-steps
+    // the host's mutable viewport borrow for the activation call.
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_citations::activate(&mut host, services_snapshot);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("citations slice finalize failed: {error}");
     }
 }
 

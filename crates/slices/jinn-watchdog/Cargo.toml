@@ -1,0 +1,34 @@
+[package]
+name = "jinn-watchdog"
+version.workspace = true
+edition.workspace = true
+description = "The watchdog slice: always-on behavioral supervision of in-flight turns (stall + tool-call watchdogs)."
+
+[features]
+test-harness = ["jinn-domain/test-harness"]
+
+[dependencies]
+jinn-inference-msg = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+jinn-tools-msg = { workspace = true }
+# The trouper runtime: ServiceActors, topics, schemas.
+trouper = { workspace = true }
+# Kernel dep (token-count precedent): the watchdog actors publish on the
+# fabric and read the watchdog config sections through Services (bus +
+# activation-time snapshot of the user preferences via State) — granted
+# at slice activation. No config data flows back kernel-side.
+jinn-core-types = { workspace = true }
+jinn-domain = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-preferences-config = { workspace = true }
+serde = { workspace = true }
+error-stack = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+jinn-domain = { workspace = true, features = ["test-harness"] }
+
+[lints]
+workspace = true

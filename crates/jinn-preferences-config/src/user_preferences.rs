@@ -19,7 +19,7 @@ use wherror::Error;
 // keep resolving them from the aggregate's home.
 pub use crate::schemas::{
     AutoPruneConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig, ProjectConfig,
-    RequestRetryConfig, SessionLifecycle,
+    RequestRetryConfig, SessionLifecycle, StallWatchdogConfig, ToolCallWatchdogConfig,
 };
 
 /// Canonical default `jinn.toml` embedded at compile time.
@@ -197,6 +197,16 @@ pub struct UserPreferences {
     /// Minimap configuration.
     #[serde(default)]
     pub minimap: MinimapConfig,
+    /// Stall-watchdog configuration: retried turns whose provider stream
+    /// went silent. The watchdog is always on; `[stall_watchdog]` only
+    /// tunes when it intervenes.
+    #[serde(default)]
+    pub stall_watchdog: StallWatchdogConfig,
+    /// Tool-call-watchdog configuration: cancels turns whose tool calls
+    /// fail repeatedly. The watchdog is always on; `[tool_call_watchdog]`
+    /// only tunes when it intervenes.
+    #[serde(default)]
+    pub tool_call_watchdog: ToolCallWatchdogConfig,
     /// Auto-prune configuration.
     #[serde(default)]
     pub auto_prune: AutoPruneConfig,
@@ -250,6 +260,8 @@ impl Default for UserPreferences {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            stall_watchdog: StallWatchdogConfig::default(),
+            tool_call_watchdog: ToolCallWatchdogConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             interactive_term:
                 jinn_term_msg::prefs::InteractiveTermPrefs::default(),
@@ -784,6 +796,11 @@ pub(crate) mod tests {
                 command: "fixture-cwd-selector {path}".to_owned(),
             },
             minimap: MinimapConfig { max_tokens: 2900 },
+            stall_watchdog: StallWatchdogConfig {
+                timeout_secs: 91,
+                max_restarts: 8,
+            },
+            tool_call_watchdog: ToolCallWatchdogConfig { max_failures: 7 },
             auto_prune,
             interactive_term: jinn_term_msg::prefs::InteractiveTermPrefs {
                 control_toggle_key: "<c-t>".to_owned(),

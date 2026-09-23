@@ -37,7 +37,7 @@ pub use google::GoogleFactory;
 
 pub use attachment::Attachment;
 pub use backend::{Backend, BackendError};
-pub use fake::{FakeLlmServiceFactory, ScriptedResponse, TOOL_LOOP_TRIGGER};
+pub use fake::{FakeLlmServiceFactory, HungStreamFactory, ScriptedResponse, TOOL_LOOP_TRIGGER};
 pub use input_modalities::{InputModalities, Modality};
 pub use jinn_core_types::reasoning::ReasoningEffort;
 pub use jinn_core_types::tool_types::{ServerToolType, ToolCall, ToolDefinition, ToolResult};

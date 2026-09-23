@@ -33,3 +33,4 @@ mod discord;
 mod quake_bar;
 mod session_init;
 mod sidebar;
+mod watchdog;

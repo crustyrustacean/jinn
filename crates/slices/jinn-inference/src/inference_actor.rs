@@ -194,8 +194,8 @@ impl MsgHandler<StreamCompleted> for InferenceActor {
 ///
 /// Runs until the stream terminates via a `Done`/`Error` event or stream end,
 /// always publishing `StreamCompleted` itself. Stall detection lives in the
-/// first-party `stall-watchdog` plugin (fed stream events by the plugin
-/// coordinator), not here.
+/// `jinn-watchdog` slice's stall-watchdog actor (which consumes this actor's
+/// stream events by schema broadcast), not here.
 async fn process_stream_events(
     mut stream: jinn_provider::ToolStream,
     bus: &BusService,
@@ -749,8 +749,8 @@ impl InferenceActor {
 /// Builds a retrying service (for transient server errors), opens the stream,
 /// and drives `process_stream_events` until the stream terminates. Stall
 /// detection — silence on an in-flight provider stream — lives in the
-/// first-party `stall-watchdog` plugin, which treats a stall like a hard
-/// server error and re-dispatches the turn.
+/// `jinn-watchdog` slice's stall-watchdog actor, which treats a stall like
+/// a hard server error and re-dispatches the turn.
 async fn run_stream(
     factory: LlmServiceFactoryService,
     bus: BusService,

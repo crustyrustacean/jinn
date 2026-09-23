@@ -258,6 +258,35 @@ command = "find -L {path} -type d 2>/dev/null | fzf --no-multi"
 #  Messages `max_tokens` or higher will always be the lightest color.
 max_tokens = 2000
 
+# ---------------------------------------------------------------------------
+# Watchdogs
+# ---------------------------------------------------------------------------
+#
+# Behavioral supervision of in-flight turns. Both watchdogs are always on;
+# the sections only tune WHEN they intervene — there is no off switch.
+
+# Retries turns whose LLM stream went silent. When a dispatched stream
+# produces no output (not even the first token) for `timeout_secs`, the
+# turn is automatically re-dispatched. A stream that ends in a genuine
+# completion restores the full budget; consecutive silent stalls within
+# one turn (across tool-loop boundaries) accumulate against
+# `max_restarts`. Exceeding the budget surrenders the turn (system entry
+# + cancel).
+[stall_watchdog]
+# Seconds of stream silence before a stalled turn is retried. Minimum 1.
+timeout_secs = 60
+# Consecutive silent-stall restarts allowed before the turn is cancelled.
+max_restarts = 3
+
+# Cancels turns stuck in a tool-failure spiral. A failed tool result
+# increments the session's counter, a successful one debits it by one
+# (floor at zero); reaching `max_failures` consecutive failures cancels
+# the stream (with a system entry) and resets the counter. A turn that
+# ends in a genuine final answer clears the counter.
+[tool_call_watchdog]
+# Consecutive tool failures tolerated before the turn is cancelled.
+max_failures = 4
+
 # Interactive terminal panes.
 # (uncomment below to activate)
 # [interactive_term]

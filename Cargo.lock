@@ -1920,6 +1920,7 @@ dependencies = [
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
+ "jinn-citations",
  "jinn-cli",
  "jinn-context-assembly",
  "jinn-context-curation",
@@ -1931,6 +1932,7 @@ dependencies = [
  "jinn-discord-msg",
  "jinn-domain",
  "jinn-inference",
+ "jinn-inference-msg",
  "jinn-mcp-msg",
  "jinn-mcp-slice",
  "jinn-persona",
@@ -1938,8 +1940,10 @@ dependencies = [
  "jinn-picker",
  "jinn-preferences",
  "jinn-preferences-config",
+ "jinn-provider",
  "jinn-quake-bar",
  "jinn-scope-focus",
+ "jinn-session-history-msg",
  "jinn-session-init",
  "jinn-session-msg",
  "jinn-session-store",
@@ -1959,6 +1963,7 @@ dependencies = [
  "jinn-tools-msg",
  "jinn-tui",
  "jinn-turn-dispatch",
+ "jinn-watchdog",
  "kanal",
  "mockito",
  "nu-ansi-term",
@@ -2021,6 +2026,25 @@ dependencies = [
  "jinn-slices",
  "parking_lot",
  "serde",
+]
+
+[[package]]
+name = "jinn-citations"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "form_urlencoded",
+ "jinn-core-types",
+ "jinn-domain",
+ "jinn-inference-msg",
+ "jinn-session-history-msg",
+ "jinn-slices",
+ "jinn-tools-msg",
+ "rstest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "trouper",
 ]
 
 [[package]]
@@ -3062,6 +3086,25 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "trouper",
+]
+
+[[package]]
+name = "jinn-watchdog"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "jinn-core-types",
+ "jinn-domain",
+ "jinn-inference-msg",
+ "jinn-preferences-config",
+ "jinn-session-history-msg",
+ "jinn-slices",
+ "jinn-tools-msg",
+ "rstest",
+ "serde",
+ "tokio",
+ "tracing",
  "trouper",
 ]
 
