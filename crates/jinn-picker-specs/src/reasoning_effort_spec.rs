@@ -17,9 +17,9 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
-use crate::common::app_state::AppState;
-use crate::feat::picker::style::dim_style;
-use crate::feat::ui::picker_states::PickerExt;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::feat::ui::picker_states::PickerExt;
+use jinn_picker::picker_style::dim_style;
 use jinn_provider_selection_msg::reasoning::ReasoningEffort;
 use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
 use jinn_provider_selection_msg::reasoning::resolve_effort;
@@ -27,15 +27,13 @@ use jinn_provider_selection_msg::reasoning::resolve_effort;
 /// Builds the reasoning-effort picker's spec.
 #[must_use]
 pub fn reasoning_effort_spec() -> PickerSpec<ReasoningEffortEntry> {
-    PickerSpec::new(PickerId::new(
-        crate::feat::picker::registry::REASONING_EFFORT_ID,
-    ))
-    .title(" Reasoning Effort ")
-    .row(reasoning_row)
-    .search(|entry| format!("{} {}", entry.name, entry.description))
-    .on_open(open_reasoning)
-    .on_confirm(confirm_reasoning)
-    .status(reasoning_status)
+    PickerSpec::new(PickerId::new(jinn_picker::REASONING_EFFORT_ID))
+        .title(" Reasoning Effort ")
+        .row(reasoning_row)
+        .search(|entry| format!("{} {}", entry.name, entry.description))
+        .on_open(open_reasoning)
+        .on_confirm(confirm_reasoning)
+        .status(reasoning_status)
 }
 
 /// The domain state behind an [`ActionCtx`]. The kernel's host lens always
@@ -184,9 +182,9 @@ fn open_reasoning(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
         .collect::<Vec<_>>();
 
     let wrapped = {
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         registry
-            .make_items(crate::feat::picker::registry::REASONING_EFFORT_ID, entries)
+            .make_items(jinn_picker::REASONING_EFFORT_ID, entries)
             .unwrap_or_default()
     };
     state
@@ -215,7 +213,7 @@ fn confirm_reasoning(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     };
 
     PickerOutcome::empty()
-        .with_message(crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted {
+        .with_message(jinn_domain::feat::session::protocol::mark_session_interacted::MarkSessionInteracted {
             session_id,
         })
         .with_message(
@@ -240,11 +238,11 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::common::app_state::FocusScope;
-    use crate::feat::picker::PickerKind;
-    use crate::feat::picker::host_impl::AppStatePickerHost;
-    use crate::feat::picker::registry::REASONING_EFFORT_ID;
-    use crate::feat::session::chat_session::ChatSessionState;
+    use jinn_domain::PickerKind;
+    use jinn_domain::common::app_state::FocusScope;
+    use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
+    use jinn_domain::feat::session::chat_session::ChatSessionState;
+    use jinn_picker::REASONING_EFFORT_ID;
 
     /// State with an active origin session (the default map's session).
     fn state_with_session() -> AppState {
@@ -258,8 +256,8 @@ mod tests {
     /// Opens the picker through the real open path (scope push + spec open
     /// hook), mirroring what the intent handler does.
     fn open(state: &mut AppState) {
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        crate::feat::picker::intent::handle_open_picker(
+        let registry = crate::build_picker_registry();
+        jinn_domain::feat::picker::intent::handle_open_picker(
             state,
             PickerKind::ReasoningEffort,
             &registry,
@@ -459,9 +457,9 @@ mod tests {
         select(&mut state, ReasoningEffort::Medium);
 
         // When confirming through the real confirm path (hook + fold).
-        let _ = crate::feat::picker::intent::handle_picker_confirm(
+        let _ = jinn_domain::feat::picker::intent::handle_picker_confirm(
             &mut state,
-            &crate::feat::picker::registry::build_picker_registry(),
+            &crate::build_picker_registry(),
         );
 
         // Then the scope stack has no ReasoningEffort picker left (fold
@@ -519,7 +517,7 @@ mod tests {
             name: "high".to_owned(),
             description: "High effort".to_owned(),
             is_active: true,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
         let ranges = Vec::new();
         let ctx = RowCtx::flat(false, &ranges);
@@ -541,7 +539,7 @@ mod tests {
             name: "low".to_owned(),
             description: "Low effort".to_owned(),
             is_active: false,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
         let ranges = Vec::new();
         let ctx = RowCtx::flat(false, &ranges);
@@ -564,7 +562,7 @@ mod tests {
             name: "high".to_owned(),
             description: "High effort".to_owned(),
             is_active: false,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
         let ranges = [0..2, 0..2];
         let ctx = RowCtx::flat(false, &ranges);

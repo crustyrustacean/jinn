@@ -10,7 +10,7 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
     // an empty registry (test seams) there is nothing to draw. `None`
     // (no picker scope) is also a no-op here.
     if let Some(kind) = ctx.state.frontend.picker_kind()
-        && let Some(id) = jinn_domain::feat::picker::registry::spec_id_for_kind(&kind)
+        && let Some(id) = jinn_picker::spec_id_for_kind(&kind)
         && let Some(spec) = ctx.pickers.get(id)
     {
         let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(ctx.state);
@@ -94,7 +94,7 @@ mod tests {
         // and the domain's picker registry.
         let state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker { kind });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
 
         // When rendering the picker overlay.
         let area = Rect::new(0, 0, 100, 30);
@@ -134,7 +134,7 @@ mod tests {
         }
 
         // The declared footer count is spec-owned (every kind has a spec).
-        let declared = jinn_domain::feat::picker::registry::spec_id_for_kind(&kind)
+        let declared = jinn_picker::spec_id_for_kind(&kind)
             .and_then(|id| pickers.get(id))
             .map_or(1, |spec| spec.bottom_rows());
 
@@ -152,7 +152,7 @@ mod tests {
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Persona,
         });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
 
         // When rendering.
         let area = Rect::new(0, 0, 100, 30);
@@ -197,7 +197,7 @@ mod tests {
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Theme,
         });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
 
         // When rendering.
         let area = Rect::new(0, 0, 100, 30);
@@ -242,7 +242,7 @@ mod tests {
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::McpServer,
         });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
 
         // When rendering.
         let area = Rect::new(0, 0, 100, 30);
@@ -296,10 +296,10 @@ mod tests {
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Theme,
         });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
         let wrapped = pickers
             .make_items(
-                jinn_domain::feat::picker::registry::THEME_ID,
+                jinn_picker::THEME_ID,
                 vec![jinn_domain::feat::theme::ThemeEntry {
                     name: "gruvbox".to_owned(),
                     theme: state.frontend.theme.clone(),
@@ -346,10 +346,10 @@ mod tests {
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Persona,
         });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
         let wrapped = pickers
             .make_items(
-                jinn_domain::feat::picker::registry::PERSONA_ID,
+                jinn_picker::PERSONA_ID,
                 vec![jinn_domain::feat::persona::PersonaEntry {
                     name: "coder".to_owned(),
                     description: "code helper".to_owned(),

@@ -15,17 +15,17 @@ use jinn_picker::StatusCtx;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
-use crate::common::app_state::AppState;
-use crate::feat::session::picker_entry::SessionTreeEntry;
-use crate::feat::session::picker_entry::session_row;
-use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
-use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::feat::ui::picker_states::PickerExt;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::feat::session::picker_entry::SessionTreeEntry;
+use jinn_domain::feat::session::picker_entry::session_row;
+use jinn_domain::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use jinn_domain::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use jinn_domain::feat::ui::picker_states::PickerExt;
 
 /// Builds the session picker's spec.
 #[must_use]
 pub fn session_spec() -> PickerSpec<SessionTreeEntry> {
-    PickerSpec::new(PickerId::new(crate::feat::picker::registry::SESSION_ID))
+    PickerSpec::new(PickerId::new(jinn_picker::SESSION_ID))
         .title(" Sessions ")
         .widget(jinn_picker::PickerWidget::Tree)
         .row(session_row)
@@ -113,9 +113,9 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::feat::picker::PickerKind;
-    use crate::feat::picker::intent::handle_open_picker;
-    use crate::feat::session::chat_session::SessionState;
+    use jinn_domain::PickerKind;
+    use jinn_domain::feat::picker::intent::handle_open_picker;
+    use jinn_domain::feat::session::chat_session::SessionState;
 
     #[rstest::rstest]
     fn open_resets_storage_and_emits_the_load_message() {
@@ -123,7 +123,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When opening the session picker through the real open path.
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         let result = handle_open_picker(&mut state, PickerKind::Session, &registry);
 
         // Then the load request is dispatched to the actor.
@@ -134,9 +134,9 @@ mod tests {
     fn confirm_begins_load_emits_and_closes() {
         // Given an open session picker with one selected entry.
         let mut state = AppState::default_with_scope_focus();
-        let theme = crate::feat::theme::default_theme();
+        let theme = jinn_theme::default_theme();
         let session_entry = SessionTreeEntry {
-            session_id: crate::protocol::SessionId::new(),
+            session_id: jinn_domain::protocol::SessionId::new(),
             id_str: "s1".to_owned(),
             title: "Root session".to_owned(),
             updated_at: jiff::Timestamp::now(),
@@ -149,18 +149,15 @@ mod tests {
             project_width: 0,
         };
         {
-            let registry = crate::feat::picker::registry::build_picker_registry();
+            let registry = crate::build_picker_registry();
             let items = registry
-                .make_items(
-                    crate::feat::picker::registry::SESSION_ID,
-                    vec![session_entry],
-                )
+                .make_items(jinn_picker::SESSION_ID, vec![session_entry])
                 .expect("session spec registered");
             state.frontend.session_picker_mut().set_items(items);
         }
         state
             .frontend
-            .scope_push(crate::common::app_state::FocusScope::Picker {
+            .scope_push(jinn_domain::common::app_state::FocusScope::Picker {
                 kind: PickerKind::Session,
             });
         let session_id = {
@@ -171,9 +168,9 @@ mod tests {
         };
 
         // When confirming through the real confirm path.
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         let (result, _redispatch) =
-            crate::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
+            jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
 
         // Then the switch command is dispatched and the picker closes.
         assert!(

@@ -44,9 +44,7 @@ pub fn handle_open_picker(
 
     // Every kind is spec-driven: the open hook owns open-time preparation.
     // An empty registry (test seams) falls through with nothing to prepare.
-    if crate::feat::picker::registry::spec_id_for_kind(&kind)
-        .is_some_and(|id| pickers.get(id).is_some())
-    {
+    if jinn_picker::spec_id_for_kind(&kind).is_some_and(|id| pickers.get(id).is_some()) {
         return crate::feat::picker::action::run_active_hook(
             state,
             pickers,
@@ -62,9 +60,7 @@ fn reset_preview_scroll(state: &mut AppState, registry: &jinn_picker::PickerRegi
     let Some(kind) = state.frontend.picker_kind() else {
         return;
     };
-    let Some(spec) =
-        crate::feat::picker::registry::spec_id_for_kind(&kind).and_then(|id| registry.get(id))
-    else {
+    let Some(spec) = jinn_picker::spec_id_for_kind(&kind).and_then(|id| registry.get(id)) else {
         return;
     };
     if spec.resets_scroll_on_selection_change() {
@@ -123,7 +119,7 @@ pub fn handle_picker_confirm(
         .frontend
         .picker_kind()
         .as_ref()
-        .and_then(crate::feat::picker::registry::spec_id_for_kind)
+        .and_then(jinn_picker::spec_id_for_kind)
         .is_some_and(|id| pickers.get(id).is_some())
     {
         return (
@@ -222,198 +218,10 @@ mod tests {
     use super::*;
     use crate::feat::ui::picker_states::PickerExt;
 
-    /// Wraps persona entries through the persona spec's hooks for storage.
-    fn wrap_persona_entries(
-        entries: Vec<crate::feat::persona::PersonaEntry>,
-    ) -> Vec<jinn_picker::PickerEntry<crate::feat::persona::PersonaEntry>> {
-        crate::feat::picker::registry::build_picker_registry()
-            .make_items(crate::feat::picker::registry::PERSONA_ID, entries)
-            .expect("persona spec is registered")
-    }
-
-    /// Wraps provider entries through the provider spec's hooks for storage.
-    fn wrap_provider_entries(
-        entries: Vec<crate::protocol::ProviderPickerEntry>,
-    ) -> Vec<jinn_picker::PickerEntry<crate::protocol::ProviderPickerEntry>> {
-        crate::feat::picker::registry::build_picker_registry()
-            .make_items(crate::feat::picker::registry::PROVIDER_ID, entries)
-            .expect("provider spec is registered")
-    }
-
     fn empty_pickers() -> jinn_picker::PickerRegistry {
         jinn_picker::PickerRegistry::new()
     }
-    use crate::feat::picker::task_list_picker_entry::RowStatus;
     use crate::feat::session::ChatSessionState;
-    use jinn_core_types::model_selection::AlloyStrategy;
-    use jinn_selection_widget::TreeItem;
-    use jinn_tools_msg::TaskStatus;
-    #[rstest::rstest]
-    fn confirm_persona_sets_correct_persona() {
-        // If the match were inverted, the wrong persona would be set.
-        use crate::feat::persona::PersonaEntry;
-
-        let mut state = AppState::default_with_scope_focus();
-        let origin = ChatSessionState::new();
-        state.session.insert(origin);
-        state
-            .session
-            .set_active(state.session.active_session_id().clone());
-
-        // Add two personas to the persona slice's cell.
-        let cell = state
-            .frontend
-            .slices()
-            .and_then(|s| {
-                s.reader::<jinn_persona_msg::Personas>(&jinn_persona_msg::personas_slot())
-            })
-            .expect("persona cell seeded by default_with_scope_focus");
-        cell.update(|selection| {
-            selection.entries = vec![
-                jinn_persona_msg::Persona {
-                    name: "coder".to_owned(),
-                    description: String::new(),
-                    body: "You are a coder.".to_owned(),
-                },
-                jinn_persona_msg::Persona {
-                    name: "writer".to_owned(),
-                    description: String::new(),
-                    body: "You are a writer.".to_owned(),
-                },
-            ];
-        });
-
-        // Set picker entries with "writer" as the selected item.
-        let entries = vec![
-            PersonaEntry {
-                name: "coder".to_owned(),
-                description: String::new(),
-                is_active: false,
-                theme: crate::feat::theme::default_theme(),
-            },
-            PersonaEntry {
-                name: "writer".to_owned(),
-                description: String::new(),
-                is_active: false,
-                theme: crate::feat::theme::default_theme(),
-            },
-        ];
-        state
-            .frontend
-            .persona_picker_mut()
-            .set_items(wrap_persona_entries(entries));
-        state.frontend.persona_picker_mut().move_down(1); // coder
-        state.frontend.persona_picker_mut().move_down(1); // writer
-
-        // Persona confirm runs through its spec (registry dispatch).
-        state
-            .frontend
-            .scope_push(crate::common::app_state::FocusScope::Picker {
-                kind: PickerKind::Persona,
-            });
-        let (result, _redispatch) = handle_picker_confirm(
-            &mut state,
-            &crate::feat::picker::registry::build_picker_registry(),
-        );
-
-        // Then the active persona is "writer", not "coder".
-        let active = state
-            .frontend
-            .slices()
-            .and_then(|s| {
-                s.reader::<jinn_persona_msg::Personas>(&jinn_persona_msg::personas_slot())
-            })
-            .and_then(|cell| cell.read().active.clone());
-        assert_eq!(
-            active.as_deref(),
-            Some("writer"),
-            "confirm_persona should set the correct persona"
-        );
-        assert!(!result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn open_endpoint_picker_is_noop_for_alloy_model() {
-        // Given a session on an alloy of two models.
-        use jinn_core_types::model_selection::ModelSelection;
-
-        let mut state = AppState::default_with_scope_focus();
-        let origin = ChatSessionState::new();
-        state.session.insert(origin);
-        state
-            .session
-            .set_active(state.session.active_session_id().clone());
-        state.active_session_mut().set_model(ModelSelection::Alloy {
-            models: vec!["ollama/llama3".to_owned(), "ollama/mistral".to_owned()],
-            strategy: AlloyStrategy::RoundRobin { index: 0 },
-        });
-
-        // When opening the endpoint picker.
-        handle_open_picker(&mut state, PickerKind::Endpoint, &empty_pickers());
-
-        // Then no picker scope is pushed (the gate rejected it).
-        assert!(
-            !state.frontend.is_picker(),
-            "endpoint picker must not open for an alloy model"
-        );
-    }
-
-    #[rstest::rstest]
-    fn confirm_persona_emits_mark_session_interacted() {
-        // added to confirm_persona.
-        // If the persist message were never emitted, a pick-then-quit would lose
-        // the persona change.
-        use crate::feat::persona::PersonaEntry;
-
-        let mut state = AppState::default_with_scope_focus();
-        let origin = ChatSessionState::new();
-        state.session.insert(origin);
-        state
-            .session
-            .set_active(state.session.active_session_id().clone());
-        state
-            .persona_selection()
-            .expect("persona cell attached")
-            .update(|p| {
-                p.entries.push(jinn_persona_msg::Persona {
-                    name: "coder".to_owned(),
-                    description: String::new(),
-                    body: "You are a coder.".to_owned(),
-                });
-            });
-        let entry = PersonaEntry {
-            name: "coder".to_owned(),
-            description: String::new(),
-            is_active: false,
-            theme: crate::feat::theme::default_theme(),
-        };
-        state
-            .frontend
-            .persona_picker_mut()
-            .set_items(wrap_persona_entries(vec![entry]));
-        state.frontend.persona_picker_mut().move_down(1);
-
-        // When confirming through the persona spec (registry dispatch).
-        state
-            .frontend
-            .scope_push(crate::common::app_state::FocusScope::Picker {
-                kind: PickerKind::Persona,
-            });
-        let (result, _redispatch) = handle_picker_confirm(
-            &mut state,
-            &crate::feat::picker::registry::build_picker_registry(),
-        );
-
-        // Then a MarkSessionInteracted message is emitted.
-        assert!(
-            result
-                .message_names
-                .iter()
-                .any(|n| n.ends_with("MarkSessionInteracted")),
-            "confirm_persona should emit MarkSessionInteracted to persist"
-        );
-    }
-
     fn setup_state_with_task_list() -> (AppState, jinn_tools_msg::TaskId) {
         use jinn_tools_msg::{PhaseInput, TaskStatus};
 
@@ -461,129 +269,6 @@ mod tests {
             "origin session must be present for set_active"
         );
         (state, postponed_id)
-    }
-
-    #[rstest::rstest]
-    fn load_task_list_picker_entries_skips_postponed() {
-        // Given a session with one postponed task among other tasks.
-        // postpone_task creates a new Pending copy with the same description, so we
-        // must verify the *source* (Postponed) entry is excluded by ID, not by label.
-        let (mut state, postponed_id) = setup_state_with_task_list();
-
-        // When opening the task-list picker through the real open path.
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        handle_open_picker(&mut state, PickerKind::TaskList, &registry);
-
-        // Then no entry has the postponed task's ID.
-        let excluded_id = format!("task:{postponed_id}");
-        let items = state.frontend.task_list_picker().items();
-        assert!(
-            items.iter().all(|e| e.id() != excluded_id),
-            "postponed source task should not appear in picker (id={excluded_id})"
-        );
-        // Sanity: the new Pending copy with the same description IS present.
-        assert!(
-            items.iter().any(|e| e.display_label() == "Refactor later"),
-            "Pending copy of postponed task should be visible"
-        );
-    }
-
-    #[rstest::rstest]
-    fn load_task_list_picker_entries_produces_correct_tree_shape() {
-        // Given a session with two phases and mixed-status tasks.
-        let (mut state, _postponed_id) = setup_state_with_task_list();
-
-        // When opening the task-list picker through the real open path.
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        handle_open_picker(&mut state, PickerKind::TaskList, &registry);
-
-        // Then there are exactly 2 phase roots.
-        let items = state.frontend.task_list_picker().items();
-        let roots: Vec<_> = items.iter().filter(|e| e.parent_id().is_none()).collect();
-        assert_eq!(roots.len(), 2, "should have 2 phase roots");
-        assert_eq!(roots[0].display_label(), "Research");
-        assert_eq!(roots[1].display_label(), "Build");
-
-        // And each task's parent_id matches its phase's id.
-        let phase_ids: Vec<&str> = roots.iter().map(|e| e.id()).collect();
-        for item in items.iter().filter(|e| e.parent_id().is_some()) {
-            assert!(
-                phase_ids.contains(&item.parent_id().expect("task parent")),
-                "task {:?} should reference a known phase id",
-                item.display_label()
-            );
-        }
-
-        // And the counts match: Phase 1 -> 2 tasks; Phase 2 -> 3 tasks (Pending,
-        // Cancelled, and the Pending copy created by postpone_task).
-        let research_children: Vec<_> = items
-            .iter()
-            .filter(|e| e.parent_id() == Some(phase_ids[0]))
-            .collect();
-        let build_children: Vec<_> = items
-            .iter()
-            .filter(|e| e.parent_id() == Some(phase_ids[1]))
-            .collect();
-        assert_eq!(research_children.len(), 2);
-        assert_eq!(build_children.len(), 3);
-    }
-
-    #[rstest::rstest]
-    fn load_task_list_picker_entries_carries_status_through() {
-        // Given a session with completed and cancelled tasks.
-        let (mut state, _postponed_id) = setup_state_with_task_list();
-
-        // When opening the task-list picker through the real open path.
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        handle_open_picker(&mut state, PickerKind::TaskList, &registry);
-
-        // Then task rows carry their status in row_status.
-
-        let items = state.frontend.task_list_picker().items();
-        let statuses: Vec<_> = items
-            .iter()
-            .filter_map(|e| match e.entry().row_status() {
-                RowStatus::Task(s) => Some((e.display_label(), s)),
-                RowStatus::Phase => None,
-            })
-            .collect();
-
-        let by_label: std::collections::HashMap<&str, TaskStatus> =
-            statuses.iter().map(|(l, s)| (*l, *s)).collect();
-        assert_eq!(
-            by_label.get("Write notes").copied(),
-            Some(TaskStatus::Completed),
-            "'Write notes' should be Completed"
-        );
-        assert_eq!(
-            by_label.get("Investigate alt").copied(),
-            Some(TaskStatus::Cancelled),
-            "'Investigate alt' should be Cancelled"
-        );
-        assert_eq!(
-            by_label.get("Read codebase").copied(),
-            Some(TaskStatus::Pending),
-            "'Read codebase' should be Pending"
-        );
-        // The Pending copy of the postponed task should also carry its status.
-        assert_eq!(
-            by_label.get("Refactor later").copied(),
-            Some(TaskStatus::Pending),
-            "'Refactor later' (Pending copy) should be Pending"
-        );
-    }
-
-    #[rstest::rstest]
-    fn load_task_list_picker_entries_empty_task_list_no_panic() {
-        // Given a default session with an empty task list.
-        let mut state = AppState::default_with_scope_focus();
-
-        // When opening the task-list picker through the real open path.
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        handle_open_picker(&mut state, PickerKind::TaskList, &registry);
-
-        // Then the picker is empty and nothing panicked.
-        assert!(state.frontend.task_list_picker().items().is_empty());
     }
 
     #[rstest::rstest]
@@ -663,14 +348,21 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: false,
-                theme: crate::feat::theme::default_theme(),
+                theme: jinn_theme::default_theme(),
             })
             .collect();
         state
             .frontend
             .pickers
             .provider_picker
-            .set_items(wrap_provider_entries(entries));
+            .set_items(jinn_picker::make_items_with_hooks(
+                entries,
+                jinn_picker::PickerItemHooks::new().search(
+                    |entry: &crate::protocol::ProviderPickerEntry| {
+                        format!("{} {}", entry.model, entry.provider_name)
+                    },
+                ),
+            ));
         state.frontend.pickers.provider_picker.move_down(1); // highlight first entry
         state
     }
@@ -695,91 +387,6 @@ mod tests {
         // (measured viewport of 5, not the old hardcoded 100).
         assert_eq!(state.frontend.pickers.provider_picker.selection(), 5);
         assert_eq!(state.frontend.pickers.provider_picker.scroll_offset(), 1);
-    }
-
-    #[rstest::rstest]
-    fn handle_move_down_uses_fallback_when_viewport_unmeasured() {
-        // Given a provider picker with 30 entries and viewport left at 0
-        // (before the first render writes a measurement).
-        let mut state = state_with_provider_picker(30);
-        assert_eq!(state.frontend.picker_results_viewport(), 0);
-
-        // When moving down once.
-        handle_move_down(&mut state, &empty_pickers());
-
-        // Then selection advances by one without panic, using the fallback.
-        assert_eq!(state.frontend.pickers.provider_picker.selection(), 2);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn move_down_previews_the_theme_when_the_registry_holds_the_spec() {
-        // Given an open theme picker whose second entry is a distinct theme,
-        // with the domain registry in play.
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let mut other = crate::feat::theme::default_theme();
-        other.focus_accent = ratatui::style::Color::Red;
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.update_theme_entries(|cell| {
-            cell.entries = vec![jinn_theme_msg::NamedTheme {
-                name: "other".to_owned(),
-                theme: other.clone(),
-            }];
-        });
-        crate::feat::picker::intent::handle_open_picker(&mut state, PickerKind::Theme, &registry);
-
-        // When moving the selection down one entry.
-        handle_move_down(&mut state, &registry);
-
-        // Then the highlighted theme is applied live (spec selection-change
-        // hook ran through the move handler).
-        assert_eq!(
-            state.frontend.theme.focus_accent,
-            ratatui::style::Color::Red
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn move_down_skips_selection_change_when_the_spec_has_no_hook() {
-        // Given an open provider picker (its kind maps to no spec) with two
-        // entries and the domain registry in play.
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let mut state = state_with_provider_picker(2);
-        let theme_before = state.frontend.theme.clone();
-
-        // When moving the selection down.
-        handle_move_down(&mut state, &registry);
-
-        // Then the app theme is untouched (no selection-change dispatch).
-        assert_eq!(state.frontend.theme.focus_accent, theme_before.focus_accent);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn page_down_previews_the_theme_when_the_registry_holds_the_spec() {
-        // Given an open theme picker whose second entry is a distinct theme,
-        // with the domain registry in play.
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let mut other = crate::feat::theme::default_theme();
-        other.focus_accent = ratatui::style::Color::Red;
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.update_theme_entries(|cell| {
-            cell.entries = vec![jinn_theme_msg::NamedTheme {
-                name: "other".to_owned(),
-                theme: other.clone(),
-            }];
-        });
-        crate::feat::picker::intent::handle_open_picker(&mut state, PickerKind::Theme, &registry);
-
-        // When paging down (selection jumps to the last entry).
-        handle_page_down(&mut state, &registry);
-
-        // Then the highlighted theme is applied live.
-        assert_eq!(
-            state.frontend.theme.focus_accent,
-            ratatui::style::Color::Red
-        );
     }
 
     #[rstest::rstest]

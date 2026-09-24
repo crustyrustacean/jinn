@@ -13,18 +13,18 @@ use jinn_picker::RowCtx;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
-use crate::common::app_state::AppState;
+use jinn_domain::common::app_state::AppState;
 use jinn_selection_widget::TreeItem;
 
-use crate::feat::picker::task_list_picker_entry::TaskListTreeEntry;
-use crate::feat::picker::task_list_picker_entry::render_task_list_row;
-use crate::feat::ui::picker_states::PickerExt;
+use jinn_domain::feat::picker::task_list_picker_entry::TaskListTreeEntry;
+use jinn_domain::feat::picker::task_list_picker_entry::render_task_list_row;
+use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_tools_msg::TaskStatus;
 
 /// Builds the task-list picker's spec.
 #[must_use]
 pub fn task_list_spec() -> PickerSpec<TaskListTreeEntry> {
-    PickerSpec::new(PickerId::new(crate::feat::picker::registry::TASK_LIST_ID))
+    PickerSpec::new(PickerId::new(jinn_picker::TASK_LIST_ID))
         .title(" Task List ")
         .widget(jinn_picker::PickerWidget::Tree)
         .row(task_list_row)
@@ -105,9 +105,9 @@ fn open_task_list(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
         .collect();
 
     let wrapped = {
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         registry
-            .make_items(crate::feat::picker::registry::TASK_LIST_ID, entries)
+            .make_items(jinn_picker::TASK_LIST_ID, entries)
             .unwrap_or_default()
     };
     state.frontend.task_list_picker_mut().set_items(wrapped);
@@ -123,8 +123,8 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::feat::picker::PickerKind;
-    use crate::feat::picker::intent::handle_open_picker;
+    use jinn_domain::PickerKind;
+    use jinn_domain::feat::picker::intent::handle_open_picker;
     use jinn_tools_msg::TaskList;
 
     /// State with a two-phase task list (one phase holding a postponed task).
@@ -162,7 +162,7 @@ mod tests {
         let mut state = state_with_task_list();
 
         // When opening the task-list picker through the real open path.
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         handle_open_picker(&mut state, PickerKind::TaskList, &registry);
 
         // Then the tree holds phase roots and visible (non-postponed) tasks.
@@ -191,7 +191,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When opening the task-list picker through the real open path.
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         handle_open_picker(&mut state, PickerKind::TaskList, &registry);
 
         // Then the picker holds zero entries.
@@ -206,7 +206,7 @@ mod tests {
             Some("phase:0".to_owned()),
             "Tokenize input".to_owned(),
             TaskStatus::Pending,
-            crate::feat::theme::default_theme(),
+            jinn_theme::default_theme(),
         );
         let ctx = RowCtx {
             is_selected: false,
@@ -233,7 +233,7 @@ mod tests {
         let entry = TaskListTreeEntry::new_phase(
             "phase:0".to_owned(),
             "Build the parser".to_owned(),
-            crate::feat::theme::default_theme(),
+            jinn_theme::default_theme(),
         );
         let ctx = RowCtx::flat(false, &[]);
 

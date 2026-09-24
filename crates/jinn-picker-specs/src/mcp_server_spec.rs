@@ -29,21 +29,21 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
-use crate::PushChatEntry;
-use crate::common::app_state::AppState;
-use crate::feat::picker::mcp_picker_entry::McpPreviewMode;
-use crate::feat::picker::mcp_picker_entry::McpServerEntry;
-use crate::feat::picker::style::dim_style;
-use crate::feat::picker::style::split_match_indices;
-use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::ChatEntry;
+use jinn_domain::PushChatEntry;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::feat::picker::mcp_picker_entry::McpPreviewMode;
+use jinn_domain::feat::picker::mcp_picker_entry::McpServerEntry;
+use jinn_domain::feat::ui::picker_states::PickerExt;
+use jinn_domain::protocol::ChatEntry;
 use jinn_mcp_msg::McpEnablementChanged;
 use jinn_mcp_msg::RestartMcpServer;
+use jinn_picker::picker_style::dim_style;
+use jinn_picker::picker_style::split_match_indices;
 
 /// Builds the MCP server picker's spec.
 #[must_use]
 pub fn mcp_server_spec() -> PickerSpec<McpServerEntry> {
-    PickerSpec::new(PickerId::new(crate::feat::picker::registry::MCP_SERVER_ID))
+    PickerSpec::new(PickerId::new(jinn_picker::MCP_SERVER_ID))
         .title(" MCP Servers ")
         // The legacy inspector has no preview-scroll mechanism; the pane
         // stays put across cursor moves.
@@ -248,7 +248,7 @@ fn mcp_server_status(ctx: &StatusCtx<'_>) -> Option<Line<'static>> {
 /// state and advance the cursor (checklist style) by the measured viewport.
 fn mcp_toggle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     let state = state_of(ctx);
-    let viewport = crate::feat::picker::geometry::active_viewport(state);
+    let viewport = jinn_domain::feat::picker::geometry::active_viewport(state);
     state
         .frontend
         .mcp_server_picker_mut()
@@ -396,9 +396,9 @@ fn load_mcp_server_entries(state: &mut AppState) {
     entries.sort_by_key(|e| e.name.to_lowercase());
 
     let wrapped = {
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         registry
-            .make_items(crate::feat::picker::registry::MCP_SERVER_ID, entries)
+            .make_items(jinn_picker::MCP_SERVER_ID, entries)
             .unwrap_or_default()
     };
     state.frontend.mcp_server_picker_mut().set_items(wrapped);
@@ -413,14 +413,14 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::common::app_state::FocusScope;
-    use crate::feat::picker::PickerKind;
-    use crate::feat::picker::host_impl::AppStatePickerHost;
-    use crate::feat::picker::registry::MCP_SERVER_ID;
-    use crate::feat::session::chat_session::ChatSessionState;
-    use crate::feat::theme::default_theme;
+    use jinn_domain::PickerKind;
+    use jinn_domain::common::app_state::FocusScope;
+    use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
+    use jinn_domain::feat::session::chat_session::ChatSessionState;
     use jinn_mcp_msg::McpConnectionStatus;
+    use jinn_picker::MCP_SERVER_ID;
     use jinn_picker::SpecHandle;
+    use jinn_theme::default_theme;
 
     /// A configured MCP server: command + args become the picker description.
     fn server_config(command: &str, args: &[&str]) -> jinn_mcp_msg::McpServerConfig {
@@ -461,8 +461,12 @@ mod tests {
     /// Opens the picker through the real open path (handles scope push +
     /// spec open hook), mirroring what the intent handler does.
     fn open(state: &mut AppState) {
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        crate::feat::picker::intent::handle_open_picker(state, PickerKind::McpServer, &registry);
+        let registry = crate::build_picker_registry();
+        jinn_domain::feat::picker::intent::handle_open_picker(
+            state,
+            PickerKind::McpServer,
+            &registry,
+        );
     }
 
     /// Runs a spec hook against `state` with a fresh dispatch context.
@@ -477,7 +481,7 @@ mod tests {
 
     /// The spec under test, from a fresh registry.
     fn spec() -> SpecHandle {
-        crate::feat::picker::registry::build_picker_registry()
+        crate::build_picker_registry()
             .get(MCP_SERVER_ID)
             .expect("mcp-server spec is registered")
     }
@@ -528,11 +532,15 @@ mod tests {
         let mut state = state_with_servers(&[("alpha", true), ("zeta", true)]);
         open(&mut state);
         assert_eq!(state.frontend.mcp_server_picker().selection(), 0);
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
 
         // When pressing TAB.
-        let _ =
-            crate::feat::picker::action::run_action(&mut state, &registry, MCP_SERVER_ID, "<tab>");
+        let _ = jinn_domain::feat::picker::action::run_action(
+            &mut state,
+            &registry,
+            MCP_SERVER_ID,
+            "<tab>",
+        );
 
         // Then the selected entry flipped and the cursor advanced.
         assert!(
@@ -550,11 +558,15 @@ mod tests {
         // Given an open picker with no configured servers.
         let mut state = state_with_servers(&[]);
         open(&mut state);
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
 
         // When pressing TAB.
-        let _ =
-            crate::feat::picker::action::run_action(&mut state, &registry, MCP_SERVER_ID, "<tab>");
+        let _ = jinn_domain::feat::picker::action::run_action(
+            &mut state,
+            &registry,
+            MCP_SERVER_ID,
+            "<tab>",
+        );
 
         // Then nothing panicked and nothing is selected.
         assert!(state.frontend.mcp_server_picker().selected_item().is_none());
@@ -743,8 +755,8 @@ mod tests {
         );
 
         // When ESC closes the picker through the dispatch path.
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let result = crate::feat::picker::action::try_close_active(&mut state, &registry);
+        let registry = crate::build_picker_registry();
+        let result = jinn_domain::feat::picker::action::try_close_active(&mut state, &registry);
 
         // Then the hook ran and the pre-open enabled set is restored.
         assert!(result.is_some());
@@ -763,7 +775,7 @@ mod tests {
     #[test]
     fn mcp_spec_declares_no_selection_change() {
         // Given the domain registry.
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
 
         // When checking the mcp-server spec's hooks.
         let spec = registry.get(MCP_SERVER_ID).expect("spec registered");
@@ -784,7 +796,7 @@ mod tests {
 
         // When rendering the status line.
         let line = {
-            let host = crate::feat::picker::host_impl::AppStateRenderHost::new(&state);
+            let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
             let ctx = StatusCtx::new(PickerId::new(MCP_SERVER_ID), &host);
             spec()
                 .status_line(&ctx)

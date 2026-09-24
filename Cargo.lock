@@ -1941,6 +1941,7 @@ dependencies = [
  "jinn-persona",
  "jinn-persona-msg",
  "jinn-picker",
+ "jinn-picker-specs",
  "jinn-preferences",
  "jinn-preferences-config",
  "jinn-provider",
@@ -2532,6 +2533,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-picker-specs"
+version = "0.118.0"
+dependencies = [
+ "humantime",
+ "jiff",
+ "jinn-core-types",
+ "jinn-domain",
+ "jinn-mcp-msg",
+ "jinn-persona-msg",
+ "jinn-picker",
+ "jinn-preferences-config",
+ "jinn-provider-selection-msg",
+ "jinn-selection-widget",
+ "jinn-session-msg",
+ "jinn-slices",
+ "jinn-testutil",
+ "jinn-theme",
+ "jinn-theme-msg",
+ "jinn-tools-msg",
+ "ratatui",
+ "rstest",
+ "serde_json",
+ "unicode-segmentation",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-preferences"
 version = "0.118.0"
 dependencies = [
@@ -2541,6 +2569,7 @@ dependencies = [
  "jinn-cwd-msg",
  "jinn-domain",
  "jinn-persona-msg",
+ "jinn-picker-specs",
  "jinn-preferences-config",
  "jinn-slices",
  "jinn-theme",
@@ -2635,6 +2664,7 @@ dependencies = [
  "jinn-core-types",
  "jinn-domain",
  "jinn-picker",
+ "jinn-picker-specs",
  "jinn-provider",
  "jinn-provider-config",
  "jinn-provider-selection-msg",
@@ -2833,6 +2863,7 @@ dependencies = [
  "jinn-domain",
  "jinn-mcp-msg",
  "jinn-picker",
+ "jinn-picker-specs",
  "jinn-preferences-config",
  "jinn-session-history-msg",
  "jinn-sidebar-msg",
@@ -3136,6 +3167,7 @@ dependencies = [
  "jinn-mcp-msg",
  "jinn-persona-msg",
  "jinn-picker",
+ "jinn-picker-specs",
  "jinn-provider-selection-msg",
  "jinn-selection-widget",
  "jinn-session-history-msg",

@@ -12,7 +12,7 @@ use crate::feat::ui::picker_states::PickerExt;
 
 /// The domain's registry (spec-backed kinds measure from their specs).
 fn registry() -> jinn_picker::PickerRegistry {
-    crate::feat::picker::registry::build_picker_registry()
+    crate::feat::picker::test_registry::test_registry()
 }
 
 /// Frame area used by the standard popup-fit scenarios below. Large enough

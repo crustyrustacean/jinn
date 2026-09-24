@@ -385,7 +385,7 @@ impl IntentHandler {
                     feat::chat_input::intent::handle_paste_text(text, state)
                 }
                 crate::common::app_state::FocusScope::Picker { .. } => {
-                    feat::picker::intent::handle_picker_paste(state, text)
+                    crate::feat::picker::intent::handle_picker_paste(state, text)
                 }
                 crate::common::app_state::FocusScope::ArgInput => {
                     feat::session_lifecycle::intent::handle_arg_input_paste(state, text)
@@ -415,16 +415,16 @@ impl IntentHandler {
             KernelIntent::NoOp => IntentResult::empty(),
 
             KernelIntent::OpenPicker { kind } => {
-                feat::picker::intent::handle_open_picker(state, *kind, pickers)
+                crate::feat::picker::intent::handle_open_picker(state, *kind, pickers)
             }
             KernelIntent::PickerAction { picker, action } => {
-                feat::picker::action::run_action(state, pickers, picker, action)
+                crate::feat::picker::action::run_action(state, pickers, picker, action)
             }
-            KernelIntent::PickerInsertChar { ch } => feat::picker::intent::handle_insert_char(state, *ch),
-            KernelIntent::PickerBackspace => feat::picker::intent::handle_backspace(state),
+            KernelIntent::PickerInsertChar { ch } => crate::feat::picker::intent::handle_insert_char(state, *ch),
+            KernelIntent::PickerBackspace => crate::feat::picker::intent::handle_backspace(state),
             KernelIntent::PickerConfirm => {
                 let (result, maybe_intent) =
-                    feat::picker::intent::handle_picker_confirm(state, pickers);
+                    crate::feat::picker::intent::handle_picker_confirm(state, pickers);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state, slices, routes, pickers);
                     result.merge(redispatch)
@@ -441,19 +441,19 @@ impl IntentHandler {
                     result
                 }
             }
-            KernelIntent::PickerMoveUp => feat::picker::intent::handle_move_up(state, pickers),
-            KernelIntent::PickerMoveDown => feat::picker::intent::handle_move_down(state, pickers),
-            KernelIntent::PickerPageUp => feat::picker::intent::handle_page_up(state, pickers),
-            KernelIntent::PickerPageDown => feat::picker::intent::handle_page_down(state, pickers),
-            KernelIntent::PickerMoveCursorLeft => feat::picker::intent::handle_move_cursor_left(state),
-            KernelIntent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
+            KernelIntent::PickerMoveUp => crate::feat::picker::intent::handle_move_up(state, pickers),
+            KernelIntent::PickerMoveDown => crate::feat::picker::intent::handle_move_down(state, pickers),
+            KernelIntent::PickerPageUp => crate::feat::picker::intent::handle_page_up(state, pickers),
+            KernelIntent::PickerPageDown => crate::feat::picker::intent::handle_page_down(state, pickers),
+            KernelIntent::PickerMoveCursorLeft => crate::feat::picker::intent::handle_move_cursor_left(state),
+            KernelIntent::PickerMoveCursorRight => crate::feat::picker::intent::handle_move_cursor_right(state),
             KernelIntent::SessionNew => feat::session::intent::handle_session_new(state),
             KernelIntent::RefreshModels => feat::session::intent::handle_refresh_models(state),
             KernelIntent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)
             }
 
-            KernelIntent::SessionNewWithLifecycle => feat::picker::intent::handle_open_picker(
+            KernelIntent::SessionNewWithLifecycle => crate::feat::picker::intent::handle_open_picker(
                 state,
                 PickerKind::SessionLifecycle,
                 pickers,

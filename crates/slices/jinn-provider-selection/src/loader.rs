@@ -15,7 +15,8 @@ use jinn_selection_widget::SelectionState;
 
 use crate::entries::load_provider_entries;
 use jinn_domain::Services;
-use jinn_domain::feat::picker::registry::{PROVIDER_ID, build_picker_registry};
+use jinn_picker::PROVIDER_ID;
+use jinn_picker_specs::build_picker_registry;
 
 /// Loads provider entries into the picker state, ready for display.
 ///
@@ -124,5 +125,5 @@ fn promote_active_to_top<T, F>(entries: &mut [T], is_active: F, filter: &str)
 where
     F: Fn(&T) -> bool,
 {
-    jinn_domain::feat::picker::style::promote_active_to_top(entries, is_active, filter);
+    jinn_picker::picker_style::promote_active_to_top(entries, is_active, filter);
 }

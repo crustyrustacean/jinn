@@ -19,20 +19,20 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
-use crate::RescanPromptTemplates;
-use crate::common::app_state::AppState;
-use crate::feat::context::protocol::command::ScanContextFiles;
-use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
-use crate::feat::skills::ScanSkills;
-use crate::feat::skills::skill_entry::{body_hash_key, render_skill_preview, skill_row};
-use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::ChatEntry;
-use crate::protocol::ChatEntryId;
-use crate::protocol::PinPosition;
-use crate::protocol::ToolResultStatus;
+use jinn_domain::RescanPromptTemplates;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::feat::context::protocol::command::ScanContextFiles;
+use jinn_domain::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
+use jinn_domain::feat::skills::ScanSkills;
+use jinn_domain::feat::skills::skill_entry::{body_hash_key, render_skill_preview, skill_row};
+use jinn_domain::feat::ui::picker_states::PickerExt;
+use jinn_domain::protocol::ChatEntry;
+use jinn_domain::protocol::ChatEntryId;
+use jinn_domain::protocol::PinPosition;
+use jinn_domain::protocol::ToolResultStatus;
 
 /// The kernel entry this picker's items wrap in storage.
-pub use crate::feat::skills::SkillEntry;
+pub use jinn_domain::feat::skills::SkillEntry;
 
 /// Rows visible in the preview pane per page (the legacy constant).
 const PREVIEW_PAGE_SIZE: usize = 10;
@@ -40,7 +40,7 @@ const PREVIEW_PAGE_SIZE: usize = 10;
 /// Builds the skill picker's spec.
 #[must_use]
 pub fn skill_spec() -> PickerSpec<SkillEntry> {
-    PickerSpec::new(PickerId::new(crate::feat::picker::registry::SKILL_ID))
+    PickerSpec::new(PickerId::new(jinn_picker::SKILL_ID))
         .title(" Skills ")
         .widget(PickerWidget::Preview(PreviewSpec {
             reset_scroll_on_selection_change: true,
@@ -133,7 +133,7 @@ fn skill_toggle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
         .frontend
         .skill_picker_mut()
         .with_selected_mut(|item| item.entry_mut().enabled = !item.entry().enabled);
-    let viewport = crate::feat::picker::geometry::active_viewport(state);
+    let viewport = jinn_domain::feat::picker::geometry::active_viewport(state);
     state.frontend.skill_picker_mut().move_down(viewport);
     PickerOutcome::empty()
 }
@@ -322,44 +322,12 @@ fn load_skill_picker_entries(state: &mut AppState) {
     let disabled = state.active_session().disabled_skills().clone();
     let theme = state.frontend.theme.clone();
     let discovered = state.active_session().discovered_skills().to_vec();
-    crate::feat::skills::reload::reload_skill_picker_entries(
+    jinn_domain::feat::skills::reload::reload_skill_picker_entries(
         &mut state.frontend,
         &discovered,
         &disabled,
         &theme,
     );
-}
-
-/// A second spec under the same skill id exercising bind dispatch in
-/// integration tests: `<tab>` pushes a transient entry; `<esc>` closes.
-#[cfg(test)]
-impl SkillEntry {
-    #[must_use]
-    /// # Panics
-    ///
-    /// Panics if the domain host lends a non-`AppState` handle — a
-    /// wiring bug, not a runtime condition.
-    #[expect(
-        clippy::expect_used,
-        reason = "domain host lends AppState; a wrong downcast is a wiring bug"
-    )]
-    pub fn spec_for_tests() -> PickerSpec<Self> {
-        PickerSpec::new(PickerId::new(crate::feat::picker::registry::SKILL_ID))
-            .title(" Skills (test) ")
-            .bind("<tab>", "test", |ctx: &mut ActionCtx<'_>| {
-                let state = ctx
-                    .state_any()
-                    .downcast_mut::<crate::common::app_state::AppState>()
-                    .expect("domain host lends AppState");
-                state
-                    .active_session_mut()
-                    .push_entry(crate::protocol::ChatEntry::transient("test bind ran"));
-                PickerOutcome::empty()
-            })
-            .bind("<esc>", "close", |_ctx: &mut ActionCtx<'_>| {
-                PickerOutcome::empty().close()
-            })
-    }
 }
 
 #[cfg(test)]
@@ -371,21 +339,21 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::common::app_state::FocusScope;
-    use crate::feat::picker::host_impl::AppStatePickerHost;
-    use crate::feat::picker::registry::SKILL_ID;
-    use crate::feat::session::ChatSessionState;
-    use crate::feat::skills::SkillSource;
-    use crate::protocol::ChatEntryKind;
-    use crate::protocol::PickerKind;
+    use jinn_domain::common::app_state::FocusScope;
+    use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
+    use jinn_domain::feat::session::ChatSessionState;
+    use jinn_domain::feat::skills::SkillSource;
+    use jinn_domain::protocol::ChatEntryKind;
+    use jinn_domain::protocol::PickerKind;
     use jinn_picker::PickerEntry;
     use jinn_picker::PreviewCtx;
     use jinn_picker::RowCtx;
+    use jinn_picker::SKILL_ID;
     use jinn_selection_widget::SelectionState;
 
     /// A discovered skill with a small markdown body.
-    fn skill(name: &str, description: &str, body: &str) -> crate::feat::skills::Skill {
-        crate::feat::skills::Skill {
+    fn skill(name: &str, description: &str, body: &str) -> jinn_domain::feat::skills::Skill {
+        jinn_domain::feat::skills::Skill {
             name: name.to_owned(),
             description: description.to_owned(),
             body: body.to_owned(),
@@ -425,7 +393,7 @@ mod tests {
 
     /// The spec under test, from a fresh registry.
     fn spec() -> jinn_picker::SpecHandle {
-        crate::feat::picker::registry::build_picker_registry()
+        crate::build_picker_registry()
             .get(SKILL_ID)
             .expect("skill spec is registered")
     }
@@ -436,7 +404,7 @@ mod tests {
     #[test]
     fn row_renders_marker_name_and_selected_background() {
         // Given an enabled and a disabled entry.
-        let theme = crate::feat::theme::default_theme();
+        let theme = jinn_theme::default_theme();
         let mut enabled = SkillEntry {
             name: String::from("a"),
             description: String::from("desc"),
@@ -468,7 +436,7 @@ mod tests {
         let selected = skill_row(&enabled, &RowCtx::flat(true, &[]));
         assert_eq!(
             selected.spans[1].style.bg,
-            Some(crate::feat::theme::default_theme().picker_selected_bg),
+            Some(jinn_theme::default_theme().picker_selected_bg),
         );
     }
 
@@ -482,7 +450,7 @@ mod tests {
             body: String::new(),
             enabled: true,
             source: SkillSource::Global,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
 
         // When rendering with a match range covering "b c" (bytes 2..5,
@@ -508,7 +476,7 @@ mod tests {
             source: SkillSource::Project {
                 dir: std::path::PathBuf::from("/tmp/proj"),
             },
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
 
         // When rendering its row.
@@ -529,7 +497,7 @@ mod tests {
             body: String::from("# Hello World"),
             enabled: true,
             source: SkillSource::Global,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
 
         // When rendering the preview.
@@ -554,7 +522,7 @@ mod tests {
             body: String::new(),
             enabled: true,
             source: SkillSource::Global,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
 
         // When rendering the preview.
@@ -578,8 +546,8 @@ mod tests {
         let _ = run(&mut state, skill_toggle);
 
         // When reading the status line.
-        let _registry = crate::feat::picker::registry::build_picker_registry();
-        let handle = crate::feat::picker::host_impl::AppStateRenderHost::new(&state);
+        let _registry = crate::build_picker_registry();
+        let handle = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
         let ctx = StatusCtx::new(PickerId::new(SKILL_ID), &handle);
         let line = spec()
             .status_line(&ctx)
@@ -848,7 +816,7 @@ mod tests {
         // and "web-coder" disabled.
         let mut state = state_with_skills();
         {
-            let registry = crate::feat::picker::registry::build_picker_registry();
+            let registry = crate::build_picker_registry();
             let items = registry
                 .make_items::<SkillEntry>(
                     SKILL_ID,
@@ -858,7 +826,7 @@ mod tests {
                         body: String::new(),
                         enabled: true,
                         source: SkillSource::Global,
-                        theme: crate::feat::theme::default_theme(),
+                        theme: jinn_theme::default_theme(),
                     }],
                 )
                 .expect("skill spec registered");
@@ -933,15 +901,15 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn escape_through_the_intent_handler_closes_the_skill_picker() {
-        use crate::common::slices::Slices;
-        use crate::common::slices::key_routes::KeyRoutes;
-        use crate::feat::intent::handler::IntentHandler;
-        use crate::protocol::KernelIntent;
+        use jinn_domain::common::slices::Slices;
+        use jinn_domain::common::slices::key_routes::KeyRoutes;
+        use jinn_domain::feat::intent::handler::IntentHandler;
+        use jinn_domain::protocol::KernelIntent;
 
         // Given an open skill picker (real registry, real handler) with a
         // toggled disable staged on top of the snapshot.
         let mut state = state_with_skills();
-        let pickers = crate::feat::picker::registry::build_picker_registry();
+        let pickers = crate::build_picker_registry();
         let _ = run(&mut state, open_skill);
         let _ = run(&mut state, skill_toggle);
         state.frontend.scope_push(FocusScope::Picker {
@@ -1003,11 +971,11 @@ mod render_cache_tests {
         clippy::uninlined_format_args,
         reason = "test code"
     )]
-    use crate::common::app_state::{AppState, FocusScope};
-    use crate::common::render_ctx::RenderCtx;
-    use crate::feat::skills::reload::reload_skill_picker_entries;
-    use crate::feat::ui::picker_states::PickerExt;
-    use crate::protocol::PickerKind;
+    use jinn_domain::common::app_state::{AppState, FocusScope};
+    use jinn_domain::common::render_ctx::RenderCtx;
+    use jinn_domain::feat::skills::reload::reload_skill_picker_entries;
+    use jinn_domain::feat::ui::picker_states::PickerExt;
+    use jinn_domain::protocol::PickerKind;
     use ratatui::Frame;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -1016,9 +984,8 @@ mod render_cache_tests {
     /// Renders the skill picker through its registered spec (the same path
     /// the tui render pass takes for migrated kinds).
     fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-        let host = crate::feat::picker::host_impl::AppStateRenderHost::new(ctx.state);
-        let id = crate::feat::picker::registry::spec_id_for_kind(&PickerKind::Skill)
-            .expect("skill is spec-mapped");
+        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(ctx.state);
+        let id = jinn_picker::spec_id_for_kind(&PickerKind::Skill).expect("skill is spec-mapped");
         let spec = ctx
             .pickers
             .get(id)
@@ -1038,13 +1005,13 @@ mod render_cache_tests {
         // Given a picker holding two same-named skills with different bodies
         // (as two sessions' shadowing would produce).
         let mut state = AppState::default_with_scope_focus();
-        let skill = |body: &str| crate::feat::skills::Skill {
+        let skill = |body: &str| jinn_domain::feat::skills::Skill {
             name: "shared".to_owned(),
             description: "shadowed".to_owned(),
             body: body.to_owned(),
             file_path: std::path::PathBuf::from("/tmp/shared/SKILL.md"),
             base_dir: std::path::PathBuf::from("/tmp/shared"),
-            source: crate::feat::skills::SkillSource::Global,
+            source: jinn_domain::feat::skills::SkillSource::Global,
         };
         state
             .active_session_mut()
@@ -1066,9 +1033,9 @@ mod render_cache_tests {
             terminal
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
-                    let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
                     let ctx = RenderCtx::new(state, &slices, &overlay_views)
-                        .with_pickers(&crate::feat::picker::registry::build_picker_registry());
+                        .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
                 .expect("draw");
@@ -1099,13 +1066,13 @@ mod render_cache_tests {
         let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
-            .set_discovered_skills(vec![crate::feat::skills::Skill {
+            .set_discovered_skills(vec![jinn_domain::feat::skills::Skill {
                 name: "web-coder".to_owned(),
                 description: "Web coder".to_owned(),
                 body: "## Body text that renders".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/web-coder"),
-                source: crate::feat::skills::SkillSource::Global,
+                source: jinn_domain::feat::skills::SkillSource::Global,
             }]);
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Skill,
@@ -1127,9 +1094,9 @@ mod render_cache_tests {
             terminal
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
-                    let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
                     let ctx = RenderCtx::new(&state, &slices, &overlay_views)
-                        .with_pickers(&crate::feat::picker::registry::build_picker_registry());
+                        .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
                 .expect("draw");
@@ -1151,21 +1118,21 @@ mod render_cache_tests {
         // Given a picker with two skills, selection on the first.
         let mut state = AppState::default_with_scope_focus();
         state.active_session_mut().set_discovered_skills(vec![
-            crate::feat::skills::Skill {
+            jinn_domain::feat::skills::Skill {
                 name: "web-coder".to_owned(),
                 description: "Web coder".to_owned(),
                 body: "## Web body".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/web-coder"),
-                source: crate::feat::skills::SkillSource::Global,
+                source: jinn_domain::feat::skills::SkillSource::Global,
             },
-            crate::feat::skills::Skill {
+            jinn_domain::feat::skills::Skill {
                 name: "rust".to_owned(),
                 description: "Rust".to_owned(),
                 body: "## Rust body".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/rust/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/rust"),
-                source: crate::feat::skills::SkillSource::Global,
+                source: jinn_domain::feat::skills::SkillSource::Global,
             },
         ]);
         state.frontend.scope_push(FocusScope::Picker {
@@ -1185,9 +1152,9 @@ mod render_cache_tests {
             terminal
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
-                    let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
                     let ctx = RenderCtx::new(state, &slices, &overlay_views)
-                        .with_pickers(&crate::feat::picker::registry::build_picker_registry());
+                        .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
                 .expect("draw");
@@ -1226,13 +1193,13 @@ mod render_cache_tests {
         let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
-            .set_discovered_skills(vec![crate::feat::skills::Skill {
+            .set_discovered_skills(vec![jinn_domain::feat::skills::Skill {
                 name: "web-coder".to_owned(),
                 description: "Web coder".to_owned(),
                 body: "## Body text".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/web-coder"),
-                source: crate::feat::skills::SkillSource::Global,
+                source: jinn_domain::feat::skills::SkillSource::Global,
             }]);
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Skill,
@@ -1251,9 +1218,9 @@ mod render_cache_tests {
             terminal
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
-                    let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
                     let ctx = RenderCtx::new(state, &slices, &overlay_views)
-                        .with_pickers(&crate::feat::picker::registry::build_picker_registry());
+                        .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
                 .expect("draw");
@@ -1282,19 +1249,19 @@ mod render_cache_tests {
     #[rstest::rstest]
     #[rstest::rstest]
     fn render_skill_picker_footer_advertises_tab_and_ctrl_l() {
-        use crate::feat::skills::reload::reload_skill_picker_entries;
+        use jinn_domain::feat::skills::reload::reload_skill_picker_entries;
 
         // Given an open skill picker with one entry.
         let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
-            .set_discovered_skills(vec![crate::feat::skills::Skill {
+            .set_discovered_skills(vec![jinn_domain::feat::skills::Skill {
                 name: "web-coder".to_owned(),
                 description: "Web coder".to_owned(),
                 body: "## Body text".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/web-coder"),
-                source: crate::feat::skills::SkillSource::Global,
+                source: jinn_domain::feat::skills::SkillSource::Global,
             }]);
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Skill,
@@ -1312,9 +1279,9 @@ mod render_cache_tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views)
-                    .with_pickers(&crate::feat::picker::registry::build_picker_registry());
+                    .with_pickers(&crate::build_picker_registry());
                 let area = Rect::new(0, 0, 100, 30);
                 render_skill_picker(frame, area, &ctx);
             })

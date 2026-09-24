@@ -12,19 +12,19 @@ use jinn_picker::PickerHost;
 use jinn_picker::PickerId;
 
 use crate::common::app_state::AppState;
-use crate::feat::picker::registry::ENDPOINT_ID;
-use crate::feat::picker::registry::MCP_SERVER_ID;
-use crate::feat::picker::registry::PERSONA_ID;
-use crate::feat::picker::registry::PROJECT_ID;
-use crate::feat::picker::registry::PROVIDER_ID;
-use crate::feat::picker::registry::REASONING_EFFORT_ID;
-use crate::feat::picker::registry::SESSION_ID;
-use crate::feat::picker::registry::SESSION_LIFECYCLE_ID;
-use crate::feat::picker::registry::SKILL_ID;
-use crate::feat::picker::registry::TASK_LIST_ID;
-use crate::feat::picker::registry::THEME_ID;
-use crate::feat::picker::registry::TOOL_ID;
 use crate::feat::ui::picker_states::PickerExt;
+use jinn_picker::ENDPOINT_ID;
+use jinn_picker::MCP_SERVER_ID;
+use jinn_picker::PERSONA_ID;
+use jinn_picker::PROJECT_ID;
+use jinn_picker::PROVIDER_ID;
+use jinn_picker::REASONING_EFFORT_ID;
+use jinn_picker::SESSION_ID;
+use jinn_picker::SESSION_LIFECYCLE_ID;
+use jinn_picker::SKILL_ID;
+use jinn_picker::TASK_LIST_ID;
+use jinn_picker::THEME_ID;
+use jinn_picker::TOOL_ID;
 
 /// The host lens over the kernel state. Constructed transiently at
 /// dispatch/render with `&mut AppState` — it never outlives the guard.
@@ -249,14 +249,14 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::feat::picker::registry::PERSONA_ID;
+    use jinn_picker::PERSONA_ID;
 
     fn test_persona(name: &str) -> crate::feat::persona::PersonaEntry {
         crate::feat::persona::PersonaEntry {
             name: name.to_owned(),
             description: String::new(),
             is_active: false,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         }
     }
 
@@ -265,15 +265,12 @@ mod tests {
     fn selection_state_lends_typed_storage_by_id() {
         // Given a host state whose persona picker holds items.
         let mut state = AppState::default_with_scope_focus();
-        let items = {
-            let registry = crate::feat::picker::registry::build_picker_registry();
-            registry
-                .make_items(
-                    crate::feat::picker::registry::PERSONA_ID,
-                    vec![test_persona("a")],
-                )
-                .expect("persona spec is registered")
-        };
+        let items = jinn_picker::make_items_with_hooks(
+            vec![test_persona("a")],
+            jinn_picker::PickerItemHooks::new()
+                .row(crate::feat::persona::persona_row)
+                .search(|entry| entry.name.clone()),
+        );
         state.frontend.persona_picker_mut().set_items(items);
 
         // When lending the selection state for the persona id.

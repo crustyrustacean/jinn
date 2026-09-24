@@ -19,16 +19,16 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
-use crate::common::app_state::AppState;
-use crate::feat::theme::ThemeEntry;
-use crate::feat::ui::picker_states::PickerExt;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_preferences_config::protocol::app_state_command::AppStateUpdate;
 use jinn_preferences_config::protocol::app_state_command::UpdateAppState;
+use jinn_theme::ThemeEntry;
 
 /// Builds the theme picker's spec.
 #[must_use]
 pub fn theme_spec() -> PickerSpec<ThemeEntry> {
-    PickerSpec::new(PickerId::new(crate::feat::picker::registry::THEME_ID))
+    PickerSpec::new(PickerId::new(jinn_picker::THEME_ID))
         .title(" Themes ")
         .row(theme_row)
         .search(|entry| entry.name.clone())
@@ -173,7 +173,7 @@ fn load_theme_picker_entries(state: &mut AppState) {
         let mut entries = Vec::with_capacity(scanned.len() + 1);
         entries.push(ThemeEntry {
             name: "default".to_owned(),
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         });
         for named in scanned {
             if named.name == "default" {
@@ -193,9 +193,9 @@ fn load_theme_picker_entries(state: &mut AppState) {
     };
 
     let wrapped = {
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         registry
-            .make_items(crate::feat::picker::registry::THEME_ID, entries)
+            .make_items(jinn_picker::THEME_ID, entries)
             .unwrap_or_default()
     };
     state.frontend.theme_picker_mut().set_items(wrapped);
@@ -212,12 +212,12 @@ mod tests {
     use super::*;
     use jinn_selection_widget::PreviewCache as _;
 
-    fn state_with_themes(contributed: &[(&str, crate::feat::theme::Theme)]) -> AppState {
+    fn state_with_themes(contributed: &[(&str, jinn_theme::Theme)]) -> AppState {
         let state = AppState::default_with_scope_focus();
         // Seed the theme slice's entries cell directly, in the canonical
         // order the activation scan produces: "default" first, the rest
         // case-insensitively sorted.
-        let mut named: Vec<(String, crate::feat::theme::Theme)> = contributed
+        let mut named: Vec<(String, jinn_theme::Theme)> = contributed
             .iter()
             .map(|(name, theme)| ((*name).to_owned(), theme.clone()))
             .collect();
@@ -225,7 +225,7 @@ mod tests {
         state.frontend.update_theme_entries(|cell| {
             cell.entries = std::iter::once(jinn_theme_msg::NamedTheme {
                 name: "default".to_owned(),
-                theme: crate::feat::theme::default_theme(),
+                theme: jinn_theme::default_theme(),
             })
             .chain(
                 named
@@ -238,12 +238,12 @@ mod tests {
     }
 
     fn open(state: &mut AppState) {
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let picker_id = PickerId::new(crate::feat::picker::registry::THEME_ID);
-        let mut host = crate::feat::picker::host_impl::AppStatePickerHost::new(state);
+        let registry = crate::build_picker_registry();
+        let picker_id = PickerId::new(jinn_picker::THEME_ID);
+        let mut host = jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(state);
         let mut ctx = ActionCtx::new(picker_id, &mut host);
         let spec = registry
-            .get(crate::feat::picker::registry::THEME_ID)
+            .get(jinn_picker::THEME_ID)
             .expect("theme spec registered");
         spec.run_open(&mut ctx);
     }
@@ -254,11 +254,11 @@ mod tests {
         // Given a slice cell with themes seeded out of sorted order and a
         // non-default active theme.
         let mut state = state_with_themes(&[
-            ("zeta", crate::feat::theme::default_theme()),
-            ("Beta", crate::feat::theme::default_theme()),
-            ("alpha", crate::feat::theme::default_theme()),
+            ("zeta", jinn_theme::default_theme()),
+            ("Beta", jinn_theme::default_theme()),
+            ("alpha", jinn_theme::default_theme()),
         ]);
-        state.frontend.theme = crate::feat::theme::default_theme();
+        state.frontend.theme = jinn_theme::default_theme();
 
         // When opening the theme picker.
         open(&mut state);
@@ -284,7 +284,7 @@ mod tests {
     fn open_with_contributed_default_keeps_reserved_slot_but_borrows_its_look() {
         // Given a scanned theme named "default" (distinct from the
         // built-in default theme).
-        let contributed = crate::feat::theme::default_theme();
+        let contributed = jinn_theme::default_theme();
         let mut state = state_with_themes(&[("default", contributed.clone())]);
 
         // When opening the theme picker.
@@ -321,7 +321,7 @@ mod tests {
     fn selection_change_previews_the_highlighted_theme_and_invalidates_caches() {
         // Given an open picker whose second entry is a distinct theme, with
         // a populated theme-sensitive cache.
-        let mut other = crate::feat::theme::default_theme();
+        let mut other = jinn_theme::default_theme();
         other.focus_accent = ratatui::style::Color::Red;
         let mut state = state_with_themes(&[("other", other)]);
         open(&mut state);
@@ -331,16 +331,17 @@ mod tests {
             .skill_preview_cache
             .insert("12345".to_owned(), 80, Vec::new());
         assert_eq!(state.frontend.caches.skill_preview_cache.len(), 1);
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let picker_id = PickerId::new(crate::feat::picker::registry::THEME_ID);
+        let registry = crate::build_picker_registry();
+        let picker_id = PickerId::new(jinn_picker::THEME_ID);
         let spec = registry
-            .get(crate::feat::picker::registry::THEME_ID)
+            .get(jinn_picker::THEME_ID)
             .expect("theme spec registered");
 
         // When the selection moves to the second entry.
         state.frontend.theme_picker_mut().move_down(10);
         {
-            let mut host = crate::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
+            let mut host =
+                jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
             let mut ctx = ActionCtx::new(picker_id, &mut host);
             spec.run_selection_change(1, &mut ctx);
         }
@@ -362,17 +363,18 @@ mod tests {
     #[test]
     fn confirm_persists_set_theme_and_closes() {
         // Given an open picker with entries.
-        let mut state = state_with_themes(&[("gruvbox", crate::feat::theme::default_theme())]);
+        let mut state = state_with_themes(&[("gruvbox", jinn_theme::default_theme())]);
         open(&mut state);
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let picker_id = PickerId::new(crate::feat::picker::registry::THEME_ID);
+        let registry = crate::build_picker_registry();
+        let picker_id = PickerId::new(jinn_picker::THEME_ID);
 
         // When confirming the selected theme.
         let outcome = {
-            let mut host = crate::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
+            let mut host =
+                jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
             let mut ctx = ActionCtx::new(picker_id, &mut host);
             let spec = registry
-                .get(crate::feat::picker::registry::THEME_ID)
+                .get(jinn_picker::THEME_ID)
                 .expect("theme spec registered");
             spec.run_confirm(&mut ctx)
         };
@@ -399,15 +401,16 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         open(&mut state);
         state.frontend.theme_picker_mut().set_items(Vec::new());
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let picker_id = PickerId::new(crate::feat::picker::registry::THEME_ID);
+        let registry = crate::build_picker_registry();
+        let picker_id = PickerId::new(jinn_picker::THEME_ID);
 
         // When confirming.
         let outcome = {
-            let mut host = crate::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
+            let mut host =
+                jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
             let mut ctx = ActionCtx::new(picker_id, &mut host);
             let spec = registry
-                .get(crate::feat::picker::registry::THEME_ID)
+                .get(jinn_picker::THEME_ID)
                 .expect("theme spec registered");
             spec.run_confirm(&mut ctx)
         };
@@ -421,21 +424,22 @@ mod tests {
     #[test]
     fn close_restores_the_snapshotted_theme_and_invalidates_caches() {
         // Given an open picker that previewed a different theme.
-        let original = crate::feat::theme::default_theme();
+        let original = jinn_theme::default_theme();
         let mut other = original.clone();
         other.focus_accent = ratatui::style::Color::Red;
         let mut state = state_with_themes(&[("other", other.clone())]);
         open(&mut state);
         state.frontend.theme = other;
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let picker_id = PickerId::new(crate::feat::picker::registry::THEME_ID);
+        let registry = crate::build_picker_registry();
+        let picker_id = PickerId::new(jinn_picker::THEME_ID);
 
         // When closing via the spec's close hook.
         let outcome = {
-            let mut host = crate::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
+            let mut host =
+                jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
             let mut ctx = ActionCtx::new(picker_id, &mut host);
             let spec = registry
-                .get(crate::feat::picker::registry::THEME_ID)
+                .get(jinn_picker::THEME_ID)
                 .expect("theme spec registered");
             spec.run_close(&mut ctx)
         };
@@ -453,19 +457,16 @@ mod tests {
     fn status_renders_the_persisted_theme_name() {
         // Given a state whose persisted theme is "gruvbox-dark".
         let state = AppState::default_with_scope_focus();
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         let spec = registry
-            .get(crate::feat::picker::registry::THEME_ID)
+            .get(jinn_picker::THEME_ID)
             .expect("theme spec registered");
 
         // When rendering the status line (with no persisted theme, the
         // built-in default is in force).
         let rendered = {
-            let host = crate::feat::picker::host_impl::AppStateRenderHost::new(&state);
-            let ctx = jinn_picker::StatusCtx::new(
-                PickerId::new(crate::feat::picker::registry::THEME_ID),
-                &host,
-            );
+            let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
+            let ctx = jinn_picker::StatusCtx::new(PickerId::new(jinn_picker::THEME_ID), &host);
             spec.status_line(&ctx)
         };
 

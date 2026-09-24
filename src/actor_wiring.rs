@@ -151,7 +151,7 @@ impl ActorSystemBuilder {
             key_routes: jinn_domain::common::slices::key_routes::KeyRoutes::new(),
             viewport: jinn_domain::common::slices::view::Viewport::new(),
             overlay_views: jinn_domain::common::overlay_views::OverlayViews::new(),
-            picker_registry: jinn_domain::feat::picker::registry::build_picker_registry(),
+            picker_registry: jinn_picker_specs::build_picker_registry(),
         };
 
         let actor_deps = ActorDeps {

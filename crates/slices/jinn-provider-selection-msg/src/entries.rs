@@ -2,7 +2,7 @@
 //!
 //! Re-homed from the kernel `feat/provider/picker_entry.rs` in the
 //! provider-selection window; the `selected_style` helper was copied from
-//! the kernel `feat/picker/style.rs` (kept kernel-side for the other
+//! the kernel-free `jinn_picker::picker_style` (kept there for the other
 //! specs) so this crate stays kernel-free.
 
 use std::ops::Range;
@@ -15,7 +15,7 @@ use ratatui::text::{Line, Span};
 
 /// Returns the style for selected items (primary text on selected background).
 ///
-/// Copied from the kernel `feat/picker/style.rs`; that copy remains for the
+/// Copied from `jinn_picker::picker_style`; that copy remains for the
 /// kernel-resident picker specs.
 fn selected_style(is_selected: bool, theme: &Theme) -> Style {
     if is_selected {

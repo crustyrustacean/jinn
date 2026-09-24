@@ -182,14 +182,13 @@ mod tests {
             name: "high".to_owned(),
             description: "High effort".to_owned(),
             is_active: false,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
-        let wrapped = crate::feat::picker::registry::build_picker_registry()
-            .make_items(
-                crate::feat::picker::registry::REASONING_EFFORT_ID,
-                vec![entry],
-            )
-            .unwrap_or_default();
+        let wrapped = jinn_picker::make_items_with_hooks(
+            vec![entry],
+            jinn_picker::PickerItemHooks::new()
+                .search(|entry: &ReasoningEffortEntry| entry.name.clone()),
+        );
         state
             .frontend
             .reasoning_effort_picker_mut()

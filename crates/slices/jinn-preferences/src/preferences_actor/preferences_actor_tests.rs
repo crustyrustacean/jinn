@@ -121,9 +121,9 @@ async fn persist_writes_frontend_preferences() {
 #[tokio::test]
 async fn persist_reloads_open_project_picker_items() {
     use jinn_domain::common::focus::FocusScope;
-    use jinn_domain::feat::picker::PickerKind;
-    use jinn_domain::feat::picker::project_spec::load_project_entries as load_project_picker_entries;
     use jinn_domain::feat::ui::picker_states::PickerExt;
+    use jinn_picker_specs::project_spec::load_project_entries as load_project_picker_entries;
+    use jinn_slices::picker_kind::PickerKind;
 
     // Given a state with the project picker open and zero entries.
     let (mut actor, state) = create_actor().await;

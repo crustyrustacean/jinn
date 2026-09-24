@@ -20,7 +20,7 @@ use ratatui::style::Color;
 /// through specs the registry holds.
 async fn render_test_app() -> crate::TuiApp {
     let services = jinn_domain::Services {
-        picker_registry: jinn_domain::feat::picker::registry::build_picker_registry(),
+        picker_registry: jinn_picker_specs::build_picker_registry(),
         ..jinn_domain::Services::new_fake().await
     };
     crate::TuiApp::test_builder()
@@ -340,11 +340,8 @@ async fn mcp_inspector_renders_server_list_and_logs_pane() {
             default_theme(),
         );
         // Wrap the entry through the spec (storage holds PickerEntry<T>).
-        let wrapped = jinn_domain::feat::picker::registry::build_picker_registry()
-            .make_items(
-                jinn_domain::feat::picker::registry::MCP_SERVER_ID,
-                vec![entry],
-            )
+        let wrapped = jinn_picker_specs::build_picker_registry()
+            .make_items(jinn_picker::MCP_SERVER_ID, vec![entry])
             .expect("mcp-server spec registered");
         w.frontend.mcp_server_picker_mut().set_items(wrapped);
         w.frontend.scope_push(jinn_domain::FocusScope::Picker {
@@ -425,11 +422,8 @@ async fn mcp_inspector_tools_pane_renders_tool_names() {
         );
         entry.preview_mode = McpPreviewMode::Tools;
         // Wrap the entry through the spec (storage holds PickerEntry<T>).
-        let wrapped = jinn_domain::feat::picker::registry::build_picker_registry()
-            .make_items(
-                jinn_domain::feat::picker::registry::MCP_SERVER_ID,
-                vec![entry],
-            )
+        let wrapped = jinn_picker_specs::build_picker_registry()
+            .make_items(jinn_picker::MCP_SERVER_ID, vec![entry])
             .expect("mcp-server spec registered");
         let mut w = app.core.state.write_test_no_cap();
         w.frontend.mcp_server_picker_mut().set_items(wrapped);
@@ -537,9 +531,9 @@ async fn model_picker_renders_telescope_layout_with_filter() {
         });
         // Load entries through the spec (raw entry matching the configured
         // ollama model).
-        let wrapped = jinn_domain::feat::picker::registry::build_picker_registry()
+        let wrapped = jinn_picker_specs::build_picker_registry()
             .make_items(
-                jinn_domain::feat::picker::registry::PROVIDER_ID,
+                jinn_picker::PROVIDER_ID,
                 vec![jinn_provider_selection_msg::ProviderPickerEntry {
                     provider_id: "ollama/llama3".to_owned(),
                     name: "ollama".to_owned(),
@@ -626,9 +620,9 @@ async fn model_picker_no_active_marker_for_active_model() {
         });
         // Wrap entries through the spec; the check column stays empty in
         // single mode (nothing selected).
-        let wrapped = jinn_domain::feat::picker::registry::build_picker_registry()
+        let wrapped = jinn_picker_specs::build_picker_registry()
             .make_items(
-                jinn_domain::feat::picker::registry::PROVIDER_ID,
+                jinn_picker::PROVIDER_ID,
                 vec![jinn_provider_selection_msg::ProviderPickerEntry {
                     provider_id: "ollama/llama3".to_owned(),
                     name: "ollama".to_owned(),
@@ -692,7 +686,7 @@ async fn render_test_app_with_provider() -> crate::TuiApp {
         default_provider: None,
     };
     let services = jinn_domain::Services {
-        picker_registry: jinn_domain::feat::picker::registry::build_picker_registry(),
+        picker_registry: jinn_picker_specs::build_picker_registry(),
         ..TestServices::builder().with_providers(config).build()
     };
     crate::TuiApp::test_builder()

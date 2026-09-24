@@ -96,6 +96,7 @@ jinn-session-init = { workspace = true }
 jinn-session-store = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-picker = { workspace = true }
+jinn-picker-specs = { workspace = true }
 jinn-provider-config = { workspace = true }
 
 clap_complete = { workspace = true }
@@ -204,6 +205,7 @@ jinn-tui = { path = "crates/jinn-tui" }
 jinn-cli = { path = "crates/jinn-cli" }
 jinn-selection-widget = { path = "crates/jinn-selection-widget" }
 jinn-picker = { path = "crates/jinn-picker" }
+jinn-picker-specs = { path = "crates/jinn-picker-specs" }
 jinn-testutil = { path = "crates/jinn-testutil" }
 
 jinn-theme = { path = "crates/jinn-theme" }

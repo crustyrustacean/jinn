@@ -1,6 +1,10 @@
 //! Session lifecycle picker entry - one row in the lifecycle selection picker.
 
 use crate::feat::theme::Theme;
+use jinn_picker::RowCtx;
+use jinn_picker::picker_style::{active_marker, dim_style, selected_style};
+use jinn_selection_widget::highlight_text_with_bg;
+use ratatui::text::{Line, Span};
 
 /// A lifecycle recipe shown in the session lifecycle picker.
 #[derive(Debug, Clone)]
@@ -43,6 +47,37 @@ impl jinn_selection_widget::TreeItem for SessionLifecycleEntry {
     }
 }
 
+/// Renders one picker row: the cursor marker, the lifecycle name, a ` *`
+/// marker when the setup command needs user-supplied args, and the
+/// description after an em-dash separator.
+pub fn lifecycle_row(entry: &SessionLifecycleEntry, ctx: &RowCtx<'_>) -> Line<'static> {
+    let base_style = selected_style(ctx.is_selected, &entry.theme);
+    let desc_style = dim_style(ctx.is_selected, &entry.theme);
+
+    let mut spans = vec![active_marker(ctx.is_selected, &entry.theme)];
+
+    if ctx.match_ranges.is_empty() {
+        spans.push(Span::styled(entry.name.clone(), base_style));
+    } else {
+        spans.extend(highlight_text_with_bg(
+            &entry.name,
+            base_style,
+            ctx.match_ranges,
+            entry.theme.picker_highlight_bg,
+        ));
+    }
+
+    if entry.has_args {
+        spans.push(Span::styled(" *".to_owned(), desc_style));
+    }
+
+    if let Some(desc) = &entry.description {
+        spans.push(Span::styled(format!(" \u{2014} {desc}"), desc_style));
+    }
+
+    Line::from(spans)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -53,7 +88,6 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::feat::picker::session_lifecycle_spec::lifecycle_row;
     use crate::feat::theme::default_theme;
     use jinn_picker::RowCtx;
 

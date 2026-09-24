@@ -432,7 +432,7 @@ mod tests {
         // Given a keymap with the domain's spec rows bound.
         let mut keymap = init();
         crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_domain::feat::picker::registry::build_picker_registry(),
+            &jinn_picker_specs::build_picker_registry(),
             &mut keymap,
         );
         let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
@@ -998,7 +998,7 @@ mod leak_check {
 
         let mut keymap = init();
         crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_domain::feat::picker::registry::build_picker_registry(),
+            &jinn_picker_specs::build_picker_registry(),
             &mut keymap,
         );
         let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTool);
@@ -1077,7 +1077,7 @@ mod leak_check {
 
         let mut keymap = init();
         crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_domain::feat::picker::registry::build_picker_registry(),
+            &jinn_picker_specs::build_picker_registry(),
             &mut keymap,
         );
         let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
@@ -1110,7 +1110,7 @@ mod leak_check {
 
         let mut keymap = init();
         crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_domain::feat::picker::registry::build_picker_registry(),
+            &jinn_picker_specs::build_picker_registry(),
             &mut keymap,
         );
         let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
@@ -1143,7 +1143,7 @@ mod leak_check {
 
         let mut keymap = init();
         crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_domain::feat::picker::registry::build_picker_registry(),
+            &jinn_picker_specs::build_picker_registry(),
             &mut keymap,
         );
         let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
@@ -1176,7 +1176,7 @@ mod leak_check {
 
         let mut keymap = init();
         crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_domain::feat::picker::registry::build_picker_registry(),
+            &jinn_picker_specs::build_picker_registry(),
             &mut keymap,
         );
         let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
@@ -1209,7 +1209,7 @@ mod leak_check {
 
         let mut keymap = init();
         crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_domain::feat::picker::registry::build_picker_registry(),
+            &jinn_picker_specs::build_picker_registry(),
             &mut keymap,
         );
         let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);

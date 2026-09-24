@@ -14,21 +14,21 @@ use jinn_picker::StatusCtx;
 use ratatui::style::Style;
 use ratatui::text::Line;
 
-use crate::common::app_state::AppState;
-use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
-use crate::feat::persona::persona_row;
-use crate::feat::ui::picker_states::PickerExt;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::feat::context::protocol::command::LoadPersonaPickerEntries;
+use jinn_domain::feat::persona::persona_row;
+use jinn_domain::feat::ui::picker_states::PickerExt;
 
-use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
+use jinn_domain::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 
 /// The kernel entry this picker's items wrap in storage.
-pub use crate::feat::persona::PersonaEntry;
+pub use jinn_domain::feat::persona::PersonaEntry;
 
 /// Builds the persona picker's spec.
 #[must_use]
 pub fn persona_spec() -> PickerSpec<PersonaEntry> {
-    PickerSpec::new(PickerId::new(crate::feat::picker::registry::PERSONA_ID))
+    PickerSpec::new(PickerId::new(jinn_picker::PERSONA_ID))
         .title(" Personas ")
         // Row rendering + filter text: identical to trunk's `PersonaEntry:
         // PickerItem` impl — without these hooks the adapter falls back to
@@ -118,12 +118,12 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::common::app_state::FocusScope;
-    use crate::feat::picker::host_impl::AppStatePickerHost;
-    use crate::feat::picker::registry::PERSONA_ID;
-    use crate::feat::session::ChatSessionState;
-    use crate::protocol::PickerKind;
+    use jinn_domain::common::app_state::FocusScope;
+    use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
+    use jinn_domain::feat::session::ChatSessionState;
+    use jinn_domain::protocol::PickerKind;
     use jinn_picker::ActionCtx;
+    use jinn_picker::PERSONA_ID;
     /// Seeds the persona cell attached to the state (persona slice).
     fn seed_personas(state: &AppState, entries: Vec<jinn_persona_msg::Persona>) {
         let cell = state
@@ -168,8 +168,8 @@ mod tests {
         state
     }
 
-    fn persona(name: &str) -> crate::feat::persona::Persona {
-        crate::feat::persona::Persona {
+    fn persona(name: &str) -> jinn_domain::feat::persona::Persona {
+        jinn_domain::feat::persona::Persona {
             name: name.to_owned(),
             description: String::new(),
             body: String::new(),
@@ -178,7 +178,7 @@ mod tests {
 
     fn wrap(state: &mut AppState, entries: Vec<PersonaEntry>) {
         let items = {
-            let registry = crate::feat::picker::registry::build_picker_registry();
+            let registry = crate::build_picker_registry();
             registry
                 .make_items(PERSONA_ID, entries)
                 .expect("persona spec is registered")
@@ -191,7 +191,7 @@ mod tests {
             name: name.to_owned(),
             description: "desc".to_owned(),
             is_active: false,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         }
     }
 
@@ -202,7 +202,7 @@ mod tests {
         let mut state = state_with_open_picker();
         wrap(&mut state, vec![test_entry("a"), test_entry("b")]);
         let spec = {
-            let registry = crate::feat::picker::registry::build_picker_registry();
+            let registry = crate::build_picker_registry();
             registry.get(PERSONA_ID).expect("persona spec registered")
         };
 
@@ -240,7 +240,7 @@ mod tests {
         state.frontend.persona_picker_mut().move_down(1);
 
         // When running the confirm hook through the registry.
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         let spec = registry.get(PERSONA_ID).expect("persona spec registered");
         let outcome = {
             let mut host = AppStatePickerHost::new(&mut state);
@@ -277,7 +277,7 @@ mod tests {
     fn on_confirm_with_no_selection_is_a_no_op() {
         // Given an open persona picker with no items.
         let mut state = state_with_open_picker();
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         let spec = registry.get(PERSONA_ID).expect("persona spec registered");
 
         // When running the confirm hook.
@@ -302,9 +302,9 @@ mod tests {
             set_active_persona(&state, "coder");
             state
         };
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         let spec = registry.get(PERSONA_ID).expect("persona spec registered");
-        let host = crate::feat::picker::host_impl::AppStateRenderHost::new(&state);
+        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
         let ctx = jinn_picker::StatusCtx::new(jinn_picker::PickerId::new(PERSONA_ID), &host);
 
         // When reading the status line.
@@ -320,9 +320,9 @@ mod tests {
     fn status_line_says_none_when_no_persona_active() {
         // Given an app state with no active persona.
         let state = AppState::default_with_scope_focus();
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         let spec = registry.get(PERSONA_ID).expect("persona spec registered");
-        let host = crate::feat::picker::host_impl::AppStateRenderHost::new(&state);
+        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
         let ctx = jinn_picker::StatusCtx::new(jinn_picker::PickerId::new(PERSONA_ID), &host);
 
         // When reading the status line.

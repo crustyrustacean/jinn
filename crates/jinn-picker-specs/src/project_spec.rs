@@ -16,18 +16,18 @@ use jinn_picker::PickerSpec;
 use jinn_picker::RowCtx;
 use ratatui::text::Line;
 
-use crate::common::app_state::AppState;
-use crate::common::focus::FocusScope;
-use crate::feat::picker::PickerKind;
-use crate::feat::project::picker_entry::ProjectEntry;
-use crate::feat::project::picker_entry::render_project_row;
-use crate::feat::ui::frontend_state::PendingSessionCreation;
-use crate::feat::ui::picker_states::PickerExt;
+use jinn_domain::PickerKind;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::common::focus::FocusScope;
+use jinn_domain::feat::project::picker_entry::ProjectEntry;
+use jinn_domain::feat::project::picker_entry::render_project_row;
+use jinn_domain::feat::ui::frontend_state::PendingSessionCreation;
+use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_preferences_config::protocol::command::PreferenceUpdate;
 use jinn_preferences_config::protocol::command::UpdatePreferences;
 
 /// The kernel entry this picker's items wrap in storage.
-pub use crate::feat::project::picker_entry::ProjectEntry as SpecEntry;
+pub use jinn_domain::feat::project::picker_entry::ProjectEntry as SpecEntry;
 
 /// Renders one project row — the same tilde-compressed line trunk drew via
 /// `ProjectEntry: PickerItem`, now routed through the spec.
@@ -55,12 +55,14 @@ where
 
 /// Loads project entries into the picker: one row per curated directory,
 /// display strings precomputed (tilde-compressed) and sorted by display.
-pub fn load_project_entries(frontend: &mut crate::feat::ui::frontend_state::FrontendState) {
+pub fn load_project_entries(frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState) {
     let theme = frontend.theme.clone();
-    let entries: Vec<ProjectEntry> =
-        crate::feat::project::picker_entry::project_entries(&frontend.preferences.projects, &theme);
-    let wrapped = crate::feat::picker::registry::build_picker_registry()
-        .make_items(crate::feat::picker::registry::PROJECT_ID, entries)
+    let entries: Vec<ProjectEntry> = jinn_domain::feat::project::picker_entry::project_entries(
+        &frontend.preferences.projects,
+        &theme,
+    );
+    let wrapped = crate::build_picker_registry()
+        .make_items(jinn_picker::PROJECT_ID, entries)
         .unwrap_or_default();
     frontend.project_picker_mut().set_items(wrapped);
 }
@@ -68,7 +70,7 @@ pub fn load_project_entries(frontend: &mut crate::feat::ui::frontend_state::Fron
 /// Builds the project picker's spec.
 #[must_use]
 pub fn project_spec() -> PickerSpec<ProjectEntry> {
-    PickerSpec::new(PickerId::new(crate::feat::picker::registry::PROJECT_ID))
+    PickerSpec::new(PickerId::new(jinn_picker::PROJECT_ID))
         .title(" Projects ")
         .row(project_row)
         .search(|entry| entry.display.clone())
@@ -105,11 +107,11 @@ pub fn project_spec() -> PickerSpec<ProjectEntry> {
             state.frontend.scope_push(FocusScope::Picker {
                 kind: PickerKind::SessionLifecycle,
             });
-            let registry = crate::feat::picker::registry::build_picker_registry();
-            let result = crate::feat::picker::action::run_active_hook(
+            let registry = crate::build_picker_registry();
+            let result = jinn_domain::feat::picker::action::run_active_hook(
                 state,
                 &registry,
-                crate::feat::picker::action::Hook::Open,
+                jinn_domain::feat::picker::action::Hook::Open,
             );
             PickerOutcome::from_route_result(result)
         })
@@ -145,12 +147,13 @@ pub fn project_spec() -> PickerSpec<ProjectEntry> {
                 starting_cwd: path,
             });
             state.frontend.scope_pop();
-            let result = crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
-                state,
-                "",
-                &[],
-                None,
-            );
+            let result =
+                jinn_domain::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+                    state,
+                    "",
+                    &[],
+                    None,
+                );
             PickerOutcome::from_route_result(result)
         })
 }
@@ -164,13 +167,13 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::common::app_state::AppState;
-    use crate::common::app_state::FocusScope;
-    use crate::feat::picker::PickerKind;
-    use crate::feat::picker::registry::PROJECT_ID;
-    use crate::feat::picker::registry::build_picker_registry;
-    use crate::feat::session::ChatSessionState;
-    use crate::feat::ui::picker_states::PickerExt;
+    use crate::build_picker_registry;
+    use jinn_domain::PickerKind;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::common::app_state::FocusScope;
+    use jinn_domain::feat::session::ChatSessionState;
+    use jinn_domain::feat::ui::picker_states::PickerExt;
+    use jinn_picker::PROJECT_ID;
 
     /// State with an active origin session (cwd distinct from the project
     /// dirs), the project picker open, and the given curated projects.
@@ -189,7 +192,7 @@ mod tests {
         });
         state.frontend.preferences.projects = paths
             .iter()
-            .map(|p| crate::feat::project::ProjectConfig {
+            .map(|p| jinn_domain::feat::project::ProjectConfig {
                 path: std::path::PathBuf::from(p),
                 command_policy: Vec::new(),
             })
@@ -206,7 +209,7 @@ mod tests {
         let registry = build_picker_registry();
 
         // When opening the picker through the real open path.
-        let result = crate::feat::picker::intent::handle_open_picker(
+        let result = jinn_domain::feat::picker::intent::handle_open_picker(
             &mut state,
             PickerKind::Project,
             &registry,
@@ -229,7 +232,8 @@ mod tests {
         let registry = build_picker_registry();
 
         // When confirming the highlighted project (Enter).
-        let result = crate::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
+        let result =
+            jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
 
         // Then a new session was created (a message was emitted to drive it).
         assert!(!result.0.message_names.is_empty());
@@ -251,7 +255,8 @@ mod tests {
         let registry = build_picker_registry();
 
         // When confirming the highlighted project.
-        let _result = crate::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
+        let _result =
+            jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
 
         // Then the previous session (now backgrounded) keeps its original CWD.
         let prev = state
@@ -268,7 +273,7 @@ mod tests {
         let _registry = build_picker_registry();
 
         // When pressing <c-enter> (new + lifecycle).
-        let _result = crate::feat::picker::action::run_action(
+        let _result = jinn_domain::feat::picker::action::run_action(
             &mut state,
             &build_picker_registry(),
             PROJECT_ID,
@@ -305,7 +310,7 @@ mod tests {
         let mut state = state_with_projects(&["/tmp/project-a", "/tmp/project-b"]);
 
         // When removing the highlighted entry (<c-d>).
-        let result = crate::feat::picker::action::run_action(
+        let result = jinn_domain::feat::picker::action::run_action(
             &mut state,
             &build_picker_registry(),
             PROJECT_ID,
@@ -344,7 +349,7 @@ mod tests {
         let mut state = state_with_projects(&[]);
 
         // When removing the highlighted entry (<c-d>) — there is none.
-        let result = crate::feat::picker::action::run_action(
+        let result = jinn_domain::feat::picker::action::run_action(
             &mut state,
             &build_picker_registry(),
             PROJECT_ID,

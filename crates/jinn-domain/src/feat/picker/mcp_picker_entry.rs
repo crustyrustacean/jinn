@@ -1,15 +1,15 @@
 //! MCP server picker entry type.
 
-use crate::feat::theme::Theme;
 use jinn_core_types::ToolDefinition;
 use jinn_mcp_msg::McpConnectionStatus;
+use jinn_theme::Theme;
 
 /// An MCP server entry ready for display in the MCP inspector.
 ///
 /// Mirrors [`ToolEntry`](crate::feat::picker::tool_entry::ToolEntry): a
 /// name plus a dim description, with a ✓/✗ marker showing the per-session
 /// enabled state. Rendering lives in the picker spec
-/// ([`mcp_server_spec`](crate::feat::picker::mcp_server_spec)); this type is
+/// ([`mcp_server_spec`](crate::mcp_server_spec)); this type is
 /// pure data.
 #[derive(Debug, Clone)]
 pub struct McpServerEntry {
@@ -135,7 +135,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::feat::theme::default_theme;
+    use jinn_theme::default_theme;
 
     fn make_entry(name: &str, description: &str, enabled: bool) -> McpServerEntry {
         McpServerEntry::new(

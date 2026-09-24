@@ -13,34 +13,26 @@ use jinn_picker::ActionCtx;
 use jinn_picker::PickerId;
 use jinn_picker::PickerOutcome;
 use jinn_picker::PickerSpec;
-use jinn_picker::RowCtx;
-use jinn_selection_widget::highlight_text_with_bg;
-use ratatui::text::Line;
-use ratatui::text::Span;
 
-use crate::common::app_state::AppState;
-use crate::common::app_state::ArgInputState;
-use crate::common::app_state::FocusScope;
-use crate::common::line_input::LineInput;
-use crate::feat::picker::style::active_marker;
-use crate::feat::picker::style::dim_style;
-use crate::feat::picker::style::selected_style;
-use crate::feat::session_lifecycle::command_template::CommandTemplate;
-use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
-use crate::feat::ui::picker_states::PickerExt;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::common::app_state::ArgInputState;
+use jinn_domain::common::app_state::FocusScope;
+use jinn_domain::common::line_input::LineInput;
+use jinn_domain::feat::session_lifecycle::command_template::CommandTemplate;
+use jinn_domain::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
+use jinn_domain::feat::session_lifecycle::picker_entry::lifecycle_row;
+use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_preferences_config::schemas::LifecycleCommand;
 
 /// Builds the session-lifecycle picker's spec.
 #[must_use]
 pub fn session_lifecycle_spec() -> PickerSpec<SessionLifecycleEntry> {
-    PickerSpec::new(PickerId::new(
-        crate::feat::picker::registry::SESSION_LIFECYCLE_ID,
-    ))
-    .title(" Session Lifecycle ")
-    .row(lifecycle_row)
-    .search(lifecycle_search_text)
-    .on_open(open_lifecycle)
-    .on_confirm(confirm_lifecycle)
+    PickerSpec::new(PickerId::new(jinn_picker::SESSION_LIFECYCLE_ID))
+        .title(" Session Lifecycle ")
+        .row(lifecycle_row)
+        .search(lifecycle_search_text)
+        .on_open(open_lifecycle)
+        .on_confirm(confirm_lifecycle)
 }
 
 /// The domain state behind an [`ActionCtx`]. The kernel's host lens always
@@ -65,37 +57,6 @@ fn lifecycle_search_text(entry: &SessionLifecycleEntry) -> String {
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────
-
-/// Renders one picker row: the cursor marker, the lifecycle name, a ` *`
-/// marker when the setup command needs user-supplied args, and the
-/// description after an em-dash separator.
-pub fn lifecycle_row(entry: &SessionLifecycleEntry, ctx: &RowCtx<'_>) -> Line<'static> {
-    let base_style = selected_style(ctx.is_selected, &entry.theme);
-    let desc_style = dim_style(ctx.is_selected, &entry.theme);
-
-    let mut spans = vec![active_marker(ctx.is_selected, &entry.theme)];
-
-    if ctx.match_ranges.is_empty() {
-        spans.push(Span::styled(entry.name.clone(), base_style));
-    } else {
-        spans.extend(highlight_text_with_bg(
-            &entry.name,
-            base_style,
-            ctx.match_ranges,
-            entry.theme.picker_highlight_bg,
-        ));
-    }
-
-    if entry.has_args {
-        spans.push(Span::styled(" *".to_owned(), desc_style));
-    }
-
-    if let Some(desc) = &entry.description {
-        spans.push(Span::styled(format!(" \u{2014} {desc}"), desc_style));
-    }
-
-    Line::from(spans)
-}
 
 // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -161,7 +122,7 @@ fn confirm_lifecycle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     // No args - proceed directly. The setup function owns the scope
     // transition (clear overlays, push input), so this outcome carries no
     // close signal.
-    let result = crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+    let result = jinn_domain::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
         state,
         &lifecycle_name,
         &[],
@@ -205,9 +166,9 @@ fn load_lifecycle_entries(state: &mut AppState) {
     }
 
     let wrapped = {
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         registry
-            .make_items(crate::feat::picker::registry::SESSION_LIFECYCLE_ID, entries)
+            .make_items(jinn_picker::SESSION_LIFECYCLE_ID, entries)
             .unwrap_or_default()
     };
     state
@@ -226,11 +187,11 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::common::app_state::AppState;
-    use crate::common::app_state::FocusScope;
-    use crate::feat::picker::PickerKind;
-    use crate::feat::picker::host_impl::AppStatePickerHost;
-    use crate::feat::picker::registry::SESSION_LIFECYCLE_ID;
+    use jinn_domain::PickerKind;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::common::app_state::FocusScope;
+    use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
+    use jinn_picker::SESSION_LIFECYCLE_ID;
     use jinn_preferences_config::schemas::LifecycleCommand;
     use jinn_preferences_config::schemas::SessionLifecycle;
 
@@ -253,8 +214,8 @@ mod tests {
     /// Opens the picker through the real open path (scope push + spec open
     /// hook), mirroring what the intent handler does.
     fn open(state: &mut AppState) {
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        crate::feat::picker::intent::handle_open_picker(
+        let registry = crate::build_picker_registry();
+        jinn_domain::feat::picker::intent::handle_open_picker(
             state,
             PickerKind::SessionLifecycle,
             &registry,

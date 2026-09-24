@@ -24,6 +24,7 @@ jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-picker = { workspace = true }
+jinn-picker-specs = { workspace = true }
 error-stack = { workspace = true }
 serde_json = { workspace = true }
 wherror = { workspace = true }

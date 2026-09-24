@@ -1130,7 +1130,7 @@ mod picker_spec_row_tests {
         // navigation bind, under a throwaway id mapped to a static scope.
         let mut registry = jinn_picker::PickerRegistry::new();
         registry.register(
-            jinn_picker::PickerSpec::<jinn_domain::feat::picker::skill_spec::SkillEntry>::new(
+            jinn_picker::PickerSpec::<jinn_picker_specs::skill_spec::SkillEntry>::new(
                 jinn_picker::PickerId::new("skill"),
             )
             .bind("<tab>", "toggle", |_| jinn_picker::PickerOutcome::empty())
@@ -1164,7 +1164,7 @@ mod picker_spec_row_tests {
         // Given a registry with a navigation-hinted bind.
         let mut registry = jinn_picker::PickerRegistry::new();
         registry.register(
-            jinn_picker::PickerSpec::<jinn_domain::feat::picker::skill_spec::SkillEntry>::new(
+            jinn_picker::PickerSpec::<jinn_picker_specs::skill_spec::SkillEntry>::new(
                 jinn_picker::PickerId::new("skill"),
             )
             .bind_navigation("<c-u>", "page up", |_| jinn_picker::PickerOutcome::empty()),
@@ -1212,7 +1212,7 @@ mod real_registry_spec_rows {
         // Given the real domain registry (whose project spec declares
         // <c-enter>/<c-d> rows; <c-n> belongs to the preferences slice)
         // bound into a fresh keymap.
-        let registry = jinn_domain::feat::picker::registry::build_picker_registry();
+        let registry = jinn_picker_specs::build_picker_registry();
         let mut keymap = init();
         bind_picker_spec_rows(&registry, &mut keymap);
         let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
@@ -1248,7 +1248,7 @@ mod real_registry_spec_rows {
     fn endpoint_spec_refresh_row_resolves_in_its_scope() {
         // Given the real domain registry (whose endpoint spec declares a <c-r>
         // refresh row) bound into a fresh keymap.
-        let registry = jinn_domain::feat::picker::registry::build_picker_registry();
+        let registry = jinn_picker_specs::build_picker_registry();
         let mut keymap = init();
         bind_picker_spec_rows(&registry, &mut keymap);
         let mut wk = WhichKeyInstance::new(keymap, Scope::PickerEndpoint);
@@ -1277,7 +1277,7 @@ mod real_registry_spec_rows {
     fn provider_spec_rows_resolve_in_their_scope() {
         // Given the real domain registry (whose provider spec declares
         // <tab>/<c-a>/<c-r> rows) bound into a fresh keymap.
-        let registry = jinn_domain::feat::picker::registry::build_picker_registry();
+        let registry = jinn_picker_specs::build_picker_registry();
         let mut keymap = init();
         bind_picker_spec_rows(&registry, &mut keymap);
         let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProvider);

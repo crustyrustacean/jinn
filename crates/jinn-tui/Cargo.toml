@@ -18,6 +18,7 @@ jinn-sidebar = { workspace = true }
 jinn-cwd = { workspace = true }
 jinn-status-bar = { workspace = true }
 jinn-picker = { workspace = true }
+jinn-picker-specs = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-core-types = { workspace = true }

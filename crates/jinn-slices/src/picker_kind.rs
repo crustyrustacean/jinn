@@ -1,5 +1,5 @@
 //! Picker kind — identifies which picker is currently active
-//! (shared vocabulary; the kernel re-exports under `jinn_domain::feat::picker::picker_kind`).
+//! (shared vocabulary; this is the canonical home — the kernel re-exports it via `jinn_domain::protocol`).
 
 use serde::{Deserialize, Serialize};
 

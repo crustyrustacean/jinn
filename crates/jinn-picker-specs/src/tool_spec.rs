@@ -21,16 +21,16 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
-use crate::common::app_state::AppState;
-use crate::feat::picker::style::dim_style;
-use crate::feat::picker::style::split_match_indices;
-use crate::feat::picker::tool_entry::ToolEntry;
-use crate::feat::ui::picker_states::PickerExt;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::feat::picker::tool_entry::ToolEntry;
+use jinn_domain::feat::ui::picker_states::PickerExt;
+use jinn_picker::picker_style::dim_style;
+use jinn_picker::picker_style::split_match_indices;
 
 /// Builds the tool picker's spec.
 #[must_use]
 pub fn tool_spec() -> PickerSpec<ToolEntry> {
-    PickerSpec::new(PickerId::new(crate::feat::picker::registry::TOOL_ID))
+    PickerSpec::new(PickerId::new(jinn_picker::TOOL_ID))
         .title(" Tools ")
         .row(tool_row)
         .search(|entry| format!("{} {}", entry.name, entry.description))
@@ -145,7 +145,7 @@ fn open_tool(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
 /// advance the cursor (checklist style) by the measured viewport.
 fn tool_toggle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     let state = state_of(ctx);
-    let viewport = crate::feat::picker::geometry::active_viewport(state);
+    let viewport = jinn_domain::feat::picker::geometry::active_viewport(state);
     state.frontend.tool_picker_mut().with_selected_mut(|item| {
         let entry = item.entry_mut();
         entry.enabled = !entry.enabled;
@@ -224,9 +224,9 @@ fn load_tool_entries(state: &mut AppState) {
     entries.sort_by_key(|e| e.name.to_lowercase());
 
     let wrapped = {
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         registry
-            .make_items(crate::feat::picker::registry::TOOL_ID, entries)
+            .make_items(jinn_picker::TOOL_ID, entries)
             .unwrap_or_default()
     };
     state.frontend.tool_picker_mut().set_items(wrapped);
@@ -242,7 +242,7 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::feat::picker::registry::TOOL_ID;
+    use jinn_picker::TOOL_ID;
 
     /// State with an active session and the given tool definitions
     /// registered in the context.
@@ -250,7 +250,7 @@ mod tests {
         defs: &[(&str, &str, Option<jinn_core_types::ServerToolType>)],
     ) -> AppState {
         let mut state = AppState::default_with_scope_focus();
-        let origin = crate::feat::session::chat_session::ChatSessionState::new();
+        let origin = jinn_domain::feat::session::chat_session::ChatSessionState::new();
         state.session.insert(origin);
         state
             .session
@@ -277,10 +277,10 @@ mod tests {
     }
 
     fn open(state: &mut AppState) {
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        crate::feat::picker::intent::handle_open_picker(
+        let registry = crate::build_picker_registry();
+        jinn_domain::feat::picker::intent::handle_open_picker(
             state,
-            crate::feat::picker::PickerKind::Tool,
+            jinn_domain::PickerKind::Tool,
             &registry,
         );
     }
@@ -346,10 +346,11 @@ mod tests {
         let mut state = tool_state();
         open(&mut state);
         assert_eq!(state.frontend.tool_picker().selection(), 0);
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
 
         // When pressing TAB.
-        let _ = crate::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
+        let _ =
+            jinn_domain::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
 
         // Then the selected entry flipped and the cursor advanced.
         assert!(
@@ -365,10 +366,11 @@ mod tests {
         // Given an open tool picker with no entries (empty tool context).
         let mut state = state_with_tools(&[]);
         open(&mut state);
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
 
         // When pressing TAB.
-        let _ = crate::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
+        let _ =
+            jinn_domain::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
 
         // Then nothing panicked and nothing is selected.
         assert!(state.frontend.tool_picker().selected_item().is_none());
@@ -380,15 +382,17 @@ mod tests {
         // Given an open tool picker with the first entry toggled off.
         let mut state = tool_state();
         open(&mut state);
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let _ = crate::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
+        let registry = crate::build_picker_registry();
+        let _ =
+            jinn_domain::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
 
         // When confirming (the spec-driven confirm path, folded like the
         // dispatch layer does).
         {
             let picker_id = PickerId::new(TOOL_ID);
             let outcome = {
-                let mut host = crate::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
+                let mut host =
+                    jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
                 let mut ctx = ActionCtx::new(picker_id, &mut host);
                 let spec = registry.get(TOOL_ID).expect("tool spec registered");
                 spec.run_confirm(&mut ctx)
@@ -425,11 +429,12 @@ mod tests {
             .active_session_mut()
             .set_disabled_tools(["read"].iter().map(|s| (*s).to_owned()).collect());
         open(&mut state);
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let _ = crate::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
+        let registry = crate::build_picker_registry();
+        let _ =
+            jinn_domain::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
 
         // When ESC closes the picker.
-        let result = crate::feat::picker::action::try_close_active(&mut state, &registry);
+        let result = jinn_domain::feat::picker::action::try_close_active(&mut state, &registry);
 
         // Then the hook ran and the pre-open disabled set is restored.
         assert!(result.is_some());
@@ -528,9 +533,9 @@ mod tests {
     fn open_marks_task_disabled_in_subagent_session() {
         // Given a subagent (child) session whose spawn stamp disables task.
         let mut state = AppState::default_with_scope_focus();
-        let parent_id = crate::protocol::SessionId::new();
+        let parent_id = jinn_domain::protocol::SessionId::new();
         let child =
-            crate::feat::session::chat_session::ChatSessionState::new_child(&parent_id, true);
+            jinn_domain::feat::session::chat_session::ChatSessionState::new_child(&parent_id, true);
         state.session.insert(child);
         state
             .session
@@ -584,7 +589,7 @@ mod tests {
 
         // When rendering the status line.
         let rendered = {
-            let host = crate::feat::picker::host_impl::AppStateRenderHost::new(&state);
+            let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
             let ctx = StatusCtx::new(PickerId::new(TOOL_ID), &host);
             tool_status(&ctx)
         };
@@ -603,7 +608,7 @@ mod tests {
             name: "bash".to_owned(),
             description: "Run shell".to_owned(),
             enabled: true,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
 
         // When rendering its row.
@@ -628,7 +633,7 @@ mod tests {
             name: "bash".to_owned(),
             description: "Run shell".to_owned(),
             enabled: false,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
 
         // When rendering its row.
@@ -652,7 +657,7 @@ mod tests {
             name: "bash".to_owned(),
             description: "run shell".to_owned(),
             enabled: true,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
         let match_ranges = [2..4usize, 7..9];
 
@@ -669,7 +674,7 @@ mod tests {
     #[test]
     fn tool_spec_declares_no_selection_change() {
         // Given the domain registry.
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
 
         // When checking the tool spec's hooks.
         let spec = registry.get(TOOL_ID).expect("tool spec registered");

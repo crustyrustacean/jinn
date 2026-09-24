@@ -135,9 +135,9 @@ pub struct Services {
     #[debug(skip)]
     pub trouper_system: trouper::system::ActorSystem,
 
-    /// Generic picker spec registry. Populated by domain composition
-    /// (feat/picker/registry) after construction; specs register as they
-    /// migrate off the legacy per-kind handlers.
+    /// Generic picker spec registry. Built once by composition
+    /// (`jinn_picker_specs::build_picker_registry`) and shared by the
+    /// keymap generator, the intent handler, and the render pass.
     #[debug(skip)]
     pub picker_registry: jinn_picker::PickerRegistry,
 }

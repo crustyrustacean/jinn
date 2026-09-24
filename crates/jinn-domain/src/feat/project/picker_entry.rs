@@ -4,8 +4,8 @@ use jinn_selection_widget::PickerItem;
 use ratatui::text::{Line, Span};
 
 use crate::common::path_display::shorten_path;
-use crate::feat::picker::style::{active_marker, selected_style};
 use crate::feat::theme::Theme;
+use jinn_picker::picker_style::{active_marker, selected_style};
 
 /// A curated project directory shown in the project picker.
 ///
@@ -57,7 +57,7 @@ impl PickerItem for ProjectEntry {
 }
 
 /// Renders a project picker row with selection styling.
-pub(crate) fn render_project_row(
+pub fn render_project_row(
     display: &str,
     is_selected: bool,
     match_indices: &[std::ops::Range<usize>],

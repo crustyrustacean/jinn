@@ -33,7 +33,13 @@ use crate::preview_key::PreviewKey;
 ///
 /// Declared with the builder methods; the spec builder and the standalone
 /// wrapping path both funnel through this one type, so a spec-declared hook and
-/// a caller-supplied hook wrap entries identically.
+/// a caller-supplied hook wrap entries identically. Fields are crate-internal:
+/// hooks are declared through the builder methods below, never assigned
+/// directly.
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "hooks are declared through the builder methods; direct field access adds no capability"
+)]
 pub struct PickerItemHooks<T> {
     /// Row renderer (spec `.row`).
     pub(crate) row: Option<PickerRowFn<T>>,
@@ -346,6 +352,10 @@ where
 /// seam for the same wrapping: the caller supplies the same hooks its spec
 /// declares, and entries wrap identically.
 #[must_use]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "the hook set is consumed by value at the spec seam; taking a reference would force callers to retain it"
+)]
 pub fn make_items_with_hooks<T>(entries: Vec<T>, hooks: PickerItemHooks<T>) -> Vec<PickerEntry<T>>
 where
     T: std::fmt::Debug + Send + Sync + 'static,

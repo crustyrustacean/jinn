@@ -208,7 +208,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "general",
         "change persona",
         sync(|state| {
-            let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+            let pickers = jinn_picker_specs::build_picker_registry();
             pins::handle_sidebar_persona_edit(state, &pickers)
         }),
     ));
@@ -421,10 +421,10 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "general",
         "browse task list",
         sync(move |state| {
-            let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+            let pickers = jinn_picker_specs::build_picker_registry();
             jinn_domain::feat::picker::intent::handle_open_picker(
                 state,
-                jinn_domain::feat::picker::PickerKind::TaskList,
+                jinn_slices::picker_kind::PickerKind::TaskList,
                 &pickers,
             )
         }),

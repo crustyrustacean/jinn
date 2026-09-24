@@ -3,7 +3,7 @@
 //! The rendering lives in the tool picker's spec (`feat::picker::tool_spec`);
 //! this struct is the plain domain data the spec wraps.
 
-use crate::feat::theme::Theme;
+use jinn_theme::Theme;
 
 /// A tool entry ready for display in the tool picker.
 #[derive(Debug, Clone)]

@@ -29,9 +29,9 @@ pub use mode::Mode;
 pub use crate::common::actor::actor_name::ActorName;
 pub use jinn_session_init_msg::PromptTemplate;
 
-pub use crate::feat::picker::picker_kind::PickerKind;
 pub use crate::feat::provider::llm_message::LlmMessage;
 pub use crate::feat::session::protocol::session_id::SessionId;
+pub use jinn_slices::picker_kind::PickerKind;
 
 // Re-export domain types used by the picker and UI
 pub use crate::feat::provider::entries_to_messages::entries_to_messages;

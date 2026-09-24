@@ -11,6 +11,7 @@ description = "The preferences slice: persists jinn.toml and state.toml (Prefere
 # reload after a preference save. See AGENTS.md §3 "one boundary = one
 # actor": these are the authoritative writers for those fields.
 jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-picker-specs = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-core-types = { workspace = true }

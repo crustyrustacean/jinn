@@ -21,10 +21,10 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
-use crate::common::app_state::AppState;
-use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
-use crate::feat::ui::picker_states::PickerExt;
 use jinn_core_types::model_selection::ModelSelection;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
+use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_provider_selection_msg::LoadEndpointPickerEntries;
 use jinn_provider_selection_msg::RefreshEndpointPickerEntries;
 use jinn_provider_selection_msg::endpoint::Endpoint;
@@ -33,7 +33,7 @@ use jinn_provider_selection_msg::endpoint::EndpointEntry;
 /// Builds the endpoint picker's spec.
 #[must_use]
 pub fn endpoint_spec() -> PickerSpec<EndpointEntry> {
-    PickerSpec::new(PickerId::new(crate::feat::picker::registry::ENDPOINT_ID))
+    PickerSpec::new(PickerId::new(jinn_picker::ENDPOINT_ID))
         .title(" OpenRouter Endpoint ")
         .widget(PickerWidget::Preview(PreviewSpec {
             reset_scroll_on_selection_change: false,
@@ -323,9 +323,9 @@ mod tests {
     )]
 
     use super::*;
-    use crate::feat::picker::host_impl::AppStatePickerHost;
-    use crate::feat::session::ChatSessionState;
-    use crate::feat::theme::default_theme;
+    use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
+    use jinn_domain::feat::session::ChatSessionState;
+    use jinn_theme::default_theme;
     /// AppState with an active session on a single OpenRouter model.
     fn single_model_state() -> AppState {
         let mut state = AppState::default_with_scope_focus();
@@ -342,8 +342,8 @@ mod tests {
 
     /// Wraps raw entries through the registered spec's hooks.
     fn wrap(entries: Vec<EndpointEntry>) -> Vec<jinn_picker::PickerEntry<EndpointEntry>> {
-        crate::feat::picker::registry::build_picker_registry()
-            .make_items(crate::feat::picker::registry::ENDPOINT_ID, entries)
+        crate::build_picker_registry()
+            .make_items(jinn_picker::ENDPOINT_ID, entries)
             .expect("endpoint spec is registered")
     }
 
@@ -353,10 +353,7 @@ mod tests {
         f: impl FnOnce(&mut ActionCtx<'_>) -> PickerOutcome,
     ) -> PickerOutcome {
         let mut host = AppStatePickerHost::new(state);
-        let mut ctx = ActionCtx::new(
-            PickerId::new(crate::feat::picker::registry::ENDPOINT_ID),
-            &mut host,
-        );
+        let mut ctx = ActionCtx::new(PickerId::new(jinn_picker::ENDPOINT_ID), &mut host);
         f(&mut ctx)
     }
 
@@ -553,11 +550,8 @@ mod tests {
 
     /// Renders the status hook against a read-only host over `state`.
     fn status_line_of(state: &AppState) -> Line<'static> {
-        let host = crate::feat::picker::host_impl::AppStateRenderHost::new(state);
-        let ctx = StatusCtx::new(
-            PickerId::new(crate::feat::picker::registry::ENDPOINT_ID),
-            &host,
-        );
+        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(state);
+        let ctx = StatusCtx::new(PickerId::new(jinn_picker::ENDPOINT_ID), &host);
         endpoint_status(&ctx).expect("status line always renders")
     }
 

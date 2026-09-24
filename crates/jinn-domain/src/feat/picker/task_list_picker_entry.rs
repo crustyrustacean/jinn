@@ -11,8 +11,8 @@ use std::ops::Range;
 use ratatui::text::{Line, Span};
 use ratatui::{style::Style, symbols};
 
-use crate::feat::picker::style::{dim_style, selected_style};
-use crate::feat::theme::Theme;
+use jinn_picker::picker_style::{dim_style, selected_style};
+use jinn_theme::Theme;
 use jinn_tools_msg::TaskStatus;
 
 use jinn_selection_widget::TreeItem;
@@ -135,7 +135,7 @@ impl TreeItem for TaskListTreeEntry {
 /// Match indices are byte offsets into `description` (the `display_label`).
 /// Layout: `"{indicator} {description}"`. Phases use a triangular glyph and
 /// bold styling to visually distinguish them from tasks.
-pub(crate) fn render_task_list_row(
+pub fn render_task_list_row(
     description: &str,
     row_status: RowStatus,
     is_selected: bool,
@@ -187,7 +187,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::feat::theme::default_theme;
+    use jinn_theme::default_theme;
 
     #[rstest::rstest]
     fn phase_entry_has_no_parent() {

@@ -40,7 +40,7 @@ fn fold(state: &mut AppState, outcome: PickerOutcome) -> IntentResult {
 /// still flows to the legacy per-kind handlers. This is what keeps the
 /// repository green between registering a spec stub and migrating its
 /// hooks; when all pickers have migrated, the fallbacks disappear.
-pub(crate) fn run_active_hook(
+pub fn run_active_hook(
     state: &mut AppState,
     registry: &PickerRegistry,
     hook: Hook,
@@ -48,7 +48,7 @@ pub(crate) fn run_active_hook(
     let Some(kind) = state.frontend.picker_kind() else {
         return IntentResult::empty();
     };
-    let Some(id) = crate::feat::picker::registry::spec_id_for_kind(&kind) else {
+    let Some(id) = jinn_picker::spec_id_for_kind(&kind) else {
         return IntentResult::empty();
     };
     let Some(spec) = registry.get(id) else {
@@ -83,7 +83,7 @@ pub fn run_selection_change(state: &mut AppState, registry: &PickerRegistry) {
     let Some(kind) = state.frontend.picker_kind() else {
         return;
     };
-    let Some(id) = crate::feat::picker::registry::spec_id_for_kind(&kind) else {
+    let Some(id) = jinn_picker::spec_id_for_kind(&kind) else {
         return;
     };
     let Some(spec) = registry.get(id) else {
@@ -107,7 +107,7 @@ pub fn run_selection_change(state: &mut AppState, registry: &PickerRegistry) {
 
 /// The lifecycle hook to run for the active picker.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Hook {
+pub enum Hook {
     /// The open hook.
     Open,
     /// The confirm hook (Enter).
@@ -121,7 +121,7 @@ pub(crate) enum Hook {
 /// must not double-apply), `None` when no spec is active.
 pub fn try_close_active(state: &mut AppState, registry: &PickerRegistry) -> Option<IntentResult> {
     let kind = state.frontend.picker_kind()?;
-    let id = crate::feat::picker::registry::spec_id_for_kind(&kind)?;
+    let id = jinn_picker::spec_id_for_kind(&kind)?;
     let spec = registry.get(id)?;
     if !spec.has_close() {
         return None;
@@ -141,7 +141,7 @@ pub fn run_action(
     let Some(kind) = state.frontend.picker_kind() else {
         return IntentResult::empty();
     };
-    let Some(active_id) = crate::feat::picker::registry::spec_id_for_kind(&kind) else {
+    let Some(active_id) = jinn_picker::spec_id_for_kind(&kind) else {
         return IntentResult::empty();
     };
     if active_id != picker {
@@ -168,23 +168,40 @@ mod tests {
     )]
     use super::*;
     use crate::common::app_state::FocusScope;
-    use crate::feat::picker::registry::SKILL_ID;
-    use crate::feat::ui::picker_states::PickerExt;
+    use crate::feat::skills::skill_entry::SkillEntry;
     use crate::protocol::ChatEntryKind;
+    use jinn_picker::SKILL_ID;
 
     fn state_with_skill_picker() -> AppState {
         let state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker {
-            kind: crate::feat::picker::PickerKind::Skill,
+            kind: crate::PickerKind::Skill,
         });
         state
     }
 
     /// A test spec under the skill id with one `<tab>` bind that pushes a
     /// transient entry, and one `<esc>` bind that closes the picker.
+    ///
+    /// Built here rather than imported from `jinn_picker_specs`: these tests
+    /// exercise dispatch, and the kernel cannot depend on the specs crate.
     fn registry_with_test_skill_spec() -> jinn_picker::PickerRegistry {
-        let mut registry = crate::feat::picker::registry::build_picker_registry();
-        registry.register(crate::feat::picker::skill_spec::SkillEntry::spec_for_tests());
+        let spec = jinn_picker::PickerSpec::<SkillEntry>::new(jinn_picker::PickerId::new(SKILL_ID))
+            .bind("<tab>", "test", |ctx: &mut ActionCtx<'_>| {
+                let state = ctx
+                    .state_any()
+                    .downcast_mut::<AppState>()
+                    .expect("domain host lends AppState");
+                state
+                    .active_session_mut()
+                    .push_entry(crate::protocol::ChatEntry::transient("test bind ran"));
+                jinn_picker::PickerOutcome::empty()
+            })
+            .bind("<esc>", "close", |_ctx: &mut ActionCtx<'_>| {
+                jinn_picker::PickerOutcome::empty().close()
+            });
+        let mut registry = jinn_picker::PickerRegistry::new();
+        registry.register(spec);
         registry
     }
 
@@ -193,7 +210,7 @@ mod tests {
     fn picker_action_unknown_id_is_a_no_op() {
         // Given an open skill picker and the domain registry.
         let mut state = state_with_skill_picker();
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::feat::picker::test_registry::test_registry();
 
         // When running an action naming a picker id that doesn't exist.
         let result = run_action(&mut state, &registry, "nope", "<tab>");
@@ -208,7 +225,7 @@ mod tests {
     fn picker_action_with_wrong_active_picker_is_ignored() {
         // Given an open skill picker.
         let mut state = state_with_skill_picker();
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::feat::picker::test_registry::test_registry();
 
         // When running an action addressed to a different picker.
         let result = run_action(&mut state, &registry, "persona", "<tab>");
@@ -254,40 +271,5 @@ mod tests {
             state.frontend.picker_kind().is_none(),
             "close outcome must pop the picker scope"
         );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn theme_close_via_the_esc_path_restores_the_snapshotted_theme() {
-        // Given an open theme picker that previewed a different theme after
-        // opening (open snapshotted the pre-open theme).
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        let mut state = AppState::default_with_scope_focus();
-        let original_accent = state.frontend.theme.focus_accent;
-        let mut other = crate::feat::theme::default_theme();
-        other.focus_accent = ratatui::style::Color::Red;
-        state.frontend.update_theme_entries(|cell| {
-            cell.entries = vec![jinn_theme_msg::NamedTheme {
-                name: "other".to_owned(),
-                theme: other.clone(),
-            }];
-        });
-        crate::feat::picker::intent::handle_open_picker(
-            &mut state,
-            crate::feat::picker::PickerKind::Theme,
-            &registry,
-        );
-        state.frontend.theme = other;
-
-        // When ESC closes the picker through the IntentHandler path.
-        let result = try_close_active(&mut state, &registry);
-
-        // Then the hook ran (legacy restores must not double-apply).
-        assert!(result.is_some());
-        // And the pre-open theme is restored.
-        assert_eq!(state.frontend.theme.focus_accent, original_accent);
-        // And the snapshot is consumed and the scope popped.
-        assert!(state.frontend.theme_preview_original().is_none());
-        assert!(state.frontend.picker_kind().is_none());
     }
 }

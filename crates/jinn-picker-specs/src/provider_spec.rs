@@ -18,12 +18,12 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
-use crate::ChatEntry;
-use crate::common::app_state::AppState;
-use crate::feat::picker::style::selected_style;
-use crate::feat::picker::style::split_match_indices;
 use jinn_core_types::model_selection::AlloyStrategy;
 use jinn_core_types::model_selection::ModelSelection;
+use jinn_domain::ChatEntry;
+use jinn_domain::common::app_state::AppState;
+use jinn_picker::picker_style::selected_style;
+use jinn_picker::picker_style::split_match_indices;
 use jinn_preferences_config::protocol::app_state_command::AppStateUpdate;
 use jinn_preferences_config::protocol::app_state_command::UpdateAppState;
 use jinn_provider_selection_msg::LoadProviderPickerEntries;
@@ -34,7 +34,7 @@ use jinn_provider_selection_msg::RefreshModels;
 /// Builds the model picker's spec.
 #[must_use]
 pub fn provider_spec() -> PickerSpec<ProviderPickerEntry> {
-    PickerSpec::new(PickerId::new(crate::feat::picker::registry::PROVIDER_ID))
+    PickerSpec::new(PickerId::new(jinn_picker::PROVIDER_ID))
         .title(" Model ")
         .row(provider_row)
         .search(|entry| format!("{} {}", entry.model, entry.provider_name))
@@ -284,7 +284,7 @@ fn toggle_alloy(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
 /// provider being configured at all.
 fn refresh_models(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     let state = state_of(ctx);
-    if crate::feat::session::validator::validate_refresh_models(state).is_err() {
+    if jinn_domain::feat::session::validator::validate_refresh_models(state).is_err() {
         return PickerOutcome::empty();
     }
     state
@@ -389,12 +389,12 @@ mod tests {
     )]
 
     use super::*;
-    use crate::feat::picker::PickerKind;
-    use crate::feat::picker::host_impl::AppStatePickerHost;
-    use crate::feat::picker::intent::handle_open_picker;
-    use crate::feat::session::ChatSessionState;
-    use crate::feat::theme::default_theme;
-    use crate::protocol::IntentResult;
+    use jinn_domain::PickerKind;
+    use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
+    use jinn_domain::feat::picker::intent::handle_open_picker;
+    use jinn_domain::feat::session::ChatSessionState;
+    use jinn_domain::protocol::IntentResult;
+    use jinn_theme::default_theme;
 
     /// A raw provider entry builder for tests.
     fn entry(
@@ -460,14 +460,14 @@ mod tests {
     fn wrap(
         entries: Vec<ProviderPickerEntry>,
     ) -> Vec<jinn_picker::PickerEntry<ProviderPickerEntry>> {
-        crate::feat::picker::registry::build_picker_registry()
-            .make_items(crate::feat::picker::registry::PROVIDER_ID, entries)
+        crate::build_picker_registry()
+            .make_items(jinn_picker::PROVIDER_ID, entries)
             .expect("provider spec is registered")
     }
 
     /// Opens the picker through the real open path.
     fn open(state: &mut AppState) {
-        let registry = crate::feat::picker::registry::build_picker_registry();
+        let registry = crate::build_picker_registry();
         handle_open_picker(state, PickerKind::Provider, &registry);
     }
 
@@ -477,10 +477,7 @@ mod tests {
         f: impl FnOnce(&mut ActionCtx<'_>) -> PickerOutcome,
     ) -> PickerOutcome {
         let mut host = AppStatePickerHost::new(state);
-        let mut ctx = ActionCtx::new(
-            PickerId::new(crate::feat::picker::registry::PROVIDER_ID),
-            &mut host,
-        );
+        let mut ctx = ActionCtx::new(PickerId::new(jinn_picker::PROVIDER_ID), &mut host);
         f(&mut ctx)
     }
 
@@ -498,7 +495,7 @@ mod tests {
 
         // When opening the provider picker.
         let result: IntentResult = {
-            let registry = crate::feat::picker::registry::build_picker_registry();
+            let registry = crate::build_picker_registry();
             handle_open_picker(&mut state, PickerKind::Provider, &registry)
         };
 

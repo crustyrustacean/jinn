@@ -104,9 +104,9 @@ impl PreferencesActor {
             let frontend = view.frontend();
             frontend.preferences = prefs.clone();
             if frontend.is_picker()
-                && frontend.picker_kind() == Some(jinn_domain::feat::picker::PickerKind::Project)
+                && frontend.picker_kind() == Some(jinn_slices::picker_kind::PickerKind::Project)
             {
-                jinn_domain::feat::picker::project_spec::load_project_entries(frontend);
+                jinn_picker_specs::project_spec::load_project_entries(frontend);
             }
         });
     }
