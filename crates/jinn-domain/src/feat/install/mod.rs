@@ -1,66 +1,43 @@
-//! Default resource installation — seeds themes, personas, prompts, skills,
-//! and prebuilt plugins into the user's config, agent, and data directories.
+//! Default resource installation — seeds themes, personas, prompts, and
+//! skills into the user's config and agent directories.
 //!
-//! Every resource under `res/` is embedded at compile time (`include_str!` for
-//! text, `include_bytes!` for wasm payloads), so the binary is self-contained.
-//! Plugin payloads carry their embedded `[package.metadata.jinn]` manifest;
-//! registration grants flow from it — never guessed.
+//! Every resource under `res/` is embedded at compile time (`include_str!`),
+//! so the binary is self-contained.
 //!
-//! Two builtin-installation entry points live here, sharing one catalogue
-//! ([`BUNDLED`]) but with distinct user-facing contracts:
-//!
-//! - [`install_defaults_to`] (`jinn install`) — a pure seeder. Payload files
-//!   follow skip/`--force` rules; `jinn.toml` is written **exactly once**,
-//!   only when it does not exist (all builtin entries in a single save). An
-//!   existing file is never read or modified — even with `--force` — so user
-//!   edits survive and a malformed file never fails the install.
-//! - [`install_builtin_plugins_to`] (`jinn plugin install-builtins`) — the
-//!   registrar. Payloads are always overwritten (rebuild/ship loop);
-//!   `[plugin.<name>]` entries are written only when missing, so existing
-//!   user config is never touched. Fails fast on a malformed `jinn.toml`
-//!   before writing any payload.
-//!
-//! Both seed with **add-only** registration ([`register_plugin_if_absent`]
-//! semantics); replace-style registration remains the plugin-author loop in
-//! `jinn plugin install` / `jinn plugin add`.
+//! [`install_defaults_to`] (`jinn install`) is a pure seeder. Payload files
+//! follow skip/`--force` rules; `jinn.toml` is written **exactly once**,
+//! only when it does not exist. An existing file is never read or modified —
+//! even with `--force` — so user edits survive and a malformed file never
+//! fails the install.
 
 use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt};
 use wherror::Error;
 
-/// Relative destinations for the five resource kinds.
+/// Relative destinations for the four resource kinds.
 ///
 /// Each field is a root directory: themes/personas/prompts live under the
 /// config dir (`~/.config/jinn`), skills live under the agent dir
-/// (`~/.agents/skills`), and plugins live under jinn's plugin dir
-/// (`~/.local/share/jinn/plugins`). Passed by value into
-/// [`install_defaults_to`] so tests can point at temp dirs.
+/// (`~/.agents/skills`). Passed by value into [`install_defaults_to`] so
+/// tests can point at temp dirs.
 #[derive(Debug, Clone)]
 pub struct Destinations {
     themes: PathBuf,
     personas: PathBuf,
     prompts: PathBuf,
     skills: PathBuf,
-    plugins: PathBuf,
 }
 
 impl Destinations {
-    /// Creates a destination set from the five root directories.
+    /// Creates a destination set from the four root directories.
     #[must_use]
-    pub fn new(
-        themes: PathBuf,
-        personas: PathBuf,
-        prompts: PathBuf,
-        skills: PathBuf,
-        plugins: PathBuf,
-    ) -> Self {
+    pub fn new(themes: PathBuf, personas: PathBuf, prompts: PathBuf, skills: PathBuf) -> Self {
         Self {
             themes,
             personas,
             prompts,
             skills,
-            plugins,
         }
     }
 }
@@ -72,7 +49,6 @@ enum Kind {
     Persona,
     Prompt,
     Skill,
-    Plugin,
 }
 
 impl Kind {
@@ -83,7 +59,6 @@ impl Kind {
             Kind::Persona => &destinations.personas,
             Kind::Prompt => &destinations.prompts,
             Kind::Skill => &destinations.skills,
-            Kind::Plugin => &destinations.plugins,
         }
     }
 }
@@ -95,16 +70,8 @@ struct Bundled {
     /// Path relative to the destination root (e.g. `default.toml`,
     /// `phased-task-loop/SKILL.md`).
     relative: &'static str,
-    /// The embedded payload — text for resources, bytes for wasm plugins.
-    contents: BundleContents,
-}
-
-/// The embedded payload of a bundled resource.
-enum BundleContents {
-    /// A text resource written verbatim.
-    Text(&'static str),
-    /// A wasm plugin payload installed via the plugin install path.
-    Wasm(&'static [u8]),
+    /// The embedded payload, written verbatim.
+    contents: &'static str,
 }
 
 /// Outcome of installing one resource.
@@ -151,18 +118,11 @@ pub struct InstallReport {
 /// the user's `enabled`, `config`, and hand-edited grants always win.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JinnTomlOutcome {
-    /// The file did not exist and was created this run with all builtin
-    /// `[plugin.<name>]` entries in a single write.
+    /// The file did not exist and was created this run (the comment-rich
+    /// default template).
     Created(PathBuf),
     /// The file already existed and was never read or modified this run.
     Untouched(PathBuf),
-}
-
-/// A bundled plugin payload written this run, with the manifest extracted
-/// from its bytes — the input for `jinn.toml` registration.
-struct InstalledPlugin {
-    name: String,
-    manifest: crate::feat::plugin::manifest::PluginManifest,
 }
 
 /// The compile-time catalogue of bundled defaults.
@@ -173,216 +133,162 @@ const BUNDLED: &[Bundled] = &[
     Bundled {
         kind: Kind::Theme,
         relative: "catppuccin-mocha.toml",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/themes/catppuccin-mocha.toml"
-        )),
+        contents: include_str!("../../../../../res/themes/catppuccin-mocha.toml"),
     },
     Bundled {
         kind: Kind::Theme,
         relative: "default.toml",
-        contents: BundleContents::Text(include_str!("../../../../../res/themes/default.toml")),
+        contents: include_str!("../../../../../res/themes/default.toml"),
     },
     Bundled {
         kind: Kind::Theme,
         relative: "nord-light.toml",
-        contents: BundleContents::Text(include_str!("../../../../../res/themes/nord-light.toml")),
+        contents: include_str!("../../../../../res/themes/nord-light.toml"),
     },
     Bundled {
         kind: Kind::Theme,
         relative: "gruvbox-dark.toml",
-        contents: BundleContents::Text(include_str!("../../../../../res/themes/gruvbox-dark.toml")),
+        contents: include_str!("../../../../../res/themes/gruvbox-dark.toml"),
     },
     Bundled {
         kind: Kind::Theme,
         relative: "sonokai.toml",
-        contents: BundleContents::Text(include_str!("../../../../../res/themes/sonokai.toml")),
+        contents: include_str!("../../../../../res/themes/sonokai.toml"),
     },
     // --- personas ---
     Bundled {
         kind: Kind::Persona,
         relative: "brainstorm.md",
-        contents: BundleContents::Text(include_str!("../../../../../res/personas/brainstorm.md")),
+        contents: include_str!("../../../../../res/personas/brainstorm.md"),
     },
     Bundled {
         kind: Kind::Persona,
         relative: "coding-assistant.md",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/personas/coding-assistant.md"
-        )),
+        contents: include_str!("../../../../../res/personas/coding-assistant.md"),
     },
     Bundled {
         kind: Kind::Persona,
         relative: "general.md",
-        contents: BundleContents::Text(include_str!("../../../../../res/personas/general.md")),
+        contents: include_str!("../../../../../res/personas/general.md"),
     },
     Bundled {
         kind: Kind::Persona,
         relative: "learning-tutor.md",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/personas/learning-tutor.md"
-        )),
+        contents: include_str!("../../../../../res/personas/learning-tutor.md"),
     },
     // --- prompts ---
     Bundled {
         kind: Kind::Prompt,
         relative: "approve-plan.md",
-        contents: BundleContents::Text(include_str!("../../../../../res/prompts/approve-plan.md")),
+        contents: include_str!("../../../../../res/prompts/approve-plan.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "_compaction.md",
-        contents: BundleContents::Text(include_str!("../../../../../res/prompts/_compaction.md")),
+        contents: include_str!("../../../../../res/prompts/_compaction.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "gap-analysis.md",
-        contents: BundleContents::Text(include_str!("../../../../../res/prompts/gap-analysis.md")),
+        contents: include_str!("../../../../../res/prompts/gap-analysis.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "generate-persona.md",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/prompts/generate-persona.md"
-        )),
+        contents: include_str!("../../../../../res/prompts/generate-persona.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "meta-prompt.md",
-        contents: BundleContents::Text(include_str!("../../../../../res/prompts/meta-prompt.md")),
+        contents: include_str!("../../../../../res/prompts/meta-prompt.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "plan.md",
-        contents: BundleContents::Text(include_str!("../../../../../res/prompts/plan.md")),
+        contents: include_str!("../../../../../res/prompts/plan.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "research.md",
-        contents: BundleContents::Text(include_str!("../../../../../res/prompts/research.md")),
+        contents: include_str!("../../../../../res/prompts/research.md"),
     },
     // --- skills (preserve nested subdir structure) ---
     Bundled {
         kind: Kind::Skill,
         relative: "phased-task-loop/SKILL.md",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/skills/phased-task-loop/SKILL.md"
-        )),
+        contents: include_str!("../../../../../res/skills/phased-task-loop/SKILL.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "simple-task-loop/SKILL.md",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/skills/simple-task-loop/SKILL.md"
-        )),
+        contents: include_str!("../../../../../res/skills/simple-task-loop/SKILL.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "micro-task-loop/SKILL.md",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/skills/micro-task-loop/SKILL.md"
-        )),
+        contents: include_str!("../../../../../res/skills/micro-task-loop/SKILL.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/SKILL.md",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/skills/jinn-usage/SKILL.md"
-        )),
+        contents: include_str!("../../../../../res/skills/jinn-usage/SKILL.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/keybindings.md",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/skills/jinn-usage/references/keybindings.md"
-        )),
+        contents: include_str!("../../../../../res/skills/jinn-usage/references/keybindings.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/context-management.md",
-        contents: BundleContents::Text(include_str!(
+        contents: include_str!(
             "../../../../../res/skills/jinn-usage/references/context-management.md"
-        )),
+        ),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/sessions-and-subagents.md",
-        contents: BundleContents::Text(include_str!(
+        contents: include_str!(
             "../../../../../res/skills/jinn-usage/references/sessions-and-subagents.md"
-        )),
+        ),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/pickers-and-search.md",
-        contents: BundleContents::Text(include_str!(
+        contents: include_str!(
             "../../../../../res/skills/jinn-usage/references/pickers-and-search.md"
-        )),
+        ),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/terminal-overlay.md",
-        contents: BundleContents::Text(include_str!(
+        contents: include_str!(
             "../../../../../res/skills/jinn-usage/references/terminal-overlay.md"
-        )),
+        ),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/mcp-servers.md",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/skills/jinn-usage/references/mcp-servers.md"
-        )),
+        contents: include_str!("../../../../../res/skills/jinn-usage/references/mcp-servers.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/chat-input-tokens.md",
-        contents: BundleContents::Text(include_str!(
+        contents: include_str!(
             "../../../../../res/skills/jinn-usage/references/chat-input-tokens.md"
-        )),
+        ),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/models-and-providers.md",
-        contents: BundleContents::Text(include_str!(
+        contents: include_str!(
             "../../../../../res/skills/jinn-usage/references/models-and-providers.md"
-        )),
+        ),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/configuration.md",
-        contents: BundleContents::Text(include_str!(
-            "../../../../../res/skills/jinn-usage/references/configuration.md"
-        )),
-    },
-    // --- plugins (prebuilt wasm payloads, manifest-embedded) ---
-    //
-    // Adding a new first-party plugin is three steps, and the catalogue
-    // entry below is the only code change:
-    //   1. Create the crate under plugins/ (see `jinn plugin new`).
-    //   2. `just refresh-plugins` — builds every plugins/*/ crate and copies
-    //      the artifacts into res/plugins/ (commit the .wasm).
-    //   3. Add a Bundled entry here with `relative: "<crate>.wasm"` and
-    //      `BundleContents::Wasm(include_bytes!(...))`.
-    // Grants/http never appear in this file — `jinn install` extracts them
-    // from the artifact's embedded [package.metadata.jinn] manifest.
-    Bundled {
-        kind: Kind::Plugin,
-        relative: "url-citations.wasm",
-        contents: BundleContents::Wasm(include_bytes!(
-            "../../../../../res/plugins/url-citations.wasm"
-        )),
-    },
-    Bundled {
-        kind: Kind::Plugin,
-        relative: "tool-call-watchdog.wasm",
-        contents: BundleContents::Wasm(include_bytes!(
-            "../../../../../res/plugins/tool-call-watchdog.wasm"
-        )),
-    },
-    Bundled {
-        kind: Kind::Plugin,
-        relative: "stall-watchdog.wasm",
-        contents: BundleContents::Wasm(include_bytes!(
-            "../../../../../res/plugins/stall-watchdog.wasm"
-        )),
+        contents: include_str!("../../../../../res/skills/jinn-usage/references/configuration.md"),
     },
 ];
 
@@ -398,13 +304,9 @@ const BUNDLED: &[Bundled] = &[
 /// tree never surfaces as a "directory does not exist" write error.
 ///
 /// **`jinn.toml` is written exactly once — only when it does not exist.**
-/// On a fresh machine, all builtin `[plugin.<name>]` entries are registered
-/// in a single save. If the file already exists it is never read, patched,
-/// or registered against — even with `overwrite` — so a malformed `jinn.toml`
-/// never fails the install, and a payload installed while the file exists is
-/// left **unregistered**; the caller surfaces this via
-/// [`JinnTomlOutcome::Untouched`] and can point users at
-/// `jinn plugin install-builtins`.
+/// If the file already exists it is never read or modified — even with
+/// `overwrite` — so a malformed `jinn.toml` never fails the install; the
+/// caller surfaces this via [`JinnTomlOutcome::Untouched`].
 ///
 /// Outcomes are returned in [`BUNDLED`] order (deterministic), alongside the
 /// `jinn.toml` outcome.
@@ -412,9 +314,7 @@ const BUNDLED: &[Bundled] = &[
 /// # Errors
 ///
 /// Returns [`Report<InstallError>`] if directory creation or file writing
-/// fails, or if preferences cannot be saved on the fresh-create path. A
-/// bundled wasm payload whose embedded manifest is missing or corrupt fails
-/// loudly.
+/// fails, or if preferences cannot be created on the fresh-create path.
 pub fn install_defaults_to(
     destinations: &Destinations,
     overwrite: bool,
@@ -427,21 +327,20 @@ pub fn install_defaults_to(
     // "existing file" install.
     let prefs_existed = prefs_path.exists();
 
-    let mut installed: Vec<InstalledPlugin> = Vec::new();
     let outcomes: Vec<InstallOutcome> = BUNDLED
         .iter()
-        .map(|resource| match &resource.contents {
-            BundleContents::Text(text) => install_text(resource, text, destinations, overwrite),
-            BundleContents::Wasm(wasm) => {
-                install_plugin(resource, wasm, destinations, overwrite, &mut installed)
-            }
-        })
+        .map(|resource| install_text(resource, resource.contents, destinations, overwrite))
         .collect::<Result<Vec<_>, Report<InstallError>>>()?;
 
     let jinn_toml = if prefs_existed {
         JinnTomlOutcome::Untouched(prefs_path.to_path_buf())
     } else {
-        register_all_builtins(prefs_path, storage, &installed)?;
+        // Fresh-create path: the reload auto-creates the comment-rich
+        // default template — the file's single write.
+        storage
+            .reload()
+            .change_context(InstallError)
+            .attach("failed to create jinn.toml with the default template")?;
         JinnTomlOutcome::Created(prefs_path.to_path_buf())
     };
 
@@ -468,167 +367,6 @@ fn install_text(
     write_resource(&destination, contents.as_bytes())?;
 
     Ok(final_outcome(destination, existed))
-}
-
-/// Installs a single bundled wasm plugin payload — file write only, no
-/// `jinn.toml` registration.
-///
-/// Grants and http come from the artifact's embedded manifest — never
-/// guessed. The extracted manifest is pushed onto `installed` so the caller
-/// can register the plugin afterwards (see [`register_all_builtins`]).
-///
-/// A payload that already exists and `!overwrite` skips *before* manifest
-/// extraction, so a corrupt bundled payload never breaks a skipping install.
-fn install_plugin(
-    resource: &Bundled,
-    wasm: &[u8],
-    destinations: &Destinations,
-    overwrite: bool,
-    installed: &mut Vec<InstalledPlugin>,
-) -> Result<InstallOutcome, Report<InstallError>> {
-    use crate::feat::plugin::manifest::extract_manifest;
-
-    let destination = resource.kind.root(destinations).join(resource.relative);
-    let existed = destination.exists();
-
-    if existed && !overwrite {
-        return Ok(InstallOutcome::Skipped(destination));
-    }
-
-    // A bundled payload without a parseable manifest is a stale or corrupt
-    // build — fail loudly, naming the plugin, rather than installing a
-    // payload jinn cannot authorize.
-    let manifest = extract_manifest(wasm).change_context(InstallError)?;
-    let stem = resource
-        .relative
-        .strip_suffix(".wasm")
-        .unwrap_or(resource.relative);
-    let name = manifest.name.clone().unwrap_or_else(|| stem.to_owned());
-
-    write_resource(&destination, wasm)?;
-    installed.push(InstalledPlugin { name, manifest });
-
-    Ok(final_outcome(destination, existed))
-}
-
-/// Registers every plugin installed this run in one reload+save cycle.
-///
-/// Used only on the fresh-create path (`jinn.toml` did not exist), so the
-/// file is written exactly once and entries cannot clobber anything.
-fn register_all_builtins(
-    prefs_path: &Path,
-    storage: &dyn jinn_preferences_config::user_preferences_storage::UserPreferencesStorage,
-    installed: &[InstalledPlugin],
-) -> Result<(), Report<InstallError>> {
-    use crate::feat::plugin::install::manifest_entry;
-
-    let mut prefs = storage
-        .reload()
-        .change_context(InstallError)
-        .attach("failed to load preferences for builtin plugin registration")?;
-    for plugin in installed {
-        prefs.plugin.insert(
-            plugin.name.clone(),
-            manifest_entry(&plugin.name, &plugin.manifest),
-        );
-    }
-    storage
-        .save(&prefs)
-        .change_context(InstallError)
-        .attach("failed to write jinn.toml with builtin plugin entries")
-        .attach(format!("path: {}", prefs_path.display()))
-}
-
-/// One builtin plugin installed by [`install_builtin_plugins_to`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BuiltinPluginInstall {
-    /// The plugin name — manifest name or payload file stem.
-    pub name: String,
-    /// The payload outcome — [`InstallOutcome::Created`] or
-    /// [`InstallOutcome::Overwritten`]; never `Skipped`, because
-    /// `install-builtins` always overwrites payloads.
-    pub payload: InstallOutcome,
-    /// Whether a new `[plugin.<name>]` entry was written to `jinn.toml`.
-    /// `false` when an entry already existed (never modified — add-only).
-    pub entry_registered: bool,
-}
-
-/// Installs (overwrites) all bundled builtin plugin payloads and registers
-/// any builtin missing from `jinn.toml`.
-///
-/// The user-facing registrar for builtin plugins:
-/// - **Payloads are always overwritten** — this command exists for the
-///   rebuild/ship loop; stale payloads are the failure mode it fixes.
-/// - **Registration is add-only** — a `[plugin.<name>]` entry is written
-///   only when absent, so existing `enabled`, `config`, and hand-edited
-///   grants are never modified.
-/// - **Fails fast on a malformed `jinn.toml`**: preferences are reloaded
-///   before any payload is written, so a parse failure aborts the whole
-///   command with zero side effects. (A missing file is fine — reload
-///   auto-creates the comment-rich template on disk.)
-///
-/// Payloads land in `plugins_dir` (created as needed); outcomes are
-/// returned in [`BUNDLED`] order.
-///
-/// # Errors
-///
-/// Returns [`Report<InstallError>`] if the initial preferences reload
-/// fails (malformed `jinn.toml`), a payload's embedded manifest is missing
-/// or corrupt, a payload write fails, or entry registration fails.
-pub fn install_builtin_plugins_to(
-    plugins_dir: &Path,
-    storage: &dyn jinn_preferences_config::user_preferences_storage::UserPreferencesStorage,
-) -> Result<Vec<BuiltinPluginInstall>, Report<InstallError>> {
-    // Fail fast before any side effect: a malformed jinn.toml must not
-    // leave half-installed payloads on disk.
-    storage
-        .reload()
-        .change_context(InstallError)
-        .attach("failed to read jinn.toml — fix or remove it, then retry")?;
-
-    BUNDLED
-        .iter()
-        .filter_map(|resource| match &resource.contents {
-            BundleContents::Wasm(wasm) => Some((resource, wasm)),
-            BundleContents::Text(_) => None,
-        })
-        .map(|(resource, wasm)| install_builtin_plugin(plugins_dir, storage, resource, wasm))
-        .collect()
-}
-
-/// Installs one builtin plugin: overwrite the payload, add-only register.
-fn install_builtin_plugin(
-    plugins_dir: &Path,
-    storage: &dyn jinn_preferences_config::user_preferences_storage::UserPreferencesStorage,
-    resource: &Bundled,
-    wasm: &[u8],
-) -> Result<BuiltinPluginInstall, Report<InstallError>> {
-    use crate::feat::plugin::install::register_plugin_if_absent;
-    use crate::feat::plugin::manifest::extract_manifest;
-
-    // A bundled payload without a parseable manifest is a stale or corrupt
-    // build — fail loudly rather than installing a payload jinn cannot
-    // authorize.
-    let manifest = extract_manifest(wasm).change_context(InstallError)?;
-    let stem = resource
-        .relative
-        .strip_suffix(".wasm")
-        .unwrap_or(resource.relative);
-    let name = manifest.name.clone().unwrap_or_else(|| stem.to_owned());
-
-    let destination = plugins_dir.join(resource.relative);
-    let existed = destination.exists();
-    write_resource(&destination, wasm)?;
-    let payload = final_outcome(destination, existed);
-
-    let entry_registered =
-        register_plugin_if_absent(&name, &manifest, storage).change_context(InstallError)?;
-
-    Ok(BuiltinPluginInstall {
-        name,
-        payload,
-        entry_registered,
-    })
 }
 
 /// Writes `bytes` to `destination`, creating parent directories first.
@@ -665,27 +403,23 @@ mod tests {
     )]
 
     use super::*;
-    use jinn_preferences_config::user_preferences_storage::{
-        InMemoryUserPreferencesStorage, UserPreferencesStorage as _,
-    };
+    use jinn_preferences_config::user_preferences_storage::InMemoryUserPreferencesStorage;
     use tempfile::TempDir;
 
-    /// Builds a [`Destinations`] rooted at five distinct temp dirs. The
+    /// Builds a [`Destinations`] rooted at four distinct temp dirs. The
     /// returned temps must outlive the destinations.
     fn fresh_destinations() -> (Destinations, Vec<TempDir>) {
         let themes = TempDir::new().unwrap();
         let personas = TempDir::new().unwrap();
         let prompts = TempDir::new().unwrap();
         let skills = TempDir::new().unwrap();
-        let plugins = TempDir::new().unwrap();
         let destinations = Destinations::new(
             themes.path().to_path_buf(),
             personas.path().to_path_buf(),
             prompts.path().to_path_buf(),
             skills.path().to_path_buf(),
-            plugins.path().to_path_buf(),
         );
-        let temps = vec![themes, personas, prompts, skills, plugins];
+        let temps = vec![themes, personas, prompts, skills];
         (destinations, temps)
     }
 
@@ -724,10 +458,6 @@ mod tests {
                 &self.storage,
             )
             .expect("install")
-        }
-
-        fn plugins_dir(&self) -> &Path {
-            &self.destinations.plugins
         }
     }
 
@@ -790,7 +520,6 @@ mod tests {
         let personas = TempDir::new().unwrap();
         let prompts = TempDir::new().unwrap();
         let skills = TempDir::new().unwrap();
-        let plugins = TempDir::new().unwrap();
         let prefs_dir = TempDir::new().unwrap();
         // Non-existent subdirs under each temp root.
         let destinations = Destinations::new(
@@ -798,7 +527,6 @@ mod tests {
             personas.path().join("personas"),
             prompts.path().join("prompts"),
             skills.path().join("skills"),
-            plugins.path().join("plugins"),
         );
         let prefs_path = prefs_dir.path().join("nested").join("jinn.toml");
 
@@ -919,130 +647,6 @@ mod tests {
                 .expect("read")
                 .is_empty()
         );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn install_creates_plugin_payload_when_absent() {
-        // Given destinations with no existing plugins.
-        let env = TestEnv::fresh();
-
-        // When installing defaults.
-        let report = env.run(false);
-
-        // Then the stall-watchdog payload was created under the plugins root.
-        let outcome = outcome_for(&report.outcomes, "stall-watchdog.wasm");
-        assert!(
-            outcome.path().starts_with(env.plugins_dir()),
-            "plugin payload should be under the plugins root"
-        );
-        assert!(
-            matches!(outcome, InstallOutcome::Created(_)),
-            "plugin payload should be Created"
-        );
-        // And the payload is a non-empty wasm file.
-        assert!(outcome.path().is_file());
-        assert!(!std::fs::read(outcome.path()).expect("read").is_empty());
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn install_registers_plugin_entry_with_manifest_grants() {
-        // Given fresh destinations and in-memory preferences storage.
-        let env = TestEnv::fresh();
-
-        // When installing defaults.
-        env.run(false);
-
-        // Then the stall-watchdog entry carries the manifest-declared grant.
-        let prefs = env.storage.reload().expect("reload");
-        let entry = prefs
-            .plugin
-            .get("stall-watchdog")
-            .expect("stall-watchdog entry registered");
-        assert_eq!(entry.wasm, "stall-watchdog.wasm");
-        assert!(entry.grants.is_empty(), "stall-watchdog declares no grants");
-        assert!(!entry.http);
-        assert!(entry.enabled);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn install_skips_existing_plugin_without_force() {
-        // Given a plugins dir where stall-watchdog.wasm already exists, and a
-        // jinn.toml that does NOT exist.
-        let env = TestEnv::fresh();
-        let existing = env.plugins_dir().join("stall-watchdog.wasm");
-        std::fs::create_dir_all(env.plugins_dir()).unwrap();
-        std::fs::write(&existing, "PRE-EXISTING").unwrap();
-
-        // When installing defaults without force.
-        let report = env.run(false);
-
-        // Then the stall-watchdog payload is reported Skipped.
-        let outcome = outcome_for(&report.outcomes, "stall-watchdog.wasm");
-        assert!(
-            matches!(outcome, InstallOutcome::Skipped(_)),
-            "existing plugin payload should be Skipped"
-        );
-        // And no [plugin.stall-watchdog] entry was written (skip covers config too).
-        let prefs = env.storage.reload().expect("reload");
-        assert!(!prefs.plugin.contains_key("stall-watchdog"));
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn install_force_overwrites_existing_plugin_payload_and_entry() {
-        // Given a plugins dir where stall-watchdog.wasm already exists, and a
-        // jinn.toml that does NOT exist.
-        let env = TestEnv::fresh();
-        let existing = env.plugins_dir().join("stall-watchdog.wasm");
-        std::fs::create_dir_all(env.plugins_dir()).unwrap();
-        std::fs::write(&existing, "PRE-EXISTING").unwrap();
-
-        // When installing defaults with force.
-        let report = env.run(true);
-
-        // Then the stall-watchdog payload is reported Overwritten.
-        let outcome = outcome_for(&report.outcomes, "stall-watchdog.wasm");
-        assert!(
-            matches!(outcome, InstallOutcome::Overwritten(_)),
-            "existing plugin payload should be Overwritten"
-        );
-        // And the entry was written with the manifest-declared grant (the file
-        // did not exist, so this run created it).
-        let prefs = env.storage.reload().expect("reload");
-        assert!(
-            prefs
-                .plugin
-                .get("stall-watchdog")
-                .is_some_and(|e| e.grants.is_empty()),
-            "stall-watchdog entry registered with its (empty) grant set"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn install_plugin_fails_when_wasm_bytes_lack_manifest() {
-        // Given fresh destinations and a payload with no embedded manifest.
-        // (A bare, invalid-wasm byte sequence — not a jinn-built artifact.)
-        let env = TestEnv::fresh();
-
-        // When installing a non-manifest payload through the plugin path.
-        let result = install_plugin(
-            &Bundled {
-                kind: Kind::Plugin,
-                relative: "broken.wasm",
-                contents: BundleContents::Wasm(b"\0asm-bogus-payload"),
-            },
-            b"\0asm-bogus-payload",
-            &env.destinations,
-            false,
-            &mut Vec::new(),
-        );
-
-        // Then the install fails loudly (nothing written, nothing registered).
-        assert!(result.is_err(), "payload without manifest must fail");
     }
 
     #[rstest::rstest]
@@ -1171,16 +775,6 @@ mod tests {
             report.jinn_toml,
             JinnTomlOutcome::Created(env.prefs_path.clone())
         );
-        // And every builtin plugin entry is registered.
-        let prefs = env.storage.reload().expect("reload");
-        for name in [
-            "stall-watchdog",
-            "url-citations",
-            "tool-call-watchdog",
-            "stall-watchdog",
-        ] {
-            assert!(prefs.plugin.contains_key(name), "{name} must be registered");
-        }
         // And the file exists on disk.
         assert!(env.prefs_path.exists(), "jinn.toml must be created on disk");
     }
@@ -1214,15 +808,15 @@ mod tests {
     #[test]
     fn install_force_leaves_existing_jinn_toml_byte_identical() {
         // Given an environment where jinn.toml exists with a user customization
-        // and the stall-watchdog payload already exists on disk.
+        // and a theme file already exists on disk.
         let env = TestEnv::fresh();
         if let Some(parent) = env.prefs_path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
-        let original = "# my edits\n[plugin.stall-watchdog]\nenabled = false\n";
+        let original = "# my edits\n[compaction]\nthreshold = 0.4\n";
         std::fs::write(&env.prefs_path, original).unwrap();
-        let existing = env.plugins_dir().join("stall-watchdog.wasm");
-        std::fs::create_dir_all(env.plugins_dir()).unwrap();
+        let existing = env.destinations.themes.join("default.toml");
+        std::fs::create_dir_all(env.destinations.themes.clone()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
         // When installing defaults with force.
@@ -1235,38 +829,14 @@ mod tests {
         );
         let on_disk = std::fs::read_to_string(&env.prefs_path).expect("read");
         assert_eq!(on_disk, original);
-        // And plugin payloads were still overwritten.
-        let persona_outcome = outcome_for(&report.outcomes, "stall-watchdog.wasm");
+        // And resource files were still overwritten.
+        let theme_outcome = outcome_for(&report.outcomes, "default.toml");
         assert!(
-            matches!(persona_outcome, InstallOutcome::Overwritten(_)),
-            "payloads must still follow --force"
+            matches!(theme_outcome, InstallOutcome::Overwritten(_)),
+            "resource files must still follow --force"
         );
     }
 
-    #[rstest::rstest]
-    #[test]
-    fn install_fresh_env_registers_enabled_default_entries() {
-        // Given a fresh environment.
-        let env = TestEnv::fresh();
-
-        // When installing defaults.
-        env.run(false);
-
-        // Then every registered builtin entry is enabled with no user config.
-        let prefs = env.storage.reload().expect("reload");
-        assert_eq!(prefs.plugin.len(), 3, "all three builtins registered");
-        assert!(
-            prefs
-                .plugin
-                .values()
-                .all(|e| e.enabled && e.config.is_none()),
-            "fresh entries must be enabled with no config"
-        );
-    }
-
-    /// Every markdown link in the jinn-usage SKILL.md router resolves to a
-    /// file registered in `BUNDLED`. A dangling reference ships a skill that
-    /// instructs agents to read files that don't exist.
     #[rstest::rstest]
     #[test]
     fn jinn_usage_router_links_resolve_to_bundled_references() {
@@ -1275,9 +845,7 @@ mod tests {
             .iter()
             .find(|b| b.kind == Kind::Skill && b.relative == "jinn-usage/SKILL.md")
             .expect("jinn-usage SKILL.md must be registered in BUNDLED");
-        let BundleContents::Text(body) = skill.contents else {
-            panic!("skill payloads are text");
-        };
+        let body = skill.contents;
 
         // When extracting its `references/*.md` links.
         let linked: Vec<&str> = body

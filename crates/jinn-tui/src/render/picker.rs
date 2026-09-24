@@ -89,7 +89,6 @@ mod tests {
     #[case::task_list(PickerKind::TaskList)]
     #[case::project(PickerKind::Project)]
     #[case::mcp_server(PickerKind::McpServer)]
-    #[case::plugin(PickerKind::Plugin)]
     fn picker_draws_footer_rows_matching_kind_declaration(#[case] kind: PickerKind) {
         // Given a picker scope of this kind with the default (empty) state,
         // and the domain's picker registry.

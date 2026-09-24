@@ -1,6 +1,5 @@
 [package]
 name = "jinn-discord"
-version = "0.116.1"
 edition.workspace = true
 publish.workspace = true
 

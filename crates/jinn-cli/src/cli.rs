@@ -85,8 +85,8 @@ pub enum Commands {
         shell: clap_complete::Shell,
     },
 
-    /// Install default themes, personas, prompts, skills, and prebuilt
-    /// plugins to user directories.
+    /// Install default themes, personas, prompts, and skills to user
+    /// directories.
     Install {
         /// Overwrite existing resources if they already exist.
         #[arg(long)]
@@ -105,13 +105,6 @@ pub enum Commands {
         /// The config subcommand to run.
         #[command(subcommand)]
         subcommand: ConfigCommands,
-    },
-
-    /// Author, install, and manage wasm plugins.
-    Plugin {
-        /// The plugin subcommand to run.
-        #[command(subcommand)]
-        subcommand: PluginCommands,
     },
 }
 
@@ -156,80 +149,6 @@ pub enum ConfigCommands {
         #[arg(long)]
         force: bool,
     },
-}
-
-/// Plugin subcommands.
-#[derive(Debug, Subcommand)]
-pub enum PluginCommands {
-    /// Scaffold a new plugin cargo project in the current directory.
-    New {
-        /// The plugin name (crate name; also the `[[plugin]]` entry name).
-        name: String,
-
-        /// SDK source: a jinn checkout path (absolute or relative) for
-        /// local development, a git URL (optionally `@rev`-pinned), or
-        /// omitted for the default jinn repo.
-        #[arg(long = "sdk", value_name = "PATH|GIT_URL[@REV]")]
-        sdk: Option<String>,
-    },
-
-    /// Build a plugin crate to a jinn-installable `.wasm` payload.
-    Build {
-        /// Path to the plugin crate directory (default: current dir).
-        dir: Option<String>,
-    },
-    /// Install a built `.wasm` payload as a jinn plugin.
-    Install {
-        /// Path to the built `.wasm` file.
-        wasm: String,
-
-        /// The plugin name (defaults to the embedded manifest's name, then
-        /// the file stem).
-        name: Option<String>,
-
-        /// Grant a preopened directory path (`<config_dir>`/`<data_dir>`
-        /// variables allowed). Repeatable; suffix `:w` for writable.
-        /// Overrides the plugin's embedded manifest grants.
-        #[arg(long = "grant", value_name = "PATH[:w]")]
-        grants: Vec<String>,
-
-        /// Allow network access (overrides the embedded manifest).
-        #[arg(long = "http", conflicts_with = "no_http")]
-        http: bool,
-
-        /// Deny network access (overrides the embedded manifest).
-        #[arg(long = "no-http")]
-        no_http: bool,
-    },
-
-    /// Build a plugin from source and install it in one command.
-    Add {
-        /// Path to the plugin crate directory (default: current dir).
-        dir: Option<String>,
-
-        /// The plugin name (defaults to the embedded manifest's name, then
-        /// the crate name).
-        name: Option<String>,
-
-        /// Grant a preopened directory path (`<config_dir>`/`<data_dir>`
-        /// variables allowed). Repeatable; suffix `:w` for writable.
-        /// Overrides the plugin's embedded manifest grants.
-        #[arg(long = "grant", value_name = "PATH[:w]")]
-        grants: Vec<String>,
-
-        /// Allow network access (overrides the embedded manifest).
-        #[arg(long = "http", conflicts_with = "no_http")]
-        http: bool,
-
-        /// Deny network access (overrides the embedded manifest).
-        #[arg(long = "no-http")]
-        no_http: bool,
-    },
-
-    /// Install (overwrite) all builtin plugin payloads and register any
-    /// builtin plugin missing from jinn.toml. Existing [plugin.<name>]
-    /// entries are never modified. Plugins activate on the next jinn start.
-    InstallBuiltins,
 }
 
 #[cfg(test)]

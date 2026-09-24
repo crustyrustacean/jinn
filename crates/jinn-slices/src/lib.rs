@@ -10,9 +10,8 @@
 //! grep-provable — find the handle, find the writer.
 //!
 //! Keys are dynamic strings ([`SlotKey`]), not an enum of known features,
-//! so plugin-contributed slices are first-class residents: a WASM guest's
-//! host-side coordinator can register a cell under the guest's namespace
-//! exactly like a built-in feature does.
+//! so a feature can register a cell under its own namespace without
+//! touching a central registry.
 //!
 //! Read access is not scarce; write access is.
 //!

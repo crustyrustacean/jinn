@@ -1,7 +1,7 @@
 //! Dynamic slice identity — scope ids and data-carried intents.
 //!
-//! Slices that are wired in composition (dashboard, quake bar, future
-//! guest plugins) must not require central enum edits: the vocabulary
+//! Slices that are wired in composition (dashboard, quake bar) must not
+//! require central enum edits: the vocabulary
 //! here carries identity as data. A slice mints a [`SliceScopeId`] for
 //! its focus scope and addresses its actions through
 //! [`DynamicIntent`]; the handler dispatches dynamic intents *only*

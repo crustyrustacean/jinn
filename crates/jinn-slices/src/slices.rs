@@ -16,13 +16,13 @@ use crate::slice_scope::SliceScopeId;
 
 /// Uniquely addresses one slice cell.
 ///
-/// `namespace` separates built-ins from plugin contributions
-/// (`builtin` vs the plugin's name); `name` is the feature-chosen slice
-/// name; `version` lets a slice payload evolve under a new key instead
-/// of migrating in place.
+/// `namespace` is the feature's own namespace (e.g. the slice crate's
+/// domain, or `builtin`); `name` is the feature-chosen slice name;
+/// `version` lets a slice payload evolve under a new key instead of
+/// migrating in place.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SlotKey {
-    /// Namespace owning the slot: `builtin` or a plugin name.
+    /// Namespace owning the slot (e.g. `builtin`).
     namespace: String,
     /// Feature-chosen slice name, e.g. `status`.
     name: String,
@@ -36,19 +36,6 @@ impl SlotKey {
     pub fn builtin(namespace: &str, name: &str) -> Self {
         Self {
             namespace: namespace.to_owned(),
-            name: name.to_owned(),
-            version: 1,
-        }
-    }
-
-    /// A key for a plugin-contributed slice.
-    ///
-    /// Guest slices are namespaced by plugin name so two plugins can
-    /// never collide with each other or with built-ins.
-    #[must_use]
-    pub fn plugin(plugin_name: &str, name: &str) -> Self {
-        Self {
-            namespace: plugin_name.to_owned(),
             name: name.to_owned(),
             version: 1,
         }
@@ -373,7 +360,7 @@ mod tests {
         // Given a registry with two registered slots.
         let slices = Slices::new();
         let a = SlotKey::builtin("a", "one");
-        let b = SlotKey::plugin("plug", "two");
+        let b = SlotKey::builtin("b", "two");
         let _ = slices
             .register(a.clone(), Payload::default())
             .expect("register a");

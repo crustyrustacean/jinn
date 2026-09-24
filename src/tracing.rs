@@ -59,14 +59,6 @@ pub enum TracingMode {
         /// Resolved path to the log file (e.g. `~/.local/state/jinn/jinn.log`).
         log_path: PathBuf,
     },
-    /// Out-of-band tooling (e.g. `jinn plugin ...`): file-only logging.
-    /// The terminal belongs to the subcommand's own output (scaffolds,
-    /// cargo passthrough, install results) — tracing must never interleave
-    /// with it.
-    Quiet {
-        /// Resolved path to the log file (e.g. `~/.local/state/jinn/jinn.log`).
-        log_path: PathBuf,
-    },
 }
 
 /// Derives the dedicated panic-log path as a sibling of the main `log_path`.
@@ -379,9 +371,7 @@ pub fn init(
     let filter = build_filter(rust_log.as_deref(), &verbosity);
 
     let log_path = match &mode {
-        TracingMode::Tui { log_path }
-        | TracingMode::Headless { log_path }
-        | TracingMode::Quiet { log_path } => log_path.clone(),
+        TracingMode::Tui { log_path } | TracingMode::Headless { log_path } => log_path.clone(),
     };
 
     let logfile = open_log_file(&log_path)?;
@@ -399,7 +389,7 @@ pub fn init(
     let formatter = CompactSpans { color: trace_color };
 
     match mode {
-        TracingMode::Tui { .. } | TracingMode::Quiet { .. } => {
+        TracingMode::Tui { .. } => {
             let file_layer = tracing_subscriber::fmt::layer()
                 .event_format(formatter)
                 .with_ansi(trace_color)

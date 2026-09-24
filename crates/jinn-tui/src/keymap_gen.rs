@@ -82,7 +82,6 @@ fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
         "mcp-server" => Some(Scope::PickerMcpServer),
         "session-lifecycle" => Some(Scope::PickerLifecycle),
         "reasoning-effort" => Some(Scope::PickerReasoningEffort),
-        "plugin" => Some(Scope::PickerPlugin),
         "task-list" => Some(Scope::PickerTaskList),
         "session" => Some(Scope::PickerSession),
         "provider" => Some(Scope::PickerProvider),
@@ -150,7 +149,6 @@ fn scopes_for_row<'a>(
                 Scope::PickerTaskList,
                 Scope::PickerProject,
                 Scope::PickerMcpServer,
-                Scope::PickerPlugin,
             ]
             .into_iter()
             .collect();
@@ -830,7 +828,6 @@ mod tests {
     #[case("Picker(task-list)")]
     #[case("Picker(project)")]
     #[case("Picker(mcp-server)")]
-    #[case("Picker(plugin)")]
     fn alt_t_resolves_in_every_static_scope(#[case] scope_name: &str) {
         // Given the composed term rows (the GlobalToggle toggle-overlay
         // row) generated into a fresh keymap, queried in a static scope

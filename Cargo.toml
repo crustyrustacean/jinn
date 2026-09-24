@@ -24,10 +24,7 @@ disabled-strategies = ["quick-install", "compile"]
 [workspace]
 # `crates/jinn-*` (not `crates/*`) so the glob never matches the `crates/slices/`
 # container directory, which holds the slice crates matched by `crates/slices/*`.
-# The plugin crates are excluded (infrastructure torn down; directories kept for
-# re-integration).
 members = ["crates/jinn-*", "crates/slices/*", "vendor/*"]
-exclude = ["crates/jinn-plugin", "crates/jinn-plugin-api", "crates/jinn-plugin-sdk", "plugins/*"]
 
 
 [workspace.package]

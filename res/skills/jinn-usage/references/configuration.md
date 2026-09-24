@@ -9,7 +9,7 @@ the offer.
 
 | File | Location | Contents |
 | --- | --- | --- |
-| `jinn.toml` | `~/.config/jinn/jinn.toml` | User preferences: tools/skills defaults, session lifecycles, projects, MCP servers, plugins, compaction, auto-prune, web fetch/search, browser, Discord, interactive terminal |
+| `jinn.toml` | `~/.config/jinn/jinn.toml` | User preferences: tools/skills defaults, session lifecycles, projects, MCP servers, compaction, auto-prune, web fetch/search, browser, Discord, interactive terminal |
 | `providers.toml` | `~/.config/jinn/providers.toml` | Providers, API keys, base URLs, per-model metadata |
 | themes | `~/.config/jinn/themes/*.toml` | Color themes (picked with `<leader>sh`) |
 | personas | `~/.config/jinn/personas/*.md` | Persona templates (markdown + TOML frontmatter) |
@@ -45,8 +45,8 @@ When the user's ask maps to a config change:
    where.
 5. Remind them of the restart.
 
-If a jinn **config subcommand** exists for the ask (e.g. `jinn install`,
-`jinn plugin add`), prefer the command over hand-editing.
+If a jinn **config subcommand** exists for the ask (e.g. `jinn install`),
+prefer the command over hand-editing.
 
 ## Common asks → settings
 

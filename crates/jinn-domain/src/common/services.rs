@@ -112,7 +112,7 @@ pub struct Services {
     /// Feature-registered keybind routes (intent → message).
     ///
     /// The intent handler consults this table before its own arms; rows
-    /// attach after startup wiring as features and plugins register.
+    /// attach after startup wiring as features register.
     #[debug(skip)]
     pub key_routes: crate::common::slices::key_routes::KeyRoutes,
 

@@ -109,7 +109,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("<leader>st", KernelIntent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
             .bind("<leader>sk", KernelIntent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
             .bind("<leader>sM", KernelIntent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
-            .bind("<leader>sP", KernelIntent::OpenPicker { kind: PickerKind::Plugin }, KeyCategory::General)
             .bind("<leader>sh", KernelIntent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             .bind("<leader>sr", KernelIntent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
             // OpenRouter routing endpoint pin (Single + OpenRouter models only).
@@ -290,9 +289,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             // The MCP spec's rows (TAB toggle, CTRL+R restart, CTRL+T
             // logs/tools) land here via bind_picker_spec_rows.
             add_picker_base(b);
-        })
-        .scope(Scope::PickerPlugin, |b| {
-            add_picker_base(b);
         });
 
     // ArgInput scope - typing positional args for a lifecycle command.
@@ -375,7 +371,6 @@ mod tests {
             PickerKind::TaskList,
             PickerKind::Project,
             PickerKind::McpServer,
-            PickerKind::Plugin,
             PickerKind::Endpoint
         )]
         kind: PickerKind,
@@ -671,45 +666,6 @@ mod tests {
                 "<leader>se must resolve to OpenPicker{{Persona}}; got {action:?}",
             ),
             other => panic!("<leader>se must be a leaf, got branch: {other:?}"),
-        }
-    }
-
-    #[rstest::rstest]
-    fn leader_sp_capital_resolves_to_plugin_picker() {
-        // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-        let path = [
-            KeyEvent {
-                key: Key::Char(' '),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('s'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('P'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-
-        // When navigating the <leader>sP sequence.
-        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
-
-        // Then it resolves to OpenPicker{Plugin}.
-        match result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(
-                    action,
-                    KernelIntent::OpenPicker {
-                        kind: PickerKind::Plugin
-                    }
-                ),
-                "<leader>sP must resolve to OpenPicker{{Plugin}}; got {action:?}",
-            ),
-            other => panic!("<leader>sP must be a leaf, got branch: {other:?}"),
         }
     }
 

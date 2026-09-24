@@ -208,7 +208,7 @@ impl ActorSystemBuilder {
         // Persona slice: activation scans the persona directories and
         // mints the personas cell; the returned set is published as
         // `PersonasLoaded` below, after the session actor (its sole
-        // subscriber) has spawned — the plugin's push-once contract.
+        // subscriber) has spawned — the push-once contract.
         let persona_entries = jinn_persona_activate(&mut services);
 
         // Term slice: registers the terminal tab mirrors cell (written

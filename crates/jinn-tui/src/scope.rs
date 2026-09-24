@@ -51,8 +51,6 @@ pub enum Scope {
     PickerProject,
     /// Picker - MCP server toggle selection.
     PickerMcpServer,
-    /// Picker - Read-only plugin list.
-    PickerPlugin,
     /// Input mode - typing into the input buffer.
     Input,
     /// Arg input mode - typing positional args for a lifecycle command.
@@ -90,7 +88,6 @@ impl std::fmt::Display for Scope {
             Self::PickerTaskList => write!(f, "Picker(task-list)"),
             Self::PickerProject => write!(f, "Picker(project)"),
             Self::PickerMcpServer => write!(f, "Picker(mcp-server)"),
-            Self::PickerPlugin => write!(f, "Picker(plugin)"),
             Self::Input => write!(f, "Input"),
             Self::Dynamic(id) => write!(f, "dynamic:{id}"),
             Self::ArgInput => write!(f, "ArgInput"),
@@ -126,7 +123,6 @@ impl std::str::FromStr for Scope {
             "Picker(task-list)" => Ok(Self::PickerTaskList),
             "Picker(project)" => Ok(Self::PickerProject),
             "Picker(mcp-server)" => Ok(Self::PickerMcpServer),
-            "Picker(plugin)" => Ok(Self::PickerPlugin),
             "Input" => Ok(Self::Input),
             "ArgInput" => Ok(Self::ArgInput),
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
@@ -172,21 +168,6 @@ mod tests {
         assert_eq!(
             Scope::from_str(&s),
             Ok(scope),
-            "Display/FromStr should round-trip"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn plugin_picker_scope_round_trips() {
-        // Given the PickerPlugin scope variant.
-        // When formatting then parsing back.
-        // Then the round-trip preserves the variant.
-        let s = Scope::PickerPlugin.to_string();
-        assert_eq!(s, "Picker(plugin)");
-        assert_eq!(
-            Scope::from_str(&s),
-            Ok(Scope::PickerPlugin),
             "Display/FromStr should round-trip"
         );
     }

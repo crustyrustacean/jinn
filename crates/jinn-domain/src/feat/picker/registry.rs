@@ -22,8 +22,6 @@ pub const TOOL_ID: &str = "tool";
 pub const MCP_SERVER_ID: &str = "mcp-server";
 /// The id of the session-lifecycle picker's spec.
 pub const SESSION_LIFECYCLE_ID: &str = "session-lifecycle";
-/// The id of the plugin picker's spec.
-pub const PLUGIN_ID: &str = "plugin";
 /// The id of the task-list picker's spec.
 pub const TASK_LIST_ID: &str = "task-list";
 /// The id of the session picker's spec.
@@ -51,7 +49,6 @@ pub fn spec_id_for_kind(kind: &crate::feat::picker::PickerKind) -> Option<&'stat
         crate::feat::picker::PickerKind::McpServer => Some(MCP_SERVER_ID),
         crate::feat::picker::PickerKind::SessionLifecycle => Some(SESSION_LIFECYCLE_ID),
         crate::feat::picker::PickerKind::ReasoningEffort => Some(REASONING_EFFORT_ID),
-        crate::feat::picker::PickerKind::Plugin => Some(PLUGIN_ID),
         crate::feat::picker::PickerKind::TaskList => Some(TASK_LIST_ID),
         crate::feat::picker::PickerKind::Session => Some(SESSION_ID),
         crate::feat::picker::PickerKind::Provider => Some(PROVIDER_ID),
@@ -75,7 +72,6 @@ pub fn build_picker_registry() -> PickerRegistry {
     registry.register(super::mcp_server_spec::mcp_server_spec());
     registry.register(super::session_lifecycle_spec::session_lifecycle_spec());
     registry.register(super::reasoning_effort_spec::reasoning_effort_spec());
-    registry.register(super::plugin_spec::plugin_spec());
     registry.register(super::task_list_spec::task_list_spec());
     registry.register(super::session_spec::session_spec());
     registry.register(super::provider_spec::provider_spec());
@@ -107,7 +103,6 @@ mod tests {
             PickerKind::McpServer,
             PickerKind::SessionLifecycle,
             PickerKind::ReasoningEffort,
-            PickerKind::Plugin,
             PickerKind::TaskList,
             PickerKind::Session,
             PickerKind::Provider,

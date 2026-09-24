@@ -12,7 +12,6 @@ pub mod mcp_picker_entry;
 pub mod mcp_server_spec;
 pub mod persona_spec;
 pub mod picker_kind;
-pub mod plugin_spec;
 pub mod project_spec;
 pub mod provider_spec;
 pub mod reasoning_effort_spec;

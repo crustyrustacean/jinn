@@ -163,14 +163,6 @@ pub struct UserPreferences {
     #[serde(default)]
     pub mcp_server: std::collections::BTreeMap<String, jinn_mcp_msg::McpServerConfig>,
 
-    /// Configured plugins, keyed by name — `[plugin.<name>]` in `jinn.toml`.
-    /// Each entry declares a `.wasm` component plus its capability grants;
-    /// the plugin coordinator hosts one in-process WASM guest per enabled
-    /// entry at app start. See
-    /// [`PluginConfig`](crate::schemas::PluginConfig).
-    #[serde(default)]
-    pub plugin: std::collections::BTreeMap<String, crate::schemas::PluginConfig>,
-
     /// The local IP address HTTP-mode MCP servers bind to. Used as the `<ip>`
     /// replacement token in a server's `args`, and as the bind address for
     /// jinn's port allocation. Defaults to `127.0.0.1` (loopback only).
@@ -252,7 +244,6 @@ impl Default for UserPreferences {
             ],
             projects: vec![],
             mcp_server: std::collections::BTreeMap::new(),
-            plugin: std::collections::BTreeMap::new(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -511,9 +502,8 @@ where
         patcher.register_array_key(["session_lifecycle"], "name");
         patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
         patcher.register_array_key(["projects"], "path");
-        // `plugin` and `mcp_server` are map-keyed tables (`[plugin.<name>]`),
-        // not arrays — the table name is the identity, no key registration
-        // needed.
+        // `mcp_server` is a map-keyed table (`[mcp_server.<name>]`), not an
+        // array — the table name is the identity, no key registration needed.
 
         patcher
             .apply(new_table, doc.as_table_mut())
@@ -658,14 +648,6 @@ pub(crate) mod tests {
         reason = "a fully-specified fixture is intentionally exhaustive; no ..default() escapes"
     )]
     pub(crate) fn explicit_user_preferences() -> UserPreferences {
-        let plugin_config = {
-            let mut cfg = toml::map::Map::new();
-            cfg.insert(
-                "scope".to_owned(),
-                toml::Value::String("read-only".to_owned()),
-            );
-            cfg
-        };
         let auto_prune = AutoPruneConfig {
             edit_read: EditReadAutoPruneConfig {
                 enabled: false,
@@ -752,21 +734,6 @@ pub(crate) mod tests {
                     headers: [("X-Fixture-Header".to_owned(), "fixture-value".to_owned())]
                         .into_iter()
                         .collect(),
-                },
-            )]
-            .into_iter()
-            .collect(),
-            plugin: [(
-                "fixture-plugin".to_owned(),
-                crate::schemas::PluginConfig {
-                    wasm: "fixture-plugin.wasm".to_owned(),
-                    grants: vec![crate::schemas::PluginPathGrant {
-                        path: "<data_dir>/fixture:w".to_owned(),
-                        writable: true,
-                    }],
-                    http: true,
-                    config: Some(toml::Value::Table(plugin_config)),
-                    enabled: false,
                 },
             )]
             .into_iter()
@@ -1472,10 +1439,50 @@ args = ["@excalimate/mcp-server", "--stdio"]
     }
 
     #[rstest::rstest]
+    fn save_preserves_unknown_plugin_tables_and_comments() {
+        // Given a jinn.toml carrying an unknown `[plugin.*]` table (left
+        // behind by an older jinn; this jinn has no plugin system and never
+        // reads it) plus a user comment and one modeled field.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            "# my hand-edited banner\ntool_entry_max_lines = 10\n\n[plugin.legacy]\nwasm = \"legacy.wasm\"\nenabled = true\nhttp = false\n",
+        )
+        .expect("write");
+
+        // When loading and saving preferences back with no changes.
+        let prefs = load_preferences_from(&path).expect("load");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the unknown table and its fields survive untouched.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            on_disk.contains("[plugin.legacy]"),
+            "unknown [plugin.*] table must survive a save: {on_disk}"
+        );
+        assert!(
+            on_disk.contains("wasm = \"legacy.wasm\""),
+            "fields must survive"
+        );
+        assert!(on_disk.contains("enabled = true"), "fields must survive");
+        // And the user comment survives.
+        assert!(
+            on_disk.contains("# my hand-edited banner"),
+            "comment must survive"
+        );
+        // And the modeled field is still patched.
+        assert!(on_disk.contains("tool_entry_max_lines = 10"));
+        // And the saved file loads again.
+        load_preferences_from(&path).expect("reload saved file");
+    }
+
+    #[rstest::rstest]
     fn save_rewrites_legacy_alias_so_patched_file_still_parses() {
         // Given a legacy jinn.toml using the `min_tail_entries` alias and
-        // a plugin entry (the shape `plugin install` produces when it
-        // patches a file that predates the canonical key).
+        // an unknown `[plugin.p]` table (the shape an old jinn's plugin
+        // install produced; this jinn has no plugin system and must leave
+        // the table untouched).
         let original = r#"[auto_prune.broken_edit]
 enabled = true
 min_tail_entries = 10
@@ -1537,7 +1544,7 @@ http = false
     #[rstest::rstest]
     fn save_strips_legacy_project_key() {
         // Given a poisoned jinn.toml: the legacy [[project]] block plus a
-        // canonical [[projects]] entry (the shape `jinn plugin add` patches
+        // canonical [[projects]] entry (the shape an older jinn patched
         // into a pre-flip file) and a banner comment the user should keep.
         let original = r#"# my hand-edited banner
 [[project]]

@@ -83,13 +83,10 @@ pub use feat::session::phase_machine::PhaseKind;
 
 // Re-export reasoning types
 pub use feat::reasoning::{ReasoningEffort, resolve_effort};
-// Re-export install (default resource seeding + builtin plugin registration).
+// Re-export install (default resource seeding).
 pub use feat::install::{
-    BuiltinPluginInstall, Destinations, InstallError, InstallOutcome, InstallReport,
-    JinnTomlOutcome, install_builtin_plugins_to, install_defaults_to,
+    Destinations, InstallError, InstallOutcome, InstallReport, JinnTomlOutcome, install_defaults_to,
 };
-// Re-export plugin registration policies (replace vs add-only).
-pub use feat::plugin::install::register_plugin_if_absent;
 
 // Re-export persona types
 pub use feat::persona::{Persona, PersonaEntry};

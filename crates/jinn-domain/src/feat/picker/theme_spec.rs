@@ -4,10 +4,10 @@
 //! highlighted theme immediately (invalidating theme caches per move), ESC
 //! restores the snapshotted pre-open theme, and Enter persists the
 //! already-applied theme via `UpdateAppState::SetTheme`. Open resets the
-//! picker, snapshots the current theme, and loads entries from the plugin
-//! contribution cache — the built-in "default" pinned first (a contributed
+//! picker, snapshots the current theme, and loads entries from the theme
+//! slice's entries cell — the built-in "default" pinned first (a scanned
 //! "default" replaces the built-in entry's look while keeping its reserved
-//! slot), the rest sorted case-insensitively by name.
+//! slot), the rest in the cell's canonical order.
 
 use jinn_picker::ActionCtx;
 use jinn_picker::PickerId;
@@ -110,7 +110,8 @@ fn theme_status(ctx: &StatusCtx<'_>) -> Option<Line<'static>> {
 // ── Lifecycle ────────────────────────────────────────────────────────────
 
 /// Opening the theme picker: fresh filter + selection, snapshot the current
-/// theme for the ESC revert, and load entries from the contribution cache.
+/// theme for the ESC revert, and load entries from the theme slice's
+/// entries cell.
 fn open_theme(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     let state = state_of(ctx);
     state.frontend.theme_picker_mut().reset();
@@ -250,8 +251,8 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn open_resets_snapshots_and_loads_default_first_then_contributed_sorted() {
-        // Given a cache with unsorted contributed themes and a non-default
-        // active theme.
+        // Given a slice cell with themes seeded out of sorted order and a
+        // non-default active theme.
         let mut state = state_with_themes(&[
             ("zeta", crate::feat::theme::default_theme()),
             ("Beta", crate::feat::theme::default_theme()),
@@ -281,7 +282,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn open_with_contributed_default_keeps_reserved_slot_but_borrows_its_look() {
-        // Given a contributed theme named "default" (distinct from the
+        // Given a scanned theme named "default" (distinct from the
         // built-in default theme).
         let contributed = crate::feat::theme::default_theme();
         let mut state = state_with_themes(&[("default", contributed.clone())]);
@@ -303,7 +304,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn open_with_empty_cache_shows_default_only() {
-        // Given no plugin contributions (dead or absent themes plugin).
+        // Given no themes slice cell attached (activation never ran).
         let mut state = AppState::default_with_scope_focus();
 
         // When opening the theme picker.
