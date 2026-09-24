@@ -19,4 +19,4 @@ mod persona_entry;
 
 pub use persona::Persona;
 pub use persona_entry::PersonaEntry;
-pub(crate) use persona_entry::render_persona_row;
+pub use persona_entry::persona_row;

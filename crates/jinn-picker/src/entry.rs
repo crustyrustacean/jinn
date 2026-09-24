@@ -31,14 +31,10 @@ use crate::preview_key::PreviewKey;
 
 /// The render hooks an entry needs, shared across all entries of one load.
 ///
-/// Fields are crate-visible data carriers consumed by the builder and the
-/// registry's typed window — the same shape as the selection widget's own
-/// state structs.
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "crate-internal data carrier; accessor boilerplate adds no safety"
-)]
-pub(crate) struct RenderHooks<T> {
+/// Declared with the builder methods; the spec builder and the standalone
+/// wrapping path both funnel through this one type, so a spec-declared hook and
+/// a caller-supplied hook wrap entries identically.
+pub struct PickerItemHooks<T> {
     /// Row renderer (spec `.row`).
     pub(crate) row: Option<PickerRowFn<T>>,
     /// Search-text computer (spec `.search`).
@@ -49,7 +45,58 @@ pub(crate) struct RenderHooks<T> {
     pub(crate) preview_key: Option<PickerPreviewKeyFn<T>>,
 }
 
-impl<T> Default for RenderHooks<T> {
+impl<T> PickerItemHooks<T> {
+    /// An empty hook set: rows fall back to the search text, previews are
+    /// empty, and caching is off per entry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Declares the row renderer. Default: the plain search-text label.
+    #[must_use]
+    pub fn row<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&T, &RowCtx<'_>) -> Line<'static> + Send + Sync + 'static,
+    {
+        self.row = Some(PickerRowFn::new(f));
+        self
+    }
+
+    /// Declares the search-text computer, run once per entry at load.
+    /// Default: the row's plain text.
+    #[must_use]
+    pub fn search<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&T) -> String + Send + Sync + 'static,
+    {
+        self.search = Some(PickerSearchFn::new(f));
+        self
+    }
+
+    /// Declares the preview renderer. Default: an empty preview pane.
+    #[must_use]
+    pub fn preview<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&T, &PreviewCtx<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    {
+        self.preview = Some(PickerPreviewFn::new(f));
+        self
+    }
+
+    /// Declares the preview cache identity. Entries without a key render
+    /// live. Default: no keys (caching off per entry).
+    #[must_use]
+    pub fn preview_key<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&T) -> Option<PreviewKey> + Send + Sync + 'static,
+    {
+        self.preview_key = Some(PickerPreviewKeyFn::new(f));
+        self
+    }
+}
+
+impl<T> Default for PickerItemHooks<T> {
     fn default() -> Self {
         Self {
             row: None,
@@ -60,13 +107,13 @@ impl<T> Default for RenderHooks<T> {
     }
 }
 
-impl<T> std::fmt::Debug for RenderHooks<T> {
+impl<T> std::fmt::Debug for PickerItemHooks<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("RenderHooks(..)")
+        f.write_str("PickerItemHooks(..)")
     }
 }
 
-impl<T> RenderHooks<T> {
+impl<T> PickerItemHooks<T> {
     /// Shares the hooks across the entries of one load. Manual because the
     /// hooks are `Clone` regardless of `T` — a derived impl would wrongly
     /// require `T: Clone`.
@@ -107,7 +154,7 @@ where
 {
     entry: T,
     search_text: String,
-    hooks: Arc<RenderHooks<T>>,
+    hooks: Arc<PickerItemHooks<T>>,
 }
 
 impl<T> Clone for PickerEntry<T>
@@ -271,7 +318,7 @@ where
 /// before any keystroke. Entries whose hooks are absent fall back to
 /// defaults (label = row text, no preview, no cache key).
 #[must_use]
-pub(crate) fn make_items<T>(entries: Vec<T>, hooks: &RenderHooks<T>) -> Vec<PickerEntry<T>>
+pub(crate) fn make_items<T>(entries: Vec<T>, hooks: &PickerItemHooks<T>) -> Vec<PickerEntry<T>>
 where
     T: std::fmt::Debug + Send + Sync + 'static,
 {
@@ -289,6 +336,21 @@ where
             }
         })
         .collect()
+}
+
+/// Builds `PickerEntry<T>` items from domain entries using caller-supplied
+/// hooks, without consulting a registered spec.
+///
+/// Kernel-side entry writers cannot import the crate that owns the specs, so
+/// they cannot reach the spec-driven wrapping path. This is the cycle-free
+/// seam for the same wrapping: the caller supplies the same hooks its spec
+/// declares, and entries wrap identically.
+#[must_use]
+pub fn make_items_with_hooks<T>(entries: Vec<T>, hooks: PickerItemHooks<T>) -> Vec<PickerEntry<T>>
+where
+    T: std::fmt::Debug + Send + Sync + 'static,
+{
+    make_items(entries, &hooks)
 }
 
 #[cfg(test)]
@@ -316,12 +378,12 @@ mod tests {
         use std::sync::atomic::Ordering;
         let counter = StdArc::new(AtomicUsize::new(0));
         let counter_clone = Arc::clone(&counter);
-        let hooks = RenderHooks {
+        let hooks = PickerItemHooks {
             search: Some(PickerSearchFn::new(move |entry: &Entry| {
                 counter_clone.fetch_add(1, Ordering::SeqCst);
                 format!("{} {}", entry.name, entry.description)
             })),
-            ..RenderHooks::default()
+            ..PickerItemHooks::default()
         };
         let entries = vec![
             Entry {
@@ -347,7 +409,7 @@ mod tests {
     #[test]
     fn row_hook_renders_through_the_adapter() {
         // Given hooks with a row renderer.
-        let hooks = RenderHooks {
+        let hooks = PickerItemHooks {
             row: Some(PickerRowFn::new(|entry: &Entry, ctx: &RowCtx<'_>| {
                 if ctx.is_selected {
                     Line::from(format!("> {}", entry.name))
@@ -355,7 +417,7 @@ mod tests {
                     Line::from(entry.name.clone())
                 }
             })),
-            ..RenderHooks::default()
+            ..PickerItemHooks::default()
         };
         let items = make_items(
             vec![Entry {
@@ -378,7 +440,7 @@ mod tests {
     #[test]
     fn fallback_label_uses_row_text_without_a_search_hook() {
         // Given hooks with only a row renderer.
-        let hooks = RenderHooks {
+        let hooks = PickerItemHooks {
             row: Some(PickerRowFn::new(|entry: &Entry, _ctx: &RowCtx<'_>| {
                 Line::from(vec![
                     Span::styled(entry.name.clone(), Style::default()),
@@ -386,7 +448,7 @@ mod tests {
                     Span::raw(entry.description.clone()),
                 ])
             })),
-            ..RenderHooks::default()
+            ..PickerItemHooks::default()
         };
 
         // When building items.
@@ -406,11 +468,11 @@ mod tests {
     #[test]
     fn preview_key_flows_into_the_cache_identity() {
         // Given hooks with a preview key.
-        let hooks = RenderHooks {
+        let hooks = PickerItemHooks {
             preview_key: Some(PickerPreviewKeyFn::new(|entry: &Entry| {
                 Some(PreviewKey(format!("key-{}", entry.name)))
             })),
-            ..RenderHooks::default()
+            ..PickerItemHooks::default()
         };
         let items = make_items(
             vec![Entry {
@@ -429,7 +491,7 @@ mod tests {
     #[test]
     fn absent_hooks_degrade_to_defaults() {
         // Given empty hooks.
-        let hooks = RenderHooks::default();
+        let hooks = PickerItemHooks::default();
         let items = make_items(
             vec![Entry {
                 name: String::from("d"),
@@ -444,6 +506,129 @@ mod tests {
         assert_eq!(items[0].render_row(false).to_string(), "");
         assert!(items[0].preview_lines(80).is_empty());
         assert_eq!(items[0].cache_key(), None);
+    }
+}
+
+#[cfg(test)]
+mod caller_supplied_hooks_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "test module, panics are acceptable"
+    )]
+
+    use super::*;
+
+    #[derive(Debug)]
+    struct Entry {
+        name: String,
+        description: String,
+    }
+
+    fn entry() -> Entry {
+        Entry {
+            name: String::from("alpha"),
+            description: String::from("beta"),
+        }
+    }
+
+    fn full_hooks() -> PickerItemHooks<Entry> {
+        PickerItemHooks::new()
+            .row(|entry: &Entry, _ctx: &RowCtx<'_>| Line::from(format!("row-{}", entry.name)))
+            .search(|entry: &Entry| format!("{} {}", entry.name, entry.description))
+            .preview(|entry: &Entry, _ctx: &PreviewCtx<'_>| {
+                vec![Line::from(format!("preview-{}", entry.name))]
+            })
+            .preview_key(|entry: &Entry| Some(PreviewKey(format!("key-{}", entry.name))))
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn make_items_with_hooks_applies_the_caller_search_hook() {
+        // Given entries and a caller-supplied search hook.
+        let hooks = full_hooks().search(|entry: &Entry| format!("search-{}", entry.name));
+
+        // When wrapping through the standalone seam.
+        let items = make_items_with_hooks(vec![entry()], hooks);
+
+        // Then the caller's search text became the display label.
+        assert_eq!(items[0].display_label(), "search-alpha");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn make_items_with_hooks_applies_the_caller_row_hook() {
+        // Given entries and a caller-supplied row hook.
+        let hooks = full_hooks().row(|entry: &Entry, _ctx: &RowCtx<'_>| {
+            Line::from(format!("custom-row-{}", entry.name))
+        });
+
+        // When wrapping and rendering through the standalone seam.
+        let items = make_items_with_hooks(vec![entry()], hooks);
+        let row = items[0].render_row(false);
+
+        // Then the caller's row renderer produced the row.
+        assert_eq!(row.to_string(), "custom-row-alpha");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn make_items_with_hooks_applies_the_caller_preview_hook() {
+        // Given entries and a caller-supplied preview hook.
+        let hooks = full_hooks().preview(|entry: &Entry, _ctx: &PreviewCtx<'_>| {
+            vec![Line::from(format!("custom-preview-{}", entry.name))]
+        });
+
+        // When wrapping and reading the preview through the standalone seam.
+        let items = make_items_with_hooks(vec![entry()], hooks);
+        let lines = items[0].preview_lines(80);
+
+        // Then the caller's preview renderer produced the preview.
+        assert_eq!(lines[0].to_string(), "custom-preview-alpha");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn make_items_with_hooks_applies_the_caller_preview_key_hook() {
+        // Given entries and a caller-supplied preview-key hook.
+        let hooks = full_hooks()
+            .preview_key(|entry: &Entry| Some(PreviewKey(format!("pk-{}", entry.name))));
+
+        // When wrapping and reading the cache key through the standalone seam.
+        let items = make_items_with_hooks(vec![entry()], hooks);
+
+        // Then the caller's cache identity is the entry's key.
+        assert_eq!(items[0].cache_key(), Some(String::from("pk-alpha")));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn make_items_with_hooks_renders_identically_to_the_spec_driven_path() {
+        // Given a spec declaring the same hooks a caller supplies directly.
+        let spec_hooks = PickerItemHooks::new()
+            .row(|entry: &Entry, _ctx: &RowCtx<'_>| Line::from(format!("row-{}", entry.name)))
+            .search(|entry: &Entry| format!("{} {}", entry.name, entry.description))
+            .preview(|entry: &Entry, _ctx: &PreviewCtx<'_>| {
+                vec![Line::from(format!("preview-{}", entry.name))]
+            });
+        let spec_items = make_items(vec![entry()], &spec_hooks);
+
+        // When wrapping the same entry through the standalone seam.
+        let caller_items = make_items_with_hooks(vec![entry()], spec_hooks);
+
+        // Then label, row, and preview are identical across both paths.
+        assert_eq!(
+            spec_items[0].display_label(),
+            caller_items[0].display_label()
+        );
+        assert_eq!(
+            spec_items[0].render_row(true).to_string(),
+            caller_items[0].render_row(true).to_string()
+        );
+        assert_eq!(
+            spec_items[0].preview_lines(80)[0].to_string(),
+            caller_items[0].preview_lines(80)[0].to_string()
+        );
     }
 }
 

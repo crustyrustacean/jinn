@@ -2524,6 +2524,7 @@ dependencies = [
  "jinn-selection-widget",
  "jinn-slices",
  "jinn-testutil",
+ "jinn-theme",
  "ratatui",
  "rstest",
  "serde",

@@ -2,8 +2,9 @@
 
 use std::ops::Range;
 
-use crate::feat::picker::style::dim_style;
 use crate::feat::theme::Theme;
+use jinn_picker::RowCtx;
+use jinn_picker::picker_style::dim_style;
 use jinn_selection_widget::highlight_text_with_bg;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
@@ -65,6 +66,21 @@ pub(crate) fn render_persona_row(
     all_spans.extend(name_spans);
     all_spans.push(Span::styled(description.to_owned(), desc_style));
     Line::from(all_spans)
+}
+
+/// Renders one persona picker row through the picker framework's row hook.
+///
+/// The single renderer both the persona spec and the kernel's entry writer
+/// supply, so filtering, selection, and highlight rendering cannot drift.
+pub fn persona_row(entry: &PersonaEntry, ctx: &RowCtx<'_>) -> Line<'static> {
+    render_persona_row(
+        &entry.name,
+        &entry.description,
+        entry.is_active,
+        ctx.is_selected,
+        ctx.match_ranges,
+        &entry.theme,
+    )
 }
 
 impl jinn_selection_widget::TreeItem for PersonaEntry {

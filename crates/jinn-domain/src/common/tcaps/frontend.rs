@@ -85,12 +85,12 @@ impl PersonaPickerOps<'_> {
     /// Replace the persona picker items, wrapped through the persona
     /// spec's render/search hooks (the storage holds `ProviderPickerEntry`s).
     pub fn set_items(&mut self, items: Vec<PersonaEntry>) {
-        let wrapped = {
-            let registry = crate::feat::picker::registry::build_picker_registry();
-            registry
-                .make_items(crate::feat::picker::registry::PERSONA_ID, items)
-                .unwrap_or_default()
-        };
+        let wrapped = jinn_picker::make_items_with_hooks(
+            items,
+            jinn_picker::PickerItemHooks::new()
+                .row(crate::feat::persona::persona_row)
+                .search(|entry: &PersonaEntry| entry.name.clone()),
+        );
         self.0.persona_picker_mut().set_items(wrapped);
     }
 }
@@ -176,5 +176,41 @@ impl State {
         let mut guard = self.write_lock();
         let app = &mut *guard;
         f(&mut FilePickerOps(&mut app.frontend.file_picker))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "test module, panics are acceptable"
+    )]
+    use super::*;
+    use crate::feat::persona::PersonaEntry;
+    use jinn_selection_widget::TreeItem;
+
+    fn persona(name: &str) -> PersonaEntry {
+        PersonaEntry {
+            name: name.to_owned(),
+            description: "desc".to_owned(),
+            is_active: false,
+            theme: crate::feat::theme::default_theme(),
+        }
+    }
+
+    #[rstest::rstest]
+    fn persona_entry_writer_keeps_the_spec_row_renderer() {
+        // Given a frontend and one persona entry.
+        let mut frontend = FrontendState::default();
+
+        // When writing it through the persona picker cap.
+        PersonaPickerOps(&mut frontend).set_items(vec![persona("coder")]);
+
+        // Then the stored item renders through the spec's row hook: the
+        // active marker, name, and description — not the bare search label.
+        let row = frontend.persona_picker().items()[0].render_row(false);
+        let text: String = row.spans.iter().map(|s| s.content.to_string()).collect();
+        assert_eq!(text, "  coder  desc");
     }
 }

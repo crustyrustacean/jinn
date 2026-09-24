@@ -41,11 +41,77 @@ pub fn reload_skill_picker_entries(
 
     entries.sort_by_key(|e| e.name.to_lowercase());
 
-    let wrapped = {
-        let registry = crate::feat::picker::registry::build_picker_registry();
-        registry
-            .make_items(crate::feat::picker::registry::SKILL_ID, entries)
-            .unwrap_or_default()
-    };
+    let wrapped = jinn_picker::make_items_with_hooks(
+        entries,
+        jinn_picker::PickerItemHooks::new()
+            .row(crate::feat::skills::skill_entry::skill_row)
+            .search(|entry: &crate::feat::skills::skill_entry::SkillEntry| {
+                format!("{} {}", entry.name, entry.description)
+            })
+            .preview(crate::feat::skills::skill_entry::render_skill_preview)
+            .preview_key(|entry: &crate::feat::skills::skill_entry::SkillEntry| {
+                Some(jinn_picker::PreviewKey(
+                    crate::feat::skills::skill_entry::body_hash_key(&entry.body),
+                ))
+            }),
+    );
     frontend.skill_picker_mut().set_items(wrapped);
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "test module, panics are acceptable"
+    )]
+    use super::*;
+    use crate::feat::theme::default_theme;
+    use jinn_selection_widget::PreviewContent;
+    use jinn_selection_widget::TreeItem;
+
+    fn skill(name: &str, description: &str, body: &str) -> Skill {
+        Skill {
+            name: name.to_owned(),
+            description: description.to_owned(),
+            body: body.to_owned(),
+            file_path: std::path::PathBuf::from(format!("/tmp/{name}/SKILL.md")),
+            base_dir: std::path::PathBuf::from(format!("/tmp/{name}")),
+            source: crate::feat::skills::SkillSource::Global,
+        }
+    }
+
+    #[rstest::rstest]
+    fn reload_keeps_the_spec_row_renderer() {
+        // Given a frontend and one discovered skill.
+        let mut frontend = FrontendState::default();
+        let skills = vec![skill("alpha", "does things", "# body")];
+
+        // When reloading the skill picker.
+        reload_skill_picker_entries(&mut frontend, &skills, &HashSet::new(), &default_theme());
+
+        // Then the row renders through the spec's row hook (enabled marker
+        // plus name), not the bare search label.
+        let row = frontend.skill_picker().items()[0].render_row(false);
+        let text: String = row.spans.iter().map(|s| s.content.to_string()).collect();
+        assert_eq!(text, "✓ alpha");
+    }
+
+    #[rstest::rstest]
+    fn reload_keeps_the_spec_preview_renderer() {
+        // Given a frontend and one discovered skill with a markdown body.
+        let mut frontend = FrontendState::default();
+        let skills = vec![skill("alpha", "does things", "# Title")];
+
+        // When reloading the skill picker.
+        reload_skill_picker_entries(&mut frontend, &skills, &HashSet::new(), &default_theme());
+
+        // Then the preview renders the markdown body, not an empty pane.
+        let item = &frontend.skill_picker().items()[0];
+        let lines = item.preview_lines(80);
+        assert!(
+            lines.iter().any(|l| l.to_string().contains("Title")),
+            "preview should render the body; got {lines:?}"
+        );
+    }
 }

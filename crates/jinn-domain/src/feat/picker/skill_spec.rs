@@ -12,10 +12,8 @@ use jinn_picker::PickerId;
 use jinn_picker::PickerOutcome;
 use jinn_picker::PickerSpec;
 use jinn_picker::PickerWidget;
-use jinn_picker::PreviewCtx;
 use jinn_picker::PreviewKey;
 use jinn_picker::PreviewSpec;
-use jinn_picker::RowCtx;
 use jinn_picker::StatusCtx;
 use ratatui::style::Style;
 use ratatui::text::Line;
@@ -26,7 +24,7 @@ use crate::common::app_state::AppState;
 use crate::feat::context::protocol::command::ScanContextFiles;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::skills::ScanSkills;
-use crate::feat::skills::SkillSource;
+use crate::feat::skills::skill_entry::{body_hash_key, render_skill_preview, skill_row};
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::ChatEntry;
 use crate::protocol::ChatEntryId;
@@ -86,101 +84,10 @@ fn state_ref_of<'a>(ctx: &'a StatusCtx<'_>) -> &'a AppState {
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────
-
-/// Renders one picker row: the enabled marker, the skill name (highlighted
-/// on filter matches), and the project badge for project-scoped skills.
-fn skill_row(entry: &SkillEntry, ctx: &RowCtx<'_>) -> Line<'static> {
-    let style = if ctx.is_selected {
-        Style::default()
-            .fg(entry.theme.primary_text)
-            .bg(entry.theme.picker_selected_bg)
-    } else {
-        Style::default()
-    };
-
-    let (marker, marker_color) = if entry.enabled {
-        ("\u{2713} ", entry.theme.focus_accent) // ✓
-    } else {
-        ("\u{2717} ", entry.theme.error_text) // ✗
-    };
-
-    let marker_span = Span::styled(marker.to_owned(), Style::default().fg(marker_color));
-
-    if ctx.match_ranges.is_empty() {
-        let name_span = Span::styled(entry.name.clone(), style);
-        let mut spans = vec![marker_span, name_span];
-        if let Some(badge) = project_badge_span(entry) {
-            spans.push(badge);
-        }
-        return Line::from(spans);
-    }
-
-    // Match indices are byte offsets into search_text = "{name} {description}".
-    // Only highlight the name portion in the row (description is in the preview pane).
-    let name_indices = split_match_indices(ctx.match_ranges, entry.name.len());
-
-    let name_spans = jinn_selection_widget::highlight::highlight_text_with_bg(
-        &entry.name,
-        style,
-        &name_indices,
-        entry.theme.picker_highlight_bg,
-    );
-
-    let mut spans = vec![marker_span];
-    spans.extend(name_spans);
-    if let Some(badge) = project_badge_span(entry) {
-        spans.push(badge);
-    }
-    Line::from(spans)
-}
-
-/// Badge span indicating project-scoped provenance, if applicable.
-///
-/// Appended to the row after the skill name. Global skills render no badge.
-fn project_badge_span(entry: &SkillEntry) -> Option<Span<'static>> {
-    match &entry.source {
-        SkillSource::Project { .. } => Some(Span::styled(
-            " (project)".to_owned(),
-            Style::default().fg(entry.theme.muted_text),
-        )),
-        SkillSource::Global => None,
-    }
-}
-
-/// Renders the skill's markdown body for the preview pane.
-fn render_skill_preview(entry: &SkillEntry, ctx: &PreviewCtx<'_>) -> Vec<Line<'static>> {
-    if entry.body.is_empty() {
-        return Vec::new();
-    }
-    crate::feat::ui::chat_log::markdown::render_markdown(
-        &entry.body,
-        ctx.width as u16,
-        &entry.theme,
-    )
-}
-
-/// Splits match indices from `search_text = "{name} {description}"` into
-/// name-portion ranges, clamped to the name's byte length. Description
-/// indices are dropped — the row highlights the name only.
-fn split_match_indices(
-    indices: &[std::ops::Range<usize>],
-    name_len: usize,
-) -> Vec<std::ops::Range<usize>> {
-    indices
-        .iter()
-        .filter(|range| range.start < name_len)
-        .map(|range| range.start..range.end.min(name_len))
-        .collect()
-}
-
-/// Stable cache key for a skill body: the decimal content hash.
-///
-/// Keyed on body content (not name) so that editing a SKILL.md or a project
-/// skill shadowing a global of the same name produces a distinct cache entry
-/// — the render cache never serves the wrong markdown.
-fn body_hash_key(body: &str) -> String {
-    crate::feat::skills::skill_entry::body_hash_key(body)
-}
+//
+// The row, preview, and cache-key renderers live on `SkillEntry`'s kernel
+// entry module: the kernel's skill entry writer and this spec both supply the
+// same functions, so the two wrapping paths cannot render differently.
 
 /// The status line: how many discovered skills are enabled for the session.
 // The hook signature is Option so `bottom_rows()` stays truthful even if the
@@ -468,9 +375,12 @@ mod tests {
     use crate::feat::picker::host_impl::AppStatePickerHost;
     use crate::feat::picker::registry::SKILL_ID;
     use crate::feat::session::ChatSessionState;
+    use crate::feat::skills::SkillSource;
     use crate::protocol::ChatEntryKind;
     use crate::protocol::PickerKind;
     use jinn_picker::PickerEntry;
+    use jinn_picker::PreviewCtx;
+    use jinn_picker::RowCtx;
     use jinn_selection_widget::SelectionState;
 
     /// A discovered skill with a small markdown body.

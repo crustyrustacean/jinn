@@ -11,13 +11,13 @@ use jinn_picker::ActionCtx;
 use jinn_picker::PickerId;
 use jinn_picker::PickerOutcome;
 use jinn_picker::PickerSpec;
-use jinn_picker::RowCtx;
 use jinn_picker::StatusCtx;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
 use crate::common::app_state::AppState;
 use crate::feat::session::picker_entry::SessionTreeEntry;
+use crate::feat::session::picker_entry::session_row;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::ui::picker_states::PickerExt;
@@ -59,19 +59,10 @@ fn state_ref_of<'a>(ctx: &'a StatusCtx<'_>) -> &'a AppState {
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────
-
-/// Renders one picker row: the telescope row with the widget's tree
-/// connector placed directly before the title text (never before the
-/// datetime or project column).
-pub fn session_row(entry: &SessionTreeEntry, ctx: &RowCtx<'_>) -> Line<'static> {
-    SessionTreeEntry::render_row_impl(
-        entry,
-        ctx.is_selected,
-        ctx.match_ranges,
-        ctx.tree_prefix,
-        ctx.tree_style,
-    )
-}
+//
+// The row renderer lives on `SessionTreeEntry`'s kernel entry module: the
+// kernel's session entry writer and this spec both supply the same function,
+// so tree connectors and column padding cannot drift between wrapping paths.
 
 /// The status line: a hint for creating a new session from inside the picker.
 #[expect(clippy::unnecessary_wraps, reason = "hook signature is Option<Line>")]

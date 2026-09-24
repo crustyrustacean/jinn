@@ -14,7 +14,7 @@ use crate::ctx::LoadCtx;
 use crate::ctx::PreviewCtx;
 use crate::ctx::RowCtx;
 use crate::ctx::StatusCtx;
-use crate::entry::RenderHooks;
+use crate::entry::PickerItemHooks;
 use crate::hooks::PickerBindAction;
 use crate::hooks::PickerLifecycleFn;
 use crate::hooks::PickerLoadFn;
@@ -43,7 +43,7 @@ where
     title: Option<&'static str>,
     widget: PickerWidget,
     load: Option<PickerLoadFn<T>>,
-    hooks: RenderHooks<T>,
+    hooks: PickerItemHooks<T>,
     status: Option<PickerStatusFn>,
     binds: Vec<BindRow>,
     actions: Vec<PickerBindAction>,
@@ -66,7 +66,7 @@ where
             title: None,
             widget: PickerWidget::default(),
             load: None,
-            hooks: RenderHooks::default(),
+            hooks: PickerItemHooks::default(),
             status: None,
             binds: Vec::new(),
             actions: Vec::new(),
@@ -284,7 +284,7 @@ where
         Vec<PickerBindAction>,
         Tail,
         Option<PickerLoadFn<T>>,
-        RenderHooks<T>,
+        PickerItemHooks<T>,
         Option<PickerStatusFn>,
         Option<PickerLifecycleFn>,
         Option<PickerLifecycleFn>,

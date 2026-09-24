@@ -163,9 +163,12 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
 pub(crate) fn wrap_session_entries(
     entries: Vec<SessionTreeEntry>,
 ) -> Vec<jinn_picker::PickerEntry<SessionTreeEntry>> {
-    crate::feat::picker::registry::build_picker_registry()
-        .make_items(crate::feat::picker::registry::SESSION_ID, entries)
-        .unwrap_or_default()
+    jinn_picker::make_items_with_hooks(
+        entries,
+        jinn_picker::PickerItemHooks::new()
+            .row(crate::feat::session::picker_entry::session_row)
+            .search(|entry: &SessionTreeEntry| entry.title.clone()),
+    )
 }
 
 /// Loads session tree entries into the picker state, ready for display.
@@ -242,6 +245,7 @@ mod tests {
     use crate::feat::session::session_summary::SessionSummary;
     use crate::feat::theme::default_theme;
     use crate::protocol::SessionId;
+    use jinn_selection_widget::PickerItem;
     use jinn_selection_widget::TreeItem;
 
     use super::*;
@@ -283,6 +287,30 @@ mod tests {
         let row = entry.render_row(false);
 
         // Then the title appears in the rendered line.
+        assert!(row.spans.iter().any(|s| s.content.contains("My Session")));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn wrap_session_entries_keeps_the_spec_row_renderer() {
+        // Given a session tree entry.
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "My Session".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            None,
+            None,
+        );
+
+        // When wrapping it for picker storage.
+        let wrapped = wrap_session_entries(vec![entry]);
+
+        // Then the wrapped item renders through the spec's row hook
+        // (date, project, and title columns), not the plain search label.
+        let row = PickerItem::render_row(&wrapped[0], false);
+        assert!(row.spans.len() > 1);
         assert!(row.spans.iter().any(|s| s.content.contains("My Session")));
     }
 

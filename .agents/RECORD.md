@@ -294,9 +294,12 @@ Entries are added or amended **only with human approval**.
 - (build) jinn's runtime/target link statically bundles SQLite via rusqlite's `bundled` feature (through daow's default `bundled-sqlite` feature); no system SQLite is used at runtime link time.
 - (build) Host-side link units (jinn-domain's build script, the daow-macros proc-macro) link the system libsqlite3 on Linux/macOS and bundled SQLite on Windows.
 - (build) Building jinn from source on Windows requires no system SQLite installation.
-- (build) Releases ship two cargo-binstall tarballs per tag: `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-gnu` (cross-built from Linux via mingw-w64).
-- (build) The windows-gnu cross target's linker is configured in the checked-in `.cargo/config.toml`; the config is inert for native Linux builds.
+- (build) Releases ship two cargo-binstall tarballs per tag: `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc` (both cross-built from Linux; the Windows artifact via cargo-xwin).
 - (build) Release binaries are self-contained on both platforms: bundled SQLite in the target graph, no SQLite DLL/import-library requirement.
+- (build) The Windows cross build (cargo-xwin) is wired entirely by env vars in the build-release-tarball recipe; no windows target config exists in .cargo/config.toml.
+- (build) windows-gnu is not a release target and has no toolchain config in the repo.
+- (build) The cross-built windows-msvc release binary statically links the CRT and needs no VC runtime installed.
+- (build) windows-gnu release builds of jinn panic at startup (tokio runtime context lost on kameo/trouper actor threads); msvc is the supported Windows target.
 - (pickers) Picker behavior is described by builder-built PickerSpecs in the jinn-picker crate (no jinn-domain dependency); keymap bindings, the picker keybind line, and footer-row geometry all derive from a spec's bind rows.
 - (pickers) Migrated pickers resolve kind-specific keys through one data-carried picker-action intent dispatched via their spec's bind table — not dedicated intent variants — and open/close hooks own snapshots and ESC-revert.
 - (pickers) The theme picker previews the highlighted theme live on cursor movement (invalidating theme caches per move), reverts to the snapshotted theme on ESC, and persists the choice only on confirm.

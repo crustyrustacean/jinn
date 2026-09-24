@@ -1,5 +1,9 @@
 //! Skill picker entry type and rendering.
 
+use jinn_picker::RowCtx;
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
+
 use crate::feat::skills::SkillSource;
 use crate::feat::theme::Theme;
 
@@ -26,11 +30,103 @@ pub struct SkillEntry {
 /// skill shadowing a global of the same name produces a distinct cache entry
 /// — the render cache never serves the wrong markdown. The skill spec's
 /// `.preview_key` hook delegates here.
-pub(crate) fn body_hash_key(body: &str) -> String {
+pub fn body_hash_key(body: &str) -> String {
     use std::hash::Hasher as _;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     hasher.write(body.as_bytes());
     hasher.finish().to_string()
+}
+
+/// Renders one skill picker row through the picker framework's row hook.
+///
+/// The single renderer both the skill spec and the kernel's entry writer supply,
+/// so the enabled marker, project badge, and name highlighting cannot drift
+/// between the two wrapping paths.
+pub fn skill_row(entry: &SkillEntry, ctx: &RowCtx<'_>) -> Line<'static> {
+    let style = if ctx.is_selected {
+        Style::default()
+            .fg(entry.theme.primary_text)
+            .bg(entry.theme.picker_selected_bg)
+    } else {
+        Style::default()
+    };
+
+    let (marker, marker_color) = if entry.enabled {
+        ("\u{2713} ", entry.theme.focus_accent) // ✓
+    } else {
+        ("\u{2717} ", entry.theme.error_text) // ✗
+    };
+
+    let marker_span = Span::styled(marker.to_owned(), Style::default().fg(marker_color));
+
+    if ctx.match_ranges.is_empty() {
+        let name_span = Span::styled(entry.name.clone(), style);
+        let mut spans = vec![marker_span, name_span];
+        if let Some(badge) = project_badge_span(entry) {
+            spans.push(badge);
+        }
+        return Line::from(spans);
+    }
+
+    // Match indices are byte offsets into search_text = "{name} {description}".
+    // Only highlight the name portion in the row (description is in the preview pane).
+    let name_indices = split_match_indices(ctx.match_ranges, entry.name.len());
+
+    let name_spans = jinn_selection_widget::highlight::highlight_text_with_bg(
+        &entry.name,
+        style,
+        &name_indices,
+        entry.theme.picker_highlight_bg,
+    );
+
+    let mut spans = vec![marker_span];
+    spans.extend(name_spans);
+    if let Some(badge) = project_badge_span(entry) {
+        spans.push(badge);
+    }
+    Line::from(spans)
+}
+
+/// Badge span indicating project-scoped provenance, if applicable.
+///
+/// Appended to the row after the skill name. Global skills render no badge.
+fn project_badge_span(entry: &SkillEntry) -> Option<Span<'static>> {
+    match &entry.source {
+        SkillSource::Project { .. } => Some(Span::styled(
+            " (project)".to_owned(),
+            Style::default().fg(entry.theme.muted_text),
+        )),
+        SkillSource::Global => None,
+    }
+}
+
+/// Renders the skill's markdown body for the preview pane.
+pub fn render_skill_preview(
+    entry: &SkillEntry,
+    ctx: &jinn_picker::PreviewCtx<'_>,
+) -> Vec<Line<'static>> {
+    if entry.body.is_empty() {
+        return Vec::new();
+    }
+    crate::feat::ui::chat_log::markdown::render_markdown(
+        &entry.body,
+        ctx.width as u16,
+        &entry.theme,
+    )
+}
+
+/// Splits match indices from `search_text = "{name} {description}"` into
+/// name-portion ranges, clamped to the name's byte length. Description
+/// indices are dropped — the row highlights the name only.
+fn split_match_indices(
+    indices: &[std::ops::Range<usize>],
+    name_len: usize,
+) -> Vec<std::ops::Range<usize>> {
+    indices
+        .iter()
+        .filter(|range| range.start < name_len)
+        .map(|range| range.start..range.end.min(name_len))
+        .collect()
 }
 
 impl jinn_selection_widget::TreeItem for SkillEntry {

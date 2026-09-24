@@ -2,10 +2,12 @@
 
 use std::ops::Range;
 
-use crate::feat::picker::style::{dim_style, selected_style};
 use crate::feat::session::chat_session::SessionState;
 use crate::feat::theme::Theme;
 use crate::protocol::SessionId;
+use jinn_picker::RowCtx;
+use jinn_picker::picker_style::dim_style;
+use jinn_picker::picker_style::selected_style;
 use jinn_selection_widget::TreeItem;
 use jinn_selection_widget::highlight_text_with_bg;
 use ratatui::style::Style;
@@ -147,7 +149,7 @@ impl TreeItem for SessionTreeEntry {
 /// Archived sessions use dimmed styling to visually distinguish them from
 /// loaded sessions.
 impl SessionTreeEntry {
-    pub(crate) fn render_row_impl(
+    pub fn render_row_impl(
         &self,
         is_selected: bool,
         match_indices: &[Range<usize>],
@@ -203,6 +205,20 @@ impl SessionTreeEntry {
         spans.extend(title_spans);
         Line::from(spans)
     }
+}
+
+/// Renders one session picker row through the picker framework's row hook.
+///
+/// The single renderer both the session spec and the kernel's entry writer
+/// supply, so tree connectors, column padding, and title highlighting cannot
+/// drift between the two wrapping paths.
+pub fn session_row(entry: &SessionTreeEntry, ctx: &RowCtx<'_>) -> Line<'static> {
+    entry.render_row_impl(
+        ctx.is_selected,
+        ctx.match_ranges,
+        ctx.tree_prefix,
+        ctx.tree_style,
+    )
 }
 
 #[cfg(test)]

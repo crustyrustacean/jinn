@@ -10,14 +10,13 @@ use jinn_picker::PickerEntry;
 use jinn_picker::PickerId;
 use jinn_picker::PickerOutcome;
 use jinn_picker::PickerSpec;
-use jinn_picker::RowCtx;
 use jinn_picker::StatusCtx;
 use ratatui::style::Style;
 use ratatui::text::Line;
 
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
-use crate::feat::persona::render_persona_row;
+use crate::feat::persona::persona_row;
 use crate::feat::ui::picker_states::PickerExt;
 
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
@@ -25,19 +24,6 @@ use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, Updat
 
 /// The kernel entry this picker's items wrap in storage.
 pub use crate::feat::persona::PersonaEntry;
-
-/// Renders one persona row — the same marker/name/description line trunk
-/// drew via `PersonaEntry: PickerItem`, now routed through the spec.
-fn persona_row(entry: &PersonaEntry, ctx: &RowCtx<'_>) -> Line<'static> {
-    render_persona_row(
-        &entry.name,
-        &entry.description,
-        entry.is_active,
-        ctx.is_selected,
-        ctx.match_ranges,
-        &entry.theme,
-    )
-}
 
 /// Builds the persona picker's spec.
 #[must_use]
