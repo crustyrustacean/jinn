@@ -17,6 +17,7 @@ error-stack = { workspace = true }
 wherror = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
+tracing = { workspace = true }
 trouper = { workspace = true }
 unicode-segmentation = { workspace = true }
 

@@ -16,6 +16,10 @@ use jinn_core_types::SessionId;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub mod session_origin;
+
+pub use session_origin::SessionOrigin;
+
 // ── phase discriminant ──────────────────────────────────────────────
 
 /// The discriminant of a session's phase — used for event emission and

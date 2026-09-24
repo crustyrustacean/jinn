@@ -6,8 +6,10 @@
 //! without depending on the other, so they live at the shared low level.
 
 pub mod session_search;
+pub mod session_state;
 
 pub use session_search::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, SearchableRole, TranscriptEntry,
     TranscriptWindow, entry_ts_key, extract_searchable,
 };
+pub use session_state::SessionState;

@@ -64,67 +64,6 @@ pub enum StreamingError {
     EmptyLedger,
 }
 
-/// Whether a session is in memory or at rest in the database.
-///
-/// `Loaded` sessions appear in the sidebar and are available for interaction.
-/// `Archived` sessions exist only in the database and are hidden from the sidebar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionState {
-    #[default]
-    Loaded,
-    Archived,
-}
-
-/// The lifecycle script progression for a session.
-///
-/// One-way transitions enforced by [`advance_after_setup`](Self::advance_after_setup)
-/// and [`advance_after_teardown`](Self::advance_after_teardown).
-/// These methods are only called after the corresponding script succeeds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LifecycleScriptState {
-    #[default]
-    NothingRan,
-    SetupRan,
-    TeardownRan,
-}
-
-impl LifecycleScriptState {
-    /// Transition `NothingRan → SetupRan`.
-    ///
-    /// Soft guard: if current state is not `NothingRan`, logs a warning and returns.
-    pub fn advance_after_setup(&mut self) {
-        if !matches!(self, Self::NothingRan) {
-            tracing::warn!(current = ?self, "advance_after_setup: expected NothingRan, ignoring");
-            return;
-        }
-        *self = Self::SetupRan;
-    }
-
-    /// Transition `SetupRan → TeardownRan`.
-    ///
-    /// Soft guard: if current state is not `SetupRan`, logs a warning and returns.
-    pub fn advance_after_teardown(&mut self) {
-        if !matches!(self, Self::SetupRan) {
-            tracing::warn!(current = ?self, "advance_after_teardown: expected SetupRan, ignoring");
-            return;
-        }
-        *self = Self::TeardownRan;
-    }
-}
-
-impl std::fmt::Display for LifecycleScriptState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Self::NothingRan => "nothing_ran",
-            Self::SetupRan => "setup_ran",
-            Self::TeardownRan => "teardown_ran",
-        };
-        f.write_str(s)
-    }
-}
-
 /// Groups runtime-only fields that are specific to the current running instance
 /// and have no meaning across restarts (stream indices, queues, in-progress flags).
 /// The entire struct is skipped during serialization so individual fields cannot
@@ -222,17 +161,7 @@ pub(super) fn default_cwd() -> std::path::PathBuf {
 /// How a session came into being. Identity, not structure: a session's
 /// place in the tree is [`SessionCore::parent_session`]; its kind is
 /// this enum.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionOrigin {
-    /// Created by the user (new session, dashboard, restart restore of one).
-    #[default]
-    User,
-    /// Created by forking an existing session at an ordinal.
-    Fork,
-    /// Spawned by the `task` tool as a child of another session.
-    Subagent,
-}
+pub use jinn_session_msg::SessionOrigin;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCore {
@@ -396,6 +325,8 @@ impl Default for SessionCore {
 // the chat-log view vocabulary persisted in the chat-log-view slice's
 // cell); the kernel path stays stable for consumers.
 pub use jinn_chat_log_view_msg::SavedHistoryPosition;
+pub use jinn_session_lifecycle_msg::LifecycleScriptState;
+pub use jinn_session_store_msg::SessionState;
 
 /// UI state for a session - owned by IntentHandler (exempt from ownership restrictions).
 ///

@@ -2839,6 +2839,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "tracing",
  "trouper",
  "unicode-segmentation",
  "wherror",
@@ -2914,6 +2915,7 @@ dependencies = [
  "jinn-core-types",
  "rstest",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

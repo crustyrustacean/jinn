@@ -10,6 +10,7 @@ pub mod builtin;
 pub mod command;
 pub mod command_template;
 pub mod event;
+pub mod lifecycle_script_state;
 pub mod picker_entry;
 
 pub use builtin::{BuiltinHandler, BuiltinHandlerError, BuiltinRegistry};
@@ -21,6 +22,7 @@ pub use command_template::CommandTemplate;
 pub use event::{
     SessionCreated, SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
+pub use lifecycle_script_state::LifecycleScriptState;
 pub use picker_entry::{SessionLifecycleEntry, lifecycle_row};
 
 /// The system entry shown while a session setup command is running.
