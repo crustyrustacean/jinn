@@ -61,73 +61,131 @@ pub const TASK_TOOL_NAME: &str = "task";
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: TASK_TOOL_NAME.to_owned(),
-        description: "Delegate a task to a fresh subagent session and block until it finishes. \
-            Spawns a new session inheriting your model, cwd, tools, skills, MCP servers, and a \
-            snapshot of your current task list — \
-            but with empty history: it sees only the prompt you give it. When its session goes \
-            idle, its final chat entry is returned as this tool's result. \
-            \
-            WHEN TO USE: open-ended search or exploration where the first try may miss; \
-            multi-step sub-tasks whose intermediate tool output you don't need; \
-            independent sub-tasks in parallel. \
-            \
-            WHEN NOT TO USE: reading a specific file or symbol (use read/grep directly); \
-            one obvious tool call; tasks that depend on each other's results. \
-            \
-            Usage notes: \
-            (1) The prompt must be self-contained — the subagent cannot see this conversation \
-            or the user's intent; say whether it should research or make changes. \
-            (2) Launch independent tasks concurrently — multiple task calls in one message. \
-            (3) The user can watch and steer the subagent live; cancelling it returns the \
-            cancel to you as the result. \
-            (4) Only the final message comes back; intermediate work stays in the subagent's \
-            session. \
-            \
-            TIMEOUT: unlimited by default. \
-            Pass `max_duration_secs` to bound the subagent; on expiry the subagent is \
-            cancelled and a failure is returned."
+        description: r#"
+Delegate a self-contained task to a fresh subagent session.
+
+Each call creates one subagent. To use multiple subagents, make multiple task
+calls in the same assistant turn. Subagents inherit the model, cwd, tools,
+skills, MCP servers, and a snapshot of the current task list, but not the parent
+conversation history. Only the subagent's final message is returned; its
+intermediate tool calls and output remain in its own context.
+
+WHEN TO USE:
+ - open-ended exploration or research
+ - multi-step work whose intermediate output you do not need
+ - broad reviews, comparisons, investigations, or implementation work that
+   contains multiple independent concerns
+ - work that can be divided into separate, bounded workstreams
+
+PARALLEL DELEGATION DEFAULT:
+
+For requests containing two or more independent workstreams, the default is
+to delegate each workstream to a separate subagent and launch the first wave
+concurrently.
+
+Before making the first task call:
+ 1. Identify the relevant workstreams.
+ 2. Separate independent work from dependent work.
+ 3. For each independent workstream, write a distinct, self-contained brief.
+ 4. Emit all first-wave task calls in the same assistant turn.
+
+Do not default to one subagent merely because this tool creates one subagent
+per call. Multiple calls are the mechanism for fan-out.
+
+A single call is appropriate when the work is genuinely indivisible, very
+small, strictly sequential, or when delegation would cost more than doing the
+work directly.
+
+USE WAVES FOR DEPENDENT WORK:
+
+For dependent tasks, launch only the independent portion of the current wave
+concurrently. After collecting those results, determine the next wave from
+their outputs.
+
+The parent agent remains responsible for:
+ - assigning clear boundaries to each workstream
+ - collecting and comparing results
+ - identifying duplicate or conflicting findings
+ - resolving conflicts and integrating changes
+ - performing final verification
+
+Do not parallelize work that:
+ - depends directly on another task's result
+ - would duplicate substantially the same investigation
+ - is too small to benefit from delegation
+ - requires multiple agents to modify the same files concurrently
+
+For concurrent code changes, assign disjoint files or scopes. Prefer parallel
+read-only investigation when ownership is unclear; let the parent integrate
+the changes.
+
+EXAMPLES:
+ - "Find relevant implementation files" + "Find relevant tests" -> two
+   concurrent task calls.
+ - "Review correctness" + "Review security" + "Review test coverage" -> three
+   concurrent task calls.
+ - "Investigate possible causes A and B" -> two concurrent calls, followed by
+   parent synthesis.
+ - "Implement A, then use A's result to implement B" -> sequential waves.
+ - "Make changes to files A, B, C" -> three concurrent task calls.
+
+PROMPT REQUIREMENTS:
+ - The prompt must be self-contained: the subagent cannot see this conversation
+   or the user's original intent.
+ - State the goal, relevant context, constraints, scope, and expected result.
+ - Avoid giving multiple overlapping workstreams to the same subagent.
+
+TIMEOUT: unlimited by default. Pass max_duration_secs to bound the
+subagent; on expiry the subagent is cancelled and a failure is returned.
+        "# .to_owned(),
+
+
+
+     prompt_snippet: Some(
+       r#"Delegate one self-contained workstream to a fresh subagent. For multiple independent workstreams, make multiple task calls in the same assistant turn."#
             .to_owned(),
-        prompt_snippet: Some(
-            "Spawn a subagent session for a self-contained sub-task and await its result"
-                .to_owned(),
-        ),
-        prompt_guidelines: vec![
-            "Prefer task for open-ended exploration; keep focused lookups (read/grep) in \
-            your own context."
-                .to_owned(),
-            "Write the prompt as a complete brief: goal, constraints, and whether to \
-            research or make changes. Include a description so the user can follow along \
-            in the sidebar."
-                .to_owned(),
-            "The subagent inherits a snapshot of your task list as of spawn and owns that \
-            copy — its todo mutations never propagate back to you; reconcile your own list \
-            from its result. If it doesn't need the list, it can clear it with an empty \
-            todo_set_list."
-                .to_owned(),
-        ],
+    ),
+
+    prompt_guidelines: vec![
+       r#"Before delegating, identify independent workstreams and their dependencies. If two or more workstreams can proceed without waiting for each other, launch them concurrently as separate task calls in the same assistant turn."#
+            .to_owned(),
+
+       r#"Treat fan-out as the default for multi-part work. Do not stop after one subagent when the request contains additional independent concerns. Use one subagent only when the work is tiny, indivisible, strictly sequential, or not worth coordinating."                                                                                                                                                                          1.7k >
+            .to_owned(),                                                                                                                                                                                                     0 ▼
+
+       r#"Start with a small bounded fan-out, typically 2–4 subagents, and increase it only when the workstreams are substantial, clearly independent, and non-conflicting."#
+            .to_owned(),
+
+       r#"For dependent work, use waves: launch the independent tasks in the current wave, collect and synthesize their results, then launch the next wave."#
+            .to_owned(),
+
+       r#"Give each subagent a distinct scope. Avoid overlapping prompts, and do not ask multiple agents to edit the same files concurrently. Prefer read-only investigation when file ownership is unclear."#
+            .to_owned(),
+
+       r#"Write every subagent prompt as a complete brief: goal, context, constraints, relevant paths or symbols, whether to research or make changes, and the expected output."#
+            .to_owned(),
+
+       r#"The subagent inherits a snapshot of the task list as of spawn and owns that copy; its todo mutations never propagate back to you. Reconcile the parent list from the returned result. If it does not need the list, it can clear it with an empty todo_set_list."#
+            .to_owned(),
+    ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "Self-contained brief for the subagent. It sees nothing \
-                    else — no conversation history, no user intent."
+                    "description": "Self-contained brief for the subagent. It sees nothing else — no conversation history, no user intent."
                 },
                 "description": {
                     "type": "string",
-                    "description": "A 3-5 word summary of the task, shown as the subagent \
-                    session's title in the sidebar."
+                    "description": "A 3-5 word summary of the task, shown as the subagent session's title in the sidebar."
                 },
                 "model": {
                     "type": "string",
-                    "description": "Optional model id for the subagent. Defaults to this \
-                    session's model."
+                    "description": "Optional model id for the subagent. Defaults to this session's model."
                 },
                 "max_duration_secs": {
                     "type": "number",
-                    "description": "Maximum duration in seconds to wait for the subagent. \
-                    Unlimited by default; 0 also means unlimited. On expiry the subagent \
-                    session is cancelled and a failure is returned."
+                    "description": "Maximum duration in seconds to wait for the subagent. Unlimited by default; 0 also means unlimited. On expiry the subagent session is cancelled and a failure is returned."
                 }
             },
             "required": ["prompt"]
