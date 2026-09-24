@@ -667,7 +667,9 @@ mod tests {
             })
             .collect();
         state
-            .frontend.pickers.provider_picker
+            .frontend
+            .pickers
+            .provider_picker
             .set_items(wrap_provider_entries(entries));
         state.frontend.pickers.provider_picker.move_down(1); // highlight first entry
         state

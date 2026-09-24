@@ -36,6 +36,10 @@ pub struct ProviderSelectionHandles {
     pub provider: ActorPath,
 }
 
+#[expect(
+    clippy::panic,
+    reason = "bootstrap assertion: a double activation must abort launch, not run degraded"
+)]
 /// Activates the slice over a composition-owned [`SliceHost`]: mints
 /// the provider cell, spawns the discover + provider actors (in that
 /// order — the wiring order the kernel spawn block used), and returns
@@ -55,11 +59,7 @@ pub fn activate(
             jinn_provider_selection_msg::provider_state_slot(),
             ProviderCell::default(),
         )
-        .unwrap_or_else(|e| {
-            panic!(
-                "provider-selection activate: provider cell slot taken: {e:?}"
-            )
-        });
+        .unwrap_or_else(|e| panic!("provider-selection activate: provider cell slot taken: {e:?}"));
 
     let deps = jinn_domain::common::actor_deps::ActorDeps {
         services: services.clone(),

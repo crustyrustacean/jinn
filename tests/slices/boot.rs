@@ -243,3 +243,42 @@ async fn install_composes_over_a_recording_bus() {
         tokio::time::timeout(Duration::from_secs(2), boot.ready_rx.to_async().recv()).await;
     assert!(result.is_ok(), "readiness fires over the from_parts bus");
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn provider_init_writes_the_disk_cache_through_the_provider_cell() {
+    // Given a trio installed with a provider cell and a seeded config.
+    let config = sample_config();
+    let (harness, services) = harness_with_config(&config).await;
+    let state = jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus());
+    let cell = test_provider_cell(&services);
+    let _boot = install_actors(harness.system(), state, &services, cell.clone());
+
+    // When the startup tail publishes EnvironmentLoaded.
+    harness
+        .publish(EnvironmentLoaded {
+            config: config.clone(),
+        })
+        .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Then the boot actor's cache write went through the cell (the
+    // ProviderCap this used to require is dissolved).
+    // With no disk cache seeded, the write lands as `None` — the
+    // observable proof the actor reached the cell at all is that the
+    // provider registry is now built from the loaded config.
+    let registry = services.provider_registry.read();
+    assert!(
+        registry
+            .get(&jinn_provider_config::ProviderId::new(
+                "sample/sample".to_owned()
+            ))
+            .is_some(),
+        "provider-init built the registry from the loaded config (cap dissolved)"
+    );
+    drop(registry);
+    assert!(
+        cell.read().model_cache.is_none(),
+        "with no disk cache on disk, the cell write is a cleared cache"
+    );
+}

@@ -224,9 +224,7 @@ fn render_token_info_line(
 /// Builds the left-side token info string: sent/received counts + context budget.
 /// The model cache from the provider cell, if the slice is attached.
 fn model_cache_of(state: &AppState) -> Option<jinn_provider_config::ModelCache> {
-    state
-        .provider_state()
-        .and_then(|cell| cell.read().model_cache.clone())
+    state.provider_state()?.read().model_cache.clone()
 }
 
 fn build_token_info_string(
@@ -244,10 +242,7 @@ fn build_token_info_string(
 
     let ctx_size = state.active_session().context_size();
     let model_cache = model_cache_of(state);
-    let ctx_limit = resolve_context_limit(
-        model_cache.as_ref(),
-        active_model.display_str(),
-    );
+    let ctx_limit = resolve_context_limit(model_cache.as_ref(), active_model.display_str());
     let context_display = match (ctx_size, ctx_limit) {
         (Some(used), Some(max)) => {
             let ctx_used = u64::from(used);

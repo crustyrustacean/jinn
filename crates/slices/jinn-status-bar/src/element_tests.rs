@@ -100,7 +100,7 @@ fn render_defaults_to_model_when_cell_absent() {
 #[rstest::rstest]
 fn render_shows_provider_and_model() {
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -124,7 +124,7 @@ fn render_single_model_ignores_stale_ledger_model_used() {
     // Given a Single selection of ollama/llama3, but a token ledger whose last
     // record claims a different (stale) model was dispatched.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -165,7 +165,7 @@ fn render_single_model_ignores_stale_ledger_model_used() {
 #[rstest::rstest]
 fn render_right_aligns_text() {
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -189,7 +189,7 @@ fn render_right_aligns_text() {
 #[rstest::rstest]
 fn render_shows_provider_with_slash_in_model() {
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Single(
         "openrouter/anthropic/claude-sonnet-4".to_owned(),
     ));
@@ -235,7 +235,7 @@ fn render_shows_token_counts_with_values() {
     // Given a session with token records.
     use jinn_domain::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -271,7 +271,7 @@ fn render_shows_cache_percent_when_cached_tokens_present() {
     // Given a session with a measured turn reporting cache hits.
     use jinn_domain::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
@@ -302,7 +302,7 @@ fn render_shows_cache_percent_when_cached_tokens_present() {
 /// Build an `AppState` whose active session has one measured turn reporting
 /// the given provider prompt and cached token counts.
 fn state_with_measured_cache(prompt_tokens: u32, cached_tokens: u32) -> AppState {
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
@@ -442,7 +442,7 @@ fn render_hides_cache_glyph_when_no_cached_tokens() {
     // Given a session with no cache hits (cached_tokens = None).
     use jinn_domain::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
@@ -477,7 +477,7 @@ fn render_cache_percent_uses_measured_turns_only() {
     // the cancelled turn's estimate.
     use jinn_domain::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
@@ -519,7 +519,7 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
     // Given a session with a cached context size but no model cache.
     use jinn_domain::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -574,7 +574,7 @@ fn render_shows_zero_percent_max_when_no_context_size() {
 fn render_shows_zero_turns_when_no_history() {
     // Given a state with no chat entries.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -597,7 +597,7 @@ fn render_shows_zero_turns_when_no_history() {
 fn render_shows_turn_count_with_history() {
     // Given a state with user and assistant entries.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -632,7 +632,7 @@ fn render_shows_turn_count_with_history() {
 fn render_turn_count_skips_tool_loop_intermediates() {
     // Given a state with a tool-loop conversation.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -691,7 +691,7 @@ fn render_shows_cwd_on_first_line() {
 fn render_shows_absolute_path_for_non_home_cwd() {
     // Given a session with a non-home CWD.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -720,7 +720,7 @@ fn render_shows_absolute_path_for_non_home_cwd() {
 fn render_shows_tilde_for_home_cwd() {
     // Given a session whose CWD is the user's home directory.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -748,7 +748,7 @@ fn render_shows_tilde_for_home_cwd() {
 fn render_shows_tilde_substitution_for_path_under_home() {
     // Given a session whose CWD is under the user's home directory.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -779,7 +779,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
     // Given a session with a cached context size and a model cache with context_length.
     use jinn_domain::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Single(
         "openrouter/anthropic/claude-sonnet-4".to_owned(),
     ));
@@ -834,7 +834,7 @@ fn render_falls_back_when_no_context_limit_in_cache() {
     // Given a session with a cached context size but no context_length in the model cache.
     use jinn_domain::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -892,7 +892,7 @@ fn render_falls_back_when_no_model_cache() {
     // Given a session with a cached context size but no model cache at all.
     use jinn_domain::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -907,9 +907,11 @@ fn render_falls_back_when_no_model_cache() {
     });
     state.active_session_mut().set_context_size(5000);
     // No model cache.
-    assert!(state
-        .provider_state()
-        .is_none_or(|cell| cell.read().model_cache.is_none()));
+    assert!(
+        state
+            .provider_state()
+            .is_none_or(|cell| cell.read().model_cache.is_none())
+    );
 
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -933,7 +935,7 @@ fn render_falls_back_when_no_model_cache() {
 fn render_shows_zero_percent_with_max_when_no_messages_sent() {
     // Given a model with a known context length but no messages sent (no context_size).
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Single(
         "openrouter/anthropic/claude-sonnet-4".to_owned(),
     ));
@@ -977,7 +979,7 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
 fn render_shows_used_over_unknown_when_no_context_length() {
     // Given a session with context_size but no context_length in the model cache.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1046,7 +1048,7 @@ fn render_shows_cost_with_non_zero_value() {
     // Given a session with a token record that has cost data.
     use jinn_domain::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1083,7 +1085,7 @@ fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
 
     // Given a parent and child session whose aggregated ledgers report 96% cache hits.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1147,7 +1149,7 @@ fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
 fn render_tree_cache_segment_keeps_muted_neighbors() {
     // Given a parent and child session showing a tree aggregate at 96% cache hits.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1209,7 +1211,7 @@ fn render_shows_cost_before_turns_indicator() {
     // Given a state with history entries producing turns and a token record with cost.
     use jinn_domain::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1254,7 +1256,7 @@ fn render_shows_cost_before_turns_indicator() {
 fn render_hides_tree_aggregate_for_single_session() {
     // Given a single session (no tree).
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1282,7 +1284,7 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
     use jinn_domain::feat::session::token_stats::TokenRecord;
 
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1342,7 +1344,7 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
 fn render_shows_tree_aggregate_from_child_viewpoint() {
     // Given a parent with a child, viewing from the child.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
 
     // Create parent session first.
     let parent_id = jinn_domain::protocol::SessionId::new();
@@ -1387,7 +1389,7 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
 fn render_single_model_shows_provider_and_model_without_alloy_prefix() {
     // Given a single model selection.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1420,7 +1422,7 @@ fn render_single_model_shows_provider_and_model_without_alloy_prefix() {
 fn render_alloy_with_token_records_shows_prefix_and_last_dispatched_model() {
     // Given an alloy with 3 models and a token record showing model-2 as last dispatched.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Alloy {
         models: vec![
             "provider-a/model-1".to_owned(),
@@ -1463,7 +1465,7 @@ fn render_alloy_with_token_records_shows_prefix_and_last_dispatched_model() {
 fn render_alloy_with_no_token_records_falls_back_to_first_model() {
     // Given an alloy with no LLM calls yet.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Alloy {
         models: vec![
             "provider-a/model-1".to_owned(),
@@ -1496,7 +1498,7 @@ fn render_alloy_with_no_token_records_falls_back_to_first_model() {
 fn render_alloy_with_one_model_shows_alloy_1() {
     // Given a 1-model alloy.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Alloy {
         models: vec!["ollama/llama3".to_owned()],
         strategy: AlloyStrategy::RoundRobin { index: 0 },
@@ -1526,7 +1528,7 @@ fn render_alloy_with_one_model_shows_alloy_1() {
 fn render_appends_resolved_reasoning_effort_after_model() {
     // Given a session with a model and a global reasoning default of High.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1557,7 +1559,7 @@ fn render_appends_resolved_reasoning_effort_after_model() {
 fn render_session_override_beats_global_reasoning_effort() {
     // Given a global default of High but a session override of Low.
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1594,7 +1596,7 @@ fn render_session_override_beats_global_reasoning_effort() {
 fn render_omits_reasoning_effort_bracket_when_unresolved() {
     // Given a model but no resolved reasoning effort (no override, no global).
     let mut element = StatusBarElement;
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1657,7 +1659,7 @@ fn render_model_row(state: &AppState) -> String {
 #[rstest::rstest]
 fn status_bar_shows_modality_indicator_for_image_model() {
     // Given a selected image-capable model in the cache.
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1681,7 +1683,7 @@ fn status_bar_shows_modality_indicator_for_image_model() {
 #[rstest::rstest]
 fn status_bar_shows_text_only_indicator_for_text_model() {
     // Given a selected text-only model in the cache.
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1707,7 +1709,7 @@ fn status_bar_shows_text_only_indicator_for_text_model() {
 #[rstest::rstest]
 fn status_bar_shows_text_only_indicator_when_model_not_in_cache() {
     // Given a selected model that is NOT recorded in the cache.
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1729,7 +1731,7 @@ fn status_bar_shows_text_only_indicator_when_model_not_in_cache() {
 #[rstest::rstest]
 fn status_bar_shows_indicator_without_reasoning_effort_bracket() {
     // Given an image model with no resolved reasoning effort.
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1757,7 +1759,7 @@ fn status_bar_shows_indicator_without_reasoning_effort_bracket() {
 #[rstest::rstest]
 fn status_bar_shows_effort_bracket_then_modality_indicator() {
     // Given an image-capable model with a resolved reasoning effort.
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1803,7 +1805,7 @@ fn status_bar_omits_indicator_when_no_model_selected() {
 fn status_bar_alloy_indicator_reflects_last_dispatched_member() {
     use jinn_domain::feat::session::token_stats::TokenRecord;
     // Given an alloy where the last-dispatched member is image-capable.
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Alloy {
         models: vec!["ollama/llama3".to_owned(), "ollama/gpt-4o".to_owned()],
         strategy: AlloyStrategy::RoundRobin { index: 0 },

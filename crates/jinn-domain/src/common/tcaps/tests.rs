@@ -47,4 +47,3 @@ fn push_entry_routes_through_history_append() {
     let after = state.read().active_session().history().len();
     assert_eq!(after, before + 1);
 }
-

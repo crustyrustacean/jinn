@@ -407,7 +407,6 @@ impl SessionPersistenceActor {
 
         self.save_active_session(&payload.session_id).await;
     }
-
 }
 
 #[cfg(test)]
@@ -423,7 +422,7 @@ mod tests {
 
     use crate::common::services::BusAudit;
     use crate::feat::chat_input::protocol::command::{EnqueueResumeTurn, EnqueueUserMessage};
-        use crate::feat::session::phase_machine::PhaseKind;
+    use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::{ChatEntry, ChatEntryKind};
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_session_history_msg::PushChatEntry;

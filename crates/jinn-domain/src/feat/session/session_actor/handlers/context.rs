@@ -8,10 +8,10 @@
 //! Relocated from `PromptAssemblyActor` - these concerns are session-related
 //! mutations of `AppState`, not part of prompt assembly.
 
+use crate::PromptTemplatesLoaded;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::persona::PersonaEntry;
-use crate::PromptTemplatesLoaded;
 use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};

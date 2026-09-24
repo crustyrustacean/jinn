@@ -37,9 +37,7 @@ pub use common::actor::{ActorCounter, ActorName};
 // Re-export component types (state, UI)
 pub use common::app_paths::{AppPaths, BrowserProfileMode};
 pub use common::app_state::pin_sort_key;
-pub use common::app_state::{
-    AppState, FocusScope, FrontendState, ScopeStack, SessionState,
-};
+pub use common::app_state::{AppState, FocusScope, FrontendState, ScopeStack, SessionState};
 pub use common::bridge::{Bridge, BridgeClosure};
 pub use common::bus::BusMessage;
 pub use common::render_ctx::RenderCtx;
@@ -130,7 +128,6 @@ pub use jinn_provider_selection_msg::{
 // The prompt-scan contracts are owned by the session-init slice's msg crate
 // (kernel→msg direction, skills precedent); re-exported here so the
 // long-standing `jinn_domain::X` paths keep resolving.
-pub use jinn_session_init_msg::{PromptTemplate, PromptTemplatesLoaded, RescanPromptTemplates};
 pub use feat::session::protocol::session_fork_requested::SessionForkRequested;
 pub use feat::session::protocol::session_id::SessionId;
 pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;
@@ -140,4 +137,5 @@ pub use jinn_inference_msg::{
     CancelStream, SendToLlmProvider, StreamCompleted, StreamCompletedReason, StreamOrigin,
     StreamToken,
 };
+pub use jinn_session_init_msg::{PromptTemplate, PromptTemplatesLoaded, RescanPromptTemplates};
 pub use jinn_slices::AssembledPrompt;

@@ -22,12 +22,12 @@ pub mod endpoint;
 pub mod entries;
 pub mod reasoning;
 
-pub use cell::provider_state_slot;
 pub use cell::ProviderCell;
+pub use cell::provider_state_slot;
 pub use endpoint::Endpoint;
 pub use endpoint::EndpointEntry;
-pub use entries::pre_check_active_models;
 pub use entries::ProviderPickerEntry;
+pub use entries::pre_check_active_models;
 pub use reasoning::ReasoningEffort;
 pub use reasoning::ReasoningEffortEntry;
 pub use reasoning::resolve_effort;

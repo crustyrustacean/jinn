@@ -35,8 +35,8 @@ pub use crate::feat::session::protocol::session_id::SessionId;
 
 // Re-export domain types used by the picker and UI
 pub use crate::feat::provider::entries_to_messages::entries_to_messages;
-pub use jinn_provider_selection_msg::ProviderPickerEntry;
 pub use crate::feat::session::picker_entry::SessionTreeEntry;
+pub use jinn_provider_selection_msg::ProviderPickerEntry;
 // The `ChatEntry` vocabulary is promoted to `jinn-core-types` (serde-only
 // value types); these re-exports keep the long-standing `jinn_domain::…`
 // paths resolving.

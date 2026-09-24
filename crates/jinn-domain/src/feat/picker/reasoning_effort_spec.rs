@@ -19,10 +19,10 @@ use ratatui::text::Span;
 
 use crate::common::app_state::AppState;
 use crate::feat::picker::style::dim_style;
+use crate::feat::ui::picker_states::PickerExt;
 use jinn_provider_selection_msg::reasoning::ReasoningEffort;
 use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
 use jinn_provider_selection_msg::reasoning::resolve_effort;
-use crate::feat::ui::picker_states::PickerExt;
 
 /// Builds the reasoning-effort picker's spec.
 #[must_use]

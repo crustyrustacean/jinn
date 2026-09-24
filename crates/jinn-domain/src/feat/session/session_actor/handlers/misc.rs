@@ -4,9 +4,9 @@
 //! and loading session picker entries from the session store into app state.
 
 use super::super::SessionPersistenceActor;
+use crate::ModelsRefreshed;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
-use crate::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;

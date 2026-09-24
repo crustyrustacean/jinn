@@ -21,9 +21,9 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
+use crate::RescanPromptTemplates;
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::command::ScanContextFiles;
-use crate::RescanPromptTemplates;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::skills::ScanSkills;
 use crate::feat::skills::SkillSource;

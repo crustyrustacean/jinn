@@ -2,8 +2,8 @@
 
 use std::ops::Range;
 
-use jinn_theme::Theme;
 use jinn_selection_widget::{PickerItem, PreviewContent, highlight_text_with_bg};
+use jinn_theme::Theme;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 

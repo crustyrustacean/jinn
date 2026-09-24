@@ -22,13 +22,13 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 
 use crate::common::app_state::AppState;
-use jinn_provider_selection_msg::endpoint::Endpoint;
-use jinn_provider_selection_msg::endpoint::EndpointEntry;
-use jinn_provider_selection_msg::LoadEndpointPickerEntries;
-use jinn_provider_selection_msg::RefreshEndpointPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_core_types::model_selection::ModelSelection;
+use jinn_provider_selection_msg::LoadEndpointPickerEntries;
+use jinn_provider_selection_msg::RefreshEndpointPickerEntries;
+use jinn_provider_selection_msg::endpoint::Endpoint;
+use jinn_provider_selection_msg::endpoint::EndpointEntry;
 
 /// Builds the endpoint picker's spec.
 #[must_use]
@@ -571,8 +571,8 @@ mod tests {
             .endpoint_picker_mut()
             .set_items(wrap(vec![EndpointEntry::auto_route(true, default_theme())]));
         if let Some(cell) = state.provider_state() {
-        cell.update(|c| c.endpoint_loading = true);
-    }
+            cell.update(|c| c.endpoint_loading = true);
+        }
 
         // When rendering the status line.
         let line = status_line_of(&state);

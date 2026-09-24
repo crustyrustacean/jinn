@@ -79,9 +79,7 @@ async fn session_created_triggers_discovery_and_loaded_events_land_on_slice_topi
     // and recorders on the bus for the three kernel event types.
     let (app, project, session_id) = composed_app_with_project().await;
     let skills_recorder = recorder_for::<jinn_domain::feat::skills::SkillsLoaded>(&app).await;
-    let prompts_recorder =
-        recorder_for::<jinn_session_init_msg::PromptTemplatesLoaded>(&app)
-            .await;
+    let prompts_recorder = recorder_for::<jinn_session_init_msg::PromptTemplatesLoaded>(&app).await;
     let context_recorder =
         recorder_for::<jinn_domain::feat::context::protocol::event::ContextFilesLoaded>(&app).await;
 

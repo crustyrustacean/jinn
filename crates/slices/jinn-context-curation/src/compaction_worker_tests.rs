@@ -717,7 +717,7 @@ impl ThresholdTestEnv {
 
     /// Set the model cache with context_length entries.
     fn set_model_cache(&self, cache: ModelCache) {
-        let mut app = self.state.write_test_no_cap();
+        let app = self.state.write_test_no_cap();
         app.provider_state()
             .expect("provider cell attached")
             .update(|cell| cell.model_cache = Some(cache));

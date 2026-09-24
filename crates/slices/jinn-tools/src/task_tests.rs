@@ -179,13 +179,11 @@ async fn settle_child_discovery(
         error: None,
     })
     .await;
-    bus.publish(
-        jinn_session_init_msg::PromptTemplatesLoaded {
-            session_id: child_id.clone(),
-            templates: vec![],
-            error: None,
-        },
-    )
+    bus.publish(jinn_session_init_msg::PromptTemplatesLoaded {
+        session_id: child_id.clone(),
+        templates: vec![],
+        error: None,
+    })
     .await;
     for server in servers {
         bus.publish(jinn_mcp_msg::McpServerStatus {
@@ -914,13 +912,11 @@ async fn settle_waiter_counts_error_events_as_settled() {
         })
         .await;
     harness
-        .publish(
-            jinn_session_init_msg::PromptTemplatesLoaded {
-                session_id: child_id.clone(),
-                templates: vec![],
-                error: Some("scan failed".to_owned()),
-            },
-        )
+        .publish(jinn_session_init_msg::PromptTemplatesLoaded {
+            session_id: child_id.clone(),
+            templates: vec![],
+            error: Some("scan failed".to_owned()),
+        })
         .await;
 
     // Then the gate opens: a resolved scan settles, error or not.

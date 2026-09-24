@@ -1927,6 +1927,7 @@ dependencies = [
  "jinn-context-assembly",
  "jinn-context-curation",
  "jinn-context-curation-msg",
+ "jinn-core-types",
  "jinn-cwd",
  "jinn-cwd-msg",
  "jinn-dashboard",

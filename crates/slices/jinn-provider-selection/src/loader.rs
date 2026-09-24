@@ -13,9 +13,9 @@ use jinn_provider_config::ModelCache;
 use jinn_provider_selection_msg::ProviderPickerEntry;
 use jinn_selection_widget::SelectionState;
 
+use crate::entries::load_provider_entries;
 use jinn_domain::Services;
 use jinn_domain::feat::picker::registry::{PROVIDER_ID, build_picker_registry};
-use crate::entries::load_provider_entries;
 
 /// Loads provider entries into the picker state, ready for display.
 ///

@@ -400,3 +400,8 @@ Entries are added or amended **only with human approval**.
 - (boot) The startup tail — the GetEnvironmentConfig ask and the EnvironmentLoaded publish — runs in composition after AllActorsSpawned, not in the slice.
 - (boot) EnvInit resolves API keys from each provider's api_key_env plus MCP header ${VAR} references into ApiKeysService, lazily on the first GetEnvironmentConfig ask.
 - (boot) ProviderInit builds the provider registry, merges the disk model cache, and re-applies the persisted last_model only when the active session has no explicit model.
+- (provider) The provider-selection family (ProviderActor, DiscoverActor, entry/message builders, endpoint/reasoning vocabulary) lives in the jinn-provider-selection slice.
+- (provider) The provider cell (provider/state) holds the model cache, the provider picker's alloy mode, and the endpoint fetch state (in-flight flag + last-fetched timestamp); the slice's actors and boot write it, the picker specs and gates read it, and the picker SelectionStates stay on the kernel's PickerStates as the render/navigation surface.
+- (provider) tcaps no longer has a provider capsule; ProviderCap/ProviderView are dissolved and boot writes the model cache through the provider cell.
+- (session) SendMessage no longer exists; EnqueueUserMessage is the only user-message entry point.
+- (session-init) RescanPromptTemplates and PromptTemplatesLoaded live in jinn-session-init-msg.

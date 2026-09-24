@@ -38,7 +38,6 @@ use crate::feat::chat_input::protocol::command::{
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-use crate::{ModelsRefreshed, PromptTemplatesLoaded};
 use crate::feat::session::protocol::archive_session::ArchiveSession;
 use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
 use crate::feat::session::protocol::citations_received::CitationsReceived;
@@ -58,6 +57,7 @@ use crate::feat::session_lifecycle::protocol::command::{
     RunSessionTeardown, SetSessionCwd,
 };
 use crate::feat::skills::SkillsLoaded;
+use crate::{ModelsRefreshed, PromptTemplatesLoaded};
 use jinn_boot_msg::EnvironmentLoaded;
 use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
 use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry, UnpinChatEntry};

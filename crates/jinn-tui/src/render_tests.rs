@@ -540,23 +540,21 @@ async fn model_picker_renders_telescope_layout_with_filter() {
         let wrapped = jinn_domain::feat::picker::registry::build_picker_registry()
             .make_items(
                 jinn_domain::feat::picker::registry::PROVIDER_ID,
-                vec![
-                    jinn_provider_selection_msg::ProviderPickerEntry {
-                        provider_id: "ollama/llama3".to_owned(),
-                        name: "ollama".to_owned(),
-                        provider_name: "ollama".to_owned(),
-                        backend: "ollama".to_owned(),
-                        model: "llama3".to_owned(),
-                        search_text: "llama3 ollama".to_owned(),
-                        is_alias: false,
-                        alias_target: None,
-                        is_available: true,
-                        is_remote: false,
-                        is_active: false,
-                        selected: false,
-                        theme: jinn_domain::feat::theme::default_theme(),
-                    },
-                ],
+                vec![jinn_provider_selection_msg::ProviderPickerEntry {
+                    provider_id: "ollama/llama3".to_owned(),
+                    name: "ollama".to_owned(),
+                    provider_name: "ollama".to_owned(),
+                    backend: "ollama".to_owned(),
+                    model: "llama3".to_owned(),
+                    search_text: "llama3 ollama".to_owned(),
+                    is_alias: false,
+                    alias_target: None,
+                    is_available: true,
+                    is_remote: false,
+                    is_active: false,
+                    selected: false,
+                    theme: jinn_domain::feat::theme::default_theme(),
+                }],
             )
             .expect("provider spec registered");
         w.frontend.pickers.provider_picker.set_items(wrapped);
@@ -631,23 +629,21 @@ async fn model_picker_no_active_marker_for_active_model() {
         let wrapped = jinn_domain::feat::picker::registry::build_picker_registry()
             .make_items(
                 jinn_domain::feat::picker::registry::PROVIDER_ID,
-                vec![
-                    jinn_provider_selection_msg::ProviderPickerEntry {
-                        provider_id: "ollama/llama3".to_owned(),
-                        name: "ollama".to_owned(),
-                        provider_name: "ollama".to_owned(),
-                        backend: "ollama".to_owned(),
-                        model: "llama3".to_owned(),
-                        search_text: "llama3 ollama".to_owned(),
-                        is_alias: false,
-                        alias_target: None,
-                        is_available: true,
-                        is_remote: false,
-                        is_active: true,
-                        selected: false,
-                        theme: jinn_domain::feat::theme::default_theme(),
-                    },
-                ],
+                vec![jinn_provider_selection_msg::ProviderPickerEntry {
+                    provider_id: "ollama/llama3".to_owned(),
+                    name: "ollama".to_owned(),
+                    provider_name: "ollama".to_owned(),
+                    backend: "ollama".to_owned(),
+                    model: "llama3".to_owned(),
+                    search_text: "llama3 ollama".to_owned(),
+                    is_alias: false,
+                    alias_target: None,
+                    is_available: true,
+                    is_remote: false,
+                    is_active: true,
+                    selected: false,
+                    theme: jinn_domain::feat::theme::default_theme(),
+                }],
             )
             .expect("provider spec registered");
         w.frontend.pickers.provider_picker.set_items(wrapped);

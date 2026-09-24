@@ -7,16 +7,16 @@
 
 use std::collections::HashMap;
 
+use error_stack::Report;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::state::State;
-use jinn_provider_selection_msg::RefreshModels;
-use jinn_provider_selection_msg::ModelsRefreshed;
-use jinn_provider_config::ModelCache;
-use error_stack::Report;
 use jinn_provider::{
     Backend, LlmServiceError, ModelInfo, OpenAiCompatibleService, ProviderConfig,
     anthropic::AnthropicService, google::GoogleService,
 };
+use jinn_provider_config::ModelCache;
+use jinn_provider_selection_msg::ModelsRefreshed;
+use jinn_provider_selection_msg::RefreshModels;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -251,8 +251,8 @@ mod tests {
     use jinn_domain::AppState;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
     use jinn_domain::common::state::State;
-    use jinn_provider_selection_msg::RefreshModels;
     use jinn_provider_selection_msg::ModelsRefreshed;
+    use jinn_provider_selection_msg::RefreshModels;
 
     use super::{DISCOVER_ACTOR_PATH, DiscoverActor, DiscoverActorDeps};
     use trouper::actor::ActorPath;

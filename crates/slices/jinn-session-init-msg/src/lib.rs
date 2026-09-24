@@ -76,7 +76,12 @@ impl BusMessage for PromptTemplatesLoaded {}
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::unwrap_used, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::unwrap_used,
+        clippy::unreachable,
+        reason = "test code"
+    )]
 
     use super::*;
 

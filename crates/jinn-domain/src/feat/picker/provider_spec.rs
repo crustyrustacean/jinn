@@ -22,14 +22,14 @@ use crate::ChatEntry;
 use crate::common::app_state::AppState;
 use crate::feat::picker::style::selected_style;
 use crate::feat::picker::style::split_match_indices;
-use jinn_provider_selection_msg::LoadProviderPickerEntries;
-use jinn_provider_selection_msg::ProviderPickerEntry;
-use jinn_provider_selection_msg::ProviderSwitch;
-use jinn_provider_selection_msg::RefreshModels;
 use jinn_core_types::model_selection::AlloyStrategy;
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_preferences_config::protocol::app_state_command::AppStateUpdate;
 use jinn_preferences_config::protocol::app_state_command::UpdateAppState;
+use jinn_provider_selection_msg::LoadProviderPickerEntries;
+use jinn_provider_selection_msg::ProviderPickerEntry;
+use jinn_provider_selection_msg::ProviderSwitch;
+use jinn_provider_selection_msg::RefreshModels;
 
 /// Builds the model picker's spec.
 #[must_use]
@@ -211,7 +211,10 @@ fn open_provider(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     // existing Alloy opens in alloy mode (with members pre-checked by the
     // loader), anything else opens in single mode. Mode is cell state (the
     // actor reads it when building entries); the spec is the exempt sync writer.
-    let alloy = matches!(state.active_session().profile().model, ModelSelection::Alloy { .. });
+    let alloy = matches!(
+        state.active_session().profile().model,
+        ModelSelection::Alloy { .. }
+    );
     if let Some(cell) = state.provider_state() {
         cell.update(|c| c.set_alloy_mode(alloy));
     }
@@ -222,14 +225,20 @@ fn open_provider(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
 /// place (no cursor move — the checked float to the top), alloy mode only.
 fn toggle_selected(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     let state = state_of(ctx);
-    let alloy = state.provider_state().is_some_and(|cell| cell.read().is_alloy_mode());
+    let alloy = state
+        .provider_state()
+        .is_some_and(|cell| cell.read().is_alloy_mode());
     if !alloy {
         return PickerOutcome::empty();
     }
-    state.frontend.pickers.provider_picker.with_selected_mut(|item| {
-        let entry = item.entry_mut();
-        entry.selected = !entry.selected;
-    });
+    state
+        .frontend
+        .pickers
+        .provider_picker
+        .with_selected_mut(|item| {
+            let entry = item.entry_mut();
+            entry.selected = !entry.selected;
+        });
     resort_provider_picker(&mut state.frontend.pickers.provider_picker);
     PickerOutcome::empty()
 }
@@ -326,7 +335,9 @@ fn confirm_provider(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
 /// Alloy mode: the checked set union the highlight (deduped); one model -> `Single`,
 /// two or more -> `Alloy`.
 fn resolve_provider_selection(state: &AppState, highlighted: String) -> ModelSelection {
-    let alloy = state.provider_state().is_some_and(|cell| cell.read().is_alloy_mode());
+    let alloy = state
+        .provider_state()
+        .is_some_and(|cell| cell.read().is_alloy_mode());
     if !alloy {
         return ModelSelection::Single(highlighted);
     }
@@ -437,7 +448,11 @@ mod tests {
                 )
             })
             .collect();
-        state.frontend.pickers.provider_picker.set_items(wrap(entries));
+        state
+            .frontend
+            .pickers
+            .provider_picker
+            .set_items(wrap(entries));
         state // selection starts on the first entry
     }
 
@@ -538,7 +553,9 @@ mod tests {
 
         // Then the first entry is checked and the cursor did not move.
         assert!(
-            state.frontend.pickers.provider_picker.items()[0].entry().selected,
+            state.frontend.pickers.provider_picker.items()[0]
+                .entry()
+                .selected,
             "first entry should be checked after TAB"
         );
         assert_eq!(
@@ -560,7 +577,9 @@ mod tests {
 
         // Then nothing became checked.
         let any_selected = state
-            .frontend.pickers.provider_picker
+            .frontend
+            .pickers
+            .provider_picker
             .items()
             .iter()
             .any(|item| item.entry().selected);
@@ -574,7 +593,9 @@ mod tests {
         let mut state = state_with_provider_picker(1);
         set_alloy_mode(&mut state, true);
         state
-            .frontend.pickers.provider_picker
+            .frontend
+            .pickers
+            .provider_picker
             .with_selected_mut(|item| item.entry_mut().selected = true);
 
         // When pressing TAB twice-worth of state (one toggle).
@@ -582,7 +603,9 @@ mod tests {
 
         // Then the entry is unchecked.
         assert!(
-            !state.frontend.pickers.provider_picker.items()[0].entry().selected,
+            !state.frontend.pickers.provider_picker.items()[0]
+                .entry()
+                .selected,
             "entry should be deselected after toggling off"
         );
     }
@@ -606,7 +629,9 @@ mod tests {
         // Then alloy mode is on and both members are pre-checked.
         assert!(alloy_mode(&state), "mode should flip to alloy");
         let checked = state
-            .frontend.pickers.provider_picker
+            .frontend
+            .pickers
+            .provider_picker
             .items()
             .iter()
             .filter(|item| item.entry().selected)
@@ -629,12 +654,11 @@ mod tests {
         let _ = run(&mut state, toggle_alloy);
 
         // Then mode is single and no entries remain checked.
-        assert!(
-            !alloy_mode(&state),
-            "mode should flip to single"
-        );
+        assert!(!alloy_mode(&state), "mode should flip to single");
         let any_checked = state
-            .frontend.pickers.provider_picker
+            .frontend
+            .pickers
+            .provider_picker
             .items()
             .iter()
             .any(|item| item.entry().selected);
@@ -697,7 +721,9 @@ mod tests {
         let mut state = state_with_provider_picker(2);
         set_alloy_mode(&mut state, false);
         state
-            .frontend.pickers.provider_picker
+            .frontend
+            .pickers
+            .provider_picker
             .with_selected_mut(|item| item.entry_mut().selected = true);
         state.frontend.pickers.provider_picker.move_down(1); // highlight model-1
 
@@ -722,7 +748,9 @@ mod tests {
         let mut state = state_with_provider_picker(2);
         set_alloy_mode(&mut state, false);
         state
-            .frontend.pickers.provider_picker
+            .frontend
+            .pickers
+            .provider_picker
             .with_selected_mut(|item| item.entry_mut().selected = true);
         state.frontend.pickers.provider_picker.move_down(1); // highlight model-1
 
@@ -740,7 +768,9 @@ mod tests {
         let mut state = state_with_provider_picker(3);
         set_alloy_mode(&mut state, true);
         state
-            .frontend.pickers.provider_picker
+            .frontend
+            .pickers
+            .provider_picker
             .with_selected_mut(|item| item.entry_mut().selected = true); // check model-0 (cursor at 0)
         state.frontend.pickers.provider_picker.move_down(1);
         state.frontend.pickers.provider_picker.move_down(1); // highlight model-2
@@ -766,7 +796,9 @@ mod tests {
         let mut state = state_with_provider_picker(1);
         set_alloy_mode(&mut state, true);
         state
-            .frontend.pickers.provider_picker
+            .frontend
+            .pickers
+            .provider_picker
             .with_selected_mut(|item| item.entry_mut().selected = true);
 
         // When resolving (highlight is already checked).
@@ -800,7 +832,9 @@ mod tests {
         // Given the highlighted entry is unavailable.
         let mut state = state_with_provider_picker(1);
         state
-            .frontend.pickers.provider_picker
+            .frontend
+            .pickers
+            .provider_picker
             .with_selected_mut(|item| item.entry_mut().is_available = false);
 
         // When confirming through the spec.

@@ -12,6 +12,7 @@
 //! - [`discord`] — discord's rows in the composed keymap
 //! - [`quake_bar`] — quake-bar's rows in the composed keymap
 //! - [`dashboard`] — dashboard's scope, cell, actor, rendering
+//! - [`provider_selection`] — provider switch / model discovery / picker load
 //! - [`session_init`] — the discovery chain (kernel → trouper →
 //!   keyed worker → per-resource Loaded events)
 //! - [`composition`] — the shared seam (every slice's rows attached)
@@ -31,6 +32,7 @@ mod boot;
 mod composition;
 mod dashboard;
 mod discord;
+mod provider_selection;
 mod quake_bar;
 mod session_init;
 mod sidebar;

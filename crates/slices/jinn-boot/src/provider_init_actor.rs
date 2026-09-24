@@ -11,9 +11,9 @@ use jinn_boot_msg::EnvironmentLoaded;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
-use jinn_provider_selection_msg::ProviderSwitch;
-use jinn_provider_selection_msg::ModelCacheLoaded;
 use jinn_domain::feat::provider_infra::{ModelCache, ProviderRegistry};
+use jinn_provider_selection_msg::ModelCacheLoaded;
+use jinn_provider_selection_msg::ProviderSwitch;
 use jinn_session_history_msg::PushChatEntry;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -204,9 +204,9 @@ mod tests {
     use jinn_domain::common::services::Services;
     use jinn_domain::common::services::bus_service::BusAudit;
     use jinn_domain::common::state::State;
+    use jinn_domain::feat::provider_infra::ProviderEntry;
     use jinn_provider_selection_msg::ModelCacheLoaded;
     use jinn_provider_selection_msg::ProviderSwitch;
-    use jinn_domain::feat::provider_infra::ProviderEntry;
     use jinn_session_history_msg::PushChatEntry;
 
     /// A lone provider cell for direct actor-construction tests.

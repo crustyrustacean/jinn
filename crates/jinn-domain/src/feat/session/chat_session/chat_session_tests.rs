@@ -38,8 +38,8 @@ fn push_entry_adds_to_history() {
 #[rstest::rstest]
 fn push_entry_expands_known_prompt_token_in_user_entry() {
     // Given a session whose store has a `#name` template.
-    use crate::feat::context::prompt_template::PromptTemplateStore;
     use crate::PromptTemplate;
+    use crate::feat::context::prompt_template::PromptTemplateStore;
 
     let mut session = ChatSessionState::new();
     session.set_discovered_prompt_templates(PromptTemplateStore::from_vec(vec![PromptTemplate {

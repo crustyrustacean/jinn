@@ -79,6 +79,11 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
             .frontend
             .attach_slices(services.slices.clone());
         activate_session_init(&mut services, &core).await;
+        // Provider-selection: mints the provider cell + spawns the
+        // provider/discover actors (production wiring calls the same
+        // activation before the boot trio, whose init actor writes the
+        // disk-loaded cache through the returned cell).
+        activate_provider_selection(&mut services, &core.state);
         // Bindings generate after all activations so every slice's rows exist.
         jinn_tui::keymap_gen::bind_route_rows(&services.key_routes, &mut keymap);
     }
@@ -191,6 +196,24 @@ fn activate_status_bar(services: &mut jinn_domain::Services) {
     clippy::panic,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
+/// Activates the provider-selection slice: mints the provider cell and
+/// spawns the provider + discover actors over the same `State` and
+/// trouper system the harness wires.
+fn activate_provider_selection(services: &mut jinn_domain::Services, state: &jinn_domain::State) {
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_provider_selection::activate(&mut host, &services_snapshot, state.clone());
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("provider-selection slice finalize failed: {error}");
+    }
+}
+
 async fn activate_session_init(services: &mut jinn_domain::Services, core: &jinn_domain::AppCore) {
     let state = core.state.clone();
     if let Err(error) = jinn_session_init::activate(services, state) {

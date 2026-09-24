@@ -226,7 +226,10 @@ impl jinn_selection_widget::TreeItem for ProviderPickerEntry {
 /// member entries. Used by the provider spec's alloy-mode toggle (entering
 /// alloy pre-checks the session's current models) and by the slice's
 /// loader (pre-checking at load time).
-pub fn pre_check_active_models(entries: &mut [ProviderPickerEntry], selection: &jinn_core_types::model_selection::ModelSelection) {
+pub fn pre_check_active_models(
+    entries: &mut [ProviderPickerEntry],
+    selection: &jinn_core_types::model_selection::ModelSelection,
+) {
     let model_ids: Vec<&str> = match selection {
         jinn_core_types::model_selection::ModelSelection::Single(s) => vec![s],
         jinn_core_types::model_selection::ModelSelection::Alloy { models, .. } => {

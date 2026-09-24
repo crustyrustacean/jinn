@@ -36,9 +36,9 @@ use trouper::registry::RegistryError;
 
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::feat::context::protocol::event::ContextFilesLoaded;
-use jinn_session_init_msg::PromptTemplatesLoaded;
 use jinn_domain::protocol::SessionId;
 use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
+use jinn_session_init_msg::PromptTemplatesLoaded;
 use jinn_skills_msg::SkillsLoaded;
 
 /// Dependencies for spawning a [`TaskSettleListenerActor`].

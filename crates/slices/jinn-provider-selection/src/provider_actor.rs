@@ -22,6 +22,7 @@
 //! hold a lock during emission, and never hold the state guard across
 //! the async endpoint fetch.
 
+use error_stack::Report;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::state::State;
 use jinn_domain::common::tcaps::frontend::FrontendCap;
@@ -29,7 +30,7 @@ use jinn_domain::common::tcaps::session::SessionCap;
 use jinn_domain::feat::picker::registry::{ENDPOINT_ID, build_picker_registry};
 use jinn_provider_config::ModelCache;
 use jinn_provider_config::ProviderRegistry;
-use jinn_provider_config::{InputModalities, ModelInfo, Modality, ProvidersConfig};
+use jinn_provider_config::{InputModalities, Modality, ModelInfo, ProvidersConfig};
 use jinn_provider_selection_msg::endpoint::EndpointEntry;
 use jinn_provider_selection_msg::{
     LoadEndpointPickerEntries, LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed,
@@ -37,7 +38,6 @@ use jinn_provider_selection_msg::{
 };
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
-use error_stack::Report;
 use trouper::registry::RegistryError;
 
 use crate::endpoint_loader::{
@@ -389,7 +389,9 @@ fn build_provider_picker(
     theme: &jinn_domain::feat::theme::Theme,
     model_selection: &jinn_core_types::ModelSelection,
     alloy_mode: bool,
-) -> jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<jinn_provider_selection_msg::ProviderPickerEntry>> {
+) -> jinn_selection_widget::SelectionState<
+    jinn_picker::PickerEntry<jinn_provider_selection_msg::ProviderPickerEntry>,
+> {
     let mut picker = jinn_selection_widget::SelectionState::new();
     load_provider_picker_items(
         services,
@@ -435,10 +437,7 @@ fn merge_context_lengths_from_registry(cache: &mut ModelCache, registry: &Provid
 // Modality stamping is unconditional (idempotent `insert`): a stale on-disk
 // cache that predates the modalities field gets re-enriched from models.dev
 // on every load, so the Image bit is never permanently lost across upgrades.
-fn merge_models_dev_data(
-    cache: &mut ModelCache,
-    models_dev: &jinn_provider_config::ModelsDevData,
-) {
+fn merge_models_dev_data(cache: &mut ModelCache, models_dev: &jinn_provider_config::ModelsDevData) {
     for models in cache.entries.values_mut() {
         for model in models.iter_mut() {
             models_dev.enrich(model);
@@ -548,12 +547,12 @@ mod tests {
     use std::collections::BTreeMap;
 
     use jinn_domain::AppState;
-    use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
     use jinn_domain::common::state::State;
     use jinn_domain::common::tcaps::mint;
+    use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_provider_config::{
-        InputModalities, ModelCache, ModelInfo, Modality, ProviderEntry, ProviderRegistry,
+        InputModalities, Modality, ModelCache, ModelInfo, ProviderEntry, ProviderRegistry,
         ProvidersConfig,
     };
     use jinn_provider_selection_msg::{ProviderCell, provider_state_slot};
@@ -561,39 +560,62 @@ mod tests {
     use super::{
         ModelCacheLoaded, ModelsRefreshed, PROVIDER_ACTOR_PATH, ProviderActor, ProviderActorDeps,
     };
+    use jinn_core_types::model_selection::ModelSelection;
     use jinn_domain::common::actor_deps::ActorDeps;
     use jinn_provider_selection_msg::LoadProviderPickerEntries;
     use jinn_provider_selection_msg::ProviderSwitched;
-    use jinn_core_types::model_selection::ModelSelection;
     use trouper::actor::ActorPath;
 
-    async fn create_harness() -> (TestHarness, State) {
-        let harness = TestHarness::new().await;
-        let state = State::new(AppState::default());
-        // Register the provider cell the actor (and tests) read/write.
-        let services = harness.services().await;
-        let _ = services
-            .slices
-            .register(provider_state_slot(), ProviderCell::default());
-        (harness, state)
+    /// The harness + state + deps pair, with the provider cell registered
+    /// on the SAME `Services` the actor holds (harness `services()` mints a
+    /// fresh registry per call, so the cell must be seeded once and the
+    /// resulting `Services` threaded through).
+    struct Ctx {
+        harness: TestHarness,
+        state: State,
+        deps: ActorDeps,
     }
 
-    async fn spawn_actor(harness: &TestHarness, state: &State, deps: ActorDeps) {
-        let services = harness.services().await;
-        let provider_cell = services
+    impl Ctx {
+        fn cell(&self) -> jinn_slices::TypedCell<ProviderCell> {
+            self.deps
+                .services
+                .slices
+                .reader(&provider_state_slot())
+                .expect("provider cell registered")
+        }
+
+        fn spawn_provider_actor(&self) {
+            ProviderActor::spawn(
+                &self.deps.services.trouper_system,
+                ProviderActorDeps {
+                    deps: self.deps.clone(),
+                    state: self.state.clone(),
+                    provider_cell: self.cell(),
+                    session_cap: mint::mint_session_cap(),
+                    frontend_cap: mint::mint_frontend_cap(),
+                },
+            );
+        }
+
+        fn cell_model_cache(&self) -> Option<ModelCache> {
+            self.cell().read().model_cache.clone()
+        }
+    }
+
+    async fn create_ctx() -> Ctx {
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        let _ = deps
+            .services
             .slices
-            .reader(&provider_state_slot())
-            .expect("provider cell registered");
-        ProviderActor::spawn(
-            &services.trouper_system,
-            ProviderActorDeps {
-                deps,
-                state: state.clone(),
-                provider_cell,
-                session_cap: mint::mint_session_cap(),
-                frontend_cap: mint::mint_frontend_cap(),
-            },
-        );
+            .register(provider_state_slot(), ProviderCell::default());
+        let state = State::new(AppState::default());
+        Ctx {
+            harness,
+            state,
+            deps,
+        }
     }
 
     fn sample_config() -> ProvidersConfig {
@@ -630,34 +652,24 @@ mod tests {
         cache
     }
 
-    async fn cell_model_cache(harness: &TestHarness) -> Option<ModelCache> {
-        let services = harness.services().await;
-        let cell = services
-            .slices
-            .reader::<ProviderCell>(&provider_state_slot())
-            .expect("provider cell");
-        cell.read().model_cache.clone()
-    }
-
     #[rstest::rstest]
     #[tokio::test]
     async fn model_cache_loaded_sets_model_cache_in_cell() {
         // Given a provider actor and a registry with a provider.
-        let (harness, state) = create_harness().await;
-        let services = harness.actor_deps().await.services;
+        let ctx = create_ctx().await;
         let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
-        services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, harness.actor_deps().await).await;
+        ctx.deps.services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
 
         let cache = cache_with_ollama_llama3(Some(8192));
 
         // When publishing ModelCacheLoaded via bus.
-        harness.publish(ModelCacheLoaded { cache }).await;
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
         // Then the model cache is set in the cell.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let loaded = cell_model_cache(&harness)
-            .await
+        let loaded = ctx
+            .cell_model_cache()
             .expect("actor should have processed the event");
         assert_eq!(loaded.entries["ollama"].len(), 1);
         assert_eq!(loaded.entries["ollama"][0].id, "llama3");
@@ -667,23 +679,22 @@ mod tests {
     #[tokio::test]
     async fn model_cache_loaded_preserves_timestamp() {
         // Given a provider actor with a cache that has a timestamp.
-        let (harness, state) = create_harness().await;
-        let services = harness.actor_deps().await.services;
+        let ctx = create_ctx().await;
         let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
-        services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, harness.actor_deps().await).await;
+        ctx.deps.services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
 
         let ts = jiff::Timestamp::now();
         let mut cache = cache_with_ollama_llama3(None);
         cache.last_updated_at = Some(ts);
 
         // When publishing ModelCacheLoaded via bus.
-        harness.publish(ModelCacheLoaded { cache }).await;
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the timestamp is preserved in the cell.
-        let loaded = cell_model_cache(&harness).await.expect("cache set");
+        let loaded = ctx.cell_model_cache().expect("cache set");
         assert!(loaded.last_updated_at.is_some());
     }
 
@@ -708,12 +719,11 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (harness, state) = create_harness().await;
-        let deps = harness.actor_deps().await;
-        let services = deps.services.clone();
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
         let registry = ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, deps).await;
+        ctx.spawn_provider_actor();
 
         // When publishing ModelsRefreshed with zai model that has context_length: None.
         let mut results = std::collections::HashMap::new();
@@ -726,25 +736,24 @@ mod tests {
             }],
         );
         let event = ModelsRefreshed {
-            session_id: state.read().session.active_session_id().clone(),
+            session_id: ctx.state.read().session.active_session_id().clone(),
             results,
             errors: std::collections::HashMap::new(),
         };
-        harness.publish(event).await;
+        ctx.harness.publish(event).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the model cache has context_length from the registry.
-        let cache = cell_model_cache(&harness).await.expect("cache should be set");
+        let cache = ctx.cell_model_cache().expect("cache should be set");
         assert_eq!(cache.entries["zai"][0].context_length, Some(128_000));
 
         // And the model is registered in the provider registry.
-        let resolved =
-            services
-                .provider_registry
-                .get(&jinn_provider_config::ProviderId::new(
-                    "zai/zai-1.5".to_owned(),
-                ));
+        let resolved = services
+            .provider_registry
+            .get(&jinn_provider_config::ProviderId::new(
+                "zai/zai-1.5".to_owned(),
+            ));
         assert!(
             resolved.is_some(),
             "model should be in registry after ModelsRefreshed"
@@ -772,12 +781,11 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (harness, state) = create_harness().await;
-        let deps = harness.actor_deps().await;
-        let services = deps.services.clone();
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
         let registry = ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, deps).await;
+        ctx.spawn_provider_actor();
 
         // When publishing ModelsRefreshed where API returns context_length: Some(8192).
         let mut results = std::collections::HashMap::new();
@@ -790,17 +798,17 @@ mod tests {
             }],
         );
         let event = ModelsRefreshed {
-            session_id: state.read().session.active_session_id().clone(),
+            session_id: ctx.state.read().session.active_session_id().clone(),
             results,
             errors: std::collections::HashMap::new(),
         };
-        harness.publish(event).await;
+        ctx.harness.publish(event).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the block config value wins (4096), not the API value (8192) —
         // unified precedence: per-model config > block config > API > models.dev.
-        let cache = cell_model_cache(&harness).await.expect("cache should be set");
+        let cache = ctx.cell_model_cache().expect("cache should be set");
         assert_eq!(cache.entries["ollama"][0].context_length, Some(4096));
     }
 
@@ -808,8 +816,8 @@ mod tests {
     #[tokio::test]
     async fn models_refreshed_leaves_none_when_neither_source_has_context_length() {
         // Given a provider actor.
-        let (harness, state) = create_harness().await;
-        spawn_actor(&harness, &state, harness.actor_deps().await).await;
+        let ctx = create_ctx().await;
+        ctx.spawn_provider_actor();
 
         // When publishing ModelsRefreshed where API also returns context_length: None.
         let mut results = std::collections::HashMap::new();
@@ -822,16 +830,16 @@ mod tests {
             }],
         );
         let event = ModelsRefreshed {
-            session_id: state.read().session.active_session_id().clone(),
+            session_id: ctx.state.read().session.active_session_id().clone(),
             results,
             errors: std::collections::HashMap::new(),
         };
-        harness.publish(event).await;
+        ctx.harness.publish(event).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the cache entry stays None.
-        let cache = cell_model_cache(&harness).await.expect("cache should be set");
+        let cache = ctx.cell_model_cache().expect("cache should be set");
         assert_eq!(cache.entries["ollama"][0].context_length, None);
     }
 
@@ -839,8 +847,8 @@ mod tests {
     #[tokio::test]
     async fn models_refreshed_does_not_touch_provider_not_in_registry() {
         // Given a provider actor.
-        let (harness, state) = create_harness().await;
-        spawn_actor(&harness, &state, harness.actor_deps().await).await;
+        let ctx = create_ctx().await;
+        ctx.spawn_provider_actor();
 
         // When publishing ModelsRefreshed with results for groq (not in registry).
         let mut results = std::collections::HashMap::new();
@@ -853,16 +861,16 @@ mod tests {
             }],
         );
         let event = ModelsRefreshed {
-            session_id: state.read().session.active_session_id().clone(),
+            session_id: ctx.state.read().session.active_session_id().clone(),
             results,
             errors: std::collections::HashMap::new(),
         };
-        harness.publish(event).await;
+        ctx.harness.publish(event).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the cache entry is stored as-is, no panic.
-        let cache = cell_model_cache(&harness).await.expect("cache should be set");
+        let cache = ctx.cell_model_cache().expect("cache should be set");
         assert_eq!(cache.entries["groq"][0].context_length, None);
     }
 
@@ -887,12 +895,11 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (harness, state) = create_harness().await;
-        let deps = harness.actor_deps().await;
-        let services = deps.services.clone();
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
         let registry = ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, deps).await;
+        ctx.spawn_provider_actor();
 
         // When publishing ModelCacheLoaded with cache that has context_length: None.
         let cache = cache_with_ollama_llama3(None);
@@ -908,21 +915,20 @@ mod tests {
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
 
-        harness.publish(ModelCacheLoaded { cache }).await;
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the model cache in the cell has context_length from the registry.
-        let loaded = cell_model_cache(&harness).await.expect("cache should be set");
+        let loaded = ctx.cell_model_cache().expect("cache should be set");
         assert_eq!(loaded.entries["zai"][0].context_length, Some(128_000));
 
         // And the model is registered in the provider registry.
-        let resolved =
-            services
-                .provider_registry
-                .get(&jinn_provider_config::ProviderId::new(
-                    "zai/zai-1.5".to_owned(),
-                ));
+        let resolved = services
+            .provider_registry
+            .get(&jinn_provider_config::ProviderId::new(
+                "zai/zai-1.5".to_owned(),
+            ));
         assert!(
             resolved.is_some(),
             "model should be in registry after ModelCacheLoaded"
@@ -950,23 +956,22 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (harness, state) = create_harness().await;
-        let deps = harness.actor_deps().await;
-        let services = deps.services.clone();
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
         let registry = ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, deps).await;
+        ctx.spawn_provider_actor();
 
         // When publishing ModelCacheLoaded with cache that has context_length: Some(8192).
         let cache = cache_with_ollama_llama3(Some(8192));
 
-        harness.publish(ModelCacheLoaded { cache }).await;
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the block config value wins (4096), not the API value (8192) —
         // unified precedence: per-model config > block config > API > models.dev.
-        let loaded = cell_model_cache(&harness).await.expect("cache should be set");
+        let loaded = ctx.cell_model_cache().expect("cache should be set");
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(4096));
     }
 
@@ -1033,21 +1038,20 @@ mod tests {
     async fn model_cache_loaded_per_model_config_beats_api_value() {
         // Given a registry with a per-model context_length of 16384 and
         // models.dev data that would leave the model text-only.
-        let (harness, state) = create_harness().await;
-        let deps = harness.actor_deps().await;
-        let services = deps.services.clone();
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
         seed_models_dev(&services, "llama3", false);
         let registry = ProviderRegistry::from_config(config_with_model_info()).expect("registry");
         services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, deps).await;
+        ctx.spawn_provider_actor();
 
         // When publishing ModelCacheLoaded with an API-discovered value of 8192.
         let cache = cache_with_ollama_llama3(Some(8192));
-        harness.publish(ModelCacheLoaded { cache }).await;
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the per-model config value wins.
-        let loaded = cell_model_cache(&harness).await.expect("cache set");
+        let loaded = ctx.cell_model_cache().expect("cache set");
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(16384));
         // And the configured modalities replace the discovered text-only value.
         assert!(
@@ -1061,12 +1065,11 @@ mod tests {
     #[tokio::test]
     async fn model_cache_loaded_injects_static_only_model() {
         // Given a registry whose model_info targets a model with no cache entry.
-        let (harness, state) = create_harness().await;
-        let deps = harness.actor_deps().await;
-        let services = deps.services.clone();
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
         let registry = ProviderRegistry::from_config(config_with_model_info()).expect("registry");
         services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, deps).await;
+        ctx.spawn_provider_actor();
 
         // When publishing a ModelCacheLoaded that lacks the configured model.
         let mut cache = ModelCache::new();
@@ -1079,11 +1082,11 @@ mod tests {
             }],
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
-        harness.publish(ModelCacheLoaded { cache }).await;
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the static-only model is injected with its config values.
-        let loaded = cell_model_cache(&harness).await.expect("cache set");
+        let loaded = ctx.cell_model_cache().expect("cache set");
         let injected = loaded.entries["ollama"]
             .iter()
             .find(|m| m.id == "llama3")
@@ -1118,13 +1121,12 @@ mod tests {
     #[tokio::test]
     async fn model_cache_loaded_injects_block_level_only_static_model() {
         // Given a registry with a block-level context_length and no model_info.
-        let (harness, state) = create_harness().await;
-        let deps = harness.actor_deps().await;
-        let services = deps.services.clone();
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
         let registry =
             ProviderRegistry::from_config(sample_config_with_block_ctx()).expect("registry");
         services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, deps).await;
+        ctx.spawn_provider_actor();
 
         // When publishing a ModelCacheLoaded that lacks the static model entirely.
         let mut cache = ModelCache::new();
@@ -1137,11 +1139,11 @@ mod tests {
             }],
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
-        harness.publish(ModelCacheLoaded { cache }).await;
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the static model is injected carrying the block-level value.
-        let loaded = cell_model_cache(&harness).await.expect("cache set");
+        let loaded = ctx.cell_model_cache().expect("cache set");
         let injected = loaded.entries["ollama"]
             .iter()
             .find(|m| m.id == "llama3")
@@ -1157,22 +1159,21 @@ mod tests {
         // Given a config that explicitly declares llama3 text-only while the
         // seeded models.dev data marks it image-capable.
         let config = config_with_model_info_modalities(vec!["text".to_owned()]);
-        let (harness, state) = create_harness().await;
-        let deps = harness.actor_deps().await;
-        let services = deps.services.clone();
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
         seed_models_dev(&services, "llama3", true);
         let registry = ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, deps).await;
+        ctx.spawn_provider_actor();
 
         // When publishing ModelCacheLoaded for that model.
         let cache = cache_with_ollama_llama3(Some(8192));
-        harness.publish(ModelCacheLoaded { cache }).await;
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the config modalities win: the loaded cache stays text-only even
         // though models.dev enrichment (run before the overlay) stamps Image.
-        let loaded = cell_model_cache(&harness).await.expect("cache set");
+        let loaded = ctx.cell_model_cache().expect("cache set");
         assert!(
             !loaded.entries["ollama"][0]
                 .input_modalities
@@ -1395,15 +1396,15 @@ mod tests {
     #[tokio::test]
     async fn handle_dispatches_provider_switch_command() {
         // Given a provider actor.
-        let (harness, state) = create_harness().await;
-        let recorder = harness.spawn_recorder::<ProviderSwitched>().await;
-        spawn_actor(&harness, &state, harness.actor_deps().await).await;
-        let session_id = state.read().session.active_session_id().clone();
+        let ctx = create_ctx().await;
+        let recorder = ctx.harness.spawn_recorder::<ProviderSwitched>().await;
+        ctx.spawn_provider_actor();
+        let session_id = ctx.state.read().session.active_session_id().clone();
 
         // When telling the actor to switch (ProviderSwitch is a COMMAND:
         // point-to-point to the actor's path).
-        let services = harness.services().await;
-        services
+        ctx.deps
+            .services
             .trouper_system
             .tell(
                 ActorPath::new(PROVIDER_ACTOR_PATH),
@@ -1420,7 +1421,7 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].provider_name, "ollama/llama3");
 
-        let s = state.read();
+        let s = ctx.state.read();
         assert_eq!(
             s.session.active_session().profile().model,
             ModelSelection::Single("ollama/llama3".to_owned())
@@ -1431,16 +1432,14 @@ mod tests {
     #[tokio::test]
     async fn handle_dispatches_load_provider_picker_entries_command() {
         // Given a provider actor with a registry.
-        let (harness, state) = create_harness().await;
-        let deps = harness.actor_deps().await;
+        let ctx = create_ctx().await;
         let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
-        deps.services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, deps).await;
+        ctx.deps.services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
 
         // When telling the actor to load (a COMMAND: point-to-point).
-        harness
-            .services()
-            .await
+        ctx.deps
+            .services
             .trouper_system
             .tell(
                 ActorPath::new(PROVIDER_ACTOR_PATH),
@@ -1453,7 +1452,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         // Then the provider picker has entries.
-        let s = state.read();
+        let s = ctx.state.read();
         let items = s.frontend.pickers.provider_picker.items();
         assert!(
             !items.is_empty(),
@@ -1466,27 +1465,21 @@ mod tests {
     async fn endpoint_load_for_non_openrouter_model_clears_loading_and_shows_placeholder() {
         // Given a provider actor whose registry has an ollama (non-OpenRouter) model,
         // and the loading flag pre-set as the open intent would.
-        let (harness, state) = create_harness().await;
-        let deps = harness.actor_deps().await;
+        let ctx = create_ctx().await;
         let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
-        deps.services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, deps).await;
+        ctx.deps.services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
 
-        state
+        ctx.state
             .write_test_no_cap()
             .active_session_mut()
             .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-        let services = harness.services().await;
-        let cell = services
-            .slices
-            .reader::<ProviderCell>(&provider_state_slot())
-            .expect("provider cell");
+        let cell = ctx.cell();
         cell.update(|c| c.endpoint_loading = true);
 
         // When telling the actor to load (a COMMAND: point-to-point).
-        harness
-            .services()
-            .await
+        ctx.deps
+            .services
             .trouper_system
             .tell(
                 ActorPath::new(PROVIDER_ACTOR_PATH),
@@ -1501,7 +1494,7 @@ mod tests {
             !cell.read().endpoint_loading,
             "non-OpenRouter load must clear the loading flag"
         );
-        let s = state.read();
+        let s = ctx.state.read();
         assert!(
             !s.frontend.endpoint_picker().items().is_empty(),
             "non-OpenRouter load must still show the placeholder row"
