@@ -18,6 +18,7 @@ jinn-core-types = { workspace = true }
 jinn-provider = { workspace = true }
 jinn-common = { workspace = true }
 jinn-session-schema = { workspace = true }
+jinn-session-store-msg = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }

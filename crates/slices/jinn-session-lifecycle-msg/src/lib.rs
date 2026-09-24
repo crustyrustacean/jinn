@@ -18,5 +18,16 @@ pub use command::{
     RunSessionSetup, RunSessionTeardown, SetSessionCwd, TeardownFollowUp,
 };
 pub use command_template::CommandTemplate;
-pub use event::{SessionCreated, SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished};
+pub use event::{
+    SessionCreated, SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
+};
 pub use picker_entry::{SessionLifecycleEntry, lifecycle_row};
+
+/// The system entry shown while a session setup command is running.
+///
+/// The kernel IntentHandler publishes this entry before the lifecycle actor
+/// takes over, so the message builder belongs to the shared family crate.
+#[must_use]
+pub fn setup_running_msg() -> jinn_core_types::ChatEntry {
+    jinn_core_types::ChatEntry::system("⚙️ Running setup script...")
+}

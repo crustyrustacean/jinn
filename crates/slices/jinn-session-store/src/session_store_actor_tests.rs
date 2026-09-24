@@ -1,6 +1,6 @@
 //! Observable behavior tests for the store-owned session actor.
 
-#![allow(clippy::expect_used, reason = "test code")]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use std::sync::Arc;
 use std::time::Duration;

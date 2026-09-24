@@ -94,6 +94,8 @@ jinn-status-bar = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-init = { workspace = true }
 jinn-session-store = { workspace = true }
+jinn-session-lifecycle = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-picker-specs = { workspace = true }
@@ -180,6 +182,7 @@ jinn-session-msg = { path = "crates/jinn-session-msg" }
 jinn-boot = { path = "crates/slices/jinn-boot" }
 jinn-boot-msg = { path = "crates/jinn-boot-msg" }
 jinn-session-store = { path = "crates/slices/jinn-session-store" }
+jinn-session-store-msg = { path = "crates/slices/jinn-session-store-msg" }
 jinn-session-lifecycle-msg = { path = "crates/slices/jinn-session-lifecycle-msg" }
 jinn-session-lifecycle = { path = "crates/slices/jinn-session-lifecycle" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }

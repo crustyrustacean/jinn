@@ -313,6 +313,9 @@ impl ActorSystemBuilder {
         // routes; the drain below spawns the relays. The size actor
         // holds `Services` for the assembly ask.
         jinn_context_assembly::install_actors(&services.trouper_system, state.clone(), &services);
+        // The lifecycle-owned session actor activates after the kernel whale drops
+        // its lifecycle-handle subscriptions; activation moves to the
+        // kernel-residue step to avoid double-handling every lifecycle contract.
         // The store-owned session actor activates after the kernel whale drops
         // its store-handle subscriptions; activating both would double-handle
         // every store contract.

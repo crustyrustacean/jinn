@@ -16,6 +16,11 @@ pub mod search_index_actor;
 pub mod session_store_actor;
 pub mod sqlite;
 
+// The search/transcript data model belongs to the store family's msg crate
+// because the kernel's store seam consumes it too. Re-exported as this slice's
+// vocabulary surface.
+pub use jinn_session_store_msg as session_search;
+
 use jinn_domain::Services;
 use jinn_domain::common::state::State;
 use trouper::actor::ActorPath;

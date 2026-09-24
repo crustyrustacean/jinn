@@ -5,8 +5,9 @@
 //! index. Kinds with no prose worth searching (`Actor`, `Thinking`,
 //! `Transient`, `Annotation`) yield `None` and never get an FTS row.
 
-use crate::feat::session_search::model::SearchableRole;
-use crate::protocol::ChatEntryKind;
+use jinn_core_types::ChatEntryKind;
+
+use super::model::SearchableRole;
 
 /// A flattened, searchable view of one persisted entry.
 #[derive(Debug, Clone)]
@@ -58,12 +59,12 @@ pub fn extract_searchable(kind: &ChatEntryKind) -> Option<(SearchableRole, Strin
     Some((role, body))
 }
 
-/// Renders an [`EntryTiming`](crate::protocol::EntryTiming)'s primary
+/// Renders an [`EntryTiming`](jinn_core_types::EntryTiming)'s primary
 /// timestamp as the RFC3339 key stored in the FTS `entry_ts` column.
 ///
 /// RFC3339 UTC timestamps compare correctly as plain strings, which is what
 /// the `since`/`until` filters rely on.
 #[must_use]
-pub fn entry_ts_key(timing: &crate::protocol::EntryTiming) -> String {
+pub fn entry_ts_key(timing: &jinn_core_types::EntryTiming) -> String {
     timing.at().to_string()
 }

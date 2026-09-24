@@ -4,11 +4,12 @@
 //! `session_fetch`) and the store backends. Params are plain data; outcomes
 //! carry everything the formatter needs so formatting stays a pure function.
 
+use jinn_core_types::ChatEntry;
 use serde::{Deserialize, Serialize};
 
 /// A role filter / role label for a searchable entry.
 ///
-/// Mirrors the subset of [`ChatEntryKind`](crate::protocol::ChatEntryKind)
+/// Mirrors the subset of [`ChatEntryKind`](jinn_core_types::ChatEntryKind)
 /// variants that carry prose worth indexing. `Actor`, `Thinking`, `Transient`,
 /// and `Annotation` entries are never indexed and have no role here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -145,7 +146,7 @@ pub struct TranscriptEntry {
     /// Live position of this entry in the session history.
     pub ordinal: usize,
     /// The deserialized entry.
-    pub entry: crate::protocol::ChatEntry,
+    pub entry: ChatEntry,
     /// Whether the entry is currently excluded from LLM context.
     pub excluded: bool,
 }

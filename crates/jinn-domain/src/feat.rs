@@ -17,7 +17,10 @@ pub use jinn_provider_config as provider_infra;
 pub mod pruner_accumulation_input;
 pub mod session;
 pub mod session_lifecycle;
-pub mod session_search;
+// The search/transcript data model is owned by the session-store family msg
+// crate (both the kernel store seam and the store slice consume it). Re-exported
+// here so existing kernel paths keep resolving.
+pub use jinn_session_store_msg as session_search;
 pub mod skills;
 pub mod theme;
 

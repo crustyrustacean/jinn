@@ -44,11 +44,9 @@ fn needle_session(id: &SessionId) -> ChatSessionState {
     session
 }
 
-async fn search_all(
-    store: &SessionStoreService,
-) -> jinn_domain::feat::session_search::SearchOutcome {
+async fn search_all(store: &SessionStoreService) -> crate::session_search::SearchOutcome {
     store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),

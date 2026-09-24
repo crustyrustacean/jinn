@@ -6,7 +6,11 @@ description = "The session-lifecycle slice: the actor that runs session setup, t
 
 [dependencies]
 jinn-domain = { workspace = true }
+jinn-core-types = { workspace = true }
 jinn-common = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
 tokio = { workspace = true }
 trouper = { workspace = true }
 tracing = { workspace = true }

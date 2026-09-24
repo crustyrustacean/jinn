@@ -1896,7 +1896,7 @@ async fn saving_entry_with_uncomputed_count_preserves_persisted_count() {
 
 // ── FTS search index (schema v26) ────────────────────────────────────────
 
-use jinn_domain::feat::session_search::SearchableRole;
+use crate::session_search::SearchableRole;
 
 /// A session with a user entry and an assistant entry, both mentioning the
 /// needle word used across the search tests.
@@ -1951,7 +1951,7 @@ async fn save_marks_session_dirty_and_reindex_indexes_it() {
     // When reindexing the dirty set and searching for the needle.
     let reindexed = drain(&store).await.expect("reindex");
     let outcome = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -1989,7 +1989,7 @@ async fn reindex_honors_default_field_visibility_via_roles() {
 
     // When searching without a role filter.
     let all = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: vec![session_id.to_string()],
             roles: Vec::new(),
@@ -2001,7 +2001,7 @@ async fn reindex_honors_default_field_visibility_via_roles() {
         .expect("search");
     drain(&store).await.expect("reindex");
     let tool_only = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: vec![session_id.to_string()],
             roles: vec![SearchableRole::ToolResult],
@@ -2038,7 +2038,7 @@ async fn reindex_clears_rows_of_deleted_sessions() {
     // Then the deletion marked it dirty, and its rows are gone.
     assert_eq!(reindexed, 1);
     let outcome = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -2070,7 +2070,7 @@ async fn search_reports_per_session_rollup() {
 
     // When searching without scope restriction.
     let outcome = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -2104,7 +2104,7 @@ async fn search_limits_hits_but_reports_full_totals() {
 
     // When searching with a limit of 1.
     let outcome = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -2140,7 +2140,7 @@ async fn search_filters_by_session_ids() {
 
     // When searching restricted to session b.
     let outcome = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: vec![b.to_string()],
             roles: Vec::new(),
@@ -2170,7 +2170,7 @@ async fn search_surfaces_fts_syntax_errors_verbatim() {
 
     // When running a syntactically invalid MATCH query.
     let result = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle AND".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -2205,7 +2205,7 @@ async fn search_dates_filter_on_entry_timestamps() {
 
     // When searching with an `until` bound in the past.
     let outcome = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -2235,7 +2235,7 @@ async fn search_snippets_are_single_line_with_match_markers() {
 
     // When searching for the needle.
     let outcome = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -2278,7 +2278,7 @@ async fn search_flags_ignored_entries_as_excluded() {
 
     // When searching.
     let outcome = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -2317,7 +2317,7 @@ async fn search_does_not_flag_pinned_entries_as_excluded() {
 
     // When searching.
     let outcome = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -2600,7 +2600,7 @@ async fn partial_chunk_persists_resume_point_and_next_chunk_finishes() {
     assert!(!finished);
     assert_eq!(store.pending_dirty_count().await.expect("count"), 1);
     let first = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -2623,7 +2623,7 @@ async fn partial_chunk_persists_resume_point_and_next_chunk_finishes() {
     assert!(finished);
     assert_eq!(store.pending_dirty_count().await.expect("count"), 0);
     let all = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
             roles: Vec::new(),
@@ -2733,7 +2733,7 @@ async fn reindexed_rebuild_replaces_rows_via_rowid_map() {
     assert_eq!(orphan_map_rows, 0, "no map row points at a dead FTS rowid");
     // And search still finds the session after the map-mediated rebuild.
     let outcome = store
-        .search(jinn_domain::feat::session_search::SearchParams {
+        .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: vec![session_id.to_string()],
             roles: Vec::new(),

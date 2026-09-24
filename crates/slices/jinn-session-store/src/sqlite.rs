@@ -28,11 +28,11 @@ use jinn_domain::feat::session::chat_session::{
 use jinn_domain::feat::session::profile::SessionProfile;
 use jinn_domain::feat::session::session_summary::SessionSummary;
 use jinn_domain::feat::session::token_stats::TokenRecord;
-use jinn_domain::feat::session_search::{
+use jinn_provider::Attachment;
+use jinn_session_store_msg::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, TranscriptEntry, TranscriptWindow,
     entry_ts_key, extract_searchable,
 };
-use jinn_provider::Attachment;
 
 use super::migrator;
 use jinn_domain::feat::session::{SessionStore, SessionStoreError};

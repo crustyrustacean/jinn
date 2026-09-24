@@ -69,7 +69,7 @@ impl SessionStoreActor {
 
         let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
         if !cwd_exists {
-            self.restore_missing_cwd(&session_id, original_cwd).await;
+            self.restore_missing_cwd(&session_id, &original_cwd);
         }
 
         self.publish(ActiveSessionChanged {
@@ -80,7 +80,7 @@ impl SessionStoreActor {
     }
 
     /// Replaces a missing working directory with the application default.
-    async fn restore_missing_cwd(&self, session_id: &SessionId, original_cwd: std::path::PathBuf) {
+    fn restore_missing_cwd(&self, session_id: &SessionId, original_cwd: &std::path::Path) {
         let default_cwd = self.state.read().session.default_cwd().clone();
         self.state.with_session(&self.session_cap, |view| {
             let Some(session) = view.session.map().get_mut(session_id) else {
@@ -283,10 +283,10 @@ impl SessionStoreActor {
             match store.load_session(id).await {
                 Ok(Some(session)) => nodes.push(snapshot_frozen_node(&session)),
                 Ok(None) => {
-                    tracing::debug!(session_id = %id, "session in tree not found in store, skipping frozen node")
+                    tracing::debug!(session_id = %id, "session in tree not found in store, skipping frozen node");
                 }
                 Err(error) => {
-                    tracing::warn!(session_id = %id, ?error, "failed to load session for frozen node")
+                    tracing::warn!(session_id = %id, ?error, "failed to load session for frozen node");
                 }
             }
         }
@@ -320,9 +320,12 @@ fn collect_tree_ids(
         if !tree.insert(id.clone()) {
             continue;
         }
-        let children = summary_map.iter().filter_map(|(child_id, parent_id)| {
-            (parent_id.as_ref() == Some(&id) && !tree.contains(child_id)).then(|| child_id.clone())
-        });
+        let children = summary_map
+            .iter()
+            .filter(|(child_id, parent_id)| {
+                parent_id.as_ref() == Some(&id) && !tree.contains(*child_id)
+            })
+            .map(|(child_id, _)| child_id.clone());
         queue.extend(children);
     }
     tree

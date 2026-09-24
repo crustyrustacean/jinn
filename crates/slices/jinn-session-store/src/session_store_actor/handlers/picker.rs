@@ -13,7 +13,10 @@ impl SessionStoreActor {
     ) {
         let (store, theme) = {
             let state = self.state.read();
-            (self.services.session_store.clone(), state.frontend.theme.clone())
+            (
+                self.services.session_store.clone(),
+                state.frontend.theme.clone(),
+            )
         };
         let entries =
             jinn_domain::feat::session::entries::load_session_entries_from_store(&store, &theme)

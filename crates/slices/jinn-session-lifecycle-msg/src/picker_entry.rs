@@ -1,9 +1,9 @@
 //! Session lifecycle picker entry - one row in the lifecycle selection picker.
 
-use jinn_theme::Theme;
 use jinn_picker::RowCtx;
 use jinn_picker::picker_style::{active_marker, dim_style, selected_style};
 use jinn_selection_widget::highlight_text_with_bg;
+use jinn_theme::Theme;
 use ratatui::text::{Line, Span};
 
 /// A lifecycle recipe shown in the session lifecycle picker.
@@ -88,8 +88,8 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_theme::default_theme;
     use jinn_picker::RowCtx;
+    use jinn_theme::default_theme;
 
     fn test_entry(name: &str, description: Option<&str>, has_args: bool) -> SessionLifecycleEntry {
         SessionLifecycleEntry {
