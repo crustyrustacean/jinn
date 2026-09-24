@@ -32,6 +32,7 @@ mod boot;
 mod composition;
 mod dashboard;
 mod discord;
+mod picker;
 mod provider_selection;
 mod quake_bar;
 mod session_init;
