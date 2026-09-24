@@ -206,6 +206,10 @@ impl SessionCore {
     }
 }
 
+#[expect(
+    clippy::derivable_impls,
+    reason = "The explicit default documents that SessionCore is the aggregate of its five broad groups and the unchanged ephemeral group."
+)]
 impl Default for SessionCore {
     fn default() -> Self {
         Self {

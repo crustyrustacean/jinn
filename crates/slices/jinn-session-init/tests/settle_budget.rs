@@ -242,10 +242,11 @@ impl StalledScan {
     ) {
         use std::io::Write as _;
 
-        release.wait();
-        // Opening a fresh write end keeps the pipe open until the
-        // content is flushed; dropping it then yields EOF.
+        // Open the replacement writer before releasing the original. This
+        // guarantees at least one write end stays open across the handoff,
+        // so the scanner's blocked read cannot observe a transient EOF.
         if let Ok(mut writer) = std::fs::OpenOptions::new().write(true).open(fifo) {
+            release.wait();
             let _ = writer.write_all(content);
         }
     }
@@ -296,6 +297,7 @@ fn mkfifo(path: &std::path::Path) {
 }
 
 #[rstest::rstest]
+#[timeout(Duration::from_secs(30))]
 #[tokio::test]
 #[cfg(unix)]
 async fn budget_timeout_settles_with_delayed_reason_naming_missing_resources() {

@@ -146,6 +146,12 @@ impl Default for SessionLifecycleLocationFields {
 
 /// Conversation history, token accounting, and planning work for one session.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[expect(
+    clippy::partial_pub_fields,
+    clippy::field_scoped_visibility_modifiers,
+    reason = "The session capsule intentionally keeps history private to `feat::session` while \
+        exposing the persistence and work fields required by the store slice and domain actors."
+)]
 pub struct SessionHistoryWorkFields {
     /// All messages in this conversation.
     ///
