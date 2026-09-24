@@ -1,11 +1,11 @@
-//! The session-store slice — SQLite session persistence and the FTS
-//! search index.
+//! The session-store slice — session persistence, restoration, archiving, and
+//! the FTS search index.
 //!
 //! Owns the SQLite-backed [`SqliteSessionStore`] (the production
 //! [`jinn_domain::SessionStore`](jinn_domain::feat::session::SessionStore)
-//! implementation) and the schema migrator, plus the background
-//! search-index maintenance actor that drains the durable `fts_dirty`
-//! marker table into the `session_fts` index.
+//! implementation), the schema migrator, the store-owned session actor, and
+//! the background search-index maintenance actor that drains the durable
+//! `fts_dirty` marker table into the `session_fts` index.
 //!
 //! Kernel dependency (see Cargo.toml): transitional and justified — the
 //! trait seam (`SessionStoreService`) and the session state vocabulary the
@@ -13,9 +13,45 @@
 
 pub mod migrator;
 pub mod search_index_actor;
+pub mod session_store_actor;
 pub mod sqlite;
+
+use jinn_domain::Services;
+use jinn_domain::common::state::State;
+use trouper::actor::ActorPath;
+
+/// Handles returned when the session-store slice is activated.
+pub struct SessionStoreHandles {
+    /// Path of the store-owned session actor.
+    pub session_store: ActorPath,
+}
+
+/// Activates the session-store actor over the shared application state.
+///
+/// The actor's typed subscriptions are installed by the spawn call before it
+/// returns, so messages published after activation cannot race actor startup.
+///
+/// # Panics
+///
+/// Panics if actor spawn fails. A failed spawn is a composition error and must
+/// abort launch rather than run with sessions silently unpersisted.
+pub fn activate(services: &Services, state: State) -> SessionStoreHandles {
+    let session_store = session_store_actor::SessionStoreActor::spawn(
+        &services.trouper_system,
+        session_store_actor::SessionStoreActorDeps {
+            services: services.clone(),
+            state,
+            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
+        },
+    );
+
+    SessionStoreHandles { session_store }
+}
 
 #[cfg(test)]
 mod search_index_actor_tests;
+#[cfg(test)]
+mod session_store_actor_tests;
 #[cfg(test)]
 mod sqlite_tests;

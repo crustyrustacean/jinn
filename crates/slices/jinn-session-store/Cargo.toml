@@ -3,8 +3,8 @@ name = "jinn-session-store"
 version.workspace = true
 edition.workspace = true
 description = """
-The session-store slice: the SQLite persistence backend for chat sessions
-and the background FTS search-index maintenance actor.
+The session-store slice: session persistence/restoration actor, SQLite backend,
+and background FTS search-index maintenance actor.
 
 Kernel dependency (see Cargo.toml): transitional and justified — the crate
 implements the `SessionStore` trait whose seam (`SessionStoreService`)
@@ -22,6 +22,11 @@ jinn-chat-input-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-slices = { workspace = true }
+jinn-boot-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-mcp-msg = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-picker = { workspace = true }
 daow = { workspace = true }
 rusqlite = { workspace = true }
 async-trait = { workspace = true }

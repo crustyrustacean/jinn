@@ -1,0 +1,180 @@
+//! Observable behavior tests for the store-owned session actor.
+
+#![allow(clippy::expect_used, reason = "test code")]
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+use jinn_domain::common::state::State;
+use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
+use jinn_domain::feat::session::protocol::session_archived::SessionArchived;
+use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
+use jinn_domain::feat::session::{SessionStore, SessionStoreService};
+use jinn_session_lifecycle_msg::PersistSession;
+
+use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};
+use crate::sqlite::SqliteSessionStore;
+
+struct ActorFixture {
+    _dir: tempfile::TempDir,
+    harness: TestHarness,
+    state: State,
+    store: Arc<SqliteSessionStore>,
+}
+
+async fn actor_fixture() -> ActorFixture {
+    let dir = tempfile::TempDir::new().expect("temp dir");
+    let store = Arc::new(
+        SqliteSessionStore::new_in(dir.path())
+            .await
+            .expect("session store"),
+    );
+    let harness = TestHarness::new().await;
+    let mut services = harness.services().await;
+    services.session_store = SessionStoreService::new(store.clone());
+    let state = State::new(AppState::default());
+    let _actor = SessionStoreActor::spawn(
+        harness.system(),
+        SessionStoreActorDeps {
+            services,
+            state: state.clone(),
+            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
+        },
+    );
+    ActorFixture {
+        _dir: dir,
+        harness,
+        state,
+        store,
+    }
+}
+
+async fn poll_until<F, Fut>(mut condition: F) -> bool
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    for _ in 0..80 {
+        if condition().await {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    condition().await
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn persist_session_writes_interacted_session_to_store() {
+    // Given a running store actor and an interacted session.
+    let fixture = actor_fixture().await;
+    let session_id = {
+        let mut state = fixture.state.write_test_no_cap();
+        let session = state.active_session_mut();
+        session.mark_interacted();
+        session.push_entry(jinn_core_types::ChatEntry::user("persist me"));
+        session.session_id().clone()
+    };
+
+    // When PersistSession is published.
+    fixture
+        .harness
+        .publish(PersistSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+
+    // Then the full session reaches the store service.
+    let saved = poll_until(|| async {
+        fixture
+            .store
+            .load_session(&session_id)
+            .await
+            .ok()
+            .flatten()
+            .is_some()
+    })
+    .await;
+    assert!(
+        saved,
+        "PersistSession should write the session to the store"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn archive_session_removes_session_from_state() {
+    // Given a running store actor and an active persisted session.
+    let fixture = actor_fixture().await;
+    let session_id = {
+        let mut state = fixture.state.write_test_no_cap();
+        state.active_session_mut().mark_interacted();
+        state.session.active_session_id().clone()
+    };
+
+    // When ArchiveSession is published.
+    fixture
+        .harness
+        .publish(ArchiveSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+
+    // Then the session is removed from shared state.
+    let removed =
+        poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+    assert!(removed, "ArchiveSession should remove the archived session");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn archive_session_publishes_session_archived_event() {
+    // Given a running store actor and a recorder for the archive event.
+    let fixture = actor_fixture().await;
+    let archived = fixture.harness.spawn_recorder::<SessionArchived>().await;
+    let session_id = {
+        let mut state = fixture.state.write_test_no_cap();
+        state.active_session_mut().mark_interacted();
+        state.session.active_session_id().clone()
+    };
+
+    // When ArchiveSession is published.
+    fixture
+        .harness
+        .publish(ArchiveSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+
+    // Then SessionArchived is published for the archived session.
+    let archived = await_recorded(&archived, 1, Duration::from_secs(1)).await;
+    assert_eq!(archived[0].session_id, session_id);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn archive_session_publishes_session_closed_event() {
+    // Given a running store actor and a recorder for the close event.
+    let fixture = actor_fixture().await;
+    let closed = fixture.harness.spawn_recorder::<SessionClosed>().await;
+    let session_id = {
+        let mut state = fixture.state.write_test_no_cap();
+        state.active_session_mut().mark_interacted();
+        state.session.active_session_id().clone()
+    };
+
+    // When ArchiveSession is published.
+    fixture
+        .harness
+        .publish(ArchiveSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+
+    // Then SessionClosed is published for the archived session.
+    let closed = await_recorded(&closed, 1, Duration::from_secs(1)).await;
+    assert_eq!(closed[0].session_id, session_id);
+}

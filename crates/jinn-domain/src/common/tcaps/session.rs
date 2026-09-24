@@ -44,6 +44,15 @@ impl SessionOps<'_> {
     pub fn map(&mut self) -> &mut SessionMap {
         self.0
     }
+
+    /// Store an archived session's immutable tree snapshot.
+    ///
+    /// Keeps [`SessionMap::insert_frozen_node`] behind the session capability
+    /// while letting the session-store slice preserve tree statistics when it
+    /// archives a live session.
+    pub fn insert_frozen_node(&mut self, node: crate::feat::session::FrozenTreeNode) {
+        self.0.insert_frozen_node(node);
+    }
 }
 
 // ── Composite facades ────────────────────────��───────────────────────────────
