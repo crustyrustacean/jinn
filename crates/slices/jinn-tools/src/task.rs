@@ -150,8 +150,8 @@ subagent; on expiry the subagent is cancelled and a failure is returned.
        r#"Before delegating, identify independent workstreams and their dependencies. If two or more workstreams can proceed without waiting for each other, launch them concurrently as separate task calls in the same assistant turn."#
             .to_owned(),
 
-       r#"Treat fan-out as the default for multi-part work. Do not stop after one subagent when the request contains additional independent concerns. Use one subagent only when the work is tiny, indivisible, strictly sequential, or not worth coordinating."                                                                                                                                                                          1.7k >
-            .to_owned(),                                                                                                                                                                                                     0 ▼
+       r#"Treat fan-out as the default for multi-part work. Do not stop after one subagent when the request contains additional independent concerns. Use one subagent only when the work is tiny, indivisible, strictly sequential, or not worth coordinating."#
+            .to_owned(),
 
        r#"Start with a small bounded fan-out, typically 2–4 subagents, and increase it only when the workstreams are substantial, clearly independent, and non-conflicting."#
             .to_owned(),
