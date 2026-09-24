@@ -139,17 +139,12 @@ Entries are added or amended **only with human approval**.
 - (plugins) Plugin configuration lives in `jinn.toml` under `[plugin.<name>]`; plugins spawn at app start and activate only after a jinn restart.
 - (plugins) A plugin coordinator actor validates and authorizes all inbound plugin messages and caches contributions into `AppState`; synchronous consumers (pickers, renderer, assembly) read only the cache, never the plugin.
 - (plugins) Plugins declare the filesystem paths and http access they need in their own `[package.metadata.jinn]` manifest (Cargo.toml), which is embedded into the built `.wasm` as a custom section.
-- (plugins) Install auto-applies the embedded manifest; `--grant`/`--http` flags override it, install fails hard on an artifact with no embedded manifest, and nothing is granted implicitly (persistence is declared as `"<plugin_data_dir>:w"`).
 - (plugins) The plugin wire contract is a hand-maintained JSON Schema kept in sync with the `jinn-plugin-api` types by a drift test; plugin SDKs are consumed as a git dependency on the jinn repo, not crates.io.
 - (plugins) Plugin `Hello` subscriptions negotiate host→guest events (`tool_call`, `tool_result`, `turn_end`); the host forwards matching bus events to subscribed guests and validates `PushCitations` contributions before publishing.
-- (plugins) `url-citations` is a first-party plugin seeded enabled by default; a dead or missing instance means no Sources footer, never a startup failure.
-- (plugins) First-party plugin names carry no jinn-/plugin padding (the loaders used names like `theme-loader`); the remaining first-party plugins are the behavioral watchdog/url-citations set.
-- (plugins) First-party plugins ship as prebuilt wasm embedded in the jinn binary; `jinn install` copies them into the plugins dir and registers them in `jinn.toml` only when `jinn.toml` does not yet exist — an existing `jinn.toml` is never modified by `jinn install`, even with `--force`. Artifacts are refreshed into `res/plugins/` by `just refresh-plugins` (run by `just release`).
 - (plugins) The plugin picker (`<leader>sP`) is a read-only list of loaded plugins (name + phase) snapshot from the contribution cache at open time; plugins are managed outside jinn and cannot be toggled from within.
 - (plugins) A plugin guest that closes stdout cleanly after the handshake ends in phase `Done` (run-to-completion loaders; contributions stay cached); `Dead` is reserved for spawn/handshake failure, traps, and abrupt pipe loss.
 - (plugins) Compiled plugin components are cached on disk between launches (wasmtime cache); each plugin's compile prints progress to the terminal before the TUI starts.
 - (persona) Personas are markdown templates with TOML frontmatter; the persona picker (`<leader>se`) switches the active session persona.
-- (persona) Persona discovery flows through a `persona-loader` plugin (prebuilt, shipped by `jinn install`): it scans `~/.config/jinn/personas/*.md` and contributes definitions over the plugin wire; the coordinator publishes them as `PersonasLoaded`.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
 - (providers) The provider crate supports three backends: Anthropic, Google, and OpenAI-compatible.
 - (providers) Model output is text-only: the `StreamEvent` pipeline and assistant chat entries carry no image variant.
@@ -235,11 +230,11 @@ Entries are added or amended **only with human approval**.
 - (ui) The sidebar has five sections — Persona, Pins, TaskList, McpServers, Sessions — with cyclic navigation.
 - (ui) The sidebar restores history position when leaving Pins, and the Sessions section is anchored to the bottom of the sidebar.
 - (ui) The chat-input autocomplete popups (`#` prompts, `/` commands, `@` attachments) anchor horizontally and vertically to the trigger token's wrapped visual line, floating directly above the cursor rather than the top of the input box.
-- (web) Citation collection lives in the first-party `url-citations` plugin (shape-based detection from forwarded tool call/result events); core routes `CitationsReceived` into the Sources footer when a turn reaches a final assistant answer.
+- (citations) Citable web sources detected in tool calls and results render as a Sources footer when a turn reaches a final assistant answer.
 - (workflow) Commits use `just commit '<message>'`, which runs `fossil addremove --dotfiles` so dot-directories like `.agents/` are included.
 - (workflow) The workspace is checked with `just check` (compile), `just test` (tests), and `just lint` (lints); all tests must pass before committing.
-- (plugins) url-citations result-rule detection accepts `link` as a synonym for `url`, so Z.ai-shaped search results surface citations.
-- (plugins) url-citations shape rules recurse into strings that themselves parse as JSON (any value type, bounded depth), so doubly-encoded tool outputs are detected.
+- (citations) The citations detector accepts `link` as a synonym for `url`, so Z.ai-shaped search results surface citations.
+- (citations) The citations detector recurses into strings that parse as JSON (any value type, bounded depth), so doubly-encoded tool outputs are detected.
 - (testing) All workspace Rust tests run under rstest's timeout: RSTEST_TIMEOUT=10s is set via .cargo/config.toml [env] and baked into tests at compile time, independent of the command entrypoint.
 - (testing) Tests exceeding the default rstest timeout carry an explicit #[timeout] override (typically 30s); the trybuild compile-fail suite in jinn-domain is exempt from rstest entirely.
 - (testing) just lint rejects bare #[test]/#[tokio::test] attributes without an accompanying rstest attribute.
@@ -274,9 +269,7 @@ Entries are added or amended **only with human approval**.
 - (session) The sidebar `X` key tears down the selected session and, on teardown success, archives the entire visible subtree (root and descendants) behind a press-again confirmation.
 - (session) Tree teardown-and-archive is all-or-nothing: a failed teardown or a busy member leaves every session open with nothing archived.
 - (plugins) Plugin→host session-affecting messages are message-style mirrors of internal bus messages; the coordinator validates and translates them, and the set of implemented translations is the whitelist.
-- (plugins) The first-party tool-call-watchdog plugin detects tool-failure spirals with a per-session saturating accumulator (success −1, failure +1, configurable max, default 4) and cancels the stream via a mirrored CancelStream message with a watchdog system entry.
 - (session) CancelStream arms the LLM actor with a per-session cancel tombstone that silently drops tool-continuation dispatches until a user-originated send clears it, closing the race where an in-flight tool loop resumed after a watchdog plugin or manual cancel.
-- (plugins) LLM-stall detection lives in the first-party `stall-watchdog` plugin: the host forwards stream start/event/end plus a periodic `tick`, and the plugin restarts a session whose in-flight LLM stream goes silent past its timeout, capped by a restart budget before giving up with a system entry + cancel.
 - (plugins) The plugin host sends a periodic `tick` event to subscribed guests so guests can act on elapsed time between host events.
 - (session) The stall-retry handler restarts only while the session is active and `stream_dispatched_at` is set; restarts cannot fire while a tool batch is in flight.
 - (session) Every LLM generation start flows through SendToLlmProvider, and the session actor arms the session's in-flight-stream guard on receipt — a single write point covering user, queued, tool-continuation, and stall-retry dispatches.
@@ -285,8 +278,6 @@ Entries are added or amended **only with human approval**.
 - (session) A session optionally carries a project association (a directory path) stamped only when the user picks a project at creation (the TUI projects UI or Discord /new, both backed by the curated `[[projects]]` list); it persists in the session metadata blob, is inherited by forks and subagents, and never follows cwd changes.
 - (ui) The session picker renders rows as three columns — date, project name (blank when unset), session name — and its filter matches only the session name.
 - (ui) The session picker renders tree connectors within the session-name column, not as a row prefix; connectors are excluded from filter matching and never stored in session titles.
-- (plugins) `jinn plugin install-builtins` overwrites all builtin plugin payloads and writes `[plugin.<name>]` entries only for plugins missing from `jinn.toml`.
-- (plugins) Builtin seeding registration is add-only: existing `[plugin.<name>]` entries are never modified or removed by `jinn install` or `jinn plugin install-builtins`.
 - (ui) Annotation (Sources) entries render collapsed by default — header in theme-tunable sources_header colors plus a muted expand hint — and toggle via the shared `e` expand keybind, like tool entries and compaction blocks.
 - (keybinds) `[` / `]` + `s` jumps the selection to the previous/next Sources (annotation) entry in chat history, clamping at the ends without wrapping.
 - (testing) Default config templates (default_jinn.toml, default_providers.toml) are independent of code defaults: tests guarantee they parse, document every config key, contain no dead keys, and their marked examples uncomment into a valid config.
@@ -295,7 +286,6 @@ Entries are added or amended **only with human approval**.
 - (preferences) The canonical projects key in `jinn.toml` is `projects` (keyed by `path`); the legacy `[[project]]` spelling is stripped from user files on load (poisoned files) and before every save, is never written by any code path, and is not a serde alias — legacy entries are ignored, not migrated.
 - (history) The anchored-assistant auto-prune worker sources its prune radius from its own `[auto_prune.anchored_assistant]` config.
 - (preferences) Legacy `[auto_prune.anchor_shield]` sections in user `jinn.toml` files are inert: unknown keys are ignored on load.
-- (tools) `just install-plugins` builds and installs each in-tree plugin via one `jinn plugin add` per plugin (interleaved build+install, aborting at the first failure) rather than building all plugins before installing any; the `build-plugins` recipe remains standalone for artifact-only builds.
 - (tokens) Per-entry token counts are a persisted, content-derived field on chat entries (entries.token_count column), computed once by the token count actor for entries lacking a count and saved by the regular session-snapshot persist path; no separate frontend token cache exists.
 - (search) Sessions are searchable via an FTS5 index over persisted entry prose (user, assistant, tool_call, tool_result, system, error, compaction — never actor/thinking), keyed by (session_id, entry_id).
 - (search) Index freshness is asynchronous: triggers on `sessions` mark sessions dirty; `search_index_actor` keeps an in-memory queue of dirty sessions, refreshes it from the durable marker table on each 5s heartbeat when idle, and reindexes at most 10 sessions per heartbeat — publishing the remaining count after every session — so results can trail the newest saves by roughly one heartbeat.
@@ -371,9 +361,9 @@ Entries are added or amended **only with human approval**.
 - (tools) Closing a session kills its live interactive_term terminal; the coordinator subscribes to SessionClosed.
 - (tools) The interactive_term tool guidance warns models not to append shell redirections, pipes, or grep (the tool returns the rendered screen, so piped output is silently lost) and advertises the no-argument interactive_term_send call as an anytime screen snapshot; the usage footer on every result repeats both.
 - (slices) The theme slice is a kernel-free crate loading theme files from the configured directories at activation into one cell; the theme picker and the app-state actor read the cell.
-- (plugins) The theme-loader plugin no longer exists; themes load directly from disk at boot, and the plugin wire contract no longer carries theme entries.
+- (theme) Themes load directly from disk at boot.
 - (slices) The persona slice is a kernel-free crate parsing persona markdown from the configured directory at activation into one cell; composition publishes the kernel's PersonasLoaded event from that scan after actor spawn, and the session actor consumes it unchanged.
-- (plugins) The persona-loader plugin no longer exists; personas parse from disk at boot, and the plugin wire contract carries no contribution types — only event subscriptions.
+- (persona) Personas parse from disk at boot.
 - (slices) The token-count slice is a crate owning the per-session entry token cache cell and both token actors (count fill, cache eviction); the session actor and the prune workers share the cache from the cell.
 - (slices) The preferences slice is a crate owning the PreferencesActor (jinn.toml persistence), the AppStateActor (state.toml persistence), and the project-add popup; removing its activation and the two actor spawns removes preferences persistence and the popup with no other edits.
 - (config) The jinn.toml and state.toml schemas, both storage traits with their filesystem and in-memory backends, and the preferences bus protocol live in the kernel-free jinn-preferences-config crate; the jinn.toml patcher preserves user comments and key order.
@@ -392,7 +382,6 @@ Entries are added or amended **only with human approval**.
 - (tools) The jinn-tools slice owns the tool orchestrator, the built-in and todo tools, the task subagent machinery, and the tool protocol contracts in jinn-tools-msg; tool nouns (ToolDefinition/ToolCall/ToolResult) live in jinn-core-types.
 - (slices) Kernel feature extraction follows the absorb model: each slice family absorbs its feat/ modules, leaving jinn-domain as shared multi-slice vocabulary.
 - (slices) The turn-dispatch slice is a crate owning the queue ServiceActor and the enqueue dispatch path; its wire contracts live in jinn-turn-dispatch-msg.
-- (plugins) The plugin system is in phase-out: first-party plugin behavior is absorbed as native slices/features, after which the plugin host, PluginCoordinatorActor, and plugin CLI are removed; PluginCoordinatorActor is not a trouper migration target.
 - (slices) The inference slice is a crate owning the InferenceActor ServiceActor; its stream contracts (SendToLlmProvider, CancelStream, StreamToken, StreamCompleted, StreamOrigin) live in jinn-inference-msg.
 - (provider) LlmMessage and Attachment live in jinn-core-types; jinn-provider re-exports them.
 - (tools) The stream-phase tool events (ToolUseStarted, ToolCallReceived, ToolCallStreaming) live in jinn-tools-msg even though the inference actor publishes them.
@@ -404,7 +393,7 @@ Entries are added or amended **only with human approval**.
 - (arch) All actors run on the trouper runtime; the kameo bus, its bridge relays, and every forward/reverse route are removed.
 - (session) The session family (turn progression, lifecycle, pins, history) lives in jinn-domain as one trouper SessionActor — the planned jinn-session crate split was abandoned because the vocabulary is spine, not leaf (crate cycle); jinn-session-store still owns SQLite persistence and the search index.
 - (arch) Actor messages route as schema-id-tagged events on trouper topics; BusService publishes into that fabric and keeps a recording mode for tests.
-- (plugins) The plugin host infrastructure is torn down: no coordinator actor, no workspace members, no kameo; plugin code stays in-tree unplugged pending re-integration.
+- (plugins) jinn has no plugin system: no host, no wasm runtime, no `jinn plugin` CLI, no `[[plugin]]` config section, and no plugin crates, payloads, or plugin directories in the tree.
 
 - (arch) Actor message schemas are declared with trouper's #[derive(Command)]/#[derive(Event)] macros; enum-shaped messages carry hand-written Schema + PayloadValue impls
 - (arch) Publish fans out to every actor declaring .handles on the schema; trouper has no separate subscription declaration and jinn declares no .emits beyond handler ctx effects.
@@ -418,4 +407,4 @@ Entries are added or amended **only with human approval**.
 - (watchdog) Tool-failure spirals are detected by the tool-call watchdog actor in the jinn-watchdog slice, which cancels the turn with a system entry at the configured failure count and resets on a genuinely completed turn.
 - (watchdog) Watchdog knobs live in jinn.toml under [stall_watchdog] (timeout_secs, max_restarts) and [tool_call_watchdog] (max_failures); absent sections take defaults and the watchdogs are always on.
 - (citations) Citable web sources in tool calls and results are detected shape-wise by the jinn-citations slice, which publishes CitationsReceived once per turn when the turn finishes.
-- (plugins) First-party plugin names carry no jinn-/plugin padding (the loaders used names like theme-loader); the behavioral watchdog/url-citations plugins are dormant — their behaviors run natively and no plugin is active.
+- (plugins) Existing `[plugin.*]` tables in a user's jinn.toml persist as unknown keys through config saves and are never read.
