@@ -222,6 +222,13 @@ fn render_token_info_line(
 }
 
 /// Builds the left-side token info string: sent/received counts + context budget.
+/// The model cache from the provider cell, if the slice is attached.
+fn model_cache_of(state: &AppState) -> Option<jinn_provider_config::ModelCache> {
+    state
+        .provider_state()
+        .and_then(|cell| cell.read().model_cache.clone())
+}
+
 fn build_token_info_string(
     state: &AppState,
     active_model: &ModelSelection,
@@ -236,8 +243,9 @@ fn build_token_info_string(
     );
 
     let ctx_size = state.active_session().context_size();
+    let model_cache = model_cache_of(state);
     let ctx_limit = resolve_context_limit(
-        state.provider.model_cache.as_ref(),
+        model_cache.as_ref(),
         active_model.display_str(),
     );
     let context_display = match (ctx_size, ctx_limit) {
@@ -343,9 +351,9 @@ fn build_model_string(state: &AppState, active_model: &ModelSelection) -> String
     // using the SAME resolved model the name surfaces (last-dispatched for
     // alloys, else selection). Conservative: an unknown / not-in-cache model
     // shows `<t>` (text is always available); "no model selected" shows nothing.
+    let model_cache = model_cache_of(state);
     let modalities = resolved_for_lookup.map(|resolved| {
-        resolve_modalities(state.provider.model_cache.as_ref(), &resolved)
-            .unwrap_or_else(InputModalities::text)
+        resolve_modalities(model_cache.as_ref(), &resolved).unwrap_or_else(InputModalities::text)
     });
     match modalities {
         Some(m) => format!("{model} <{}>", m.display()),

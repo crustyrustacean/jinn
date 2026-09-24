@@ -2,7 +2,7 @@
 //!
 //! Handles the flow from user input through to dispatch: enqueuing messages
 //! (with queueing when session is busy), updating the input buffer, pushing
-//! arbitrary chat entries, and the legacy `SendMessage` compatibility shim.
+//! arbitrary chat entries.
 //!
 //! The dispatch itself lives in the turn-dispatch slice: after this actor
 //! has expanded templates, resolved image attachments, run the vision gate,
@@ -16,7 +16,6 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage,
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use crate::feat::provider::protocol::command::SendMessage;
 use crate::protocol::{ChatEntry, ChatEntryKind};
 use jinn_session_history_msg::PushChatEntry;
 
@@ -409,17 +408,6 @@ impl SessionPersistenceActor {
         self.save_active_session(&payload.session_id).await;
     }
 
-    /// SendMessage: backward compat - emit EnqueueUserMessage.
-    pub(in crate::feat::session::session_actor) async fn handle_send_message(
-        &self,
-        payload: &SendMessage,
-    ) {
-        self.publish(EnqueueUserMessage {
-            session_id: payload.session_id.clone(),
-            entry: ChatEntry::user(&payload.text),
-        })
-        .await;
-    }
 }
 
 #[cfg(test)]
@@ -435,8 +423,7 @@ mod tests {
 
     use crate::common::services::BusAudit;
     use crate::feat::chat_input::protocol::command::{EnqueueResumeTurn, EnqueueUserMessage};
-    use crate::feat::provider::protocol::command::SendMessage;
-    use crate::feat::session::phase_machine::PhaseKind;
+        use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::{ChatEntry, ChatEntryKind};
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_session_history_msg::PushChatEntry;
@@ -619,28 +606,6 @@ mod tests {
         assert!(
             audit.contains_name("HistoryAppended"),
             "expected HistoryAppended event"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn handle_send_message_emits_enqueue_user_message() {
-        // Given a test context.
-        let (actor, _state, audit) = create_actor().await;
-        let session_id = crate::protocol::SessionId::new();
-
-        // When calling handle_send_message.
-        actor
-            .handle_send_message(&SendMessage {
-                session_id: session_id.clone(),
-                text: "legacy message".to_owned(),
-            })
-            .await;
-
-        // Then EnqueueUserMessage command was emitted.
-        assert!(
-            audit.contains_name("EnqueueUserMessage"),
-            "expected EnqueueUserMessage command from SendMessage"
         );
     }
 

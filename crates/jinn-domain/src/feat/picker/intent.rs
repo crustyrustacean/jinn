@@ -667,10 +667,9 @@ mod tests {
             })
             .collect();
         state
-            .provider
-            .provider_picker
+            .frontend.pickers.provider_picker
             .set_items(wrap_provider_entries(entries));
-        state.provider.provider_picker.move_down(1); // highlight first entry
+        state.frontend.pickers.provider_picker.move_down(1); // highlight first entry
         state
     }
 
@@ -680,20 +679,20 @@ mod tests {
         // selection already on the last visible row (index 4).
         let mut state = state_with_provider_picker(20);
         state.frontend.set_picker_results_viewport(5);
-        state.provider.provider_picker.move_up(5); // back to selection 0
+        state.frontend.pickers.provider_picker.move_up(5); // back to selection 0
         for _ in 0..4 {
-            state.provider.provider_picker.move_down(5);
+            state.frontend.pickers.provider_picker.move_down(5);
         }
-        assert_eq!(state.provider.provider_picker.selection(), 4);
-        assert_eq!(state.provider.provider_picker.scroll_offset(), 0);
+        assert_eq!(state.frontend.pickers.provider_picker.selection(), 4);
+        assert_eq!(state.frontend.pickers.provider_picker.scroll_offset(), 0);
 
         // When moving down once more.
         handle_move_down(&mut state, &empty_pickers());
 
         // Then selection advances to 5 and scroll_offset advances by one
         // (measured viewport of 5, not the old hardcoded 100).
-        assert_eq!(state.provider.provider_picker.selection(), 5);
-        assert_eq!(state.provider.provider_picker.scroll_offset(), 1);
+        assert_eq!(state.frontend.pickers.provider_picker.selection(), 5);
+        assert_eq!(state.frontend.pickers.provider_picker.scroll_offset(), 1);
     }
 
     #[rstest::rstest]
@@ -707,7 +706,7 @@ mod tests {
         handle_move_down(&mut state, &empty_pickers());
 
         // Then selection advances by one without panic, using the fallback.
-        assert_eq!(state.provider.provider_picker.selection(), 2);
+        assert_eq!(state.frontend.pickers.provider_picker.selection(), 2);
     }
 
     #[rstest::rstest]
@@ -786,13 +785,13 @@ mod tests {
         // Given a provider picker with 20 entries, selection at 0, viewport 10.
         let mut state = state_with_provider_picker(20);
         state.frontend.set_picker_results_viewport(10);
-        state.provider.provider_picker.move_up(5); // selection back to 0
+        state.frontend.pickers.provider_picker.move_up(5); // selection back to 0
 
         // When handling PickerPageDown (half of 10 = 5).
         handle_page_down(&mut state, &empty_pickers());
 
         // Then selection advances by 5.
-        assert_eq!(state.provider.provider_picker.selection(), 5);
+        assert_eq!(state.frontend.pickers.provider_picker.selection(), 5);
     }
 
     #[rstest::rstest]
@@ -802,13 +801,13 @@ mod tests {
         state.frontend.set_picker_results_viewport(10);
         // Advance selection to 10.
         for _ in 0..9 {
-            state.provider.provider_picker.move_down(10);
+            state.frontend.pickers.provider_picker.move_down(10);
         }
 
         // When handling PickerPageUp (half of 10 = 5).
         handle_page_up(&mut state, &empty_pickers());
 
         // Then selection decrements by 5.
-        assert_eq!(state.provider.provider_picker.selection(), 5);
+        assert_eq!(state.frontend.pickers.provider_picker.selection(), 5);
     }
 }

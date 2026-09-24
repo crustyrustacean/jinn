@@ -1944,10 +1944,13 @@ dependencies = [
  "jinn-preferences-config",
  "jinn-provider",
  "jinn-provider-config",
+ "jinn-provider-selection",
+ "jinn-provider-selection-msg",
  "jinn-quake-bar",
  "jinn-scope-focus",
  "jinn-session-history-msg",
  "jinn-session-init",
+ "jinn-session-init-msg",
  "jinn-session-msg",
  "jinn-session-store",
  "jinn-sidebar",
@@ -1998,7 +2001,9 @@ dependencies = [
  "jinn-domain",
  "jinn-mcp-msg",
  "jinn-preferences-config",
+ "jinn-provider-selection-msg",
  "jinn-session-history-msg",
+ "jinn-slices",
  "kanal",
  "rstest",
  "tempfile",
@@ -2150,6 +2155,7 @@ dependencies = [
  "jinn-domain",
  "jinn-preferences-config",
  "jinn-provider",
+ "jinn-provider-config",
  "jinn-session-history-msg",
  "jinn-slices",
  "jinn-token-count-msg",
@@ -2325,9 +2331,11 @@ dependencies = [
  "jinn-preferences-config",
  "jinn-provider",
  "jinn-provider-config",
+ "jinn-provider-selection-msg",
  "jinn-selection-widget",
  "jinn-session-history",
  "jinn-session-history-msg",
+ "jinn-session-init-msg",
  "jinn-session-msg",
  "jinn-session-schema",
  "jinn-session-store",
@@ -2616,6 +2624,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-provider-selection"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "humantime",
+ "jiff",
+ "jinn-core-types",
+ "jinn-domain",
+ "jinn-picker",
+ "jinn-provider",
+ "jinn-provider-config",
+ "jinn-provider-selection-msg",
+ "jinn-selection-widget",
+ "jinn-slices",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "trouper",
+ "unicode-segmentation",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-provider-selection-msg"
+version = "0.118.0"
+dependencies = [
+ "jiff",
+ "jinn-core-types",
+ "jinn-picker",
+ "jinn-provider",
+ "jinn-provider-config",
+ "jinn-selection-widget",
+ "jinn-slices",
+ "jinn-theme",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
+]
+
+[[package]]
 name = "jinn-quake-bar"
 version = "0.118.0"
 dependencies = [
@@ -2683,6 +2737,7 @@ dependencies = [
  "error-stack",
  "jinn-core-types",
  "jinn-domain",
+ "jinn-session-init-msg",
  "jinn-session-msg",
  "jinn-skills",
  "jinn-skills-msg",
@@ -2696,6 +2751,18 @@ dependencies = [
  "tracing",
  "trouper",
  "wherror",
+]
+
+[[package]]
+name = "jinn-session-init-msg"
+version = "0.118.0"
+dependencies = [
+ "jinn-core-types",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
 ]
 
 [[package]]
@@ -2853,6 +2920,7 @@ dependencies = [
  "jiff",
  "jinn-core-types",
  "jinn-domain",
+ "jinn-provider-config",
  "jinn-slices",
  "jinn-status-bar-msg",
  "jinn-testutil",
@@ -3012,6 +3080,7 @@ dependencies = [
  "jinn-mcp-msg",
  "jinn-preferences-config",
  "jinn-session-history-msg",
+ "jinn-session-init-msg",
  "jinn-skills",
  "jinn-skills-msg",
  "jinn-term-msg",
@@ -3065,6 +3134,7 @@ dependencies = [
  "jinn-mcp-msg",
  "jinn-persona-msg",
  "jinn-picker",
+ "jinn-provider-selection-msg",
  "jinn-selection-widget",
  "jinn-session-history-msg",
  "jinn-sidebar",

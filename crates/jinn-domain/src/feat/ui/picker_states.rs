@@ -5,14 +5,15 @@
 //! on [`FrontendState`](super::FrontendState) so consumers are decoupled from the
 //! internal storage layout.
 
-use crate::feat::endpoint::picker_entry::EndpointEntry;
 use std::collections::HashSet;
 
 use crate::feat::persona::PersonaEntry;
 use crate::feat::picker::mcp_picker_entry::McpServerEntry;
 use crate::feat::picker::task_list_picker_entry::TaskListTreeEntry;
 use crate::feat::picker::tool_entry::ToolEntry;
-use crate::feat::reasoning::ReasoningEffortEntry;
+use jinn_provider_selection_msg::endpoint::EndpointEntry;
+use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
+use jinn_provider_selection_msg::ProviderPickerEntry;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
 use crate::feat::skills::skill_entry::SkillEntry;
@@ -101,23 +102,22 @@ pub struct PickerStates {
     /// OWNER: IntentHandler (set on MCP picker open, consumed on confirm/cancel).
     pub mcp_server_picker_snapshot: Option<std::collections::BTreeSet<String>>,
 
+    /// Provider picker state (items, filter text, selection index).
+    /// OWNER: IntentHandler (navigation) / provider-selection slice's
+    /// `ProviderActor` (fills items at load time through the sanctioned
+    /// `FrontendCap` path). The cell ([`jinn_provider_selection_msg::
+    /// ProviderCell`]) holds the source data; this field is the
+    /// render/navigation surface the picker host lends from `&AppState`.
+    pub provider_picker:
+        jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProviderPickerEntry>>,
+
     /// OpenRouter endpoint picker state - one row per routing upstream.
-    /// OWNER: IntentHandler (populated on endpoint picker open).
+    /// OWNER: IntentHandler (navigation) / provider-selection slice's
+    /// `ProviderActor` (fills items at load time through the sanctioned
+    /// `FrontendCap` path). Endpoint loading/fetched-at flags live on the
+    /// provider cell.
     pub endpoint_picker:
         jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<EndpointEntry>>,
-
-    /// True while an endpoint fetch is in flight (open or `<c-r>` refresh).
-    /// Set synchronously by the open/refresh intent; cleared by `ProviderActor`
-    /// when it writes items back (success or error).
-    /// OWNER: IntentHandler (sets) / ProviderActor (clears).
-    pub endpoint_loading: bool,
-
-    /// When the endpoint cache for the active model was last populated.
-    /// Set by `ProviderActor` on a successful fetch (and preserved on a
-    /// cache-served open). Survives across picker opens so the footer can
-    /// show "fetched Xs ago".
-    /// OWNER: ProviderActor.
-    pub endpoint_fetched_at: Option<jiff::Timestamp>,
 }
 
 /// Extension trait providing typed access to picker state on [`FrontendState`](super::FrontendState).

@@ -6,16 +6,16 @@
     reason = "test code"
 )]
 
-use crate::feat::provider_infra::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
+use jinn_provider_config::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
 use std::collections::BTreeMap;
 
-use crate::feat::theme::default_theme;
+use jinn_domain::feat::theme::default_theme;
 use jinn_selection_widget::PickerItem;
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::entries::*;
-use crate::feat::provider::picker_entry::ProviderPickerEntry;
+use crate::entries::*;
+use jinn_provider_selection_msg::ProviderPickerEntry;
 
 fn ollama_entry() -> ProviderEntry {
     ProviderEntry {
@@ -45,7 +45,7 @@ fn openrouter_entry() -> ProviderEntry {
 
 fn make_config(
     providers: std::collections::BTreeMap<String, ProviderEntry>,
-    aliases: Vec<crate::feat::provider_infra::AliasEntry>,
+    aliases: Vec<jinn_provider_config::AliasEntry>,
     default_provider: Option<&str>,
 ) -> ProvidersConfig {
     ProvidersConfig {
@@ -163,7 +163,7 @@ fn load_provider_entries_marks_keyless_always_available() {
 fn load_entries_with_alias() -> (Vec<ProviderPickerEntry>, ProviderPickerEntry) {
     let config = make_config(
         BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
-        vec![crate::feat::provider_infra::AliasEntry {
+        vec![jinn_provider_config::AliasEntry {
             name: "fast".to_owned(),
             target: "ollama/llama3".to_owned(),
         }],
@@ -223,11 +223,11 @@ fn load_provider_entries_alias_inherits_availability() {
             ("openrouter".to_owned(), openrouter_entry()),
         ]),
         vec![
-            crate::feat::provider_infra::AliasEntry {
+            jinn_provider_config::AliasEntry {
                 name: "fast".to_owned(),
                 target: "ollama/llama3".to_owned(),
             },
-            crate::feat::provider_infra::AliasEntry {
+            jinn_provider_config::AliasEntry {
                 name: "cloud".to_owned(),
                 target: "openrouter/gpt-4".to_owned(),
             },
@@ -259,13 +259,13 @@ fn static_entries_present_after_cache_merge() {
     let api_keys = ApiKeys::new();
 
     // And a cache with an additional model for the same provider.
-    let mut cache = crate::feat::provider_infra::ModelCache::new();
+    let mut cache = jinn_provider_config::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![jinn_provider_config::ModelInfo {
             id: "mistral".to_owned(),
             context_length: None,
-            input_modalities: crate::feat::provider_infra::InputModalities::text(),
+            input_modalities: jinn_provider_config::InputModalities::text(),
         }],
     );
 
@@ -293,13 +293,13 @@ fn remote_entries_present_after_cache_merge() {
     let api_keys = ApiKeys::new();
 
     // And a cache with an additional model for the same provider.
-    let mut cache = crate::feat::provider_infra::ModelCache::new();
+    let mut cache = jinn_provider_config::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![jinn_provider_config::ModelInfo {
             id: "mistral".to_owned(),
             context_length: None,
-            input_modalities: crate::feat::provider_infra::InputModalities::text(),
+            input_modalities: jinn_provider_config::InputModalities::text(),
         }],
     );
 
@@ -328,19 +328,19 @@ fn static_entry_not_duplicated_on_collision() {
     let api_keys = ApiKeys::new();
 
     // And a cache that also contains ollama/llama3 (collision).
-    let mut cache = crate::feat::provider_infra::ModelCache::new();
+    let mut cache = jinn_provider_config::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
         vec![
-            crate::feat::provider_infra::ModelInfo {
+            jinn_provider_config::ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: None,
-                input_modalities: crate::feat::provider_infra::InputModalities::text(),
+                input_modalities: jinn_provider_config::InputModalities::text(),
             },
-            crate::feat::provider_infra::ModelInfo {
+            jinn_provider_config::ModelInfo {
                 id: "mistral".to_owned(),
                 context_length: None,
-                input_modalities: crate::feat::provider_infra::InputModalities::text(),
+                input_modalities: jinn_provider_config::InputModalities::text(),
             },
         ],
     );
@@ -366,19 +366,19 @@ fn new_remote_entry_added_on_collision() {
     let api_keys = ApiKeys::new();
 
     // And a cache that also contains ollama/llama3 (collision).
-    let mut cache = crate::feat::provider_infra::ModelCache::new();
+    let mut cache = jinn_provider_config::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
         vec![
-            crate::feat::provider_infra::ModelInfo {
+            jinn_provider_config::ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: None,
-                input_modalities: crate::feat::provider_infra::InputModalities::text(),
+                input_modalities: jinn_provider_config::InputModalities::text(),
             },
-            crate::feat::provider_infra::ModelInfo {
+            jinn_provider_config::ModelInfo {
                 id: "mistral".to_owned(),
                 context_length: None,
-                input_modalities: crate::feat::provider_infra::InputModalities::text(),
+                input_modalities: jinn_provider_config::InputModalities::text(),
             },
         ],
     );
@@ -404,13 +404,13 @@ fn remote_entry_present_when_key_missing() {
     let api_keys = ApiKeys::new(); // No keys set.
 
     // And a cache with additional models.
-    let mut cache = crate::feat::provider_infra::ModelCache::new();
+    let mut cache = jinn_provider_config::ModelCache::new();
     cache.entries.insert(
         "openrouter".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![jinn_provider_config::ModelInfo {
             id: "claude-3".to_owned(),
             context_length: None,
-            input_modalities: crate::feat::provider_infra::InputModalities::text(),
+            input_modalities: jinn_provider_config::InputModalities::text(),
         }],
     );
 
@@ -437,13 +437,13 @@ fn remote_entry_marked_unavailable_when_key_missing() {
     let api_keys = ApiKeys::new(); // No keys set.
 
     // And a cache with additional models.
-    let mut cache = crate::feat::provider_infra::ModelCache::new();
+    let mut cache = jinn_provider_config::ModelCache::new();
     cache.entries.insert(
         "openrouter".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![jinn_provider_config::ModelInfo {
             id: "claude-3".to_owned(),
             context_length: None,
-            input_modalities: crate::feat::provider_infra::InputModalities::text(),
+            input_modalities: jinn_provider_config::InputModalities::text(),
         }],
     );
 
@@ -469,19 +469,19 @@ fn load_provider_entries_includes_all_remote_models() {
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
-    let mut cache = crate::feat::provider_infra::ModelCache::new();
+    let mut cache = jinn_provider_config::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
         vec![
-            crate::feat::provider_infra::ModelInfo {
+            jinn_provider_config::ModelInfo {
                 id: "mistral".to_owned(),
                 context_length: None,
-                input_modalities: crate::feat::provider_infra::InputModalities::text(),
+                input_modalities: jinn_provider_config::InputModalities::text(),
             },
-            crate::feat::provider_infra::ModelInfo {
+            jinn_provider_config::ModelInfo {
                 id: "codellama".to_owned(),
                 context_length: None,
-                input_modalities: crate::feat::provider_infra::InputModalities::text(),
+                input_modalities: jinn_provider_config::InputModalities::text(),
             },
         ],
     );
@@ -785,7 +785,7 @@ fn format_footers_with_timestamp_shows_age() {
     let ts = jiff::Timestamp::now()
         .checked_sub(jiff::Span::new().try_seconds(1).unwrap())
         .unwrap();
-    let mut cache = crate::feat::provider_infra::ModelCache::new();
+    let mut cache = jinn_provider_config::ModelCache::new();
     cache.last_updated_at = Some(ts);
 
     // When formatting the footers.

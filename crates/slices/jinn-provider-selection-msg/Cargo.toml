@@ -1,0 +1,25 @@
+[package]
+name = "jinn-provider-selection-msg"
+version.workspace = true
+edition.workspace = true
+description = "Provider-selection crossing contracts and cell vocabulary: provider switch/refresh/picker-load commands and events, and the provider cell."
+
+[dependencies]
+jinn-core-types = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-provider = { workspace = true }
+jinn-provider-config = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+trouper = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

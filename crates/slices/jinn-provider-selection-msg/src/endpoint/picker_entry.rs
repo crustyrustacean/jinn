@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use crate::feat::theme::Theme;
+use jinn_theme::Theme;
 use jinn_selection_widget::{PickerItem, PreviewContent, highlight_text_with_bg};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -243,7 +243,7 @@ impl jinn_selection_widget::TreeItem for EndpointEntry {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
-    use crate::feat::theme::default_theme;
+    use jinn_theme::default_theme;
 
     #[rstest::rstest]
     #[test]

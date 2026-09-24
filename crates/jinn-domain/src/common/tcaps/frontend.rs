@@ -155,6 +155,19 @@ impl State {
         f(&mut AppStateOps(&mut app.frontend.app_state))
     }
 
+    /// Write access to the provider/endpoint picker surfaces, scoped via
+    /// [`PickerStatesWrite`]. The provider-selection slice's actor fills
+    /// these at load time (the render/navigation surface the picker host
+    /// lends from `&AppState`; the source data lives on the provider cell).
+    pub fn with_pickers<R, F>(&self, _cap: &FrontendCap, f: F) -> R
+    where
+        F: FnOnce(&mut crate::feat::ui::picker_states::PickerStates) -> R,
+    {
+        let mut guard = self.write_lock();
+        let app = &mut *guard;
+        f(&mut app.frontend.pickers)
+    }
+
     /// Write access to `frontend.file_picker`, scoped via [`FilePickerOps`].
     pub fn with_file_picker<R, F>(&self, _cap: &FrontendCap, f: F) -> R
     where

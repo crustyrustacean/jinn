@@ -49,6 +49,7 @@ path = "src/lib.rs"
 
 [dependencies]
 jinn-persona = { workspace = true }
+jinn-provider-selection = { workspace = true }
 jinn-token-count = { workspace = true }
 jinn-context-curation = { workspace = true }
 jinn-context-curation-msg = { workspace = true }
@@ -137,6 +138,8 @@ jinn-quake-bar = { workspace = true }
 jinn-discord = { workspace = true }
 jinn-boot-msg = { workspace = true }
 jinn-session-init = { workspace = true }
+jinn-session-init-msg = { workspace = true }
+jinn-provider-selection-msg = { workspace = true }
 jinn-turn-dispatch = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-watchdog = { workspace = true, features = ["test-harness"] }
@@ -222,6 +225,9 @@ jinn-session-history = { path = "crates/slices/jinn-session-history" }
 jinn-session-history-msg = { path = "crates/slices/jinn-session-history-msg" }
 jinn-skills = { path = "crates/slices/jinn-skills" }
 jinn-skills-msg = { path = "crates/slices/jinn-skills-msg" }
+jinn-provider-selection-msg = { path = "crates/slices/jinn-provider-selection-msg" }
+jinn-provider-selection = { path = "crates/slices/jinn-provider-selection" }
+jinn-session-init-msg = { path = "crates/slices/jinn-session-init-msg" }
 jinn-inference-msg = { path = "crates/slices/jinn-inference-msg" }
 jinn-inference = { path = "crates/slices/jinn-inference" }
 jinn-watchdog = { path = "crates/slices/jinn-watchdog" }

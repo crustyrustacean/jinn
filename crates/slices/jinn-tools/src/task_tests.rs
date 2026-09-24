@@ -180,7 +180,7 @@ async fn settle_child_discovery(
     })
     .await;
     bus.publish(
-        jinn_domain::feat::provider::protocol::event::PromptTemplatesLoaded {
+        jinn_session_init_msg::PromptTemplatesLoaded {
             session_id: child_id.clone(),
             templates: vec![],
             error: None,
@@ -915,7 +915,7 @@ async fn settle_waiter_counts_error_events_as_settled() {
         .await;
     harness
         .publish(
-            jinn_domain::feat::provider::protocol::event::PromptTemplatesLoaded {
+            jinn_session_init_msg::PromptTemplatesLoaded {
                 session_id: child_id.clone(),
                 templates: vec![],
                 error: Some("scan failed".to_owned()),

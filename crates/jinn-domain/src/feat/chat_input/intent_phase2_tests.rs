@@ -17,7 +17,7 @@ fn hash_trigger_valid_after_space() {
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
         crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
-            crate::feat::context::protocol::prompt_template::PromptTemplate {
+            crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
@@ -50,7 +50,7 @@ fn hash_trigger_valid_after_newline() {
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
         crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
-            crate::feat::context::protocol::prompt_template::PromptTemplate {
+            crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
@@ -81,7 +81,7 @@ fn hash_trigger_invalid_after_letter() {
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
         crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
-            crate::feat::context::protocol::prompt_template::PromptTemplate {
+            crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
@@ -143,7 +143,7 @@ fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
         crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
-            crate::feat::context::protocol::prompt_template::PromptTemplate {
+            crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
@@ -203,7 +203,7 @@ fn delete_forward_deactivates_when_cursor_at_token_start() {
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
         crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
-            crate::feat::context::protocol::prompt_template::PromptTemplate {
+            crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
@@ -241,7 +241,7 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
         crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
-            crate::feat::context::protocol::prompt_template::PromptTemplate {
+            crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
@@ -300,7 +300,7 @@ fn reactivating_hash_autocomplete_within_token() {
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
         crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
-            crate::feat::context::protocol::prompt_template::PromptTemplate {
+            crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
@@ -407,7 +407,7 @@ fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
         crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
-            crate::feat::context::protocol::prompt_template::PromptTemplate {
+            crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
                 body: "body".to_owned(),

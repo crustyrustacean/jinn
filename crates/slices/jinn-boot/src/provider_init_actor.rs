@@ -11,9 +11,8 @@ use jinn_boot_msg::EnvironmentLoaded;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::provider::ModelCacheWrite;
-use jinn_domain::feat::provider::protocol::command::ProviderSwitch;
-use jinn_domain::feat::provider::protocol::event::ModelCacheLoaded;
+use jinn_provider_selection_msg::ProviderSwitch;
+use jinn_provider_selection_msg::ModelCacheLoaded;
 use jinn_domain::feat::provider_infra::{ModelCache, ProviderRegistry};
 use jinn_session_history_msg::PushChatEntry;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
@@ -32,7 +31,7 @@ pub struct ProviderInitActor {
     /// Shared application state (to read active session ID).
     state: State,
     /// Provider write capability.
-    provider_cap: jinn_domain::common::tcaps::provider::ProviderCap,
+    provider_cell: jinn_slices::TypedCell<jinn_provider_selection_msg::ProviderCell>,
 }
 
 /// Dependencies for [`ProviderInitActor`].
@@ -43,7 +42,7 @@ pub struct ProviderInitActorDeps {
     /// Shared application state.
     pub state: State,
     /// Provider write capability.
-    pub provider_cap: jinn_domain::common::tcaps::provider::ProviderCap,
+    pub provider_cell: jinn_slices::TypedCell<jinn_provider_selection_msg::ProviderCell>,
 }
 
 impl ServiceActor for ProviderInitActor {
@@ -85,7 +84,7 @@ impl ProviderInitActor {
                         Ok(Self {
                             deps: deps.deps,
                             state: deps.state,
-                            provider_cap: deps.provider_cap,
+                            provider_cell: deps.provider_cell,
                         })
                     })
                 }
@@ -147,8 +146,8 @@ impl ProviderInitActor {
             self.deps.services.provider_registry.merge_cache(c);
             self.publish(ModelCacheLoaded { cache: c.clone() }).await;
         }
-        self.state.with_provider(&self.provider_cap, |view| {
-            view.provider.set_model_cache(cache);
+        self.provider_cell.update(|cell| {
+            cell.model_cache = cache;
         });
 
         let app_state = self.deps.services.app_state_storage.read();
@@ -205,10 +204,22 @@ mod tests {
     use jinn_domain::common::services::Services;
     use jinn_domain::common::services::bus_service::BusAudit;
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::provider::protocol::command::ProviderSwitch;
-    use jinn_domain::feat::provider::protocol::event::ModelCacheLoaded;
+    use jinn_provider_selection_msg::ModelCacheLoaded;
+    use jinn_provider_selection_msg::ProviderSwitch;
     use jinn_domain::feat::provider_infra::ProviderEntry;
     use jinn_session_history_msg::PushChatEntry;
+
+    /// A lone provider cell for direct actor-construction tests.
+    fn test_provider_cell() -> jinn_slices::TypedCell<jinn_provider_selection_msg::ProviderCell> {
+        let slices = jinn_slices::Slices::new();
+        let _ = slices.register(
+            jinn_provider_selection_msg::provider_state_slot(),
+            jinn_provider_selection_msg::ProviderCell::default(),
+        );
+        slices
+            .reader(&jinn_provider_selection_msg::provider_state_slot())
+            .expect("just registered")
+    }
 
     async fn create_actor() -> (ProviderInitActor, BusAudit, Services, State) {
         let (bus, audit) = jinn_domain::common::services::BusService::new_recording();
@@ -219,7 +230,7 @@ mod tests {
                 services: services.clone(),
             },
             state: state.clone(),
-            provider_cap: jinn_domain::common::tcaps::mint::mint_provider_cap(),
+            provider_cell: test_provider_cell(),
         };
         (actor, audit, services, state)
     }

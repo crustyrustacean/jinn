@@ -1895,7 +1895,7 @@ fn enter_normal_mode_dismissing_autocomplete_emits_no_commands() {
 fn hash_autocomplete_populates_matches_from_template_store() {
     // Given a state with a template in the store.
     use crate::common::app_state::FocusScope;
-    use crate::feat::context::protocol::prompt_template::PromptTemplate;
+    use crate::PromptTemplate;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);

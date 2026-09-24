@@ -60,7 +60,7 @@ impl PickerHost for AppStatePickerHost<'_> {
                 Some(self.state.frontend.task_list_picker_mut() as &mut dyn std::any::Any)
             }
             SESSION_ID => Some(self.state.frontend.session_picker_mut() as &mut dyn std::any::Any),
-            PROVIDER_ID => Some(&mut self.state.provider.provider_picker as &mut dyn std::any::Any),
+            PROVIDER_ID => Some(&mut self.state.frontend.pickers.provider_picker as &mut dyn std::any::Any),
             ENDPOINT_ID => {
                 Some(self.state.frontend.endpoint_picker_mut() as &mut dyn std::any::Any)
             }
@@ -176,7 +176,7 @@ impl PickerHost for AppStateRenderHost<'_> {
             }
             TASK_LIST_ID => Some(self.state.frontend.task_list_picker() as &dyn std::any::Any),
             SESSION_ID => Some(self.state.frontend.session_picker() as &dyn std::any::Any),
-            PROVIDER_ID => Some(&self.state.provider.provider_picker as &dyn std::any::Any),
+            PROVIDER_ID => Some(&self.state.frontend.pickers.provider_picker as &dyn std::any::Any),
             ENDPOINT_ID => Some(self.state.frontend.endpoint_picker() as &dyn std::any::Any),
             PROJECT_ID => Some(self.state.frontend.project_picker() as &dyn std::any::Any),
             _ => None,

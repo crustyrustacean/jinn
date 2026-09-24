@@ -48,21 +48,3 @@ fn push_entry_routes_through_history_append() {
     assert_eq!(after, before + 1);
 }
 
-#[rstest::rstest]
-#[test]
-fn provider_write_routes_through_provider_ops() {
-    // Given a State with no model cache and a minted ProviderCap.
-    let state = State::new(AppState::default());
-    assert!(state.read().provider.model_cache.is_none());
-    let cap = mint::mint_provider_cap();
-
-    // When writing a model cache through the cap-gated ProviderOps.
-    state.with_provider(&cap, |view| {
-        use crate::common::tcaps::provider::ModelCacheWrite;
-        view.provider
-            .set_model_cache(Some(crate::feat::provider_infra::ModelCache::new()));
-    });
-
-    // Then the provider's model cache is now set.
-    assert!(state.read().provider.model_cache.is_some());
-}

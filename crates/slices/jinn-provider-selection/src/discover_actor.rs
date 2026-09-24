@@ -7,11 +7,11 @@
 
 use std::collections::HashMap;
 
-use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::common::state::State;
-use crate::feat::provider::protocol::command::RefreshModels;
-use crate::feat::provider::protocol::event::ModelsRefreshed;
-use crate::feat::provider_infra::ModelCache;
+use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_domain::common::state::State;
+use jinn_provider_selection_msg::RefreshModels;
+use jinn_provider_selection_msg::ModelsRefreshed;
+use jinn_provider_config::ModelCache;
 use error_stack::Report;
 use jinn_provider::{
     Backend, LlmServiceError, ModelInfo, OpenAiCompatibleService, ProviderConfig,
@@ -101,7 +101,7 @@ impl MsgHandler<RefreshModels> for DiscoverActor {
 }
 
 impl BusPublish for DiscoverActor {
-    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+    fn bus(&self) -> &jinn_domain::common::services::bus_service::BusService {
         self.deps.bus()
     }
 }
@@ -116,7 +116,7 @@ impl DiscoverActor {
         let mut errors: HashMap<String, String> = HashMap::new();
 
         // Load models.dev reference data for context length fallback.
-        let models_dev = crate::feat::provider_infra::ModelsDevData::load(
+        let models_dev = jinn_provider_config::ModelsDevData::load(
             &self.deps.services.paths.models_dev_user_path(),
             &self.deps.services.paths.models_dev_system_path(),
         );
@@ -228,7 +228,7 @@ impl DiscoverActor {
 /// [`ModelsDevData::enrich`] single source of truth.
 fn enrich_with_models_dev(
     models: &mut [ModelInfo],
-    models_dev: &crate::feat::provider_infra::ModelsDevData,
+    models_dev: &jinn_provider_config::ModelsDevData,
 ) {
     for model in models {
         models_dev.enrich(model);
@@ -248,11 +248,11 @@ mod tests {
 
     use std::time::Duration;
 
-    use crate::common::app_state::AppState;
-    use crate::common::bus::test_harness::{TestHarness, await_recorded};
-    use crate::common::state::State;
-    use crate::feat::provider::protocol::command::RefreshModels;
-    use crate::feat::provider::protocol::event::ModelsRefreshed;
+    use jinn_domain::AppState;
+    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_domain::common::state::State;
+    use jinn_provider_selection_msg::RefreshModels;
+    use jinn_provider_selection_msg::ModelsRefreshed;
 
     use super::{DISCOVER_ACTOR_PATH, DiscoverActor, DiscoverActorDeps};
     use trouper::actor::ActorPath;
@@ -298,9 +298,9 @@ mod tests {
         }
     }
 
-    fn dev_data(image_support: &[(&str, bool)]) -> crate::feat::provider_infra::ModelsDevData {
+    fn dev_data(image_support: &[(&str, bool)]) -> jinn_provider_config::ModelsDevData {
         use std::collections::HashMap;
-        crate::feat::provider_infra::ModelsDevData {
+        jinn_provider_config::ModelsDevData {
             context_lengths: HashMap::new(),
             image_support: image_support
                 .iter()

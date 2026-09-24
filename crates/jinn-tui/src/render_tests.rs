@@ -541,7 +541,7 @@ async fn model_picker_renders_telescope_layout_with_filter() {
             .make_items(
                 jinn_domain::feat::picker::registry::PROVIDER_ID,
                 vec![
-                    jinn_domain::feat::provider::picker_entry::ProviderPickerEntry {
+                    jinn_provider_selection_msg::ProviderPickerEntry {
                         provider_id: "ollama/llama3".to_owned(),
                         name: "ollama".to_owned(),
                         provider_name: "ollama".to_owned(),
@@ -559,9 +559,9 @@ async fn model_picker_renders_telescope_layout_with_filter() {
                 ],
             )
             .expect("provider spec registered");
-        w.provider.provider_picker.set_items(wrapped);
-        w.provider.provider_picker.insert_char('o');
-        w.provider.provider_picker.insert_char('l');
+        w.frontend.pickers.provider_picker.set_items(wrapped);
+        w.frontend.pickers.provider_picker.insert_char('o');
+        w.frontend.pickers.provider_picker.insert_char('l');
     }
 
     let (mut terminal, _area) = setup_term(80, 24);
@@ -632,7 +632,7 @@ async fn model_picker_no_active_marker_for_active_model() {
             .make_items(
                 jinn_domain::feat::picker::registry::PROVIDER_ID,
                 vec![
-                    jinn_domain::feat::provider::picker_entry::ProviderPickerEntry {
+                    jinn_provider_selection_msg::ProviderPickerEntry {
                         provider_id: "ollama/llama3".to_owned(),
                         name: "ollama".to_owned(),
                         provider_name: "ollama".to_owned(),
@@ -650,7 +650,7 @@ async fn model_picker_no_active_marker_for_active_model() {
                 ],
             )
             .expect("provider spec registered");
-        w.provider.provider_picker.set_items(wrapped);
+        w.frontend.pickers.provider_picker.set_items(wrapped);
     }
 
     let (mut terminal, _area) = setup_term(80, 24);

@@ -1,55 +1,68 @@
-//! Provider actor - manages active provider, LLM factory, model cache, and picker entries.
+//! Provider actor — applies model switches, merges model caches, and
+//! loads picker entries.
 //!
-//! Subscribes to provider-related commands and events, mutates the corresponding
-//! [`AppState`](crate::common::app_state::AppState) fields, and emits events for
-//! other actors to react to.
+//! Subscribes to provider-related commands and events, writes the
+//! provider cell (model cache, alloy mode, endpoint fetch state) and the
+//! provider/endpoint picker fields (the picker render/navigation surface
+//! on `FrontendState`, written through the sanctioned `FrontendCap`
+//! path), and emits events for other actors to react to.
 //!
 //! # State ownership
 //!
-//! This actor **owns** the following `AppState` fields:
-//! - `active_provider`
-//! - `model_cache`
-//! - `provider_picker` entries (via the loader)
+//! This actor **owns** the provider cell
+//! ([`ProviderCell`](jinn_provider_selection_msg::ProviderCell)) and is
+//! the writer of the provider/endpoint picker `SelectionState`s on
+//! `FrontendState` (the IntentHandler is the exempt sync writer for
+//! navigation).
 //!
 //! # Lock discipline
 //!
-//! All handlers follow the same pattern: acquire state lock → mutate → release →
-//! then emit. Never hold the lock during emission.
+//! All handlers follow the same pattern: snapshot what is needed under
+//! the state read lock → release → mutate the cell → then emit. Never
+//! hold a lock during emission, and never hold the state guard across
+//! the async endpoint fetch.
 
-use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::common::state::State;
-use crate::common::tcaps::provider::{FrontendProviderPickerWrite, ModelCacheWrite, ProviderCap};
-use crate::common::tcaps::session::SessionCap;
-use crate::feat::provider::protocol::command::{
-    LoadEndpointPickerEntries, LoadProviderPickerEntries, ProviderSwitch,
-    RefreshEndpointPickerEntries,
+use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_domain::common::state::State;
+use jinn_domain::common::tcaps::frontend::FrontendCap;
+use jinn_domain::common::tcaps::session::SessionCap;
+use jinn_domain::feat::picker::registry::{ENDPOINT_ID, build_picker_registry};
+use jinn_provider_config::ModelCache;
+use jinn_provider_config::ProviderRegistry;
+use jinn_provider_config::{InputModalities, ModelInfo, Modality, ProvidersConfig};
+use jinn_provider_selection_msg::endpoint::EndpointEntry;
+use jinn_provider_selection_msg::{
+    LoadEndpointPickerEntries, LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed,
+    ProviderCell, ProviderSwitch, ProviderSwitched, RefreshEndpointPickerEntries,
 };
-use crate::feat::provider::protocol::event::{ModelCacheLoaded, ModelsRefreshed, ProviderSwitched};
-
-use super::loader::{
-    build_endpoint_entries, fetch_endpoints, load_provider_picker_items, resolve_openrouter_target,
-    set_endpoint_picker_items, unavailable_endpoint_entries,
-};
-use crate::feat::endpoint::picker_entry::EndpointEntry;
-use error_stack::Report;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
+use error_stack::Report;
 use trouper::registry::RegistryError;
+
+use crate::endpoint_loader::{
+    build_endpoint_entries, fetch_endpoints, resolve_openrouter_target,
+    unavailable_endpoint_entries,
+};
+use crate::loader::load_provider_picker_items;
 
 /// The provider actor.
 ///
-/// Subscribes to provider-related commands, mutates [`State`], and emits events
-/// via the bus.
+/// Subscribes to provider-related commands, mutates the provider cell and
+/// the picker fields, and emits events via the bus.
 pub struct ProviderActor {
     /// Shared application state.
     state: State,
     /// Runtime services (provider registry, API keys, LLM service factory).
     deps: ActorDeps,
-    /// Authority to write [`ProviderState`] via [`State::with_provider`].
-    cap: ProviderCap,
+    /// The provider cell — the shared model-cache + endpoint-fetch payload.
+    provider_cell: jinn_slices::TypedCell<ProviderCell>,
     /// Authority to write the session model ([`SessionCap`]) — used by
     /// `handle_provider_switch` to set the session's active model.
     session_cap: SessionCap,
+    /// Authority to write the provider/endpoint picker fields on
+    /// `FrontendState` (the picker render/navigation surface).
+    frontend_cap: FrontendCap,
     /// In-memory, per-model cache of OpenRouter routing endpoints for the
     /// application's lifetime (not persisted to disk). Keyed by resolved model
     /// id; value is the parsed upstream list plus the fetch timestamp. The
@@ -65,9 +78,12 @@ pub struct ProviderActorDeps {
     pub state: State,
     /// Actor dependencies (services including bus).
     pub deps: ActorDeps,
-    pub cap: ProviderCap,
+    /// The provider cell handle.
+    pub provider_cell: jinn_slices::TypedCell<ProviderCell>,
     /// Authority to write the session model.
     pub session_cap: SessionCap,
+    /// Authority to write the picker fields on `FrontendState`.
+    pub frontend_cap: FrontendCap,
 }
 
 impl ServiceActor for ProviderActor {
@@ -108,8 +124,9 @@ impl ProviderActor {
                         Ok(Self {
                             state: deps.state,
                             deps: deps.deps,
-                            cap: deps.cap,
+                            provider_cell: deps.provider_cell,
                             session_cap: deps.session_cap,
+                            frontend_cap: deps.frontend_cap,
                             endpoints_cache: std::collections::HashMap::new(),
                         })
                     })
@@ -140,9 +157,7 @@ impl MsgHandler<ProviderSwitch> for ProviderActor {
 
 impl MsgHandler<LoadProviderPickerEntries> for ProviderActor {
     async fn handle(&mut self, _msg: &LoadProviderPickerEntries, _ctx: &mut MsgCtx<'_>) {
-        self.state.with_provider(&self.cap, |view| {
-            load_provider_picker_items(&self.deps.services, view);
-        });
+        self.handle_load_provider_picker_entries();
     }
 }
 
@@ -171,7 +186,7 @@ impl MsgHandler<ModelCacheLoaded> for ProviderActor {
 }
 
 impl BusPublish for ProviderActor {
-    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+    fn bus(&self) -> &jinn_domain::common::services::bus_service::BusService {
         &self.deps.services.bus
     }
 }
@@ -187,10 +202,32 @@ impl ProviderActor {
         });
     }
 
+    /// LoadProviderPickerEntries: reload the provider picker entries from
+    /// the current model cache + registry.
+    fn handle_load_provider_picker_entries(&self) {
+        let (model_cache, theme, model_selection, alloy_mode) = {
+            let s = self.state.read();
+            let theme = s.frontend.theme.clone();
+            let model_selection = s.active_session().profile().model.clone();
+            (None, theme, model_selection, self.alloy_mode())
+        };
+        let model_cache = model_cache.or_else(|| self.model_cache());
+        let picker = build_provider_picker(
+            &self.deps.services,
+            model_cache.as_ref(),
+            &theme,
+            &model_selection,
+            alloy_mode,
+        );
+        self.state.with_pickers(&self.frontend_cap, |p| {
+            p.provider_picker = picker;
+        });
+    }
+
     /// ModelsRefreshed: update model cache and reload provider picker entries.
     fn handle_models_refreshed(&self, event: &ModelsRefreshed) {
         let now = jiff::Timestamp::now();
-        let mut cache = crate::feat::provider_infra::ModelCache {
+        let mut cache = ModelCache {
             entries: event.results.clone(),
             last_updated_at: Some(now),
         };
@@ -198,7 +235,7 @@ impl ProviderActor {
             let registry = self.deps.services.provider_registry.read();
             merge_context_lengths_from_registry(&mut cache, &registry);
         }
-        let models_dev = crate::feat::provider_infra::ModelsDevData::load(
+        let models_dev = jinn_provider_config::ModelsDevData::load(
             &self.deps.services.paths.models_dev_user_path(),
             &self.deps.services.paths.models_dev_system_path(),
         );
@@ -211,21 +248,18 @@ impl ProviderActor {
         }
         // Merge remote models into the registry so create_factory() can find them.
         self.deps.services.provider_registry.merge_cache(&cache);
-        self.state.with_provider(&self.cap, |view| {
-            view.provider.set_model_cache(Some(cache));
-            // Also reload provider picker entries from updated model cache.
-            load_provider_picker_items(&self.deps.services, view);
-        });
+        self.store_model_cache(cache);
+        self.handle_load_provider_picker_entries();
     }
 
     /// ModelCacheLoaded: restore model cache from disk and reload picker entries.
-    fn handle_model_cache_loaded(&self, cache: &crate::feat::provider_infra::ModelCache) {
+    fn handle_model_cache_loaded(&self, cache: &ModelCache) {
         let mut cache = cache.clone();
         {
             let registry = self.deps.services.provider_registry.read();
             merge_context_lengths_from_registry(&mut cache, &registry);
         }
-        let models_dev = crate::feat::provider_infra::ModelsDevData::load(
+        let models_dev = jinn_provider_config::ModelsDevData::load(
             &self.deps.services.paths.models_dev_user_path(),
             &self.deps.services.paths.models_dev_system_path(),
         );
@@ -238,10 +272,25 @@ impl ProviderActor {
         }
         // Merge remote models into the registry so create_factory() can find them.
         self.deps.services.provider_registry.merge_cache(&cache);
-        self.state.with_provider(&self.cap, |view| {
-            view.provider.set_model_cache(Some(cache));
-            load_provider_picker_items(&self.deps.services, view);
+        self.store_model_cache(cache);
+        self.handle_load_provider_picker_entries();
+    }
+
+    /// Writes the merged cache into the provider cell.
+    fn store_model_cache(&self, cache: ModelCache) {
+        self.provider_cell.update(|cell| {
+            cell.model_cache = Some(cache);
         });
+    }
+
+    /// The current model cache, if the cell carries one.
+    fn model_cache(&self) -> Option<ModelCache> {
+        self.provider_cell.read().model_cache.clone()
+    }
+
+    /// The current alloy-selection mode.
+    fn alloy_mode(&self) -> bool {
+        self.provider_cell.read().is_alloy_mode()
     }
 
     /// Resolve the active model's backend and either serve OpenRouter routing
@@ -257,11 +306,10 @@ impl ProviderActor {
     /// non-OpenRouter placeholder path.
     async fn handle_load_endpoint_picker_entries(&mut self, force: bool) {
         // Snapshot what we need under the read lock, then release it before
-        // the async network fetch (the view guard is `Send` but not held
-        // across `.await` of a network call in practice; clone out instead).
+        // the async network fetch.
         let (model, pinned, theme) = {
             let s = self.state.read();
-            let session = s.session.active_session();
+            let session = s.active_session();
             let model = session.profile().model.clone();
             let pinned = session.profile().endpoint.clone();
             let theme = s.frontend.theme.clone();
@@ -273,9 +321,9 @@ impl ProviderActor {
             // clear loading, and leave both the cache and fetched_at untouched
             // (this path never fetched anything).
             let entries = unavailable_endpoint_entries(theme, pinned.as_ref());
-            self.state.with_provider(&self.cap, |view| {
-                set_endpoint_picker_items(view, entries);
-                view.provider_frontend.set_endpoint_loading(false);
+            self.write_endpoint_items(entries);
+            self.provider_cell.update(|cell| {
+                cell.endpoint_loading = false;
             });
             return;
         };
@@ -286,10 +334,10 @@ impl ProviderActor {
         // upstream list (theme/pin re-derived), no network call.
         if !force && let Some((endpoints, ts)) = self.endpoints_cache.get(&key).cloned() {
             let entries = build_endpoint_entries(&endpoints, &theme, pinned.as_ref());
-            self.state.with_provider(&self.cap, |view| {
-                set_endpoint_picker_items(view, entries);
-                view.provider_frontend.set_endpoint_fetched_at(Some(ts));
-                view.provider_frontend.set_endpoint_loading(false);
+            self.write_endpoint_items(entries);
+            self.provider_cell.update(|cell| {
+                cell.endpoint_fetched_at = Some(ts);
+                cell.endpoint_loading = false;
             });
             return;
         }
@@ -311,15 +359,47 @@ impl ProviderActor {
             ),
         };
 
-        self.state.with_provider(&self.cap, |view| {
-            set_endpoint_picker_items(view, entries);
+        self.write_endpoint_items(entries);
+        self.provider_cell.update(|cell| {
             // Only stamp fetched_at on a successful fetch; on error leave it.
             if let Some(at) = fetched_at {
-                view.provider_frontend.set_endpoint_fetched_at(Some(at));
+                cell.endpoint_fetched_at = Some(at);
             }
-            view.provider_frontend.set_endpoint_loading(false);
+            cell.endpoint_loading = false;
         });
     }
+
+    /// Wraps `entries` through the endpoint spec's hooks and writes them
+    /// into the endpoint picker (the render/navigation surface).
+    fn write_endpoint_items(&self, entries: Vec<EndpointEntry>) {
+        let wrapped = build_picker_registry()
+            .make_items(ENDPOINT_ID, entries)
+            .unwrap_or_default();
+        self.state.with_pickers(&self.frontend_cap, |p| {
+            p.endpoint_picker.set_items(wrapped);
+        });
+    }
+}
+
+/// Builds the provider picker items from the registry/cache/theme/model
+/// snapshot and returns them wrapped through the spec's hooks.
+fn build_provider_picker(
+    services: &jinn_domain::Services,
+    model_cache: Option<&ModelCache>,
+    theme: &jinn_domain::feat::theme::Theme,
+    model_selection: &jinn_core_types::ModelSelection,
+    alloy_mode: bool,
+) -> jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<jinn_provider_selection_msg::ProviderPickerEntry>> {
+    let mut picker = jinn_selection_widget::SelectionState::new();
+    load_provider_picker_items(
+        services,
+        &mut picker,
+        model_cache,
+        theme,
+        model_selection,
+        alloy_mode,
+    );
+    picker
 }
 
 /// Merge `context_length` from the registry's resolved providers into the
@@ -329,10 +409,7 @@ impl ProviderActor {
 /// block-level) beat API-discovered values, which in turn beat models.dev.
 /// The registry's resolved providers already carry the config-side value, so
 /// a `Some` here always wins; registry `None` leaves the cache value alone.
-fn merge_context_lengths_from_registry(
-    cache: &mut crate::feat::provider_infra::ModelCache,
-    registry: &crate::feat::provider_infra::ProviderRegistry,
-) {
+fn merge_context_lengths_from_registry(cache: &mut ModelCache, registry: &ProviderRegistry) {
     for provider in registry.providers() {
         let Some(registry_ctx) = provider.context_length else {
             continue;
@@ -359,8 +436,8 @@ fn merge_context_lengths_from_registry(
 // cache that predates the modalities field gets re-enriched from models.dev
 // on every load, so the Image bit is never permanently lost across upgrades.
 fn merge_models_dev_data(
-    cache: &mut crate::feat::provider_infra::ModelCache,
-    models_dev: &crate::feat::provider_infra::ModelsDevData,
+    cache: &mut ModelCache,
+    models_dev: &jinn_provider_config::ModelsDevData,
 ) {
     for models in cache.entries.values_mut() {
         for model in models.iter_mut() {
@@ -380,10 +457,7 @@ fn merge_models_dev_data(
 /// Models that never appear in the cache get a new entry (so the status bar,
 /// compaction gate, and attachment gate can resolve them); find-or-insert
 /// semantics keep repeated applications idempotent.
-fn apply_config_overrides(
-    cache: &mut crate::feat::provider_infra::ModelCache,
-    config: &crate::feat::provider_infra::ProvidersConfig,
-) {
+fn apply_config_overrides(cache: &mut ModelCache, config: &ProvidersConfig) {
     for (name, entry) in &config.providers {
         for info in &entry.model_info {
             let block_ctx = info.context_length.or(entry.context_length);
@@ -398,11 +472,11 @@ fn apply_config_overrides(
                     }
                 }
                 None => {
-                    models.push(crate::feat::provider_infra::ModelInfo {
+                    models.push(ModelInfo {
                         id: info.id.clone(),
                         context_length: block_ctx,
                         input_modalities: parse_modalities(info.input_modalities.as_deref())
-                            .unwrap_or_else(crate::feat::provider_infra::InputModalities::text),
+                            .unwrap_or_else(InputModalities::text),
                     });
                 }
             }
@@ -424,17 +498,17 @@ fn apply_config_overrides(
 /// (applied earlier in the pipeline) has already stamped the `Image` bit for
 /// any model it knows.
 fn inject_block_level_static_models(
-    cache: &mut crate::feat::provider_infra::ModelCache,
+    cache: &mut ModelCache,
     name: &str,
-    entry: &crate::feat::provider_infra::ProviderEntry,
+    entry: &jinn_provider_config::ProviderEntry,
 ) {
     let models = cache.entries.entry(name.to_owned()).or_default();
     for id in &entry.models {
         if !models.iter().any(|m| &m.id == id) {
-            models.push(crate::feat::provider_infra::ModelInfo {
+            models.push(ModelInfo {
                 id: id.clone(),
                 context_length: entry.context_length,
-                input_modalities: crate::feat::provider_infra::InputModalities::text(),
+                input_modalities: InputModalities::text(),
             });
         }
     }
@@ -443,10 +517,7 @@ fn inject_block_level_static_models(
 /// Parses config modality strings ("text", "image") into `InputModalities`.
 /// Unknown strings log a warning and are ignored; `None` (field unset)
 /// returns `None` so the discovered value is kept.
-fn parse_modalities(
-    spec: Option<&[String]>,
-) -> Option<crate::feat::provider_infra::InputModalities> {
-    use crate::feat::provider_infra::{InputModalities, Modality};
+fn parse_modalities(spec: Option<&[String]>) -> Option<InputModalities> {
     let spec = spec?;
     let mut out = InputModalities::default();
     for s in spec {
@@ -462,6 +533,8 @@ fn parse_modalities(
     Some(out)
 }
 
+// ── Tests ────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -474,40 +547,51 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use crate::AppState;
-    use crate::common::bus::test_harness::{TestHarness, await_recorded};
-
-    use crate::common::state::State;
-    use crate::feat::provider_infra::{
-        InputModalities, ModelCache, ModelInfo, ProviderEntry, ProvidersConfig,
+    use jinn_domain::AppState;
+    use jinn_domain::feat::ui::picker_states::PickerExt;
+    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_domain::common::state::State;
+    use jinn_domain::common::tcaps::mint;
+    use jinn_provider_config::{
+        InputModalities, ModelCache, ModelInfo, Modality, ProviderEntry, ProviderRegistry,
+        ProvidersConfig,
     };
+    use jinn_provider_selection_msg::{ProviderCell, provider_state_slot};
 
     use super::{
         ModelCacheLoaded, ModelsRefreshed, PROVIDER_ACTOR_PATH, ProviderActor, ProviderActorDeps,
     };
-    use crate::common::actor_deps::ActorDeps;
-    use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
-    use crate::feat::provider::protocol::command::ProviderSwitch;
-    use crate::feat::provider::protocol::event::ProviderSwitched;
-    use crate::feat::ui::picker_states::PickerExt;
+    use jinn_domain::common::actor_deps::ActorDeps;
+    use jinn_provider_selection_msg::LoadProviderPickerEntries;
+    use jinn_provider_selection_msg::ProviderSwitched;
     use jinn_core_types::model_selection::ModelSelection;
     use trouper::actor::ActorPath;
 
     async fn create_harness() -> (TestHarness, State) {
         let harness = TestHarness::new().await;
         let state = State::new(AppState::default());
+        // Register the provider cell the actor (and tests) read/write.
+        let services = harness.services().await;
+        let _ = services
+            .slices
+            .register(provider_state_slot(), ProviderCell::default());
         (harness, state)
     }
 
     async fn spawn_actor(harness: &TestHarness, state: &State, deps: ActorDeps) {
         let services = harness.services().await;
+        let provider_cell = services
+            .slices
+            .reader(&provider_state_slot())
+            .expect("provider cell registered");
         ProviderActor::spawn(
             &services.trouper_system,
             ProviderActorDeps {
                 deps,
                 state: state.clone(),
-                cap: crate::common::tcaps::mint::mint_provider_cap(),
-                session_cap: crate::common::tcaps::mint::mint_session_cap(),
+                provider_cell,
+                session_cap: mint::mint_session_cap(),
+                frontend_cap: mint::mint_frontend_cap(),
             },
         );
     }
@@ -532,45 +616,49 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn model_cache_loaded_sets_model_cache_in_state() {
-        // Given a provider actor and a registry with a provider.
-        let (harness, state) = create_harness().await;
-        let services = harness.actor_deps().await.services;
-        let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
-            .expect("registry");
-        services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, harness.actor_deps().await).await;
-
+    fn cache_with_ollama_llama3(ctx: Option<u32>) -> ModelCache {
         let mut cache = ModelCache::new();
         cache.entries.insert(
             "ollama".to_owned(),
             vec![ModelInfo {
                 id: "llama3".to_owned(),
-                context_length: Some(8192),
+                context_length: ctx,
                 input_modalities: InputModalities::text(),
             }],
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
+        cache
+    }
+
+    async fn cell_model_cache(harness: &TestHarness) -> Option<ModelCache> {
+        let services = harness.services().await;
+        let cell = services
+            .slices
+            .reader::<ProviderCell>(&provider_state_slot())
+            .expect("provider cell");
+        cell.read().model_cache.clone()
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_sets_model_cache_in_cell() {
+        // Given a provider actor and a registry with a provider.
+        let (harness, state) = create_harness().await;
+        let services = harness.actor_deps().await.services;
+        let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
+        services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, harness.actor_deps().await).await;
+
+        let cache = cache_with_ollama_llama3(Some(8192));
 
         // When publishing ModelCacheLoaded via bus.
-        harness
-            .publish(ModelCacheLoaded {
-                cache: cache.clone(),
-            })
-            .await;
+        harness.publish(ModelCacheLoaded { cache }).await;
 
-        // Then the model cache is set in state.
+        // Then the model cache is set in the cell.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        assert!(
-            state.read().provider.model_cache.is_some(),
-            "actor should have processed the event"
-        );
-
-        let s = state.read();
-        assert!(s.provider.model_cache.is_some());
-        let loaded = s.provider.model_cache.as_ref().unwrap();
+        let loaded = cell_model_cache(&harness)
+            .await
+            .expect("actor should have processed the event");
         assert_eq!(loaded.entries["ollama"].len(), 1);
         assert_eq!(loaded.entries["ollama"][0].id, "llama3");
     }
@@ -581,35 +669,21 @@ mod tests {
         // Given a provider actor with a cache that has a timestamp.
         let (harness, state) = create_harness().await;
         let services = harness.actor_deps().await.services;
-        let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
-            .expect("registry");
+        let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
         services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, harness.actor_deps().await).await;
 
         let ts = jiff::Timestamp::now();
-        let mut cache = ModelCache::new();
-        cache.entries.insert(
-            "ollama".to_owned(),
-            vec![ModelInfo {
-                id: "llama3".to_owned(),
-                context_length: None,
-                input_modalities: InputModalities::text(),
-            }],
-        );
+        let mut cache = cache_with_ollama_llama3(None);
         cache.last_updated_at = Some(ts);
 
         // When publishing ModelCacheLoaded via bus.
-        harness
-            .publish(ModelCacheLoaded {
-                cache: cache.clone(),
-            })
-            .await;
+        harness.publish(ModelCacheLoaded { cache }).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-        // Then the timestamp is preserved in state.
-        let s = state.read();
-        let loaded = s.provider.model_cache.as_ref().unwrap();
+        // Then the timestamp is preserved in the cell.
+        let loaded = cell_model_cache(&harness).await.expect("cache set");
         assert!(loaded.last_updated_at.is_some());
     }
 
@@ -637,8 +711,7 @@ mod tests {
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
         let services = deps.services.clone();
-        let registry =
-            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        let registry = ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
@@ -662,19 +735,14 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the model cache has context_length from the registry.
-        let s = state.read();
-        let cache = s
-            .provider
-            .model_cache
-            .as_ref()
-            .expect("cache should be set");
+        let cache = cell_model_cache(&harness).await.expect("cache should be set");
         assert_eq!(cache.entries["zai"][0].context_length, Some(128_000));
 
         // And the model is registered in the provider registry.
         let resolved =
             services
                 .provider_registry
-                .get(&crate::feat::provider_infra::ProviderId::new(
+                .get(&jinn_provider_config::ProviderId::new(
                     "zai/zai-1.5".to_owned(),
                 ));
         assert!(
@@ -707,8 +775,7 @@ mod tests {
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
         let services = deps.services.clone();
-        let registry =
-            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        let registry = ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
@@ -733,12 +800,7 @@ mod tests {
 
         // Then the block config value wins (4096), not the API value (8192) —
         // unified precedence: per-model config > block config > API > models.dev.
-        let s = state.read();
-        let cache = s
-            .provider
-            .model_cache
-            .as_ref()
-            .expect("cache should be set");
+        let cache = cell_model_cache(&harness).await.expect("cache should be set");
         assert_eq!(cache.entries["ollama"][0].context_length, Some(4096));
     }
 
@@ -769,12 +831,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the cache entry stays None.
-        let s = state.read();
-        let cache = s
-            .provider
-            .model_cache
-            .as_ref()
-            .expect("cache should be set");
+        let cache = cell_model_cache(&harness).await.expect("cache should be set");
         assert_eq!(cache.entries["ollama"][0].context_length, None);
     }
 
@@ -805,12 +862,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the cache entry is stored as-is, no panic.
-        let s = state.read();
-        let cache = s
-            .provider
-            .model_cache
-            .as_ref()
-            .expect("cache should be set");
+        let cache = cell_model_cache(&harness).await.expect("cache should be set");
         assert_eq!(cache.entries["groq"][0].context_length, None);
     }
 
@@ -838,13 +890,14 @@ mod tests {
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
         let services = deps.services.clone();
-        let registry =
-            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        let registry = ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
         // When publishing ModelCacheLoaded with cache that has context_length: None.
-        let mut cache = ModelCache::new();
+        let cache = cache_with_ollama_llama3(None);
+        let mut cache = cache;
+        cache.entries.clear();
         cache.entries.insert(
             "zai".to_owned(),
             vec![ModelInfo {
@@ -855,28 +908,19 @@ mod tests {
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
 
-        harness
-            .publish(ModelCacheLoaded {
-                cache: cache.clone(),
-            })
-            .await;
+        harness.publish(ModelCacheLoaded { cache }).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-        // Then the model cache in state has context_length from the registry.
-        let s = state.read();
-        let loaded = s
-            .provider
-            .model_cache
-            .as_ref()
-            .expect("cache should be set");
+        // Then the model cache in the cell has context_length from the registry.
+        let loaded = cell_model_cache(&harness).await.expect("cache should be set");
         assert_eq!(loaded.entries["zai"][0].context_length, Some(128_000));
 
         // And the model is registered in the provider registry.
         let resolved =
             services
                 .provider_registry
-                .get(&crate::feat::provider_infra::ProviderId::new(
+                .get(&jinn_provider_config::ProviderId::new(
                     "zai/zai-1.5".to_owned(),
                 ));
         assert!(
@@ -909,39 +953,20 @@ mod tests {
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
         let services = deps.services.clone();
-        let registry =
-            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        let registry = ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
         // When publishing ModelCacheLoaded with cache that has context_length: Some(8192).
-        let mut cache = ModelCache::new();
-        cache.entries.insert(
-            "ollama".to_owned(),
-            vec![ModelInfo {
-                id: "llama3".to_owned(),
-                context_length: Some(8192),
-                input_modalities: InputModalities::text(),
-            }],
-        );
-        cache.last_updated_at = Some(jiff::Timestamp::now());
+        let cache = cache_with_ollama_llama3(Some(8192));
 
-        harness
-            .publish(ModelCacheLoaded {
-                cache: cache.clone(),
-            })
-            .await;
+        harness.publish(ModelCacheLoaded { cache }).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the block config value wins (4096), not the API value (8192) —
         // unified precedence: per-model config > block config > API > models.dev.
-        let s = state.read();
-        let loaded = s
-            .provider
-            .model_cache
-            .as_ref()
-            .expect("cache should be set");
+        let loaded = cell_model_cache(&harness).await.expect("cache should be set");
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(4096));
     }
 
@@ -949,7 +974,11 @@ mod tests {
     /// marking `model_id` image-capable (or not). Without this, the harness's
     /// temp-root `AppPaths` has no models.dev data and precedence over
     /// models.dev would go untested.
-    fn seed_models_dev(services: &crate::common::services::Services, model_id: &str, image: bool) {
+    fn seed_models_dev(
+        services: &jinn_domain::common::services::Services,
+        model_id: &str,
+        image: bool,
+    ) {
         let inputs: Vec<&str> = if image {
             vec!["text", "image"]
         } else {
@@ -974,7 +1003,7 @@ mod tests {
     }
 
     fn config_with_model_info_modalities(modalities: Vec<String>) -> ProvidersConfig {
-        use crate::feat::provider_infra::ModelInfoEntry;
+        use jinn_provider_config::ModelInfoEntry;
         ProvidersConfig {
             providers: BTreeMap::from([(
                 "ollama".to_owned(),
@@ -1008,35 +1037,23 @@ mod tests {
         let deps = harness.actor_deps().await;
         let services = deps.services.clone();
         seed_models_dev(&services, "llama3", false);
-        let registry =
-            crate::feat::provider_infra::ProviderRegistry::from_config(config_with_model_info())
-                .expect("registry");
+        let registry = ProviderRegistry::from_config(config_with_model_info()).expect("registry");
         services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
         // When publishing ModelCacheLoaded with an API-discovered value of 8192.
-        let mut cache = ModelCache::new();
-        cache.entries.insert(
-            "ollama".to_owned(),
-            vec![ModelInfo {
-                id: "llama3".to_owned(),
-                context_length: Some(8192),
-                input_modalities: InputModalities::text(),
-            }],
-        );
-        cache.last_updated_at = Some(jiff::Timestamp::now());
+        let cache = cache_with_ollama_llama3(Some(8192));
         harness.publish(ModelCacheLoaded { cache }).await;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the per-model config value wins.
-        let s = state.read();
-        let loaded = s.provider.model_cache.as_ref().expect("cache set");
+        let loaded = cell_model_cache(&harness).await.expect("cache set");
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(16384));
         // And the configured modalities replace the discovered text-only value.
         assert!(
             loaded.entries["ollama"][0]
                 .input_modalities
-                .contains(crate::feat::provider_infra::Modality::Image)
+                .contains(Modality::Image)
         );
     }
 
@@ -1047,9 +1064,7 @@ mod tests {
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
         let services = deps.services.clone();
-        let registry =
-            crate::feat::provider_infra::ProviderRegistry::from_config(config_with_model_info())
-                .expect("registry");
+        let registry = ProviderRegistry::from_config(config_with_model_info()).expect("registry");
         services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
@@ -1068,18 +1083,13 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the static-only model is injected with its config values.
-        let s = state.read();
-        let loaded = s.provider.model_cache.as_ref().expect("cache set");
+        let loaded = cell_model_cache(&harness).await.expect("cache set");
         let injected = loaded.entries["ollama"]
             .iter()
             .find(|m| m.id == "llama3")
             .expect("injected entry");
         assert_eq!(injected.context_length, Some(16384));
-        assert!(
-            injected
-                .input_modalities
-                .contains(crate::feat::provider_infra::Modality::Image)
-        );
+        assert!(injected.input_modalities.contains(Modality::Image));
         // And no duplicate entries were created.
         assert_eq!(loaded.entries["ollama"].len(), 2);
     }
@@ -1111,10 +1121,8 @@ mod tests {
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
         let services = deps.services.clone();
-        let registry = crate::feat::provider_infra::ProviderRegistry::from_config(
-            sample_config_with_block_ctx(),
-        )
-        .expect("registry");
+        let registry =
+            ProviderRegistry::from_config(sample_config_with_block_ctx()).expect("registry");
         services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
@@ -1133,8 +1141,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the static model is injected carrying the block-level value.
-        let s = state.read();
-        let loaded = s.provider.model_cache.as_ref().expect("cache set");
+        let loaded = cell_model_cache(&harness).await.expect("cache set");
         let injected = loaded.entries["ollama"]
             .iter()
             .find(|m| m.id == "llama3")
@@ -1154,33 +1161,22 @@ mod tests {
         let deps = harness.actor_deps().await;
         let services = deps.services.clone();
         seed_models_dev(&services, "llama3", true);
-        let registry =
-            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        let registry = ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
         // When publishing ModelCacheLoaded for that model.
-        let mut cache = ModelCache::new();
-        cache.entries.insert(
-            "ollama".to_owned(),
-            vec![ModelInfo {
-                id: "llama3".to_owned(),
-                context_length: Some(8192),
-                input_modalities: InputModalities::text(),
-            }],
-        );
-        cache.last_updated_at = Some(jiff::Timestamp::now());
+        let cache = cache_with_ollama_llama3(Some(8192));
         harness.publish(ModelCacheLoaded { cache }).await;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the config modalities win: the loaded cache stays text-only even
         // though models.dev enrichment (run before the overlay) stamps Image.
-        let s = state.read();
-        let loaded = s.provider.model_cache.as_ref().expect("cache set");
+        let loaded = cell_model_cache(&harness).await.expect("cache set");
         assert!(
             !loaded.entries["ollama"][0]
                 .input_modalities
-                .contains(crate::feat::provider_infra::Modality::Image),
+                .contains(Modality::Image),
             "config [\"text\"] must beat models.dev image stamping"
         );
     }
@@ -1199,7 +1195,7 @@ mod tests {
             }],
         );
 
-        let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        let mut models_dev = jinn_provider_config::ModelsDevData::new();
         models_dev
             .context_lengths
             .insert("glm-5.1".to_owned(), 200_000);
@@ -1225,7 +1221,7 @@ mod tests {
             }],
         );
 
-        let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        let mut models_dev = jinn_provider_config::ModelsDevData::new();
         models_dev
             .context_lengths
             .insert("gpt-4o".to_owned(), 200_000);
@@ -1251,7 +1247,7 @@ mod tests {
             }],
         );
 
-        let models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        let models_dev = jinn_provider_config::ModelsDevData::new();
 
         // When merging with empty models.dev data.
         super::merge_models_dev_data(&mut cache, &models_dev);
@@ -1305,7 +1301,7 @@ mod tests {
         // Simulate config merge: set model-b to 64000.
         cache.entries.get_mut("provider-b").unwrap()[0].context_length = Some(64_000);
 
-        let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        let mut models_dev = jinn_provider_config::ModelsDevData::new();
         models_dev
             .context_lengths
             .insert("model-a".to_owned(), 999_999);
@@ -1348,7 +1344,7 @@ mod tests {
             }],
         );
 
-        let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        let mut models_dev = jinn_provider_config::ModelsDevData::new();
         models_dev
             .context_lengths
             .insert("glm-5.1".to_owned(), 200_000);
@@ -1378,7 +1374,7 @@ mod tests {
                 input_modalities: InputModalities::text(),
             }],
         );
-        let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        let mut models_dev = jinn_provider_config::ModelsDevData::new();
         models_dev
             .image_support
             .insert("xiaomi/mimo-v2.5".to_owned(), true);
@@ -1390,10 +1386,11 @@ mod tests {
         assert!(
             cache.entries["openrouter"][0]
                 .input_modalities
-                .contains(crate::feat::provider_infra::Modality::Image),
+                .contains(Modality::Image),
             "disk-loaded cache should gain the image bit via re-enrichment"
         );
     }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_dispatches_provider_switch_command() {
@@ -1410,7 +1407,7 @@ mod tests {
             .trouper_system
             .tell(
                 ActorPath::new(PROVIDER_ACTOR_PATH),
-                ProviderSwitch {
+                jinn_provider_selection_msg::ProviderSwitch {
                     session_id: session_id.clone(),
                     provider_id: ModelSelection::Single("ollama/llama3".to_owned()),
                 },
@@ -1436,8 +1433,7 @@ mod tests {
         // Given a provider actor with a registry.
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
-        let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
-            .expect("registry");
+        let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
         deps.services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
@@ -1458,7 +1454,7 @@ mod tests {
 
         // Then the provider picker has entries.
         let s = state.read();
-        let items = s.provider.provider_picker.items();
+        let items = s.frontend.pickers.provider_picker.items();
         assert!(
             !items.is_empty(),
             "picker should have entries after loading"
@@ -1472,8 +1468,7 @@ mod tests {
         // and the loading flag pre-set as the open intent would.
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
-        let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
-            .expect("registry");
+        let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
         deps.services.provider_registry.replace(registry);
         spawn_actor(&harness, &state, deps).await;
 
@@ -1481,7 +1476,12 @@ mod tests {
             .write_test_no_cap()
             .active_session_mut()
             .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-        state.write_test_no_cap().frontend.pickers.endpoint_loading = true;
+        let services = harness.services().await;
+        let cell = services
+            .slices
+            .reader::<ProviderCell>(&provider_state_slot())
+            .expect("provider cell");
+        cell.update(|c| c.endpoint_loading = true);
 
         // When telling the actor to load (a COMMAND: point-to-point).
         harness
@@ -1490,18 +1490,18 @@ mod tests {
             .trouper_system
             .tell(
                 ActorPath::new(PROVIDER_ACTOR_PATH),
-                crate::feat::provider::protocol::command::LoadEndpointPickerEntries,
+                jinn_provider_selection_msg::LoadEndpointPickerEntries,
             )
             .await
             .expect("load command delivers");
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Then loading is cleared (no stuck spinner) and a placeholder row shows.
-        let s = state.read();
         assert!(
-            !s.frontend.pickers.endpoint_loading,
+            !cell.read().endpoint_loading,
             "non-OpenRouter load must clear the loading flag"
         );
+        let s = state.read();
         assert!(
             !s.frontend.endpoint_picker().items().is_empty(),
             "non-OpenRouter load must still show the placeholder row"

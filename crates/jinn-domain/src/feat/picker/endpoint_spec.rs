@@ -22,10 +22,10 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 
 use crate::common::app_state::AppState;
-use crate::feat::endpoint::Endpoint;
-use crate::feat::endpoint::picker_entry::EndpointEntry;
-use crate::feat::provider::protocol::command::LoadEndpointPickerEntries;
-use crate::feat::provider::protocol::command::RefreshEndpointPickerEntries;
+use jinn_provider_selection_msg::endpoint::Endpoint;
+use jinn_provider_selection_msg::endpoint::EndpointEntry;
+use jinn_provider_selection_msg::LoadEndpointPickerEntries;
+use jinn_provider_selection_msg::RefreshEndpointPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_core_types::model_selection::ModelSelection;
@@ -210,9 +210,15 @@ fn endpoint_status(ctx: &StatusCtx<'_>) -> Option<Line<'static>> {
         Span::styled("  ".to_owned(), gray),
     ];
 
-    if state.frontend.pickers.endpoint_loading {
+    if state
+        .provider_state()
+        .is_some_and(|cell| cell.read().endpoint_loading)
+    {
         spans.push(Span::styled("fetching\u{2026}".to_owned(), orange));
-    } else if let Some(ts) = state.frontend.pickers.endpoint_fetched_at {
+    } else if let Some(ts) = state
+        .provider_state()
+        .and_then(|cell| cell.read().endpoint_fetched_at)
+    {
         spans.push(Span::styled(format!("fetched {}", format_age(ts)), gray));
     } else {
         spans.push(Span::styled("no fetch yet".to_owned(), gray));
@@ -244,7 +250,9 @@ fn format_age(fetched_at: jiff::Timestamp) -> String {
 fn open_endpoint(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     let state = state_of(ctx);
     state.frontend.endpoint_picker_mut().reset();
-    state.frontend.pickers.endpoint_loading = true;
+    if let Some(cell) = state.provider_state() {
+        cell.update(|c| c.endpoint_loading = true);
+    }
     PickerOutcome::empty().with_message(LoadEndpointPickerEntries)
 }
 
@@ -260,7 +268,9 @@ fn refresh_endpoints(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     }
     // Flag the fetch as in-flight this frame, reset, and publish the
     // forced-refresh command.
-    state.frontend.pickers.endpoint_loading = true;
+    if let Some(cell) = state.provider_state() {
+        cell.update(|c| c.endpoint_loading = true);
+    }
     state.frontend.endpoint_picker_mut().reset();
     PickerOutcome::empty().with_message(RefreshEndpointPickerEntries)
 }
@@ -292,6 +302,14 @@ fn confirm_endpoint(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     PickerOutcome::empty()
         .with_message(MarkSessionInteracted { session_id })
         .close()
+}
+
+/// Reads the endpoint-loading flag from the provider cell (test helper).
+#[cfg(test)]
+fn endpoint_loading(state: &AppState) -> bool {
+    state
+        .provider_state()
+        .is_some_and(|cell| cell.read().endpoint_loading)
 }
 
 #[cfg(test)]
@@ -355,7 +373,7 @@ mod tests {
 
         // Then loading is flagged this frame and the load message is emitted.
         assert!(
-            state.frontend.pickers.endpoint_loading,
+            endpoint_loading(&state),
             "open must set loading so the indicator appears this frame"
         );
         assert!(
@@ -381,7 +399,7 @@ mod tests {
 
         // Then loading is flagged and the forced-refresh command is emitted.
         assert!(
-            state.frontend.pickers.endpoint_loading,
+            endpoint_loading(&state),
             "refresh must set loading so the indicator appears this frame"
         );
         assert!(
@@ -413,7 +431,7 @@ mod tests {
             "refresh must be a no-op for an alloy model"
         );
         assert!(
-            !state.frontend.pickers.endpoint_loading,
+            !endpoint_loading(&state),
             "refresh must not set loading for an alloy model"
         );
     }
@@ -552,7 +570,9 @@ mod tests {
             .frontend
             .endpoint_picker_mut()
             .set_items(wrap(vec![EndpointEntry::auto_route(true, default_theme())]));
-        state.frontend.pickers.endpoint_loading = true;
+        if let Some(cell) = state.provider_state() {
+        cell.update(|c| c.endpoint_loading = true);
+    }
 
         // When rendering the status line.
         let line = status_line_of(&state);
@@ -574,7 +594,9 @@ mod tests {
             .frontend
             .endpoint_picker_mut()
             .set_items(wrap(vec![EndpointEntry::auto_route(true, default_theme())]));
-        state.frontend.pickers.endpoint_fetched_at = Some(jiff::Timestamp::now());
+        if let Some(cell) = state.provider_state() {
+            cell.update(|c| c.endpoint_fetched_at = Some(jiff::Timestamp::now()));
+        }
 
         // When rendering the status line.
         let line = status_line_of(&state);

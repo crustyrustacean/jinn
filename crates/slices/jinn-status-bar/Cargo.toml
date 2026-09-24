@@ -11,6 +11,8 @@ jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }
 ratatui = { workspace = true }
 
+jinn-provider-config = { workspace = true }
+
 [dev-dependencies]
 rstest = { workspace = true }
 tokio = { workspace = true }

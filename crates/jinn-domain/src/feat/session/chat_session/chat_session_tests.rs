@@ -39,7 +39,7 @@ fn push_entry_adds_to_history() {
 fn push_entry_expands_known_prompt_token_in_user_entry() {
     // Given a session whose store has a `#name` template.
     use crate::feat::context::prompt_template::PromptTemplateStore;
-    use crate::feat::context::protocol::prompt_template::PromptTemplate;
+    use crate::PromptTemplate;
 
     let mut session = ChatSessionState::new();
     session.set_discovered_prompt_templates(PromptTemplateStore::from_vec(vec![PromptTemplate {
@@ -5766,7 +5766,7 @@ fn set_model_to_alloy_clears_endpoint_pin() {
     session.set_model(ModelSelection::Single(
         "openrouter/anthropic/claude".to_owned(),
     ));
-    session.profile_mut().endpoint = Some(crate::feat::endpoint::Endpoint {
+    session.profile_mut().endpoint = Some(jinn_provider_selection_msg::endpoint::Endpoint {
         tag: "anthropic".to_owned(),
         provider_name: "Anthropic".to_owned(),
     });

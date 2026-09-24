@@ -94,7 +94,10 @@ pub fn evaluate_attachment_gate(
             .get(session_id)
             .and_then(|s| s.profile().model.last_model())
             .map(str::to_owned);
-        (model_id, guard.provider.model_cache.clone())
+        let cache = guard
+            .provider_state()
+            .and_then(|cell| cell.read().model_cache.clone());
+        (model_id, cache)
     };
     attachment_gate(
         model_id.as_deref(),

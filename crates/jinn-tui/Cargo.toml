@@ -45,6 +45,8 @@ jinn-selection-widget = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+jinn-provider-selection-msg = { workspace = true }
+
 [dev-dependencies]
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }

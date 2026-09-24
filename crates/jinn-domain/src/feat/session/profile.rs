@@ -66,7 +66,7 @@ pub struct SessionProfile {
     /// OpenRouter backend. Ignored for alloys and all other backends.
     /// Legacy sessions without this field deserialize to `None`.
     #[serde(default)]
-    pub endpoint: Option<crate::feat::endpoint::Endpoint>,
+    pub endpoint: Option<jinn_provider_selection_msg::endpoint::Endpoint>,
 }
 
 impl Default for SessionProfile {
@@ -162,7 +162,7 @@ impl SessionProfile {
         disabled_tools: HashSet<String>,
         disabled_skills: HashSet<String>,
         reasoning_effort: Option<crate::ReasoningEffort>,
-        endpoint: Option<crate::feat::endpoint::Endpoint>,
+        endpoint: Option<jinn_provider_selection_msg::endpoint::Endpoint>,
     ) -> Self {
         Self {
             model,
@@ -371,7 +371,7 @@ mod tests {
         // Given a profile with a pinned endpoint.
         let profile = {
             let mut p = SessionProfile::from_config("openrouter/anthropic/claude".to_owned());
-            p.endpoint = Some(crate::feat::endpoint::Endpoint {
+            p.endpoint = Some(jinn_provider_selection_msg::endpoint::Endpoint {
                 tag: "anthropic".to_owned(),
                 provider_name: "Anthropic".to_owned(),
             });
@@ -385,7 +385,7 @@ mod tests {
         // Then the pinned endpoint is preserved.
         assert_eq!(
             reloaded.endpoint,
-            Some(crate::feat::endpoint::Endpoint {
+            Some(jinn_provider_selection_msg::endpoint::Endpoint {
                 tag: "anthropic".to_owned(),
                 provider_name: "Anthropic".to_owned(),
             }),
@@ -414,7 +414,7 @@ mod tests {
             HashSet::new(),
             HashSet::new(),
             None,
-            Some(crate::feat::endpoint::Endpoint {
+            Some(jinn_provider_selection_msg::endpoint::Endpoint {
                 tag: "azure".to_owned(),
                 provider_name: "Azure".to_owned(),
             }),

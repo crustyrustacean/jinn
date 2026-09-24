@@ -38,7 +38,7 @@ pub use common::actor::{ActorCounter, ActorName};
 pub use common::app_paths::{AppPaths, BrowserProfileMode};
 pub use common::app_state::pin_sort_key;
 pub use common::app_state::{
-    AppState, FocusScope, FrontendState, ProviderState, ScopeStack, SessionState,
+    AppState, FocusScope, FrontendState, ScopeStack, SessionState,
 };
 pub use common::bridge::{Bridge, BridgeClosure};
 pub use common::bus::BusMessage;
@@ -81,7 +81,11 @@ pub use feat::session::no_api_keys_msg;
 pub use feat::session::phase_machine::PhaseKind;
 
 // Re-export reasoning types
-pub use feat::reasoning::{ReasoningEffort, resolve_effort};
+// The reasoning-effort vocabulary is owned by the provider-selection
+// slice's msg crate (kernel→msg direction); re-exported here so the
+// long-standing `jinn_domain::ReasoningEffort` paths keep resolving.
+pub use jinn_provider_selection_msg::ReasoningEffort;
+pub use jinn_provider_selection_msg::resolve_effort;
 // Re-export install (default resource seeding).
 pub use feat::install::{
     Destinations, InstallError, InstallOutcome, InstallReport, JinnTomlOutcome, install_defaults_to,
@@ -93,11 +97,11 @@ pub use feat::persona::{Persona, PersonaEntry};
 // Re-export services submodules
 
 // Re-export protocol types at crate root
-pub use protocol::ProviderPickerEntry;
+pub use jinn_provider_selection_msg::ProviderPickerEntry;
 pub use protocol::entries_to_messages;
 pub use protocol::{
     ChatEntry, ChatEntryId, ChatEntryKind, IntentResult, KernelIntent, Key, KeyEvent, Mode,
-    Modifiers, PickerKind, PinPosition, PromptTemplate,
+    Modifiers, PickerKind, PinPosition,
 };
 
 // Re-export domain types from their canonical locations
@@ -116,12 +120,17 @@ pub use jinn_context_curation_msg::TriggerCompaction;
 // Stream contracts are owned by the inference slice's msg crate (kernel→msg
 // direction, jinn-session-msg precedent); re-exported here so the long-standing
 // `jinn_domain::X` paths keep resolving.
-pub use feat::provider::protocol::command::{
-    ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
+// Provider-selection contracts are owned by the provider-selection slice's
+// msg crate (kernel→msg direction); re-exported here so the long-standing
+// `jinn_domain::X` paths keep resolving.
+pub use jinn_provider_selection_msg::{
+    LoadEndpointPickerEntries, LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed,
+    ProviderSwitch, ProviderSwitched, RefreshEndpointPickerEntries, RefreshModels,
 };
-pub use feat::provider::protocol::event::{
-    ModelCacheLoaded, ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched,
-};
+// The prompt-scan contracts are owned by the session-init slice's msg crate
+// (kernel→msg direction, skills precedent); re-exported here so the
+// long-standing `jinn_domain::X` paths keep resolving.
+pub use jinn_session_init_msg::{PromptTemplate, PromptTemplatesLoaded, RescanPromptTemplates};
 pub use feat::session::protocol::session_fork_requested::SessionForkRequested;
 pub use feat::session::protocol::session_id::SessionId;
 pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;

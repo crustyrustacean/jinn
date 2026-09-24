@@ -3,7 +3,6 @@
 pub mod chat_entry_selection;
 pub mod chat_input;
 pub mod context;
-pub mod endpoint;
 pub mod file_lister;
 pub mod global;
 pub mod image_convert;
@@ -16,7 +15,6 @@ pub mod project;
 pub mod provider;
 pub use jinn_provider_config as provider_infra;
 pub mod pruner_accumulation_input;
-pub mod reasoning;
 pub mod session;
 pub mod session_lifecycle;
 pub mod session_search;

@@ -56,7 +56,7 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
         .ok_or(PickerConfirmError::NoActivePicker)?;
 
     let has_selection = match kind {
-        PickerKind::Provider => state.provider.provider_picker.selected_item().is_some(),
+        PickerKind::Provider => state.frontend.pickers.provider_picker.selected_item().is_some(),
         PickerKind::Session => state.frontend.session_picker().selected_item().is_some(),
         PickerKind::Persona => state.frontend.persona_picker().selected_item().is_some(),
         PickerKind::Theme => state.frontend.theme_picker().selected_item().is_some(),
@@ -168,7 +168,8 @@ mod tests {
     fn validate_picker_confirm_accepts_reasoning_with_selection() {
         // If the selection gate were broken, confirming with a selection would
         // be rejected.
-        use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
+        use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
+        use jinn_core_types::reasoning::ReasoningEffort;
 
         let mut state = AppState::default_with_scope_focus();
         let entry = ReasoningEffortEntry {

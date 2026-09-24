@@ -1,6 +1,7 @@
 //! Reasoning effort — how hard a reasoning-capable model thinks before answering.
 //!
-//! This module re-exports the [`ReasoningEffort`] type
+//! Re-homed from the kernel `feat/reasoning/` in the provider-selection
+//! window. This module re-exports the [`ReasoningEffort`] type
 //! (defined in `jinn-core-types`, the foundational value-type crate) and
 //! provides [`resolve_effort`], which surfaces a session's own effort.
 //!
@@ -13,11 +14,12 @@
 //!
 //! The type lives in `jinn-core-types` so the provider request builder, the
 //! preferences config crate, and the kernel can all reference it without
-//! depending on each other.
+//! depending on each other. The picker entry lives here so the kernel
+//! spec and this crate share one vocabulary without a kernel dependency.
 
 pub use jinn_core_types::reasoning::ReasoningEffort;
 
-pub mod picker_entry;
+mod picker_entry;
 
 pub use picker_entry::ReasoningEffortEntry;
 
@@ -35,7 +37,7 @@ pub fn resolve_effort(session_effort: Option<ReasoningEffort>) -> Option<Reasoni
 }
 
 #[cfg(test)]
-mod tests {
+mod tests_mod {
     #![allow(
         clippy::expect_used,
         clippy::panic,

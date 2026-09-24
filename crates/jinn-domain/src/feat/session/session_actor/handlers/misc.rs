@@ -6,7 +6,7 @@
 use super::super::SessionPersistenceActor;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
-use crate::feat::provider::protocol::event::ModelsRefreshed;
+use crate::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
@@ -316,7 +316,7 @@ mod tests {
         clippy::unnecessary_mut_passed,
         reason = "test code"
     )]
-    use crate::feat::provider::protocol::event::ModelsRefreshed;
+    use crate::ModelsRefreshed;
     use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
     use crate::feat::session::session_actor::helpers::{
         test_actor_recording, test_actor_with_store_recording,

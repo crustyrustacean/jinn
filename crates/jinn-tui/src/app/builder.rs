@@ -72,6 +72,10 @@ impl TuiAppBuilder {
                 jinn_slices::scope_focus_slot(),
                 jinn_slices::ScopeFocusState::default(),
             );
+            let _ = slices.register(
+                jinn_provider_selection_msg::provider_state_slot(),
+                jinn_provider_selection_msg::ProviderCell::default(),
+            );
             state.frontend.attach_slices(slices);
         }
 

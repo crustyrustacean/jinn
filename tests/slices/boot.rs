@@ -54,6 +54,21 @@ async fn harness_with_config(
 
 use std::sync::Arc;
 
+/// Mints a lone provider cell for boot tests (boot's init actor writes
+/// the disk-loaded cache through it).
+fn test_provider_cell(
+    services: &jinn_domain::Services,
+) -> jinn_slices::TypedCell<jinn_provider_selection_msg::ProviderCell> {
+    let _ = services.slices.register(
+        jinn_provider_selection_msg::provider_state_slot(),
+        jinn_provider_selection_msg::ProviderCell::default(),
+    );
+    services
+        .slices
+        .reader(&jinn_provider_selection_msg::provider_state_slot())
+        .expect("provider cell registered")
+}
+
 #[rstest::rstest]
 #[tokio::test]
 async fn install_spawns_trio_and_readiness_fires_on_all_actors_spawned() {
@@ -62,8 +77,9 @@ async fn install_spawns_trio_and_readiness_fires_on_all_actors_spawned() {
     let (harness, services) = harness_with_config(&config).await;
     let boot = install_actors(
         harness.system(),
-        jinn_domain::State::new(jinn_domain::AppState::default()),
+        jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus()),
         &services,
+        test_provider_cell(&services),
     );
 
     // When composition publishes AllActorsSpawned (the startup tail's order).
@@ -83,8 +99,9 @@ async fn env_config_ask_round_trips_seeded_config() {
     let (harness, services) = harness_with_config(&config).await;
     let boot = install_actors(
         harness.system(),
-        jinn_domain::State::new(jinn_domain::AppState::default()),
+        jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus()),
         &services,
+        test_provider_cell(&services),
     );
 
     // When composition asks the env-init actor for the config (the startup tail).
@@ -115,8 +132,9 @@ async fn environment_loaded_fans_out_to_subscribers() {
     let (harness, services) = harness_with_config(&config).await;
     let boot = install_actors(
         harness.system(),
-        jinn_domain::State::new(jinn_domain::AppState::default()),
+        jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus()),
         &services,
+        test_provider_cell(&services),
     );
     let probe = harness.spawn_recorder::<EnvironmentLoaded>().await;
 
@@ -174,8 +192,9 @@ async fn env_config_ask_returns_none_when_storage_errors() {
     services.config_storage = ConfigStorageService::new(Arc::new(FailingStorage));
     let boot = install_actors(
         harness.system(),
-        jinn_domain::State::new(jinn_domain::AppState::default()),
+        jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus()),
         &services,
+        test_provider_cell(&services),
     );
 
     // When the startup tail asks for the config.
@@ -213,8 +232,9 @@ async fn install_composes_over_a_recording_bus() {
     // When installing the trio.
     let boot = install_actors(
         &system,
-        jinn_domain::State::new(jinn_domain::AppState::default()),
+        jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus()),
         &services,
+        test_provider_cell(&services),
     );
 
     // Then the readiness handoff completes on AllActorsSpawned.

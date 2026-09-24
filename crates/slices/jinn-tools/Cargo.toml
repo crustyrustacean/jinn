@@ -34,6 +34,8 @@ jinn-domain = { workspace = true, features = ["test-harness"] }
 jinn-context-assembly = { workspace = true }
 jinn-preferences-config = { workspace = true }
 
+jinn-session-init-msg = { workspace = true }
+
 [dev-dependencies]
 async-trait = { workspace = true }
 tempfile = { workspace = true }

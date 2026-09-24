@@ -27,6 +27,8 @@ tracing = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 
+jinn-session-init-msg = { workspace = true }
+
 [dev-dependencies]
 jinn-testutil = { workspace = true }
 rstest = { workspace = true }

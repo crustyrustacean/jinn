@@ -1,13 +1,31 @@
 //! Provider picker entry type and rendering.
+//!
+//! Re-homed from the kernel `feat/provider/picker_entry.rs` in the
+//! provider-selection window; the `selected_style` helper was copied from
+//! the kernel `feat/picker/style.rs` (kept kernel-side for the other
+//! specs) so this crate stays kernel-free.
 
 use std::ops::Range;
 
-use crate::feat::picker::style::selected_style;
-use crate::feat::theme::Theme;
 use jinn_selection_widget::PickerItem;
 use jinn_selection_widget::highlight_text_with_bg;
+use jinn_theme::Theme;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+
+/// Returns the style for selected items (primary text on selected background).
+///
+/// Copied from the kernel `feat/picker/style.rs`; that copy remains for the
+/// kernel-resident picker specs.
+fn selected_style(is_selected: bool, theme: &Theme) -> Style {
+    if is_selected {
+        Style::default()
+            .fg(theme.primary_text)
+            .bg(theme.picker_selected_bg)
+    } else {
+        Style::default()
+    }
+}
 
 /// A provider entry ready for display in the picker.
 #[derive(Debug, Clone)]
@@ -199,5 +217,25 @@ impl jinn_selection_widget::TreeItem for ProviderPickerEntry {
         match_indices: &[Range<usize>],
     ) -> Line<'static> {
         render_provider_row(self, is_selected, match_indices)
+    }
+}
+
+/// Sets `selected = true` on entries matching the current model selection.
+///
+/// For `Single`, checks the one matching entry. For `Alloy`, checks all
+/// member entries. Used by the provider spec's alloy-mode toggle (entering
+/// alloy pre-checks the session's current models) and by the slice's
+/// loader (pre-checking at load time).
+pub fn pre_check_active_models(entries: &mut [ProviderPickerEntry], selection: &jinn_core_types::model_selection::ModelSelection) {
+    let model_ids: Vec<&str> = match selection {
+        jinn_core_types::model_selection::ModelSelection::Single(s) => vec![s],
+        jinn_core_types::model_selection::ModelSelection::Alloy { models, .. } => {
+            models.iter().map(String::as_str).collect()
+        }
+    };
+    for entry in entries.iter_mut() {
+        if model_ids.iter().any(|id| *id == entry.provider_id) {
+            entry.selected = true;
+        }
     }
 }

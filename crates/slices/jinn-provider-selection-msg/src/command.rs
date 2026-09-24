@@ -1,17 +1,17 @@
-//! Provider commands.
+//! Provider commands — re-homed verbatim from the kernel
+//! `feat/provider/protocol/command.rs` (minus the deleted `SendMessage`
+//! shim and the prompt-scan pair, which lives in `jinn-session-init-msg`).
 
-use std::path::PathBuf;
-
-use crate::common::bus::BusMessage;
+use jinn_core_types::ModelSelection;
+use jinn_core_types::SessionId;
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::SessionId;
-use jinn_core_types::model_selection::ModelSelection;
+use jinn_slices::BusMessage;
 
 /// Switch the active LLM provider.
 ///
 /// Carries the target provider ID. The handler validates it against the registry,
-/// swaps the factory, and emits [`ProviderSwitched`](super::ProviderSwitched).
+/// swaps the factory, and emits [`ProviderSwitched`](crate::ProviderSwitched).
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Switch a session's model selection.")]
 pub struct ProviderSwitch {
@@ -23,43 +23,16 @@ pub struct ProviderSwitch {
 
 impl BusMessage for ProviderSwitch {}
 
-/// Send a message to the AI provider.
-#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
-#[schema(description = "Backward-compat send: republished as EnqueueUserMessage.")]
-pub struct SendMessage {
-    /// The session this message belongs to.
-    pub session_id: SessionId,
-    /// The message text.
-    pub text: String,
-}
-
-impl BusMessage for SendMessage {}
-
 /// Refresh the model list from all providers.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Refresh the model list from all providers.")]
 pub struct RefreshModels;
 impl BusMessage for RefreshModels {}
 
-/// Rescan prompt templates for a specific session.
-///
-/// Carries the session's cwd: the worker scans user/system plus project-local
-/// `.agents/prompts` dirs (most-local wins), and emits `PromptTemplatesLoaded`.
-#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
-#[schema(description = "Rescan prompt templates for a session.")]
-pub struct RescanPromptTemplates {
-    /// The session whose scan this is.
-    pub session_id: crate::SessionId,
-    /// The working directory driving the scan.
-    #[serde(default)]
-    pub cwd: PathBuf,
-}
-impl BusMessage for RescanPromptTemplates {}
-
 /// Load entries for the provider/model picker.
 ///
 /// The provider actor receives this, loads entries from the provider registry,
-/// and writes them into `AppState`.
+/// and writes them into the provider cell.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Load provider picker entries from the registry.")]
 pub struct LoadProviderPickerEntries;
@@ -70,7 +43,7 @@ impl BusMessage for LoadProviderPickerEntries {}
 /// backend, and either fetches the model's OpenRouter routing endpoints via
 /// `list_endpoints` or — for a non-OpenRouter backend — populates a single
 /// explanatory "not served via OpenRouter" row. The entries are written into
-/// `AppState`'s endpoint picker.
+/// the provider cell's endpoint picker.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Load endpoint picker entries for the active model.")]
 pub struct LoadEndpointPickerEntries;

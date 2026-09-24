@@ -277,10 +277,11 @@ impl CompactionWorker {
                 return vec![];
             };
 
-            let context_length = resolve_context_limit(
-                state.provider.model_cache.as_ref(),
-                model_name.display_str(),
-            );
+            let model_cache = state
+                .provider_state()
+                .and_then(|cell| cell.read().model_cache.clone());
+            let context_length =
+                resolve_context_limit(model_cache.as_ref(), model_name.display_str());
 
             let context_limit = match context_length {
                 Some(limit) => limit,

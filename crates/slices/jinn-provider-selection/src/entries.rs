@@ -1,12 +1,13 @@
 //! Provider entries - loading, sorting, and formatting.
 //!
-//! Contains loader functions, sorting, and formatting utilities for the
-//! provider picker overlay. The [`ProviderPickerEntry`] struct and [`PickerItem`]
-//! implementation live in `crate::protocol`.
+//! Re-homed from the kernel `feat/provider/entries.rs` minus the two
+//! `promote_active_to_top`/theme helpers that stay kernel-side (the
+//! kernel picker style module). The loader wrapper lives in the slice's
+//! `loader.rs`.
 
-use crate::feat::picker::style::promote_active_to_top;
-use crate::feat::theme::Theme;
-use crate::protocol::ProviderPickerEntry;
+use jinn_domain::feat::picker::style::promote_active_to_top;
+use jinn_domain::feat::theme::Theme;
+use jinn_provider_selection_msg::ProviderPickerEntry;
 /// Reorders entries so that available entries appear first (sorted by model name),
 /// followed by unavailable entries (sorted by model name). When `filter` is empty,
 /// the entry matching `active_provider` is promoted to the very top and marked active.
@@ -65,7 +66,7 @@ pub(crate) fn promote_selected_to_top(entries: &mut Vec<ProviderPickerEntry>) {
 ///
 /// Each line is independently truncated to `width`.
 pub fn format_footers(
-    model_cache: Option<&crate::feat::provider_infra::ModelCache>,
+    model_cache: Option<&jinn_provider_config::ModelCache>,
     width: usize,
     theme: &Theme,
     selected_count: usize,
@@ -79,7 +80,7 @@ pub fn format_footers(
 
 /// Line 1 of the provider footer: refresh keybind + last-updated time.
 fn refresh_line(
-    model_cache: Option<&crate::feat::provider_infra::ModelCache>,
+    model_cache: Option<&jinn_provider_config::ModelCache>,
     theme: &Theme,
 ) -> ratatui::text::Line<'static> {
     use ratatui::style::Style;
@@ -207,9 +208,9 @@ pub fn truncate_line(
 /// Checks availability against the registry and API keys.
 /// The entry is marked `is_remote: false` and `is_alias: false`.
 fn static_provider_entry(
-    provider: &crate::feat::provider_infra::ResolvedProvider,
-    registry: &crate::feat::provider_infra::ProviderRegistry,
-    api_keys: &crate::feat::provider_infra::ApiKeys,
+    provider: &jinn_provider_config::ResolvedProvider,
+    registry: &jinn_provider_config::ProviderRegistry,
+    api_keys: &jinn_provider_config::ApiKeys,
     theme: &Theme,
 ) -> ProviderPickerEntry {
     ProviderPickerEntry {
@@ -236,9 +237,9 @@ fn static_provider_entry(
 /// the resolved target is available. Unresolvable aliases get empty defaults
 /// and are marked unavailable.
 fn alias_entry(
-    alias: &crate::feat::provider_infra::AliasEntry,
-    registry: &crate::feat::provider_infra::ProviderRegistry,
-    api_keys: &crate::feat::provider_infra::ApiKeys,
+    alias: &jinn_provider_config::AliasEntry,
+    registry: &jinn_provider_config::ProviderRegistry,
+    api_keys: &jinn_provider_config::ApiKeys,
     theme: &Theme,
 ) -> ProviderPickerEntry {
     let resolved = registry.resolve_alias(&alias.name);
@@ -308,9 +309,9 @@ fn remote_entry(
 fn merge_remote_entries(
     entries: &mut Vec<ProviderPickerEntry>,
     static_ids: &std::collections::HashSet<String>,
-    registry: &crate::feat::provider_infra::ProviderRegistry,
-    api_keys: &crate::feat::provider_infra::ApiKeys,
-    cache: &crate::feat::provider_infra::ModelCache,
+    registry: &jinn_provider_config::ProviderRegistry,
+    api_keys: &jinn_provider_config::ApiKeys,
+    cache: &jinn_provider_config::ModelCache,
     theme: &Theme,
 ) {
     let config = registry.config();
@@ -360,9 +361,9 @@ fn merge_remote_entries(
 /// [`SelectionState`]: jinn_selection_widget::SelectionState
 /// [`PickerItem`]: jinn_selection_widget::PickerItem
 pub fn load_provider_entries(
-    registry: &crate::feat::provider_infra::ProviderRegistry,
-    api_keys: &crate::feat::provider_infra::ApiKeys,
-    model_cache: Option<&crate::feat::provider_infra::ModelCache>,
+    registry: &jinn_provider_config::ProviderRegistry,
+    api_keys: &jinn_provider_config::ApiKeys,
+    model_cache: Option<&jinn_provider_config::ModelCache>,
     theme: &Theme,
 ) -> Vec<ProviderPickerEntry> {
     let mut entries = Vec::new();
@@ -395,3 +396,7 @@ pub fn load_provider_entries(
 
     entries
 }
+
+#[cfg(test)]
+#[path = "entries_tests.rs"]
+mod entries_tests;

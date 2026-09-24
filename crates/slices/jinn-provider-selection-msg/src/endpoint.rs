@@ -1,5 +1,9 @@
 //! OpenRouter routing endpoint — pinning one upstream for cache affinity.
 //!
+//! Re-homed from the kernel `feat/endpoint/` in the provider-selection
+//! window; serde shape is byte-identical (`Endpoint` persists in session
+//! state).
+//!
 //! OpenRouter can serve a single model through several upstreams (Anthropic,
 //! Azure, Bedrock, Google Vertex, etc.) and load-balances across them by
 //! default. Each hop lands on an upstream whose prefix cache may be cold.
@@ -13,9 +17,11 @@
 //! The pin applies only to a `Single` (non-alloy) model on the OpenRouter
 //! backend; it is ignored for alloys and all other backends.
 
-use serde::{Deserialize, Serialize};
-
 pub mod picker_entry;
+
+pub use picker_entry::EndpointEntry;
+
+use serde::{Deserialize, Serialize};
 
 /// A pinned OpenRouter routing endpoint.
 ///

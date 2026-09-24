@@ -51,6 +51,7 @@ pub fn install_actors(
     system: &trouper::system::ActorSystem,
     state: State,
     services: &Services,
+    provider_cell: jinn_slices::TypedCell<jinn_provider_selection_msg::ProviderCell>,
 ) -> BootHandles {
     // System-ready actor: signals main thread when all actors started.
     let (ready_tx, ready_rx) = kanal::unbounded::<()>();
@@ -85,7 +86,7 @@ pub fn install_actors(
                 services: services.clone(),
             },
             state,
-            provider_cap: jinn_domain::common::tcaps::mint::mint_provider_cap(),
+            provider_cell,
         },
     );
 

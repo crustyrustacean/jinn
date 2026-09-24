@@ -21,6 +21,7 @@ use jinn_domain::ProviderRegistryService;
 use jinn_domain::Services;
 use jinn_domain::SessionStoreService;
 use jinn_preferences_config::UserPreferencesStorageService;
+use jinn_provider_selection;
 use jinn_quake_bar;
 use jinn_slices;
 
@@ -235,26 +236,29 @@ impl ActorSystemBuilder {
         // before the first `EnvironmentLoaded` trigger.
         jinn_session_init_activate(&mut services, state.clone());
 
+        // Provider-selection slice: activation mints the provider cell,
+        // spawns the provider + discover actors (trouper), and attaches
+        // the keybind rows. Must precede the boot trio: boot's
+        // provider-init actor receives the cell handle minted here.
+        let provider_selection = jinn_provider_selection_activate(&mut services, state.clone());
+
         // ── Infrastructure actors ──────────────────────────────────────────
 
         // Boot trio (system-ready, env-init, provider-init) from the boot
         // slice; `boot.ready_rx` blocks the main thread below until
         // `AllActorsSpawned`, and `boot.env_init_path` is the ask target
-        // for the startup tail.
-        let boot = jinn_boot::install_actors(&services.trouper_system, state.clone(), &services);
+        // for the startup tail. Receives the provider cell the
+        // provider-selection slice minted above.
+        let boot = jinn_boot::install_actors(
+            &services.trouper_system,
+            state.clone(),
+            &services,
+            provider_selection.provider_cell,
+        );
 
         // Preferences + app-state actors: trouper, installed with the
         // preferences slice's activation wrapper below.
         // ── Domain actors ──────────────────────────────────────────────────
-
-        // Model discovery actor.
-        let _discover = jinn_domain::feat::provider::discover_actor::DiscoverActor::spawn(
-            &services.trouper_system,
-            jinn_domain::feat::provider::discover_actor::DiscoverActorDeps {
-                deps: actor_deps.clone(),
-                state: state.clone(),
-            },
-        );
 
         // Session persistence actor — must spawn before ToolOrchestratorActor so
         // ToolsRegistered subscription is ready when tools register builtins in on_start.
@@ -415,17 +419,6 @@ impl ActorSystemBuilder {
                 deps: actor_deps.clone(),
                 state: state.clone(),
                 frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
-            },
-        );
-
-        // Provider actor.
-        let _provider = jinn_domain::feat::provider::provider_actor::ProviderActor::spawn(
-            &services.trouper_system,
-            jinn_domain::feat::provider::provider_actor::ProviderActorDeps {
-                state: state.clone(),
-                deps: actor_deps.clone(),
-                cap: jinn_domain::common::tcaps::mint::mint_provider_cap(),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
 
@@ -1041,6 +1034,33 @@ fn jinn_session_init_activate(services: &mut Services, state: jinn_domain::commo
     if let Err(error) = jinn_session_init::activate(services, state) {
         panic!("session-init slice activation failed: {error}");
     }
+}
+
+/// Activates the provider-selection slice: mints the provider cell,
+/// spawns the provider + discover actors (trouper), attaches the
+/// keybind rows. Returns the cell handle so wiring can hand it to the
+/// boot slice (its provider-init actor writes the disk-loaded cache
+/// through the same cell).
+fn jinn_provider_selection_activate(
+    services: &mut Services,
+    state: jinn_domain::common::state::State,
+) -> jinn_provider_selection::ProviderSelectionHandles {
+    // `Services` is cheap to clone (Arc fields); the clone side-steps
+    // the host's mutable viewport borrow for the activation call
+    // (discord-activation pattern).
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    let handles = jinn_provider_selection::activate(&mut host, &services_snapshot, state);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("provider-selection slice finalize failed: {error}");
+    }
+    handles
 }
 
 /// The `TermHandle` implementation over the coordinator's trouper path.

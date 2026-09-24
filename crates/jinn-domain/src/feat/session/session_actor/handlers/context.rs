@@ -11,7 +11,7 @@
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::persona::PersonaEntry;
-use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
+use crate::PromptTemplatesLoaded;
 use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};

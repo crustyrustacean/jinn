@@ -804,10 +804,15 @@ fn render_shows_context_limit_with_usage_and_percentage() {
             input_modalities: jinn_domain::feat::provider_infra::InputModalities::text(),
         }],
     );
-    state.provider.model_cache = Some(jinn_domain::feat::provider_infra::ModelCache {
-        entries: cache_entries,
-        last_updated_at: None,
-    });
+    state
+        .provider_state()
+        .expect("provider cell attached")
+        .update(|cell| {
+            cell.model_cache = Some(jinn_provider_config::ModelCache {
+                entries: cache_entries,
+                last_updated_at: None,
+            });
+        });
 
     let (mut terminal, area) = setup_term(100, 2);
     terminal
@@ -854,10 +859,15 @@ fn render_falls_back_when_no_context_limit_in_cache() {
             input_modalities: jinn_domain::feat::provider_infra::InputModalities::text(),
         }],
     );
-    state.provider.model_cache = Some(jinn_domain::feat::provider_infra::ModelCache {
-        entries: cache_entries,
-        last_updated_at: None,
-    });
+    state
+        .provider_state()
+        .expect("provider cell attached")
+        .update(|cell| {
+            cell.model_cache = Some(jinn_provider_config::ModelCache {
+                entries: cache_entries,
+                last_updated_at: None,
+            });
+        });
 
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -897,7 +907,9 @@ fn render_falls_back_when_no_model_cache() {
     });
     state.active_session_mut().set_context_size(5000);
     // No model cache.
-    assert!(state.provider.model_cache.is_none());
+    assert!(state
+        .provider_state()
+        .is_none_or(|cell| cell.read().model_cache.is_none()));
 
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -936,10 +948,15 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
             input_modalities: jinn_domain::feat::provider_infra::InputModalities::text(),
         }],
     );
-    state.provider.model_cache = Some(jinn_domain::feat::provider_infra::ModelCache {
-        entries: cache_entries,
-        last_updated_at: None,
-    });
+    state
+        .provider_state()
+        .expect("provider cell attached")
+        .update(|cell| {
+            cell.model_cache = Some(jinn_provider_config::ModelCache {
+                entries: cache_entries,
+                last_updated_at: None,
+            });
+        });
 
     let (mut terminal, area) = setup_term(100, 2);
     terminal
@@ -976,10 +993,15 @@ fn render_shows_used_over_unknown_when_no_context_length() {
             input_modalities: jinn_domain::feat::provider_infra::InputModalities::text(),
         }],
     );
-    state.provider.model_cache = Some(jinn_domain::feat::provider_infra::ModelCache {
-        entries: cache_entries,
-        last_updated_at: None,
-    });
+    state
+        .provider_state()
+        .expect("provider cell attached")
+        .update(|cell| {
+            cell.model_cache = Some(jinn_provider_config::ModelCache {
+                entries: cache_entries,
+                last_updated_at: None,
+            });
+        });
 
     let (mut terminal, area) = setup_term(100, 2);
     terminal
@@ -1641,7 +1663,10 @@ fn status_bar_shows_modality_indicator_for_image_model() {
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let mut m = jinn_domain::feat::provider_infra::InputModalities::text();
     m.insert(jinn_domain::feat::provider_infra::Modality::Image);
-    state.provider.model_cache = Some(cache_with_modalities(m));
+    state
+        .provider_state()
+        .expect("provider cell attached")
+        .update(|cell| cell.model_cache = Some(cache_with_modalities(m)));
 
     // When rendering.
     let row = render_model_row(&state);
@@ -1660,9 +1685,14 @@ fn status_bar_shows_text_only_indicator_for_text_model() {
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-    state.provider.model_cache = Some(cache_with_modalities(
-        jinn_domain::feat::provider_infra::InputModalities::text(),
-    ));
+    state
+        .provider_state()
+        .expect("provider cell attached")
+        .update(|cell| {
+            cell.model_cache = Some(cache_with_modalities(
+                jinn_domain::feat::provider_infra::InputModalities::text(),
+            ));
+        });
 
     // When rendering.
     let row = render_model_row(&state);
@@ -1705,7 +1735,10 @@ fn status_bar_shows_indicator_without_reasoning_effort_bracket() {
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let mut m = jinn_domain::feat::provider_infra::InputModalities::text();
     m.insert(jinn_domain::feat::provider_infra::Modality::Image);
-    state.provider.model_cache = Some(cache_with_modalities(m));
+    state
+        .provider_state()
+        .expect("provider cell attached")
+        .update(|cell| cell.model_cache = Some(cache_with_modalities(m)));
 
     // When rendering.
     let row = render_model_row(&state);
@@ -1732,7 +1765,10 @@ fn status_bar_shows_effort_bracket_then_modality_indicator() {
         Some(jinn_domain::ReasoningEffort::High);
     let mut m = jinn_domain::feat::provider_infra::InputModalities::text();
     m.insert(jinn_domain::feat::provider_infra::Modality::Image);
-    state.provider.model_cache = Some(cache_with_modalities(m));
+    state
+        .provider_state()
+        .expect("provider cell attached")
+        .update(|cell| cell.model_cache = Some(cache_with_modalities(m)));
 
     // When rendering.
     let row = render_model_row(&state);
@@ -1803,10 +1839,15 @@ fn status_bar_alloy_indicator_reflects_last_dispatched_member() {
                 },
             ],
         );
-        state.provider.model_cache = Some(jinn_domain::feat::provider_infra::ModelCache {
-            entries,
-            last_updated_at: None,
-        });
+        state
+            .provider_state()
+            .expect("provider cell attached")
+            .update(|cell| {
+                cell.model_cache = Some(jinn_provider_config::ModelCache {
+                    entries,
+                    last_updated_at: None,
+                });
+            });
     }
 
     // When rendering.

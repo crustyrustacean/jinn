@@ -113,7 +113,7 @@ fn test_worker(summary_text: &str) -> CompactionWorker {
     CompactionWorker::new(
         services,
         handle,
-        State::new(AppState::default()),
+        State::new(AppState::default_with_scope_focus()),
         jinn_domain::common::tcaps::mint::mint_session_cap(),
         String::new(),
     )
@@ -131,7 +131,7 @@ fn test_worker_with_session(
         session.push_entry(entry);
     }
 
-    let state = State::new(AppState::default());
+    let state = State::new(AppState::default_with_scope_focus());
     {
         let mut app = state.write_test_no_cap();
         app.session.insert(session);
@@ -233,7 +233,7 @@ fn compaction_passes_prompt_explicitly_not_in_message_array() {
     let worker = CompactionWorker::new(
         services,
         handle,
-        State::new(AppState::default()),
+        State::new(AppState::default_with_scope_focus()),
         jinn_domain::common::tcaps::mint::mint_session_cap(),
         String::new(),
     );
@@ -573,7 +573,7 @@ fn session_continues_after_background_compaction() {
     session.begin_sending();
     let session_id = session.session_id().clone();
 
-    let state = State::new(AppState::default());
+    let state = State::new(AppState::default_with_scope_focus());
     {
         let mut app = state.write_test_no_cap();
         app.session.insert(session);
@@ -694,7 +694,7 @@ impl ThresholdTestEnv {
             session.push_entry(entry.clone());
         }
         let session_id = session.session_id().clone();
-        let state = State::new(AppState::default());
+        let state = State::new(AppState::default_with_scope_focus());
         {
             let mut app = state.write_test_no_cap();
             app.session.insert(session);
@@ -718,7 +718,9 @@ impl ThresholdTestEnv {
     /// Set the model cache with context_length entries.
     fn set_model_cache(&self, cache: ModelCache) {
         let mut app = self.state.write_test_no_cap();
-        app.provider.model_cache = Some(cache);
+        app.provider_state()
+            .expect("provider cell attached")
+            .update(|cell| cell.model_cache = Some(cache));
     }
 
     /// Set the compaction config.
@@ -1243,11 +1245,15 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
     let session_id = session.session_id().clone();
     session.set_context_size(150_000);
 
-    let state = State::new(AppState::default());
+    let state = State::new(AppState::default_with_scope_focus());
     {
         let mut app = state.write_test_no_cap();
         app.session.insert(session);
-        app.provider.model_cache = Some(model_cache_with("provider", "model-200k", 200_000));
+        app.provider_state()
+            .expect("provider cell attached")
+            .update(|cell| {
+                cell.model_cache = Some(model_cache_with("provider", "model-200k", 200_000));
+            });
         app.frontend.preferences.compaction = threshold_config(0.7, 150_000);
     }
 
@@ -1557,7 +1563,7 @@ fn error_clears_flag_and_allows_retry() {
         session.push_entry(entry.clone());
     }
     let session_id = session.session_id().clone();
-    let state = State::new(AppState::default());
+    let state = State::new(AppState::default_with_scope_focus());
     {
         let mut app = state.write_test_no_cap();
         app.session.insert(session);
@@ -1581,7 +1587,11 @@ fn error_clears_flag_and_allows_retry() {
         if let Some(session) = app.session.get_mut(&session_id) {
             session.set_context_size(150_000);
         }
-        app.provider.model_cache = Some(model_cache_with("provider", "model-200k", 200_000));
+        app.provider_state()
+            .expect("provider cell attached")
+            .update(|cell| {
+                cell.model_cache = Some(model_cache_with("provider", "model-200k", 200_000));
+            });
     }
 
     let worker = CompactionWorker::new(

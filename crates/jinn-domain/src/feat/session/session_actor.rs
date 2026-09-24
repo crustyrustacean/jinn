@@ -38,8 +38,7 @@ use crate::feat::chat_input::protocol::command::{
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-use crate::feat::provider::protocol::command::SendMessage;
-use crate::feat::provider::protocol::event::{ModelsRefreshed, PromptTemplatesLoaded};
+use crate::{ModelsRefreshed, PromptTemplatesLoaded};
 use crate::feat::session::protocol::archive_session::ArchiveSession;
 use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
 use crate::feat::session::protocol::citations_received::CitationsReceived;
@@ -202,7 +201,6 @@ impl SessionPersistenceActor {
             .handles::<SubmitSteeringMessage>()
             .handles::<EnqueueResumeTurn>()
             .handles::<PushChatEntry>()
-            .handles::<SendMessage>()
             // Lifecycle commands.
             .handles::<RunSessionSetup>()
             .handles::<RunSessionTeardown>()
@@ -304,12 +302,6 @@ impl MsgHandler<EnqueueResumeTurn> for SessionPersistenceActor {
 impl MsgHandler<PushChatEntry> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &PushChatEntry, _ctx: &mut MsgCtx<'_>) {
         self.handle_push_chat_entry(msg).await;
-    }
-}
-
-impl MsgHandler<SendMessage> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &SendMessage, _ctx: &mut MsgCtx<'_>) {
-        self.handle_send_message(msg).await;
     }
 }
 

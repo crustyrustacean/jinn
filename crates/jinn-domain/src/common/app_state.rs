@@ -11,7 +11,6 @@
 
 pub use crate::common::focus::{FocusScope, ScopeStack};
 pub use crate::common::session_map::SessionLoadGuard;
-pub use crate::feat::provider::ProviderState;
 pub use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
 pub use jinn_sidebar_msg::sidebar_sections::RenameSessionInputState;
 
@@ -36,8 +35,6 @@ pub type SessionState = SessionMap;
 pub struct AppState {
     /// Session lifecycle state - owned by session-actor.
     pub session: SessionState,
-    /// Provider selection state - owned by provider-actor.
-    pub provider: ProviderState,
     /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
 }
@@ -51,7 +48,7 @@ impl AppState {
     pub fn active_picker_ops(&mut self) -> Option<&mut dyn jinn_selection_widget::PickerOps> {
         let kind = self.frontend.picker_kind()?;
         match kind {
-            PickerKind::Provider => Some(&mut self.provider.provider_picker),
+            PickerKind::Provider => Some(&mut self.frontend.pickers.provider_picker),
             PickerKind::Session => Some(self.frontend.session_picker_mut()),
             PickerKind::Persona => Some(self.frontend.persona_picker_mut()),
             PickerKind::Theme => Some(self.frontend.theme_picker_mut()),
@@ -146,6 +143,15 @@ impl AppState {
         {
             // Same re-seed intent as scope-focus above.
         }
+        if slices
+            .register(
+                jinn_provider_selection_msg::provider_state_slot(),
+                jinn_provider_selection_msg::ProviderCell::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
         state.frontend.attach_slices(slices.clone());
         state.session.attach_slices(slices);
         state
@@ -162,6 +168,21 @@ impl AppState {
     ) -> Option<jinn_slices::cell::TypedCell<jinn_tools_msg::ToolRegistry>> {
         match self.frontend.slices() {
             Some(s) => s.reader(&jinn_tools_msg::tools_registry_slot()),
+            None => None,
+        }
+    }
+
+    /// The provider-selection slice's cell, if the slice is attached.
+    ///
+    /// Multi-party state (written by the slice's actors and boot's cache
+    /// loader, read by the picker specs, status bar, and gates) — the cell
+    /// lives in the slice's msg crate per the decomposition policy.
+    #[must_use]
+    pub fn provider_state(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_provider_selection_msg::ProviderCell>> {
+        match self.frontend.slices() {
+            Some(s) => s.reader(&jinn_provider_selection_msg::provider_state_slot()),
             None => None,
         }
     }
@@ -191,7 +212,7 @@ impl AppState {
     pub fn active_picker_ops_ref(&self) -> Option<&dyn jinn_selection_widget::PickerOps> {
         let kind = self.frontend.picker_kind()?;
         match kind {
-            PickerKind::Provider => Some(&self.provider.provider_picker),
+            PickerKind::Provider => Some(&self.frontend.pickers.provider_picker),
             PickerKind::Session => Some(self.frontend.session_picker()),
             PickerKind::Persona => Some(self.frontend.persona_picker()),
             PickerKind::Theme => Some(self.frontend.theme_picker()),

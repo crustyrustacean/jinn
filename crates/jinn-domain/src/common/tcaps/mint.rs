@@ -8,13 +8,7 @@
 
 use crate::common::tcaps::frontend::FrontendCap;
 use crate::common::tcaps::intent_handler::IntentHandlerCap;
-use crate::common::tcaps::provider::ProviderCap;
 use crate::common::tcaps::session::SessionCap;
-
-/// Mint a [`ProviderCap`]. Called from actor wiring.
-pub fn mint_provider_cap() -> ProviderCap {
-    ProviderCap::new()
-}
 
 /// Mint a [`FrontendCap`]. Called from actor wiring.
 pub fn mint_frontend_cap() -> FrontendCap {

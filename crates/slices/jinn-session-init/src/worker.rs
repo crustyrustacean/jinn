@@ -370,7 +370,7 @@ impl SessionDiscoveryWorker {
                     write_prompts(&state, &session_cap, &session_id, &store);
                     publish(
                         &system,
-                        jinn_domain::feat::provider::protocol::event::PromptTemplatesLoaded {
+                        jinn_session_init_msg::PromptTemplatesLoaded {
                             session_id: session_id.clone(),
                             templates: store.templates().to_vec(),
                             error: None,
@@ -383,7 +383,7 @@ impl SessionDiscoveryWorker {
                     tracing::warn!("failed to rescan prompt templates: {error:?}");
                     publish(
                         &system,
-                        jinn_domain::feat::provider::protocol::event::PromptTemplatesLoaded {
+                        jinn_session_init_msg::PromptTemplatesLoaded {
                             session_id: session_id.clone(),
                             templates: vec![],
                             error: Some(error.clone()),
@@ -397,7 +397,7 @@ impl SessionDiscoveryWorker {
                     let error = format!("rescan task failed: {join_error}");
                     publish(
                         &system,
-                        jinn_domain::feat::provider::protocol::event::PromptTemplatesLoaded {
+                        jinn_session_init_msg::PromptTemplatesLoaded {
                             session_id: session_id.clone(),
                             templates: vec![],
                             error: Some(error.clone()),
