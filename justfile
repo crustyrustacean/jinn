@@ -934,8 +934,8 @@ pkg:
 #     https://cli.github.com/   then   gh auth login
 
 # Build the release binary and package it into a cargo-binstall tarball.
-# TARGET defaults to the native linux release target; pass x86_64-pc-windows-gnu
-# to cross-build the Windows tarball (needs mingw-w64 + the rustup target).
+# TARGET defaults to the native linux release target; pass x86_64-pc-windows-msvc
+# to cross-build the Windows tarball (needs cargo-xwin — run just setup-windows-cross).
 build-release-tarball TARGET="x86_64-unknown-linux-gnu":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -947,10 +947,10 @@ build-release-tarball TARGET="x86_64-unknown-linux-gnu":
 
     # --- Prerequisites for cross targets ---
     case "${TARGET}" in
-        *windows*)
-            if ! command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then
-                echo "Error: x86_64-w64-mingw32-gcc (mingw-w64) is not on PATH." >&2
-                echo "  Arch: pacman -S mingw-w64-gcc   Debian/Ubuntu: apt install gcc-mingw-w64-x86-64" >&2
+        x86_64-pc-windows-msvc)
+            if ! command -v cargo-xwin >/dev/null 2>&1; then
+                echo "Error: cargo-xwin is not installed." >&2
+                echo "  Run: just setup-windows-cross" >&2
                 exit 1
             fi
             ;;
@@ -968,7 +968,22 @@ build-release-tarball TARGET="x86_64-unknown-linux-gnu":
     esac
 
     echo "==> Building release binary (target ${TARGET})"
-    cargo build --release --target "${TARGET}"
+    case "${TARGET}" in
+        x86_64-pc-windows-msvc)
+            # Cross-build via cargo-xwin (clang-cl for C, lld-link for link,
+            # MSVC CRT + Windows SDK fetched by xwin). Scoped to this process:
+            # no [target.*] config is checked in, so native Windows builders
+            # are unaffected. +crt-static keeps the binary self-contained
+            # (no VC runtime needed).
+            export XWIN_ARCH=x86_64
+            export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link
+            export RUSTFLAGS="-Ctarget-feature=+crt-static"
+            cargo xwin build --release --target "${TARGET}"
+            ;;
+        *)
+            cargo build --release --target "${TARGET}"
+            ;;
+    esac
 
     echo "==> Packaging ${TARBALL}"
     STAGE_DIR="$(mktemp -d)"
@@ -979,6 +994,49 @@ build-release-tarball TARGET="x86_64-unknown-linux-gnu":
 
     echo "==> Created ${TARBALL}"
 
+# One-time setup for cross-building the Windows release tarball from Linux
+# (idempotent; safe to re-run). Installs the rustup target, the cargo-xwin
+# driver (clang-cl for C, lld-link for link), and prefetches the MSVC CRT +
+# Windows SDK subsets xwin needs.
+setup-windows-cross:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    fail() {
+        echo "Error: $1" >&2
+        echo "  $2" >&2
+        exit 1
+    }
+
+    TARGET="x86_64-pc-windows-msvc"
+
+    # --- Prerequisites: cargo/rustup + LLVM binutils (clang-cl, lld-link) ---
+    command -v rustup >/dev/null 2>&1 || fail "rustup is not installed." "Install from https://rustup.rs"
+    command -v cargo >/dev/null 2>&1 || fail "cargo is not installed." "Install from https://rustup.rs"
+    command -v clang-cl >/dev/null 2>&1 \
+        || fail "clang-cl is not on PATH." \
+           "  Arch: pacman -S clang lld   Debian/Ubuntu: apt install clang lld"
+    command -v lld-link >/dev/null 2>&1 \
+        || fail "lld-link is not on PATH." \
+           "  Arch: pacman -S clang lld   Debian/Ubuntu: apt install clang lld"
+
+    # --- Install the rustup target ---
+    rustup target add "${TARGET}"
+
+    # --- Install cargo-xwin ---
+    cargo install cargo-xwin --locked
+
+    # --- Prefetch the MSVC CRT + Windows SDK subsets and validate the toolchain ---
+    echo '==> Prefetching MSVC CRT/SDK via cargo-xwin (a few hundred MB, cached locally)...'
+    PREFETCH_DIR="$(mktemp -d)"
+    cargo init --name xwin_prefetch --vcs none "${PREFETCH_DIR}"
+    (
+        cd "${PREFETCH_DIR}" \
+            && XWIN_ARCH=x86_64 cargo xwin build --release --target "${TARGET}"
+    )
+    rm -rf "${PREFETCH_DIR}"
+    echo "==> Windows cross toolchain ready (target ${TARGET})"
+
 # Release to GitHub + smoke-test cargo-binstall (after `just bump`; needs gh auth + cargo-binstall)
 release TAG:
     #!/usr/bin/env bash
@@ -986,7 +1044,7 @@ release TAG:
 
     REPO="jayson-lennon/jinn"
     LINUX_TARGET="x86_64-unknown-linux-gnu"
-    WINDOWS_TARGET="x86_64-pc-windows-gnu"
+    WINDOWS_TARGET="x86_64-pc-windows-msvc"
     VERSION=$(sed -n '/^\[workspace\.package\]/,/^[\[]/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
     if [ "{{TAG}}" != "v${VERSION}" ]; then
         echo "Error: tag '{{TAG}}' does not match Cargo.toml version 'v${VERSION}'." >&2
@@ -1021,7 +1079,7 @@ release TAG:
     just build-release-tarball "${WINDOWS_TARGET}"
 
     TARBALL_LINUX="jinn-x86_64-unknown-linux-gnu-v${VERSION}.tgz"
-    TARBALL_WINDOWS="jinn-x86_64-pc-windows-gnu-v${VERSION}.tgz"
+    TARBALL_WINDOWS="jinn-x86_64-pc-windows-msvc-v${VERSION}.tgz"
 
     # --- 4. Create the release if it doesn't exist, else upload ---
     if gh release view "{{TAG}}" --repo "${REPO}" >/dev/null 2>&1; then
@@ -1045,8 +1103,28 @@ release TAG:
         || { echo "Error: ${TARBALL_WINDOWS} does not contain jinn-${WINDOWS_TARGET}-v${VERSION}/jinn.exe" >&2; exit 1; }
 
     echo "==> Linux binary reports: $(./target/${LINUX_TARGET}/release/jinn --version)"
+
+    # Windows artifact checks: PE32+ x86-64 structure (msvc linker output)
+    # and a static CRT — the binary must import no vcruntime*/ucrtbase DLLs
+    # (kernel32 et al. are expected; a DLL CRT means +crt-static was dropped).
+    JINN_EXE="./target/${WINDOWS_TARGET}/release/jinn.exe"
+    # file(1) word order varies across libmagic versions ("x86-64, for MS
+    # Windows" vs "for MS Windows ..., x86-64"); accept both.
+    file "${JINN_EXE}" | grep -Eq 'PE32\+ executable.*(x86-64.*MS Windows|MS Windows.*x86-64)' \
+        || { echo "Error: ${JINN_EXE} is not a PE32+ x86-64 Windows executable:" >&2; file "${JINN_EXE}" >&2; exit 1; }
+    echo "==> Windows binary structure: $(file -b "${JINN_EXE}")"
+    if command -v objdump >/dev/null 2>&1; then
+        if objdump -x "${JINN_EXE}" 2>/dev/null | grep -Eiq 'vcruntime|ucrtbase'; then
+            echo "Error: ${JINN_EXE} imports a VC runtime DLL — static CRT (+crt-static) was dropped." >&2
+            exit 1
+        fi
+        echo '==> Windows binary CRT: static (no vcruntime/ucrtbase imports)'
+    else
+        echo '==> objdump not on PATH; skipping static-CRT import scan'
+    fi
+
     if command -v wine >/dev/null 2>&1; then
-        echo "==> Windows binary reports: $(WINEDEBUG=-all wine ./target/${WINDOWS_TARGET}/release/jinn.exe --version 2>/dev/null)"
+        echo "==> Windows binary reports: $(WINEDEBUG=-all wine "${JINN_EXE}" --version 2>/dev/null)"
     else
         echo '==> wine not on PATH; skipping windows binary run'
     fi
