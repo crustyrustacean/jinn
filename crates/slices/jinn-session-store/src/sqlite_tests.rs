@@ -1411,6 +1411,49 @@ async fn current_066_blob_loads_unchanged() {
     assert_eq!(loaded.persona_name(), "coding-assistant");
 }
 
+#[rstest::rstest]
+fn metadata_blob_is_unchanged_by_group_composition() {
+    // Given a session with every lifecycle field set to a non-default value.
+    let mut session = ChatSessionState::new();
+    session.set_session_id(SessionId::from(
+        "10000000-0000-0000-0000-000000000067".to_owned(),
+    ));
+    let timestamp = jiff::Timestamp::new(1_704_067_200, 0).expect("valid timestamp");
+    session.restore_updated_at(timestamp);
+    session.restore_created_at(timestamp);
+    session.set_title("Lifecycle title".to_owned());
+    session.set_cwd(std::path::PathBuf::from("/workspace/project"));
+    session.set_home(std::path::PathBuf::from("/home/developer"));
+    session.set_lifecycle_name(Some("dev".to_owned()));
+    session.set_lifecycle_args(vec!["--fast".to_owned()]);
+    session.advance_lifecycle_after_setup();
+    session.set_session_state(jinn_domain::feat::session::chat_session::SessionState::Archived);
+    session.set_persist(false);
+
+    // When converting the session core to the persisted metadata representation.
+    let blob = serde_json::to_string(&crate::sqlite::PersistableCore::from(
+        &session.persistable_core(),
+    ))
+    .expect("serialize metadata");
+
+    // Then the legacy flat JSON shape is unchanged, with runtime-only home and
+    // row-backed session state still absent.
+    assert_eq!(
+        blob,
+        concat!(
+            r#"{"session_id":"10000000-0000-0000-0000-000000000067","#,
+            r#""title":"Lifecycle title","updated_at":"2024-01-01T00:00:00Z","#,
+            r#""created_at":"2024-01-01T00:00:00Z","profile":{"model":{"single":"__no_provider__"},"#,
+            r#""persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[],"#,
+            r#""reasoning_effort":null,"endpoint":null},"cwd":"/workspace/project","#,
+            r#""parent_session":null,"fork_ordinal":null,"origin":"user","project":null,"#,
+            r#""blobs":{},"lifecycle_name":"dev","lifecycle_args":["--fast"],"#,
+            r#""lifecycle_script_state":"setup_ran","task_list":{"phases":[]},"#,
+            r#""enabled_mcp_servers":[],"persist":false}"#
+        )
+    );
+}
+
 /// A pre-v8 session (no metadata blob) must still load after v20 backfills its
 /// metadata from the zombie columns. The legacy column-read path is gone (v20
 /// dropped those columns), so loading succeeds via the backfilled blob.
@@ -1595,6 +1638,38 @@ const TINY_PNG: &[u8] = &[
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
     0x89,
 ];
+
+#[rstest::rstest]
+fn legacy_flat_lifecycle_blob_loads_after_group_composition() {
+    // Given a metadata blob in the pre-group flat shape.
+    let legacy_blob = concat!(
+        r#"{"session_id":"10000000-0000-0000-0000-000000000068","#,
+        r#""title":"Legacy lifecycle","updated_at":"2024-01-01T00:00:00Z","#,
+        r#""created_at":"2024-01-01T00:00:00Z","profile":{"model":{"single":"ollama/llama3"},"#,
+        r#""persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[],"#,
+        r#""reasoning_effort":null,"endpoint":null},"cwd":"/legacy/project","#,
+        r#""parent_session":null,"fork_ordinal":null,"origin":"fork","project":null,"#,
+        r#""blobs":{},"lifecycle_name":"release","lifecycle_args":["--verbose"],"#,
+        r#""lifecycle_script_state":"teardown_ran","task_list":{"phases":[]},"#,
+        r#""enabled_mcp_servers":[],"persist":false}"#
+    );
+
+    // When deserializing and restoring it into a session core.
+    let persistable: crate::sqlite::PersistableCore =
+        serde_json::from_str(legacy_blob).expect("deserialize legacy blob");
+    let core = jinn_domain::feat::session::chat_session::SessionCore::from(persistable);
+
+    // Then every persisted lifecycle value is restored into the composed group.
+    assert_eq!(core.lifecycle.title.as_deref(), Some("Legacy lifecycle"));
+    assert_eq!(core.lifecycle.cwd, std::path::Path::new("/legacy/project"));
+    assert_eq!(core.lifecycle.lifecycle_name.as_deref(), Some("release"));
+    assert_eq!(core.lifecycle.lifecycle_args, ["--verbose"]);
+    assert_eq!(
+        core.lifecycle.lifecycle_script_state,
+        jinn_domain::feat::session::chat_session::LifecycleScriptState::TeardownRan
+    );
+    assert!(!core.lifecycle.persist);
+}
 
 #[rstest::rstest]
 #[tokio::test]

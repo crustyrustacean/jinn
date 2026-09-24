@@ -24,6 +24,7 @@ pub mod profile;
 pub mod protocol;
 pub mod prune_report;
 pub mod session_actor;
+mod session_lifecycle_fields;
 pub mod steering_buffer;
 pub mod token_stats;
 pub mod tree_aggregate;
@@ -41,6 +42,9 @@ pub mod validator;
 
 pub use chat_session::{ChatSessionState, SessionCore, SessionUi};
 pub use profile::SessionProfile;
+pub use session_lifecycle_fields::{
+    SessionHistoryFields, SessionLifecycleFields, SessionMcpFields, SessionProfileFields,
+};
 pub use session_store::{SessionStore, SessionStoreError, SessionStoreService};
 pub use session_summary::SessionSummary;
 pub use token_stats::{AggregatedTokenStats, TokenRecord, TokenStats, aggregate_session_stats};

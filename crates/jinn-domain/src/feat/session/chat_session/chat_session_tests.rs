@@ -2051,6 +2051,46 @@ fn serde_round_trips_lifecycle_fields() {
 }
 
 #[rstest::rstest]
+fn serde_lifecycle_group_remains_flat() {
+    // Given a session with lifecycle fields set.
+    let mut session = ChatSessionState::new();
+    session.set_title("Lifecycle title".to_owned());
+    session.set_cwd(std::path::PathBuf::from("/workspace/project"));
+    session.set_lifecycle_name(Some("dev".to_owned()));
+    session.set_lifecycle_args(vec!["--fast".to_owned()]);
+    session.advance_lifecycle_after_setup();
+    session.set_persist(false);
+
+    // When serializing the session.
+    let json = serde_json::to_value(&session).expect("serialize");
+    let object = json.as_object().expect("session is an object");
+
+    // Then lifecycle fields stay at the top level without a nested wrapper.
+    assert!(!object.contains_key("lifecycle"));
+    assert_eq!(
+        object.get("title"),
+        Some(&serde_json::json!("Lifecycle title"))
+    );
+    assert_eq!(
+        object.get("cwd"),
+        Some(&serde_json::json!("/workspace/project"))
+    );
+    assert_eq!(
+        object.get("lifecycle_name"),
+        Some(&serde_json::json!("dev"))
+    );
+    assert_eq!(
+        object.get("lifecycle_args"),
+        Some(&serde_json::json!(["--fast"]))
+    );
+    assert_eq!(
+        object.get("lifecycle_script_state"),
+        Some(&serde_json::json!("setup_ran"))
+    );
+    assert_eq!(object.get("persist"), Some(&serde_json::json!(false)));
+}
+
+#[rstest::rstest]
 fn serde_defaults_lifecycle_fields_when_missing() {
     // Given a JSON object without lifecycle fields.
     let json = r#"{"session_id":"00000000-0000-0000-0000-000000000001","updated_at":"2026-01-01T00:00:00Z","created_at":"2026-01-01T00:00:00Z","history":[],"profile":{"model":{"single":""},"strategy":"passthrough"},"cwd":"."}"#;
@@ -3461,7 +3501,7 @@ fn session_becomes_persistable_after_mark_interacted() {
 fn lifecycle_session_is_always_persistable() {
     // Given a new session with a lifecycle name but no interaction.
     let mut session = ChatSessionState::new();
-    session.core.lifecycle_name = Some("test-lifecycle".to_owned());
+    session.core.lifecycle.lifecycle_name = Some("test-lifecycle".to_owned());
 
     // Then the session is persistable even without interaction.
     assert!(session.is_persistable());

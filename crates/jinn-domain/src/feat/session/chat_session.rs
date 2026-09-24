@@ -26,6 +26,7 @@ use serde_json::Value as JsonValue;
 
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
+use crate::feat::session::session_lifecycle_fields::SessionLifecycleFields;
 use crate::feat::session::steering_buffer::SteeringBuffer;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
@@ -208,14 +209,14 @@ pub struct SessionCoreEphemeral {
 // Fields without `#[serde(skip)]` are persisted across restarts.
 // All ephemeral (non-persisted) state lives in [`SessionCoreEphemeral`].
 
-/// Serde default for the `cwd` field - resolves to the current directory.
-fn default_cwd() -> std::path::PathBuf {
-    std::path::PathBuf::from(".")
-}
-
 /// Serde default for [`SessionCore::persist`] — sessions persist unless explicitly marked transient.
 pub fn default_persist() -> bool {
     true
+}
+
+/// Serde default for the `cwd` field - resolves to the current directory.
+pub(super) fn default_cwd() -> std::path::PathBuf {
+    std::path::PathBuf::from(".")
 }
 
 /// How a session came into being. Identity, not structure: a session's
@@ -238,11 +239,10 @@ pub struct SessionCore {
     /// Unique identifier for this session.
     /// Generated at construction. Matches the HashMap key in `SessionState.sessions`.
     pub session_id: SessionId,
-    /// Human-readable title. `None` until the first user message is sent.
-    /// OWNER: session-actor (set on first user message, changeable by user).
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
+    /// Session lifecycle state, flattened to preserve the flat persisted schema.
+    /// OWNER: session-actor (persistent state) and IntentHandler (creation paths).
+    #[serde(flatten)]
+    pub lifecycle: SessionLifecycleFields,
     /// When this session was last updated. Set at construction, updated on save.
     pub updated_at: Timestamp,
     /// Wall-clock timestamp of the most recent chat-history mutation
@@ -277,16 +277,6 @@ pub struct SessionCore {
     /// Per-session model and strategy selection.
     /// OWNER: provider-actor (model), context-actor (strategy via SwitchPromptStrategy command)
     pub profile: SessionProfile,
-    /// Working directory for tool execution in this session.
-    /// OWNER: IntentHandler (set on session creation and cd commands)
-    #[serde(default = "default_cwd")]
-    pub cwd: std::path::PathBuf,
-    /// User home directory for resolving `@~/path` references in this session.
-    /// Runtime-only — not persisted (resolved fresh at session creation from
-    /// `services.paths.home_dir()`).
-    /// OWNER: IntentHandler / session creation.
-    #[serde(skip)]
-    pub home: std::path::PathBuf,
     /// Token usage ledger - one immutable record per request/response pair.
     /// OWNER: session-actor (records tokens on assembly and StreamCompleted).
     #[serde(default)]
@@ -320,31 +310,6 @@ pub struct SessionCore {
     /// Generic blob storage for future subsystems.
     #[serde(default)]
     pub blobs: HashMap<String, JsonValue>,
-    /// Name of the session lifecycle that created this session.
-    /// `None` means the implicit "blank" lifecycle (no setup command).
-    /// OWNER: IntentHandler (set on session creation).
-    #[serde(default)]
-    pub lifecycle_name: Option<String>,
-    /// Arguments passed to the lifecycle setup command.
-    /// Replayed during teardown so the same args are available.
-    /// OWNER: IntentHandler (set on session creation).
-    #[serde(default)]
-    pub lifecycle_args: Vec<String>,
-    /// Whether this session is loaded in memory or archived in the database.
-    /// OWNER: session-actor (transitions on close/archive/unarchive).
-    #[serde(default)]
-    pub session_state: SessionState,
-    /// Lifecycle script progression - one-way: NothingRan → SetupRan → TeardownRan.
-    /// OWNER: session-actor (advances only after script success).
-    #[serde(default)]
-    pub lifecycle_script_state: LifecycleScriptState,
-
-    /// Whether this session should be persisted to disk. Default true; set
-    /// false for transient automated sessions (e.g. one-shots).
-    /// OWNER: session-actor (set on creation).
-    #[serde(default = "default_persist")]
-    pub persist: bool,
-
     /// Whether the user has meaningfully interacted with this session.
     /// Sessions with `has_interacted = false` are not persisted to disk.
     /// OWNER: session-actor (set via MarkSessionInteracted command).
@@ -402,15 +367,13 @@ impl Default for SessionCore {
     fn default() -> Self {
         Self {
             session_id: SessionId::new(),
-            title: None,
+            lifecycle: SessionLifecycleFields::default(),
             updated_at: Timestamp::now(),
             created_at: Timestamp::now(),
             last_history_activity_at: Timestamp::now(),
             last_provider_activity_at: Timestamp::now(),
             history: ChatHistory::new(),
             profile: SessionProfile::default(),
-            cwd: std::path::PathBuf::from("."),
-            home: std::path::PathBuf::from("."),
             token_ledger: Vec::new(),
             parent_session: None,
             fork_ordinal: None,
@@ -418,11 +381,6 @@ impl Default for SessionCore {
             project: None,
 
             blobs: HashMap::new(),
-            lifecycle_name: None,
-            lifecycle_args: Vec::new(),
-            session_state: SessionState::Loaded,
-            lifecycle_script_state: LifecycleScriptState::NothingRan,
-            persist: true,
 
             task_list: jinn_tools_msg::TaskList::default(),
             enabled_mcp_servers: std::collections::BTreeSet::new(),
@@ -688,7 +646,7 @@ impl ChatSessionState {
     )]
     pub(in crate::feat::session) fn push_entry_raw(&mut self, entry: &mut ChatEntry) -> usize {
         self.core.last_history_activity_at = Timestamp::now();
-        let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
+        let ctx = PathResolveContext::new(&self.core.lifecycle.cwd, &self.core.lifecycle.home);
         expand_user_entry(
             entry,
             &self.core.ephemeral.discovered_prompt_templates,
@@ -773,13 +731,17 @@ impl ChatSessionState {
     /// the session that spawned them.
     #[must_use]
     pub fn new_child(parent_session_id: &SessionId, persist: bool) -> Self {
-        Self {
-            core: SessionCore {
-                parent_session: Some(parent_session_id.clone()),
-                origin: SessionOrigin::Subagent,
+        let core = SessionCore {
+            parent_session: Some(parent_session_id.clone()),
+            origin: SessionOrigin::Subagent,
+            lifecycle: SessionLifecycleFields {
                 persist,
-                ..SessionCore::default()
+                ..SessionLifecycleFields::default()
             },
+            ..SessionCore::default()
+        };
+        Self {
+            core,
             ui: SessionUi::default(),
             slices: std::sync::OnceLock::new(),
             view_fallback: parking_lot::RwLock::new(
@@ -1069,7 +1031,7 @@ impl ChatSessionState {
 
     /// Whether this session should be persisted to disk.
     pub fn persist(&self) -> bool {
-        self.core.persist
+        self.core.lifecycle.persist
     }
 
     /// Mark this session as having been meaningfully interacted with by the user.
@@ -1094,10 +1056,10 @@ impl ChatSessionState {
     /// - The session was forked from another session
     #[must_use]
     pub fn is_persistable(&self) -> bool {
-        if !self.core.persist {
+        if !self.core.lifecycle.persist {
             return false;
         }
-        if self.core.lifecycle_name.is_some() {
+        if self.core.lifecycle.lifecycle_name.is_some() {
             return true;
         }
         if self.core.parent_session.is_some() {
@@ -1132,7 +1094,7 @@ impl ChatSessionState {
     /// once on the first pass, while degraded tokens (already recorded in
     /// [`ChatEntryKind::User::outcome`]) stay literal across re-expansion.
     pub fn expand_entry(&self, entry: &mut ChatEntry) {
-        let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
+        let ctx = PathResolveContext::new(&self.core.lifecycle.cwd, &self.core.lifecycle.home);
         expand_user_entry(
             entry,
             &self.core.ephemeral.discovered_prompt_templates,
@@ -3035,7 +2997,7 @@ impl ChatSessionState {
     }
     /// Returns this session's working directory for tool execution.
     pub fn cwd(&self) -> &std::path::Path {
-        &self.core.cwd
+        &self.core.lifecycle.cwd
     }
 
     /// When this session last saw provider activity (model responses).
@@ -3060,7 +3022,7 @@ impl ChatSessionState {
 
     /// Sets this session's working directory.
     pub fn set_cwd(&mut self, cwd: std::path::PathBuf) {
-        self.core.cwd = cwd;
+        self.core.lifecycle.cwd = cwd;
     }
 
     /// Returns the project directory this session is associated with, if any.
@@ -3077,7 +3039,7 @@ impl ChatSessionState {
 
     /// Sets this session's home directory for resolving `@~/path` references.
     pub fn set_home(&mut self, home: std::path::PathBuf) {
-        self.core.home = home;
+        self.core.lifecycle.home = home;
     }
 
     /// Read-only access to the token ledger.
@@ -3251,18 +3213,18 @@ impl ChatSessionState {
 
     /// The session title. `None` until the first user message.
     pub fn title(&self) -> Option<&str> {
-        self.core.title.as_deref()
+        self.core.lifecycle.title.as_deref()
     }
 
     /// Set the session title.
     pub fn set_title(&mut self, title: String) {
-        self.core.title = Some(title);
+        self.core.lifecycle.title = Some(title);
     }
 
     /// Mark this session as persistent (`true`) or transient (`false`).
     /// Transient sessions (e.g. one-shots) are never written to the store.
     pub fn set_persist(&mut self, persist: bool) {
-        self.core.persist = persist;
+        self.core.lifecycle.persist = persist;
     }
 
     /// When this session was last updated.
@@ -3292,47 +3254,53 @@ impl ChatSessionState {
 
     /// The name of the lifecycle that created this session, if any.
     pub fn lifecycle_name(&self) -> Option<&str> {
-        self.core.lifecycle_name.as_deref()
+        self.core.lifecycle.lifecycle_name.as_deref()
     }
 
     /// Set the lifecycle name.
     pub fn set_lifecycle_name(&mut self, name: Option<String>) {
-        self.core.lifecycle_name = name;
+        self.core.lifecycle.lifecycle_name = name;
     }
 
     /// The args used during setup (replayed for teardown).
     pub fn lifecycle_args(&self) -> &[String] {
-        &self.core.lifecycle_args
+        &self.core.lifecycle.lifecycle_args
     }
 
     /// Set the lifecycle args.
     pub fn set_lifecycle_args(&mut self, args: Vec<String>) {
-        self.core.lifecycle_args = args;
+        self.core.lifecycle.lifecycle_args = args;
     }
 
     /// Returns the session's memory state.
     pub fn session_state(&self) -> SessionState {
-        self.core.session_state
+        self.core.lifecycle.session_state
     }
 
     /// Sets the session's memory state.
     pub fn set_session_state(&mut self, state: SessionState) {
-        self.core.session_state = state;
+        self.core.lifecycle.session_state = state;
     }
 
     /// Returns the lifecycle script state.
     pub fn lifecycle_script_state(&self) -> LifecycleScriptState {
-        self.core.lifecycle_script_state
+        self.core.lifecycle.lifecycle_script_state
     }
 
     /// Advances lifecycle state after successful setup: `NothingRan → SetupRan`.
     pub fn advance_lifecycle_after_setup(&mut self) {
-        self.core.lifecycle_script_state.advance_after_setup();
+        self.core
+            .lifecycle
+            .lifecycle_script_state
+            .advance_after_setup();
     }
 
     /// Advances lifecycle state after successful teardown: `SetupRan → TeardownRan`.
     pub fn advance_lifecycle_after_teardown(&mut self) {
-        self.core.lifecycle_script_state.advance_after_teardown();
+        self.core
+            .lifecycle
+            .lifecycle_script_state
+            .advance_after_teardown();
     }
 
     /// Force-exclude any `ToolCall` entries that lack matching `ToolResult` entries,
