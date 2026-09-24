@@ -1,14 +1,13 @@
-//! Persistence handlers - save and load session snapshots.
-
-use std::collections::{HashMap, HashSet};
+//! Turn-path persistence — the session actor's own save and interaction mark.
+//!
+//! Load, fork, and archive now live in the `jinn-session-store` slice. The
+//! turn/context actor still saves directly on its own path: enqueue, streaming,
+//! tool calls, pin changes, and task-list updates all mutate the session and
+//! must reach disk without routing a command through another actor.
 
 use super::super::SessionPersistenceActor;
-use crate::SessionLoadRequested;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::session::protocol::UserInteracted;
-use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::feat::session::tree_aggregate::snapshot_frozen_node;
-use crate::protocol::SessionId;
 
 impl SessionPersistenceActor {
     /// Saves the current state of a session to disk.
@@ -86,314 +85,11 @@ impl SessionPersistenceActor {
 
         self.save_active_session(&payload.session_id).await;
     }
-
-    /// Inserts a session into the session map and emits [`SessionLoadCompleted`].
-    ///
-    /// This is the single canonical "load a session" path. Every site that
-    /// inserts a [`ChatSessionState`] into `state.session` must go through
-    /// this method so that external subscribers (token-count actor, sidebar,
-    /// etc.) are notified.
-    ///
-    /// # Guarantees
-    ///
-    /// The session is inserted **before** the event is emitted, so
-    /// subscribers can look it up by ID immediately.
-    pub(in crate::feat::session::session_actor) async fn load_and_insert(
-        &self,
-        session: crate::feat::session::chat_session::ChatSessionState,
-    ) {
-        let session_id = session.session_id().clone();
-        self.state.with_session(&self.cap, |view| {
-            view.session.map().insert(session.clone());
-            // Remove the frozen node snapshot - the live session replaces it.
-            view.session.map().remove_frozen_node(&session_id);
-        });
-        self.publish(SessionLoadCompleted { session }).await;
-    }
-
-    /// Creates an empty session with the given ID and emits a `SessionLoadCompleted` command.
-    ///
-    /// Used as a fallback when a session is not found or fails to load.
-    async fn create_empty_session_response(&self, session_id: &crate::protocol::SessionId) {
-        let mut session = crate::feat::session::chat_session::ChatSessionState::new();
-        session.set_session_id(session_id.clone());
-        self.publish(SessionLoadCompleted { session }).await;
-    }
-
-    /// Hydrate frozen nodes for all live sessions' tree members.
-    ///
-    /// Called at startup after loading unarchived sessions. For each live session,
-    /// walks the tree to find members not in memory and creates frozen node snapshots.
-    pub(in crate::feat::session::session_actor) async fn hydrate_all_tree_frozen_nodes(
-        &self,
-        store: &crate::feat::session::SessionStoreService,
-    ) {
-        // Load all summaries to get tree structure.
-        let summaries = match store.load_summaries().await {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!(err = ?e, "failed to load summaries for tree hydration");
-                return;
-            }
-        };
-
-        // Build a lookup: session_id → (parent_session_id)
-        let summary_map: HashMap<SessionId, Option<SessionId>> = summaries
-            .iter()
-            .map(|s| (s.session_id.clone(), s.parent_session.clone()))
-            .collect();
-
-        // Collect all tree IDs across all live sessions.
-        let mut all_tree_ids = HashSet::new();
-        {
-            let state = self.state.read();
-            for id in state.session.sessions().keys() {
-                let tree_ids = Self::collect_tree_ids(id, &summary_map);
-                all_tree_ids.extend(tree_ids);
-            }
-        }
-
-        // For each tree member not already live or frozen, load full session
-        // and create a frozen node.
-        let mut frozen_to_insert = Vec::new();
-        {
-            let state = self.state.read();
-            for id in &all_tree_ids {
-                if state.session.contains(id) || state.session.frozen_nodes().contains_key(id) {
-                    continue;
-                }
-                frozen_to_insert.push(id.clone());
-            }
-        }
-
-        if frozen_to_insert.is_empty() {
-            return;
-        }
-
-        tracing::info!(
-            tree_members = all_tree_ids.len(),
-            need_frozen = frozen_to_insert.len(),
-            "hydrating frozen nodes at startup"
-        );
-
-        // Load full sessions and create frozen nodes.
-        let mut new_frozen_nodes = Vec::new();
-        for id in &frozen_to_insert {
-            match store.load_session(id).await {
-                Ok(Some(session)) => {
-                    let frozen = snapshot_frozen_node(&session);
-                    new_frozen_nodes.push(frozen);
-                }
-                Ok(None) => {
-                    tracing::debug!(session_id = %id, "session in tree not found in store, skipping frozen node");
-                }
-                Err(e) => {
-                    tracing::warn!(session_id = %id, err = ?e, "failed to load session for frozen node");
-                }
-            }
-        }
-
-        // Insert all new frozen nodes.
-        if !new_frozen_nodes.is_empty() {
-            self.state.with_session(&self.cap, |view| {
-                for node in new_frozen_nodes {
-                    view.session.map().insert_frozen_node(node);
-                }
-            });
-        }
-    }
-
-    /// Loads frozen node snapshots for all sessions in the loaded session's tree
-    /// that are not already in memory.
-    ///
-    /// When a session is loaded from disk (e.g., via the sidebar picker), its
-    /// ancestors and siblings may never have been in memory this app session.
-    /// Without frozen nodes for them, `find_tree_root()` sees an orphan and
-    /// the tree summary disappears.
-    ///
-    /// This method loads all session summaries, walks the tree to find all
-    /// member session IDs, and for each member not already live or frozen,
-    /// loads the full session, creates a frozen node snapshot, and inserts it.
-    /// The full session is then discarded (not kept live).
-    ///
-    /// Runs once at session load time - the frozen nodes are cached in memory.
-    pub(in crate::feat::session::session_actor) async fn hydrate_tree_frozen_nodes(
-        &self,
-        store: &crate::feat::session::SessionStoreService,
-        loaded_session_id: &SessionId,
-    ) {
-        // Load all summaries to get tree structure.
-        let summaries = match store.load_summaries().await {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!(err = ?e, "failed to load summaries for tree hydration");
-                return;
-            }
-        };
-
-        // Build a lookup: session_id → (parent_session_id)
-        let summary_map: HashMap<SessionId, Option<SessionId>> = summaries
-            .iter()
-            .map(|s| (s.session_id.clone(), s.parent_session.clone()))
-            .collect();
-
-        // Walk up to find root, then BFS to collect all tree members.
-        let tree_ids = Self::collect_tree_ids(loaded_session_id, &summary_map);
-
-        // For each tree member not already live or frozen, load full session
-        // and create a frozen node.
-        let mut frozen_to_insert = Vec::new();
-        {
-            let state = self.state.read();
-            for id in &tree_ids {
-                // Skip if already live or already frozen.
-                if state.session.contains(id) || state.session.frozen_nodes().contains_key(id) {
-                    continue;
-                }
-                frozen_to_insert.push(id.clone());
-            }
-        }
-
-        if frozen_to_insert.is_empty() {
-            return;
-        }
-
-        tracing::info!(
-            loaded_session = %loaded_session_id,
-            tree_size = tree_ids.len(),
-            need_frozen = frozen_to_insert.len(),
-            "hydrating frozen nodes for tree members"
-        );
-
-        // Load full sessions and create frozen nodes.
-        let mut new_frozen_nodes = Vec::new();
-        for id in &frozen_to_insert {
-            match store.load_session(id).await {
-                Ok(Some(session)) => {
-                    let frozen = snapshot_frozen_node(&session);
-                    new_frozen_nodes.push(frozen);
-                }
-                Ok(None) => {
-                    tracing::debug!(session_id = %id, "session in tree not found in store, skipping frozen node");
-                }
-                Err(e) => {
-                    tracing::warn!(session_id = %id, err = ?e, "failed to load session for frozen node");
-                }
-            }
-        }
-
-        // Insert all new frozen nodes.
-        if !new_frozen_nodes.is_empty() {
-            self.state.with_session(&self.cap, |view| {
-                for node in new_frozen_nodes {
-                    view.session.map().insert_frozen_node(node);
-                }
-            });
-        }
-    }
-
-    /// Walk the parent chain up to root, then BFS to collect all session IDs
-    /// in the summary map (session_id → parent_session_id).
-    fn collect_tree_ids(
-        start: &SessionId,
-        summary_map: &HashMap<SessionId, Option<SessionId>>,
-    ) -> HashSet<SessionId> {
-        // Walk up to find root.
-        let mut visited = HashSet::new();
-        let mut current = start.clone();
-        loop {
-            if !visited.insert(current.clone()) {
-                break; // cycle
-            }
-            let Some(Some(parent)) = summary_map.get(&current) else {
-                break; // no parent or not in summaries
-            };
-            if !summary_map.contains_key(parent) {
-                break; // parent not in summaries
-            }
-            current = parent.clone();
-        }
-        let root = current;
-
-        // BFS from root to collect all tree members.
-        let mut tree = HashSet::new();
-        let mut queue = vec![root];
-        while let Some(id) = queue.pop() {
-            if !tree.insert(id.clone()) {
-                continue;
-            }
-            // Find all children of this node.
-            for (child_id, parent_id) in summary_map {
-                if parent_id.as_ref() == Some(&id) && !tree.contains(child_id) {
-                    queue.push(child_id.clone());
-                }
-            }
-        }
-
-        tree
-    }
-
-    /// Loads a full session from disk and sends back a `SessionLoadCompleted` command.
-    ///
-    /// If the requested session is a judge, redirects to loading its origin session
-    /// instead. The judge gets loaded as a side-effect of the origin's auto-load.
-    #[expect(clippy::expect_used, reason = "just inserted above")]
-    pub(in crate::feat::session::session_actor) async fn on_load_requested(
-        &mut self,
-        evt: &SessionLoadRequested,
-    ) {
-        let store = self.services.session_store.clone();
-
-        match store.load_session(&evt.session_id).await {
-            Ok(Some(mut session)) => {
-                // Unarchive the session so it appears in the picker on next load.
-                if let Err(e) = store.set_archived(&evt.session_id, false).await {
-                    tracing::warn!(err = ?e, "failed to unarchive session on load");
-                }
-
-                // Reset in-memory state so the sidebar filter includes this session.
-                session.set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
-
-                // Insert into state and emit SessionLoadCompleted for subscribers.
-                self.load_and_insert(session).await;
-
-                // Run the full restore flow (CWD validation, context size, persist).
-                let session_id = evt.session_id.clone();
-                let session = self
-                    .state
-                    .read()
-                    .session
-                    .get(&session_id)
-                    .expect("just inserted")
-                    .clone();
-                let payload = SessionLoadCompleted { session };
-                self.handle_session_load_completed(&payload).await;
-
-                // Hydrate frozen nodes for tree members not in memory.
-                // This ensures the tree summary shows ancestors/siblings even
-                // when they were never loaded into memory this app session.
-                self.hydrate_tree_frozen_nodes(&store, &evt.session_id)
-                    .await;
-            }
-            Ok(None) => {
-                tracing::warn!(
-                    session_id = ?evt.session_id,
-                    "session load returned None"
-                );
-                self.create_empty_session_response(&evt.session_id).await;
-            }
-            Err(e) => {
-                tracing::warn!(err = ?e, "failed to load session");
-                self.create_empty_session_response(&evt.session_id).await;
-            }
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(
-        clippy::similar_names,
         clippy::expect_used,
         clippy::panic,
         clippy::unreachable,
@@ -402,47 +98,6 @@ mod tests {
     )]
 
     use super::super::super::helpers::test_actor_with_store_recording;
-
-    use crate::feat::session::chat_session::ChatSessionState;
-    use crate::feat::session::chat_session::SessionState;
-    use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn loading_archived_session_resets_state_to_loaded() {
-        // Given an archived session in the store.
-        let mut store_session = ChatSessionState::new();
-        store_session.set_title("Archived Chat".to_owned());
-        store_session.set_session_state(SessionState::Archived);
-        let session_id = store_session.session_id().clone();
-        let (mut actor, _store, audit) = test_actor_with_store_recording(vec![store_session]).await;
-
-        // When loading the archived session.
-        actor
-            .on_load_requested(&SessionLoadRequested {
-                session_id: session_id.clone(),
-            })
-            .await;
-
-        // Then SessionLoadCompleted is emitted.
-        assert!(
-            audit.contains_name("SessionLoadCompleted"),
-            "expected SessionLoadCompleted event"
-        );
-
-        // And the loaded session has Loaded state.
-        let state = actor.state.read();
-        let loaded = state
-            .session
-            .sessions()
-            .get(&session_id)
-            .expect("loaded session");
-        assert_eq!(
-            loaded.session_state(),
-            SessionState::Loaded,
-            "loaded session should have SessionState::Loaded"
-        );
-    }
 
     #[rstest::rstest]
     #[tokio::test]
@@ -527,69 +182,70 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn handle_mark_session_interacted_sets_flag_emits_event_and_persists() {
-        use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
-
-        let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
+    async fn mark_session_interacted_marks_session_interacted() {
+        // Given a session that has not been interacted with.
+        let (mut actor, _store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
 
+        // When MarkSessionInteracted is handled.
         actor
-            .handle_mark_session_interacted(&MarkSessionInteracted {
-                session_id: session_id.clone(),
-            })
+            .handle_mark_session_interacted(
+                &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted {
+                    session_id: session_id.clone(),
+                },
+            )
             .await;
 
+        // Then the session is marked as interacted.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(session.has_interacted());
         assert!(session.is_persistable());
+    }
 
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn mark_session_interacted_publishes_user_interacted() {
+        // Given a session that has not been interacted with.
+        let (mut actor, _store, audit) = test_actor_with_store_recording(vec![]).await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+
+        // When MarkSessionInteracted is handled.
+        actor
+            .handle_mark_session_interacted(
+                &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted {
+                    session_id: session_id.clone(),
+                },
+            )
+            .await;
+
+        // Then the UserInteracted event is emitted.
         assert!(
             audit.contains_name("UserInteracted"),
             "UserInteracted event should be emitted"
-        );
-
-        assert!(
-            store.last_saved_session(&session_id).is_some(),
-            "interacted session should be persisted after MarkSessionInteracted"
         );
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn loading_child_session_creates_frozen_node_for_archived_parent() {
-        let mut parent = ChatSessionState::new();
-        parent.set_title("Parent Session".to_owned());
-        parent.mark_interacted();
-        parent.push_entry(crate::protocol::ChatEntry::user("parent msg"));
-        let parent_id = parent.session_id().clone();
+    async fn mark_session_interacted_persists_session() {
+        // Given a session that has not been interacted with.
+        let (mut actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
+        let session_id = actor.state.read().session.active_session_id().clone();
 
-        let mut child = ChatSessionState::new();
-        child.set_title("Child Session".to_owned());
-        child.mark_interacted();
-        child.set_parent_session(parent_id.clone());
-        child.push_entry(crate::protocol::ChatEntry::user("child msg"));
-        let child_id = child.session_id().clone();
-
-        let (mut actor, _store, _audit) =
-            test_actor_with_store_recording(vec![parent, child]).await;
-
+        // When MarkSessionInteracted is handled.
         actor
-            .on_load_requested(&SessionLoadRequested {
-                session_id: child_id.clone(),
-            })
+            .handle_mark_session_interacted(
+                &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted {
+                    session_id: session_id.clone(),
+                },
+            )
             .await;
 
-        let state = actor.state.read();
-        let frozen = state.session.frozen_nodes();
+        // Then the session is persisted.
         assert!(
-            frozen.contains_key(&parent_id),
-            "parent should have a frozen node after child is loaded"
-        );
-
-        assert!(
-            state.session.contains(&child_id),
-            "child should be in live sessions"
+            store.last_saved_session(&session_id).is_some(),
+            "interacted session should be persisted after MarkSessionInteracted"
         );
     }
 }

@@ -313,12 +313,18 @@ impl ActorSystemBuilder {
         // routes; the drain below spawns the relays. The size actor
         // holds `Services` for the assembly ask.
         jinn_context_assembly::install_actors(&services.trouper_system, state.clone(), &services);
-        // The lifecycle-owned session actor activates after the kernel whale drops
-        // its lifecycle-handle subscriptions; activation moves to the
-        // kernel-residue step to avoid double-handling every lifecycle contract.
-        // The store-owned session actor activates after the kernel whale drops
-        // its store-handle subscriptions; activating both would double-handle
-        // every store contract.
+        // ── Session store + lifecycle slices ──────────────────────────
+        // Three session actors split the former whale: this kernel actor keeps
+        // turn progression and context state; the store actor owns load, fork,
+        // archive, and persist; the lifecycle actor owns setup, teardown, close,
+        // and working-directory changes. Each contract has exactly one owner.
+        jinn_session_store::activate(&services, state.clone());
+        jinn_session_lifecycle::activate(
+            &services,
+            state.clone(),
+            jinn_session_lifecycle_msg::BuiltinRegistry::new(),
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
+        );
         let _session = jinn_domain::feat::session::session_actor::SessionPersistenceActor::spawn(
             &services.trouper_system,
             jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
@@ -328,9 +334,6 @@ impl ActorSystemBuilder {
                 frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 counter: token_counter,
                 token_cache: entry_token_cache.clone(),
-                builtin_registry:
-                    jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
-                shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
                 image_converter: jinn_domain::feat::image_convert::ImageConverterService::system(),
             },
         );

@@ -10,7 +10,6 @@ use crate::common::app_state::AppState;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::LifecycleScriptState;
 use crate::feat::session::profile::{DEFAULT_PERSONA_NAME, SessionProfile};
-use crate::feat::session::session_actor::setup_running_msg;
 use crate::feat::session::sessions_list::close::validate_session_close;
 use crate::feat::session::sessions_list::state::sorted_open_sessions;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
@@ -21,6 +20,7 @@ use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::protocol::{IntentResult, SessionId};
 use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_history_msg::PushChatEntry;
+use jinn_session_lifecycle_msg::setup_running_msg;
 
 /// Errors that can occur when validating arg input.
 #[derive(Debug, Error)]
@@ -197,7 +197,7 @@ pub fn handle_session_lifecycle_setup(
             })
             .with_message(PushChatEntry {
                 session_id: new_id.clone(),
-                entry: crate::feat::session::session_actor::setup_running_msg(),
+                entry: setup_running_msg(),
             })
             .with_message(RunSessionSetup {
                 session_id: new_id.clone(),

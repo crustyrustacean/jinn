@@ -800,7 +800,7 @@ mod tests {
     #[tokio::test]
     async fn on_personas_loaded_resolves_seeded_persona_name() {
         // Given a session actor with a persisted persona_name in frontend.app_state
-        // (the value that on_environment_loaded seeds from state.toml at startup).
+        // (the value the store actor's environment handler seeds from state.toml at startup).
         let (actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write_test_no_cap();

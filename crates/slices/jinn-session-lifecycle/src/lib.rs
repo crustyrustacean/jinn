@@ -10,17 +10,10 @@ pub mod session_lifecycle_actor;
 pub use command_runner::{
     LifecycleCancelHandle, LifecycleCommandError, spawn_setup_command, spawn_teardown_command,
 };
-use jinn_core_types::ChatEntry;
 use jinn_domain::Services;
 use jinn_domain::common::state::State;
 use jinn_session_lifecycle_msg::BuiltinRegistry;
 use trouper::actor::ActorPath;
-
-/// System entry shown while a setup command is running.
-#[must_use]
-pub fn setup_running_msg() -> ChatEntry {
-    ChatEntry::system("⚙️ Running setup script...")
-}
 
 /// Handles returned when the session-lifecycle slice is activated.
 pub struct SessionLifecycleHandles {

@@ -1,17 +1,16 @@
-//! Miscellaneous handlers - model refresh display and session picker loading.
+//! Miscellaneous handlers - model refresh display and history mutation intake.
 //!
-//! Handles pushing model refresh results as transient markdown entries to the chat log,
-//! and loading session picker entries from the session store into app state.
+//! Handles pushing model refresh results as transient markdown entries to the
+//! chat log, and queueing history mutations for deferred application. Loading
+//! the session picker now lives in the `jinn-session-store` slice.
 
 use super::super::SessionPersistenceActor;
 use crate::ModelsRefreshed;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::session::phase_machine::PhaseKind;
-use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 
-use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::{ChatEntry, PickerKind};
 
 impl SessionPersistenceActor {
@@ -65,27 +64,6 @@ impl SessionPersistenceActor {
                 session.push_entry(ChatEntry::transient(content));
             }
         });
-    }
-
-    /// Loads session picker entries from the session store into `AppState`.
-    pub(in crate::feat::session::session_actor) async fn handle_load_session_picker_entries(
-        &self,
-        _payload: &LoadSessionPickerEntries,
-    ) {
-        {
-            let store = &self.services.session_store;
-            let theme = {
-                let state = self.state.read();
-                state.frontend.theme.clone()
-            };
-            let entries =
-                crate::feat::session::entries::load_session_entries_from_store(store, &theme).await;
-            let wrapped = crate::feat::session::entries::wrap_session_entries(entries);
-            self.state.with_preferences(&self.frontend_cap, |ops| {
-                let frontend = ops.frontend();
-                frontend.session_picker_mut().set_items(wrapped);
-            });
-        }
     }
 
     /// Queues a batch of history mutations for deferred application.
@@ -317,11 +295,7 @@ mod tests {
         reason = "test code"
     )]
     use crate::ModelsRefreshed;
-    use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
-    use crate::feat::session::session_actor::helpers::{
-        test_actor_recording, test_actor_with_store_recording,
-    };
-    use crate::feat::ui::picker_states::PickerExt;
+    use crate::feat::session::session_actor::helpers::test_actor_recording;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind, SessionId};
     use jinn_provider::{InputModalities, ModelInfo};
     use std::collections::HashMap;
@@ -431,23 +405,6 @@ mod tests {
         assert!(table.contains("ollama"), "expected provider name in table");
         assert!(table.contains('2'), "expected model count in table");
         assert!(table.contains("✅"), "expected success indicator");
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn handle_load_session_picker_entries_loads_from_store() {
-        let session = crate::feat::session::chat_session::ChatSessionState::new();
-        let (actor, _store, _audit) = test_actor_with_store_recording(vec![session]).await;
-
-        actor
-            .handle_load_session_picker_entries(&LoadSessionPickerEntries)
-            .await;
-
-        let state = actor.state.read();
-        assert!(
-            !state.frontend.session_picker().items().is_empty(),
-            "expected session picker to have entries after loading from store"
-        );
     }
 
     #[rstest::rstest]

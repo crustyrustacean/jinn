@@ -1,8 +1,12 @@
-//! Session lifecycle and persistence actor (trouper port) - owns session state from input to streaming.
+//! Session actor (trouper port) — owns turn progression and context state.
 //!
-//! This actor is the **sole owner** of session-related state: chat history, input
-//! buffers, session phase transitions, tool call state, and streaming tokens. It
-//! also handles persisting sessions to disk and restoring them on load.
+//! This actor is the **sole owner** of the turn/context half of session
+//! state: chat history, input buffers, session phase transitions, tool call
+//! state, streaming tokens, and the context caches. Session persistence and
+//! loading live in the `jinn-session-store` slice; scripted setup, teardown,
+//! close, and working-directory changes live in the `jinn-session-lifecycle`
+//! slice. This actor still persists on the turn path (enqueue, streaming,
+//! tool calls) through the shared session-store service.
 //!
 //! # State ownership
 //!
@@ -20,8 +24,6 @@
 mod handlers;
 mod helpers;
 
-pub use handlers::lifecycle::setup_running_msg;
-
 pub use handlers::multimodal_gate::evaluate_attachment_gate;
 
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
@@ -38,27 +40,14 @@ use crate::feat::chat_input::protocol::command::{
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-use crate::feat::session::protocol::archive_session::ArchiveSession;
-use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
 use crate::feat::session::protocol::citations_received::CitationsReceived;
-use crate::feat::session::protocol::close_session::CloseSession;
-use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
 use crate::feat::session::protocol::session_closed::SessionClosed;
-use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
-use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session::protocol::task_list_updated::TaskListUpdated;
-use crate::feat::session::protocol::teardown_session_tree::TeardownSessionTree;
-use crate::feat::session_lifecycle::protocol::command::PersistSession;
-use crate::feat::session_lifecycle::protocol::command::{
-    CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
-    RunSessionTeardown, SetSessionCwd,
-};
 use crate::feat::skills::SkillsLoaded;
 use crate::{ModelsRefreshed, PromptTemplatesLoaded};
-use jinn_boot_msg::EnvironmentLoaded;
 use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
 use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry, UnpinChatEntry};
 use jinn_tools_msg::{
@@ -87,31 +76,22 @@ pub fn default_token_cache() -> jinn_token_count_msg::HistoryWorkerChatEntryToke
     jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default()
 }
 
-/// Session lifecycle and persistence actor.
+/// Session turn-and-context actor.
 ///
-/// Handles session-related commands and events, mutates [`State`],
-/// and emits new commands and events via the message bus.
-/// Also persists session snapshots to disk when session state changes.
+/// Handles the turn-progression and context commands/events, mutates [`State`],
+/// and emits new commands and events via the message bus. Persists session
+/// snapshots through the session-store service when turn state changes.
 pub struct SessionPersistenceActor {
     state: State,
     cap: crate::common::tcaps::session::SessionCap,
     frontend_cap: crate::common::tcaps::frontend::FrontendCap,
-    /// Runtime services (user preferences storage for startup config loading).
+    /// Runtime services (the session store and the bus).
     services: crate::common::services::Services,
     /// Token counter for recording token usage in the session ledger.
     counter: TiktokenCounter,
     /// Auto-pruner entry token cache, shared with the prune workers. Used by the
     /// accumulation gate's token-cost resolver (cache hit is the common path).
     token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache,
-    /// Registry of builtin lifecycle handlers.
-    builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry,
-    /// Shell captured at startup for running lifecycle commands.
-    shell: String,
-    /// Handle for cancelling a currently running lifecycle shell process.
-    /// `None` when no lifecycle command is in flight. Carries the process-group
-    /// PID (for kill) and the inner reader's `AbortHandle` (so aborting it
-    /// surfaces the existing "... was cancelled" branch in the outer wrapper).
-    lifecycle_child: Option<crate::feat::session_lifecycle::command_runner::LifecycleCancelHandle>,
     /// Image converter (ImageMagick) for transcoding non-native image
     /// attachments. Wraps a trait object so tests inject fakes.
     image_converter: crate::feat::image_convert::ImageConverterService,
@@ -132,8 +112,6 @@ pub struct SessionPersistenceActorDeps {
     pub counter: TiktokenCounter,
     /// Auto-pruner entry token cache for the accumulation gate.
     pub token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache,
-    pub builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry,
-    pub shell: String,
     pub image_converter: crate::feat::image_convert::ImageConverterService,
 }
 
@@ -184,35 +162,16 @@ impl SessionPersistenceActor {
                             services: deps.deps.services,
                             counter: deps.counter,
                             token_cache: deps.token_cache,
-                            builtin_registry: deps.builtin_registry,
-                            shell: deps.shell,
-                            lifecycle_child: None,
                             image_converter: deps.image_converter,
                         })
                     })
                 }
             })
-            // Persistence + picker.
-            .handles::<SessionLoadRequested>()
-            .handles::<LoadSessionPickerEntries>()
-            .handles::<SessionForkRequested>()
             // Input & dispatch.
             .handles::<EnqueueUserMessage>()
             .handles::<SubmitSteeringMessage>()
             .handles::<EnqueueResumeTurn>()
             .handles::<PushChatEntry>()
-            // Lifecycle commands.
-            .handles::<RunSessionSetup>()
-            .handles::<RunSessionTeardown>()
-            .handles::<FinishSessionTeardown>()
-            .handles::<FinishSessionSetup>()
-            .handles::<CancelLifecycleCommand>()
-            .handles::<SetSessionCwd>()
-            .handles::<PersistSession>()
-            .handles::<CloseSession>()
-            .handles::<ArchiveSession>()
-            .handles::<ArchiveSessionTree>()
-            .handles::<TeardownSessionTree>()
             .handles::<SubmitHistoryMutations>()
             .handles::<MarkSessionInteracted>()
             .handles::<RetryStalledSession>()
@@ -226,7 +185,6 @@ impl SessionPersistenceActor {
             .handles::<LoadPersonaPickerEntries>()
             // Events (also broadcast targets — every publish of these
             // schemas reaches this actor, whatever slice emitted it).
-            // Events.
             .handles::<StreamToken>()
             .handles::<StreamCompleted>()
             .handles::<ToolUseStarted>()
@@ -241,7 +199,6 @@ impl SessionPersistenceActor {
             .handles::<TaskListUpdated>()
             .handles::<ModelsRefreshed>()
             .handles::<SkillsLoaded>()
-            .handles::<EnvironmentLoaded>()
             .handles::<ToolsRegistered>()
             .handles::<ToolsUnregistered>()
             .handles::<SessionClosed>()
@@ -262,24 +219,6 @@ impl SessionPersistenceActor {
 // ---------------------------------------------------------------------------
 // Message handlers — direct handler calls
 // ---------------------------------------------------------------------------
-
-impl MsgHandler<SessionLoadRequested> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &SessionLoadRequested, _ctx: &mut MsgCtx<'_>) {
-        self.on_load_requested(msg).await;
-    }
-}
-
-impl MsgHandler<LoadSessionPickerEntries> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &LoadSessionPickerEntries, _ctx: &mut MsgCtx<'_>) {
-        self.handle_load_session_picker_entries(msg).await;
-    }
-}
-
-impl MsgHandler<SessionForkRequested> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &SessionForkRequested, _ctx: &mut MsgCtx<'_>) {
-        self.on_session_fork_requested(msg).await;
-    }
-}
 
 impl MsgHandler<EnqueueUserMessage> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &EnqueueUserMessage, _ctx: &mut MsgCtx<'_>) {
@@ -302,72 +241,6 @@ impl MsgHandler<EnqueueResumeTurn> for SessionPersistenceActor {
 impl MsgHandler<PushChatEntry> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &PushChatEntry, _ctx: &mut MsgCtx<'_>) {
         self.handle_push_chat_entry(msg).await;
-    }
-}
-
-impl MsgHandler<RunSessionSetup> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &RunSessionSetup, _ctx: &mut MsgCtx<'_>) {
-        self.handle_run_session_setup(msg).await;
-    }
-}
-
-impl MsgHandler<RunSessionTeardown> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &RunSessionTeardown, _ctx: &mut MsgCtx<'_>) {
-        self.handle_run_session_teardown(msg).await;
-    }
-}
-
-impl MsgHandler<FinishSessionTeardown> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &FinishSessionTeardown, _ctx: &mut MsgCtx<'_>) {
-        self.handle_finish_session_teardown(msg).await;
-    }
-}
-
-impl MsgHandler<FinishSessionSetup> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &FinishSessionSetup, _ctx: &mut MsgCtx<'_>) {
-        self.handle_finish_session_setup(msg).await;
-    }
-}
-
-impl MsgHandler<CancelLifecycleCommand> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &CancelLifecycleCommand, _ctx: &mut MsgCtx<'_>) {
-        self.handle_cancel_lifecycle_command(msg);
-    }
-}
-
-impl MsgHandler<SetSessionCwd> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &SetSessionCwd, _ctx: &mut MsgCtx<'_>) {
-        self.handle_set_session_cwd(msg).await;
-    }
-}
-
-impl MsgHandler<PersistSession> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &PersistSession, _ctx: &mut MsgCtx<'_>) {
-        self.handle_persist_session(msg).await;
-    }
-}
-
-impl MsgHandler<CloseSession> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &CloseSession, _ctx: &mut MsgCtx<'_>) {
-        self.handle_close_session(msg).await;
-    }
-}
-
-impl MsgHandler<ArchiveSession> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &ArchiveSession, _ctx: &mut MsgCtx<'_>) {
-        self.handle_archive_session(msg).await;
-    }
-}
-
-impl MsgHandler<ArchiveSessionTree> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &ArchiveSessionTree, _ctx: &mut MsgCtx<'_>) {
-        self.handle_archive_session_tree(msg).await;
-    }
-}
-
-impl MsgHandler<TeardownSessionTree> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &TeardownSessionTree, _ctx: &mut MsgCtx<'_>) {
-        self.handle_teardown_session_tree(msg).await;
     }
 }
 
@@ -484,12 +357,6 @@ impl MsgHandler<ModelsRefreshed> for SessionPersistenceActor {
 impl MsgHandler<SkillsLoaded> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &SkillsLoaded, _ctx: &mut MsgCtx<'_>) {
         self.on_skills_loaded(msg);
-    }
-}
-
-impl MsgHandler<EnvironmentLoaded> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &EnvironmentLoaded, _ctx: &mut MsgCtx<'_>) {
-        self.on_environment_loaded(&msg.config).await;
     }
 }
 

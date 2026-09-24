@@ -5,7 +5,6 @@
 //! lifecycle recipes to bootstrap and tear down working directories.
 
 pub mod arg_input_state;
-pub mod command_runner;
 pub mod intent;
 pub mod render;
 

@@ -127,8 +127,6 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
             counter:
                 jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
             token_cache: jinn_domain::feat::session::session_actor::default_token_cache(),
-            builtin_registry: jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
-            shell: "/bin/sh".to_owned(),
             image_converter: jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
         },
     );
