@@ -104,9 +104,13 @@ impl SessionInitSupervisor {
     /// activates the worker on demand.
     fn send_to_worker<M>(&self, ctx: &mut MsgCtx<'_>, msg: &M)
     where
-        M: trouper::schema::Schema + serde::Serialize + serde::de::DeserializeOwned,
+        M: trouper::schema::Schema
+            + serde::Serialize
+            + serde::de::DeserializeOwned
+            + Clone
+            + trouper::envelope::PayloadValue,
     {
-        ctx.send(Address::Path(self.discovery.clone()), msg, None);
+        ctx.send(Address::Path(self.discovery.clone()), msg.clone(), None);
     }
 
     /// Runs a full discovery for `session_id` when the trigger's cwd
@@ -134,25 +138,25 @@ impl SessionInitSupervisor {
 // The four trigger events all run the same gated full discovery; the
 // cwd rides each payload.
 impl MsgHandler<SessionCreated> for SessionInitSupervisor {
-    async fn handle(&mut self, msg: SessionCreated, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionCreated, ctx: &mut MsgCtx<'_>) {
         self.gated_run(ctx, &msg.session_id, &msg.cwd);
     }
 }
 
 impl MsgHandler<SessionSetupCompleted> for SessionInitSupervisor {
-    async fn handle(&mut self, msg: SessionSetupCompleted, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionSetupCompleted, ctx: &mut MsgCtx<'_>) {
         self.gated_run(ctx, &msg.session_id, &msg.cwd);
     }
 }
 
 impl MsgHandler<SessionLoadCompleted> for SessionInitSupervisor {
-    async fn handle(&mut self, msg: SessionLoadCompleted, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionLoadCompleted, ctx: &mut MsgCtx<'_>) {
         self.gated_run(ctx, msg.session_id(), msg.session.cwd());
     }
 }
 
 impl MsgHandler<SessionCwdChanged> for SessionInitSupervisor {
-    async fn handle(&mut self, msg: SessionCwdChanged, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionCwdChanged, ctx: &mut MsgCtx<'_>) {
         self.gated_run(ctx, &msg.session_id, &msg.cwd);
     }
 }
@@ -160,13 +164,13 @@ impl MsgHandler<SessionCwdChanged> for SessionInitSupervisor {
 // The three manual rescans target one resource each; the payload's
 // cwd rides into the command.
 impl MsgHandler<ScanSkills> for SessionInitSupervisor {
-    async fn handle(&mut self, msg: ScanSkills, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ScanSkills, ctx: &mut MsgCtx<'_>) {
         if Self::gate_open(&msg.cwd) {
             self.send_to_worker(
                 ctx,
                 &RescanSkills {
                     session_id: msg.session_id.clone(),
-                    cwd: msg.cwd,
+                    cwd: msg.cwd.clone(),
                 },
             );
         }
@@ -174,13 +178,13 @@ impl MsgHandler<ScanSkills> for SessionInitSupervisor {
 }
 
 impl MsgHandler<RescanPromptTemplates> for SessionInitSupervisor {
-    async fn handle(&mut self, msg: RescanPromptTemplates, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &RescanPromptTemplates, ctx: &mut MsgCtx<'_>) {
         if Self::gate_open(&msg.cwd) {
             self.send_to_worker(
                 ctx,
                 &RescanPrompts {
                     session_id: msg.session_id.clone(),
-                    cwd: msg.cwd,
+                    cwd: msg.cwd.clone(),
                 },
             );
         }
@@ -188,13 +192,13 @@ impl MsgHandler<RescanPromptTemplates> for SessionInitSupervisor {
 }
 
 impl MsgHandler<ScanContextFiles> for SessionInitSupervisor {
-    async fn handle(&mut self, msg: ScanContextFiles, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ScanContextFiles, ctx: &mut MsgCtx<'_>) {
         if Self::gate_open(&msg.cwd) {
             self.send_to_worker(
                 ctx,
                 &RescanContext {
                     session_id: msg.session_id.clone(),
-                    cwd: msg.cwd,
+                    cwd: msg.cwd.clone(),
                 },
             );
         }

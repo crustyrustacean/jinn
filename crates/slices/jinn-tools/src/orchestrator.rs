@@ -340,34 +340,38 @@ impl ToolOrchestratorActor {
 // ---------------------------------------------------------------------------
 
 impl MsgHandler<RegisterTools> for ToolOrchestratorActor {
-    async fn handle(&mut self, msg: RegisterTools, _ctx: &mut MsgCtx<'_>) {
-        self.handle_register_tools(&msg.provider, &msg.definitions, msg.session_id)
+    async fn handle(&mut self, msg: &RegisterTools, _ctx: &mut MsgCtx<'_>) {
+        self.handle_register_tools(&msg.provider, &msg.definitions, msg.session_id.clone())
             .await;
     }
 }
 
 impl MsgHandler<ExecuteToolBatch> for ToolOrchestratorActor {
-    async fn handle(&mut self, msg: ExecuteToolBatch, _ctx: &mut MsgCtx<'_>) {
-        self.handle_execute_tool_batch(msg.session_id, msg.tool_calls, msg.dispatched_at)
-            .await;
+    async fn handle(&mut self, msg: &ExecuteToolBatch, _ctx: &mut MsgCtx<'_>) {
+        self.handle_execute_tool_batch(
+            msg.session_id.clone(),
+            msg.tool_calls.clone(),
+            msg.dispatched_at,
+        )
+        .await;
     }
 }
 
 impl MsgHandler<CancelToolBatch> for ToolOrchestratorActor {
-    async fn handle(&mut self, msg: CancelToolBatch, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &CancelToolBatch, _ctx: &mut MsgCtx<'_>) {
         self.handle_cancel_tool_batch(&msg.session_id);
     }
 }
 
 impl MsgHandler<ToolExecutionCompleted> for ToolOrchestratorActor {
-    async fn handle(&mut self, msg: ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.handle_tool_execution_completed(msg.session_id, msg.result)
+    async fn handle(&mut self, msg: &ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.handle_tool_execution_completed(msg.session_id.clone(), msg.result.clone())
             .await;
     }
 }
 
 impl MsgHandler<SessionClosed> for ToolOrchestratorActor {
-    async fn handle(&mut self, msg: SessionClosed, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionClosed, _ctx: &mut MsgCtx<'_>) {
         // Drop per-session tool registrations so the map does not leak.
         if self.session_tools.remove(&msg.session_id).is_some() {
             tracing::debug!(
@@ -379,7 +383,7 @@ impl MsgHandler<SessionClosed> for ToolOrchestratorActor {
 }
 
 impl MsgHandler<ToolsUnregistered> for ToolOrchestratorActor {
-    async fn handle(&mut self, msg: ToolsUnregistered, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ToolsUnregistered, _ctx: &mut MsgCtx<'_>) {
         // Given a provider tearing down its session-scoped registrations.
         // When pruning the routing map.
         let Some(session_map) = self.session_tools.get_mut(&msg.session_id) else {

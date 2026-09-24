@@ -129,7 +129,7 @@ impl TaskSettleListenerActor {
 }
 
 impl MsgHandler<ContextFilesLoaded> for TaskSettleListenerActor {
-    async fn handle(&mut self, msg: ContextFilesLoaded, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ContextFilesLoaded, ctx: &mut MsgCtx<'_>) {
         if self.aborted(ctx) || msg.session_id != self.child_id {
             return;
         }
@@ -139,7 +139,7 @@ impl MsgHandler<ContextFilesLoaded> for TaskSettleListenerActor {
 }
 
 impl MsgHandler<SkillsLoaded> for TaskSettleListenerActor {
-    async fn handle(&mut self, msg: SkillsLoaded, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SkillsLoaded, ctx: &mut MsgCtx<'_>) {
         if self.aborted(ctx) || msg.session_id != self.child_id {
             return;
         }
@@ -149,7 +149,7 @@ impl MsgHandler<SkillsLoaded> for TaskSettleListenerActor {
 }
 
 impl MsgHandler<PromptTemplatesLoaded> for TaskSettleListenerActor {
-    async fn handle(&mut self, msg: PromptTemplatesLoaded, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &PromptTemplatesLoaded, ctx: &mut MsgCtx<'_>) {
         if self.aborted(ctx) || msg.session_id != self.child_id {
             return;
         }
@@ -159,7 +159,7 @@ impl MsgHandler<PromptTemplatesLoaded> for TaskSettleListenerActor {
 }
 
 impl MsgHandler<McpServerStatus> for TaskSettleListenerActor {
-    async fn handle(&mut self, msg: McpServerStatus, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &McpServerStatus, ctx: &mut MsgCtx<'_>) {
         if self.aborted(ctx) || msg.session_id != self.child_id {
             return;
         }

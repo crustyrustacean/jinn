@@ -189,7 +189,7 @@ async fn registered_session_scoped_actor_tool_completes_its_batch() {
         }
     }
     impl MsgHandler<ExecuteTool> for StubProvider {
-        async fn handle(&mut self, msg: ExecuteTool, _ctx: &mut MsgCtx<'_>) {
+        async fn handle(&mut self, msg: &ExecuteTool, _ctx: &mut MsgCtx<'_>) {
             self.publish(ToolExecutionCompleted {
                 session_id: self.session_id.clone(),
                 result: jinn_core_types::tool_types::ToolResult {

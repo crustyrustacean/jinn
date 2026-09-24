@@ -89,7 +89,7 @@ impl MsgHandler<AllActorsSpawned> for SystemReadyActor {
         clippy::unused_async_trait_impl,
         reason = "async signature symmetry; body has no await"
     )]
-    async fn handle(&mut self, _msg: AllActorsSpawned, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &AllActorsSpawned, _ctx: &mut MsgCtx<'_>) {
         tracing::info!("actor system ready — all actors spawned");
         if let Some(tx) = self.ready_tx.take() {
             let _ = tx.send(());

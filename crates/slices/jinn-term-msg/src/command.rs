@@ -185,6 +185,10 @@ impl trouper::envelope::PayloadValue for SpawnTermOutcome {
     fn to_json_bytes(&self) -> Arc<[u8]> {
         trouper::envelope::payload_value_json_bytes(self)
     }
+
+    fn clone_value(&self) -> Box<dyn trouper::envelope::PayloadValue> {
+        Box::new(self.clone())
+    }
 }
 
 impl BusMessage for KilledPrevious {}
@@ -216,6 +220,10 @@ impl trouper::envelope::PayloadValue for SendTermOutcome {
     fn to_json_bytes(&self) -> Arc<[u8]> {
         trouper::envelope::payload_value_json_bytes(self)
     }
+
+    fn clone_value(&self) -> Box<dyn trouper::envelope::PayloadValue> {
+        Box::new(self.clone())
+    }
 }
 
 impl BusMessage for KillTerm {}
@@ -244,6 +252,10 @@ impl trouper::envelope::PayloadValue for KillTermOutcome {
 
     fn to_json_bytes(&self) -> Arc<[u8]> {
         trouper::envelope::payload_value_json_bytes(self)
+    }
+
+    fn clone_value(&self) -> Box<dyn trouper::envelope::PayloadValue> {
+        Box::new(self.clone())
     }
 }
 

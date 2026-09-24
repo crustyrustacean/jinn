@@ -101,9 +101,11 @@ mod composition_ask_tests {
     )]
     async fn minimal_ask_reproduces_resolution() {
         let services = crate::Services::new_fake().await;
-        // Composition parity: production wiring spawns this exact service
-        // at boot; kernel dispatch tests rely on it for the ask path.
-        let _ = jinn_context_assembly::service::spawn(&services.trouper_system);
+        // Composition parity: production wiring spawns the slice service
+        // at this exact path at boot; unit tests spawn the test-crate
+        // stub at the same path so the live-value ask crosses no
+        // compilation boundary (see assembly_test_bridge docs).
+        let _ = crate::feat::context::assembly_test_bridge::spawn(&services.trouper_system);
         let state = State::new(AppState::default_with_scope_focus());
         let session_id = state.read().session.active_session_id().clone();
         {

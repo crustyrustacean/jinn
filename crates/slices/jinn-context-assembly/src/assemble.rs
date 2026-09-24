@@ -281,6 +281,24 @@ fn count_tool_schema_tokens(tools: &[ToolDefinition], counter: &dyn TokenCounter
         .sum()
 }
 
+/// Runs [`assemble`] over inputs in wire form, for callers that cannot
+/// name this pipeline's domain types across a compilation boundary —
+/// the unit-test bridge in `jinn-domain` enters here (see
+/// `assembly_test_bridge` there); the crate compiles once, so its
+/// deserialization of the payload lands on the same types [`assemble`]
+/// reads.
+///
+/// # Errors
+///
+/// Returns an error when `inputs` does not deserialize into
+/// [`AssemblyInputs`].
+pub fn assemble_erased(inputs: serde_json::Value) -> Result<AssembledPrompt, serde_json::Error> {
+    let inputs: AssemblyInputs = serde_json::from_value(inputs)?;
+    let counter =
+        jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
+    Ok(assemble(&inputs, &counter))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(

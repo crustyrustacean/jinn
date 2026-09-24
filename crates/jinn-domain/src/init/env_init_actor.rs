@@ -121,7 +121,7 @@ impl EnvInitActor {
 }
 
 impl MsgHandler<GetEnvironmentConfig> for EnvInitActor {
-    async fn handle(&mut self, _msg: GetEnvironmentConfig, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &GetEnvironmentConfig, ctx: &mut MsgCtx<'_>) {
         if self.config.is_none() {
             self.config = self.load_config_and_resolve_keys();
         }
@@ -132,7 +132,7 @@ impl MsgHandler<GetEnvironmentConfig> for EnvInitActor {
 }
 
 impl MsgHandler<EnvironmentLoaded> for EnvInitActor {
-    async fn handle(&mut self, _msg: EnvironmentLoaded, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &EnvironmentLoaded, _ctx: &mut MsgCtx<'_>) {
         // No-op: EnvInitActor doesn't react to EnvironmentLoaded.
     }
 }

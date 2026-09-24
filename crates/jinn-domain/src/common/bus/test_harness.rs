@@ -160,10 +160,12 @@ impl TestHarness {
             M: BusMessage
                 + trouper::schema::Schema
                 + serde::Serialize
-                + serde::de::DeserializeOwned,
+                + serde::de::DeserializeOwned
+                + Clone
+                + Sync,
         {
-            async fn handle(&mut self, msg: M, _ctx: &mut trouper::context::MsgCtx<'_>) {
-                self.buffer.lock().push(msg);
+            async fn handle(&mut self, msg: &M, _ctx: &mut trouper::context::MsgCtx<'_>) {
+                self.buffer.lock().push(msg.clone());
             }
         }
 

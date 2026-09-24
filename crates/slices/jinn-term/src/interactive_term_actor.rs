@@ -262,7 +262,7 @@ impl InteractiveTermActor {
     /// Handles [`SpawnTerm`]: kills the chat session's previous terminal (if
     /// any), creates the pty session with its realtime screen task, and runs
     /// the initial settle wait against the screen-version watch.
-    async fn handle_spawn(&mut self, msg: SpawnTerm) -> SpawnTermOutcome {
+    async fn handle_spawn(&mut self, msg: &SpawnTerm) -> SpawnTermOutcome {
         // One terminal per chat session: replace any live terminal first.
         let killed_previous = if self.sessions.contains_key(&msg.chat_session_id) {
             self.remove_session(&msg.chat_session_id).map(|removed| {
@@ -389,7 +389,7 @@ impl InteractiveTermActor {
     }
 
     /// Handles [`SendTermInput`].
-    async fn handle_send(&mut self, msg: SendTermInput) -> SendTermOutcome {
+    async fn handle_send(&mut self, msg: &SendTermInput) -> SendTermOutcome {
         // Take the session out so the settle await below holds no borrow over
         // the map; it is unconditionally replaced before returning.
         let chat = msg.chat_session_id.clone();
@@ -450,7 +450,7 @@ impl InteractiveTermActor {
     }
 
     /// Handles [`KillTerm`].
-    async fn handle_kill(&mut self, msg: KillTerm) -> KillTermOutcome {
+    async fn handle_kill(&mut self, msg: &KillTerm) -> KillTermOutcome {
         let chat = msg.chat_session_id.clone();
         let Some(session) = self.sessions.get_mut(&chat) else {
             return KillTermOutcome::UnknownSession;
@@ -494,28 +494,28 @@ struct RemovedSession {
 }
 
 impl MsgHandler<SpawnTerm> for InteractiveTermActor {
-    async fn handle(&mut self, msg: SpawnTerm, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SpawnTerm, _ctx: &mut MsgCtx<'_>) {
         let reply = self.handle_spawn(msg).await;
         _ctx.reply(reply);
     }
 }
 
 impl MsgHandler<SendTermInput> for InteractiveTermActor {
-    async fn handle(&mut self, msg: SendTermInput, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SendTermInput, _ctx: &mut MsgCtx<'_>) {
         let reply = self.handle_send(msg).await;
         _ctx.reply(reply);
     }
 }
 
 impl MsgHandler<KillTerm> for InteractiveTermActor {
-    async fn handle(&mut self, msg: KillTerm, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &KillTerm, _ctx: &mut MsgCtx<'_>) {
         let reply = self.handle_kill(msg).await;
         _ctx.reply(reply);
     }
 }
 
 impl MsgHandler<SendTermKey> for InteractiveTermActor {
-    async fn handle(&mut self, msg: SendTermKey, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SendTermKey, _ctx: &mut MsgCtx<'_>) {
         // User keystrokes bypass the settle wait entirely: the user is
         // driving, so there is nothing to report back to an agent.
         if let Some(session) = self.sessions.get_mut(&msg.chat_session_id)
@@ -527,7 +527,7 @@ impl MsgHandler<SendTermKey> for InteractiveTermActor {
 }
 
 impl MsgHandler<ResizeTerm> for InteractiveTermActor {
-    async fn handle(&mut self, msg: ResizeTerm, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ResizeTerm, _ctx: &mut MsgCtx<'_>) {
         self.apply_resize(msg).await;
     }
 }
@@ -539,8 +539,8 @@ impl InteractiveTermActor {
     /// session or naming a session with no live terminal is a no-op — the
     /// render layer always names the session the overlay shows, and a
     /// broadcast resize would clobber other sessions' grids.
-    async fn apply_resize(&mut self, msg: ResizeTerm) {
-        let Some(chat) = msg.chat_session_id else {
+    async fn apply_resize(&mut self, msg: &ResizeTerm) {
+        let Some(chat) = msg.chat_session_id.clone() else {
             return;
         };
         if !self.sessions.contains_key(&chat) {
@@ -589,7 +589,7 @@ impl MsgHandler<jinn_domain::feat::session::protocol::session_closed::SessionClo
 {
     async fn handle(
         &mut self,
-        msg: jinn_domain::feat::session::protocol::session_closed::SessionClosed,
+        msg: &jinn_domain::feat::session::protocol::session_closed::SessionClosed,
         _ctx: &mut MsgCtx<'_>,
     ) {
         // `remove_session` clears the live flag before dropping the session

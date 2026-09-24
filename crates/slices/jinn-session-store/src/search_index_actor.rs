@@ -180,7 +180,7 @@ impl SearchIndexActor {
 pub struct ReindexTick;
 
 impl MsgHandler<ReindexTick> for SearchIndexActor {
-    async fn handle(&mut self, _msg: ReindexTick, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &ReindexTick, _ctx: &mut MsgCtx<'_>) {
         if self.queue.is_empty() {
             self.refresh_queue().await;
         }

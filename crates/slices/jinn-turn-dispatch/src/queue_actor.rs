@@ -512,14 +512,14 @@ impl QueueActor {
 }
 
 impl MsgHandler<SessionPhaseChanged> for QueueActor {
-    async fn handle(&mut self, msg: SessionPhaseChanged, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_phase_changed(&msg).await;
+    async fn handle(&mut self, msg: &SessionPhaseChanged, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_phase_changed(msg).await;
     }
 }
 
 impl MsgHandler<DispatchTurn> for QueueActor {
-    async fn handle(&mut self, msg: DispatchTurn, _ctx: &mut MsgCtx<'_>) {
-        self.handle_dispatch_turn(&msg).await;
+    async fn handle(&mut self, msg: &DispatchTurn, _ctx: &mut MsgCtx<'_>) {
+        self.handle_dispatch_turn(msg).await;
     }
 }
 

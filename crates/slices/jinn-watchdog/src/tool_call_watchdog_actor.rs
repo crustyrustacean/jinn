@@ -131,14 +131,14 @@ impl ToolCallWatchdogActor {
 }
 
 impl MsgHandler<ToolExecutionCompleted> for ToolCallWatchdogActor {
-    async fn handle(&mut self, msg: ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
         let actions = self.on_tool_result(&msg.session_id, msg.result.success);
         self.publish_actions(actions).await;
     }
 }
 
 impl MsgHandler<StreamCompleted> for ToolCallWatchdogActor {
-    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &StreamCompleted, _ctx: &mut MsgCtx<'_>) {
         self.on_turn_end(&msg.session_id, msg.reason);
     }
 }

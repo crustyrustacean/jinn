@@ -124,7 +124,7 @@ impl BusService {
                     "trouper: {} published",
                     message_name::<M>()
                 );
-                system.publish(&msg).await;
+                system.publish(msg).await;
             }
             BusInner::Recording(recorded) => {
                 let type_id = TypeId::of::<M>();

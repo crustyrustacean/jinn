@@ -166,13 +166,13 @@ impl TokenCountActor {
 }
 
 impl MsgHandler<HistoryAppended> for TokenCountActor {
-    async fn handle(&mut self, msg: HistoryAppended, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &HistoryAppended, _ctx: &mut MsgCtx<'_>) {
         self.handle_history_appended(&msg.session_id);
     }
 }
 
 impl MsgHandler<SessionLoadCompleted> for TokenCountActor {
-    async fn handle(&mut self, msg: SessionLoadCompleted, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionLoadCompleted, _ctx: &mut MsgCtx<'_>) {
         self.handle_session_load_completed(&msg.session);
     }
 }

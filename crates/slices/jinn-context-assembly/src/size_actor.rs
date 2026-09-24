@@ -130,31 +130,31 @@ impl ContextSizeActor {
 }
 
 impl MsgHandler<HistoryAppended> for ContextSizeActor {
-    async fn handle(&mut self, _msg: HistoryAppended, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &HistoryAppended, _ctx: &mut MsgCtx<'_>) {
         self.recalculate().await;
     }
 }
 
 impl MsgHandler<ContextOverrideChanged> for ContextSizeActor {
-    async fn handle(&mut self, _msg: ContextOverrideChanged, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &ContextOverrideChanged, _ctx: &mut MsgCtx<'_>) {
         self.recalculate().await;
     }
 }
 
 impl MsgHandler<ActiveSessionChanged> for ContextSizeActor {
-    async fn handle(&mut self, _msg: ActiveSessionChanged, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &ActiveSessionChanged, _ctx: &mut MsgCtx<'_>) {
         self.recalculate().await;
     }
 }
 
 impl MsgHandler<ChatEntryPinChanged> for ContextSizeActor {
-    async fn handle(&mut self, _msg: ChatEntryPinChanged, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &ChatEntryPinChanged, _ctx: &mut MsgCtx<'_>) {
         self.recalculate().await;
     }
 }
 
 impl MsgHandler<SessionLoadCompleted> for ContextSizeActor {
-    async fn handle(&mut self, _msg: SessionLoadCompleted, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &SessionLoadCompleted, _ctx: &mut MsgCtx<'_>) {
         self.recalculate().await;
     }
 }

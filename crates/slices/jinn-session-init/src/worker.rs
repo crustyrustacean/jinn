@@ -258,11 +258,11 @@ impl SessionDiscoveryWorker {
     /// Begins a full discovery run: all three resource scans
     /// concurrently, each writing state + publishing as it completes,
     /// plus the settle waiter for this run.
-    fn run_discovery(&mut self, cwd: PathBuf) {
+    fn run_discovery(&mut self, cwd: &std::path::Path) {
         let run = self.run.fetch_add(1, Ordering::AcqRel) + 1;
-        let skills = self.spawn_skills_task(&cwd);
-        let prompts = self.spawn_prompts_task(&cwd);
-        let context = self.spawn_context_task(&cwd);
+        let skills = self.spawn_skills_task(cwd);
+        let prompts = self.spawn_prompts_task(cwd);
+        let context = self.spawn_context_task(cwd);
         self.spawn_settle_waiter(run, skills, prompts, context);
     }
 
@@ -747,34 +747,34 @@ where
         + Sync
         + trouper::envelope::PayloadValue,
 {
-    system.publish(&msg).await;
+    system.publish(msg).await;
 }
 
 /// Settled is published the same way — its subscriber is the notifier.
 async fn publish_settled(system: &ActorSystem, msg: SessionDiscoverySettled) {
-    system.publish(&msg).await;
+    system.publish(msg).await;
 }
 
 impl MsgHandler<RunDiscovery> for SessionDiscoveryWorker {
-    async fn handle(&mut self, msg: RunDiscovery, _ctx: &mut MsgCtx<'_>) {
-        self.run_discovery(msg.cwd);
+    async fn handle(&mut self, msg: &RunDiscovery, _ctx: &mut MsgCtx<'_>) {
+        self.run_discovery(&msg.cwd);
     }
 }
 
 impl MsgHandler<RescanSkills> for SessionDiscoveryWorker {
-    async fn handle(&mut self, msg: RescanSkills, _ctx: &mut MsgCtx<'_>) {
-        self.rescan_one(Resource::Skills, msg.cwd);
+    async fn handle(&mut self, msg: &RescanSkills, _ctx: &mut MsgCtx<'_>) {
+        self.rescan_one(Resource::Skills, msg.cwd.clone());
     }
 }
 
 impl MsgHandler<RescanPrompts> for SessionDiscoveryWorker {
-    async fn handle(&mut self, msg: RescanPrompts, _ctx: &mut MsgCtx<'_>) {
-        self.rescan_one(Resource::Prompts, msg.cwd);
+    async fn handle(&mut self, msg: &RescanPrompts, _ctx: &mut MsgCtx<'_>) {
+        self.rescan_one(Resource::Prompts, msg.cwd.clone());
     }
 }
 
 impl MsgHandler<RescanContext> for SessionDiscoveryWorker {
-    async fn handle(&mut self, msg: RescanContext, _ctx: &mut MsgCtx<'_>) {
-        self.rescan_one(Resource::Context, msg.cwd);
+    async fn handle(&mut self, msg: &RescanContext, _ctx: &mut MsgCtx<'_>) {
+        self.rescan_one(Resource::Context, msg.cwd.clone());
     }
 }

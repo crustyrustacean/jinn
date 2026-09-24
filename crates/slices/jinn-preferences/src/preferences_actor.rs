@@ -113,8 +113,8 @@ impl PreferencesActor {
 }
 
 impl MsgHandler<UpdatePreferences> for PreferencesActor {
-    async fn handle(&mut self, msg: UpdatePreferences, _ctx: &mut MsgCtx<'_>) {
-        self.handle_update_preferences(&msg);
+    async fn handle(&mut self, msg: &UpdatePreferences, _ctx: &mut MsgCtx<'_>) {
+        self.handle_update_preferences(msg);
     }
 }
 

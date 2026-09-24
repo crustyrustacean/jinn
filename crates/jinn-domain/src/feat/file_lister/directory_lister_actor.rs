@@ -117,7 +117,7 @@ impl DirectoryListerActor {
 }
 
 impl MsgHandler<ListDirectory> for DirectoryListerActor {
-    async fn handle(&mut self, msg: ListDirectory, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ListDirectory, _ctx: &mut MsgCtx<'_>) {
         let path = msg.path.clone();
         let request_id = msg.request_id;
         let result = tokio::task::spawn_blocking(move || list_dir_blocking(&path)).await;

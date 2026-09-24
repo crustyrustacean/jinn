@@ -102,7 +102,7 @@ async fn session_created_triggers_discovery_for_that_session() {
     // When SessionCreated carrying that cwd crosses on the trigger topic.
     wired
         .fabric
-        .send_to_topic(&SessionCreated {
+        .send_to_topic(SessionCreated {
             session_id: wired.session_id.clone(),
             cwd: wired.home.clone(),
         })
@@ -129,7 +129,7 @@ async fn pending_cwd_session_produces_no_scan() {
     // When SessionCreated crosses with the pending-cwd sentinel.
     wired
         .fabric
-        .send_to_topic(&SessionCreated {
+        .send_to_topic(SessionCreated {
             session_id: wired.session_id.clone(),
             cwd: std::path::PathBuf::from("."),
         })
@@ -152,7 +152,7 @@ async fn scan_skills_command_threads_cwd_to_the_worker() {
     // When ScanSkills carrying that cwd crosses on the trigger topic.
     wired
         .fabric
-        .send_to_topic(&jinn_skills_msg::ScanSkills {
+        .send_to_topic(jinn_skills_msg::ScanSkills {
             session_id: wired.session_id.clone(),
             cwd: wired.home.clone(),
         })

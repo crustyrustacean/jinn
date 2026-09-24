@@ -120,7 +120,7 @@ impl DashboardCanvasActor {
     }
 
     /// Folds a [`DashboardNav`] into the cell.
-    fn apply_nav(&self, msg: DashboardNav) {
+    fn apply_nav(&self, msg: &DashboardNav) {
         self.cell.update(|s| match msg {
             DashboardNav::Up => s.select_prev(),
             DashboardNav::Down => s.select_next(),
@@ -131,31 +131,31 @@ impl DashboardCanvasActor {
 }
 
 impl MsgHandler<ActorStarting> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: ActorStarting, _ctx: &mut MsgCtx<'_>) {
-        self.apply_starting(&msg);
+    async fn handle(&mut self, msg: &ActorStarting, _ctx: &mut MsgCtx<'_>) {
+        self.apply_starting(msg);
     }
 }
 
 impl MsgHandler<ActorStarted> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: ActorStarted, _ctx: &mut MsgCtx<'_>) {
-        self.apply_started(&msg);
+    async fn handle(&mut self, msg: &ActorStarted, _ctx: &mut MsgCtx<'_>) {
+        self.apply_started(msg);
     }
 }
 
 impl MsgHandler<ActorShutdownCompleted> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: ActorShutdownCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.apply_shutdown(&msg);
+    async fn handle(&mut self, msg: &ActorShutdownCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.apply_shutdown(msg);
     }
 }
 
 impl MsgHandler<ServiceStatusUpdate> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: ServiceStatusUpdate, _ctx: &mut MsgCtx<'_>) {
-        self.apply_service_status(&msg);
+    async fn handle(&mut self, msg: &ServiceStatusUpdate, _ctx: &mut MsgCtx<'_>) {
+        self.apply_service_status(msg);
     }
 }
 
 impl MsgHandler<DashboardNav> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: DashboardNav, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &DashboardNav, _ctx: &mut MsgCtx<'_>) {
         self.apply_nav(msg);
     }
 }
@@ -247,7 +247,7 @@ mod tests {
 
         // When an ActorStarting envelope lands on the fabric topic.
         fabric
-            .send_to_topic(&ActorStarting {
+            .send_to_topic(ActorStarting {
                 name: "llm".to_owned(),
                 description: None,
             })
@@ -267,7 +267,7 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(&ActorStarting {
+            .send_to_topic(ActorStarting {
                 name: "llm".to_owned(),
                 description: Some("LlmActor".to_owned()),
             })
@@ -276,7 +276,7 @@ mod tests {
 
         // When the ActorStarted envelope arrives.
         fabric
-            .send_to_topic(&ActorStarted {
+            .send_to_topic(ActorStarted {
                 name: "llm".to_owned(),
                 description: Some("LlmActor".to_owned()),
             })
@@ -306,7 +306,7 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(&ActorStarted {
+            .send_to_topic(ActorStarted {
                 name: "llm".to_owned(),
                 description: Some("LlmActor".to_owned()),
             })
@@ -318,7 +318,7 @@ mod tests {
 
         // When the racing ActorStarting envelope lands afterwards.
         fabric
-            .send_to_topic(&ActorStarting {
+            .send_to_topic(ActorStarting {
                 name: "llm".to_owned(),
                 description: Some("LlmActor".to_owned()),
             })
@@ -341,7 +341,7 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(&ActorStarted {
+            .send_to_topic(ActorStarted {
                 name: "llm".to_owned(),
                 description: None,
             })
@@ -350,7 +350,7 @@ mod tests {
 
         // When the ActorShutdownCompleted envelope arrives.
         fabric
-            .send_to_topic(&ActorShutdownCompleted {
+            .send_to_topic(ActorShutdownCompleted {
                 name: "llm".to_owned(),
             })
             .await;
@@ -369,7 +369,7 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(&ActorStarted {
+            .send_to_topic(ActorStarted {
                 name: "sample-actor".to_owned(),
                 description: None,
             })
@@ -378,7 +378,7 @@ mod tests {
 
         // When a ServiceStatusUpdate projection arrives with a status message.
         fabric
-            .send_to_topic(&ServiceStatusUpdate {
+            .send_to_topic(ServiceStatusUpdate {
                 name: "sample-actor".to_owned(),
                 description: None,
                 lifecycle: None,
@@ -402,7 +402,7 @@ mod tests {
         let cell = wire_actor(&fabric);
         for name in ["a", "b", "c"] {
             fabric
-                .send_to_topic(&ActorStarted {
+                .send_to_topic(ActorStarted {
                     name: name.to_owned(),
                     description: None,
                 })
@@ -411,8 +411,8 @@ mod tests {
         wait_for(|| cell.read().actors().len() == 3).await;
 
         // When DashboardNav::Down envelopes arrive twice.
-        fabric.send_to_topic(&DashboardNav::Down).await;
-        fabric.send_to_topic(&DashboardNav::Down).await;
+        fabric.send_to_topic(DashboardNav::Down).await;
+        fabric.send_to_topic(DashboardNav::Down).await;
 
         // Then the cursor lands on the third row.
         wait_for(|| cell.read().selected_index() == 2).await;

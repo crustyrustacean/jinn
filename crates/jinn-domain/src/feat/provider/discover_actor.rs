@@ -95,7 +95,7 @@ impl DiscoverActor {
 }
 
 impl MsgHandler<RefreshModels> for DiscoverActor {
-    async fn handle(&mut self, _msg: RefreshModels, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &RefreshModels, _ctx: &mut MsgCtx<'_>) {
         self.refresh_models().await;
     }
 }

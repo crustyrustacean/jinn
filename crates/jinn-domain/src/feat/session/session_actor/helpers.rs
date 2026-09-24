@@ -73,8 +73,9 @@ pub(crate) async fn test_actor_recording() -> (
     let (bus, audit) = crate::common::services::BusService::new_recording();
     let services = crate::common::services::Services::new_fake_with_bus(bus).await;
     // Dispatch paths assemble through the trouper context-assembly
-    // service; spawn it so session-actor tests exercise the real ask.
-    let _ = jinn_context_assembly::service::ensure_spawned(&services.trouper_system);
+    // service; spawn the test-crate stub so the live-value ask crosses
+    // no compilation boundary (see assembly_test_bridge docs).
+    let _ = crate::feat::context::assembly_test_bridge::ensure_spawned(&services.trouper_system);
 
     (
         super::SessionPersistenceActor {

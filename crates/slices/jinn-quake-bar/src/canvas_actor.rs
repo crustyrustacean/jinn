@@ -43,7 +43,7 @@ impl ServiceActor for QuakeBarCanvasActor {
 }
 
 impl MsgHandler<SubmitQuakeBarCommand> for QuakeBarCanvasActor {
-    async fn handle(&mut self, msg: SubmitQuakeBarCommand, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SubmitQuakeBarCommand, _ctx: &mut MsgCtx<'_>) {
         self.apply_submit(msg);
     }
 }
@@ -71,8 +71,8 @@ impl QuakeBarCanvasActor {
     }
 
     /// Appends the submitted text to the command log.
-    fn apply_submit(&self, msg: SubmitQuakeBarCommand) {
-        self.cell.update(|s| s.log.push(msg.text));
+    fn apply_submit(&self, msg: &SubmitQuakeBarCommand) {
+        self.cell.update(|s| s.log.push(msg.text.clone()));
     }
 }
 
@@ -115,7 +115,7 @@ mod tests {
         let actor = QuakeBarCanvasActor { cell: cell.clone() };
 
         // When applying a SubmitQuakeBarCommand.
-        actor.apply_submit(SubmitQuakeBarCommand {
+        actor.apply_submit(&SubmitQuakeBarCommand {
             text: "hello".to_owned(),
         });
 
@@ -138,7 +138,7 @@ mod tests {
 
         // When a SubmitQuakeBarCommand envelope lands on the topic.
         fabric
-            .send_to_topic(&SubmitQuakeBarCommand {
+            .send_to_topic(SubmitQuakeBarCommand {
                 text: "hello".to_owned(),
             })
             .await;

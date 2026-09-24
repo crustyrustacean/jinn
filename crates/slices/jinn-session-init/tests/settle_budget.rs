@@ -12,14 +12,13 @@
 )]
 
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::state::State;
 use jinn_domain::protocol::SessionId;
-use trouper::tap::FactKind;
 
 use jinn_session_init::commands::{RescanPrompts, RunDiscovery};
 use jinn_session_init::worker::SETTLE_BUDGET_ARG;
@@ -37,6 +36,8 @@ struct Wired {
     fabric: jinn_testutil::TestFabric,
     state: State,
     session_id: SessionId,
+    /// Schema names of every `Sent` broadcast observed on the system.
+    sent: Arc<Mutex<Vec<String>>>,
     /// The VCS-rooted project dir the command payloads point at.
     project: std::path::PathBuf,
     _dir: Box<tempfile::TempDir>,
@@ -59,6 +60,22 @@ impl Wired {
         let state = State::new(AppState::default());
         let session_id = state.read().session.active_session_id().clone();
         let fabric = jinn_testutil::TestFabric::new();
+        let sent: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&sent);
+        fabric
+            .system()
+            .set_observation(Arc::new(move |obs: &trouper::observe::Observation| {
+                if let trouper::observe::ObservationKind::Sent {
+                    dest: trouper::envelope::Address::Schema(_),
+                    schema,
+                    ..
+                } = &obs.kind
+                {
+                    sink.lock()
+                        .expect("observation sink")
+                        .push(schema.name().to_owned());
+                }
+            }));
         jinn_session_init::install_partition_set_with_args(
             fabric.system(),
             &paths,
@@ -71,6 +88,7 @@ impl Wired {
             fabric,
             state,
             session_id,
+            sent,
             project,
             _dir: dir,
         }
@@ -125,12 +143,15 @@ impl Wired {
     }
 
     /// Whether a broadcast of `schema_name` crossed the fabric (the
-    /// worker's per-resource publishes are schema broadcasts; the tap
-    /// records each delivery as a `Sent` fact addressed to the schema).
+    /// worker's per-resource publishes are schema broadcasts; the
+    /// observation handler records each as a `Sent` addressed to the
+    /// schema).
     fn published_schema(&self, schema_name: &str) -> bool {
-        self.fabric.system().tap_facts().iter().any(|fact| {
-            matches!(&fact.kind, FactKind::Sent { schema, dest: trouper::envelope::Address::Schema(_), .. } if schema.name() == schema_name)
-        })
+        self.sent
+            .lock()
+            .expect("observation sink")
+            .iter()
+            .any(|name| name == schema_name)
     }
 }
 

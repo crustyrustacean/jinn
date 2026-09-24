@@ -180,7 +180,7 @@ impl CompactionActor {
 }
 
 impl MsgHandler<TriggerCompaction> for CompactionActor {
-    async fn handle(&mut self, msg: TriggerCompaction, _ctx: &mut MsgCtx<'_>) {
-        self.handle_trigger_compaction(&msg).await;
+    async fn handle(&mut self, msg: &TriggerCompaction, _ctx: &mut MsgCtx<'_>) {
+        self.handle_trigger_compaction(msg).await;
     }
 }

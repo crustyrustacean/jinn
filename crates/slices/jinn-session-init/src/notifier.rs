@@ -86,8 +86,8 @@ impl DiscoveryNotifier {
 }
 
 impl MsgHandler<SessionDiscoverySettled> for DiscoveryNotifier {
-    async fn handle(&mut self, msg: SessionDiscoverySettled, _ctx: &mut MsgCtx<'_>) {
-        let summary = build_summary(&msg);
+    async fn handle(&mut self, msg: &SessionDiscoverySettled, _ctx: &mut MsgCtx<'_>) {
+        let summary = build_summary(msg);
         self.push_summary(&msg.session_id, summary);
     }
 }

@@ -101,7 +101,7 @@ impl TaskPhaseListenerActor {
 }
 
 impl MsgHandler<SessionPhaseChanged> for TaskPhaseListenerActor {
-    async fn handle(&mut self, msg: SessionPhaseChanged, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionPhaseChanged, ctx: &mut MsgCtx<'_>) {
         // Abort path: the awaiting `task` future was dropped (parent tool
         // batch cancelled), closing the channel. There is nothing left to
         // signal — stop listening. Bus traffic gives us the chance to notice.

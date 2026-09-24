@@ -75,7 +75,7 @@ async fn settled_event_posts_one_transient_summary_entry() {
     // When a settled event with discovered resources crosses.
     wired
         .fabric
-        .send_to_topic(&SessionDiscoverySettled {
+        .send_to_topic(SessionDiscoverySettled {
             session_id: wired.session_id.clone(),
             snapshot: DiscoverySnapshot {
                 skill_count: 2,
@@ -105,7 +105,7 @@ async fn empty_discovery_says_no_resources() {
     // When a settled event with an empty snapshot crosses.
     wired
         .fabric
-        .send_to_topic(&SessionDiscoverySettled {
+        .send_to_topic(SessionDiscoverySettled {
             session_id: wired.session_id.clone(),
             snapshot: DiscoverySnapshot::default(),
             delayed: None,
@@ -126,7 +126,7 @@ async fn delayed_reason_surfaces_in_summary() {
     // When a settled event carries a delayed reason.
     wired
         .fabric
-        .send_to_topic(&SessionDiscoverySettled {
+        .send_to_topic(SessionDiscoverySettled {
             session_id: wired.session_id.clone(),
             snapshot: DiscoverySnapshot {
                 skill_count: 2,
@@ -150,7 +150,7 @@ async fn failed_scan_notes_error_in_summary() {
     // When a settled event carries a skills scan error.
     wired
         .fabric
-        .send_to_topic(&SessionDiscoverySettled {
+        .send_to_topic(SessionDiscoverySettled {
             session_id: wired.session_id.clone(),
             snapshot: DiscoverySnapshot {
                 skill_count: 0,

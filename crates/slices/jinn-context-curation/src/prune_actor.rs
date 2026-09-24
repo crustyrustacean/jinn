@@ -164,8 +164,8 @@ impl PruneActor {
 }
 
 impl MsgHandler<HistoryAppended> for PruneActor {
-    async fn handle(&mut self, msg: HistoryAppended, _ctx: &mut MsgCtx<'_>) {
-        self.handle_history_appended(&msg).await;
+    async fn handle(&mut self, msg: &HistoryAppended, _ctx: &mut MsgCtx<'_>) {
+        self.handle_history_appended(msg).await;
     }
 }
 

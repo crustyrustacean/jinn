@@ -266,262 +266,262 @@ impl SessionPersistenceActor {
 // ---------------------------------------------------------------------------
 
 impl MsgHandler<SessionLoadRequested> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: SessionLoadRequested, _ctx: &mut MsgCtx<'_>) {
-        self.on_load_requested(&msg).await;
+    async fn handle(&mut self, msg: &SessionLoadRequested, _ctx: &mut MsgCtx<'_>) {
+        self.on_load_requested(msg).await;
     }
 }
 
 impl MsgHandler<LoadSessionPickerEntries> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: LoadSessionPickerEntries, _ctx: &mut MsgCtx<'_>) {
-        self.handle_load_session_picker_entries(&msg).await;
+    async fn handle(&mut self, msg: &LoadSessionPickerEntries, _ctx: &mut MsgCtx<'_>) {
+        self.handle_load_session_picker_entries(msg).await;
     }
 }
 
 impl MsgHandler<SessionForkRequested> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: SessionForkRequested, _ctx: &mut MsgCtx<'_>) {
-        self.on_session_fork_requested(&msg).await;
+    async fn handle(&mut self, msg: &SessionForkRequested, _ctx: &mut MsgCtx<'_>) {
+        self.on_session_fork_requested(msg).await;
     }
 }
 
 impl MsgHandler<EnqueueUserMessage> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: EnqueueUserMessage, _ctx: &mut MsgCtx<'_>) {
-        self.handle_enqueue_user_message(&msg).await;
+    async fn handle(&mut self, msg: &EnqueueUserMessage, _ctx: &mut MsgCtx<'_>) {
+        self.handle_enqueue_user_message(msg).await;
     }
 }
 
 impl MsgHandler<SubmitSteeringMessage> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: SubmitSteeringMessage, _ctx: &mut MsgCtx<'_>) {
-        self.handle_submit_steering_message(&msg);
+    async fn handle(&mut self, msg: &SubmitSteeringMessage, _ctx: &mut MsgCtx<'_>) {
+        self.handle_submit_steering_message(msg);
     }
 }
 
 impl MsgHandler<EnqueueResumeTurn> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: EnqueueResumeTurn, _ctx: &mut MsgCtx<'_>) {
-        self.handle_enqueue_resume_turn(&msg).await;
+    async fn handle(&mut self, msg: &EnqueueResumeTurn, _ctx: &mut MsgCtx<'_>) {
+        self.handle_enqueue_resume_turn(msg).await;
     }
 }
 
 impl MsgHandler<PushChatEntry> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: PushChatEntry, _ctx: &mut MsgCtx<'_>) {
-        self.handle_push_chat_entry(&msg).await;
+    async fn handle(&mut self, msg: &PushChatEntry, _ctx: &mut MsgCtx<'_>) {
+        self.handle_push_chat_entry(msg).await;
     }
 }
 
 impl MsgHandler<SendMessage> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: SendMessage, _ctx: &mut MsgCtx<'_>) {
-        self.handle_send_message(&msg).await;
+    async fn handle(&mut self, msg: &SendMessage, _ctx: &mut MsgCtx<'_>) {
+        self.handle_send_message(msg).await;
     }
 }
 
 impl MsgHandler<RunSessionSetup> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: RunSessionSetup, _ctx: &mut MsgCtx<'_>) {
-        self.handle_run_session_setup(&msg).await;
+    async fn handle(&mut self, msg: &RunSessionSetup, _ctx: &mut MsgCtx<'_>) {
+        self.handle_run_session_setup(msg).await;
     }
 }
 
 impl MsgHandler<RunSessionTeardown> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: RunSessionTeardown, _ctx: &mut MsgCtx<'_>) {
-        self.handle_run_session_teardown(&msg).await;
+    async fn handle(&mut self, msg: &RunSessionTeardown, _ctx: &mut MsgCtx<'_>) {
+        self.handle_run_session_teardown(msg).await;
     }
 }
 
 impl MsgHandler<FinishSessionTeardown> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: FinishSessionTeardown, _ctx: &mut MsgCtx<'_>) {
-        self.handle_finish_session_teardown(&msg).await;
+    async fn handle(&mut self, msg: &FinishSessionTeardown, _ctx: &mut MsgCtx<'_>) {
+        self.handle_finish_session_teardown(msg).await;
     }
 }
 
 impl MsgHandler<FinishSessionSetup> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: FinishSessionSetup, _ctx: &mut MsgCtx<'_>) {
-        self.handle_finish_session_setup(&msg).await;
+    async fn handle(&mut self, msg: &FinishSessionSetup, _ctx: &mut MsgCtx<'_>) {
+        self.handle_finish_session_setup(msg).await;
     }
 }
 
 impl MsgHandler<CancelLifecycleCommand> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: CancelLifecycleCommand, _ctx: &mut MsgCtx<'_>) {
-        self.handle_cancel_lifecycle_command(&msg);
+    async fn handle(&mut self, msg: &CancelLifecycleCommand, _ctx: &mut MsgCtx<'_>) {
+        self.handle_cancel_lifecycle_command(msg);
     }
 }
 
 impl MsgHandler<SetSessionCwd> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: SetSessionCwd, _ctx: &mut MsgCtx<'_>) {
-        self.handle_set_session_cwd(&msg).await;
+    async fn handle(&mut self, msg: &SetSessionCwd, _ctx: &mut MsgCtx<'_>) {
+        self.handle_set_session_cwd(msg).await;
     }
 }
 
 impl MsgHandler<PersistSession> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: PersistSession, _ctx: &mut MsgCtx<'_>) {
-        self.handle_persist_session(&msg).await;
+    async fn handle(&mut self, msg: &PersistSession, _ctx: &mut MsgCtx<'_>) {
+        self.handle_persist_session(msg).await;
     }
 }
 
 impl MsgHandler<CloseSession> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: CloseSession, _ctx: &mut MsgCtx<'_>) {
-        self.handle_close_session(&msg).await;
+    async fn handle(&mut self, msg: &CloseSession, _ctx: &mut MsgCtx<'_>) {
+        self.handle_close_session(msg).await;
     }
 }
 
 impl MsgHandler<ArchiveSession> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ArchiveSession, _ctx: &mut MsgCtx<'_>) {
-        self.handle_archive_session(&msg).await;
+    async fn handle(&mut self, msg: &ArchiveSession, _ctx: &mut MsgCtx<'_>) {
+        self.handle_archive_session(msg).await;
     }
 }
 
 impl MsgHandler<ArchiveSessionTree> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ArchiveSessionTree, _ctx: &mut MsgCtx<'_>) {
-        self.handle_archive_session_tree(&msg).await;
+    async fn handle(&mut self, msg: &ArchiveSessionTree, _ctx: &mut MsgCtx<'_>) {
+        self.handle_archive_session_tree(msg).await;
     }
 }
 
 impl MsgHandler<TeardownSessionTree> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: TeardownSessionTree, _ctx: &mut MsgCtx<'_>) {
-        self.handle_teardown_session_tree(&msg).await;
+    async fn handle(&mut self, msg: &TeardownSessionTree, _ctx: &mut MsgCtx<'_>) {
+        self.handle_teardown_session_tree(msg).await;
     }
 }
 
 impl MsgHandler<PinChatEntry> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: PinChatEntry, _ctx: &mut MsgCtx<'_>) {
-        self.handle_pin_chat_entry(&msg).await;
+    async fn handle(&mut self, msg: &PinChatEntry, _ctx: &mut MsgCtx<'_>) {
+        self.handle_pin_chat_entry(msg).await;
     }
 }
 
 impl MsgHandler<UnpinChatEntry> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: UnpinChatEntry, _ctx: &mut MsgCtx<'_>) {
-        self.handle_unpin_chat_entry(&msg).await;
+    async fn handle(&mut self, msg: &UnpinChatEntry, _ctx: &mut MsgCtx<'_>) {
+        self.handle_unpin_chat_entry(msg).await;
     }
 }
 
 impl MsgHandler<LoadPersonaPickerEntries> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: LoadPersonaPickerEntries, _ctx: &mut MsgCtx<'_>) {
-        self.handle_load_persona_picker_entries(&msg);
+    async fn handle(&mut self, msg: &LoadPersonaPickerEntries, _ctx: &mut MsgCtx<'_>) {
+        self.handle_load_persona_picker_entries(msg);
     }
 }
 
 impl MsgHandler<MarkSessionInteracted> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: MarkSessionInteracted, _ctx: &mut MsgCtx<'_>) {
-        self.handle_mark_session_interacted(&msg).await;
+    async fn handle(&mut self, msg: &MarkSessionInteracted, _ctx: &mut MsgCtx<'_>) {
+        self.handle_mark_session_interacted(msg).await;
     }
 }
 
 impl MsgHandler<SubmitHistoryMutations> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: SubmitHistoryMutations, _ctx: &mut MsgCtx<'_>) {
-        self.handle_submit_history_mutations(&msg).await;
+    async fn handle(&mut self, msg: &SubmitHistoryMutations, _ctx: &mut MsgCtx<'_>) {
+        self.handle_submit_history_mutations(msg).await;
     }
 }
 
 impl MsgHandler<RetryStalledSession> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: RetryStalledSession, _ctx: &mut MsgCtx<'_>) {
-        self.on_retry_stalled_session(&msg).await;
+    async fn handle(&mut self, msg: &RetryStalledSession, _ctx: &mut MsgCtx<'_>) {
+        self.on_retry_stalled_session(msg).await;
     }
 }
 
 impl MsgHandler<SendToLlmProvider> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: SendToLlmProvider, _ctx: &mut MsgCtx<'_>) {
-        self.on_send_to_llm_provider(&msg);
+    async fn handle(&mut self, msg: &SendToLlmProvider, _ctx: &mut MsgCtx<'_>) {
+        self.on_send_to_llm_provider(msg);
     }
 }
 
 // Event handlers
 
 impl MsgHandler<StreamToken> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: StreamToken, _ctx: &mut MsgCtx<'_>) {
-        self.on_stream_token(&msg);
+    async fn handle(&mut self, msg: &StreamToken, _ctx: &mut MsgCtx<'_>) {
+        self.on_stream_token(msg);
     }
 }
 
 impl MsgHandler<StreamCompleted> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.on_stream_completed(&msg).await;
+    async fn handle(&mut self, msg: &StreamCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.on_stream_completed(msg).await;
     }
 }
 
 impl MsgHandler<ToolUseStarted> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ToolUseStarted, _ctx: &mut MsgCtx<'_>) {
-        self.on_tool_use_started(&msg);
+    async fn handle(&mut self, msg: &ToolUseStarted, _ctx: &mut MsgCtx<'_>) {
+        self.on_tool_use_started(msg);
     }
 }
 
 impl MsgHandler<ToolCallReceived> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ToolCallReceived, _ctx: &mut MsgCtx<'_>) {
-        self.on_tool_call_received(&msg);
+    async fn handle(&mut self, msg: &ToolCallReceived, _ctx: &mut MsgCtx<'_>) {
+        self.on_tool_call_received(msg);
     }
 }
 
 impl MsgHandler<ToolCallStreaming> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ToolCallStreaming, _ctx: &mut MsgCtx<'_>) {
-        self.on_tool_call_streaming(&msg);
+    async fn handle(&mut self, msg: &ToolCallStreaming, _ctx: &mut MsgCtx<'_>) {
+        self.on_tool_call_streaming(msg);
     }
 }
 
 impl MsgHandler<ToolExecutionCompleted> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.on_tool_execution_completed(&msg).await;
+    async fn handle(&mut self, msg: &ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.on_tool_execution_completed(msg).await;
     }
 }
 
 impl MsgHandler<ToolBatchCompleted> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ToolBatchCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.on_tool_batch_completed(&msg).await;
+    async fn handle(&mut self, msg: &ToolBatchCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.on_tool_batch_completed(msg).await;
     }
 }
 
 impl MsgHandler<ToolExecutionStarted> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ToolExecutionStarted, _ctx: &mut MsgCtx<'_>) {
-        self.on_tool_execution_started(&msg);
+    async fn handle(&mut self, msg: &ToolExecutionStarted, _ctx: &mut MsgCtx<'_>) {
+        self.on_tool_execution_started(msg);
     }
 }
 
 impl MsgHandler<ToolExecutionOutput> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ToolExecutionOutput, _ctx: &mut MsgCtx<'_>) {
-        self.on_tool_execution_output(&msg);
+    async fn handle(&mut self, msg: &ToolExecutionOutput, _ctx: &mut MsgCtx<'_>) {
+        self.on_tool_execution_output(msg);
     }
 }
 
 impl MsgHandler<CitationsReceived> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: CitationsReceived, _ctx: &mut MsgCtx<'_>) {
-        self.on_citations_received(&msg).await;
+    async fn handle(&mut self, msg: &CitationsReceived, _ctx: &mut MsgCtx<'_>) {
+        self.on_citations_received(msg).await;
     }
 }
 
 impl MsgHandler<ModelsRefreshed> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ModelsRefreshed, _ctx: &mut MsgCtx<'_>) {
-        self.on_models_refreshed(&msg);
+    async fn handle(&mut self, msg: &ModelsRefreshed, _ctx: &mut MsgCtx<'_>) {
+        self.on_models_refreshed(msg);
     }
 }
 
 impl MsgHandler<SkillsLoaded> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: SkillsLoaded, _ctx: &mut MsgCtx<'_>) {
-        self.on_skills_loaded(&msg);
+    async fn handle(&mut self, msg: &SkillsLoaded, _ctx: &mut MsgCtx<'_>) {
+        self.on_skills_loaded(msg);
     }
 }
 
 impl MsgHandler<EnvironmentLoaded> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: EnvironmentLoaded, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &EnvironmentLoaded, _ctx: &mut MsgCtx<'_>) {
         self.on_environment_loaded(&msg.config).await;
     }
 }
 
 impl MsgHandler<ChatEntryPinChanged> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ChatEntryPinChanged, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ChatEntryPinChanged, _ctx: &mut MsgCtx<'_>) {
         self.save_active_session(&msg.session_id).await;
     }
 }
 
 impl MsgHandler<TaskListUpdated> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: TaskListUpdated, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &TaskListUpdated, _ctx: &mut MsgCtx<'_>) {
         self.save_active_session(&msg.session_id).await;
     }
 }
 
 impl MsgHandler<ToolsRegistered> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ToolsRegistered, _ctx: &mut MsgCtx<'_>) {
-        self.on_tools_registered(&msg);
+    async fn handle(&mut self, msg: &ToolsRegistered, _ctx: &mut MsgCtx<'_>) {
+        self.on_tools_registered(msg);
     }
 }
 
 impl MsgHandler<ToolsUnregistered> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: ToolsUnregistered, _ctx: &mut MsgCtx<'_>) {
-        self.on_tools_unregistered(&msg);
+    async fn handle(&mut self, msg: &ToolsUnregistered, _ctx: &mut MsgCtx<'_>) {
+        self.on_tools_unregistered(msg);
     }
 }
 
@@ -529,19 +529,19 @@ impl MsgHandler<ToolsUnregistered> for SessionPersistenceActor {
 /// the orchestrator's own cleanup does not reach (it prunes its routing map,
 /// not the LLM-facing definitions cache).
 impl MsgHandler<SessionClosed> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: SessionClosed, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionClosed, _ctx: &mut MsgCtx<'_>) {
         self.on_session_closed_cleanup(&msg.session_id);
     }
 }
 
 impl MsgHandler<PromptTemplatesLoaded> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: PromptTemplatesLoaded, _ctx: &mut MsgCtx<'_>) {
-        self.on_prompt_templates_loaded(&msg);
+    async fn handle(&mut self, msg: &PromptTemplatesLoaded, _ctx: &mut MsgCtx<'_>) {
+        self.on_prompt_templates_loaded(msg);
     }
 }
 
 impl MsgHandler<PersonasLoaded> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: PersonasLoaded, _ctx: &mut MsgCtx<'_>) {
-        self.on_personas_loaded(&msg);
+    async fn handle(&mut self, msg: &PersonasLoaded, _ctx: &mut MsgCtx<'_>) {
+        self.on_personas_loaded(msg);
     }
 }

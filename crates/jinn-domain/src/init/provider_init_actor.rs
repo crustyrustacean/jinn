@@ -98,7 +98,7 @@ impl ProviderInitActor {
 }
 
 impl MsgHandler<EnvironmentLoaded> for ProviderInitActor {
-    async fn handle(&mut self, msg: EnvironmentLoaded, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &EnvironmentLoaded, _ctx: &mut MsgCtx<'_>) {
         self.on_environment_loaded(&msg.config).await;
     }
 }

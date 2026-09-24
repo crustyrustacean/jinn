@@ -131,47 +131,47 @@ impl ServiceActor for DiscordBridgeSubscriber {
 }
 
 impl MsgHandler<SessionPhaseChanged> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: SessionPhaseChanged, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_phase_changed(&msg);
+    async fn handle(&mut self, msg: &SessionPhaseChanged, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_phase_changed(msg);
     }
 }
 
 impl MsgHandler<SessionSetupCompleted> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: SessionSetupCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_setup_completed(&msg);
+    async fn handle(&mut self, msg: &SessionSetupCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_setup_completed(msg);
     }
 }
 
 impl MsgHandler<SessionTeardownFinished> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: SessionTeardownFinished, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_teardown_finished(&msg);
+    async fn handle(&mut self, msg: &SessionTeardownFinished, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_teardown_finished(msg);
     }
 }
 
 impl MsgHandler<SessionArchived> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: SessionArchived, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_archived(&msg);
+    async fn handle(&mut self, msg: &SessionArchived, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_archived(msg);
     }
 }
 
 impl MsgHandler<CreateThreadForSession> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: CreateThreadForSession, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &CreateThreadForSession, _ctx: &mut MsgCtx<'_>) {
         self.forward_gateway_request(GatewayRequest::CreateThreadForSession {
-            session_id: msg.session_id,
-            title: msg.title,
+            session_id: msg.session_id.clone(),
+            title: msg.title.clone(),
         });
     }
 }
 
 impl MsgHandler<DiscordThreadCreated> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: DiscordThreadCreated, _ctx: &mut MsgCtx<'_>) {
-        self.handle_created(&msg);
+    async fn handle(&mut self, msg: &DiscordThreadCreated, _ctx: &mut MsgCtx<'_>) {
+        self.handle_created(msg);
     }
 }
 
 impl MsgHandler<DiscordThreadCreateFailed> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: DiscordThreadCreateFailed, _ctx: &mut MsgCtx<'_>) {
-        self.handle_failed(&msg);
+    async fn handle(&mut self, msg: &DiscordThreadCreateFailed, _ctx: &mut MsgCtx<'_>) {
+        self.handle_failed(msg);
     }
 }
 
@@ -508,7 +508,7 @@ mod tests {
 
         // When an Idle phase change is published on the session topic.
         fabric
-            .send_to_topic(&SessionPhaseChanged {
+            .send_to_topic(SessionPhaseChanged {
                 session_id: sid.clone(),
                 old_phase: PhaseKind::Streaming,
                 new_phase: PhaseKind::Idle,
@@ -545,7 +545,7 @@ mod tests {
 
         // When a non-idle phase change is published on the session topic.
         fabric
-            .send_to_topic(&SessionPhaseChanged {
+            .send_to_topic(SessionPhaseChanged {
                 session_id: sid.clone(),
                 old_phase: PhaseKind::Idle,
                 new_phase: PhaseKind::Streaming,
@@ -584,7 +584,7 @@ mod tests {
 
         // When a failed setup completion is published on the session topic.
         fabric
-            .send_to_topic(&SessionSetupCompleted {
+            .send_to_topic(SessionSetupCompleted {
                 session_id: sid.clone(),
                 cwd: std::path::PathBuf::from("/repo"),
                 error: Some("boom".to_owned()),
@@ -627,7 +627,7 @@ mod tests {
 
         // When a failed teardown finish is published on the session topic.
         fabric
-            .send_to_topic(&SessionTeardownFinished {
+            .send_to_topic(SessionTeardownFinished {
                 session_id: sid.clone(),
                 error: Some("boom".to_owned()),
             })
@@ -664,7 +664,7 @@ mod tests {
 
         // When an archive event is published on the session topic.
         fabric
-            .send_to_topic(&SessionArchived {
+            .send_to_topic(SessionArchived {
                 session_id: sid.clone(),
             })
             .await;
@@ -699,7 +699,7 @@ mod tests {
 
         // When a CreateThreadForSession command is published on the session topic.
         fabric
-            .send_to_topic(&CreateThreadForSession {
+            .send_to_topic(CreateThreadForSession {
                 session_id: sid.clone(),
                 title: "my thread".to_owned(),
             })
@@ -738,7 +738,7 @@ mod tests {
 
         // When the gateway's thread-created event crosses the session topic.
         fabric
-            .send_to_topic(&DiscordThreadCreated {
+            .send_to_topic(DiscordThreadCreated {
                 session_id: sid.clone(),
                 title: "Threaded".to_owned(),
             })

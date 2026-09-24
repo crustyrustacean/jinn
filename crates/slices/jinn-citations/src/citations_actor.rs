@@ -197,19 +197,19 @@ impl CitationsActor {
 }
 
 impl MsgHandler<ToolCallReceived> for CitationsActor {
-    async fn handle(&mut self, msg: ToolCallReceived, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ToolCallReceived, _ctx: &mut MsgCtx<'_>) {
         self.on_tool_call(&msg.session_id, &msg.tool_call);
     }
 }
 
 impl MsgHandler<ToolExecutionCompleted> for CitationsActor {
-    async fn handle(&mut self, msg: ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
         self.on_tool_result(&msg.session_id, &msg.result);
     }
 }
 
 impl MsgHandler<StreamCompleted> for CitationsActor {
-    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &StreamCompleted, _ctx: &mut MsgCtx<'_>) {
         self.on_turn_end(&msg.session_id, msg.reason).await;
     }
 }

@@ -74,7 +74,7 @@ impl HistoryWorkerChatEntryTokenCacheEvictionActor {
 }
 
 impl MsgHandler<SessionClosed> for HistoryWorkerChatEntryTokenCacheEvictionActor {
-    async fn handle(&mut self, msg: SessionClosed, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionClosed, _ctx: &mut MsgCtx<'_>) {
         self.handle_session_closed(&msg.session_id);
     }
 }

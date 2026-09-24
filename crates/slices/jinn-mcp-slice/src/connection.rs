@@ -683,7 +683,7 @@ impl BusPublish for McpActor {
 }
 
 impl MsgHandler<ExecuteTool> for McpActor {
-    async fn handle(&mut self, msg: ExecuteTool, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ExecuteTool, _ctx: &mut MsgCtx<'_>) {
         // Only handle calls for this session whose tool name carries this
         // server's namespace prefix.
         if msg.session_id != self.session_id {
@@ -698,15 +698,15 @@ impl MsgHandler<ExecuteTool> for McpActor {
             // Client never connected (dead on start). Report a failed result.
             self.deps
                 .publish(ToolExecutionCompleted {
-                    session_id: msg.session_id,
+                    session_id: msg.session_id.clone(),
                     result: failure_result(&msg.tool_call, "MCP server is not connected"),
                 })
                 .await;
             return;
         };
 
-        let session_id = msg.session_id;
-        let tool_call = msg.tool_call;
+        let session_id = msg.session_id.clone();
+        let tool_call = msg.tool_call.clone();
         let max_output_lines = msg.max_output_lines;
         let max_output_bytes = msg.max_output_bytes;
 
@@ -793,7 +793,7 @@ pub struct McpConnectionStateReply {
 impl jinn_slices::BusMessage for McpConnectionStateReply {}
 
 impl MsgHandler<McpConnectionStateProbe> for McpActor {
-    async fn handle(&mut self, _msg: McpConnectionStateProbe, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &McpConnectionStateProbe, ctx: &mut MsgCtx<'_>) {
         ctx.reply(McpConnectionStateReply {
             connected: self.client.is_some(),
         });

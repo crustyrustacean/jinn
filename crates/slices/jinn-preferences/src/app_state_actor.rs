@@ -142,8 +142,8 @@ impl AppStateActor {
 }
 
 impl MsgHandler<UpdateAppState> for AppStateActor {
-    async fn handle(&mut self, msg: UpdateAppState, _ctx: &mut MsgCtx<'_>) {
-        self.handle_update(&msg);
+    async fn handle(&mut self, msg: &UpdateAppState, _ctx: &mut MsgCtx<'_>) {
+        self.handle_update(msg);
     }
 }
 

@@ -270,6 +270,10 @@ impl trouper::envelope::PayloadValue for KernelIntent {
     fn to_json_bytes(&self) -> Arc<[u8]> {
         trouper::envelope::payload_value_json_bytes(self)
     }
+
+    fn clone_value(&self) -> Box<dyn trouper::envelope::PayloadValue> {
+        Box::new(self.clone())
+    }
 }
 
 #[expect(

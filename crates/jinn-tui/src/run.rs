@@ -404,8 +404,8 @@ mod tests {
     }
 
     impl trouper::actor::MsgHandler<SetSessionCwd> for CwdRecorder {
-        async fn handle(&mut self, msg: SetSessionCwd, _ctx: &mut trouper::context::MsgCtx<'_>) {
-            self.buffer.lock().unwrap().push(msg);
+        async fn handle(&mut self, msg: &SetSessionCwd, _ctx: &mut trouper::context::MsgCtx<'_>) {
+            self.buffer.lock().unwrap().push(msg.clone());
         }
     }
 

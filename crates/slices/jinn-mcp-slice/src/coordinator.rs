@@ -339,7 +339,7 @@ fn configured_servers(services: &Services) -> Vec<(String, McpServerConfig)> {
 // ── Message handlers ─────────────────────────────────────────────────────
 
 impl MsgHandler<SessionLoadCompleted> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: SessionLoadCompleted, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionLoadCompleted, _ctx: &mut MsgCtx<'_>) {
         // Given a session restored from disk.
         let session_id = msg.session.session_id().clone();
         let enabled = msg.session.enabled_mcp_servers().clone();
@@ -350,7 +350,7 @@ impl MsgHandler<SessionLoadCompleted> for McpCoordinatorActor {
 }
 
 impl MsgHandler<SessionCreated> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: SessionCreated, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionCreated, _ctx: &mut MsgCtx<'_>) {
         // Given a freshly created session.
         // Sessions may carry config-seeded enablement (`auto_enable` in
         // jinn.toml); reconcile against the session's actual set rather than
@@ -370,7 +370,7 @@ impl MsgHandler<SessionCreated> for McpCoordinatorActor {
 }
 
 impl MsgHandler<McpEnablementChanged> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: McpEnablementChanged, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &McpEnablementChanged, _ctx: &mut MsgCtx<'_>) {
         // Given a new desired enablement set for a session.
         // When reconciling.
         self.reconcile(&msg.session_id, &msg.enabled).await;
@@ -378,25 +378,25 @@ impl MsgHandler<McpEnablementChanged> for McpCoordinatorActor {
 }
 
 impl MsgHandler<SessionClosed> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: SessionClosed, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionClosed, _ctx: &mut MsgCtx<'_>) {
         self.kill_all_for_session(&msg.session_id).await;
     }
 }
 
 impl MsgHandler<SessionArchived> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: SessionArchived, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionArchived, _ctx: &mut MsgCtx<'_>) {
         self.kill_all_for_session(&msg.session_id).await;
     }
 }
 
 impl MsgHandler<SessionTeardownFinished> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: SessionTeardownFinished, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SessionTeardownFinished, _ctx: &mut MsgCtx<'_>) {
         self.kill_all_for_session(&msg.session_id).await;
     }
 }
 
 impl MsgHandler<RestartMcpServer> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: RestartMcpServer, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &RestartMcpServer, ctx: &mut MsgCtx<'_>) {
         let outcome = self.restart_one(&msg.session_id, &msg.server).await;
         ctx.reply(McpRestartOutcome {
             ok: outcome.is_ok(),
@@ -437,7 +437,7 @@ pub struct McpRestartForTest {
 
 #[cfg(test)]
 impl MsgHandler<McpRestartForTest> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: McpRestartForTest, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &McpRestartForTest, ctx: &mut MsgCtx<'_>) {
         let outcome = self
             .restart_one_with_timeout(&msg.session_id, &msg.server, msg.timeout)
             .await;
@@ -462,7 +462,7 @@ impl MsgHandler<McpRestartForTest> for McpCoordinatorActor {
 /// There is no sync-sibling actor — the coordinator owns the full MCP
 /// lifecycle domain, so it writes the status inline.
 impl MsgHandler<McpServerStatus> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: McpServerStatus, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &McpServerStatus, _ctx: &mut MsgCtx<'_>) {
         self.state.with_session(&self.cap, |view| {
             if let Some(session) = view.session.map().get_mut(&msg.session_id) {
                 session.set_mcp_server_status(&msg.server, msg.status);
@@ -475,10 +475,10 @@ impl MsgHandler<McpServerStatus> for McpCoordinatorActor {
 ///
 /// Like the status handler, the coordinator owns this field inline.
 impl MsgHandler<McpServerLog> for McpCoordinatorActor {
-    async fn handle(&mut self, msg: McpServerLog, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &McpServerLog, _ctx: &mut MsgCtx<'_>) {
         self.state.with_session(&self.cap, |view| {
             if let Some(session) = view.session.map().get_mut(&msg.session_id) {
-                session.set_mcp_server_stderr(&msg.server, msg.tail);
+                session.set_mcp_server_stderr(&msg.server, msg.tail.clone());
             }
         });
     }

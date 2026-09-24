@@ -72,7 +72,7 @@ impl TestFabric {
             + trouper::envelope::PayloadValue,
     >(
         &self,
-        msg: &M,
+        msg: M,
     ) {
         self.system.publish(msg).await;
     }

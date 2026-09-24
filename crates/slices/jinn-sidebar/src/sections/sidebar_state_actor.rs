@@ -77,8 +77,8 @@ impl SidebarStateActor {
 }
 
 impl MsgHandler<SessionClosed> for SidebarStateActor {
-    async fn handle(&mut self, msg: SessionClosed, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_closed(&msg);
+    async fn handle(&mut self, msg: &SessionClosed, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_closed(msg);
     }
 }
 

@@ -455,7 +455,7 @@ mod tests {
             SessionPersistenceActorDeps {
                 deps: {
                     let deps = harness.actor_deps().await;
-                    let _ = jinn_context_assembly::service::ensure_spawned(
+                    let _ = crate::feat::context::assembly_test_bridge::ensure_spawned(
                         &deps.services.trouper_system,
                     );
                     deps
@@ -537,7 +537,7 @@ mod tests {
             SessionPersistenceActorDeps {
                 deps: {
                     let deps = harness.actor_deps().await;
-                    let _ = jinn_context_assembly::service::ensure_spawned(
+                    let _ = crate::feat::context::assembly_test_bridge::ensure_spawned(
                         &deps.services.trouper_system,
                     );
                     deps
@@ -704,7 +704,7 @@ mod tests {
             SessionPersistenceActorDeps {
                 deps: {
                     let deps = harness.actor_deps().await;
-                    let _ = jinn_context_assembly::service::ensure_spawned(
+                    let _ = crate::feat::context::assembly_test_bridge::ensure_spawned(
                         &deps.services.trouper_system,
                     );
                     deps

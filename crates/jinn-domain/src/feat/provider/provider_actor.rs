@@ -128,8 +128,8 @@ impl ProviderActor {
 }
 
 impl MsgHandler<ProviderSwitch> for ProviderActor {
-    async fn handle(&mut self, msg: ProviderSwitch, _ctx: &mut MsgCtx<'_>) {
-        self.handle_provider_switch(&msg);
+    async fn handle(&mut self, msg: &ProviderSwitch, _ctx: &mut MsgCtx<'_>) {
+        self.handle_provider_switch(msg);
         self.publish(ProviderSwitched {
             session_id: msg.session_id.clone(),
             provider_name: msg.provider_id.to_string(),
@@ -139,7 +139,7 @@ impl MsgHandler<ProviderSwitch> for ProviderActor {
 }
 
 impl MsgHandler<LoadProviderPickerEntries> for ProviderActor {
-    async fn handle(&mut self, _msg: LoadProviderPickerEntries, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &LoadProviderPickerEntries, _ctx: &mut MsgCtx<'_>) {
         self.state.with_provider(&self.cap, |view| {
             load_provider_picker_items(&self.deps.services, view);
         });
@@ -147,25 +147,25 @@ impl MsgHandler<LoadProviderPickerEntries> for ProviderActor {
 }
 
 impl MsgHandler<LoadEndpointPickerEntries> for ProviderActor {
-    async fn handle(&mut self, _msg: LoadEndpointPickerEntries, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &LoadEndpointPickerEntries, _ctx: &mut MsgCtx<'_>) {
         self.handle_load_endpoint_picker_entries(false).await;
     }
 }
 
 impl MsgHandler<RefreshEndpointPickerEntries> for ProviderActor {
-    async fn handle(&mut self, _msg: RefreshEndpointPickerEntries, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &RefreshEndpointPickerEntries, _ctx: &mut MsgCtx<'_>) {
         self.handle_load_endpoint_picker_entries(true).await;
     }
 }
 
 impl MsgHandler<ModelsRefreshed> for ProviderActor {
-    async fn handle(&mut self, msg: ModelsRefreshed, _ctx: &mut MsgCtx<'_>) {
-        self.handle_models_refreshed(&msg);
+    async fn handle(&mut self, msg: &ModelsRefreshed, _ctx: &mut MsgCtx<'_>) {
+        self.handle_models_refreshed(msg);
     }
 }
 
 impl MsgHandler<ModelCacheLoaded> for ProviderActor {
-    async fn handle(&mut self, msg: ModelCacheLoaded, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &ModelCacheLoaded, _ctx: &mut MsgCtx<'_>) {
         self.handle_model_cache_loaded(&msg.cache);
     }
 }

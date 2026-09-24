@@ -173,20 +173,20 @@ impl InferenceActor {
 }
 
 impl MsgHandler<SendToLlmProvider> for InferenceActor {
-    async fn handle(&mut self, msg: SendToLlmProvider, _ctx: &mut MsgCtx<'_>) {
-        self.start_stream(&msg).await;
+    async fn handle(&mut self, msg: &SendToLlmProvider, _ctx: &mut MsgCtx<'_>) {
+        self.start_stream(msg).await;
     }
 }
 
 impl MsgHandler<CancelStream> for InferenceActor {
-    async fn handle(&mut self, msg: CancelStream, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &CancelStream, _ctx: &mut MsgCtx<'_>) {
         self.cancel_stream(&msg.session_id).await;
     }
 }
 
 impl MsgHandler<StreamCompleted> for InferenceActor {
-    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.handle_stream_completed(&msg);
+    async fn handle(&mut self, msg: &StreamCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.handle_stream_completed(msg);
     }
 }
 

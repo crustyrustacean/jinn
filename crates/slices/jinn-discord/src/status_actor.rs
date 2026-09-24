@@ -151,7 +151,7 @@ async fn drain_status_channel(
         cell.update(|state| fold_connection(state, &update));
         // Native event on the fabric: every declarant subscriber
         // receives it.
-        system.publish(&update).await;
+        system.publish(update.clone()).await;
         // The dashboard consumes only the generic projection; discord's
         // row identity travels inside it, so the dashboard stays
         // feature-agnostic.
@@ -250,10 +250,10 @@ mod tests {
     impl trouper::actor::MsgHandler<DiscordStatusUpdate> for TopicProbe {
         async fn handle(
             &mut self,
-            msg: DiscordStatusUpdate,
+            msg: &DiscordStatusUpdate,
             _ctx: &mut trouper::context::MsgCtx<'_>,
         ) {
-            self.seen.lock().push(msg);
+            self.seen.lock().push(msg.clone());
         }
     }
 

@@ -30,7 +30,7 @@ impl ServiceActor for ContextAssemblyService {
 }
 
 impl MsgHandler<AssembleContext> for ContextAssemblyService {
-    async fn handle(&mut self, msg: AssembleContext, ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &AssembleContext, ctx: &mut MsgCtx<'_>) {
         let counter =
             jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
         let prompt = assemble(&msg.inputs, &counter);

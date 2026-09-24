@@ -238,7 +238,7 @@ pub enum StallAction {
 pub struct StallTick;
 
 impl MsgHandler<StallTick> for StallWatchdogActor {
-    async fn handle(&mut self, _msg: StallTick, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &StallTick, _ctx: &mut MsgCtx<'_>) {
         let actions = self.on_tick(now_ms());
         self.publish_actions(actions).await;
         self.reschedule();
@@ -246,19 +246,19 @@ impl MsgHandler<StallTick> for StallWatchdogActor {
 }
 
 impl MsgHandler<SendToLlmProvider> for StallWatchdogActor {
-    async fn handle(&mut self, msg: SendToLlmProvider, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SendToLlmProvider, _ctx: &mut MsgCtx<'_>) {
         self.on_stream_start(&msg.session_id, now_ms());
     }
 }
 
 impl MsgHandler<StreamToken> for StallWatchdogActor {
-    async fn handle(&mut self, msg: StreamToken, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &StreamToken, _ctx: &mut MsgCtx<'_>) {
         self.on_stream_event(&msg.session_id, now_ms());
     }
 }
 
 impl MsgHandler<StreamCompleted> for StallWatchdogActor {
-    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &StreamCompleted, _ctx: &mut MsgCtx<'_>) {
         self.on_stream_end(&msg.session_id, msg.reason);
     }
 }
