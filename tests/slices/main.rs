@@ -27,6 +27,7 @@
 
 mod common;
 
+mod boot;
 mod composition;
 mod dashboard;
 mod discord;

@@ -28,7 +28,6 @@ fn install_rustls_provider_for_tests() {
 
 pub mod common;
 pub mod feat;
-pub mod init;
 
 // Not yet reorganized (handled in later phases)
 pub mod protocol;
@@ -103,9 +102,7 @@ pub use protocol::{
 
 // Re-export domain types from their canonical locations
 pub use common::actor::protocol::command::ProceedWithShutdown;
-pub use common::actor::protocol::event::{
-    ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned,
-};
+pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 pub use feat::chat_input::protocol::command::EnqueueUserMessage;
 pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
 pub use feat::provider::llm_message::LlmMessage;

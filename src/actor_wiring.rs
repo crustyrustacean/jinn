@@ -27,10 +27,6 @@ use jinn_slices;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
-use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
-use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
-use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
-
 use jinn_domain::{AppCore, State};
 
 /// The fixed (required) inputs to actor-system construction.
@@ -241,36 +237,11 @@ impl ActorSystemBuilder {
 
         // ── Infrastructure actors ──────────────────────────────────────────
 
-        // System-ready actor: signals main thread when all actors started.
-        let (ready_tx, ready_rx) = kanal::unbounded::<()>();
-        let _system_ready = SystemReadyActor::spawn(
-            &services.trouper_system,
-            SystemReadyActorDeps {
-                deps: actor_deps.clone(),
-                ready_tx,
-            },
-        );
-
-        // ── Init actors ────────────────────────────────────────────────────
-
-        // Env init: config loading is deferred to the GetEnvironmentConfig
-        // ask (the ONE real ask path — composition asks it below, with a
-        // mandatory timeout).
-        let env_init_path = EnvInitActor::spawn(
-            &services.trouper_system,
-            EnvInitActorDeps {
-                deps: actor_deps.clone(),
-            },
-        );
-        // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
-        let _provider_init = ProviderInitActor::spawn(
-            &services.trouper_system,
-            ProviderInitActorDeps {
-                deps: actor_deps.clone(),
-                state: state.clone(),
-                provider_cap: jinn_domain::common::tcaps::mint::mint_provider_cap(),
-            },
-        );
+        // Boot trio (system-ready, env-init, provider-init) from the boot
+        // slice; `boot.ready_rx` blocks the main thread below until
+        // `AllActorsSpawned`, and `boot.env_init_path` is the ask target
+        // for the startup tail.
+        let boot = jinn_boot::install_actors(&services.trouper_system, state.clone(), &services);
 
         // Preferences + app-state actors: trouper, installed with the
         // preferences slice's activation wrapper below.
@@ -531,29 +502,30 @@ impl ActorSystemBuilder {
             }
 
             // Signal all actors spawned.
-            bus.publish(jinn_domain::common::actor::protocol::event::AllActorsSpawned)
-                .await;
+            bus.publish(jinn_boot_msg::AllActorsSpawned).await;
 
             // Ask EnvInitActor for config and publish EnvironmentLoaded to
             // trigger the init chain. The trouper ask has a MANDATORY
             // timeout; this is the one real startup ask path.
-            use jinn_domain::init::env_init_actor::GetEnvironmentConfig;
+            use jinn_boot_msg::GetEnvironmentConfig;
             const ENV_ASK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
             match services
                 .trouper_system
-                .ask(env_init_path.clone(), GetEnvironmentConfig, ENV_ASK_TIMEOUT)
+                .ask(
+                    boot.env_init_path.clone(),
+                    GetEnvironmentConfig,
+                    ENV_ASK_TIMEOUT,
+                )
                 .await
             {
                 Ok(value) => match value
-                    .decode::<jinn_domain::init::env_init_actor::EnvironmentConfigReply>()
+                    .decode::<jinn_boot_msg::EnvironmentConfigReply>()
                     .expect("env reply decodes")
                     .config
                 {
                     Some(config) => {
-                        bus.publish(jinn_domain::init::env_init_actor::EnvironmentLoaded {
-                            config,
-                        })
-                        .await;
+                        bus.publish(jinn_boot_msg::EnvironmentLoaded { config })
+                            .await;
                     }
                     None => {
                         tracing::warn!("no provider config found — skipping EnvironmentLoaded");
@@ -578,7 +550,7 @@ impl ActorSystemBuilder {
         }
 
         // Wait for SystemReadyActor to confirm readiness.
-        let _ = ready_rx.to_async().recv().await;
+        let _ = boot.ready_rx.to_async().recv().await;
 
         // Build AppCore with shared state and the bridge.
         let core = AppCore {

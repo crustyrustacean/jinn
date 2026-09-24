@@ -59,7 +59,7 @@ use crate::feat::session_lifecycle::protocol::command::{
     RunSessionTeardown, SetSessionCwd,
 };
 use crate::feat::skills::SkillsLoaded;
-use crate::init::EnvironmentLoaded;
+use jinn_boot_msg::EnvironmentLoaded;
 use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
 use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry, UnpinChatEntry};
 use jinn_tools_msg::{

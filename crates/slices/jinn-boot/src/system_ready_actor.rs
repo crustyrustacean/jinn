@@ -7,10 +7,10 @@
 //! last actor is spawned, the wiring code publishes `AllActorsSpawned` to the bus.
 //! This actor receives it and signals readiness.
 
-use crate::common::actor::protocol::event::AllActorsSpawned;
-use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::common::services::bus_service::BusService;
 use error_stack::Report;
+use jinn_boot_msg::AllActorsSpawned;
+use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_domain::common::services::bus_service::BusService;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -114,7 +114,7 @@ mod tests {
     )]
 
     use super::*;
-    use crate::common::bus::test_harness::TestHarness;
+    use jinn_domain::common::bus::test_harness::TestHarness;
 
     #[rstest::rstest]
     #[tokio::test]

@@ -172,15 +172,16 @@ async fn environment_loaded_is_no_longer_a_slice_trigger() {
     // When the kernel publishes `EnvironmentLoaded` (still a live event:
     // the provider init, browser scan, and session-actor seed flows
     // subscribe to it).
-    let _ = app.core.bridge.send(Bridge::publish_closure(
-        jinn_domain::init::env_init_actor::EnvironmentLoaded {
+    let _ = app
+        .core
+        .bridge
+        .send(Bridge::publish_closure(jinn_boot_msg::EnvironmentLoaded {
             config: jinn_domain::feat::provider_infra::ProvidersConfig {
                 providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             },
-        },
-    ));
+        }));
 
     // Then no discovery ran: the event never reaches the supervisor,
     // so no `SkillsLoaded` crosses back for any session.

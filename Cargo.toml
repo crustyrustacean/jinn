@@ -60,6 +60,8 @@ jinn-inference-msg = { workspace = true }
 jinn-mcp-slice = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
+jinn-boot = { workspace = true }
+jinn-boot-msg = { workspace = true }
 jinn-cwd-msg = { workspace = true }
 jinn-persona-msg = { workspace = true }
 jinn-sidebar-msg = { workspace = true }
@@ -93,6 +95,7 @@ jinn-session-init = { workspace = true }
 jinn-session-store = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-picker = { workspace = true }
+jinn-provider-config = { workspace = true }
 
 clap_complete = { workspace = true }
 tokio = { workspace = true }
@@ -132,6 +135,7 @@ rustls = { workspace = true }
 jinn-dashboard = { workspace = true }
 jinn-quake-bar = { workspace = true }
 jinn-discord = { workspace = true }
+jinn-boot-msg = { workspace = true }
 jinn-session-init = { workspace = true }
 jinn-turn-dispatch = { workspace = true }
 jinn-session-history-msg = { workspace = true }
@@ -167,6 +171,8 @@ jinn-cwd = { path = "crates/slices/jinn-cwd" }
 jinn-status-bar = { path = "crates/slices/jinn-status-bar" }
 jinn-slices = { path = "crates/jinn-slices" }
 jinn-session-msg = { path = "crates/jinn-session-msg" }
+jinn-boot = { path = "crates/slices/jinn-boot" }
+jinn-boot-msg = { path = "crates/jinn-boot-msg" }
 jinn-session-store = { path = "crates/slices/jinn-session-store" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }

@@ -1,0 +1,37 @@
+[package]
+name = "jinn-boot"
+version.workspace = true
+edition.workspace = true
+description = "The boot slice: the startup trio (system-ready, env-init, provider-init) spawned by composition."
+
+[features]
+test-harness = ["jinn-domain/test-harness"]
+
+[dependencies]
+jinn-boot-msg = { workspace = true }
+# The trouper runtime: ServiceActors, topics, schemas.
+trouper = { workspace = true }
+# Kernel dep (turn-dispatch/session-store precedent): the boot actors
+# read/write AppState through State + the minted ProviderCap, publish
+# provider-family contracts (ProviderSwitch, ModelCacheLoaded) that
+# migrate with the provider-selection slice, and reuse the kernel
+# session vocabulary (no_api_keys_msg). Granted at install time.
+jinn-domain = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-mcp-msg = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+jinn-preferences-config = { workspace = true }
+kanal = { workspace = true }
+error-stack = { workspace = true }
+wherror = { workspace = true }
+jiff = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+jinn-domain = { workspace = true, features = ["test-harness"] }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

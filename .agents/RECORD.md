@@ -395,3 +395,8 @@ Entries are added or amended **only with human approval**.
 - (watchdog) Watchdog knobs live in jinn.toml under [stall_watchdog] (timeout_secs, max_restarts) and [tool_call_watchdog] (max_failures); absent sections take defaults and the watchdogs are always on.
 - (citations) Citable web sources in tool calls and results are detected shape-wise by the jinn-citations slice, which publishes CitationsReceived once per turn when the turn finishes.
 - (plugins) Existing `[plugin.*]` tables in a user's jinn.toml persist as unknown keys through config saves and are never read.
+- (boot) The startup trio (SystemReadyActor, EnvInitActor, ProviderInitActor) lives in the jinn-boot slice (crates/slices/jinn-boot) and is spawned by its install_actors() from composition.
+- (boot) The boot contracts (EnvironmentLoaded, AllActorsSpawned, GetEnvironmentConfig, EnvironmentConfigReply) live in jinn-boot-msg.
+- (boot) The startup tail — the GetEnvironmentConfig ask and the EnvironmentLoaded publish — runs in composition after AllActorsSpawned, not in the slice.
+- (boot) EnvInit resolves API keys from each provider's api_key_env plus MCP header ${VAR} references into ApiKeysService, lazily on the first GetEnvironmentConfig ask.
+- (boot) ProviderInit builds the provider registry, merges the disk model cache, and re-applies the persisted last_model only when the active session has no explicit model.

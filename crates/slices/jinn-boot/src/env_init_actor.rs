@@ -6,44 +6,21 @@
 //!
 //! The `EnvironmentLoaded` event is retained for runtime reloads only.
 
-use crate::common::bus::BusMessage;
-use crate::feat::provider_infra::ProvidersConfig;
 use error_stack::Report;
+use jinn_domain::feat::provider_infra::ProvidersConfig;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
-use crate::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use wherror::Error;
+
+use jinn_boot_msg::{EnvironmentConfigReply, EnvironmentLoaded, GetEnvironmentConfig};
 
 /// Error type for environment initialization failures.
 #[derive(Debug, Error)]
 #[error(debug)]
 pub struct EnvInitError;
-
-/// The environment has been loaded and API keys are available.
-///
-/// Emitted after the env init actor has populated `ApiKeysService`.
-/// Published at runtime for environment reloads (not during startup).
-/// Downstream actors should use `ask(GetEnvironmentConfig)` for initial config.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Event)]
-#[schema(description = "The environment has been loaded and API keys are available.")]
-pub struct EnvironmentLoaded {
-    /// The parsed provider configuration from `providers.toml`.
-    pub config: ProvidersConfig,
-}
-
-impl BusMessage for EnvironmentConfigReply {}
-
-impl BusMessage for EnvironmentLoaded {}
-
-/// Ask message to retrieve the loaded environment config.
-///
-/// Downstream actors use this during their `on_start` to pull config
-/// directly from the EnvInitActor via the actor registry.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Command)]
-#[schema(description = "Ask the env-init actor for the parsed provider configuration.")]
-pub struct GetEnvironmentConfig;
 
 /// The environment initialization actor.
 ///
@@ -61,15 +38,6 @@ pub struct EnvInitActor {
 pub struct EnvInitActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,
-}
-
-/// The reply payload of the `GetEnvironmentConfig` ask (JSON-friendly twin
-/// of `Option<ProvidersConfig>`).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Event)]
-#[schema(description = "Reply payload for the GetEnvironmentConfig ask.")]
-pub struct EnvironmentConfigReply {
-    /// The loaded config, or `None` when the file is missing/unreadable.
-    pub config: Option<ProvidersConfig>,
 }
 
 impl ServiceActor for EnvInitActor {
@@ -138,7 +106,7 @@ impl MsgHandler<EnvironmentLoaded> for EnvInitActor {
 }
 
 impl BusPublish for EnvInitActor {
-    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+    fn bus(&self) -> &jinn_domain::common::services::bus_service::BusService {
         self.deps.bus()
     }
 }
@@ -208,7 +176,7 @@ mod tests {
     )]
     use std::time::Duration;
 
-    use crate::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
     use jinn_mcp_msg::McpServerConfig;
     use jinn_preferences_config::user_preferences::UserPreferences;
 
@@ -344,7 +312,7 @@ mod tests {
         // When publishing EnvironmentLoaded manually (runtime reload).
         let bus = harness.bus();
         bus.publish(EnvironmentLoaded {
-            config: crate::feat::provider_infra::ProvidersConfig {
+            config: jinn_domain::feat::provider_infra::ProvidersConfig {
                 providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,

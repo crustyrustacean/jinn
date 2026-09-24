@@ -1916,6 +1916,8 @@ dependencies = [
  "dotenvy",
  "error-stack",
  "jiff",
+ "jinn-boot",
+ "jinn-boot-msg",
  "jinn-chat-input",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
@@ -1941,6 +1943,7 @@ dependencies = [
  "jinn-preferences",
  "jinn-preferences-config",
  "jinn-provider",
+ "jinn-provider-config",
  "jinn-quake-bar",
  "jinn-scope-focus",
  "jinn-session-history-msg",
@@ -1982,6 +1985,39 @@ dependencies = [
  "tracing-subscriber",
  "trouper",
  "wherror",
+]
+
+[[package]]
+name = "jinn-boot"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "jiff",
+ "jinn-boot-msg",
+ "jinn-core-types",
+ "jinn-domain",
+ "jinn-mcp-msg",
+ "jinn-preferences-config",
+ "jinn-session-history-msg",
+ "kanal",
+ "rstest",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "trouper",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-boot-msg"
+version = "0.118.0"
+dependencies = [
+ "jinn-provider-config",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
 ]
 
 [[package]]
@@ -2272,6 +2308,7 @@ dependencies = [
  "humantime",
  "indoc",
  "jiff",
+ "jinn-boot-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-common",
