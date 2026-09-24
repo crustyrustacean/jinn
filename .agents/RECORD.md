@@ -104,7 +104,6 @@ Entries are added or amended **only with human approval**.
 - (keybinds) The `p` prefix group in the sidebar does not drop the normal-scope pin binding (group bindings are scope-local and don't shadow cross-scope bindings).
 - (keybinds) The `y` yank-selected-entry binding copies the entry's raw content to the clipboard: tool results yield untruncated output without the tool-name prefix, tool calls yield the raw JSON arguments, and ANSI escapes are stripped.
 - (keybinds) `Alt+Q` in input scope toggles input mode; `Alt+S` focuses the sidebar sessions section from both input and normal scopes.
-- (keybinds) `<leader>sP` opens the read-only plugin picker in normal scope.
 - (keybinds) `s` in the sidebar task-list section opens the task-list picker.
 - (keybinds) `gci` in normal scope isolates the highlighted entry's tool loop: it force-includes that loop and user-force-excludes every other non-pinned entry, leaving pins untouched.
 - (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over stdio, local_http (jinn-managed child process), or remote_http (externally-managed, no process management).
@@ -135,15 +134,6 @@ Entries are added or amended **only with human approval**.
 - (paths) Config lives at `~/.config/jinn` (providers, prompts, personas, themes, `jinn.toml`).
 - (paths) Data lives at `~/.local/share/jinn` (`sessions.db`).
 - (paths) State/logs live at `~/.local/state/jinn` (`jinn.log`), falling back to the data dir on platforms without a state dir.
-- (plugins) Plugins are WASM components hosted in-process by jinn itself (wasmtime, one store per plugin, task-supervised), speaking NDJSON over in-memory pipes; the wasm sandbox is the isolation boundary.
-- (plugins) Plugin configuration lives in `jinn.toml` under `[plugin.<name>]`; plugins spawn at app start and activate only after a jinn restart.
-- (plugins) A plugin coordinator actor validates and authorizes all inbound plugin messages and caches contributions into `AppState`; synchronous consumers (pickers, renderer, assembly) read only the cache, never the plugin.
-- (plugins) Plugins declare the filesystem paths and http access they need in their own `[package.metadata.jinn]` manifest (Cargo.toml), which is embedded into the built `.wasm` as a custom section.
-- (plugins) The plugin wire contract is a hand-maintained JSON Schema kept in sync with the `jinn-plugin-api` types by a drift test; plugin SDKs are consumed as a git dependency on the jinn repo, not crates.io.
-- (plugins) Plugin `Hello` subscriptions negotiate host→guest events (`tool_call`, `tool_result`, `turn_end`); the host forwards matching bus events to subscribed guests and validates `PushCitations` contributions before publishing.
-- (plugins) The plugin picker (`<leader>sP`) is a read-only list of loaded plugins (name + phase) snapshot from the contribution cache at open time; plugins are managed outside jinn and cannot be toggled from within.
-- (plugins) A plugin guest that closes stdout cleanly after the handshake ends in phase `Done` (run-to-completion loaders; contributions stay cached); `Dead` is reserved for spawn/handshake failure, traps, and abrupt pipe loss.
-- (plugins) Compiled plugin components are cached on disk between launches (wasmtime cache); each plugin's compile prints progress to the terminal before the TUI starts.
 - (persona) Personas are markdown templates with TOML frontmatter; the persona picker (`<leader>se`) switches the active session persona.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
 - (providers) The provider crate supports three backends: Anthropic, Google, and OpenAI-compatible.
@@ -268,9 +258,7 @@ Entries are added or amended **only with human approval**.
 - (tools) `interactive_term` children run with their own PTY as controlling terminal (own session/pgid), unlike the deliberately tty-less children of other tools.
 - (session) The sidebar `X` key tears down the selected session and, on teardown success, archives the entire visible subtree (root and descendants) behind a press-again confirmation.
 - (session) Tree teardown-and-archive is all-or-nothing: a failed teardown or a busy member leaves every session open with nothing archived.
-- (plugins) Plugin→host session-affecting messages are message-style mirrors of internal bus messages; the coordinator validates and translates them, and the set of implemented translations is the whitelist.
-- (session) CancelStream arms the LLM actor with a per-session cancel tombstone that silently drops tool-continuation dispatches until a user-originated send clears it, closing the race where an in-flight tool loop resumed after a watchdog plugin or manual cancel.
-- (plugins) The plugin host sends a periodic `tick` event to subscribed guests so guests can act on elapsed time between host events.
+- (session) CancelStream arms the LLM actor with a per-session cancel tombstone that silently drops tool-continuation dispatches until a user-originated send clears it, closing the race where an in-flight tool loop resumed after a watchdog cancel or manual cancel.
 - (session) The stall-retry handler restarts only while the session is active and `stream_dispatched_at` is set; restarts cannot fire while a tool batch is in flight.
 - (session) Every LLM generation start flows through SendToLlmProvider, and the session actor arms the session's in-flight-stream guard on receipt — a single write point covering user, queued, tool-continuation, and stall-retry dispatches.
 - (tools) Actor-routed MCP tool calls are bounded by `tool_default_timeout_secs`; a timeout publishes a failed `ToolExecutionCompleted` so the pending batch self-completes.
@@ -350,7 +338,6 @@ Entries are added or amended **only with human approval**.
 - (pickers) jinn_picker PickerEntry is Clone and delegates TreeItem structure to domain entries.
 - (skills) jinn ships a bundled `jinn-usage` agent skill whose body routes to per-topic reference files (keybindings, workflows, configuration) installed beside its SKILL.md.
 - (skills) Bundled skill content is compile-time embedded, so installed skill docs match the running jinn binary; refreshing them requires `jinn install --force`.
-- (plugins) Plugin authoring guidance lives in the `jinn plugin new` scaffold output and the jinn-plugin-api/sdk crate docs; no bundled agent skill covers it.
 - (slices) The cwd slice is a kernel-free crate owning the change-directory popup's state cell, route rows, and input hook; confirm resolves the path and publishes SetSessionCwd through capabilities on SliceActionState.
 - (slices) SetSessionCwd and SessionCwdChanged stay session-lifecycle contracts; the session actor applies the cwd and session-init re-discovers on the change.
 - (slices) The sidebar's section focus is a dynamic scope per section (sidebar/<section>); FocusScope and the TUI Scope have no static sidebar variants.
