@@ -432,7 +432,6 @@ mod tests {
         use crate::feat::session::session_actor::{
             SessionPersistenceActor, SessionPersistenceActorDeps,
         };
-        use crate::feat::session_lifecycle::builtin::BuiltinRegistry;
         use jinn_inference_msg::SendToLlmProvider;
         use std::time::Duration;
 
@@ -506,7 +505,6 @@ mod tests {
         use crate::feat::session::session_actor::{
             SessionPersistenceActor, SessionPersistenceActorDeps,
         };
-        use crate::feat::session_lifecycle::builtin::BuiltinRegistry;
         use crate::protocol::ChatEntry;
         use jinn_core_types::tool_types::ToolResult;
         use jinn_inference_msg::SendToLlmProvider;
@@ -665,7 +663,6 @@ mod tests {
         use crate::feat::session::session_actor::{
             SessionPersistenceActor, SessionPersistenceActorDeps,
         };
-        use crate::feat::session_lifecycle::builtin::BuiltinRegistry;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::StreamToken;
         use std::time::Duration;

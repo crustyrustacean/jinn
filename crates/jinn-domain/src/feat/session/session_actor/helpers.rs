@@ -136,38 +136,6 @@ impl PopulatedFakeStore {
             .find(|s| s.session_id() == id)
             .cloned()
     }
-
-    /// The store's current readable snapshot for `id` (what `load_session`
-    /// / `fork` would see) — not the save journal, the persisted rows.
-    pub(super) fn stored_session(
-        &self,
-        id: &crate::protocol::SessionId,
-    ) -> Option<crate::feat::session::chat_session::ChatSessionState> {
-        self.sessions
-            .lock()
-            .iter()
-            .find(|s| s.session_id() == id)
-            .cloned()
-    }
-
-    /// Snapshot of all IDs passed to `set_archived`/`set_archived_many`
-    /// (append order, duplicates preserved).
-    pub(super) fn archived_ids(&self) -> Vec<crate::protocol::SessionId> {
-        self.archived.lock().clone()
-    }
-
-    /// Replaces the summaries the store reports (simulates store-only rows).
-    pub(super) fn set_summaries(
-        &self,
-        summaries: Vec<crate::feat::session::session_summary::SessionSummary>,
-    ) {
-        *self.summaries.lock() = summaries;
-    }
-
-    /// Makes `load_summaries` fail (simulates a store read error).
-    pub(super) fn set_fail_load_summaries(&self, fail: bool) {
-        *self.fail_load_summaries.lock() = fail;
-    }
 }
 
 #[cfg(test)]
