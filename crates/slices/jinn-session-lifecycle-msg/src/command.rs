@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BusMessage, protocol::SessionId};
+use jinn_core_types::SessionId;
+use jinn_slices::BusMessage;
 
 /// Request to run a lifecycle setup command asynchronously.
 ///
@@ -60,7 +61,7 @@ pub struct PersistSession {
     pub session_id: SessionId,
 }
 
-impl crate::common::bus::BusMessage for PersistSession {}
+impl BusMessage for PersistSession {}
 
 /// Request to set a session's working directory.
 ///
@@ -77,7 +78,7 @@ pub struct SetSessionCwd {
     pub cwd: PathBuf,
 }
 
-impl crate::common::bus::BusMessage for SetSessionCwd {}
+impl BusMessage for SetSessionCwd {}
 
 /// What the session actor does after a teardown finishes successfully.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -140,4 +141,4 @@ pub struct CancelLifecycleCommand {
     pub session_id: SessionId,
 }
 
-impl crate::common::bus::BusMessage for CancelLifecycleCommand {}
+impl BusMessage for CancelLifecycleCommand {}

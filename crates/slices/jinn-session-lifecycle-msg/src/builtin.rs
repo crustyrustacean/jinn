@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 
 pub use jinn_preferences_config::schemas::BuiltinId;
 
@@ -48,10 +48,8 @@ pub trait BuiltinHandler: Send + Sync {
 
 /// Registry of builtin lifecycle handlers, keyed by [`BuiltinId`].
 ///
-/// Created empty and populated before the actor system starts. Passed to the
-/// session actor via [`SessionPersistenceActorDeps`].
-///
-/// [`SessionPersistenceActorDeps`]: crate::feat::session::session_actor::SessionPersistenceActorDeps
+/// Created empty and populated before the actor system starts. Passed to
+/// the session-lifecycle actor's dependency bundle.
 #[derive(Clone, Default)]
 pub struct BuiltinRegistry {
     handlers: HashMap<BuiltinId, Arc<dyn BuiltinHandler>>,

@@ -1,0 +1,28 @@
+[package]
+name = "jinn-session-lifecycle"
+version.workspace = true
+edition.workspace = true
+description = "The session-lifecycle slice: the actor that runs session setup, teardown, close, and working-directory changes."
+
+[dependencies]
+jinn-domain = { workspace = true }
+jinn-common = { workspace = true }
+tokio = { workspace = true }
+trouper = { workspace = true }
+tracing = { workspace = true }
+strip-ansi-escapes = { workspace = true }
+error-stack = { workspace = true }
+wherror = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+jinn-domain = { workspace = true, features = ["test-harness"] }
+
+[lints]
+workspace = true
+
+[target.'cfg(windows)'.dependencies]
+kill_tree = "0.2"

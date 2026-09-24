@@ -2338,6 +2338,7 @@ dependencies = [
  "jinn-session-history",
  "jinn-session-history-msg",
  "jinn-session-init-msg",
+ "jinn-session-lifecycle-msg",
  "jinn-session-msg",
  "jinn-session-schema",
  "jinn-session-store",
@@ -2795,6 +2796,46 @@ dependencies = [
  "serde",
  "serde_json",
  "trouper",
+]
+
+[[package]]
+name = "jinn-session-lifecycle"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "jinn-common",
+ "jinn-domain",
+ "kill_tree",
+ "rstest",
+ "serde",
+ "strip-ansi-escapes",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "trouper",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-session-lifecycle-msg"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "jinn-core-types",
+ "jinn-picker",
+ "jinn-preferences-config",
+ "jinn-selection-widget",
+ "jinn-session-msg",
+ "jinn-slices",
+ "jinn-theme",
+ "ratatui",
+ "regex",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
+ "unicode-segmentation",
+ "wherror",
 ]
 
 [[package]]

@@ -25,6 +25,7 @@ jinn-boot-msg = { workspace = true }
 jinn-inference-msg = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 jinn-session-init-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
 jinn-mcp-msg = { workspace = true }
 # Internal deps
 jinn-provider = { workspace = true }

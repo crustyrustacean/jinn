@@ -5,13 +5,26 @@
 //! lifecycle recipes to bootstrap and tear down working directories.
 
 pub mod arg_input_state;
-pub mod builtin;
 pub mod command_runner;
-pub mod command_template;
 pub mod intent;
-pub mod picker_entry;
-pub mod protocol;
 pub mod render;
+
+// The contracts and the kernel-consumed leaf vocabulary now live in the
+// lifecycle family msg crate. Re-exported here so existing kernel paths
+// continue to resolve while the actor itself moves to the lifecycle slice.
+pub use jinn_session_lifecycle_msg::{
+    builtin, command_template, picker_entry,
+};
+pub mod protocol {
+    pub use jinn_session_lifecycle_msg::{command, event};
+    pub use jinn_session_lifecycle_msg::command::{
+        CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, PersistSession,
+        RunSessionSetup, RunSessionTeardown, SetSessionCwd, TeardownFollowUp,
+    };
+    pub use jinn_session_lifecycle_msg::event::{
+        SessionCwdChanged, SessionCreated, SessionSetupCompleted, SessionTeardownFinished,
+    };
+}
 
 pub use jinn_preferences_config::schemas::{BuiltinId, LifecycleCommand, SessionLifecycle};
 

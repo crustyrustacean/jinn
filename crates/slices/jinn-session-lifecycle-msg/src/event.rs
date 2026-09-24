@@ -8,7 +8,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
+use jinn_slices::BusMessage;
 
 pub use jinn_session_msg::SessionSetupCompleted;
 pub use jinn_session_msg::SessionTeardownFinished;
@@ -42,9 +43,9 @@ pub struct SessionCwdChanged {
     pub cwd: PathBuf,
 }
 
-impl crate::common::bus::BusMessage for SessionCwdChanged {}
+impl BusMessage for SessionCwdChanged {}
 
-impl crate::common::bus::BusMessage for SessionCreated {}
+impl BusMessage for SessionCreated {}
 
 #[cfg(test)]
 mod tests {
@@ -70,7 +71,7 @@ mod tests {
         assert_eq!(event.cwd, PathBuf::new());
         assert_eq!(
             event.session_id,
-            crate::protocol::SessionId::try_from_string("00000000-0000-0000-0000-000000000001")
+            SessionId::try_from_string("00000000-0000-0000-0000-000000000001")
                 .expect("fixed session id")
         );
     }

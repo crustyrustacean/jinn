@@ -1,0 +1,28 @@
+[package]
+name = "jinn-session-lifecycle-msg"
+version.workspace = true
+edition.workspace = true
+description = "Session-lifecycle crossing contracts and kernel-consumed leaf vocabulary: setup/teardown messages, command templates, builtin handler registry, and picker rows."
+
+[dependencies]
+jinn-core-types = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
+error-stack = { workspace = true }
+wherror = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+trouper = { workspace = true }
+unicode-segmentation = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

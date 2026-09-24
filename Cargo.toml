@@ -180,6 +180,8 @@ jinn-session-msg = { path = "crates/jinn-session-msg" }
 jinn-boot = { path = "crates/slices/jinn-boot" }
 jinn-boot-msg = { path = "crates/jinn-boot-msg" }
 jinn-session-store = { path = "crates/slices/jinn-session-store" }
+jinn-session-lifecycle-msg = { path = "crates/slices/jinn-session-lifecycle-msg" }
+jinn-session-lifecycle = { path = "crates/slices/jinn-session-lifecycle" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }
 jinn-preferences-config = { path = "crates/jinn-preferences-config" }
