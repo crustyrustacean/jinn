@@ -79,9 +79,10 @@ intermediate tool calls and output remain in its own context.
 WHEN TO USE:
  - open-ended exploration or research
  - multi-step work whose intermediate output you do not need
- - broad reviews, comparisons, investigations, or implementation work that
-   contains multiple independent concerns
+ - broad reviews, comparisons, investigations, or implementation work that contains multiple independent concerns
  - work that can be divided into separate, bounded workstreams
+
+**AVOID SPAWNING INDIVIDUAL SUBAGENTS. PREFER SPAWNING 2+ SUBAGENTS WITH EXPLICIT BOUNDED TASKS**
 
 PARALLEL DELEGATION DEFAULT:
 
@@ -126,12 +127,9 @@ read-only investigation when ownership is unclear; let the parent integrate
 the changes.
 
 EXAMPLES:
- - "Find relevant implementation files" + "Find relevant tests" -> two
-   concurrent task calls.
- - "Review correctness" + "Review security" + "Review test coverage" -> three
-   concurrent task calls.
- - "Investigate possible causes A and B" -> two concurrent calls, followed by
-   parent synthesis.
+ - "Find relevant implementation files" + "Find relevant tests" -> two concurrent task calls.
+ - "Review correctness" + "Review security" + "Review test coverage" -> three concurrent task calls.
+ - "Investigate possible causes A and B" -> two concurrent calls, followed by parent synthesis.
  - "Implement A, then use A's result to implement B" -> sequential waves.
  - "Make changes to files A, B, C" -> three concurrent task calls.
 
