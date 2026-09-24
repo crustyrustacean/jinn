@@ -33,15 +33,11 @@ Entries are added or amended **only with human approval**.
 
 - (context) Outgoing context assembly converts history entries to messages directly; a final tripwire validator drops any invalid tool loop with a tracing warning instead of sending invalid sequencing.
 
-- (arch) The trouper `ActorSystem` is a cloneable handle newtype over one shared fabric; the handle lives in `Services`, built at the actor-wiring assembly block, and slice actors spawn onto it inside their slice's `activate()`. Cloning the handle aliases the same fabric; dropping handles never tears it down — `ActorSystem::shutdown()` explicitly stops supervision loops.
-- (bridges) The trouper bridge hosts a runtime route registry (`SliceHost`'s `RouteRegistry`); slices register forward/reverse routes at activation through host verbs (`forward`/`reverse`), and a message crosses fabrics only if registered in its direction, which prevents feedback loops by construction — dual-direction registration panics immediately.
-- (arch) Slice activation runs through a fixed set of host registration verbs (`SliceHost`: cells, route rows, views/tabs/overlays, bridge routes, config sections); in-tree Rust slices activate imperatively via one `activate()` call per slice, called from composition.
-- (slices) Slice crates live under `crates/slices/` (host/shared crates stay at `crates/`): `jinn-dashboard`, `jinn-quake-bar`, `jinn-discord`, and `jinn-discord-msg`; the merged `jinn-discord` carries the old gateway frontend as its `backend` module; a `-msg` crate lives in `crates/slices/` for its family's vocabulary (`jinn-mcp-msg`) or when exclusively slice-consumed, and at `crates/` when kernel-adjacent crates consume it (`jinn-session-msg`, `jinn-tools-msg`). The kernel references a slice only through its `activate()` call.
+- (arch) All actors run on the trouper runtime, and schema-id-tagged messages route through BusService on trouper topics without bridge relays.
+- (arch) Slices may import jinn-domain and foundation vocabulary; kernel code may consume kernel-adjacent vocabulary and lib-only slice behavior only where the dependency graph remains acyclic.
+- (slices) Slice integration uses each slice's activation function from composition, with activation owning the slice's actors, cells, routes, and views.
+- (slices) Slice crates live under `crates/slices/`, while shared and kernel-adjacent crates live under `crates/`; each family chooses a low-level `-msg` crate for vocabulary consumed across its kernel and slice boundaries.
 - (slices) Slices read their `jinn.toml` section through read-only typed or dynamic config-section views; defaults are supplied by the slice.
-- (bridges) Cross-fabric asks are, as the documented idiom for future ports, forward-routed commands carrying correlation ids answered by reverse-routed reply events; true asks never cross fabrics.
-- (bridges) Route deletion is part of a producer's port: when a producer moves to trouper, its forward route dies and trouper-native consumers subscribe the topic directly.
-- (arch) Dependency direction: slice crates may import `jinn-domain` (core types, `State`, tcaps); `jinn-domain` never imports slice crates. Composition imports both. Slices needing kernel seams (e.g. keymap test fixtures) put them in a slice-adjacent crate, not the kernel.
-- (bridges) Forward routes are staged per consumed message at slice activation and drained by composition; a drain that names a slice's types lives outside the kernel — in the slice's own crate where one exists (`jinn_dashboard::bridge::drain_routes`), else as a composition-local fn (`jinn_discord_drain` in `src/actor_wiring.rs`). The relay is an additional kameo bus subscriber, so existing kameo consumers are unaffected by a new route.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
 - (arch) `jinn-tui` compiles with zero slice-crate dependencies: tui tests use synthetic slice-shaped inputs, and tests composing real slice rows, cells, or activation live in the root crate's `tests/` integration targets with a `tests/common` harness.
 - (arch) Test fixtures and integration tests that span crates live in the root crate's `tests/` directory so `just check` and IDE analysis never compile them; unit tests inside a crate may only use that crate's dependencies.
@@ -71,7 +67,6 @@ Entries are added or amended **only with human approval**.
 - (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) per wired actor.
 - (dashboard) Dashboard state is a `Slices` cell owned by `DashboardCanvasActor`, fed by generic events: actor-lifecycle events and `ServiceStatusUpdate` status updates; features publish `ServiceStatusUpdate` for display only.
 - (slices) Render slices live in per-slice typed cells behind the `Slices` facade; registration mints exactly one write handle, held by the owning actor; the renderer and intent router hold read handles only.
-- (slices) Slice integration is a single `activate()` per slice called from composition (launch/actor-wiring); removing the call removes the slice with no other edits.
 - (slices) Route rows can bind into named composition scopes via `BindSite::StaticScopes`; a slice's entry-point key (e.g. discord's `gdc`) is a slice-owned route row with no central intent variant, and which-key prefix groups derive from attached rows instead of hardcoded calls.
 - (keybinds) Feature keybinds are route rows carrying scope and key; keymap bindings are generated from registered rows at launch; dynamic intents and scope ids are data-carried, so an unregistered slice leaves no keymap, scope, or intent residue.
 - (keybinds) The terminal overlay's keybinds are term-slice route rows binding the dynamic scopes term:view and term:control; no static terminal scope or terminal intent variants exist in the kernel.
@@ -80,7 +75,7 @@ Entries are added or amended **only with human approval**.
 - (keybinds) Route row actions are `ActionFn` closures that receive an `ActionCtx` (`&mut AppState`, `&Slices`) lent by the intent handler at dispatch; actions capture no capabilities and never mint caps — state outside the slice's cells is reached only through the lent context.
 - (discovery) Project discovery walks ancestors from the session cwd up to either a VCS root or `$HOME`, whichever comes first; `$HOME` is exclusive.
 - (discovery) VCS roots are detected by marker files (`.git`, `.hg`, `.fslckout`, `.fossil`, `.jj`), not by shelling out to a VCS CLI.
-- (discovery) The skills, prompt-template, and context-file scans run per session inside the session-init slice's keyed discovery worker; the browser-binary and file-listing scans remain separate kameo actors outside the slice.
+- (discovery) The skills, prompt-template, and context-file scans run per session inside the session-init slice's keyed discovery worker.
 - (history) Auto-prune respects a minimum entry age: entries at or below the age boundary are protected from pruning.
 - (history) Auto-prune skips entries that are already excluded/forced (no duplicate mutations), and a user force-include overrides a worker force-exclude.
 - (history) Auto-prune strategies exclude stale/redundant entries from LLM context; the wired strategies are `anchored_assistant`, `broken_edit`, `consecutive_reads`, `double_edit`, `edit_read`, `read_edit`, `regex`, `todo_prune`, `tool_age_window`, `trivial_assistant`. `min_age` is not a strategy — it is a shared helper (`is_within_min_age`) giving individual workers an age floor.
@@ -147,7 +142,7 @@ Entries are added or amended **only with human approval**.
 - (providers) `providers.toml` is hand-authored only; discovered models are never written into it.
 - (providers) OpenRouter requests identify as jinn via static attribution headers (HTTP-Referer https://jaysonlennon.dev, X-OpenRouter-Title jinn, X-OpenRouter-Categories cli-agent) applied to chat, model-list, and endpoint-list requests.
 - (selection) Chat entry selection applies an accumulated-exclude guard that only takes effect after a threshold, with per-entry forced include/exclude tracked separately.
-- (session) ChatSessionState composes its state from owned field groups, so each session facet can move to its owning slice additively.
+- (session) SessionCore currently composes its state from five broad field groups inside jinn-domain.
 - (session) A replacement session seeded on archive inherits reasoning effort from the global default.
 - (session) An empty session that was never interacted with is not persisted on archive.
 - (session) Archiving the last active session creates a new one; archiving an empty session removes and archives it; archiving the active session switches to the next one.
@@ -231,8 +226,8 @@ Entries are added or amended **only with human approval**.
 - (testing) just lint rejects bare #[test]/#[tokio::test] attributes without an accompanying rstest attribute.
 - (discord) Inbound Discord input — plain messages and every slash command — is accepted only from user IDs listed in `[discord].authorized_users`; an empty or missing list authorizes nobody (deny by default).
 - (discord) Unauthorized slash-command use gets an ephemeral refusal; unauthorized plain messages are silently dropped.
-- (discord) `DiscordStatusUpdate` is defined in the `jinn-discord-msg` contract crate; `DiscordStatusActor` lives in the discord slice crate (`crates/slices/jinn-discord`, on the trouper runtime — native publish onto the `jinn.discord` topic). Discord maintains its own connection cell, the authority for bot-connected checks. The status actor republishes each update on the kameo bus as a generic `ServiceStatusUpdate` (for the dashboard, which knows no feature). Both discord actors spawn via discord's `activate()`.
-- (discord) The bridge is a trouper `ServiceActor` at path `discord-bridge` (no kameo actor remains in the slice): session events reach it through core-bridge forward routes on the `jinn.session` topic (staged at slice activation, drained by composition's `jinn_discord_drain`), and it folds them into the gateway channels; thread outcomes write session history directly via `State` + `SessionCap`. The three gateway kanal channels (bridge events, gateway requests, status updates) are created unconditionally at activate and parked on the slice (returned in the activation output, `ActivatedDiscord`); composition hands them to the `jinn_discord` frontend, and the `[discord] enabled` gate is decided once via the slice's config-section view, which no-ops the gateway when disabled.
+- (discord) DiscordStatusActor publishes Discord status and shared ServiceStatusUpdate events on the single trouper fabric.
+- (discord) DiscordBridgeSubscriber consumes session events and sends gateway requests through the channels returned by the discord slice activation.
 - (subagents) Subagents are regular sessions spawned by the `task` tool: fresh history and an empty task list, linked to the parent, inheriting the parent's model, cwd, tools, skills, and MCP servers; they appear in the sidebar as children marked with a subagent symbol.
 - (subagents) A subagent does not inherit the parent's task list — a copied list is context it did not ask for and cannot act on, so its whole assignment must arrive in the prompt. A subagent's own todo mutations never propagate to the parent's list.
 - (subagents) The `task` tool blocks until the child session reaches Idle and forwards the child's last chat entry as its tool result; cancellations forward the cancel entry as a failure.
@@ -285,12 +280,9 @@ Entries are added or amended **only with human approval**.
 - (search) The search-index dashboard row's status column reports live reindex progress: "N sessions pending" refreshed after every per-session index operation and "index up to date" whenever a drain finds an empty queue (including idle drains).
 - (search) A failed reindex leaves that session's dirty marker set (durable pending work), logs a warning with the session id, and never blocks the rest of the drain batch; a later drain retries it.
 - (search) A rebuild's per-session index delete is driven by the `fts_rowids` map (rowid lookups), avoiding full FTS-table scans; sessions absent from the map skip the delete entirely.
-- (bridges) Fabric lifecycle events (ActorStarting, ActorStarted, ActorShutdownCompleted) cross the kameo↔trouper bridge as a single shared Rust type defined in jinn-slices and re-exported by the kernel — kameo bus dispatch is by TypeId, so schema-id-equal mirror types silently drop every event.
 - (slices) Slice config sections resolve during that slice's activate() from a document sink composition passes in; calling ConfigSection::take() before resolution aborts launch instead of yielding defaults.
-- (bridges) Bridge relays (kameo→trouper and trouper→kameo) spawn with deep mailboxes — unbounded on the kameo side, 64k-entry backpressured inboxes on the trouper side, matching the dashboard canvas actor — so a startup-scale publish burst crosses the fabric without BestEffort drops; the kameo bus itself keeps its BestEffort strategy and bounded-actor mailboxes.
-- (slices) The dashboard's lifecycle fold is a forward-only state machine: a late `ActorStarting` report never demotes a `Running` or `Dead` row, because the `ActorStarting` and `ActorStarted` forward relays are independent actors and their envelopes can cross the fabric out of order under the startup burst.
+- (slices) The dashboard's lifecycle fold is forward-only: a late ActorStarting report never demotes a Running or Dead row.
 - (logs) -v controls only the verbosity of jinn\* crates; third-party crates always display WARN and ERROR (ERROR only at -q), and setting RUST_LOG overrides the automatic filter entirely.
-- (logs) Every kameo bus publish and kameo→trouper crossing logs a debug line naming the message type; per-actor arrival is rendered by kameo's `actor.handle_message` spans through a compact formatter that shows only the innermost span plus nesting depth.
 - (logs) Trace colors are opt-in via `--trace-color`; default rendering is plain text (no ANSI escapes) in the trace file.
 - (build) jinn's runtime/target link statically bundles SQLite via rusqlite's `bundled` feature (through daow's default `bundled-sqlite` feature); no system SQLite is used at runtime link time.
 - (build) Host-side link units (jinn-domain's build script, the daow-macros proc-macro) link the system libsqlite3 on Linux/macOS and bundled SQLite on Windows.
@@ -298,9 +290,7 @@ Entries are added or amended **only with human approval**.
 - (build) Releases ship two cargo-binstall tarballs per tag: `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc` (both cross-built from Linux; the Windows artifact via cargo-xwin).
 - (build) Release binaries are self-contained on both platforms: bundled SQLite in the target graph, no SQLite DLL/import-library requirement.
 - (build) The Windows cross build (cargo-xwin) is wired entirely by env vars in the build-release-tarball recipe; no windows target config exists in .cargo/config.toml.
-- (build) windows-gnu is not a release target and has no toolchain config in the repo.
-- (build) The cross-built windows-msvc release binary statically links the CRT and needs no VC runtime installed.
-- (build) windows-gnu release builds of jinn panic at startup (tokio runtime context lost on kameo/trouper actor threads); msvc is the supported Windows target.
+- (build) windows-gnu is not a supported release target; Windows release artifacts use the MSVC target.
 - (pickers) Picker behavior is described by builder-built PickerSpecs in the jinn-picker crate (no jinn-domain dependency); keymap bindings, the picker keybind line, and footer-row geometry all derive from a spec's bind rows.
 - (pickers) Migrated pickers resolve kind-specific keys through one data-carried picker-action intent dispatched via their spec's bind table — not dedicated intent variants — and open/close hooks own snapshots and ESC-revert.
 - (pickers) The theme picker previews the highlighted theme live on cursor movement (invalidating theme caches per move), reverts to the snapshotted theme on ESC, and persists the choice only on confirm.
@@ -321,11 +311,8 @@ Entries are added or amended **only with human approval**.
 - (workflow) `just test` runs the workspace suite once with --no-fail-fast, tees the full cargo output to `target/test-output.log`, and prints a passed/failed summary including failing test names.
 - (workflow) `just test-failures` extracts failing test names from `target/test-output.log` without re-running the suite.
 - (workflow) `just test-one <filter>` runs workspace tests matching a name filter as the sanctioned iterate-on-failure path.
-- (todo) The todo tool surface is three tools: `todo_set_list`, `todo_set_phase`, `todo_get_list`.
-- (todo) Todo writes are declarative: statuses (`pending`, `completed`, `cancelled`) are declared in the payload; no tool payload or todo render references ids.
-- (todo) `todo_set_phase` replaces the first phase whose description matches the payload description, or appends a new phase when none matches.
-- (todo) `postponed` is not a declarable status and no tool mints it; the status survives only for legacy persisted sessions.
-- (todo) The next-task indicator remains derived from list state and renders after every write and in `todo_get_list`.
+- (todo) The todo tool surface is `todo_set_list`, `todo_add_phase`, `todo_add_task`, `todo_get_phase`, `todo_get_task_list`, `todo_complete_task`, `todo_cancel_task`, `todo_postpone_task`, and `todo_postpone_to_phase`.
+- (todo) The next-task indicator remains derived from list state and renders after every write and in `todo_get_task_list`.
 - (slices) The chat-log-view slice is a crate owning the per-session chat log view state in one cell keyed by session id; the IntentHandler and the renderer write through ChatSession's semantic methods.
 - (slices) The sidebar, token-count, context-assembly, and preferences actors are trouper ServiceActors spawned at slice activation.
 - (slices) The preferences actors write through caps and publish no bus events.
@@ -334,16 +321,16 @@ Entries are added or amended **only with human approval**.
 - (slices) The chat input box cannot be remotely locked or disabled.
 - (todo) The todo auto-prune worker force-includes the most recent `todo_*` tool loop and excludes all older ones, so exactly one current task list stays in context; user pins and `x` toggles supersede it.
 - (pickers) jinn-picker renders Tree-spec pickers through TreePickerWidget over TreePickerState<PickerEntry<T>>, keeping the tree filter's ancestor expansion.
-- (pickers) The plugin picker lists each known plugin's name and lifecycle phase read-only from the coordinator's cache; Enter is a no-op.
+- (plugins) jinn has no plugin system: no host, no wasm runtime, no `jinn plugin` CLI, no `[[plugin]]` config section, and no plugin crates, payloads, or plugin directories in the tree.
 - (pickers) The task-list picker browses phases and tasks as a tree, hides postponed tasks, and Enter is a no-op.
-- (pickers) The session picker loads its session tree through SessionPersistenceActor from the SQLite store; confirm begins the load and emits SessionLoadRequested.
+- (pickers) The session picker loads its session tree through SessionStoreActor from SQLite; confirm publishes SessionLoadRequested.
 - (pickers) The provider picker toggles alloy members with TAB in place, flips single/alloy mode with CTRL+A pre-checking the session's current models, refreshes models with CTRL+R, and confirm resolves Single or Alloy from the checked set plus highlight by emitting ProviderSwitch.
 - (pickers) The endpoint picker previews the selected upstream's uptime, pricing, and quantization, force-refreshes with CTRL+R, and confirm pins the session's endpoint by writing the profile and emitting MarkSessionInteracted; the auto-route sentinel clears the pin.
 - (pickers) jinn_picker PickerEntry is Clone and delegates TreeItem structure to domain entries.
 - (skills) jinn ships a bundled `jinn-usage` agent skill whose body routes to per-topic reference files (keybindings, workflows, configuration) installed beside its SKILL.md.
 - (skills) Bundled skill content is compile-time embedded, so installed skill docs match the running jinn binary; refreshing them requires `jinn install --force`.
 - (slices) The cwd slice is a kernel-free crate owning the change-directory popup's state cell, route rows, and input hook; confirm resolves the path and publishes SetSessionCwd through capabilities on SliceActionState.
-- (slices) SetSessionCwd and SessionCwdChanged stay session-lifecycle contracts; the session actor applies the cwd and session-init re-discovers on the change.
+- (slices) SetSessionCwd and SessionCwdChanged stay session-lifecycle contracts; SessionLifecycleActor applies the cwd and session-init re-discovers on the change.
 - (slices) The sidebar's section focus is a dynamic scope per section (sidebar/<section>); FocusScope and the TUI Scope have no static sidebar variants.
 - (slices) A sidebar section is derived from the dynamic scope id's name; ScopeStack is_sidebar and sidebar_section match scope ids with the sidebar slice prefix.
 - (slices) The static_alias bridge between dynamic slice scopes and static focus scopes does not exist; route rows bind only in dynamic scopes.
@@ -378,22 +365,17 @@ Entries are added or amended **only with human approval**.
 - (tools) The stream-phase tool events (ToolUseStarted, ToolCallReceived, ToolCallStreaming) live in jinn-tools-msg even though the inference actor publishes them.
 - (session) ChatEntry and its history vocabulary (ChatHistory, HistoryMutation, ToolResultStatus) live in jinn-core-types.
 - (slices) The session-history slice owns the HistoryEditor write path and the history contracts in jinn-session-history-msg; it has no actor — the kernel session actor's fold handlers are its sanctioned multi-boundary writes.
-- (skills) The skills slice owns skill vocabulary and parsing (Skill/SkillSource, frontmatter, scan, prompt formatting, loaded-name labels); the UI-bound trio (picker entry, preview cache, picker reload) stays kernel, and session-init publishes SkillsLoaded through its reverse relays.
+- (skills) The skills slice owns skill vocabulary and parsing; session-init publishes SkillsLoaded on the session-init topic, while the UI-bound picker trio stays in the kernel.
 - (curation) Prune and compaction run as two trouper ServiceActors in jinn-context-curation; the prune actor snapshots history internally on HistoryAppended and HistorySnapshotReady no longer exists.
 - (curation) Compaction trigger and prune workers publish SubmitHistoryMutations; the kernel session actor's accumulation gate batches only prune ForcedExclude mutations and applies everything else immediately.
-- (arch) All actors run on the trouper runtime; the kameo bus, its bridge relays, and every forward/reverse route are removed.
-- (session) The session family (turn progression, lifecycle, pins, history) lives in jinn-domain as one trouper SessionActor — the planned jinn-session crate split was abandoned because the vocabulary is spine, not leaf (crate cycle); jinn-session-store still owns SQLite persistence and the search index.
-- (arch) Actor messages route as schema-id-tagged events on trouper topics; BusService publishes into that fabric and keeps a recording mode for tests.
-- (plugins) jinn has no plugin system: no host, no wasm runtime, no `jinn plugin` CLI, no `[[plugin]]` config section, and no plugin crates, payloads, or plugin directories in the tree.
-
-- (arch) Actor message schemas are declared with trouper's #[derive(Command)]/#[derive(Event)] macros; enum-shaped messages carry hand-written Schema + PayloadValue impls
+- (arch) Actor message schemas are declared with trouper's #[derive(Command)]/#[derive(Event)] macros; enum-shaped messages carry hand-written Schema + PayloadValue impls.
 - (arch) Publish fans out to every actor declaring .handles on the schema; trouper has no separate subscription declaration and jinn declares no .emits beyond handler ctx effects.
 - (arch) An actor handler's outbound messages (ctx.send/reply) must appear in the spawning builder's .emits; undeclared ones are dead-lettered as UndeclaredEmit.
 - (session) Forking a session persists the source session before forking, so the fork always reflects the source's current history and includes the entry it was forked from.
 - (input) In the rename popup, ctrl+c clears the buffer and closes the popup when the buffer is already empty; escape always closes.
 - (session) Pinning or unpinning a chat entry marks the session interacted, so the pin change persists even on a session that was never sent to.
 - (turn) At turn end the queue actor dispatches the steering buffer before the turn queue; a queued item waits for the next idle slot, and queued or resumed turns no longer absorb steering fragments — every user-visible message gets its own turn.
-- (preferences) The preferences and app-state actors declare UpdatePreferences/UpdateAppState via trouper .handles (the route registration); without the declaration, bridge-published TUI edits are silently dropped and never persisted to jinn.toml/state.toml.
+- (preferences) The preferences and app-state actors handle UpdatePreferences and UpdateAppState through their trouper .handles declarations.
 - (watchdog) Silent in-flight LLM streams are detected by the stall watchdog actor in the jinn-watchdog slice, which republishes the turn via RetryStalledSession up to the configured consecutive-restart budget, then surrenders with a system entry and CancelStream.
 - (watchdog) Tool-failure spirals are detected by the tool-call watchdog actor in the jinn-watchdog slice, which cancels the turn with a system entry at the configured failure count and resets on a genuinely completed turn.
 - (watchdog) Watchdog knobs live in jinn.toml under [stall_watchdog] (timeout_secs, max_restarts) and [tool_call_watchdog] (max_failures); absent sections take defaults and the watchdogs are always on.
@@ -413,5 +395,8 @@ Entries are added or amended **only with human approval**.
 - (picker) jinn-domain must not depend on jinn-picker-specs even as a dev-dependency: Cargo would build two copies of jinn-domain in one test binary, so the specs' state_any downcasts would target the wrong AppState. The kernel's dispatch tests use the metadata-only feat/picker/test_registry.rs; spec behavior is tested in jinn-picker-specs.
 - (picker) PickerStates remains in FrontendState; moving the typed selection storage to a cell requires reshaping PickerHost, which still lends selection state as &dyn Any from &AppState.
 - (picker) Each picker spec's state_any downcast is a temporary bridge; every picker is still hosted by the jinn-picker-specs crate rather than its owning slice, and feat/file_lister (the @-popup autocomplete) is a separate family, untouched.
-- (session) Session persistence and session lifecycle are separate trouper actors — SessionStoreActor in the jinn-session-store slice, SessionLifecycleActor in the jinn-session-lifecycle slice; turn progression and context remain in the kernel session actor.
-- (session) SessionCore remains one atomically-persisted struct in the kernel; its lifecycle/history/store field split is not yet done.
+- (session) SessionCore remains the kernel-owned atomic persistence unit.
+- (session) Session leaf vocabulary is split by facet across jinn-session-lifecycle-msg, jinn-session-store-msg, and jinn-session-msg.
+- (session) SessionStoreActor and SessionLifecycleActor own storage and lifecycle contracts in their respective slices.
+- (session) SessionPersistenceActor is the kernel actor for turn progression, context work, and sanctioned history folds.
+- (migration) The actor-migration documentation suite presents current-state design and rationale in migration.md, slices.md, cleanup.md, and catalog.md.
