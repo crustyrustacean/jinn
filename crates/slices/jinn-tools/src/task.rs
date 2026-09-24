@@ -15,12 +15,17 @@
 
 //! `task` built-in tool — delegate a sub-task to a fresh subagent session.
 //!
-//! Spawns a regular session linked to the caller (empty history, inheriting
-//! the parent's model, CWD, persona, tools, skills, and MCP servers), enqueues
-//! the given prompt into it, and blocks until the child reaches
-//! [`PhaseKind::Idle`](jinn_domain::feat::session::phase_machine::PhaseKind). The
+//! Spawns a regular session linked to the caller (empty history, empty task
+//! list, inheriting the parent's model, CWD, persona, tools, skills, and MCP
+//! servers), enqueues the given prompt into it, and blocks until the child
+//! reaches [`PhaseKind::Idle`](jinn_domain::feat::session::phase_machine::PhaseKind). The
 //! child's last chat entry becomes the tool result. Subagents are just
 //! sessions: they appear in the sidebar, can be steered, and persist.
+//!
+//! The task list is deliberately not inherited. A subagent receives its whole
+//! assignment in the prompt, and a copied parent list is context it did not ask
+//! for and cannot act on: it describes the parent's plan, not the subagent's
+//! scope. Any todo work a subagent does must come from the prompt.
 //!
 //! Ordering guarantees: both listeners (completion and discovery settlement)
 //! are spawned and subscribed before `SessionCreated` is published (other
@@ -66,8 +71,9 @@ Delegate a self-contained task to a fresh subagent session.
 
 Each call creates one subagent. To use multiple subagents, make multiple task
 calls in the same assistant turn. Subagents inherit the model, cwd, tools,
-skills, MCP servers, and a snapshot of the current task list, but not the parent
-conversation history. Only the subagent's final message is returned; its
+skills, and MCP servers, but not the parent conversation history or the parent
+task list — a subagent starts with an empty task list and receives its entire
+assignment in the prompt. Only the subagent's final message is returned; its
 intermediate tool calls and output remain in its own context.
 
 WHEN TO USE:
@@ -165,7 +171,7 @@ subagent; on expiry the subagent is cancelled and a failure is returned.
        r#"Write every subagent prompt as a complete brief: goal, context, constraints, relevant paths or symbols, whether to research or make changes, and the expected output."#
             .to_owned(),
 
-       r#"The subagent inherits a snapshot of the task list as of spawn and owns that copy; its todo mutations never propagate back to you. Reconcile the parent list from the returned result. If it does not need the list, it can clear it with an empty todo_set_list."#
+       r#"A subagent starts with an empty task list; it does not see yours. Put the entire assignment in the prompt — the subagent must not be expected to read context from your task list, and its todo mutations never propagate back to you."#
             .to_owned(),
     ],
         parameters: serde_json::json!({
@@ -290,10 +296,6 @@ fn build_child(
     // not persisted); the `task` tool's ctx carries the app paths.
     child.set_home(app_home.to_path_buf());
     child.set_enabled_mcp_servers(parent.enabled_mcp_servers().clone());
-    // Snapshot the parent's task list into the child: parent and child own
-    // fully independent copies after spawn — child mutations never propagate
-    // back to the parent.
-    *child.task_list_mut() = parent.task_list().clone();
     let title = args
         .description
         .clone()

@@ -339,7 +339,7 @@ async fn task_child_inherits_parent_project() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_child_inherits_parent_task_list() {
+async fn task_child_task_list_starts_empty() {
     // Given a parent session with a seeded task list.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
@@ -370,28 +370,18 @@ async fn task_child_inherits_parent_task_list() {
     let result = pending.await.expect("task join");
     assert!(result.success, "expected success; got: {}", result.content);
 
-    // Then the child's task list equals the parent's list at spawn time.
+    // Then the child's task list is empty — the parent's plan does not leak.
     let snapshot = state.read();
-    let parent = snapshot.session.get(&parent_id).expect("parent present");
     let child = snapshot.session.get(&child_id).expect("child present");
-    assert_eq!(child.task_list(), parent.task_list());
+    assert!(child.task_list().is_empty());
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_child_task_list_is_independent_after_spawn() {
-    // Given a parent session with a seeded task list and a spawned child that
-    // inherited it.
+async fn task_child_task_list_does_not_propagate_to_parent() {
+    // Given a parent session and a spawned child.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    {
-        let mut w = state.write_test_no_cap();
-        let parent = w.session.get_mut(&parent_id).expect("parent seeded");
-        parent.task_list_mut().set_from_inputs(&[PhaseInput {
-            description: "Research".to_owned(),
-            tasks: vec![("Read docs".to_owned(), TaskStatus::Pending)],
-        }]);
-    }
     let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
     let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
@@ -399,21 +389,24 @@ async fn task_child_task_list_is_independent_after_spawn() {
     let child_id = created[0].session_id.clone();
     let servers = parent_servers();
     settle_child_discovery(&harness.bus(), &child_id, &servers).await;
+
+    // When the child records its own todo work.
+    {
+        let mut w = state.write_test_no_cap();
+        let child = w.session.get_mut(&child_id).expect("child present");
+        child.task_list_mut().set_from_inputs(&[PhaseInput {
+            description: "Subagent work".to_owned(),
+            tasks: vec![("Do the thing".to_owned(), TaskStatus::Pending)],
+        }]);
+    }
     finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Done.").await;
     let result = pending.await.expect("task join");
     assert!(result.success, "expected success; got: {}", result.content);
 
-    // When mutating the parent's list after spawn.
-    {
-        let mut w = state.write_test_no_cap();
-        let parent = w.session.get_mut(&parent_id).expect("parent present");
-        parent.task_list_mut().clear();
-    }
-
-    // Then the child's list still holds the spawn-time snapshot.
+    // Then the parent's list is untouched.
     let snapshot = state.read();
-    let child = snapshot.session.get(&child_id).expect("child present");
-    assert!(!child.task_list().is_empty());
+    let parent = snapshot.session.get(&parent_id).expect("parent present");
+    assert!(parent.task_list().is_empty());
 }
 
 #[rstest::rstest]
