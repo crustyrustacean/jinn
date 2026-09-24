@@ -147,6 +147,7 @@ Entries are added or amended **only with human approval**.
 - (providers) `providers.toml` is hand-authored only; discovered models are never written into it.
 - (providers) OpenRouter requests identify as jinn via static attribution headers (HTTP-Referer https://jaysonlennon.dev, X-OpenRouter-Title jinn, X-OpenRouter-Categories cli-agent) applied to chat, model-list, and endpoint-list requests.
 - (selection) Chat entry selection applies an accumulated-exclude guard that only takes effect after a threshold, with per-entry forced include/exclude tracked separately.
+- (session) ChatSessionState composes its state from owned field groups, so each session facet can move to its owning slice additively.
 - (session) A replacement session seeded on archive inherits reasoning effort from the global default.
 - (session) An empty session that was never interacted with is not persisted on archive.
 - (session) Archiving the last active session creates a new one; archiving an empty session removes and archives it; archiving the active session switches to the next one.
