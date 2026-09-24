@@ -26,11 +26,13 @@ use serde_json::Value as JsonValue;
 
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
-use crate::feat::session::session_lifecycle_fields::SessionLifecycleFields;
+use crate::feat::session::session_lifecycle_fields::{
+    SessionHistoryWorkFields, SessionIdentityMetadataFields, SessionIntegrationFields,
+    SessionLifecycleLocationFields, SessionStorageFields,
+};
 use crate::feat::session::steering_buffer::SteeringBuffer;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
-use crate::protocol::ChatHistory;
 use crate::protocol::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
 };
@@ -165,109 +167,21 @@ pub use jinn_session_msg::SessionOrigin;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCore {
-    /// Unique identifier for this session.
-    /// Generated at construction. Matches the HashMap key in `SessionState.sessions`.
-    pub session_id: SessionId,
-    /// Session lifecycle state, flattened to preserve the flat persisted schema.
-    /// OWNER: session-actor (persistent state) and IntentHandler (creation paths).
+    /// Identity, tree metadata, and interaction metadata for this session.
     #[serde(flatten)]
-    pub lifecycle: SessionLifecycleFields,
-    /// When this session was last updated. Set at construction, updated on save.
-    pub updated_at: Timestamp,
-    /// Wall-clock timestamp of the most recent chat-history mutation
-    /// (entry pushed, stream token appended, thinking token appended).
-    /// The stall watchdog compares `now - last_history_activity_at` against
-    /// the stall timeout to detect hung sessions. Seeded on phase entry
-    /// (`begin_sending`/`begin_streaming`) so the HTTP-handshake gap is covered.
-    /// Runtime-only turn state — not persisted (a loaded session is `Idle`).
-    /// OWNER: session-actor.
-    #[serde(skip)]
-    pub last_history_activity_at: Timestamp,
-    /// Wall-clock timestamp of the most recent **provider output** (assistant
-    /// text, thinking text, or tool-call deltas from the model) — the genuine
-    /// "the provider is responsive" signal. Unlike `last_history_activity_at`,
-    /// this is bumped only by provider-output methods, not by retry markers or
-    /// phase transitions. The stall watchdog resets a session's retry budget
-    /// when this advances between ticks, so a responsive provider that suffers
-    /// intermittent contention stalls is not prematurely cancelled.
-    /// Runtime-only turn state — not persisted.
-    /// OWNER: session-actor.
-    #[serde(skip)]
-    pub last_provider_activity_at: Timestamp,
-    /// When this session was created. Set once at construction, never mutated.
-    pub created_at: Timestamp,
-    /// All messages in this conversation.
-    ///
-    /// OWNER: history-editor (the sole write path; reads via
-    /// [`ChatSessionState::history`]). Restoring from persistence is the one
-    /// exception, performed by [`ChatSessionState::restore_history`] before
-    /// the session becomes live.
-    pub(in crate::feat::session) history: ChatHistory,
-    /// Per-session model and strategy selection.
-    /// OWNER: provider-actor (model), context-actor (strategy via SwitchPromptStrategy command)
-    pub profile: SessionProfile,
-    /// Token usage ledger - one immutable record per request/response pair.
-    /// OWNER: session-actor (records tokens on assembly and StreamCompleted).
-    #[serde(default)]
-    pub token_ledger: Vec<TokenRecord>,
-    /// Parent session ID, if this session was forked from another.
-    /// `None` means this is a root session.
-    /// OWNER: session-actor (set at session creation).
-    #[serde(default)]
-    pub parent_session: Option<SessionId>,
-    /// Highest entry ordinal inherited from the parent at fork time.
-    /// `None` for root sessions (all entries are "own").
-    /// `Some(n)` means entries at indices 0..=n were inherited;
-    /// only entries after index n count as turns for this session.
-    /// Set once at fork creation, never mutated.
-    /// OWNER: session-actor (set during fork).
-    #[serde(default)]
-    pub fork_ordinal: Option<usize>,
-    /// Identity of this session's creation path. Set at construction by the
-    /// creating path (`new_child` → [`SessionOrigin::Subagent`], fork →
-    /// [`SessionOrigin::Fork`]); never mutated afterwards.
-    /// OWNER: session-actor (set at session creation).
-    #[serde(default)]
-    pub origin: SessionOrigin,
-    /// Project directory this session is associated with. Stamped once at
-    /// session creation from the projects UI; never follows later `cwd`
-    /// changes. `None` means the session has no project association.
-    /// OWNER: IntentHandler (set at session creation).
-    #[serde(default)]
-    pub project: Option<std::path::PathBuf>,
-
-    /// Generic blob storage for future subsystems.
-    #[serde(default)]
-    pub blobs: HashMap<String, JsonValue>,
-    /// Whether the user has meaningfully interacted with this session.
-    /// Sessions with `has_interacted = false` are not persisted to disk.
-    /// OWNER: session-actor (set via MarkSessionInteracted command).
-    #[serde(default)]
-    pub has_interacted: bool,
-    /// Phased task list for agent session planning.
-    /// OWNER: tools-actor (mutated by task list tools).
-    #[serde(default)]
-    pub task_list: jinn_tools_msg::TaskList,
-    /// Names of MCP servers (`jinn.toml` `[[mcp_server]].name`) enabled for
-    /// this session. Off by default — enabling spawns a dedicated `McpActor`
-    /// and its child-process connection; disabling kills both. Persisted with
-    /// the session.
-    /// OWNER: IntentHandler (toggled via the MCP picker); McpCoordinatorActor
-    /// reacts to the resulting commands.
-    #[serde(default)]
-    pub enabled_mcp_servers: std::collections::BTreeSet<String>,
-    /// Live connection status of each enabled MCP server, keyed by server
-    /// name. Runtime-only (derived from `McpServerStatus` actor events); not
-    /// persisted.
-    /// OWNER: McpCoordinatorActor (writes on `McpServerStatus` events).
-    #[serde(skip)]
-    pub mcp_server_status: std::collections::BTreeMap<String, jinn_mcp_msg::McpConnectionStatus>,
-    /// Per-session captured stderr tail for each MCP server, updated live
-    /// by the stderr-debounce republish.
-    ///
-    /// OWNER: McpCoordinatorActor (writes on `McpServerLog` events).
-    #[serde(skip)]
-    pub mcp_server_stderr: std::collections::BTreeMap<String, String>,
+    pub identity: SessionIdentityMetadataFields,
+    /// Location and lifecycle state for this session.
+    #[serde(flatten)]
+    pub lifecycle: SessionLifecycleLocationFields,
+    /// History, token accounting, and planning work for this session.
+    #[serde(flatten)]
+    pub history_work: SessionHistoryWorkFields,
+    /// Provider configuration and integration state for this session.
+    #[serde(flatten)]
+    pub integrations: SessionIntegrationFields,
+    /// Loaded/archived state and persistence policy for this session.
+    #[serde(flatten)]
+    pub storage: SessionStorageFields,
     /// Runtime-only state - not persisted across restarts.
     #[serde(skip)]
     pub ephemeral: SessionCoreEphemeral,
@@ -281,41 +195,25 @@ impl SessionCore {
     /// store crate builds a `SessionCore` from a persisted snapshot before
     /// any view exists.
     pub fn restore_history(&mut self, entries: Vec<ChatEntry>) {
-        self.history.replace_all(entries);
+        self.history_work.history.replace_all(entries);
     }
 
     /// Restore the token ledger from persisted data (core-level form; see
     /// [`Self::restore_history`] for why this exists alongside the
     /// live-session variant).
     pub fn restore_token_ledger(&mut self, records: Vec<TokenRecord>) {
-        self.token_ledger = records;
+        self.history_work.token_ledger = records;
     }
 }
 
 impl Default for SessionCore {
     fn default() -> Self {
         Self {
-            session_id: SessionId::new(),
-            lifecycle: SessionLifecycleFields::default(),
-            updated_at: Timestamp::now(),
-            created_at: Timestamp::now(),
-            last_history_activity_at: Timestamp::now(),
-            last_provider_activity_at: Timestamp::now(),
-            history: ChatHistory::new(),
-            profile: SessionProfile::default(),
-            token_ledger: Vec::new(),
-            parent_session: None,
-            fork_ordinal: None,
-            origin: SessionOrigin::User,
-            project: None,
-
-            blobs: HashMap::new(),
-
-            task_list: jinn_tools_msg::TaskList::default(),
-            enabled_mcp_servers: std::collections::BTreeSet::new(),
-            mcp_server_status: std::collections::BTreeMap::new(),
-            mcp_server_stderr: std::collections::BTreeMap::new(),
-            has_interacted: false,
+            identity: SessionIdentityMetadataFields::default(),
+            lifecycle: SessionLifecycleLocationFields::default(),
+            history_work: SessionHistoryWorkFields::default(),
+            integrations: SessionIntegrationFields::default(),
+            storage: SessionStorageFields::default(),
             ephemeral: SessionCoreEphemeral::default(),
         }
     }
@@ -576,7 +474,7 @@ impl ChatSessionState {
         reason = "trait impl delegates to this inherent method; callers use both"
     )]
     pub(in crate::feat::session) fn push_entry_raw(&mut self, entry: &mut ChatEntry) -> usize {
-        self.core.last_history_activity_at = Timestamp::now();
+        self.core.identity.last_history_activity_at = Timestamp::now();
         let ctx = PathResolveContext::new(&self.core.lifecycle.cwd, &self.core.lifecycle.home);
         expand_user_entry(
             entry,
@@ -585,17 +483,21 @@ impl ChatSessionState {
         );
         let cursor_at_last = self.with_view(
             |v| {
-                v.selected_cursor_id
-                    .as_ref()
-                    .is_none_or(|id| self.core.history.last().is_some_and(|e| &e.id == id))
+                v.selected_cursor_id.as_ref().is_none_or(|id| {
+                    self.core
+                        .history_work
+                        .history
+                        .last()
+                        .is_some_and(|e| &e.id == id)
+                })
             },
             || true,
         );
-        let index = self.core.history.len();
-        self.core.history.push(entry.clone());
+        let index = self.core.history_work.history.len();
+        self.core.history_work.history.push(entry.clone());
         if cursor_at_last {
             self.reset_scroll();
-            if let Some(entry) = self.core.history.last() {
+            if let Some(entry) = self.core.history_work.history.last() {
                 let id = entry.id.clone();
                 self.update_view(|v| v.selected_cursor_id = Some(id));
             }
@@ -611,8 +513,8 @@ impl ChatSessionState {
         reason = "trait impl delegates to this inherent method; callers use both"
     )]
     pub(in crate::feat::session) fn remove_history_entry_at(&mut self, index: usize) -> bool {
-        if index < self.core.history.len() {
-            self.core.history.remove(index);
+        if index < self.core.history_work.history.len() {
+            self.core.history_work.history.remove(index);
             true
         } else {
             false
@@ -631,7 +533,7 @@ impl ChatSessionState {
         &mut self,
         index: usize,
     ) -> Option<&mut ChatEntry> {
-        self.core.history.get_mut(index)
+        self.core.history_work.history.get_mut(index)
     }
 
     /// Create a new session with a specific profile (model + strategy).
@@ -639,7 +541,10 @@ impl ChatSessionState {
     pub fn new_with_profile(profile: SessionProfile) -> Self {
         Self {
             core: SessionCore {
-                profile,
+                integrations: SessionIntegrationFields {
+                    profile,
+                    ..SessionIntegrationFields::default()
+                },
                 ..SessionCore::default()
             },
             ui: SessionUi::default(),
@@ -663,11 +568,14 @@ impl ChatSessionState {
     #[must_use]
     pub fn new_child(parent_session_id: &SessionId, persist: bool) -> Self {
         let core = SessionCore {
-            parent_session: Some(parent_session_id.clone()),
-            origin: SessionOrigin::Subagent,
-            lifecycle: SessionLifecycleFields {
+            identity: SessionIdentityMetadataFields {
+                parent_session: Some(parent_session_id.clone()),
+                origin: SessionOrigin::Subagent,
+                ..SessionIdentityMetadataFields::default()
+            },
+            storage: SessionStorageFields {
                 persist,
-                ..SessionLifecycleFields::default()
+                ..SessionStorageFields::default()
             },
             ..SessionCore::default()
         };
@@ -693,12 +601,12 @@ impl ChatSessionState {
 
     /// The session's persona name.
     pub fn persona_name(&self) -> &str {
-        &self.core.profile.persona_name
+        &self.core.integrations.profile.persona_name
     }
 
     /// Set the session's persona name.
     pub fn set_persona_name(&mut self, name: String) {
-        self.core.profile.persona_name = name;
+        self.core.integrations.profile.persona_name = name;
     }
 
     /// Read-only access to the conversation history.
@@ -707,7 +615,7 @@ impl ChatSessionState {
         reason = "trait impl delegates to this inherent method; callers use both"
     )]
     pub fn history(&self) -> &[ChatEntry] {
-        &self.core.history
+        &self.core.history_work.history
     }
 
     /// Fills the persisted token count for entries that don't have one yet.
@@ -719,7 +627,7 @@ impl ChatSessionState {
     /// Returns the number of entries filled.
     pub fn fill_missing_token_counts(&mut self, counts: &HashMap<ChatEntryId, u32>) -> usize {
         let mut filled = 0;
-        for entry in self.core.history.iter_mut() {
+        for entry in self.core.history_work.history.iter_mut() {
             if entry.token_count.is_some() {
                 continue;
             }
@@ -737,7 +645,7 @@ impl ChatSessionState {
     /// Ignores any indices that are out of bounds.
     pub fn mark_entries_ignored(&mut self, indices: &[usize]) {
         for &i in indices {
-            if let Some(entry) = self.core.history.get_mut(i) {
+            if let Some(entry) = self.core.history_work.history.get_mut(i) {
                 entry.apply_context_override(
                     ContextOverride::ForcedExclude,
                     ChangeSource::Internal {
@@ -762,7 +670,7 @@ impl ChatSessionState {
     /// (entry was already in the toggled state) or no entry is selected.
     pub fn toggle_entry_ignored(&mut self) -> Option<crate::protocol::ChatEntryId> {
         let hist_idx = self.selected_history_index()?;
-        let entry = self.core.history.get(hist_idx)?;
+        let entry = self.core.history_work.history.get(hist_idx)?;
         let pressed_id = entry.id.clone();
         let new_value = match entry.context_override() {
             ContextOverride::ForcedInclude => ContextOverride::ForcedExclude,
@@ -793,7 +701,7 @@ impl ChatSessionState {
         override_state: ContextOverride,
     ) -> Option<crate::protocol::ChatEntryId> {
         let hist_idx = self.selected_history_index()?;
-        let entry = self.core.history.get(hist_idx)?;
+        let entry = self.core.history_work.history.get(hist_idx)?;
         let pressed_id = entry.id.clone();
         // Chunk semantics: the sweep applies to the whole tool loop.
         let changed =
@@ -830,14 +738,20 @@ impl ChatSessionState {
     ///
     /// No-op if the entry was not inside a shown block.
     pub fn propagate_shown_on_unignore(&mut self, entry_id: &ChatEntryId) {
-        let Some(idx) = self.core.history.iter().position(|e| e.id == *entry_id) else {
+        let Some(idx) = self
+            .core
+            .history_work
+            .history
+            .iter()
+            .position(|e| e.id == *entry_id)
+        else {
             return;
         };
 
         // Scan backward to find the containing block's start.
         let mut block_start = idx;
         while block_start > 0 {
-            let Some(prev) = self.core.history.get(block_start - 1) else {
+            let Some(prev) = self.core.history_work.history.get(block_start - 1) else {
                 break;
             };
             if prev.is_in_context() || prev.pin_position.is_some() {
@@ -846,7 +760,7 @@ impl ChatSessionState {
             block_start -= 1;
         }
 
-        let Some(block_entry) = self.core.history.get(block_start) else {
+        let Some(block_entry) = self.core.history_work.history.get(block_start) else {
             return;
         };
         let block_representative = block_entry.id.clone();
@@ -860,7 +774,7 @@ impl ChatSessionState {
 
         let forward_start = idx + 1;
         // Scan forward from the changed entry to find a new forward sub-block.
-        let Some(forward_entry) = self.core.history.get(forward_start) else {
+        let Some(forward_entry) = self.core.history_work.history.get(forward_start) else {
             return;
         };
         if forward_entry.is_in_context() || forward_entry.pin_position.is_some() {
@@ -883,7 +797,7 @@ impl ChatSessionState {
         };
         let shown = self.shown_ignored_blocks_snapshot();
         let items = build_visual_items(
-            &self.core.history,
+            &self.core.history_work.history,
             &shown,
             PROXIMITY_COUNT,
             DEFAULT_MIN_COLLAPSE_COUNT,
@@ -957,24 +871,24 @@ impl ChatSessionState {
     /// streaming/sending/assembling state.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.core.history.is_empty()
+        self.core.history_work.history.is_empty()
     }
 
     /// Whether this session should be persisted to disk.
     pub fn persist(&self) -> bool {
-        self.core.lifecycle.persist
+        self.core.storage.persist
     }
 
     /// Mark this session as having been meaningfully interacted with by the user.
     /// Once set, the session becomes eligible for persistence.
     pub fn mark_interacted(&mut self) {
-        self.core.has_interacted = true;
+        self.core.identity.has_interacted = true;
     }
 
     /// Whether this session has been interacted with.
     #[must_use]
     pub fn has_interacted(&self) -> bool {
-        self.core.has_interacted
+        self.core.identity.has_interacted
     }
 
     /// Whether this session should be persisted to disk.
@@ -987,16 +901,16 @@ impl ChatSessionState {
     /// - The session was forked from another session
     #[must_use]
     pub fn is_persistable(&self) -> bool {
-        if !self.core.lifecycle.persist {
+        if !self.core.storage.persist {
             return false;
         }
         if self.core.lifecycle.lifecycle_name.is_some() {
             return true;
         }
-        if self.core.parent_session.is_some() {
+        if self.core.identity.parent_session.is_some() {
             return true;
         }
-        if self.core.has_interacted {
+        if self.core.identity.has_interacted {
             return true;
         }
         false
@@ -1048,8 +962,8 @@ impl ChatSessionState {
         reason = "trait impl delegates to this inherent method; callers use both"
     )]
     pub fn insert_entry_at(&mut self, index: usize, entry: ChatEntry) -> usize {
-        let clamped = index.min(self.core.history.len());
-        self.core.history.insert(clamped, entry);
+        let clamped = index.min(self.core.history_work.history.len());
+        self.core.history_work.history.insert(clamped, entry);
         // Delegate index shifting to the machine (handles all 4 streaming fields).
         self.core
             .ephemeral
@@ -1130,7 +1044,7 @@ impl ChatSessionState {
                 "begin_streaming: machine rejected transition - ignoring"
             );
         }
-        self.core.last_history_activity_at = Timestamp::now();
+        self.core.identity.last_history_activity_at = Timestamp::now();
     }
 
     /// Append a token to the streaming assistant entry.
@@ -1158,8 +1072,8 @@ impl ChatSessionState {
             return Err(StreamingError::NoStreamingEntry);
         }
         self.ensure_assistant_entry(dispatched_at);
-        self.core.last_history_activity_at = Timestamp::now();
-        self.core.last_provider_activity_at = Timestamp::now();
+        self.core.identity.last_history_activity_at = Timestamp::now();
+        self.core.identity.last_provider_activity_at = Timestamp::now();
         let index = self
             .core
             .ephemeral
@@ -1245,8 +1159,8 @@ impl ChatSessionState {
             .machine
             .streaming_thinking_entry_index()
             .ok_or(StreamingError::NoThinkingEntry)?;
-        self.core.last_history_activity_at = Timestamp::now();
-        self.core.last_provider_activity_at = Timestamp::now();
+        self.core.identity.last_history_activity_at = Timestamp::now();
+        self.core.identity.last_provider_activity_at = Timestamp::now();
         if let Some(true) = self.edit_history().with_entry_at_mut(index, |entry| {
             if let ChatEntryKind::Thinking(text) = &mut entry.kind {
                 text.push_str(token.as_ref());
@@ -1423,7 +1337,7 @@ impl ChatSessionState {
         dispatched_at: jiff::Timestamp,
     ) {
         self.ensure_assistant_entry(dispatched_at);
-        self.core.last_provider_activity_at = Timestamp::now();
+        self.core.identity.last_provider_activity_at = Timestamp::now();
         let mut entry = ChatEntry::tool_call(id, name, "");
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
@@ -1480,7 +1394,7 @@ impl ChatSessionState {
                 }
             })
         {
-            self.core.last_provider_activity_at = Timestamp::now();
+            self.core.identity.last_provider_activity_at = Timestamp::now();
         }
         Ok(())
     }
@@ -1512,7 +1426,7 @@ impl ChatSessionState {
             )
             .is_some();
         if finalized {
-            self.core.last_provider_activity_at = Timestamp::now();
+            self.core.identity.last_provider_activity_at = Timestamp::now();
         } else {
             // If not found (shouldn't happen), push a new entry.
             self.push_entry(ChatEntry::tool_call(id, name, arguments));
@@ -1586,7 +1500,7 @@ impl ChatSessionState {
         else {
             return;
         };
-        self.core.last_history_activity_at = jiff::Timestamp::now();
+        self.core.identity.last_history_activity_at = jiff::Timestamp::now();
         self.edit_history()
             .with_entry_at_mut(history_index, |entry| {
                 if let ChatEntryKind::ToolResult {
@@ -1735,8 +1649,8 @@ impl ChatSessionState {
         // separated from its call by pruning or compaction.
         if let Some(position) = pin_position_result {
             let result_id = self
-                .core
-                .history
+    .core.history_work
+    .history
                 .iter()
                 .rev()
                 .find(|entry| {
@@ -1786,12 +1700,12 @@ impl ChatSessionState {
 
     /// Read-only access to the session profile.
     pub fn profile(&self) -> &SessionProfile {
-        &self.core.profile
+        &self.core.integrations.profile
     }
 
     /// Mutable access to the session profile.
     pub fn profile_mut(&mut self) -> &mut SessionProfile {
-        &mut self.core.profile
+        &mut self.core.integrations.profile
     }
 
     /// Set the model selection for this session.
@@ -1800,9 +1714,9 @@ impl ChatSessionState {
     /// an endpoint pin is model-specific and incoherent across a rotating set.
     pub fn set_model(&mut self, model: ModelSelection) {
         if matches!(model, ModelSelection::Alloy { .. }) {
-            self.core.profile.endpoint = None;
+            self.core.integrations.profile.endpoint = None;
         }
-        self.core.profile.model = model;
+        self.core.integrations.profile.model = model;
     }
 
     /// Whether a tool is enabled for this session.
@@ -1811,21 +1725,26 @@ impl ChatSessionState {
     /// An empty disabled set means all tools are enabled.
     #[must_use]
     pub fn is_tool_enabled(&self, tool_name: &str) -> bool {
-        !self.core.profile.disabled_tools.contains(tool_name)
+        !self
+            .core
+            .integrations
+            .profile
+            .disabled_tools
+            .contains(tool_name)
     }
 
     /// Read-only access to this session's disabled tool names.
     ///
     /// Opt-out model: tools not in this set are enabled.
     pub fn disabled_tools(&self) -> &HashSet<String> {
-        &self.core.profile.disabled_tools
+        &self.core.integrations.profile.disabled_tools
     }
 
     /// Replace the disabled tool set for this session.
     ///
     /// Used by the tool picker to commit toggle state.
     pub fn set_disabled_tools(&mut self, tools: HashSet<String>) {
-        self.core.profile.disabled_tools = tools;
+        self.core.integrations.profile.disabled_tools = tools;
     }
 
     /// Read-only access to this session's enabled MCP server names.
@@ -1833,13 +1752,13 @@ impl ChatSessionState {
     /// Opt-in model: only servers in this set are active for the session.
     #[must_use]
     pub fn enabled_mcp_servers(&self) -> &std::collections::BTreeSet<String> {
-        &self.core.enabled_mcp_servers
+        &self.core.integrations.enabled_mcp_servers
     }
 
     /// Returns `true` if the named MCP server is enabled for this session.
     #[must_use]
     pub fn is_mcp_server_enabled(&self, server: &str) -> bool {
-        self.core.enabled_mcp_servers.contains(server)
+        self.core.integrations.enabled_mcp_servers.contains(server)
     }
 
     /// Enables an MCP server for this session.
@@ -1847,7 +1766,10 @@ impl ChatSessionState {
     /// Returns `true` if the server was not previously enabled (i.e. this call
     /// changed state).
     pub fn enable_mcp_server(&mut self, server: &str) -> bool {
-        self.core.enabled_mcp_servers.insert(server.to_owned())
+        self.core
+            .integrations
+            .enabled_mcp_servers
+            .insert(server.to_owned())
     }
 
     /// Disables an MCP server for this session.
@@ -1855,14 +1777,14 @@ impl ChatSessionState {
     /// Returns `true` if the server was previously enabled (i.e. this call
     /// changed state).
     pub fn disable_mcp_server(&mut self, server: &str) -> bool {
-        self.core.enabled_mcp_servers.remove(server)
+        self.core.integrations.enabled_mcp_servers.remove(server)
     }
 
     /// Replaces the entire enabled MCP server set for this session.
     ///
     /// Used by the MCP picker to commit toggle state.
     pub fn set_enabled_mcp_servers(&mut self, servers: std::collections::BTreeSet<String>) {
-        self.core.enabled_mcp_servers = servers;
+        self.core.integrations.enabled_mcp_servers = servers;
     }
 
     /// Read-only access to this session's live MCP server connection statuses.
@@ -1870,7 +1792,7 @@ impl ChatSessionState {
     pub fn mcp_server_status(
         &self,
     ) -> &std::collections::BTreeMap<String, jinn_mcp_msg::McpConnectionStatus> {
-        &self.core.mcp_server_status
+        &self.core.integrations.mcp_server_status
     }
 
     /// Sets the live connection status for one MCP server in this session.
@@ -1882,6 +1804,7 @@ impl ChatSessionState {
         status: jinn_mcp_msg::McpConnectionStatus,
     ) {
         self.core
+            .integrations
             .mcp_server_status
             .insert(server.to_owned(), status);
     }
@@ -1890,14 +1813,17 @@ impl ChatSessionState {
     ///
     /// Owned by `McpCoordinatorActor`, driven by `McpServerLog` events.
     pub fn mcp_server_stderr(&self) -> &std::collections::BTreeMap<String, String> {
-        &self.core.mcp_server_stderr
+        &self.core.integrations.mcp_server_stderr
     }
 
     /// Sets the captured stderr tail for one MCP server in this session.
     ///
     /// Owned by `McpCoordinatorActor`, driven by `McpServerLog` events.
     pub fn set_mcp_server_stderr(&mut self, server: &str, tail: String) {
-        self.core.mcp_server_stderr.insert(server.to_owned(), tail);
+        self.core
+            .integrations
+            .mcp_server_stderr
+            .insert(server.to_owned(), tail);
     }
 
     /// Returns `true` if the skill is enabled for this session.
@@ -1905,21 +1831,26 @@ impl ChatSessionState {
     /// An empty disabled set means all skills are enabled.
     #[must_use]
     pub fn is_skill_enabled(&self, skill_name: &str) -> bool {
-        !self.core.profile.disabled_skills.contains(skill_name)
+        !self
+            .core
+            .integrations
+            .profile
+            .disabled_skills
+            .contains(skill_name)
     }
 
     /// Read-only access to this session's disabled skill names.
     ///
     /// Opt-out model: skills not in this set are enabled.
     pub fn disabled_skills(&self) -> &HashSet<String> {
-        &self.core.profile.disabled_skills
+        &self.core.integrations.profile.disabled_skills
     }
 
     /// Replace the disabled skill set for this session.
     ///
     /// Used by the skill picker to commit toggle state.
     pub fn set_disabled_skills(&mut self, skills: HashSet<String>) {
-        self.core.profile.disabled_skills = skills;
+        self.core.integrations.profile.disabled_skills = skills;
     }
     /// Compute the set of skill names that are currently loaded in this session.
     ///
@@ -1956,10 +1887,10 @@ impl ChatSessionState {
 
     /// The model selection for this session.
     pub fn model_selection(&self) -> &ModelSelection {
-        &self.core.profile.model
+        &self.core.integrations.profile.model
     }
     pub fn model(&self) -> &ModelSelection {
-        &self.core.profile.model
+        &self.core.integrations.profile.model
     }
 
     /// Mark the session as having dispatched a message to the LLM.
@@ -1975,7 +1906,7 @@ impl ChatSessionState {
                 "begin_sending: machine rejected transition - ignoring"
             );
         }
-        self.core.last_history_activity_at = Timestamp::now();
+        self.core.identity.last_history_activity_at = Timestamp::now();
     }
 
     /// Clear the sending flag (called when the first stream token arrives).
@@ -2307,6 +2238,7 @@ impl ChatSessionState {
                     Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
                     Some(VisualItem::Entry(hist_idx)) => self
                         .core
+                        .history_work
                         .history
                         .get(*hist_idx)
                         .is_some_and(|e| !e.is_empty_assistant()),
@@ -2322,6 +2254,7 @@ impl ChatSessionState {
                     Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
                     Some(VisualItem::Entry(hist_idx)) => self
                         .core
+                        .history_work
                         .history
                         .get(*hist_idx)
                         .is_some_and(|e| !e.is_empty_assistant()),
@@ -2354,6 +2287,7 @@ impl ChatSessionState {
                     Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
                     Some(VisualItem::Entry(hist_idx)) => self
                         .core
+                        .history_work
                         .history
                         .get(*hist_idx)
                         .is_some_and(|e| !e.is_empty_assistant()),
@@ -2368,6 +2302,7 @@ impl ChatSessionState {
                 Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
                 Some(VisualItem::Entry(hist_idx)) => self
                     .core
+                    .history_work
                     .history
                     .get(*hist_idx)
                     .is_some_and(|e| !e.is_empty_assistant()),
@@ -2384,8 +2319,8 @@ impl ChatSessionState {
     /// Replaces the current history with the given entries. Used by session
     /// persistence to rehydrate a session from disk.
     pub fn restore_history(&mut self, entries: Vec<ChatEntry>) {
-        self.core.history.replace_all(entries);
-        let new_cursor = self.core.history.last().map(|e| e.id.clone());
+        self.core.history_work.history.replace_all(entries);
+        let new_cursor = self.core.history_work.history.last().map(|e| e.id.clone());
         self.update_view(|v| v.selected_cursor_id = new_cursor);
         self.reset_scroll();
     }
@@ -2402,7 +2337,7 @@ impl ChatSessionState {
     /// This propagates `shown_ignored_blocks` to any new forward sub-block
     /// created by the split, keeping all entries visible.
     pub fn pin_entry(&mut self, id: &ChatEntryId, position: PinPosition) {
-        let Some(entry) = self.core.history.iter().find(|e| e.id == *id) else {
+        let Some(entry) = self.core.history_work.history.iter().find(|e| e.id == *id) else {
             return;
         };
         // Captured before pinning: a pin makes the entry in-context, but the
@@ -2410,6 +2345,7 @@ impl ChatSessionState {
         let was_ignored = !entry.is_in_context();
         let index = self
             .core
+            .history_work
             .history
             .iter()
             .position(|e| e.id == *id)
@@ -2433,11 +2369,13 @@ impl ChatSessionState {
         while block_start > 0
             && self
                 .core
+                .history_work
                 .history
                 .get(block_start - 1)
                 .is_some_and(|e| !e.is_in_context())
             && self
                 .core
+                .history_work
                 .history
                 .get(block_start - 1)
                 .is_some_and(|e| e.pin_position.is_none())
@@ -2445,7 +2383,7 @@ impl ChatSessionState {
             block_start -= 1;
         }
 
-        let Some(block_entry) = self.core.history.get(block_start) else {
+        let Some(block_entry) = self.core.history_work.history.get(block_start) else {
             return;
         };
         let block_representative = block_entry.id.clone();
@@ -2459,11 +2397,11 @@ impl ChatSessionState {
 
         // Scan forward from the pinned entry to find the new forward sub-block.
         let forward_start = idx + 1;
-        if forward_start >= self.core.history.len() {
+        if forward_start >= self.core.history_work.history.len() {
             return; // No entries after the pin.
         }
 
-        let Some(forward_entry) = self.core.history.get(forward_start) else {
+        let Some(forward_entry) = self.core.history_work.history.get(forward_start) else {
             return;
         };
         if forward_entry.is_in_context() || forward_entry.pin_position.is_some() {
@@ -2487,7 +2425,12 @@ impl ChatSessionState {
 
     /// Returns all pinned entries in history order.
     pub fn pinned_entries(&self) -> Vec<&ChatEntry> {
-        self.core.history.iter().filter(|e| e.is_pinned()).collect()
+        self.core
+            .history_work
+            .history
+            .iter()
+            .filter(|e| e.is_pinned())
+            .collect()
     }
 
     /// Select the next entry (moving toward newer messages).
@@ -2516,6 +2459,7 @@ impl ChatSessionState {
                 Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
                 Some(VisualItem::Entry(hist_idx)) => self
                     .core
+                    .history_work
                     .history
                     .get(*hist_idx)
                     .is_some_and(|e: &ChatEntry| !e.is_empty_assistant()),
@@ -2530,6 +2474,7 @@ impl ChatSessionState {
             Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
             Some(VisualItem::Entry(hist_idx)) => self
                 .core
+                .history_work
                 .history
                 .get(*hist_idx)
                 .is_some_and(|e: &ChatEntry| !e.is_empty_assistant()),
@@ -2565,6 +2510,7 @@ impl ChatSessionState {
                 Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
                 Some(VisualItem::Entry(hist_idx)) => self
                     .core
+                    .history_work
                     .history
                     .get(*hist_idx)
                     .is_some_and(|e: &ChatEntry| !e.is_empty_assistant()),
@@ -2579,6 +2525,7 @@ impl ChatSessionState {
             Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
             Some(VisualItem::Entry(hist_idx)) => self
                 .core
+                .history_work
                 .history
                 .get(*hist_idx)
                 .is_some_and(|e: &ChatEntry| !e.is_empty_assistant()),
@@ -2602,12 +2549,16 @@ impl ChatSessionState {
         let id = {
             let items = self.visual_items_snapshot();
             if items.is_empty() {
-                self.core.history.get(index).map(|e| e.id.clone())
+                self.core
+                    .history_work
+                    .history
+                    .get(index)
+                    .map(|e| e.id.clone())
             } else {
                 items.get(index).and_then(|item| {
                     crate::feat::ui::chat_log::visual_item::entry_id_from_visual_item(
                         item,
-                        &self.core.history,
+                        &self.core.history_work.history,
                     )
                 })
             }
@@ -2620,10 +2571,10 @@ impl ChatSessionState {
     /// Fallback: select next entry by walking raw history.
     /// Used when visual items haven't been computed yet (before first render).
     fn select_next_entry_fallback(&mut self) {
-        if self.core.history.is_empty() {
+        if self.core.history_work.history.is_empty() {
             return;
         }
-        let max = self.core.history.len() - 1;
+        let max = self.core.history_work.history.len() - 1;
         let start = self
             .selected_entry_index()
             .map_or(0, |i| i.saturating_add(1).min(max));
@@ -2631,6 +2582,7 @@ impl ChatSessionState {
         while idx < max
             && self
                 .core
+                .history_work
                 .history
                 .get(idx)
                 .is_none_or(crate::protocol::ChatEntry::is_empty_assistant)
@@ -2639,6 +2591,7 @@ impl ChatSessionState {
         }
         if self
             .core
+            .history_work
             .history
             .get(idx)
             .is_some_and(|e| !e.is_empty_assistant())
@@ -2650,18 +2603,18 @@ impl ChatSessionState {
     /// Fallback: select prev entry by walking raw history.
     /// Used when visual items haven't been computed yet (before first render).
     fn select_prev_entry_fallback(&mut self) {
-        if self.core.history.is_empty() {
+        if self.core.history_work.history.is_empty() {
             return;
         }
-        let start = self
-            .selected_entry_index()
-            .map_or(self.core.history.len().saturating_sub(1), |i| {
-                i.saturating_sub(1)
-            });
+        let start = self.selected_entry_index().map_or(
+            self.core.history_work.history.len().saturating_sub(1),
+            |i| i.saturating_sub(1),
+        );
         let mut idx = start;
         while idx > 0
             && self
                 .core
+                .history_work
                 .history
                 .get(idx)
                 .is_none_or(crate::protocol::ChatEntry::is_empty_assistant)
@@ -2670,6 +2623,7 @@ impl ChatSessionState {
         }
         if self
             .core
+            .history_work
             .history
             .get(idx)
             .is_some_and(|e| !e.is_empty_assistant())
@@ -2733,12 +2687,17 @@ impl ChatSessionState {
         let cursor_id = self.selected_cursor_id_owned()?;
         let items = self.visual_items_snapshot();
         if items.is_empty() {
-            return self.core.history.iter().position(|e| e.id == cursor_id);
+            return self
+                .core
+                .history_work
+                .history
+                .iter()
+                .position(|e| e.id == cursor_id);
         }
         crate::feat::ui::chat_log::visual_item::resolve_entry_id_to_vi_index(
             &cursor_id,
             &items,
-            &self.core.history,
+            &self.core.history_work.history,
         )
     }
 
@@ -2778,10 +2737,10 @@ impl ChatSessionState {
         if items.is_empty() {
             // Before first render, visual items haven't been computed yet.
             // Fall back to direct history indexing.
-            return self.core.history.get(vi_idx);
+            return self.core.history_work.history.get(vi_idx);
         }
         match items.get(vi_idx)? {
-            VisualItem::Entry(hist_idx) => self.core.history.get(*hist_idx),
+            VisualItem::Entry(hist_idx) => self.core.history_work.history.get(*hist_idx),
             VisualItem::CollapsedIgnoredBlock { .. } => None,
         }
     }
@@ -2827,10 +2786,16 @@ impl ChatSessionState {
     ///
     /// No-op if the entry is not found or is not ignored.
     pub fn toggle_ignored_block_visibility(&mut self, entry_id: &ChatEntryId) {
-        let Some(idx) = self.core.history.iter().position(|e| e.id == *entry_id) else {
+        let Some(idx) = self
+            .core
+            .history_work
+            .history
+            .iter()
+            .position(|e| e.id == *entry_id)
+        else {
             return;
         };
-        let Some(entry) = self.core.history.get(idx) else {
+        let Some(entry) = self.core.history_work.history.get(idx) else {
             return;
         };
         if entry.is_in_context() {
@@ -2843,18 +2808,20 @@ impl ChatSessionState {
         while block_start > 0
             && self
                 .core
+                .history_work
                 .history
                 .get(block_start - 1)
                 .is_some_and(|e| !e.is_in_context())
             && self
                 .core
+                .history_work
                 .history
                 .get(block_start - 1)
                 .is_some_and(|e| e.pin_position.is_none())
         {
             block_start -= 1;
         }
-        let Some(block_rep) = self.core.history.get(block_start) else {
+        let Some(block_rep) = self.core.history_work.history.get(block_start) else {
             return;
         };
         let block_representative = block_rep.id.clone();
@@ -2918,7 +2885,13 @@ impl ChatSessionState {
     /// Returns `true` if the given entry is a `ToolCall` that is still
     /// actively streaming arguments from the LLM.
     pub fn is_tool_call_streaming(&self, entry_id: &ChatEntryId) -> bool {
-        let Some(idx) = self.core.history.iter().position(|e| e.id == *entry_id) else {
+        let Some(idx) = self
+            .core
+            .history_work
+            .history
+            .iter()
+            .position(|e| e.id == *entry_id)
+        else {
             return false;
         };
         self.core
@@ -2933,22 +2906,22 @@ impl ChatSessionState {
 
     /// When this session last saw provider activity (model responses).
     pub fn last_provider_activity_at(&self) -> &Timestamp {
-        &self.core.last_provider_activity_at
+        &self.core.identity.last_provider_activity_at
     }
 
     /// When this session last saw history activity (new entries appended).
     pub fn last_history_activity_at(&self) -> &Timestamp {
-        &self.core.last_history_activity_at
+        &self.core.identity.last_history_activity_at
     }
 
     /// Sets when this session last saw provider activity (streaming/turn).
     pub fn set_last_provider_activity_at(&mut self, ts: Timestamp) {
-        self.core.last_provider_activity_at = ts;
+        self.core.identity.last_provider_activity_at = ts;
     }
 
     /// Sets when this session last saw history activity (new entries appended).
     pub fn set_last_history_activity_at(&mut self, ts: Timestamp) {
-        self.core.last_history_activity_at = ts;
+        self.core.identity.last_history_activity_at = ts;
     }
 
     /// Sets this session's working directory.
@@ -2958,14 +2931,14 @@ impl ChatSessionState {
 
     /// Returns the project directory this session is associated with, if any.
     pub fn project(&self) -> Option<&std::path::Path> {
-        self.core.project.as_deref()
+        self.core.identity.project.as_deref()
     }
 
     /// Stamps the session's project association. Callers are the projects UI
     /// flow (at session creation) and subagent spawning (inheriting the
     /// parent's stamp); the stamp never follows later cwd changes.
     pub fn set_project(&mut self, project: Option<std::path::PathBuf>) {
-        self.core.project = project;
+        self.core.identity.project = project;
     }
 
     /// Sets this session's home directory for resolving `@~/path` references.
@@ -2975,24 +2948,24 @@ impl ChatSessionState {
 
     /// Read-only access to the token ledger.
     pub fn token_ledger(&self) -> &[TokenRecord] {
-        &self.core.token_ledger
+        &self.core.history_work.token_ledger
     }
 
     /// Push a token record onto the ledger.
     ///
     /// Records are immutable once pushed - this is the only way to add them.
     pub fn push_token_record(&mut self, record: TokenRecord) {
-        self.core.token_ledger.push(record);
+        self.core.history_work.token_ledger.push(record);
     }
 
     /// Read-only access to this session's task list.
     pub fn task_list(&self) -> &jinn_tools_msg::TaskList {
-        &self.core.task_list
+        &self.core.history_work.task_list
     }
 
     /// Mutable access to this session's task list.
     pub fn task_list_mut(&mut self) -> &mut jinn_tools_msg::TaskList {
-        &mut self.core.task_list
+        &mut self.core.history_work.task_list
     }
 
     /// Update the last token record's received count and cost.
@@ -3012,6 +2985,7 @@ impl ChatSessionState {
     ) -> Result<(), StreamingError> {
         let last = self
             .core
+            .history_work
             .token_ledger
             .last_mut()
             .ok_or(StreamingError::EmptyLedger)?;
@@ -3026,36 +3000,36 @@ impl ChatSessionState {
     /// Sets `model_used` on the last token record (the placeholder pushed at enqueue time).
     /// This makes the model visible in the status bar immediately, before streaming completes.
     pub fn set_last_token_model(&mut self, model: String) {
-        if let Some(last) = self.core.token_ledger.last_mut() {
+        if let Some(last) = self.core.history_work.token_ledger.last_mut() {
             last.model_used = Some(model);
         }
     }
 
     /// The parent session, if this session was forked from another.
     pub fn parent_session(&self) -> &Option<SessionId> {
-        &self.core.parent_session
+        &self.core.identity.parent_session
     }
 
     /// The highest entry ordinal inherited from parent at fork time.
     /// `None` for root sessions.
     pub fn fork_ordinal(&self) -> Option<usize> {
-        self.core.fork_ordinal
+        self.core.identity.fork_ordinal
     }
 
     /// How this session came into being. Identity, not structure —
     /// see [`SessionOrigin`].
     pub fn origin(&self) -> SessionOrigin {
-        self.core.origin
+        self.core.identity.origin
     }
 
     /// Set the fork ordinal for testing and construction.
     pub fn set_fork_ordinal(&mut self, ordinal: usize) {
-        self.core.fork_ordinal = Some(ordinal);
+        self.core.identity.fork_ordinal = Some(ordinal);
     }
 
     /// Set the parent session.
     pub fn set_parent_session(&mut self, parent: SessionId) {
-        self.core.parent_session = Some(parent);
+        self.core.identity.parent_session = Some(parent);
     }
 
     /// The cached context size in tokens, if a prompt has been assembled.
@@ -3114,73 +3088,73 @@ impl ChatSessionState {
 
     /// Restore the token ledger from persisted data.
     pub fn restore_token_ledger(&mut self, records: Vec<TokenRecord>) {
-        self.core.token_ledger = records;
+        self.core.history_work.token_ledger = records;
     }
 
     /// Restore the parent session from persisted data.
     pub fn restore_parent_session(&mut self, parent: Option<SessionId>) {
-        self.core.parent_session = parent;
+        self.core.identity.parent_session = parent;
     }
 
     /// Restore the updated_at timestamp from persisted data.
     pub fn restore_updated_at(&mut self, ts: jiff::Timestamp) {
-        self.core.updated_at = ts;
+        self.core.identity.updated_at = ts;
     }
 
     /// Restore the creation timestamp from persisted data.
     pub fn restore_created_at(&mut self, ts: jiff::Timestamp) {
-        self.core.created_at = ts;
+        self.core.identity.created_at = ts;
     }
 
     /// This session's unique identifier.
     pub fn session_id(&self) -> &SessionId {
-        &self.core.session_id
+        &self.core.identity.session_id
     }
 
     /// Set the session ID (used when inserting into a HashMap with an external key).
     pub fn set_session_id(&mut self, id: SessionId) {
-        self.core.session_id = id;
+        self.core.identity.session_id = id;
     }
 
     /// The session title. `None` until the first user message.
     pub fn title(&self) -> Option<&str> {
-        self.core.lifecycle.title.as_deref()
+        self.core.identity.title.as_deref()
     }
 
     /// Set the session title.
     pub fn set_title(&mut self, title: String) {
-        self.core.lifecycle.title = Some(title);
+        self.core.identity.title = Some(title);
     }
 
     /// Mark this session as persistent (`true`) or transient (`false`).
     /// Transient sessions (e.g. one-shots) are never written to the store.
     pub fn set_persist(&mut self, persist: bool) {
-        self.core.lifecycle.persist = persist;
+        self.core.storage.persist = persist;
     }
 
     /// When this session was last updated.
     pub fn updated_at(&self) -> &Timestamp {
-        &self.core.updated_at
+        &self.core.identity.updated_at
     }
 
     /// When this session was created. Never changes after construction.
     pub fn created_at(&self) -> &Timestamp {
-        &self.core.created_at
+        &self.core.identity.created_at
     }
 
     /// Update the timestamp to now.
     pub fn touch(&mut self) {
-        self.core.updated_at = Timestamp::now();
+        self.core.identity.updated_at = Timestamp::now();
     }
 
     /// Generic blob storage for future subsystems.
     pub fn blobs(&self) -> &HashMap<String, JsonValue> {
-        &self.core.blobs
+        &self.core.integrations.blobs
     }
 
     /// Mutable access to generic blob storage.
     pub fn blobs_mut(&mut self) -> &mut HashMap<String, JsonValue> {
-        &mut self.core.blobs
+        &mut self.core.integrations.blobs
     }
 
     /// The name of the lifecycle that created this session, if any.
@@ -3205,12 +3179,12 @@ impl ChatSessionState {
 
     /// Returns the session's memory state.
     pub fn session_state(&self) -> SessionState {
-        self.core.lifecycle.session_state
+        self.core.storage.session_state
     }
 
     /// Sets the session's memory state.
     pub fn set_session_state(&mut self, state: SessionState) {
-        self.core.lifecycle.session_state = state;
+        self.core.storage.session_state = state;
     }
 
     /// Returns the lifecycle script state.
@@ -3272,7 +3246,11 @@ impl ChatSessionState {
     ///
     /// Returns `None` if the entry no longer exists.
     pub fn find_entry_index_by_id(&self, id: &ChatEntryId) -> Option<usize> {
-        self.core.history.iter().position(|e| e.id == *id)
+        self.core
+            .history_work
+            .history
+            .iter()
+            .position(|e| e.id == *id)
     }
 
     /// Queue a batch of mutations for deferred application.
@@ -3521,7 +3499,7 @@ impl SessionHistoryAccessPriv for ChatSessionState {
 
 impl SessionHistoryAccess for ChatSessionState {
     fn history(&self) -> &[ChatEntry] {
-        &self.core.history
+        &self.core.history_work.history
     }
 
     fn push_entry_raw(&mut self, entry: &mut ChatEntry) -> usize {

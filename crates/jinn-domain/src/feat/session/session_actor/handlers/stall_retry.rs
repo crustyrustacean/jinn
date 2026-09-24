@@ -219,6 +219,7 @@ mod tests {
             let session = state.session.get(&session_id).expect("session exists");
             let has_partial = session
                 .core
+                .history_work
                 .history
                 .iter()
                 .any(|e| matches!(e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"));
@@ -256,7 +257,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            session.core.history.iter().any(|e| matches!(
+            session.core.history_work.history.iter().any(|e| matches!(
                 e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"
             )),
             "a self-resolved stream must not be discarded"
@@ -289,7 +290,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            session.core.history.iter().any(|e| matches!(
+            session.core.history_work.history.iter().any(|e| matches!(
                 e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"
             )),
             "an idle session must not be restarted"
@@ -320,7 +321,7 @@ mod tests {
         // request context — it is marked ForcedExclude.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        let has_active_partial = session.core.history.iter().any(|e| {
+        let has_active_partial = session.core.history_work.history.iter().any(|e| {
             matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-partial")
                 && !matches!(
                     e.context_override(),
@@ -387,7 +388,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            !session.core.history.iter().any(|e| matches!(
+            !session.core.history_work.history.iter().any(|e| matches!(
                 e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"
             )),
             "retry after dispatch receipt must discard partial entries"

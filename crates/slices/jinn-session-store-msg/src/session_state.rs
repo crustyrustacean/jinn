@@ -36,10 +36,7 @@ mod tests {
     #[rstest::rstest]
     #[case(SessionState::Loaded, "\"loaded\"")]
     #[case(SessionState::Archived, "\"archived\"")]
-    fn session_state_serializes_as_snake_case(
-        #[case] state: SessionState,
-        #[case] expected: &str,
-    ) {
+    fn session_state_serializes_as_snake_case(#[case] state: SessionState, #[case] expected: &str) {
         // Given a session state.
 
         // When serializing it.

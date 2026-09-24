@@ -569,23 +569,23 @@ pub(crate) struct PersistableCore {
 impl From<&SessionCore> for PersistableCore {
     fn from(core: &SessionCore) -> Self {
         Self {
-            session_id: core.session_id.clone(),
-            title: core.lifecycle.title.clone(),
-            updated_at: core.updated_at,
-            created_at: core.created_at,
-            profile: core.profile.clone(),
+            session_id: core.identity.session_id.clone(),
+            title: core.identity.title.clone(),
+            updated_at: core.identity.updated_at,
+            created_at: core.identity.created_at,
+            profile: core.integrations.profile.clone(),
             cwd: core.lifecycle.cwd.clone(),
-            parent_session: core.parent_session.clone(),
-            fork_ordinal: core.fork_ordinal,
-            origin: core.origin,
-            project: core.project.clone(),
-            blobs: core.blobs.clone(),
+            parent_session: core.identity.parent_session.clone(),
+            fork_ordinal: core.identity.fork_ordinal,
+            origin: core.identity.origin,
+            project: core.identity.project.clone(),
+            blobs: core.integrations.blobs.clone(),
             lifecycle_name: core.lifecycle.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle.lifecycle_args.clone(),
             lifecycle_script_state: core.lifecycle.lifecycle_script_state,
-            task_list: core.task_list.clone(),
-            enabled_mcp_servers: core.enabled_mcp_servers.clone(),
-            persist: core.lifecycle.persist,
+            task_list: core.history_work.task_list.clone(),
+            enabled_mcp_servers: core.integrations.enabled_mcp_servers.clone(),
+            persist: core.storage.persist,
         }
     }
 }
@@ -596,23 +596,23 @@ impl From<PersistableCore> for SessionCore {
         // activity timestamps, empty MCP maps); persisted fields are then
         // overlaid from the metadata blob.
         let mut restored = SessionCore::default();
-        restored.session_id = core.session_id;
-        restored.lifecycle.title = core.title;
-        restored.updated_at = core.updated_at;
-        restored.created_at = core.created_at;
-        restored.profile = core.profile;
+        restored.identity.session_id = core.session_id;
+        restored.identity.title = core.title;
+        restored.identity.updated_at = core.updated_at;
+        restored.identity.created_at = core.created_at;
+        restored.integrations.profile = core.profile;
         restored.lifecycle.cwd = core.cwd;
-        restored.parent_session = core.parent_session;
-        restored.fork_ordinal = core.fork_ordinal;
-        restored.origin = core.origin;
-        restored.project = core.project;
-        restored.blobs = core.blobs;
+        restored.identity.parent_session = core.parent_session;
+        restored.identity.fork_ordinal = core.fork_ordinal;
+        restored.identity.origin = core.origin;
+        restored.identity.project = core.project;
+        restored.integrations.blobs = core.blobs;
         restored.lifecycle.lifecycle_name = core.lifecycle_name;
         restored.lifecycle.lifecycle_args = core.lifecycle_args;
         restored.lifecycle.lifecycle_script_state = core.lifecycle_script_state;
-        restored.task_list = core.task_list;
-        restored.enabled_mcp_servers = core.enabled_mcp_servers;
-        restored.lifecycle.persist = core.persist;
+        restored.history_work.task_list = core.task_list;
+        restored.integrations.enabled_mcp_servers = core.enabled_mcp_servers;
+        restored.storage.persist = core.persist;
         // session_state is overridden by TryFrom<SessionLoadContext> from the
         // archived column.
         restored
@@ -638,14 +638,15 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
         // bucket) and `save_in_transaction` (table bucket); the row bucket is
         // read through the accessors below.
         let core = session.persistable_core();
-        let session_state = core.lifecycle.session_state;
+        let session_state = core.storage.session_state;
 
         Ok(Self {
-            id: core.session_id.to_string(),
-            title: core.lifecycle.title.clone(),
-            updated_at: core.updated_at.to_string(),
-            created_at: core.created_at.to_string(),
+            id: core.identity.session_id.to_string(),
+            title: core.identity.title.clone(),
+            updated_at: core.identity.updated_at.to_string(),
+            created_at: core.identity.created_at.to_string(),
             parent_session: core
+                .identity
                 .parent_session
                 .as_ref()
                 .map(std::string::ToString::to_string),
@@ -694,7 +695,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
         let mut core = SessionCore::from(persistable);
 
         // Single source of truth: archived column → session_state.
-        core.lifecycle.session_state = if archived {
+        core.storage.session_state = if archived {
             SessionState::Archived
         } else {
             SessionState::Loaded

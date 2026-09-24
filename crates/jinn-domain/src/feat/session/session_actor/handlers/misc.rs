@@ -627,8 +627,8 @@ mod tests {
             let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
-            let id = session.core.session_id.clone();
-            session.core.history[0].apply_context_override(
+            let id = session.core.identity.session_id.clone();
+            session.core.history_work.history[0].apply_context_override(
                 crate::protocol::ContextOverride::ForcedExclude,
                 ChangeSource::Internal {
                     label: "setup".to_owned(),

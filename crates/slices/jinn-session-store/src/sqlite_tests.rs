@@ -1660,7 +1660,7 @@ fn legacy_flat_lifecycle_blob_loads_after_group_composition() {
     let core = jinn_domain::feat::session::chat_session::SessionCore::from(persistable);
 
     // Then every persisted lifecycle value is restored into the composed group.
-    assert_eq!(core.lifecycle.title.as_deref(), Some("Legacy lifecycle"));
+    assert_eq!(core.identity.title.as_deref(), Some("Legacy lifecycle"));
     assert_eq!(core.lifecycle.cwd, std::path::Path::new("/legacy/project"));
     assert_eq!(core.lifecycle.lifecycle_name.as_deref(), Some("release"));
     assert_eq!(core.lifecycle.lifecycle_args, ["--verbose"]);
@@ -1668,7 +1668,7 @@ fn legacy_flat_lifecycle_blob_loads_after_group_composition() {
         core.lifecycle.lifecycle_script_state,
         jinn_domain::feat::session::chat_session::LifecycleScriptState::TeardownRan
     );
-    assert!(!core.lifecycle.persist);
+    assert!(!core.storage.persist);
 }
 
 #[rstest::rstest]
@@ -1698,7 +1698,7 @@ async fn legacy_blob_without_origin_loads_as_user() {
 
     // Then the legacy blob loads as User.
     assert_eq!(
-        core.origin,
+        core.identity.origin,
         jinn_domain::feat::session::chat_session::SessionOrigin::User
     );
 }
@@ -1727,7 +1727,7 @@ async fn legacy_blob_without_project_defaults_to_none() {
     let core = jinn_domain::feat::session::chat_session::SessionCore::from(persistable);
 
     // Then the legacy blob loads with no project (blank column).
-    assert_eq!(core.project, None);
+    assert_eq!(core.identity.project, None);
 }
 
 #[rstest::rstest]

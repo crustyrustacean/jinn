@@ -43,7 +43,8 @@ pub mod validator;
 pub use chat_session::{ChatSessionState, SessionCore, SessionUi};
 pub use profile::SessionProfile;
 pub use session_lifecycle_fields::{
-    SessionHistoryFields, SessionLifecycleFields, SessionMcpFields, SessionProfileFields,
+    SessionHistoryWorkFields, SessionIdentityMetadataFields, SessionIntegrationFields,
+    SessionLifecycleLocationFields, SessionStorageFields,
 };
 pub use session_store::{SessionStore, SessionStoreError, SessionStoreService};
 pub use session_summary::SessionSummary;

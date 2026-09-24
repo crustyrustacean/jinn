@@ -271,14 +271,14 @@ fn begin_streaming_twice_is_noop() {
 fn push_entry_bumps_last_history_activity_at() {
     // Given a session with a stale activity timestamp.
     let mut session = ChatSessionState::new();
-    session.core.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
+    session.core.identity.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
 
     // When pushing an entry.
     let before = jiff::Timestamp::now();
     session.push_entry(ChatEntry::user("hi"));
 
     // Then the activity timestamp advanced to ~now.
-    assert!(session.core.last_history_activity_at >= before);
+    assert!(session.core.identity.last_history_activity_at >= before);
 }
 
 #[rstest::rstest]
@@ -286,7 +286,7 @@ fn append_stream_token_bumps_last_history_activity_at() {
     // Given a streaming session with a stale activity timestamp.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.core.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
+    session.core.identity.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
 
     // When appending a token.
     let before = jiff::Timestamp::now();
@@ -295,7 +295,7 @@ fn append_stream_token_bumps_last_history_activity_at() {
         .expect("ok");
 
     // Then the activity timestamp advanced to ~now.
-    assert!(session.core.last_history_activity_at >= before);
+    assert!(session.core.identity.last_history_activity_at >= before);
 }
 
 #[rstest::rstest]
@@ -306,42 +306,42 @@ fn append_thinking_token_bumps_last_history_activity_at() {
         .begin_streaming()
         .build();
     session.begin_thinking(jiff::Timestamp::now());
-    session.core.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
+    session.core.identity.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
 
     // When appending a thinking token.
     let before = jiff::Timestamp::now();
     session.append_thinking_token("reasoning").expect("ok");
 
     // Then the activity timestamp advanced to ~now.
-    assert!(session.core.last_history_activity_at >= before);
+    assert!(session.core.identity.last_history_activity_at >= before);
 }
 
 #[rstest::rstest]
 fn begin_sending_seeds_last_history_activity_at() {
     // Given a session with a stale activity timestamp.
     let mut session = ChatSessionState::new();
-    session.core.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
+    session.core.identity.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
 
     // When beginning sending.
     let before = jiff::Timestamp::now();
     session.begin_sending();
 
     // Then the activity timestamp was seeded to ~now.
-    assert!(session.core.last_history_activity_at >= before);
+    assert!(session.core.identity.last_history_activity_at >= before);
 }
 
 #[rstest::rstest]
 fn begin_streaming_seeds_last_history_activity_at() {
     // Given a session with a stale activity timestamp.
     let mut session = ChatSessionState::new();
-    session.core.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
+    session.core.identity.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
 
     // When beginning streaming.
     let before = jiff::Timestamp::now();
     session.begin_streaming();
 
     // Then the activity timestamp was seeded to ~now.
-    assert!(session.core.last_history_activity_at >= before);
+    assert!(session.core.identity.last_history_activity_at >= before);
 }
 
 #[rstest::rstest]
@@ -2091,6 +2091,112 @@ fn serde_lifecycle_group_remains_flat() {
 }
 
 #[rstest::rstest]
+fn session_core_five_group_serialization_remains_flat() {
+    // Given a session core with representative values from every broad group.
+    let mut core = SessionCore::default();
+    core.identity.title = Some("Composed session".to_owned());
+    core.identity.parent_session = Some(SessionId::new());
+    core.identity.origin = SessionOrigin::Fork;
+    core.identity.has_interacted = true;
+    core.lifecycle.cwd = PathBuf::from("/workspace/project");
+    core.lifecycle.lifecycle_name = Some("release".to_owned());
+    core.lifecycle.lifecycle_args = vec!["--verbose".to_owned()];
+    core.lifecycle.lifecycle_script_state = LifecycleScriptState::SetupRan;
+    core.restore_history(vec![ChatEntry::user("hello")]);
+    core.history_work.task_list.add_phase("Ship it");
+    core.integrations.profile.model = ModelSelection::Single("ollama/llama3".to_owned());
+    core.integrations
+        .blobs
+        .insert("future".to_owned(), serde_json::json!({"enabled": true}));
+    core.integrations
+        .enabled_mcp_servers
+        .insert("files".to_owned());
+    core.storage.session_state = SessionState::Archived;
+    core.storage.persist = false;
+
+    // When serializing the composed core.
+    let json = serde_json::to_value(&core).expect("serialize");
+    let object = json.as_object().expect("core is an object");
+
+    // Then all five groups remain flat and their representative fields are top-level.
+    for wrapper in [
+        "identity",
+        "lifecycle",
+        "history_work",
+        "integrations",
+        "storage",
+    ] {
+        assert!(
+            !object.contains_key(wrapper),
+            "unexpected {wrapper} wrapper"
+        );
+    }
+    assert_eq!(
+        object.get("title"),
+        Some(&serde_json::json!("Composed session"))
+    );
+    assert_eq!(
+        object.get("cwd"),
+        Some(&serde_json::json!("/workspace/project"))
+    );
+    assert_eq!(
+        object
+            .get("history")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        object
+            .get("task_list")
+            .and_then(|value| value.get("phases"))
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        object.get("enabled_mcp_servers"),
+        Some(&serde_json::json!(["files"]))
+    );
+    assert_eq!(
+        object.get("session_state"),
+        Some(&serde_json::json!("archived"))
+    );
+    assert_eq!(object.get("persist"), Some(&serde_json::json!(false)));
+}
+
+#[rstest::rstest]
+fn session_core_loads_legacy_flat_fields_into_broad_groups() {
+    // Given a hand-written legacy flat session snapshot containing all five groups.
+    let legacy = concat!(
+        r#"{"session_id":"10000000-0000-0000-0000-000000000071","#,
+        r#""updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z","#,
+        r#""title":"Legacy composed","parent_session":"10000000-0000-0000-0000-000000000070","#,
+        r#""fork_ordinal":2,"origin":"fork","project":"/legacy/project","has_interacted":true,"#,
+        r#""cwd":"/legacy/repo","lifecycle_name":"release","lifecycle_args":["--verbose"],"#,
+        r#""lifecycle_script_state":"setup_ran","history":[],"token_ledger":[],"#,
+        r#""task_list":{"phases":[]},"profile":{"model":{"single":"ollama/llama3"},"#,
+        r#""persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[],"#,
+        r#""reasoning_effort":null,"endpoint":null},"blobs":{"future":true},"#,
+        r#""enabled_mcp_servers":["files"],"session_state":"archived","persist":false}"#
+    );
+
+    // When deserializing the flat snapshot.
+    let core: SessionCore = serde_json::from_str(legacy).expect("deserialize legacy core");
+
+    // Then every representative field is restored into its broad group.
+    assert_eq!(core.identity.title.as_deref(), Some("Legacy composed"));
+    assert_eq!(core.lifecycle.cwd, PathBuf::from("/legacy/repo"));
+    assert!(core.history_work.history.is_empty());
+    assert_eq!(
+        core.integrations.profile.model,
+        ModelSelection::Single("ollama/llama3".to_owned())
+    );
+    assert_eq!(core.storage.session_state, SessionState::Archived);
+    assert!(!core.storage.persist);
+}
+
+#[rstest::rstest]
 fn serde_defaults_lifecycle_fields_when_missing() {
     // Given a JSON object without lifecycle fields.
     let json = r#"{"session_id":"00000000-0000-0000-0000-000000000001","updated_at":"2026-01-01T00:00:00Z","created_at":"2026-01-01T00:00:00Z","history":[],"profile":{"model":{"single":""},"strategy":"passthrough"},"cwd":"."}"#;
@@ -2219,17 +2325,17 @@ fn append_tool_result_output_bumps_history_activity_timestamp() {
     session.begin_sending();
     session.begin_streaming();
     session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
-    session.core.last_history_activity_at = jiff::Timestamp::now()
+    session.core.identity.last_history_activity_at = jiff::Timestamp::now()
         .checked_sub(jiff::Span::new().hours(1))
         .expect("past");
 
     // When appending streaming output.
-    let before = session.core.last_history_activity_at;
+    let before = session.core.identity.last_history_activity_at;
     std::thread::sleep(std::time::Duration::from_millis(10));
     session.append_tool_result_output("call_1", "tick", jinn_tools_msg::ToolOutputKind::Normal);
 
     // Then the activity timestamp advanced past its pre-append value.
-    assert!(session.core.last_history_activity_at > before);
+    assert!(session.core.identity.last_history_activity_at > before);
 }
 
 #[rstest::rstest]
@@ -3424,7 +3530,7 @@ fn lifecycle_session_is_always_persistable() {
 fn forked_session_is_always_persistable() {
     // Given a new session with a parent session but no interaction.
     let mut session = ChatSessionState::new();
-    session.core.parent_session = Some(SessionId::new());
+    session.core.identity.parent_session = Some(SessionId::new());
 
     // Then the session is persistable even without interaction.
     assert!(session.is_persistable());
@@ -5756,6 +5862,19 @@ fn new_child_origin_is_subagent() {
     // And the parent link is still set.
     assert_eq!(child.origin(), SessionOrigin::Subagent);
     assert!(child.parent_session().is_some());
+}
+
+#[rstest::rstest]
+#[case(true)]
+#[case(false)]
+fn new_child_preserves_persistence_argument(#[case] persist: bool) {
+    // Given a parent session ID.
+
+    // When creating a child with the requested persistence policy.
+    let child = ChatSessionState::new_child(&SessionId::new(), persist);
+
+    // Then the child preserves that exact policy.
+    assert_eq!(child.persist(), persist);
 }
 
 #[rstest::rstest]
