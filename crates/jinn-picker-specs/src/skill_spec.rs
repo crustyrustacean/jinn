@@ -22,7 +22,7 @@ use ratatui::text::Span;
 use jinn_core_types::{ChatEntry, ChatEntryId, PinPosition, ToolResultStatus};
 use jinn_domain::RescanPromptTemplates;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::skills::skill_entry::{body_hash_key, render_skill_preview, skill_row};
+use jinn_domain::feat::skills::skill_entry::{body_signature, render_skill_preview, skill_row};
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_session_init_msg::ScanContextFiles;
 use jinn_session_msg::MarkSessionInteracted;
@@ -45,7 +45,7 @@ pub fn skill_spec() -> PickerSpec<SkillEntry> {
         .row(skill_row)
         .search(|entry| format!("{} {}", entry.name, entry.description))
         .preview(render_skill_preview)
-        .preview_key(|entry| Some(PreviewKey(body_hash_key(&entry.body))))
+        .preview_key(|entry| Some(PreviewKey(body_signature(&entry.body))))
         .status(skill_status)
         .bind("<tab>", "toggle", skill_toggle)
         .bind("<c-l>", "load", skill_load)

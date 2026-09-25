@@ -51,7 +51,7 @@ pub fn reload_skill_picker_entries(
             .preview(crate::feat::skills::skill_entry::render_skill_preview)
             .preview_key(|entry: &crate::feat::skills::skill_entry::SkillEntry| {
                 Some(jinn_picker::PreviewKey(
-                    crate::feat::skills::skill_entry::body_hash_key(&entry.body),
+                    crate::feat::skills::skill_entry::body_signature(&entry.body),
                 ))
             }),
     );

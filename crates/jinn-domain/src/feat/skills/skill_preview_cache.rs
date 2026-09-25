@@ -6,18 +6,21 @@
 //! `Line` vectors so repeated frames (and back-and-forth navigation between skills)
 //! skip the markdown render entirely.
 //!
-//! Mirrors the shape of [`SessionPreviewCache`] but keys on `(body_hash, width)`
+//! Mirrors the shape of [`SessionPreviewCache`] but keys on `(body_signature, width)`
 //! because rendered output depends only on the skill body and the wrap width —
-//! never on the session viewing it. A content hash (rather than the skill name)
-//! means changed bodies and project/global shadowing of the same name produce
-//! different keys, so the cache is safe across sessions and rescans without any
-//! explicit invalidation on the scan path.
+//! never on the session viewing it. The signature (the body's byte length) is
+//! resolved in O(1), so consulting the cache costs nothing per frame even though
+//! skill bodies run to tens of kilobytes. Changed bodies, and project/global
+//! shadowing of the same name, produce different lengths and therefore different
+//! keys, so the cache is safe across sessions and rescans without any explicit
+//! invalidation on the scan path.
 //!
 //! Cache invalidation:
 //! - **Theme change** (`FrontendCaches::invalidate_all`): rendered lines embed
 //!   theme colors → cleared.
-//! - **Rescan** (the session-init discovery worker): NOT cleared. A changed body hashes to a new
-//!   key, so stale markdown is never redisplayed.
+//! - **Rescan** (the session-init discovery worker): NOT cleared. A changed body
+//!   has a different length and so a new key, so stale markdown is never
+//!   redisplayed.
 //! - **Picker open/close**: cache is preserved so the user does not pay a
 //!   re-render cost when reopening the picker.
 //!
@@ -32,12 +35,12 @@ use ratatui::text::Line;
 
 /// Cache for skill-preview rendered lines.
 ///
-/// Keyed by `(body_hash, content_width)` so that:
-/// - Editing a skill's body produces a cache miss (different content hash).
-/// - Switching skills usually produces a cache miss (different body).
+/// Keyed by `(body_signature, content_width)` so that:
+/// - Editing a skill's body produces a cache miss (different body length).
+/// - Switching skills usually produces a cache miss (different length).
 /// - Terminal resize produces a cache miss (different width).
-/// - Sessions with different cwds shadowing a same-named skill never collide
-///   (different bodies hash differently).
+/// - Sessions with different cwds shadowing a same-named skill rarely collide
+///   (different bodies, so different lengths).
 ///
 /// Interior mutability ([`parking_lot::Mutex`]) is used because the [`PreviewCache`] trait
 /// methods take `&self` — the cache is borrowed immutably (`Option<&dyn PreviewCache>`)
@@ -114,9 +117,9 @@ mod tests {
     use super::*;
     use ratatui::text::Line;
 
-    /// Hashes a body the same way `SkillEntry::cache_key` does, for tests.
+    /// Builds a key the same way `SkillEntry::cache_key` does, for tests.
     fn body_key(body: &str) -> String {
-        crate::feat::skills::skill_entry::body_hash_key(body)
+        crate::feat::skills::skill_entry::body_signature(body)
     }
 
     fn line(s: &str) -> Line<'static> {
