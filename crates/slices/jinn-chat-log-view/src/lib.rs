@@ -66,7 +66,7 @@ mod activation_tests {
         let cell = slices
             .reader::<jinn_chat_log_view_msg::ChatLogViews>(&crate::chat_log_views_slot())
             .expect("activation must register the chat-log-views cell");
-        let session_id = jinn_domain::SessionId::new();
+        let session_id = jinn_core_types::SessionId::new();
         cell.update(|views| {
             views.entry(session_id.clone()).or_default().scroll_offset = Some(3);
         });
@@ -97,8 +97,8 @@ mod activation_tests {
         let cell = slices
             .reader::<jinn_chat_log_view_msg::ChatLogViews>(&crate::chat_log_views_slot())
             .expect("activation must register the chat-log-views cell");
-        let session_a = jinn_domain::SessionId::new();
-        let session_b = jinn_domain::SessionId::new();
+        let session_a = jinn_core_types::SessionId::new();
+        let session_b = jinn_core_types::SessionId::new();
 
         // When writing a distinct scroll offset per session.
         cell.update(|views| {

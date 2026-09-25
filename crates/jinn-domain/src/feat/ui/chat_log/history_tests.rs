@@ -1398,7 +1398,7 @@ fn render_annotation_entry_expanded_shows_source_title_and_url() {
 /// Seeds a `task` tool call entry (linked to `child_id` when given) plus an
 /// optional child session in the given phase.
 fn task_waiting_fixture(
-    child_id: Option<crate::protocol::SessionId>,
+    child_id: Option<jinn_core_types::SessionId>,
     child_phase: Option<jinn_session_msg::PhaseKind>,
 ) -> AppState {
     use crate::protocol::ChatEntryKind;
@@ -1443,7 +1443,7 @@ fn waiting_line_renders_for_pending_task_call_with_running_child() {
 
     // Given a pending task call linked to an in-memory child in Sending phase.
     let mut element = ChatLogElement::new();
-    let child_id = crate::protocol::SessionId::new();
+    let child_id = jinn_core_types::SessionId::new();
     let state = task_waiting_fixture(Some(child_id), Some(PhaseKind::Sending));
 
     let (mut terminal, area) = setup_term(80, 12);
@@ -1548,7 +1548,7 @@ fn waiting_line_absent_when_child_not_in_memory() {
             use crate::protocol::ChatEntryKind;
             let mut e = entry;
             if let ChatEntryKind::ToolCall { child_session, .. } = &mut e.kind {
-                *child_session = Some(crate::protocol::SessionId::new());
+                *child_session = Some(jinn_core_types::SessionId::new());
             }
             e
         };
@@ -1580,7 +1580,7 @@ fn waiting_line_absent_when_child_not_in_memory() {
 fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
     // Given a rendered pending task call whose linked child is running.
     let mut element = ChatLogElement::new();
-    let child_id = crate::protocol::SessionId::new();
+    let child_id = jinn_core_types::SessionId::new();
     let mut state = task_waiting_fixture(
         Some(child_id.clone()),
         Some(jinn_session_msg::PhaseKind::Streaming),

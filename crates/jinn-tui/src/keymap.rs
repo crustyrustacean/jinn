@@ -160,8 +160,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("F", KernelIntent::NewSessionFromEntry, KeyCategory::ChatHistory)
             // Yank (copy) selected entry to clipboard
             .bind("y", KernelIntent::YankSelectedEntry, KeyCategory::ChatHistory)
-            // Open the selected task call's subagent session
-            .bind("<enter>", KernelIntent::LoadSubagentSession, KeyCategory::ChatHistory)
             // Jump to next/previous compaction summary entry
             .describe_group_with_category("]", "next", KeyCategory::ChatHistory)
             .describe_group_with_category("[", "previous", KeyCategory::ChatHistory)
@@ -1241,8 +1239,11 @@ mod leak_check {
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, Modifiers};
 
-        // Given the default keymap queried in the Normal scope.
-        let keymap = init();
+        // Given the default keymap with the sidebar's route rows bound.
+        let mut keymap = init();
+        let routes = jinn_domain::common::slices::key_routes::KeyRoutes::new();
+        jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
+        crate::keymap_gen::bind_route_rows(&routes, &mut keymap);
         let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);
 
         // When pressing <enter>.
@@ -1252,10 +1253,16 @@ mod leak_check {
         };
         let intent = wk.handle_key(enter);
 
-        // Then it resolves to LoadSubagentSession.
+        // Then it resolves to the sidebar's load-subagent dynamic action.
         assert!(
-            matches!(intent, Some(jinn_domain::KernelIntent::LoadSubagentSession)),
-            "<enter> in Normal scope should fire LoadSubagentSession; got {intent:?}",
+            matches!(
+                intent,
+                Some(jinn_domain::KernelIntent::Dynamic(ref dynamic))
+                    if dynamic.slice
+                        == jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id()
+                        && dynamic.action == "load-subagent"
+            ),
+            "<enter> in Normal scope should fire the sidebar load-subagent action; got {intent:?}",
         );
     }
 }

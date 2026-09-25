@@ -221,7 +221,8 @@ mod tests {
     use jinn_domain::feat::context::protocol::event::PersonasLoaded;
     use jinn_domain::feat::persona::Persona;
     use jinn_domain::feat::ui::picker_states::PickerExt;
-    use jinn_domain::protocol::{ChatEntryId, PinPosition, SessionId};
+    use jinn_domain::protocol::{ChatEntryId, PinPosition};
+    use jinn_core_types::SessionId;
 
     fn make_persona(name: &str) -> Persona {
         Persona {

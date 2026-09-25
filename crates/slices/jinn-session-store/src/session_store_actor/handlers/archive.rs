@@ -4,15 +4,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::session::ChatSessionState;
-use jinn_domain::feat::session::profile::{SessionProfile, SessionSeed};
-use jinn_session_state::SessionSnapshot;
+use jinn_domain::feat::session::profile::SessionSeed;
+use jinn_core_types::SessionProfile;
+use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node};
 use jinn_session_store_msg::SessionState;
 use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
 
-use jinn_domain::feat::session::sessions_list::reconcile::reconcile_split;
-use jinn_domain::feat::session::sessions_list::state::update_visual_parents_on_removal_split;
-use jinn_domain::feat::session::snapshot_frozen_node;
 use jinn_session_msg::{SessionArchived, SessionClosed, SessionRemoved};
 
 use crate::session_store_actor::SessionStoreActor;
@@ -104,9 +101,10 @@ impl SessionStoreActor {
                 continue;
             }
             self.snapshot_before_removal(session_id);
-            let mcp_enablement = self.remove_and_replace(session_id);
+            let (removed_parent, mcp_enablement) = self.remove_and_replace(session_id);
             self.publish(SessionRemoved {
                 session_id: session_id.clone(),
+                removed_parent,
             })
             .await;
             self.publish(SessionArchived {
@@ -177,14 +175,15 @@ impl SessionStoreActor {
         }
     }
 
-    /// Removes a session, creates a seeded replacement, and reconciles the UI.
-    ///
-    /// Returns the replacement's MCP-enablement notification for publication
-    /// after the state lock is released.
+    /// Removes a session, creates a seeded replacement, and returns the
+    /// removed session's persisted parent plus any replacement MCP notice.
     fn remove_and_replace(
         &self,
         session_id: &SessionId,
-    ) -> Option<jinn_mcp_msg::McpEnablementChanged> {
+    ) -> (
+        Option<SessionId>,
+        Option<jinn_mcp_msg::McpEnablementChanged>,
+    ) {
         let (fresh_session, enablement) = {
             let app_state = self.services.app_state_storage.read();
             let preferences = self.services.user_preferences_storage.read();
@@ -207,19 +206,12 @@ impl SessionStoreActor {
             (fresh, enablement)
         };
 
+        let removed_parent = self.state.read().session.get(session_id).and_then(|session| session.parent_session().clone());
         self.state
-            .with_session_sidebar(&self.session_cap, &self.frontend_cap, |view| {
-                update_visual_parents_on_removal_split(
-                    view.session.map(),
-                    view.frontend,
-                    session_id,
-                );
-                view.session
-                    .map()
-                    .remove_and_replace(session_id, fresh_session);
-                reconcile_split(view.session.map(), view.frontend);
+            .with_session(&self.session_cap, |view| {
+                view.session.map().remove_and_replace(session_id, fresh_session);
             });
-        enablement
+        (removed_parent, enablement)
     }
 }
 

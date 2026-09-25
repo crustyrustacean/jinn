@@ -341,7 +341,7 @@ fn shell_escape(s: &str) -> String {
 /// makes the selection actually reach the session actor.
 fn apply_selected_cwd(
     bridge: &jinn_domain::common::bridge::Bridge,
-    session_id: jinn_domain::SessionId,
+    session_id: jinn_core_types::SessionId,
     path: &std::path::Path,
 ) -> bool {
     if !path.is_dir() {
@@ -363,7 +363,7 @@ fn apply_selected_cwd(
         }
     };
     let _ = bridge.send(jinn_domain::Bridge::publish_closure(
-        jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd {
+        jinn_session_lifecycle_msg::SetSessionCwd {
             session_id,
             cwd: canonical,
         },
@@ -381,7 +381,7 @@ mod tests {
     )]
     use super::*;
     use jinn_domain::common::bridge::Bridge;
-    use jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd;
+    use jinn_session_lifecycle_msg::SetSessionCwd;
     use std::sync::{Arc, Mutex};
 
     /// A trouper service actor that records decoded `SetSessionCwd`
@@ -493,7 +493,7 @@ mod tests {
             let expected = std::fs::canonicalize(dir.path()).expect("canonicalize");
 
             // When applying a real directory path.
-            let session_id = jinn_domain::SessionId::new();
+            let session_id = jinn_core_types::SessionId::new();
             let published = apply_selected_cwd(&bridge, session_id.clone(), dir.path());
 
             // Then exactly one SetSessionCwd is published with the canonical cwd.
@@ -522,7 +522,7 @@ mod tests {
             std::fs::write(&file_path, b"contents").expect("write file");
 
             // When applying a file path.
-            let published = apply_selected_cwd(&bridge, jinn_domain::SessionId::new(), &file_path);
+            let published = apply_selected_cwd(&bridge, jinn_core_types::SessionId::new(), &file_path);
 
             // Then nothing is published and the helper returns false.
             assert!(!published, "file path should not publish");
@@ -547,7 +547,7 @@ mod tests {
 
             // When applying a nonexistent path.
             let published =
-                apply_selected_cwd(&bridge, jinn_domain::SessionId::new(), &missing_path);
+                apply_selected_cwd(&bridge, jinn_core_types::SessionId::new(), &missing_path);
 
             // Then nothing is published and the helper returns false.
             assert!(!published, "nonexistent path should not publish");

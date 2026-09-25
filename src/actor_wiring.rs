@@ -354,18 +354,17 @@ impl ActorSystemBuilder {
             },
         );
 
-        // MCP lifecycle actor: subscribes to session lifecycle events +
-        // McpEnablementChanged, spawning/killing one McpActor per
-        // (session × enabled server). Spawned after the tool orchestrator so
-        // tool registrations from McpActor land in an already-running
-        // orchestrator. Restored sessions are picked up via SessionLoadCompleted;
-        // no startup scan is needed here.
+        // MCP lifecycle actor: activation registers the runtime-only status and
+        // stderr projection, then the coordinator becomes its sole writer. The
+        // cell must exist before spawn so no status/log event can arrive early.
+        let mcp_runtime = jinn_mcp_slice::activate_runtime(&services.slices)
+            .expect("MCP runtime cell is registered exactly once");
         let mcp_coordinator_path = jinn_mcp_slice::coordinator::McpCoordinatorActor::spawn(
             &services.trouper_system,
             jinn_mcp_slice::coordinator::McpCoordinatorActorDeps {
                 deps: actor_deps.clone(),
                 state: state.clone(),
-                cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+                runtime: mcp_runtime,
             },
         )
         .await;
@@ -1094,7 +1093,7 @@ impl ActorTermHandle {
 impl jinn_term_msg::TermHandle for ActorTermHandle {
     async fn spawn_term(
         &self,
-        chat_session_id: jinn_domain::protocol::SessionId,
+        chat_session_id: jinn_core_types::SessionId,
         command: String,
         cwd: std::path::PathBuf,
         size: (u16, u16),
@@ -1116,7 +1115,7 @@ impl jinn_term_msg::TermHandle for ActorTermHandle {
 
     async fn send_input(
         &self,
-        chat_session_id: jinn_domain::protocol::SessionId,
+        chat_session_id: jinn_core_types::SessionId,
         text: Option<String>,
         keys: Vec<String>,
         enter: bool,
@@ -1138,7 +1137,7 @@ impl jinn_term_msg::TermHandle for ActorTermHandle {
 
     async fn kill_term(
         &self,
-        chat_session_id: jinn_domain::protocol::SessionId,
+        chat_session_id: jinn_core_types::SessionId,
     ) -> Result<jinn_term_msg::KillTermOutcome, jinn_term_msg::TermAskError> {
         let reply = self
             .system

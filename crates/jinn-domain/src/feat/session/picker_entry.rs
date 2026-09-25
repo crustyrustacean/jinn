@@ -3,7 +3,7 @@
 use std::ops::Range;
 
 use crate::feat::theme::Theme;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 use jinn_picker::RowCtx;
 use jinn_picker::picker_style::dim_style;
 use jinn_picker::picker_style::selected_style;

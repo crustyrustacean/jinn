@@ -14,6 +14,7 @@ jinn-tools-msg = { workspace = true }
 jinn-mcp = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-session-msg = { workspace = true }
+jinn-session-state = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }

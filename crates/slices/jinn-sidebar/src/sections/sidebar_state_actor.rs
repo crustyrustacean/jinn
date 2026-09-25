@@ -1,10 +1,8 @@
-//! Sidebar state actor — keeps sidebar cursor in sync after session close.
+//! Sidebar state actor — keeps sidebar cursor in sync after session removal.
 //!
 //! A trouper [`ServiceActor`] subscribed to the slice's `jinn.sidebar`
 //! topic (fed by the kernel bridge's forward routes). It folds
-//! [`SessionClosed`] into the sidebar cursor: clamps `selected_index`
-//! and `scroll_offset` so they never point past the end of the sessions
-//! list.
+//! [`SessionRemoved`] into the sidebar cursor and active session.
 
 use trouper::actor::ActorPath;
 use trouper::actor::{MsgHandler, ServiceActor};
@@ -14,7 +12,7 @@ use trouper::system::ActorSystem;
 
 use crate::sections::sessions;
 use jinn_domain::common::state::State;
-use jinn_session_msg::SessionClosed;
+use jinn_session_msg::SessionRemoved;
 
 /// The sidebar state actor's static trouper path.
 pub const SIDEBAR_STATE_PATH: &str = "sidebar-state";
@@ -63,22 +61,28 @@ impl SidebarStateActor {
                     })
                 }
             })
-            .handles::<SessionClosed>()
+            .handles::<SessionRemoved>()
             .start()
     }
 
-    /// Reconcile sidebar cursor and active session after a session is closed.
-    fn handle_session_closed(&self, _payload: &SessionClosed) {
+    /// Reconcile sidebar cursor and active session after a session is removed.
+    fn handle_session_removed(&self, payload: &SessionRemoved) {
         self.state
             .with_session_sidebar(&self.session_cap, &self.frontend_cap, |view| {
+                sessions::state::repair_visual_parents_after_removal(
+                    view.session.map(),
+                    view.frontend,
+                    &payload.session_id,
+                    payload.removed_parent.as_ref(),
+                );
                 sessions::reconcile_split(view.session.map(), view.frontend);
             });
     }
 }
 
-impl MsgHandler<SessionClosed> for SidebarStateActor {
-    async fn handle(&mut self, msg: &SessionClosed, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_closed(msg);
+impl MsgHandler<SessionRemoved> for SidebarStateActor {
+    async fn handle(&mut self, msg: &SessionRemoved, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_removed(msg);
     }
 }
 
@@ -95,7 +99,7 @@ mod tests {
     use super::*;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::session::chat_session::ChatSessionState;
+    use jinn_session_state::ChatSessionState;
 
     fn test_actor() -> SidebarStateActor {
         SidebarStateActor {
@@ -137,10 +141,11 @@ mod tests {
         }
 
         // When handling SessionClosed.
-        let payload = jinn_session_msg::SessionClosed {
+        let payload = jinn_session_msg::SessionRemoved {
             session_id: removed_id,
+            removed_parent: None,
         };
-        actor.handle_session_closed(&payload);
+        actor.handle_session_removed(&payload);
 
         // Then selected_index is clamped to 1 (max valid index).
         let state = actor.state.read();
@@ -175,10 +180,11 @@ mod tests {
         }
 
         // When handling SessionClosed.
-        let payload = jinn_session_msg::SessionClosed {
+        let payload = jinn_session_msg::SessionRemoved {
             session_id: removed_id,
+            removed_parent: None,
         };
-        actor.handle_session_closed(&payload);
+        actor.handle_session_removed(&payload);
 
         // Then cursor stays at 0.
         let state = actor.state.read();
@@ -217,10 +223,11 @@ mod tests {
         }
 
         // When handling SessionClosed.
-        let payload = jinn_session_msg::SessionClosed {
+        let payload = jinn_session_msg::SessionRemoved {
             session_id: removed_id,
+            removed_parent: None,
         };
-        actor.handle_session_closed(&payload);
+        actor.handle_session_removed(&payload);
 
         // Then cursor stays at 0.
         let state = actor.state.read();

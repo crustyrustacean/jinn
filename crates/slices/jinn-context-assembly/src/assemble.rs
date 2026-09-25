@@ -317,7 +317,8 @@ mod tests {
     use jinn_domain::common::state::State;
     use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
     use jinn_domain::protocol::ToolResultStatus;
-    use jinn_domain::protocol::{ChatEntry, SessionId};
+    use jinn_domain::protocol::ChatEntry;
+    use jinn_core_types::SessionId;
     use jinn_skills::Skill;
     use jinn_tools_msg::TASK_TOOL_NAME;
 
@@ -330,7 +331,7 @@ mod tests {
         session_id: &SessionId,
         counter: &TiktokenCounter,
     ) -> jinn_slices::AssembledPrompt {
-        let inputs = jinn_domain::feat::context::snapshot::build_assembly_inputs(state, session_id);
+        let inputs = crate::inputs::build_assembly_inputs(state, session_id);
         assemble(&inputs, counter)
     }
 
@@ -1143,7 +1144,7 @@ mod tests {
                 r.global
                     .insert(TASK_TOOL_NAME.to_owned(), make_tool(TASK_TOOL_NAME));
             });
-            let child = jinn_domain::feat::session::chat_session::ChatSessionState::new_child(
+            let child = jinn_session_state::ChatSessionState::new_child(
                 &parent_id, true,
             );
             child_id = child.session_id().clone();

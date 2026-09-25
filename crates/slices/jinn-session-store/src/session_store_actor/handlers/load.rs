@@ -2,12 +2,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use jinn_core_types::SessionId;
+use jinn_core_types::{ChatEntry, SessionId};
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::session::chat_session::ChatSessionState;
-use jinn_domain::feat::session::{SessionStoreService, snapshot_frozen_node_from_snapshot};
-use jinn_domain::protocol::{ChatEntry, system::ActiveSessionChanged};
-use jinn_session_state::SessionSnapshot;
+use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
+use jinn_domain::feat::session::SessionStoreService;
+use jinn_domain::protocol::system::ActiveSessionChanged;
 use jinn_session_store_msg::SessionForkRequested;
 use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested};
 
@@ -251,7 +250,7 @@ impl SessionStoreActor {
         &self,
         store: &SessionStoreService,
         session_ids: &[SessionId],
-    ) -> Vec<jinn_domain::feat::session::FrozenTreeNode> {
+    ) -> Vec<jinn_session_store_msg::FrozenTreeNode> {
         let mut nodes = Vec::new();
         for id in session_ids {
             match store.load_session(id).await {

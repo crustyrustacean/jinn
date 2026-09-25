@@ -26,7 +26,7 @@ use jinn_domain::common::state::State;
 use jinn_domain::common::tcaps::mint::mint_session_cap;
 use jinn_domain::feat::chat_input::protocol::command::EnqueueUserMessage;
 use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
-use jinn_domain::protocol::SessionId;
+use jinn_core_types::SessionId;
 use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
 use jinn_inference_msg::CancelStream;
 use jinn_session_msg::PhaseKind;

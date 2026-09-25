@@ -32,7 +32,7 @@ async fn sqlite_actor_deps() -> (
 
 /// A two-entry session whose entries mention "needle" so it is findable.
 fn needle_session(id: &SessionId) -> SessionSnapshot {
-    let mut session = jinn_domain::feat::session::ChatSessionState::new();
+    let mut session = jinn_session_state::ChatSessionState::new();
     session.set_session_id(id.clone());
     session.set_title("tick".to_owned());
     session.push_entry(jinn_core_types::ChatEntry::user(

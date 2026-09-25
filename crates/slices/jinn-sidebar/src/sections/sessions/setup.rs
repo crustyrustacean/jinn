@@ -1,0 +1,140 @@
+//! Re-runs a selected session's lifecycle setup command.
+
+use jinn_domain::IntentResult;
+use jinn_domain::common::app_state::AppState;
+use jinn_preferences_config::schemas::LifecycleCommand;
+use jinn_session_history_msg::PushChatEntry;
+use jinn_session_lifecycle_msg::command::RunSessionSetup;
+use jinn_session_lifecycle_msg::{command_template::CommandTemplate, setup_running_msg};
+use jinn_session_state::chat_session::LifecycleScriptState;
+
+use super::close::validate_session_close;
+use super::state::sorted_open_sessions;
+
+/// Re-runs setup for the selected session when its lifecycle is still unrun.
+pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
+    let Some(target_id) = selected_idle_session(state) else {
+        return IntentResult::empty();
+    };
+    let (setup, args) = {
+        let Some(session) = state.session.get(&target_id) else {
+            return IntentResult::empty();
+        };
+        if session.lifecycle_script_state() != LifecycleScriptState::NothingRan {
+            return IntentResult::empty();
+        }
+        let lifecycle_name = session.lifecycle_name().map(String::from);
+        let args = session.lifecycle_args().to_vec();
+        let setup = lifecycle_name.as_deref().and_then(|name| {
+            state
+                .frontend
+                .preferences
+                .session_lifecycles
+                .iter()
+                .find(|lifecycle| lifecycle.name == name)
+                .and_then(|lifecycle| lifecycle.setup.clone())
+        });
+        (setup, args)
+    };
+    let Some(setup) = setup else {
+        return IntentResult::empty();
+    };
+    let rendered = render_setup(&setup, &args);
+    IntentResult::empty()
+        .with_message(PushChatEntry {
+            session_id: target_id.clone(),
+            entry: setup_running_msg(),
+        })
+        .with_message(RunSessionSetup {
+            session_id: target_id,
+            command: rendered,
+            args,
+            lifecycle_command: Some(setup),
+        })
+}
+
+fn selected_idle_session(state: &AppState) -> Option<jinn_core_types::SessionId> {
+    validate_session_close(state).ok()?;
+    let index = state
+        .frontend
+        .with_sections(|sections| sections.sessions.selected_index, || None)?;
+    sorted_open_sessions(state).get(index).map(|entry| entry.id.clone())
+}
+
+fn render_setup(setup: &LifecycleCommand, args: &[String]) -> String {
+    match setup {
+        LifecycleCommand::Shell(command) if args.is_empty() => command.clone(),
+        LifecycleCommand::Shell(command) => CommandTemplate::parse(command).render(args),
+        LifecycleCommand::Builtin(id) => id.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        reason = "test code"
+    )]
+    use super::*;
+    use jinn_preferences_config::schemas::SessionLifecycle;
+
+    fn state_with_selected_session() -> AppState {
+        let state = AppState::default_with_scope_focus();
+        state
+            .frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+        state
+            .frontend
+            .update_sections(|sections| sections.sessions.selected_index = Some(0));
+        state
+    }
+
+    #[rstest::rstest]
+    fn rerun_setup_is_noop_without_lifecycle() {
+        // Given a selected session without a lifecycle.
+        let mut state = state_with_selected_session();
+
+        // When rerunning setup.
+        let result = handle_session_rerun_setup(&mut state);
+
+        // Then no messages are emitted.
+        assert!(result.messages.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn rerun_setup_is_noop_after_setup_already_ran() {
+        // Given a selected session whose setup already ran.
+        let mut state = state_with_selected_session();
+        state.active_session_mut().advance_lifecycle_after_setup();
+
+        // When rerunning setup.
+        let result = handle_session_rerun_setup(&mut state);
+
+        // Then no messages are emitted.
+        assert!(result.messages.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn rerun_setup_emits_status_entry_and_lifecycle_command() {
+        // Given a selected session with a configured setup command.
+        let mut state = state_with_selected_session();
+        state.frontend.preferences.session_lifecycles.push(SessionLifecycle {
+            name: "release".to_owned(),
+            description: None,
+            setup: Some(LifecycleCommand::Shell("deploy".to_owned())),
+            teardown: None,
+        });
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("release".to_owned()));
+
+        // When rerunning setup.
+        let result = handle_session_rerun_setup(&mut state);
+
+        // Then the status entry precedes the lifecycle command.
+        assert_eq!(result.message_names.len(), 2);
+        assert!(result.message_names[0].ends_with("PushChatEntry"));
+        assert!(result.message_names[1].ends_with("RunSessionSetup"));
+    }
+}

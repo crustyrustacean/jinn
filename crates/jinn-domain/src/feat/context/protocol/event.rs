@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::BusMessage;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 
 /// Emitted when personas have been scanned and loaded from disk.
 ///

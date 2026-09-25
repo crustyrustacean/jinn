@@ -70,9 +70,3 @@ pub(crate) fn spawn(system: &trouper::system::ActorSystem) -> ActorPath {
         .mailbox(64, trouper::inbox::OverloadPolicy::Block)
         .start()
 }
-
-/// Spawns the stub unless its path is already live.
-pub(crate) fn ensure_spawned(system: &trouper::system::ActorSystem) -> Option<ActorPath> {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| spawn(system)));
-    result.ok()
-}

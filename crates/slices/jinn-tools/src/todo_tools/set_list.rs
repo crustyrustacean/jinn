@@ -211,7 +211,7 @@ mod tests {
     use jinn_core_types::tool_types::ToolCall;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::state::State;
-    use jinn_domain::protocol::SessionId;
+    use jinn_core_types::SessionId;
     use jinn_tools_msg::{PhaseInput, TaskStatus};
 
     use super::*;

@@ -340,7 +340,7 @@ mod tests {
     use super::*;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::protocol::ChatEntryKind;
-    use jinn_domain::protocol::SessionId;
+    use jinn_core_types::SessionId;
 
     /// Build a bridge subscriber with one seeded session, plus its session id.
     ///

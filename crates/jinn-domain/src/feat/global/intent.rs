@@ -2,7 +2,7 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::ChatInputBoxState;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 use crate::protocol::{IntentResult, KernelIntent};
 use jinn_inference_msg::CancelStream;
 
@@ -317,11 +317,11 @@ mod tests {
     #[rstest::rstest]
     fn interrupt_with_specific_session_cancels_stream() {
         // Given two sessions, the second one streaming.
-        use crate::protocol::SessionId;
+        use jinn_core_types::SessionId;
 
         let mut state = AppState::default_with_scope_focus();
         let second_id = SessionId::new();
-        let mut second_session = crate::feat::session::chat_session::ChatSessionState::new();
+        let mut second_session = jinn_session_state::ChatSessionState::new();
         second_session.set_session_id(second_id.clone());
         second_session.begin_streaming();
         state.session.insert(second_session);

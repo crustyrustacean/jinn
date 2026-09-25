@@ -4,7 +4,7 @@ use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::session::profile::SessionSeed;
 use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use jinn_session_state::SessionSnapshot;
-use jinn_session_store_msg::SessionLoadCompleted;
+use jinn_session_store_msg::{SessionLoadCompleted, SessionSummary};
 
 use crate::session_store_actor::SessionStoreActor;
 
@@ -114,7 +114,7 @@ impl SessionStoreActor {
     /// Loads the complete sessions, newest summary first, outside the state lock.
     async fn load_summaries_in_recency_order(
         &self,
-        mut summaries: Vec<jinn_domain::feat::session::SessionSummary>,
+        mut summaries: Vec<SessionSummary>,
     ) -> Vec<SessionSnapshot> {
         summaries.sort_by_key(|summary| std::cmp::Reverse(summary.updated_at));
         let mut loaded = Vec::new();

@@ -7,6 +7,7 @@
 use crate::sections::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
+use jinn_core_types::SessionId;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::app_state::pin_sort_key;
 use jinn_domain::common::render_ctx::RenderCtx;
@@ -14,7 +15,7 @@ use jinn_domain::feat::theme::Theme;
 use jinn_domain::feat::ui::chat_log::strip_ansi;
 use jinn_domain::protocol::ToolResultStatus;
 use jinn_domain::protocol::{
-    ChatEntryId, ChatEntryKind, IntentResult, PickerKind, PinPosition, SessionId,
+    ChatEntryId, ChatEntryKind, IntentResult, PickerKind, PinPosition,
 };
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 use jinn_skills::loaded_skill_summary_label;

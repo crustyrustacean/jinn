@@ -10,7 +10,7 @@ use crate::sqlite::SqliteSessionStore;
 use jinn_core_types::ToolResultStatus;
 use jinn_core_types::{ChatEntry, ChatEntryKind, EntryTiming, SessionId};
 use jinn_domain::feat::session::SessionStore;
-use jinn_domain::feat::session::chat_session::ChatSessionState;
+use jinn_session_state::ChatSessionState;
 use tempfile::TempDir;
 
 /// Creates a minimal `ChatSessionState` for testing.
@@ -1276,7 +1276,7 @@ async fn lifecycle_script_state_setup_ran_round_trips() {
     // Then lifecycle_script_state is SetupRan.
     assert_eq!(
         loaded.lifecycle_script_state(),
-        jinn_domain::feat::session::chat_session::LifecycleScriptState::SetupRan
+        jinn_session_lifecycle_msg::LifecycleScriptState::SetupRan
     );
 }
 
@@ -1299,7 +1299,7 @@ async fn lifecycle_script_state_nothing_ran_round_trips() {
     // Then lifecycle_script_state is NothingRan.
     assert_eq!(
         loaded.lifecycle_script_state(),
-        jinn_domain::feat::session::chat_session::LifecycleScriptState::NothingRan
+        jinn_session_lifecycle_msg::LifecycleScriptState::NothingRan
     );
 }
 
@@ -1330,7 +1330,7 @@ async fn fork_inherits_lifecycle_script_state() {
     // Then the forked session inherits SetupRan.
     assert_eq!(
         forked.lifecycle_script_state(),
-        jinn_domain::feat::session::chat_session::LifecycleScriptState::SetupRan
+        jinn_session_lifecycle_msg::LifecycleScriptState::SetupRan
     );
 }
 
@@ -1895,7 +1895,7 @@ fn legacy_flat_lifecycle_blob_loads_after_group_composition() {
     assert_eq!(metadata.lifecycle_args, ["--verbose"]);
     assert_eq!(
         metadata.lifecycle_script_state,
-        jinn_domain::feat::session::chat_session::LifecycleScriptState::TeardownRan
+        jinn_session_lifecycle_msg::LifecycleScriptState::TeardownRan
     );
     assert!(!metadata.persist);
 }
@@ -1928,7 +1928,7 @@ async fn legacy_blob_without_origin_loads_as_user() {
     // Then the legacy blob loads as User.
     assert_eq!(
         metadata.origin,
-        jinn_domain::feat::session::chat_session::SessionOrigin::User
+        jinn_session_msg::SessionOrigin::User
     );
 }
 
@@ -1982,7 +1982,7 @@ async fn subagent_origin_roundtrips_through_store() {
     // Then the subagent origin survives persistence.
     assert_eq!(
         loaded.origin(),
-        jinn_domain::feat::session::chat_session::SessionOrigin::Subagent
+        jinn_session_msg::SessionOrigin::Subagent
     );
 }
 
@@ -2015,7 +2015,7 @@ async fn forked_session_persists_fork_origin() {
         .expect("should exist");
     assert_eq!(
         forked.origin(),
-        jinn_domain::feat::session::chat_session::SessionOrigin::Fork
+        jinn_session_msg::SessionOrigin::Fork
     );
     // And the fork still carries the parent link.
     assert_eq!(forked.parent_session(), &Some(source_id.clone()));

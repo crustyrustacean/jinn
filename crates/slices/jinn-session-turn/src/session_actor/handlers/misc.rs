@@ -220,7 +220,8 @@ mod tests {
         reason = "test code"
     )]
     use crate::session_actor::helpers::test_actor_recording;
-    use jinn_domain::protocol::{ChangeSource, ChatEntry, SessionId};
+    use jinn_domain::protocol::{ChangeSource, ChatEntry};
+    use jinn_core_types::SessionId;
 
     #[rstest::rstest]
     #[tokio::test]

@@ -264,6 +264,19 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
     ));
 
     // ---- Sessions section ----
+    routes.attach(RouteRow {
+        route_id: RouteId::new("sidebar:load-subagent"),
+        scope: sessions_scope.clone(),
+        key: "<enter>",
+        category: "general",
+        site: BindSite::StaticScopes(&["Normal"]),
+        feature: "sidebar",
+        outcome: RouteOutcome::Action {
+            action: "load-subagent",
+            display: "open subagent session",
+            run: sync(sessions::handle_load_subagent_session),
+        },
+    });
     routes.attach(row(
         "session-close",
         sessions_scope.clone(),
@@ -384,9 +397,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "s",
         "general",
         "rerun setup",
-        sync(|state| {
-            jinn_domain::feat::session_lifecycle::intent::handle_session_rerun_setup(state)
-        }),
+        sync(sessions::handle_session_rerun_setup),
     ));
     routes.attach(row(
         "session-terminal",

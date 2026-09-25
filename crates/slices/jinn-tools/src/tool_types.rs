@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::protocol::SessionId;
+use jinn_core_types::SessionId;
 
 /// Context provided to every built-in tool at execution time.
 ///
@@ -108,7 +108,7 @@ mod tests {
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
             timeout: Some(std::time::Duration::from_secs(30)),
             state: None,
-            session_id: Some(jinn_domain::protocol::SessionId::new()),
+            session_id: Some(jinn_core_types::SessionId::new()),
             app_paths: jinn_common::app_paths::AppPaths::default(),
             bus: None,
             max_output_lines: None,

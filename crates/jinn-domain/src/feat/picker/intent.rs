@@ -221,7 +221,7 @@ mod tests {
     fn empty_pickers() -> jinn_picker::PickerRegistry {
         jinn_picker::PickerRegistry::new()
     }
-    use crate::feat::session::ChatSessionState;
+    use jinn_session_state::ChatSessionState;
     fn setup_state_with_task_list() -> (AppState, jinn_tools_msg::TaskId) {
         use jinn_tools_msg::{PhaseInput, TaskStatus};
 

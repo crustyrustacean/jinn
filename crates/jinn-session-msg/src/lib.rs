@@ -158,6 +158,8 @@ pub struct SessionClosed {
 pub struct SessionRemoved {
     /// The session removed from the live map.
     pub session_id: SessionId,
+    /// The removed session's persisted direct parent, captured before deletion.
+    pub removed_parent: Option<SessionId>,
 }
 
 // ── wire contracts ──────────────────────────────────────────────────
@@ -187,6 +189,7 @@ mod tests {
     use super::SessionSetupCompleted;
     use super::SessionTeardownFinished;
     use super::UserInteracted;
+    use jinn_core_types::SessionId;
     use std::path::PathBuf;
     use std::str::FromStr;
 
@@ -257,6 +260,7 @@ mod tests {
     fn promoted_session_contracts_roundtrip_through_json() {
         // Given one of each promoted session command and event.
         let id = jinn_core_types::SessionId::new();
+        let removed_parent = SessionId::new();
         let contracts = (
             MarkSessionInteracted {
                 session_id: id.clone(),
@@ -274,6 +278,7 @@ mod tests {
             },
             SessionRemoved {
                 session_id: id.clone(),
+                removed_parent: Some(removed_parent.clone()),
             },
         );
 
@@ -296,5 +301,6 @@ mod tests {
         assert_eq!(restored.2.max_restarts, 5);
         assert_eq!(restored.3.session_id, id);
         assert_eq!(restored.4.session_id, id);
+        assert_eq!(restored.4.removed_parent, Some(removed_parent));
     }
 }

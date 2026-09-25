@@ -171,7 +171,7 @@ mod tests {
     use jinn_domain::PickerKind;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::app_state::FocusScope;
-    use jinn_domain::feat::session::ChatSessionState;
+    use jinn_session_state::ChatSessionState;
     use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_picker::PROJECT_ID;
 

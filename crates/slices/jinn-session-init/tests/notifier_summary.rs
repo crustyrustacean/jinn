@@ -29,7 +29,7 @@ async fn wait_for(check: impl Fn() -> bool) {
 struct Wired {
     fabric: jinn_testutil::TestFabric,
     state: State,
-    session_id: jinn_domain::protocol::SessionId,
+    session_id: jinn_core_types::SessionId,
 }
 
 impl Wired {

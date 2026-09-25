@@ -105,15 +105,12 @@ pub struct FrontendState {
     pub audit_popup_visible: bool,
 
     /// Whether the "Press x again to teardown and archive 1 session" prompt is showing.
-    /// OWNER: IntentHandler (set on first SidebarSessionClose, consumed on second
-    ///         SidebarSessionClose or dismissed on any other key).
+    /// OWNER: sidebar route action (set on first close, consumed on matching
+    /// second close or dismissed by IntentHandler for unrelated actions).
     pub close_session_prompt: bool,
 
     /// State of the "Press A again to archive N sessions" prompt.
-    /// `Confirm` arms the confirm press; `Busy` blocks it (a member of the
-    /// subtree is streaming). OWNER: IntentHandler (set on first
-    /// SidebarSessionArchiveTree, consumed on second SidebarSessionArchiveTree,
-    /// dismissed on any other key).
+    /// OWNER: sidebar route action; IntentHandler dismisses it for unrelated actions.
     pub archive_tree_prompt: Option<jinn_sidebar_msg::ArchiveTreePrompt>,
 
     /// All picker state - grouped for independent evolution.

@@ -136,7 +136,7 @@ impl SessionPersistenceActor {
     /// unknown to the reference data.
     async fn attachment_gate_blocks(
         &self,
-        session_id: &jinn_domain::SessionId,
+        session_id: &jinn_core_types::SessionId,
         entry: &ChatEntry,
     ) -> bool {
         let is_idle = {
@@ -179,7 +179,7 @@ impl SessionPersistenceActor {
     /// store (so `@path` scanning still runs, but `#token` lookup finds nothing).
     fn expand_user_entry(
         &self,
-        session_id: &jinn_domain::SessionId,
+        session_id: &jinn_core_types::SessionId,
         entry: &mut ChatEntry,
     ) -> Vec<PendingPath> {
         use jinn_domain::feat::context::prompt_template::PathResolveContext;
@@ -214,7 +214,7 @@ impl SessionPersistenceActor {
     /// slow disk or a slow conversion.
     async fn resolve_image_attachments(
         &self,
-        session_id: &jinn_domain::SessionId,
+        session_id: &jinn_core_types::SessionId,
         pending_paths: Vec<PendingPath>,
         entry: &mut ChatEntry,
     ) -> bool {
@@ -277,7 +277,7 @@ impl SessionPersistenceActor {
     /// vision-capability gate's blocking path.
     async fn push_entry_and_block(
         &self,
-        session_id: &jinn_domain::SessionId,
+        session_id: &jinn_core_types::SessionId,
         user_entry: ChatEntry,
         message: String,
     ) {

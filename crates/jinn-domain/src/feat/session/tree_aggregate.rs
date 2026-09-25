@@ -9,12 +9,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session::compute_turn_count;
-use crate::protocol::SessionId;
-use jinn_session_state::SessionSnapshot;
+use jinn_session_state::ChatSessionState;
+use jinn_session_state::compute_turn_count;
+use jinn_core_types::SessionId;
 use jinn_token_count_msg::TokenStats;
 
+pub use jinn_session_state::{snapshot_frozen_node, snapshot_frozen_node_from_snapshot};
 pub use jinn_session_store_msg::FrozenTreeNode;
 
 /// Aggregate statistics for an entire session tree.
@@ -39,46 +39,6 @@ pub struct TreeAggregateStats {
     pub measured_sent: u64,
     /// Sum of provider-reported cache-hit counts.
     pub cached_total: u64,
-}
-
-/// Create a `FrozenTreeNode` snapshot from a live session.
-///
-/// Computes token stats, cost, and turn count from the session's current state.
-/// Used by the archive flow to preserve stats before the session is removed
-/// from memory.
-pub fn snapshot_frozen_node(session: &ChatSessionState) -> FrozenTreeNode {
-    let token_stats = TokenStats::from_ledger(session.token_ledger());
-    FrozenTreeNode {
-        session_id: session.session_id().clone(),
-        parent_session_id: session.parent_session().clone(),
-        total_sent: token_stats.total_sent,
-        total_received: token_stats.total_received,
-        total_cost: TokenStats::total_cost(session.token_ledger()),
-        total_turns: compute_turn_count(session.history(), session.fork_ordinal()),
-        effective_sent: token_stats.effective_sent,
-        measured_sent: token_stats.measured_sent,
-        cached_total: token_stats.cached_total,
-    }
-}
-
-/// Create a frozen tree node from a complete session snapshot.
-#[must_use]
-pub fn snapshot_frozen_node_from_snapshot(snapshot: &SessionSnapshot) -> FrozenTreeNode {
-    let token_stats = TokenStats::from_ledger(&snapshot.token_ledger);
-    FrozenTreeNode {
-        session_id: snapshot.metadata.session_id.clone(),
-        parent_session_id: snapshot.metadata.parent_session.clone(),
-        total_sent: token_stats.total_sent,
-        total_received: token_stats.total_received,
-        total_cost: TokenStats::total_cost(&snapshot.token_ledger),
-        total_turns: crate::feat::session::compute_turn_count(
-            &snapshot.entries,
-            snapshot.metadata.fork_ordinal,
-        ),
-        effective_sent: token_stats.effective_sent,
-        measured_sent: token_stats.measured_sent,
-        cached_total: token_stats.cached_total,
-    }
 }
 
 /// Find the root of the session tree containing `session_id`.

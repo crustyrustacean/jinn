@@ -22,7 +22,8 @@ use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteer
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::file_lister::ListDirectory;
-use crate::protocol::{ChatEntry, IntentResult, SessionId};
+use crate::protocol::{ChatEntry, IntentResult};
+use jinn_core_types::SessionId;
 use jinn_context::PromptTemplateStore;
 use jinn_session_msg::MarkSessionInteracted;
 use jinn_session_msg::PhaseKind;
@@ -369,7 +370,7 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
 /// - Mode `Steer` + phase == `Idle` → `EnqueueUserMessage` (fall-through)
 ///
 /// Prompt-token (`#name`) expansion happens later, in
-/// [`crate::feat::session::chat_session::ChatSessionState::push_entry`], so
+/// [`jinn_session_state::ChatSessionState::push_entry`], so
 /// both the enqueued message and the steering fragment flow through the single
 /// expansion site. When steering, the buffer accumulates the raw display text.
 fn route_to_enqueue_or_steer(

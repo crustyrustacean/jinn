@@ -8,39 +8,9 @@
 
 use std::collections::HashMap;
 
-use crate::sidebar_sections::SessionEntryKind;
 use jinn_core_types::SessionId;
 
-/// One visible row in the sessions list: a loaded session with the
-/// tree-geometry fields needed to render it.
-#[derive(Clone)]
-pub struct SessionEntry {
-    /// The kind of this entry.
-    pub kind: SessionEntryKind,
-    pub id: SessionId,
-    pub title: String,
-    pub is_active: bool,
-    pub created_at: jiff::Timestamp,
-    pub is_idle: bool,
-    pub last_entry_is_error: bool,
-
-    /// Parent session ID - `None` for root sessions.
-    pub parent_id: Option<SessionId>,
-    /// Depth in the session tree. 0 for roots, 1 for their children, etc.
-    pub depth: usize,
-    /// For each ancestor level (0..depth-1), `true` if that ancestor has younger siblings.
-    /// Used to render `│` vs ` ` continuation characters.
-    pub ancestor_continuations: Vec<bool>,
-    /// Whether this entry is the last child of its parent.
-    /// Used to render `└` vs `├`.
-    pub is_last_child: bool,
-    /// Whether this session is a subagent spawned by the `task` tool.
-    /// Derived from the parent link; rendered as a symbol next to the title.
-    pub is_subagent: bool,
-    /// Whether this session has a live `interactive_term` terminal
-    /// (from `frontend.terminal.live_terms`); rendered as a symbol.
-    pub has_live_term: bool,
-}
+pub use jinn_session_list::{SessionEntry, SessionEntryKind};
 
 /// The tree action a confirmation prompt was armed for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

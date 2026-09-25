@@ -15,6 +15,7 @@ use crate::common::bus::test_harness::TestHarness;
 use crate::common::services::test_services::TestServices;
 use crate::common::state::State;
 use crate::common::tcaps::mint::mint_frontend_cap;
+use jinn_core_types::SessionId;
 
 use super::directory_lister_actor::{
     DirectoryListerActor, DirectoryListerActorDeps, ListDirectory,
@@ -274,7 +275,7 @@ async fn actor_reads_directory_entries_into_file_picker() {
     // When the actor lists the directory.
     harness
         .publish(ListDirectory {
-            session_id: crate::SessionId::new(),
+            session_id: SessionId::new(),
             path: dir.clone(),
             request_id: 1,
         })
@@ -316,7 +317,7 @@ async fn actor_drops_stale_reply_when_request_id_mismatches() {
     // When the actor processes a request whose id does not match.
     harness
         .publish(ListDirectory {
-            session_id: crate::SessionId::new(),
+            session_id: SessionId::new(),
             path: dir,
             request_id: 1, // stale
         })
@@ -347,7 +348,7 @@ async fn actor_returns_empty_for_nonexistent_directory() {
     // When the actor lists the nonexistent directory.
     harness
         .publish(ListDirectory {
-            session_id: crate::SessionId::new(),
+            session_id: SessionId::new(),
             path: bogus,
             request_id: 1,
         })
@@ -377,7 +378,7 @@ async fn actor_lists_hidden_files() {
     // When the actor lists the directory.
     harness
         .publish(ListDirectory {
-            session_id: crate::SessionId::new(),
+            session_id: SessionId::new(),
             path: dir,
             request_id: 1,
         })

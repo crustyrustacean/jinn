@@ -8,7 +8,7 @@
     clippy::indexing_slicing,
     reason = "test code"
 )]
-use crate::feat::session::chat_session::ChatSessionState;
+use jinn_session_state::ChatSessionState;
 use crate::protocol::{ChangeSource, ChatEntry, ChatEntryId, ContextOverride};
 use crate::protocol::{PinPosition, ToolResultStatus};
 use jinn_core_types::llm_message::LlmMessage;

@@ -1955,8 +1955,11 @@ dependencies = [
  "jinn-session-init-msg",
  "jinn-session-lifecycle",
  "jinn-session-lifecycle-msg",
+ "jinn-session-list",
  "jinn-session-msg",
+ "jinn-session-state",
  "jinn-session-store",
+ "jinn-session-store-msg",
  "jinn-session-turn",
  "jinn-sidebar",
  "jinn-sidebar-msg",
@@ -2035,6 +2038,7 @@ name = "jinn-chat-input"
 version = "0.118.0"
 dependencies = [
  "jinn-chat-input-msg",
+ "jinn-core-types",
  "jinn-domain",
  "jinn-slices",
  "rstest",
@@ -2058,6 +2062,7 @@ name = "jinn-chat-log-view"
 version = "0.118.0"
 dependencies = [
  "jinn-chat-log-view-msg",
+ "jinn-core-types",
  "jinn-domain",
  "jinn-slices",
  "rstest",
@@ -2156,6 +2161,7 @@ dependencies = [
  "jinn-persona-msg",
  "jinn-provider",
  "jinn-session-history-msg",
+ "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-skills",
  "jinn-skills-msg",
@@ -2184,6 +2190,7 @@ dependencies = [
  "jinn-provider-config",
  "jinn-session-history-msg",
  "jinn-session-msg",
+ "jinn-session-state",
  "jinn-slices",
  "jinn-token-count-msg",
  "parking_lot",
@@ -2293,6 +2300,7 @@ dependencies = [
  "jinn-preferences-config",
  "jinn-session-msg",
  "jinn-session-schema",
+ "jinn-session-state",
  "jinn-session-store",
  "jinn-session-store-msg",
  "jinn-slices",
@@ -2328,22 +2336,13 @@ dependencies = [
 name = "jinn-domain"
 version = "0.118.0"
 dependencies = [
- "anstyle",
- "anstyle-lossy",
  "async-trait",
  "ctor",
- "daow",
- "dashmap 6.2.1",
  "derive_more",
  "dirs",
  "error-stack",
- "form_urlencoded",
- "futures",
- "fuzzy-matcher",
- "humantime",
  "indoc",
  "jiff",
- "jinn-boot-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-common",
@@ -2387,12 +2386,10 @@ dependencies = [
  "kill_tree",
  "libc",
  "parking_lot",
- "portable-pty",
  "rand 0.9.5",
  "ratatui",
  "ratatui-markdown",
  "ratatui-which-key",
- "regex",
  "rstest",
  "rusqlite",
  "rustls 0.23.45",
@@ -2400,13 +2397,10 @@ dependencies = [
  "serde_json",
  "strip-ansi-escapes",
  "tempfile",
- "textwrap",
  "throbber-widgets-tui",
  "tiktoken",
  "tokio",
- "tokio-util",
  "toml 0.8.23",
- "toml_edit 0.22.27",
  "tracing",
  "tracing-subscriber",
  "trouper",
@@ -2414,9 +2408,7 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width 0.2.2",
  "uuid",
- "vt100",
  "wasm-encoder",
- "wasmparser",
  "wherror",
  "which 7.0.3",
 ]
@@ -2509,6 +2501,7 @@ dependencies = [
  "jinn-mcp-msg",
  "jinn-preferences-config",
  "jinn-session-msg",
+ "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-slices",
  "jinn-tools",
@@ -2579,6 +2572,7 @@ dependencies = [
  "jinn-provider-selection-msg",
  "jinn-selection-widget",
  "jinn-session-msg",
+ "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-slices",
  "jinn-testutil",
@@ -2882,6 +2876,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-session-list"
+version = "0.118.0"
+dependencies = [
+ "jiff",
+ "jinn-core-types",
+ "jinn-session-msg",
+ "jinn-session-store-msg",
+ "rstest",
+]
+
+[[package]]
 name = "jinn-session-msg"
 version = "0.118.0"
 dependencies = [
@@ -3032,7 +3037,10 @@ dependencies = [
  "jinn-picker-specs",
  "jinn-preferences-config",
  "jinn-session-history-msg",
+ "jinn-session-lifecycle-msg",
+ "jinn-session-list",
  "jinn-session-msg",
+ "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-sidebar-msg",
  "jinn-skills",
@@ -3060,6 +3068,7 @@ version = "0.118.0"
 dependencies = [
  "jiff",
  "jinn-core-types",
+ "jinn-session-list",
  "jinn-slices",
  "ratatui",
  "rstest",
@@ -3149,7 +3158,10 @@ dependencies = [
  "futures",
  "jinn-core-types",
  "jinn-domain",
+ "jinn-session-list",
  "jinn-session-msg",
+ "jinn-session-state",
+ "jinn-session-store-msg",
  "jinn-sidebar-msg",
  "jinn-slices",
  "jinn-status-bar-msg",
@@ -3245,6 +3257,7 @@ dependencies = [
  "jinn-domain",
  "jinn-session-history-msg",
  "jinn-session-msg",
+ "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-slices",
  "jinn-token-count-msg",
@@ -3287,6 +3300,7 @@ dependencies = [
  "jinn-preferences-config",
  "jinn-session-history-msg",
  "jinn-session-init-msg",
+ "jinn-session-lifecycle-msg",
  "jinn-session-msg",
  "jinn-session-state",
  "jinn-session-store-msg",
@@ -3350,6 +3364,7 @@ dependencies = [
  "jinn-provider-selection-msg",
  "jinn-selection-widget",
  "jinn-session-history-msg",
+ "jinn-session-lifecycle-msg",
  "jinn-sidebar",
  "jinn-sidebar-msg",
  "jinn-slices",
@@ -3387,6 +3402,7 @@ dependencies = [
  "jinn-inference-msg",
  "jinn-provider",
  "jinn-provider-selection",
+ "jinn-provider-selection-msg",
  "jinn-session-history-msg",
  "jinn-session-msg",
  "jinn-session-store-msg",

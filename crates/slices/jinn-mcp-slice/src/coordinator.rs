@@ -36,10 +36,11 @@ use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionTeardownFinished,
 };
-use jinn_domain::protocol::SessionId;
+use jinn_core_types::SessionId;
 use jinn_mcp_msg::McpServerConfig;
-use jinn_mcp_msg::{McpEnablementChanged, RestartError, RestartMcpServer};
+use jinn_mcp_msg::{McpEnablementChanged, McpRuntimeState, RestartError, RestartMcpServer};
 use jinn_mcp_msg::{McpServerLog, McpServerStatus};
+use jinn_slices::TypedCell;
 use jinn_session_msg::SessionArchived;
 use jinn_session_msg::SessionClosed;
 use jinn_session_store_msg::SessionLoadCompleted;
@@ -62,7 +63,7 @@ pub struct McpCoordinatorActor {
     deps: ActorDeps,
     system: trouper::system::ActorSystem,
     state: jinn_domain::common::state::State,
-    cap: jinn_domain::common::tcaps::SessionCap,
+    runtime: TypedCell<McpRuntimeState>,
     /// Tracks every live `McpActor` by (session_id, server_name).
     /// Guarded by a mutex so spawn/kill helpers can borrow `self` while
     /// mutating the map without fighting the borrow checker.
@@ -74,11 +75,10 @@ pub struct McpCoordinatorActor {
 pub struct McpCoordinatorActorDeps {
     /// Common actor dependencies (services + bus).
     pub deps: ActorDeps,
-    /// Shared application state — the per-session MCP server status map is
-    /// written here.
+    /// Shared application state used for durable session enablement.
     pub state: jinn_domain::common::state::State,
-    /// Capability to write the session collection.
-    pub cap: jinn_domain::common::tcaps::SessionCap,
+    /// Runtime-only status and stderr projection written by the coordinator.
+    pub runtime: TypedCell<McpRuntimeState>,
 }
 
 impl ServiceActor for McpCoordinatorActor {
@@ -115,7 +115,7 @@ impl McpCoordinatorActor {
                             deps: deps.deps,
                             system,
                             state: deps.state,
-                            cap: deps.cap,
+                            runtime: deps.runtime,
                             spawned: Mutex::new(HashMap::new()),
                         })
                     })
@@ -152,6 +152,11 @@ impl BusPublish for McpCoordinatorActor {
 }
 
 impl McpCoordinatorActor {
+    /// Clears all runtime-only status and stderr for one session.
+    fn clear_runtime_for_session(&self, session_id: &SessionId) {
+        self.runtime.update(|runtime| runtime.clear_session(session_id));
+    }
+
     /// Reconciles the spawned-actor map for one session against a desired set.
     ///
     /// Spawns actors for newly-enabled servers, kills actors for
@@ -341,6 +346,7 @@ fn configured_servers(services: &Services) -> Vec<(String, McpServerConfig)> {
 impl MsgHandler<SessionLoadCompleted> for McpCoordinatorActor {
     async fn handle(&mut self, msg: &SessionLoadCompleted, _ctx: &mut MsgCtx<'_>) {
         // Given a session restored from disk.
+        self.clear_runtime_for_session(msg.session_id());
         let enabled = self
             .state
             .read()
@@ -386,18 +392,21 @@ impl MsgHandler<McpEnablementChanged> for McpCoordinatorActor {
 impl MsgHandler<SessionClosed> for McpCoordinatorActor {
     async fn handle(&mut self, msg: &SessionClosed, _ctx: &mut MsgCtx<'_>) {
         self.kill_all_for_session(&msg.session_id).await;
+        self.clear_runtime_for_session(&msg.session_id);
     }
 }
 
 impl MsgHandler<SessionArchived> for McpCoordinatorActor {
     async fn handle(&mut self, msg: &SessionArchived, _ctx: &mut MsgCtx<'_>) {
         self.kill_all_for_session(&msg.session_id).await;
+        self.clear_runtime_for_session(&msg.session_id);
     }
 }
 
 impl MsgHandler<SessionTeardownFinished> for McpCoordinatorActor {
     async fn handle(&mut self, msg: &SessionTeardownFinished, _ctx: &mut MsgCtx<'_>) {
         self.kill_all_for_session(&msg.session_id).await;
+        self.clear_runtime_for_session(&msg.session_id);
     }
 }
 
@@ -462,30 +471,23 @@ impl MsgHandler<McpRestartForTest> for McpCoordinatorActor {
     }
 }
 
-/// Writes a `McpServerStatus` transition into the owning session's status map.
+/// Writes a `McpServerStatus` transition into the MCP runtime cell.
 ///
-/// This is the single owner of each session's `mcp_server_status` field.
-/// There is no sync-sibling actor — the coordinator owns the full MCP
-/// lifecycle domain, so it writes the status inline.
+/// The coordinator is the sole writer of status and stderr projections. They
+/// remain outside the durable session aggregate and snapshot.
 impl MsgHandler<McpServerStatus> for McpCoordinatorActor {
     async fn handle(&mut self, msg: &McpServerStatus, _ctx: &mut MsgCtx<'_>) {
-        self.state.with_session(&self.cap, |view| {
-            if let Some(session) = view.session.map().get_mut(&msg.session_id) {
-                session.set_mcp_server_status(&msg.server, msg.status);
-            }
+        self.runtime.update(|runtime| {
+            runtime.set_status(&msg.session_id, &msg.server, msg.status);
         });
     }
 }
 
-/// Writes a captured stderr tail into the owning session's stderr map.
-///
-/// Like the status handler, the coordinator owns this field inline.
+/// Writes a captured stderr tail into the MCP runtime cell.
 impl MsgHandler<McpServerLog> for McpCoordinatorActor {
     async fn handle(&mut self, msg: &McpServerLog, _ctx: &mut MsgCtx<'_>) {
-        self.state.with_session(&self.cap, |view| {
-            if let Some(session) = view.session.map().get_mut(&msg.session_id) {
-                session.set_mcp_server_stderr(&msg.server, msg.tail.clone());
-            }
+        self.runtime.update(|runtime| {
+            runtime.set_stderr(&msg.session_id, &msg.server, msg.tail.clone());
         });
     }
 }
@@ -503,7 +505,7 @@ mod lifecycle_tests {
 
     use jinn_domain::common::actor_deps::ActorDeps;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
-    use jinn_domain::protocol::SessionId;
+    use jinn_core_types::SessionId;
     use jinn_mcp_msg::McpServerConfig;
     use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
     use jinn_preferences_config::user_preferences::UserPreferences;
@@ -557,6 +559,8 @@ mod lifecycle_tests {
         let state = jinn_domain::common::state::State::new(
             jinn_domain::common::app_state::AppState::default(),
         );
+        let runtime = crate::activate_runtime(&services.slices)
+            .expect("MCP runtime cell is registered exactly once");
         let path = McpCoordinatorActor::spawn(
             &services.trouper_system,
             McpCoordinatorActorDeps {
@@ -564,7 +568,7 @@ mod lifecycle_tests {
                     services: services.clone(),
                 },
                 state: state.clone(),
-                cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+                runtime,
             },
         )
         .await;
@@ -773,7 +777,7 @@ mod lifecycle_tests {
         state: &jinn_domain::common::state::State,
         enabled: &BTreeSet<String>,
     ) -> SessionId {
-        let mut session = jinn_domain::feat::session::chat_session::ChatSessionState::new();
+        let mut session = jinn_session_state::ChatSessionState::new();
         session.set_enabled_mcp_servers(enabled.clone());
         let session_id = session.session_id().clone();
         let mut app_state = state.write_test_no_cap();
@@ -954,16 +958,22 @@ mod status_tests {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::bus::test_harness::TestHarness;
     use jinn_domain::common::state::State;
-    use jinn_domain::protocol::SessionId;
-    use jinn_mcp_msg::{McpConnectionStatus, McpServerLog, McpServerStatus};
+    use jinn_core_types::SessionId;
+    use jinn_mcp_msg::{
+        McpConnectionStatus, McpRuntimeState, McpServerLog, McpServerStatus,
+    };
     use jinn_preferences_config::user_preferences::UserPreferences;
+    use jinn_session_msg::{SessionArchived, SessionClosed, SessionTeardownFinished};
+    use jinn_session_store_msg::SessionLoadCompleted;
+    use jinn_slices::TypedCell;
 
     use super::McpCoordinatorActor;
     use crate::coordinator::McpCoordinatorActorDeps;
 
-    /// Spawns a coordinator and seeds one session into its state so status
-    /// events for that session land somewhere to write.
-    async fn spawn_with_session(harness: &TestHarness) -> (State, SessionId) {
+    /// Spawns a coordinator with a dedicated MCP runtime cell.
+    async fn spawn_with_session(
+        harness: &TestHarness,
+    ) -> (TypedCell<McpRuntimeState>, SessionId) {
         let services = harness.services().await;
         services
             .user_preferences_storage
@@ -971,40 +981,138 @@ mod status_tests {
             .expect("seed prefs");
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
-        // Insert an active session so the coordinator has a target to write to.
-        state.write_test_no_cap().session.get_or_create(&session_id);
+        let runtime = crate::activate_runtime(&services.slices)
+            .expect("MCP runtime cell is registered exactly once");
         let _path = McpCoordinatorActor::spawn(
             &services.trouper_system,
             McpCoordinatorActorDeps {
                 deps: ActorDeps {
                     services: services.clone(),
                 },
-                state: state.clone(),
-                cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+                state,
+                runtime: runtime.clone(),
             },
         )
         .await;
-        (state, session_id)
+        (runtime, session_id)
     }
 
-    fn status_of(state: &State, sid: &SessionId, server: &str) -> Option<McpConnectionStatus> {
-        let g = state.read();
-        let s = g.session.get(sid)?;
-        s.mcp_server_status().get(server).copied()
+    fn status_of(
+        runtime: &TypedCell<McpRuntimeState>,
+        sid: &SessionId,
+        server: &str,
+    ) -> Option<McpConnectionStatus> {
+        runtime.read().status(sid, server)
     }
 
-    fn tail_of(state: &State, sid: &SessionId, server: &str) -> Option<String> {
-        let g = state.read();
-        let s = g.session.get(sid)?;
-        s.mcp_server_stderr().get(server).cloned()
+    fn tail_of(
+        runtime: &TypedCell<McpRuntimeState>,
+        sid: &SessionId,
+        server: &str,
+    ) -> Option<String> {
+        runtime.read().stderr(sid, server).map(str::to_owned)
+    }
+
+    fn seed_runtime(runtime: &TypedCell<McpRuntimeState>, session_id: &SessionId) {
+        runtime.update(|runtime| {
+            runtime.set_status(session_id, "excalimate", McpConnectionStatus::Running);
+            runtime.set_stderr(session_id, "excalimate", "stale".to_owned());
+        });
+    }
+
+    fn assert_runtime_is_empty(runtime: &TypedCell<McpRuntimeState>, session_id: &SessionId) {
+        let runtime = runtime.read();
+        assert_eq!(runtime.status(session_id, "excalimate"), None);
+        assert_eq!(runtime.stderr(session_id, "excalimate"), None);
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn dead_status_is_written_to_session_map() {
+    async fn session_closed_clears_runtime_data() {
+        // Given stale runtime data for a session.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+        seed_runtime(&runtime, &session_id);
+
+        // When the session closes.
+        harness
+            .publish(SessionClosed {
+                session_id: session_id.clone(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then its runtime status and stderr are absent.
+        assert_runtime_is_empty(&runtime, &session_id);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_archived_clears_runtime_data() {
+        // Given stale runtime data for a session.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+        seed_runtime(&runtime, &session_id);
+
+        // When the session is archived.
+        harness
+            .publish(SessionArchived {
+                session_id: session_id.clone(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then its runtime status and stderr are absent.
+        assert_runtime_is_empty(&runtime, &session_id);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_teardown_finished_clears_runtime_data() {
+        // Given stale runtime data for a session.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+        seed_runtime(&runtime, &session_id);
+
+        // When lifecycle teardown finishes.
+        harness
+            .publish(SessionTeardownFinished {
+                session_id: session_id.clone(),
+                error: None,
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then its runtime status and stderr are absent.
+        assert_runtime_is_empty(&runtime, &session_id);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_load_completed_clears_stale_runtime_data() {
+        // Given stale runtime data for a session being initialized.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+        seed_runtime(&runtime, &session_id);
+
+        // When load completion is published.
+        harness
+            .publish(SessionLoadCompleted {
+                session_id: session_id.clone(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then only the newly initialized session has no stale runtime data.
+        assert_runtime_is_empty(&runtime, &session_id);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn dead_status_is_written_to_runtime_cell() {
         // Given a coordinator with a seeded session.
         let harness = TestHarness::new().await;
-        let (state, session_id) = spawn_with_session(&harness).await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
 
         // When publishing a Dead status for one server.
         harness
@@ -1016,19 +1124,19 @@ mod status_tests {
             .await;
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // Then the session's status map shows Dead.
+        // Then the runtime cell status shows Dead.
         assert_eq!(
-            status_of(&state, &session_id, "excalimate"),
+            status_of(&runtime, &session_id, "excalimate"),
             Some(McpConnectionStatus::Dead)
         );
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn running_status_is_written_to_session_map() {
+    async fn running_status_is_written_to_runtime_cell() {
         // Given a coordinator with a seeded session.
         let harness = TestHarness::new().await;
-        let (state, session_id) = spawn_with_session(&harness).await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
 
         // When publishing a Running status for one server.
         harness
@@ -1040,9 +1148,9 @@ mod status_tests {
             .await;
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // Then the session's status map shows Running.
+        // Then the runtime cell status shows Running.
         assert_eq!(
-            status_of(&state, &session_id, "excalimate"),
+            status_of(&runtime, &session_id, "excalimate"),
             Some(McpConnectionStatus::Running)
         );
     }
@@ -1052,9 +1160,8 @@ mod status_tests {
     async fn status_for_one_session_is_not_visible_in_another() {
         // Given a coordinator with two seeded sessions.
         let harness = TestHarness::new().await;
-        let (state, session_a) = spawn_with_session(&harness).await;
+        let (runtime, session_a) = spawn_with_session(&harness).await;
         let session_b = SessionId::new();
-        state.write_test_no_cap().session.get_or_create(&session_b);
 
         // When publishing a Running status for session A only.
         harness
@@ -1068,18 +1175,18 @@ mod status_tests {
 
         // Then session A shows Running, but session B has no status for it.
         assert_eq!(
-            status_of(&state, &session_a, "excalimate"),
+            status_of(&runtime, &session_a, "excalimate"),
             Some(McpConnectionStatus::Running)
         );
-        assert_eq!(status_of(&state, &session_b, "excalimate"), None);
+        assert_eq!(status_of(&runtime, &session_b, "excalimate"), None);
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn stderr_tail_is_written_to_session_map() {
+    async fn stderr_tail_is_written_to_runtime_cell() {
         // Given a coordinator with a seeded session.
         let harness = TestHarness::new().await;
-        let (state, session_id) = spawn_with_session(&harness).await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
 
         // When publishing a stderr tail for one server.
         harness
@@ -1091,9 +1198,9 @@ mod status_tests {
             .await;
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // Then the session's stderr map shows the latest tail.
+        // Then the runtime cell stderr shows the latest tail.
         assert_eq!(
-            tail_of(&state, &session_id, "excalimate"),
+            tail_of(&runtime, &session_id, "excalimate"),
             Some("npm warn something".to_owned())
         );
     }
@@ -1103,9 +1210,8 @@ mod status_tests {
     async fn stderr_tail_for_one_session_is_not_visible_in_another() {
         // Given a coordinator with two seeded sessions.
         let harness = TestHarness::new().await;
-        let (state, session_a) = spawn_with_session(&harness).await;
+        let (runtime, session_a) = spawn_with_session(&harness).await;
         let session_b = SessionId::new();
-        state.write_test_no_cap().session.get_or_create(&session_b);
 
         // When publishing a stderr tail for session A only.
         harness
@@ -1119,9 +1225,9 @@ mod status_tests {
 
         // Then session A shows the tail, but session B has none.
         assert_eq!(
-            tail_of(&state, &session_a, "excalimate"),
+            tail_of(&runtime, &session_a, "excalimate"),
             Some("only-in-a".to_owned())
         );
-        assert_eq!(tail_of(&state, &session_b, "excalimate"), None);
+        assert_eq!(tail_of(&runtime, &session_b, "excalimate"), None);
     }
 }

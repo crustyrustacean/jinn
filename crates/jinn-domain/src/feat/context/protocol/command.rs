@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::BusMessage;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 
 /// Load entries for the persona picker.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]

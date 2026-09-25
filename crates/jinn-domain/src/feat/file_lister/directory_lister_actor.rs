@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use error_stack::Report;
+use jinn_core_types::SessionId;
 use serde::{Deserialize, Serialize};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -24,7 +25,7 @@ use super::file_picker_state::FileEntry;
 #[schema(description = "List a directory for the file picker popup.")]
 pub struct ListDirectory {
     /// The session whose popup this listing is for.
-    pub session_id: crate::SessionId,
+    pub session_id: SessionId,
     /// Resolved absolute directory to list.
     pub path: PathBuf,
     /// Monotonic id tying this request to the expected reply slot.

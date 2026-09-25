@@ -6,6 +6,7 @@ use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::CommandTemplate;
+use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_lifecycle_msg::builtin::BuiltinId;
 use jinn_session_lifecycle_msg::{
     FinishSessionTeardown, RunSessionTeardown, SessionTeardownFinished, TeardownFollowUp,
@@ -77,8 +78,7 @@ impl SessionLifecycleActor {
         let should_teardown = {
             let state = self.state.read();
             state.session.get(&payload.root).is_some_and(|session| {
-                session.lifecycle_script_state()
-                    == jinn_domain::feat::session::chat_session::LifecycleScriptState::SetupRan
+                session.lifecycle_script_state() == LifecycleScriptState::SetupRan
             })
         };
 

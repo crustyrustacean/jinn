@@ -4,7 +4,7 @@ use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::{
-    FinishSessionTeardown, SessionTeardownFinished, TeardownFollowUp,
+    FinishSessionTeardown, LifecycleScriptState, SessionTeardownFinished, TeardownFollowUp,
 };
 use jinn_session_store_msg::{ArchiveSession, PersistSession};
 
@@ -132,9 +132,7 @@ impl SessionLifecycleActor {
     ) -> Option<jinn_preferences_config::schemas::LifecycleCommand> {
         let state = self.state.read();
         let session = state.session.get(session_id)?;
-        if session.lifecycle_script_state()
-            != jinn_domain::feat::session::chat_session::LifecycleScriptState::SetupRan
-        {
+        if session.lifecycle_script_state() != LifecycleScriptState::SetupRan {
             return None;
         }
         let name = session.lifecycle_name()?;

@@ -25,10 +25,11 @@ use daow::Param;
 use jinn_core_types::SessionProfile;
 use jinn_core_types::{ChatEntry, ChatEntryKind};
 use jinn_core_types::{ChatEntryId, ContextOverride, EntryTiming, SessionId};
-use jinn_domain::feat::session::chat_session::{LifecycleScriptState, SessionOrigin, SessionState};
+use jinn_session_lifecycle_msg::LifecycleScriptState;
+use jinn_session_msg::SessionOrigin;
 use jinn_provider::Attachment;
 use jinn_session_state::{SessionRevision, SessionSnapshot, SessionSnapshotMetadata};
-use jinn_session_store_msg::SessionSummary;
+use jinn_session_store_msg::{SessionState, SessionSummary};
 use jinn_session_store_msg::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, TranscriptEntry, TranscriptWindow,
     entry_ts_key, extract_searchable,
@@ -516,6 +517,10 @@ trait SessionDao {
 
 // ── PersistableCore - JSON blob for session metadata ─────────────────────
 
+fn default_persist() -> bool {
+    true
+}
+
 /// A subset of [`SessionCore`] fields suitable for JSON blob persistence.
 ///
 /// Excludes `history`, `token_ledger`, and `ephemeral` which are stored in
@@ -558,7 +563,7 @@ pub(crate) struct PersistableCore {
     enabled_mcp_servers: std::collections::BTreeSet<String>,
     /// Whether this session should be persisted to disk.
     /// Defaults to true for blobs written by older versions.
-    #[serde(default = "jinn_domain::feat::session::chat_session::default_persist")]
+    #[serde(default = "default_persist")]
     persist: bool,
 }
 

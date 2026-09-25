@@ -17,6 +17,7 @@
 )]
 
 pub mod assemble;
+pub mod inputs;
 pub mod service;
 pub mod size_actor;
 

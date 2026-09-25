@@ -55,15 +55,17 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
+use jinn_core_types::{ChatEntry, ChatEntryKind, ReasoningEffort, SessionId};
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
 use jinn_domain::common::tcaps::SessionCap;
 use jinn_domain::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use jinn_domain::feat::context::snapshot::{assemble_via_service, build_assembly_inputs};
-use jinn_domain::protocol::{ChatEntry, ChatEntryKind, SessionId};
+use jinn_context_assembly::inputs::build_assembly_inputs;
+use jinn_domain::feat::context::snapshot::assemble_via_service;
 use jinn_provider_selection::attachment_gate::evaluate_attachment_gate;
+use jinn_provider_selection_msg::resolve_effort;
 use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
 use jinn_session_history_msg::HistoryAppended;
 use jinn_session_msg::PhaseKind;
@@ -323,7 +325,7 @@ impl QueueActor {
     ) -> (
         Option<String>,
         Option<String>,
-        Option<jinn_domain::ReasoningEffort>,
+        Option<ReasoningEffort>,
         Option<String>,
     ) {
         self.state.with_session(&self.cap, |view| {
@@ -332,7 +334,7 @@ impl QueueActor {
                 .map()
                 .get_unchecked_mut(session_id)
                 .profile_mut();
-            let reasoning_effort = jinn_domain::resolve_effort(profile.reasoning_effort);
+            let reasoning_effort = resolve_effort(profile.reasoning_effort);
             // Endpoint pin applies only to a Single model; alloys rotate.
             let endpoint_tag = match (&profile.model, &profile.endpoint) {
                 (jinn_core_types::model_selection::ModelSelection::Single(_), Some(ep)) => {
@@ -441,7 +443,7 @@ impl QueueActor {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
                 let reasoning_effort =
-                    jinn_domain::resolve_effort(session.profile().reasoning_effort);
+                    resolve_effort(session.profile().reasoning_effort);
                 // Snapshot the endpoint tag immutably before mutating the
                 // model (alloy round-robin mutates index during
                 // resolve_model).

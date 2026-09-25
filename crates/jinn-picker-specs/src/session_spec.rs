@@ -113,6 +113,7 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
+    use jinn_core_types::SessionId;
     use jinn_domain::PickerKind;
     use jinn_domain::feat::picker::intent::handle_open_picker;
     use jinn_session_store_msg::SessionState;
@@ -136,7 +137,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         let theme = jinn_theme::default_theme();
         let session_entry = SessionTreeEntry {
-            session_id: jinn_domain::protocol::SessionId::new(),
+            session_id: SessionId::new(),
             id_str: "s1".to_owned(),
             title: "Root session".to_owned(),
             updated_at: jiff::Timestamp::now(),

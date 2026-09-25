@@ -26,7 +26,7 @@ use jinn_tools_msg::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncate_
 #[derive(Debug, Clone)]
 pub struct StreamCtx {
     /// The chat session running the tool call.
-    pub session_id: jinn_domain::protocol::SessionId,
+    pub session_id: jinn_core_types::SessionId,
     /// The tool call the deltas are attributed to.
     pub tool_call_id: String,
 }
@@ -370,7 +370,7 @@ mod tests {
         // Given a recording bus and a stream context.
         let (bus, audit) = jinn_domain::common::services::bus_service::BusService::new_recording();
         let ctx = Some(StreamCtx {
-            session_id: jinn_domain::protocol::SessionId::new(),
+            session_id: jinn_core_types::SessionId::new(),
             tool_call_id: "call-1".to_owned(),
         });
 

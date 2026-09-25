@@ -9,18 +9,34 @@
 
 use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent, SidebarSection};
 use crate::sections::sessions::{
-    SessionCloseError, SessionsSection, handle_session_activate, handle_session_close, navigate,
-    receive_cursor, scroll_to_cursor, sorted_open_sessions, validate_session_close,
+    SessionCloseError, SessionsSection, handle_session_activate, handle_session_close_arm,
+    navigate, receive_cursor, scroll_to_cursor, sorted_open_sessions, validate_session_close,
 };
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::feat::session::chat_session::ChatSessionState;
+use jinn_session_state::ChatSessionState;
 
 use jinn_domain::protocol::ChatEntry;
 use ratatui::style::Color;
 
 /// Helper: get a session title from the live session map via a tree entry.
-fn entry_title(state: &AppState, id: &jinn_domain::protocol::SessionId) -> String {
+fn complete_removed_session(state: &mut AppState, removed_id: &jinn_core_types::SessionId) {
+    let removed_parent = state
+        .session
+        .get(removed_id)
+        .and_then(|session| session.parent_session().as_ref().cloned());
+    crate::sections::sessions::update_visual_parents_on_removal(state, removed_id);
+    state.session.remove_without_replacement(removed_id);
+    crate::sections::sessions::state::repair_visual_parents_after_removal(
+        &state.session,
+        &mut state.frontend,
+        removed_id,
+        removed_parent.as_ref(),
+    );
+    crate::sections::sessions::reconcile_after_session_removal(state);
+}
+
+fn entry_title(state: &AppState, id: &jinn_core_types::SessionId) -> String {
     state
         .session
         .get(id)
@@ -29,7 +45,7 @@ fn entry_title(state: &AppState, id: &jinn_domain::protocol::SessionId) -> Strin
 }
 
 /// Helper: get a session's created_at from the live session map.
-fn entry_created_at(state: &AppState, id: &jinn_domain::protocol::SessionId) -> jiff::Timestamp {
+fn entry_created_at(state: &AppState, id: &jinn_core_types::SessionId) -> jiff::Timestamp {
     state
         .session
         .get(id)
@@ -38,7 +54,7 @@ fn entry_created_at(state: &AppState, id: &jinn_domain::protocol::SessionId) -> 
 }
 
 /// Helper: check if the session's last entry is an error.
-fn entry_last_is_error(state: &AppState, id: &jinn_domain::protocol::SessionId) -> bool {
+fn entry_last_is_error(state: &AppState, id: &jinn_core_types::SessionId) -> bool {
     state.session.get(id).is_some_and(|s| {
         s.history()
             .last()
@@ -426,7 +442,7 @@ fn receive_cursor_from_bottom_positions_at_last_index() {
 fn receive_cursor_noop_when_empty() {
     // Given state with no sessions (manually clear default).
     let mut state = AppState::default_with_scope_focus();
-    let ids: Vec<jinn_domain::protocol::SessionId> =
+    let ids: Vec<jinn_core_types::SessionId> =
         state.session.sessions().keys().cloned().collect();
     for id in ids {
         state.session.remove_without_replacement(&id);
@@ -796,255 +812,45 @@ fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
 }
 
 #[rstest::rstest]
-fn close_session_switches_to_next() {
-    // Given state with 3 sessions, sessions section focused, cursor at index 0 (active session).
+fn first_close_press_arms_prompt_without_removing_session() {
+    // Given a focused sessions section with a selected session.
     let mut state = state_with_sessions(3);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    let sessions = sorted_open_sessions(&state);
-    // Active session is at index 0 (sorted newest-first, default is oldest → last, but we
-    // set active to index 0 explicitly to test active-session close).
-    state.session.set_active(sessions[0].id.clone());
-    let closing_id = sessions[0].id.clone();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
-
-    // When closing the active session.
-    handle_session_close(&mut state);
-
-    // Then the closed session is removed and active session changed.
-    assert!(!state.session.contains(&closing_id));
-    assert_eq!(state.session.session_count(), 2);
-    assert_ne!(*state.session.active_session_id(), closing_id);
-}
-
-#[rstest::rstest]
-fn close_non_active_session_keeps_active() {
-    // Given state with 3 sessions, sessions section focused, cursor at index 1 (not active).
-    let mut state = state_with_sessions(3);
-    state
-        .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    let sessions = sorted_open_sessions(&state);
-    // Active session is at index 0.
-    state.session.set_active(sessions[0].id.clone());
-    let active_id = state.session.active_session_id().clone();
-    // Close session at index 1 (non-active).
-    let closing_id = sessions[1].id.clone();
     state
         .frontend
         .update_sections(|s| s.sessions.selected_index = Some(1));
 
-    // When closing the non-active session.
-    handle_session_close(&mut state);
+    // When pressing close.
+    let result = handle_session_close_arm(&mut state);
 
-    // Then the closed session is removed.
-    assert!(!state.session.contains(&closing_id));
-    // And the active session did NOT change.
-    assert_eq!(*state.session.active_session_id(), active_id);
+    // Then the prompt is armed without removing or switching sessions.
+    assert!(state.frontend.close_session_prompt);
+    assert_eq!(state.session.session_count(), 3);
+    assert!(result.messages.is_empty());
 }
 
 #[rstest::rstest]
-fn close_last_session_creates_new() {
-    // Given state with 1 session, sessions section focused.
-    let mut state = AppState::default_with_scope_focus();
-    state
-        .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    let original_id = state.session.active_session_id().clone();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
-
-    // When closing the session.
-    handle_session_close(&mut state);
-
-    // Then a new session is created.
-    assert_eq!(state.session.session_count(), 1);
-    assert_ne!(*state.session.active_session_id(), original_id);
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None),
-        Some(0)
-    );
-}
-
-#[rstest::rstest]
-fn close_last_session_seeds_new_session_reasoning_effort_from_global() {
-    // Given a single session with a global default effort of High.
-    let mut state = AppState::default_with_scope_focus();
-    state
-        .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state.frontend.app_state.reasoning_effort = Some(jinn_domain::ReasoningEffort::High);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
-
-    // When closing the last session (forces a replacement).
-    handle_session_close(&mut state);
-
-    // Then the replacement session is seeded with the global effort.
-    assert_eq!(
-        state.active_session().profile().reasoning_effort,
-        Some(jinn_domain::ReasoningEffort::High),
-        "replacement session should be seeded from the global default"
-    );
-}
-
-#[rstest::rstest]
-fn close_last_session_seeds_disabled_sets_from_preferences() {
-    // Given a single session and preferences disabling a tool and skill.
-    let mut state = AppState::default_with_scope_focus();
-    state
-        .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state.frontend.preferences.disabled_tools = ["bash"].iter().map(|s| (*s).to_owned()).collect();
-    state.frontend.preferences.disabled_skills = ["phased-task-loop"]
-        .iter()
-        .map(|s| (*s).to_owned())
-        .collect();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
-
-    // When closing the last session (forces a replacement).
-    handle_session_close(&mut state);
-
-    // Then the replacement session carries both disablement sets.
-    assert!(
-        state.active_session().disabled_tools().contains("bash"),
-        "replacement should seed disabled_tools from jinn.toml"
-    );
-    assert!(
-        state
-            .active_session()
-            .disabled_skills()
-            .contains("phased-task-loop"),
-        "replacement should seed disabled_skills from jinn.toml"
-    );
-}
-
-#[rstest::rstest]
-fn close_last_session_with_auto_enable_returns_enablement_message() {
-    // Given a single session and one auto-enabled server in preferences.
-    let mut state = AppState::default_with_scope_focus();
-    state
-        .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state.frontend.preferences.mcp_server = [(
-        "excalimate".to_owned(),
-        jinn_mcp_msg::McpServerConfig {
-            command: Some("npx".to_owned()),
-            auto_enable: true,
-            ..Default::default()
-        },
-    )]
-    .into_iter()
-    .collect();
-    let original_id = state.session.active_session_id().clone();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
-
-    // When closing the last session (forces a replacement).
-    let result = handle_session_close(&mut state);
-
-    // Then an McpEnablementChanged message is attached for the replacement.
-    assert!(
-        result
-            .message_names
-            .iter()
-            .any(|n| n.contains("McpEnablementChanged"))
-    );
-    // And the replacement has the server enabled.
-    assert_ne!(*state.session.active_session_id(), original_id);
-    assert!(state.active_session().is_mcp_server_enabled("excalimate"));
-}
-
-#[rstest::rstest]
-fn close_last_session_without_auto_enable_emits_no_enablement() {
-    // Given a single session with no auto-enabled servers.
-    let mut state = AppState::default_with_scope_focus();
-    state
-        .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
-
-    // When closing the last session.
-    let result = handle_session_close(&mut state);
-
-    // Then no enablement message is emitted.
-    assert!(
-        !result
-            .message_names
-            .iter()
-            .any(|n| n.contains("McpEnablementChanged"))
-    );
-}
-
-#[rstest::rstest]
-fn close_session_clamps_index() {
-    // Given state with 3 sessions, sessions section focused, cursor at last index.
+fn second_close_press_emits_lifecycle_command_for_selected_session() {
+    // Given a focused sessions section with a selected idle session.
     let mut state = state_with_sessions(3);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    let sessions = sorted_open_sessions(&state);
-    state.session.set_active(sessions[2].id.clone());
-    // Move cursor to index 2 (the active session, sorted to 0, so use index 0)
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+        .update_sections(|s| s.sessions.selected_index = Some(1));
+    let selected_id = sorted_open_sessions(&state)[1].id.clone();
 
-    // When closing.
-    handle_session_close(&mut state);
+    // When pressing close twice.
+    let _ = handle_session_close_arm(&mut state);
+    let result = handle_session_close_arm(&mut state);
 
-    // Then index is clamped to valid range.
-    let selected = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_index, || None);
-    assert!(selected.is_some());
-    assert!(selected.unwrap() < state.session.session_count());
-}
-
-#[rstest::rstest]
-fn close_session_adjusts_scroll_offset() {
-    // Given 20 sessions with scroll_offset at 10, sessions section focused, cursor at 10.
-    let mut state = state_with_sessions(20);
-    state
-        .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state.frontend.update_sections(|s| {
-        s.sessions.scroll_offset = 10;
-    });
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(10));
-
-    // When closing the session at index 10.
-    handle_session_close(&mut state);
-
-    // Then scroll_offset is adjusted to keep the cursor visible.
-    // After removal there are 19 sessions. The clamped index is 10.
-    // scroll_to_cursor ensures index 10 is visible in a window of 15 from offset 10.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None),
-        Some(10)
-    );
-    assert!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.scroll_offset, || 0)
-            <= 10
-    );
+    // Then CloseSession targets the selected session.
+    assert!(result.message_names[0].ends_with("CloseSession"));
+    assert!(!state.frontend.close_session_prompt);
+    assert!(state.session.contains(&selected_id));
 }
 
 #[rstest::rstest]
@@ -1413,7 +1219,7 @@ fn style_entry(
 ) -> crate::sections::sessions::state::SessionEntry {
     crate::sections::sessions::state::SessionEntry {
         kind: crate::sections::sessions::state::SessionEntryKind::Session,
-        id: jinn_domain::protocol::SessionId::new(),
+        id: jinn_core_types::SessionId::new(),
         title: "Test".to_owned(),
         is_active,
         created_at: jiff::Timestamp::now(),
@@ -1765,7 +1571,7 @@ fn orphan_session_appears_as_root() {
     let mut state = AppState::default_with_scope_focus();
     let mut orphan = ChatSessionState::new();
     orphan.set_title("orphan".to_owned());
-    orphan.set_parent_session(jinn_domain::protocol::SessionId::new());
+    orphan.set_parent_session(jinn_core_types::SessionId::new());
     state.session.insert(orphan);
 
     // When collecting sorted sessions.
@@ -1868,7 +1674,7 @@ fn close_child_session_clamps_cursor() {
         .update_sections(|s| s.sessions.selected_index = Some(child_a1_index));
 
     // When closing child_a1.
-    handle_session_close(&mut state);
+    complete_removed_session(&mut state, &child_a1_id);
 
     // Then child_a1 is removed.
     assert!(!state.session.contains(&child_a1_id));
@@ -1899,7 +1705,7 @@ fn close_root_session_promotes_children_to_roots() {
         .update_sections(|s| s.sessions.selected_index = Some(root_a_index));
 
     // When closing root_a.
-    handle_session_close(&mut state);
+    complete_removed_session(&mut state, &root_a_id);
 
     // Then root_a is removed.
     assert!(!state.session.contains(&root_a_id));
@@ -2019,7 +1825,7 @@ fn archiving_intermediate_parent_reparents_grandchild_under_grandparent() {
         .update_sections(|s| s.sessions.selected_index = Some(child_a1_index));
 
     // When closing child_a1 (the intermediate parent).
-    handle_session_close(&mut state);
+    complete_removed_session(&mut state, &child_a1_id);
 
     // Then child_a1 is removed.
     assert!(!state.session.contains(&child_a1_id));
@@ -2068,7 +1874,7 @@ fn archiving_root_does_not_create_visual_parents_for_orphaned_children() {
         .update_sections(|s| s.sessions.selected_index = Some(root_a_index));
 
     // When closing root_a (no loaded ancestor to reparent to).
-    handle_session_close(&mut state);
+    complete_removed_session(&mut state, &_root_a_id);
 
     // Then the visual_parents index should be empty (root has no loaded ancestor).
     assert!(
@@ -2127,7 +1933,7 @@ fn multi_level_intermediate_hiding_reparents_to_nearest_loaded_ancestor() {
     state
         .frontend
         .update_sections(|s| s.sessions.selected_index = Some(a_index));
-    handle_session_close(&mut state);
+    complete_removed_session(&mut state, &a_id);
 
     // Then B is reparented to root.
     assert_eq!(
@@ -2148,7 +1954,7 @@ fn multi_level_intermediate_hiding_reparents_to_nearest_loaded_ancestor() {
     state
         .frontend
         .update_sections(|s| s.sessions.selected_index = Some(b_index));
-    handle_session_close(&mut state);
+    complete_removed_session(&mut state, &b_id);
 
     // Then leaf is reparented to root (transitive via B visual parent).
     assert_eq!(
@@ -2315,10 +2121,10 @@ fn clear_visual_parents_on_load_removes_only_entries_pointing_to_loaded_session(
     use crate::sections::sessions::clear_visual_parents_on_load;
 
     let mut state = AppState::default_with_scope_focus();
-    let id_x = jinn_domain::protocol::SessionId::new();
-    let id_y = jinn_domain::protocol::SessionId::new();
-    let loaded_id = jinn_domain::protocol::SessionId::new();
-    let other_id = jinn_domain::protocol::SessionId::new();
+    let id_x = jinn_core_types::SessionId::new();
+    let id_y = jinn_core_types::SessionId::new();
+    let loaded_id = jinn_core_types::SessionId::new();
+    let other_id = jinn_core_types::SessionId::new();
 
     // entry_x -> loaded_id (should be removed after load)
     state.frontend.update_sections(|s| {
@@ -2367,8 +2173,8 @@ fn clear_visual_parents_on_load_actually_removes_entries() {
     use crate::sections::sessions::clear_visual_parents_on_load;
 
     let mut state = AppState::default_with_scope_focus();
-    let child_id = jinn_domain::protocol::SessionId::new();
-    let loaded_id = jinn_domain::protocol::SessionId::new();
+    let child_id = jinn_core_types::SessionId::new();
+    let loaded_id = jinn_core_types::SessionId::new();
 
     state.frontend.update_sections(|s| {
         s.sessions
@@ -2456,14 +2262,13 @@ fn sidebar_unmarks_forked_sessions() {
 // Archive tree - validator
 // ---------------------------------------------------------------------------
 
-use jinn_domain::feat::session::sessions_list::archive_tree::ArchiveTreeError;
-use jinn_domain::feat::session::sessions_list::archive_tree::archive_tree_members;
+use crate::sections::sessions::archive_tree::{ArchiveTreeError, archive_tree_members};
 use jinn_sidebar_msg::{ArchiveTreePrompt, TreePromptAction};
 
 /// Helper: builds a session tree of root -> child -> grandchild, plus an
 /// unrelated survivor root. All sessions get titles for lookup. Returns the
 /// state and the IDs of its members.
-fn state_with_archive_tree() -> (AppState, [jinn_domain::protocol::SessionId; 4]) {
+fn state_with_archive_tree() -> (AppState, [jinn_core_types::SessionId; 4]) {
     let mut state = AppState::default_with_scope_focus();
     let mut root = ChatSessionState::new();
     root.push_entry(ChatEntry::user("tree root"));

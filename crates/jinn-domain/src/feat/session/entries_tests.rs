@@ -16,7 +16,7 @@
 use crate::feat::session::entries::sort_entries_tree_aware;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::theme::default_theme;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 use jinn_session_store_msg::SessionState;
 
 /// Deterministically maps a mnemonic tag (e.g. "a", "child") to a valid

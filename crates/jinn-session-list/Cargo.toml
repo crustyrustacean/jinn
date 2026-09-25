@@ -1,0 +1,18 @@
+[package]
+name = "jinn-session-list"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Owner-neutral session-list projections and visible-tree algorithms."
+
+[dependencies]
+jiff = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+
+[lints]
+workspace = true

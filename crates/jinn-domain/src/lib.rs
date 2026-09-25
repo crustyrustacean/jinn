@@ -76,7 +76,7 @@ pub use feat::session::SessionStoreService;
 // import it from there (`jinn_session_store::sqlite::SqliteSessionStore`).
 
 pub use feat::session::no_api_keys_msg;
-pub use feat::session::phase_machine::PhaseKind;
+pub use jinn_session_msg::PhaseKind;
 
 // Re-export reasoning types
 // The reasoning-effort vocabulary is owned by the provider-selection
@@ -128,11 +128,6 @@ pub use jinn_provider_selection_msg::{
 // The prompt-scan contracts are owned by the session-init slice's msg crate
 // (kernel→msg direction, skills precedent); re-exported here so the
 // long-standing `jinn_domain::X` paths keep resolving.
-pub use feat::session::protocol::session_fork_requested::SessionForkRequested;
-pub use feat::session::protocol::session_id::SessionId;
-pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;
-pub use feat::session::protocol::session_load_requested::SessionLoadRequested;
-pub use feat::session::protocol::session_new::SessionNew;
 pub use jinn_inference_msg::{
     CancelStream, SendToLlmProvider, StreamCompleted, StreamCompletedReason, StreamOrigin,
     StreamToken,

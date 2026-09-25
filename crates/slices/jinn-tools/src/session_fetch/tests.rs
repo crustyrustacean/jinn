@@ -19,7 +19,8 @@ use jinn_domain::feat::session::session_store::{
     SessionStore, SessionStoreError, SessionStoreService,
 };
 use jinn_domain::feat::session_search::{TranscriptEntry, TranscriptWindow};
-use jinn_domain::protocol::{ChatEntry, ChatEntryId, SessionId};
+use jinn_domain::protocol::{ChatEntry, ChatEntryId};
+use jinn_core_types::SessionId;
 use jinn_session_state::SessionSnapshot;
 
 /// A stub store serving one canned transcript window, recording the last

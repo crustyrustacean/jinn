@@ -26,7 +26,7 @@ use crate::connection::{McpActor, McpActorDeps};
 use jinn_core_types::tool_types::ToolCall;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
-use jinn_domain::protocol::SessionId;
+use jinn_core_types::SessionId;
 use jinn_mcp_msg::McpServerConfig;
 use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
 use jinn_tools_msg::ExecuteTool;

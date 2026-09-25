@@ -114,8 +114,24 @@ pub fn selected_sessions_sidebar_target(state: &AppState) -> Option<jinn_core_ty
     let index = state
         .frontend
         .with_sections(|s| s.sessions.selected_index, || None)?;
-    let sessions = jinn_domain::feat::session::sessions_list::state::sorted_open_sessions(state);
-    sessions.get(index).map(|entry| entry.id.clone())
+    let nodes = state
+        .session
+        .iter()
+        .filter(|(_, session)| {
+            session.session_state() == jinn_session_store_msg::SessionState::Loaded
+        })
+        .map(|(id, session)| jinn_session_list::SessionTreeNode {
+            id: id.clone(),
+            created_at: *session.created_at(),
+            parent_id: session.parent_session().clone(),
+        })
+        .collect();
+    let visual_parents = state
+        .frontend
+        .with_sections(|sections| sections.sessions.visual_parents.clone(), || {
+            std::collections::HashMap::new()
+        });
+    jinn_session_list::visible_session_at(nodes, &visual_parents, index)
 }
 
 /// The active scope, if it is one of the overlay's scopes.
@@ -657,7 +673,7 @@ mod tests {
     fn toggle_for_selected_activates_then_opens() {
         // Given two sessions where the *second* holds the live terminal,
         // and the sidebar's Sessions section selecting it.
-        use jinn_domain::feat::session::chat_session::ChatSessionState;
+        use jinn_session_state::ChatSessionState;
         let mut state = app_state();
         let slices = status_bar_slices();
         let routes = KeyRoutes::new();

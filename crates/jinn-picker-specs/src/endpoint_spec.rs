@@ -324,7 +324,7 @@ mod tests {
 
     use super::*;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
-    use jinn_domain::feat::session::ChatSessionState;
+    use jinn_session_state::ChatSessionState;
     use jinn_theme::default_theme;
     /// AppState with an active session on a single OpenRouter model.
     fn single_model_state() -> AppState {

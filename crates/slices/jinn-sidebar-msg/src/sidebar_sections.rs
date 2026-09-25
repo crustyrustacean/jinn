@@ -388,12 +388,6 @@ mod tests {
         assert_eq!(state.selected_id(), Some(&ids[2]));
     }
 }
-/// Discriminator for sidebar list entries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionEntryKind {
-    Session,
-}
-
 /// Sessions section cursor state - stored on `FrontendState`.
 ///
 /// Tracks the selected index within the sorted open sessions list.

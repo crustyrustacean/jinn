@@ -19,9 +19,9 @@ use crate::sections::sessions::MAX_VISIBLE_SESSIONS;
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::feat::session::chat_session::ChatSessionState;
 use jinn_domain::feat::theme::Theme;
 use jinn_domain::feat::ui::chat_log::RenderContext;
+use jinn_session_state::ChatSessionState;
 use jinn_domain::feat::ui::chat_log::entry_to_lines;
 use jinn_sidebar_msg::SessionPreviewCache;
 

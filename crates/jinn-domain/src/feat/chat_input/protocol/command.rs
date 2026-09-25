@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::BusMessage;
 use crate::protocol::ChatEntry;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 
 /// Enqueue a user message for processing by the message queue.
 ///
@@ -46,7 +46,7 @@ impl BusMessage for EnqueueResumeTurn {}
 /// If submitted while phase == Idle, the chat-input layer is responsible
 /// for routing to [`EnqueueUserMessage`] instead.
 ///
-/// See [`crate::feat::session::steering_buffer::SteeringBuffer`].
+/// See [`jinn_session_state::steering_buffer::SteeringBuffer`].
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Append a steering fragment to a busy session.")]
 pub struct SubmitSteeringMessage {

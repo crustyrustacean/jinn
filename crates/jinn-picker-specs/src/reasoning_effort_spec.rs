@@ -241,7 +241,7 @@ mod tests {
     use jinn_domain::PickerKind;
     use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
-    use jinn_domain::feat::session::chat_session::ChatSessionState;
+    use jinn_session_state::ChatSessionState;
     use jinn_picker::REASONING_EFFORT_ID;
 
     /// State with an active origin session (the default map's session).

@@ -182,8 +182,12 @@ impl SidebarSection for McpServersSection {
         };
 
         let lines = {
-            let enabled = state.active_session().enabled_mcp_servers();
-            let statuses = state.active_session().mcp_server_status();
+            let enabled = state.active_session().enabled_mcp_servers().clone();
+            let statuses = ctx
+                .slices
+                .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot())
+                .map(|runtime| runtime.read().statuses(state.active_session().session_id()))
+                .unwrap_or_default();
             // Only enabled servers are surfaced; disabled ones are omitted entirely.
             let servers: Vec<_> = state
                 .frontend
@@ -287,13 +291,22 @@ mod tests {
     }
 
     fn render_rows(state: &AppState, width: u16, height: u16) -> Vec<String> {
+        let slices = jinn_slices::Slices::new();
+        render_rows_with_slices(state, width, height, &slices)
+    }
+
+    fn render_rows_with_slices(
+        state: &AppState,
+        width: u16,
+        height: u16,
+        slices: &jinn_slices::Slices,
+    ) -> Vec<String> {
         let mut section = McpServersSection;
         let (mut terminal, area) = setup_term(width, height);
         terminal
             .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
-                let ctx = RenderCtx::new(state, &slices, &overlay_views);
+                let ctx = RenderCtx::new(state, slices, &overlay_views);
                 section.render(frame, area, &ctx);
             })
             .unwrap();
@@ -377,12 +390,20 @@ mod tests {
         // Given an enabled server reporting Running.
         let mut state = state_with_servers(&[server("excalimate")]);
         state.active_session_mut().enable_mcp_server("excalimate");
-        state
-            .active_session_mut()
-            .set_mcp_server_status("excalimate", McpConnectionStatus::Running);
+        let slices = jinn_slices::Slices::new();
+        let session_id = state.active_session().session_id().clone();
+        let runtime = slices
+            .register(
+                jinn_mcp_msg::mcp_runtime_slot(),
+                jinn_mcp_msg::McpRuntimeState::default(),
+            )
+            .expect("MCP runtime cell");
+        runtime.update(|runtime| {
+            runtime.set_status(&session_id, "excalimate", McpConnectionStatus::Running);
+        });
 
         // When rendering.
-        let rows = render_rows(&state, 40, 5);
+        let rows = render_rows_with_slices(&state, 40, 5, &slices);
 
         // Then the row shows the running label.
         let combined = rows.join("\n");
@@ -394,12 +415,20 @@ mod tests {
         // Given an enabled server reporting Dead.
         let mut state = state_with_servers(&[server("excalimate")]);
         state.active_session_mut().enable_mcp_server("excalimate");
-        state
-            .active_session_mut()
-            .set_mcp_server_status("excalimate", McpConnectionStatus::Dead);
+        let slices = jinn_slices::Slices::new();
+        let session_id = state.active_session().session_id().clone();
+        let runtime = slices
+            .register(
+                jinn_mcp_msg::mcp_runtime_slot(),
+                jinn_mcp_msg::McpRuntimeState::default(),
+            )
+            .expect("MCP runtime cell");
+        runtime.update(|runtime| {
+            runtime.set_status(&session_id, "excalimate", McpConnectionStatus::Dead);
+        });
 
         // When rendering.
-        let rows = render_rows(&state, 40, 5);
+        let rows = render_rows_with_slices(&state, 40, 5, &slices);
 
         // Then the row shows the dead label.
         let combined = rows.join("\n");
@@ -410,7 +439,7 @@ mod tests {
     fn render_only_active_session_servers() {
         // Given two configured servers: alpha enabled for the active session (A),
         // beta enabled only for a different session (B).
-        use jinn_domain::protocol::SessionId;
+        use jinn_core_types::SessionId;
         let mut state = state_with_servers(&[server("alpha"), server("beta")]);
         let session_b = SessionId::new();
         state

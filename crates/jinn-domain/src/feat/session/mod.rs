@@ -6,10 +6,7 @@
 //! and picker rendering.
 
 pub mod session_store;
-pub mod session_summary;
-pub mod sessions_list;
 
-pub mod chat_session;
 pub mod entries;
 #[cfg(test)]
 mod entries_tests;
@@ -17,17 +14,11 @@ mod entries_tests;
 #[path = "history_editor_tests.rs"]
 mod history_editor_tests;
 pub mod intent;
-pub mod mutation_accumulator;
-pub mod phase_machine;
 pub mod picker_entry;
 pub mod profile;
-pub mod protocol;
 pub mod prune_report;
-mod session_lifecycle_fields;
-pub mod steering_buffer;
 pub mod token_stats;
 pub mod tree_aggregate;
-pub mod turn_counter;
 
 #[cfg(test)]
 mod token_stats_tests;
@@ -40,16 +31,9 @@ pub use tree_aggregate::{
 };
 pub mod validator;
 
-pub use chat_session::{ChatSessionState, SessionCore, SessionUi};
-pub use profile::SessionProfile;
-pub use session_lifecycle_fields::{
-    SessionHistoryWorkFields, SessionIdentityMetadataFields, SessionIntegrationFields,
-    SessionLifecycleLocationFields, SessionStorageFields,
-};
+pub use jinn_core_types::SessionProfile;
 pub use session_store::{SessionStore, SessionStoreError, SessionStoreService};
-pub use session_summary::SessionSummary;
 pub use token_stats::{AggregatedTokenStats, TokenRecord, TokenStats, aggregate_session_stats};
-pub use turn_counter::compute_turn_count;
 
 /// Returns a guidance message for when no API keys are found.
 ///

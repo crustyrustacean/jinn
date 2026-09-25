@@ -7,7 +7,8 @@
 
 use crate::tool_types::ToolContext;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use jinn_domain::feat::session_search::TranscriptWindow;
+use jinn_core_types::SessionId;
+use jinn_session_store_msg::TranscriptWindow;
 
 use std::fmt::Write as _;
 
@@ -127,10 +128,10 @@ fn parse_args(raw: &str) -> Result<(Option<String>, FetchMode), String> {
 /// Resolves which session to read: explicit id or the current session.
 fn resolve_session(
     explicit: Option<String>,
-    current: Option<&jinn_domain::protocol::SessionId>,
-) -> Result<jinn_domain::protocol::SessionId, String> {
+    current: Option<&SessionId>,
+) -> Result<SessionId, String> {
     if let Some(id) = explicit {
-        return Ok(jinn_domain::protocol::SessionId::from(id));
+        return Ok(SessionId::from(id));
     }
     current
         .cloned()

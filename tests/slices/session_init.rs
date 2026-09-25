@@ -14,6 +14,8 @@ use std::time::Duration;
 use jinn_domain::common::bridge::Bridge;
 use jinn_domain::common::bus::test_harness::{Recorder, await_recorded};
 use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
+use jinn_core_types::SessionId;
+use jinn_session_state::ChatSessionState;
 use jinn_tui::TuiApp;
 
 use crate::common::test_app;
@@ -22,8 +24,7 @@ use crate::common::test_app;
 /// prompt, and one context file. No cwd is seeded into state — the
 /// supervisor routes from payload cwd, so tests publish triggers that
 /// carry the project dir.
-async fn composed_app_with_project()
--> (TuiApp, std::path::PathBuf, jinn_domain::protocol::SessionId) {
+async fn composed_app_with_project() -> (TuiApp, std::path::PathBuf, SessionId) {
     let app = test_app().await;
     let project = std::env::temp_dir().join(format!(
         "session-init-e2e-{}",
@@ -207,7 +208,7 @@ async fn manual_scan_reaches_only_the_addressed_session() {
     // session pointing at the same tree.
     let (app, project, first) = composed_app_with_project().await;
     let second = {
-        let mut session = jinn_domain::feat::session::ChatSessionState::new();
+        let mut session = ChatSessionState::new();
         session.set_cwd(project.clone());
         let id = session.session_id().clone();
         app.core.state.write_test_no_cap().session.insert(session);

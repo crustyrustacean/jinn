@@ -6,11 +6,11 @@
     reason = "test code"
 )]
 
-use crate::feat::session::chat_session::ChatSessionState;
+use jinn_session_state::ChatSessionState;
 use crate::feat::session::token_stats::{
     AggregatedTokenStats, TokenRecord, TokenStats, aggregate_session_stats,
 };
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 use std::collections::HashMap;
 
 #[rstest::rstest]

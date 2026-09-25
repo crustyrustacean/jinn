@@ -24,7 +24,8 @@
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::protocol::ChatEntry;
-use crate::protocol::{ChatEntryId, ContextOverride, IntentResult, SessionId};
+use crate::protocol::{ChatEntryId, ContextOverride, IntentResult};
+use jinn_core_types::SessionId;
 use jinn_session_store_msg::PersistSession;
 
 use super::intent::advance_selection_one;

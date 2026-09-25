@@ -11,8 +11,8 @@
 use std::time::Duration;
 
 use jinn_domain::common::bridge::Bridge;
-use jinn_domain::feat::session::chat_session::ChatSessionState;
-use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
+use jinn_session_msg::SessionClosed;
+use jinn_session_state::ChatSessionState;
 
 use crate::common::test_app;
 

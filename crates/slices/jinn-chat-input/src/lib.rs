@@ -62,7 +62,7 @@ mod activation_tests {
         let cell = slices
             .reader::<jinn_chat_input_msg::ChatInputs>(&crate::chat_inputs_slot())
             .expect("activation must register the chat-inputs cell");
-        let session_id = jinn_domain::SessionId::new();
+        let session_id = jinn_core_types::SessionId::new();
         cell.update(|inputs| {
             inputs
                 .entry(session_id.clone())
@@ -98,8 +98,8 @@ mod activation_tests {
         let cell = slices
             .reader::<jinn_chat_input_msg::ChatInputs>(&crate::chat_inputs_slot())
             .expect("activation must register the chat-inputs cell");
-        let session_a = jinn_domain::SessionId::new();
-        let session_b = jinn_domain::SessionId::new();
+        let session_a = jinn_core_types::SessionId::new();
+        let session_b = jinn_core_types::SessionId::new();
 
         // When writing a distinct draft per session.
         cell.update(|inputs| {

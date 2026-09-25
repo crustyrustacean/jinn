@@ -21,7 +21,6 @@ jinn-status-bar-msg = { workspace = true }
 jinn-theme-msg = { workspace = true }
 jinn-token-count-msg = { workspace = true }
 jinn-turn-dispatch-msg = { workspace = true }
-jinn-boot-msg = { workspace = true }
 jinn-inference-msg = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 jinn-session-init-msg = { workspace = true }
@@ -46,7 +45,6 @@ jinn-session-msg = { workspace = true }
 jinn-session-state = { workspace = true }
 jinn-provider-config = { workspace = true }
 jinn-mcp = { workspace = true }
-form_urlencoded = { workspace = true }
 jinn-selection-widget = { workspace = true }
 jinn-picker = { workspace = true }
 
@@ -62,42 +60,23 @@ ratatui-which-key = { workspace = true }
 uuid = { workspace = true }
 ratatui = { workspace = true }
 async-trait = { workspace = true }
-wasmparser = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 dirs = { workspace = true }
 which = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 tracing = { workspace = true }
 unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
 strip-ansi-escapes = { workspace = true }
 tiktoken = { workspace = true }
-textwrap = { workspace = true }
 throbber-widgets-tui = { workspace = true }
-humantime = { workspace = true }
-fuzzy-matcher = { workspace = true }
 parking_lot = { workspace = true }
 libc = { workspace = true }
 kanal = { workspace = true }
-futures = { workspace = true }
 rand = { workspace = true }
-portable-pty = { workspace = true }
-vt100 = { workspace = true }
 toml = { workspace = true }
-toml_edit = { workspace = true }
-anstyle-lossy = { workspace = true }
-anstyle = { workspace = true }
-regex = { workspace = true }
-daow = { workspace = true }
 tempfile = { workspace = true }
-dashmap = { workspace = true }
-
-# Schema + migrations — the single source of truth for the SQLite schema.
-# Consumed by build.rs (compile-time validation DB) and by the runtime migrator.
-# See the dao crate README for the schema-crate pattern.
-jinn-session-schema = { workspace = true, features = ["testing"] }
 
 # Actor framework
 
@@ -105,13 +84,11 @@ jinn-session-schema = { workspace = true, features = ["testing"] }
 # .plans/actor-canvas/plan.md)
 trouper = { workspace = true }
 
-# SQLite driver — dao wraps rusqlite but the migrator and tests use the raw
-# `rusqlite::Connection` (via `pool.with_conn`) for FK toggles and row-by-row
-# JSON surgery that dao's typed DAO layer doesn't cover.
-rusqlite = { workspace = true }
 [dev-dependencies]
 jinn-context-assembly = { workspace = true }
 jinn-context-curation = { workspace = true }
+# Enables the schema crate's migration-chain helpers for migration tests.
+jinn-session-schema = { workspace = true, features = ["testing"] }
 wasm-encoder = { workspace = true }
 indoc = "2"
 rstest = { workspace = true }
@@ -126,6 +103,7 @@ tracing-subscriber = { workspace = true }
 
 
 [build-dependencies]
+# `build.rs` validates the session schema against a host-side SQLite database.
 rusqlite = { workspace = true }
 jinn-session-schema = { workspace = true }
 

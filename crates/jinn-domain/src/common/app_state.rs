@@ -17,11 +17,12 @@ pub use jinn_sidebar_msg::sidebar_sections::RenameSessionInputState;
 pub use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
 
-use crate::protocol::{ChatEntryId, PickerKind, PinPosition, SessionId};
+use crate::protocol::{ChatEntryId, PickerKind, PinPosition};
+use jinn_core_types::SessionId;
 
 use crate::common::session_map::SessionMap;
 pub use crate::feat::chat_input::ChatInputBoxState;
-use crate::feat::session::chat_session::ChatSessionState;
+use jinn_session_state::ChatSessionState;
 use crate::feat::ui::picker_states::PickerExt;
 
 /// Written to exclusively by `SessionPersistenceActor` and `IntentHandler`.

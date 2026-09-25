@@ -23,6 +23,13 @@ async fn render_test_app() -> crate::TuiApp {
         picker_registry: jinn_picker_specs::build_picker_registry(),
         ..jinn_domain::Services::new_fake().await
     };
+    services
+        .slices
+        .register(
+            jinn_mcp_msg::mcp_runtime_slot(),
+            jinn_mcp_msg::McpRuntimeState::default(),
+        )
+        .expect("MCP runtime cell is registered exactly once");
     crate::TuiApp::test_builder()
         .services(services)
         .build()
@@ -326,13 +333,20 @@ async fn mcp_inspector_renders_server_list_and_logs_pane() {
         use jinn_domain::feat::theme::default_theme;
         use jinn_domain::feat::ui::picker_states::PickerExt;
         use jinn_mcp_msg::McpConnectionStatus;
+        let runtime = app
+            .services
+            .slices
+            .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot())
+            .expect("MCP runtime cell seeded by render test app");
+        let session_id = {
+            let w = app.core.state.read();
+            w.active_session().session_id().clone()
+        };
+        runtime.update(|runtime| {
+            runtime.set_status(&session_id, "excalimate", McpConnectionStatus::Running);
+            runtime.set_stderr(&session_id, "excalimate", "hello from stderr".to_owned());
+        });
         let mut w = app.core.state.write_test_no_cap();
-        // Seed the active session's live data sources so the per-frame refresh
-        // produces the right preview.
-        w.active_session_mut()
-            .set_mcp_server_status("excalimate", McpConnectionStatus::Running);
-        w.active_session_mut()
-            .set_mcp_server_stderr("excalimate", "hello from stderr".to_owned());
         let entry = McpServerEntry::new(
             "excalimate".to_owned(),
             "npx @excalimate/mcp-server".to_owned(),

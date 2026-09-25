@@ -3,7 +3,7 @@
 use crate::ChatEntry;
 use crate::ChatEntryKind;
 use crate::common::app_state::AppState;
-use crate::feat::session::ChatSessionState;
+use jinn_session_state::ChatSessionState;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{IntentResult, PinPosition};
 use jinn_session_history_msg::PushChatEntry;

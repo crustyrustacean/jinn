@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use jinn_core_types::SessionId;
 pub use jinn_token_count_msg::{AggregatedTokenStats, TokenRecord, TokenStats};
 
-use crate::feat::session::chat_session::ChatSessionState;
+use jinn_session_state::ChatSessionState;
 
 /// Aggregates token statistics for a session and all descendants.
 pub fn aggregate_session_stats<S>(

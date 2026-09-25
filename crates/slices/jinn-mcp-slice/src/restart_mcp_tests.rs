@@ -29,7 +29,7 @@ use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::bus::test_harness::TestHarness;
 use jinn_domain::common::state::State;
-use jinn_domain::protocol::SessionId;
+use jinn_core_types::SessionId;
 use jinn_mcp_msg::McpServerConfig;
 use jinn_mcp_msg::RestartError;
 use jinn_preferences_config::user_preferences::UserPreferences;
@@ -67,6 +67,8 @@ async fn spawn_coordinator(
         })
         .expect("seed prefs");
     let state = State::new(AppState::default());
+    let runtime = crate::activate_runtime(&services.slices)
+        .expect("MCP runtime cell is registered exactly once");
     let path = McpCoordinatorActor::spawn(
         &services.trouper_system,
         McpCoordinatorActorDeps {
@@ -74,7 +76,7 @@ async fn spawn_coordinator(
                 services: services.clone(),
             },
             state: state.clone(),
-            cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+            runtime,
         },
     )
     .await;

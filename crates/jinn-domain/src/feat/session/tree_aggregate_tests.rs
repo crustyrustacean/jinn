@@ -12,9 +12,10 @@ use std::collections::HashMap;
 
 use crate::common::app_state::AppState;
 use crate::common::state::State;
-use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::{FrozenTreeNode, aggregate_tree_stats, find_tree_root};
-use crate::protocol::{ChatEntry, SessionId};
+use crate::protocol::ChatEntry;
+use jinn_core_types::SessionId;
+use jinn_session_state::ChatSessionState;
 use jinn_token_count_msg::TokenRecord;
 
 /// Helper: create an empty session with the given ID.

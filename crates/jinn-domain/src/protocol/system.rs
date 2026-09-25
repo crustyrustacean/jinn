@@ -36,7 +36,7 @@ impl BusMessage for KeyUp {}
 #[schema(description = "The active session changed.")]
 pub struct ActiveSessionChanged {
     /// The new active session ID.
-    pub session_id: crate::protocol::SessionId,
+    pub session_id: jinn_core_types::SessionId,
 }
 
 impl BusMessage for ActiveSessionChanged {}

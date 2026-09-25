@@ -151,7 +151,7 @@ fn tab_scopes(slices: &crate::common::slices::Slices) -> Vec<jinn_slices::SliceS
 fn close_terminal_overlay_on_switch(
     state: &mut AppState,
     slices: &jinn_slices::Slices,
-    prev_active: &crate::protocol::SessionId,
+    prev_active: &jinn_core_types::SessionId,
 ) {
     if let Some(registry) = jinn_term_msg::TERM_CONTROLS.get() {
         registry.set(prev_active, ControlHolder::Agent);
@@ -235,17 +235,11 @@ impl IntentHandler {
         routes: &crate::common::slices::key_routes::KeyRoutes,
         pickers: &jinn_picker::PickerRegistry,
     ) -> IntentResult {
-        // Archive-tree confirmation intercept must precede the slice-route
-        // dispatch: the tree keys arm/confirm the prompt through dynamic
-        // intents (`Dynamic("archive subtree")` / `Dynamic("teardown+archive
-        // tree")`), and the route dispatch would otherwise re-run the arm
-        // action on every press while an armed prompt waits forever (no
-        // other key ever dismissed it). With the intercept first, the same
-        // action confirms the prompt and any other intent dismisses it and
-        // still processes normally.
-        if let Some(result) = try_handle_archive_tree_prompt(intent, state) {
-            return result;
-        }
+        // Session prompts live in the sidebar slice, which owns the route
+        // actions that arm and confirm them. Before dispatch, dismiss an armed
+        // prompt only when the incoming action is unrelated; the owning route
+        // action performs matching revalidation and confirmation.
+        dismiss_unrelated_session_prompts(intent, state);
 
         // Slice-registered routes go first: a dynamic intent is
         // delegated to its slice's action and never reaches the
@@ -290,13 +284,6 @@ impl IntentHandler {
         // ESC (NormalEscape) confirms the cancel;
         // any other intent dismisses the prompt and continues processing.
         if let Some(result) = try_handle_cancel_stream_prompt(intent, state) {
-            return result;
-        }
-
-        // Close session confirmation intercept: if the prompt is showing,
-        // x (SidebarSessionClose) confirms the close;
-        // any other intent dismisses the prompt and continues processing.
-        if let Some(result) = try_handle_close_session_prompt(intent, state) {
             return result;
         }
 
@@ -458,30 +445,6 @@ impl IntentHandler {
                 PickerKind::SessionLifecycle,
                 pickers,
             ),
-            KernelIntent::LoadSubagentSession => {
-                crate::feat::session::sessions_list::load_subagent::handle_load_subagent_session(
-                    state,
-                )
-            }
-
-            KernelIntent::SidebarSessionClose => {
-                // First press - show confirmation prompt.
-                // The interceptor (try_handle_close_session_prompt) handles the second press.
-                state.frontend.close_session_prompt = true;
-                IntentResult::empty()
-            }
-            KernelIntent::SidebarSessionArchiveTree => {
-                crate::feat::session::sessions_list::archive_tree::handle_session_tree_action_arm(
-                    state,
-                    crate::feat::session::sessions_list::archive_tree::TreePromptAction::Archive,
-                )
-            }
-            KernelIntent::SidebarSessionTeardownTree => {
-                crate::feat::session::sessions_list::archive_tree::handle_session_tree_action_arm(
-                    state,
-                    crate::feat::session::sessions_list::archive_tree::TreePromptAction::TeardownAndArchive,
-                )
-            }
 
             KernelIntent::ChatEntrySelectNext => {
                 feat::chat_entry_selection::intent::handle_select_next(state)
@@ -693,122 +656,31 @@ fn try_handle_cancel_stream_prompt(
     Some(result)
 }
 
-/// Close session confirmation prompt intercept.
+/// Dismisses armed sidebar-session prompts when an unrelated action arrives.
 ///
-/// If the close-session confirmation prompt is showing:
-/// - `SidebarSessionClose` confirms the close (re-validates, emits CloseSession).
-/// - Any other intent dismisses the prompt and returns `None` (fall through to normal processing).
-///
-/// Returns `None` if the prompt is not showing or was dismissed.
-fn try_handle_close_session_prompt(
-    intent: &KernelIntent,
-    state: &mut AppState,
-) -> Option<IntentResult> {
-    if !state.frontend.close_session_prompt {
-        return None;
-    }
-
-    // Dismiss the prompt regardless of which intent triggered it.
-    state.frontend.close_session_prompt = false;
-
-    if !matches!(intent, KernelIntent::SidebarSessionClose) {
-        // Any other key - dismiss prompt, fall through to normal processing.
-        return None;
-    }
-
-    // Second x press - perform the close.
-    // Re-validates in case session became busy between taps.
-    Some(crate::feat::session::sessions_list::close::handle_session_close_with_lifecycle(state))
-}
-
-/// Tree-action confirmation prompt intercept (`A` archive / `X` teardown).
-///
-/// If the archive-tree prompt is showing:
-/// - Its own arming action (`Dynamic(TREE_ARCHIVE_ACTION)` for an archive
-///   prompt, `Dynamic(TREE_TEARDOWN_ACTION)` for a teardown prompt — the
-///   sidebar route rows dispatch these) re-validates the subtree: a
-///   still-idle subtree confirms (emits `ArchiveSessionTree` or
-///   `TeardownSessionTree`); a member that became busy flips the prompt to
-///   the busy notice and consumes the key; a vanished selection dismisses
-///   the prompt.
-/// - Any other intent dismisses the prompt and returns `None` (fall through
-///   to normal processing).
-///
-/// Runs FIRST in the dispatch order (see `handle_inner`): the route-table
-/// dispatch would otherwise consume the dynamic tree keys before the
-/// interceptor could see them.
-///
-/// Returns `None` if the prompt is not showing or was dismissed.
-fn try_handle_archive_tree_prompt(
-    intent: &KernelIntent,
-    state: &mut AppState,
-) -> Option<IntentResult> {
-    use crate::feat::session::sessions_list::archive_tree::{
-        ArchiveTreeError, ArchiveTreePrompt, TreePromptAction, archive_tree_members,
-        handle_session_tree_action_confirm,
-    };
-    use jinn_sidebar_msg::{TREE_ARCHIVE_ACTION, TREE_TEARDOWN_ACTION};
-
-    let prompt = state.frontend.archive_tree_prompt.as_ref()?;
-
-    // Which tree action was pressed, if either. The action strings are the
-    // route-table keys the sidebar's `A`/`X` rows mint into dynamic intents;
-    // the constants are shared with those rows so a rename cannot silently
-    // detach the confirm press.
-    let pressed = match intent {
+/// Matching sidebar route actions keep the prompt intact and perform their own
+/// revalidation and confirmation inside `jinn-sidebar`.
+fn dismiss_unrelated_session_prompts(intent: &KernelIntent, state: &mut AppState) {
+    let sidebar_action = match intent {
         KernelIntent::Dynamic(dynamic)
-            if dynamic.slice.slice() == "sidebar" && dynamic.slice.name() == "sessions" =>
+            if dynamic.slice == jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id() =>
         {
-            match dynamic.action.as_str() {
-                TREE_ARCHIVE_ACTION => Some(TreePromptAction::Archive),
-                TREE_TEARDOWN_ACTION => Some(TreePromptAction::TeardownAndArchive),
-                _ => None,
-            }
+            Some(dynamic.action.as_str())
         }
         _ => None,
     };
 
-    // Only the prompt's own arming key confirms it; any other key (including
-    // the sibling tree key) dismisses the prompt and falls through — the
-    // normal match arm then arms that key's own prompt.
-    let action = match prompt {
-        ArchiveTreePrompt::Confirm { action, .. } => *action,
-        ArchiveTreePrompt::Busy => {
-            if pressed.is_none() {
-                // Any non-tree key dismisses the busy notice too.
-                state.frontend.archive_tree_prompt = None;
-            }
-            pressed?
-        }
-    };
-    if pressed != Some(action) {
-        // Any other key - dismiss prompt, fall through to normal processing.
-        state.frontend.archive_tree_prompt = None;
-        return None;
+    if state.frontend.close_session_prompt && sidebar_action != Some("session-close") {
+        state.frontend.close_session_prompt = false;
     }
 
-    // Second press - re-validate in case the subtree changed between taps.
-    match archive_tree_members(state) {
-        Ok(members) => {
-            // The selection is always the first member of a successful
-            // validation; an empty member list cannot occur.
-            let root = members.first()?.clone();
-            Some(handle_session_tree_action_confirm(state, action, root))
-        }
-        Err(ArchiveTreeError::SubtreeBusy) => {
-            // A member became busy between taps - consume the key and show
-            // the busy notice instead (never train spam-to-force).
-            state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
-            Some(IntentResult::empty())
-        }
-        // Selection vanished between taps - dismiss and process normally.
-        Err(
-            ArchiveTreeError::WrongSection
-            | ArchiveTreeError::NoSelection
-            | ArchiveTreeError::NotASession,
-        ) => {
+    if state.frontend.archive_tree_prompt.is_some() {
+        let matching_tree_action = matches!(
+            sidebar_action,
+            Some(jinn_sidebar_msg::TREE_ARCHIVE_ACTION | jinn_sidebar_msg::TREE_TEARDOWN_ACTION)
+        );
+        if !matching_tree_action {
             state.frontend.archive_tree_prompt = None;
-            None
         }
     }
 }
@@ -855,8 +727,49 @@ mod tests {
     fn empty_routes() -> crate::common::slices::key_routes::KeyRoutes {
         crate::common::slices::key_routes::KeyRoutes::new()
     }
+
+    fn activate_child_route(
+        child_id: jinn_core_types::SessionId,
+    ) -> crate::common::slices::key_routes::KeyRoutes {
+        use crate::common::slices::key_routes::{
+            ActionFn, BindSite, RouteId, RouteOutcome, RouteRow,
+        };
+
+        let routes = empty_routes();
+        routes.attach(RouteRow {
+            route_id: RouteId::new("test:activate-child"),
+            scope: jinn_slices::SliceScopeId::navigation("test", "activate-child"),
+            key: "<enter>",
+            category: "general",
+            site: BindSite::StaticScopes(&["Normal"]),
+            feature: "test",
+            outcome: RouteOutcome::Action {
+                action: "activate-child",
+                display: "activate child",
+                run: ActionFn::new(move |ctx| {
+                    let state = ctx
+                        .state
+                        .as_any_mut()
+                        .and_then(|state| state.downcast_mut::<AppState>())
+                        .expect("test route runs against AppState");
+                    state.session.set_active(child_id.clone());
+                    IntentResult::empty()
+                }),
+            },
+        });
+        routes
+    }
+
+    fn activate_child_intent() -> KernelIntent {
+        KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            jinn_slices::SliceScopeId::navigation("test", "activate-child"),
+            "activate-child",
+            "activate child",
+        ))
+    }
     use crate::common::app_state::{AppState, FocusScope};
     use crate::feat::intent::IntentHandler;
+    use crate::protocol::IntentResult;
     use crate::protocol::{ChatEntry, KernelIntent};
 
     #[rstest::rstest]
@@ -1332,7 +1245,7 @@ mod tests {
     #[rstest::rstest]
     fn active_session_changed_emitted_on_session_switch() {
         // Given a state with two sessions.
-        use crate::feat::session::chat_session::ChatSessionState;
+        use jinn_session_state::ChatSessionState;
 
         let mut state = AppState::default_with_scope_focus();
         let first_id = state.session.active_session_id().clone();
@@ -1543,9 +1456,9 @@ mod tests {
     #[rstest::rstest]
     fn active_session_switch_closes_terminal_overlay() {
         // Given a state with two sessions, the overlay open over the first.
-        use crate::feat::session::chat_session::ChatSessionState;
+        use jinn_session_state::ChatSessionState;
         use crate::protocol::ChatEntryKind;
-        use crate::protocol::SessionId;
+        use jinn_core_types::SessionId;
         use jinn_tools_msg::TASK_TOOL_NAME;
         let mut state = AppState::default_with_scope_focus();
         let slices = status_bar_slices();
@@ -1574,14 +1487,12 @@ mod tests {
             .frontend
             .scope_push(FocusScope::Dynamic(jinn_term_msg::view_scope()));
 
-        // When handling LoadSubagentSession — an intent that switches the
-        // active session directly (set_active on a loaded child) regardless
-        // of the open overlay.
+        // When a route-owned action switches the active session.
         IntentHandler::handle(
-            &KernelIntent::LoadSubagentSession,
+            &activate_child_intent(),
             &mut state,
             &slices,
-            &empty_routes(),
+            &activate_child_route(child_id.clone()),
             &empty_pickers(),
         );
 
@@ -1609,9 +1520,9 @@ mod tests {
     fn active_session_switch_releases_user_control() {
         // Given a state with a linked child session, the overlay open in
         // control mode (user holds the previous session's terminal).
-        use crate::feat::session::chat_session::ChatSessionState;
+        use jinn_session_state::ChatSessionState;
         use crate::protocol::ChatEntryKind;
-        use crate::protocol::SessionId;
+        use jinn_core_types::SessionId;
         use jinn_term_msg::command::ControlHolder;
         use jinn_tools_msg::TASK_TOOL_NAME;
         let mut state = AppState::default_with_scope_focus();
@@ -1644,12 +1555,12 @@ mod tests {
         let registry = jinn_term_msg::TERM_CONTROLS.get().expect("minted above");
         registry.set(&first_id, ControlHolder::User);
 
-        // When switching the active session.
+        // When switching the active session through a route-owned action.
         IntentHandler::handle(
-            &KernelIntent::LoadSubagentSession,
+            &activate_child_intent(),
             &mut state,
             &empty_slices(),
-            &empty_routes(),
+            &activate_child_route(child_id.clone()),
             &empty_pickers(),
         );
 
@@ -1671,7 +1582,7 @@ mod tests {
     fn overlay_opened_by_the_switch_intent_survives_the_guard() {
         // Given a state with two sessions where the *second* holds the live
         // terminal, and no overlay open yet.
-        use crate::feat::session::chat_session::ChatSessionState;
+        use jinn_session_state::ChatSessionState;
         let mut state = AppState::default_with_scope_focus();
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
@@ -1705,7 +1616,7 @@ mod tests {
             outcome: crate::common::slices::key_routes::RouteOutcome::Action {
                 action: "toggle-for-selected",
                 display: "toggle terminal",
-                run: crate::common::slices::key_routes::ActionFn::new(|ctx| {
+                run: crate::common::slices::key_routes::ActionFn::new(move |ctx| {
                     let Some(state) = ctx
                         .state
                         .as_any_mut()
@@ -1713,25 +1624,12 @@ mod tests {
                     else {
                         return crate::protocol::IntentResult::empty();
                     };
-                    // Inline term-slice semantics: activate the selected
+                    // Inline term-slice semantics: activate the target
                     // session, then toggle the overlay for the active one.
                     if state.frontend.sidebar_section()
                         == Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
                     {
-                        let index = state
-                            .frontend
-                            .with_sections(|s| s.sessions.selected_index, || None);
-                        if let Some(index) = index {
-                            let sessions =
-                                crate::feat::session::sessions_list::state::sorted_open_sessions(
-                                    state,
-                                );
-                            if let Some(entry) = sessions.get(index)
-                                && entry.id != *state.session.active_session_id()
-                            {
-                                state.session.set_active(entry.id.clone());
-                            }
-                        }
+                        state.session.set_active(second_id.clone());
                     }
                     let chat = state.session.active_session_id().clone();
                     let live = state
@@ -1772,7 +1670,7 @@ mod tests {
 
     #[rstest::rstest]
     fn handback_screen_survives_drain_as_user_entry() {
-        use crate::feat::session::steering_buffer::SteeringBuffer;
+        use jinn_session_state::steering_buffer::SteeringBuffer;
 
         // Given the push message text for a captured screen.
         let text = format!(
@@ -1793,199 +1691,5 @@ mod tests {
         ));
     }
 
-    // ============================================================
-    // Archive-tree prompt over dynamic intents (the sidebar route
-    // rows dispatch `Intent::Dynamic`, not static tree intents)
-    // ============================================================
 
-    /// A sessions-focused state with one selected, idle session. The
-    /// sessions sections cell is activated (as the sidebar slice's
-    /// `activate` does) so `sorted_open_sessions` sees the selection.
-    fn state_with_selected_session() -> AppState {
-        let state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-        state
-            .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
-        state
-    }
-
-    fn dynamic_tree_intent(action: &'static str) -> KernelIntent {
-        KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
-            jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
-            action,
-            "test tree action",
-        ))
-    }
-
-    fn routes_with_tree_rows() -> crate::common::slices::key_routes::KeyRoutes {
-        use crate::common::slices::key_routes::{
-            ActionFn, BindSite, RouteId, RouteOutcome, RouteRow,
-        };
-        use crate::feat::session::sessions_list::archive_tree::{
-            TreePromptAction, handle_session_tree_action_arm,
-        };
-        let routes = crate::common::slices::key_routes::KeyRoutes::new();
-        let scope = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
-        routes.attach(RouteRow {
-            route_id: RouteId::new("sidebar:row"),
-            scope: scope.clone(),
-            key: "A",
-            category: "general",
-            site: BindSite::OwnScope,
-            feature: "sidebar",
-            outcome: RouteOutcome::Action {
-                action: "archive subtree",
-                display: "archive subtree",
-                run: ActionFn::new(|ctx| {
-                    let Some(state) = ctx
-                        .state
-                        .as_any_mut()
-                        .and_then(|any| any.downcast_mut::<AppState>())
-                    else {
-                        return crate::protocol::IntentResult::empty();
-                    };
-                    handle_session_tree_action_arm(state, TreePromptAction::Archive)
-                }),
-            },
-        });
-        routes.attach(RouteRow {
-            route_id: RouteId::new("sidebar:row"),
-            scope,
-            key: "j",
-            category: "navigation",
-            site: BindSite::OwnScope,
-            feature: "sidebar",
-            outcome: RouteOutcome::Action {
-                action: "move-down",
-                display: "cursor down",
-                run: ActionFn::new(|_ctx| crate::protocol::IntentResult::empty()),
-            },
-        });
-        routes
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn archive_tree_prompt_confirms_on_second_dynamic_archive_press() {
-        // Given a sessions-focused state with a selected idle session and the
-        // sidebar's archive-tree route row attached.
-        let mut state = state_with_selected_session();
-        let routes = routes_with_tree_rows();
-
-        // When the first archive-tree press arms the prompt.
-        let _first = IntentHandler::handle(
-            &dynamic_tree_intent("archive subtree"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            &empty_pickers(),
-        );
-        assert!(
-            state.frontend.archive_tree_prompt.is_some(),
-            "first press must arm the prompt"
-        );
-
-        // And the second identical press arrives (the user confirms).
-        let second = IntentHandler::handle(
-            &dynamic_tree_intent("archive subtree"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            &empty_pickers(),
-        );
-
-        // Then the ArchiveSessionTree command is emitted and the prompt is
-        // consumed.
-        assert!(
-            second
-                .message_names
-                .iter()
-                .any(|n| n.contains("ArchiveSessionTree")),
-            "confirm press must emit ArchiveSessionTree, got {:?}",
-            second.message_names
-        );
-        assert!(state.frontend.archive_tree_prompt.is_none());
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn archive_tree_prompt_dismisses_on_other_intent_and_it_still_processes() {
-        use jinn_sidebar_msg::ArchiveTreePrompt;
-
-        // Given an armed archive-tree prompt.
-        let mut state = state_with_selected_session();
-        state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm {
-            count: 1,
-            action: crate::feat::session::sessions_list::archive_tree::TreePromptAction::Archive,
-        });
-        let routes = routes_with_tree_rows();
-        let sessions_before = state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None);
-
-        // When a navigation intent arrives (the sidebar's move-down row).
-        let result = IntentHandler::handle(
-            &dynamic_tree_intent("move-down"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            &empty_pickers(),
-        );
-
-        // Then the prompt is dismissed.
-        assert!(
-            state.frontend.archive_tree_prompt.is_none(),
-            "any non-arming intent must dismiss the prompt"
-        );
-        // And the intent still processed (the move-down action ran: no tree
-        // command was emitted and the row consumed the intent).
-        assert!(
-            !result
-                .message_names
-                .iter()
-                .any(|n| n.contains("ArchiveSessionTree")),
-            "dismiss must not emit the tree command"
-        );
-        // And the selection is untouched (move-down executed rather than the
-        // press being swallowed by the prompt).
-        assert_eq!(
-            state
-                .frontend
-                .with_sections(|s| s.sessions.selected_index, || None),
-            sessions_before,
-            "move-down ran (selection cannot move with a single session, but the intent was consumed, not dropped)"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn archive_tree_prompt_dismisses_on_escape_and_escape_still_processes() {
-        use jinn_sidebar_msg::ArchiveTreePrompt;
-
-        // Given an armed archive-tree prompt.
-        let mut state = state_with_selected_session();
-        state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm {
-            count: 1,
-            action: crate::feat::session::sessions_list::archive_tree::TreePromptAction::Archive,
-        });
-        let routes = routes_with_tree_rows();
-
-        // When ESC arrives.
-        let _result = IntentHandler::handle(
-            &KernelIntent::NormalEscape,
-            &mut state,
-            &empty_slices(),
-            &routes,
-            &empty_pickers(),
-        );
-
-        // Then the prompt is dismissed (no longer stuck following the cursor).
-        assert!(
-            state.frontend.archive_tree_prompt.is_none(),
-            "escape must dismiss the prompt"
-        );
-    }
 }

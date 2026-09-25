@@ -75,7 +75,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::feat::session::mutation_accumulator::MutationAccumulator;
+    use jinn_session_state::mutation_accumulator::MutationAccumulator;
 
     const PRUNER_NAME: &str = "edit_read";
 

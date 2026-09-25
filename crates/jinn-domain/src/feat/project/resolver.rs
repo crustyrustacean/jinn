@@ -8,7 +8,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 
 /// Resolves the set of past session ids that belong to a project.
 ///
@@ -187,7 +187,7 @@ pub fn now_unix() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::SessionId;
+    use jinn_core_types::SessionId;
 
     /// Deterministically maps a mnemonic tag (e.g. "s-a", "s-child") to a valid
     /// `SessionId` (a `Uuid` newtype).

@@ -78,8 +78,8 @@ mod tests {
         // Given a state with two sessions, sidebar focused on sessions section.
         let mut state = AppState::default_with_scope_focus();
         // Create a second session.
-        let second_id = jinn_domain::protocol::SessionId::new();
-        let mut second_session = jinn_domain::feat::session::chat_session::ChatSessionState::new();
+        let second_id = jinn_core_types::SessionId::new();
+        let mut second_session = jinn_session_state::ChatSessionState::new();
         second_session.set_session_id(second_id);
         state.session.insert(second_session);
         // Focus sidebar on sessions section.

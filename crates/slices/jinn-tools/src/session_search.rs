@@ -8,8 +8,10 @@
 
 use crate::tool_types::ToolContext;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use jinn_domain::feat::session_search::{SearchParams, SearchableRole};
-use jinn_session_store_msg::SessionSummary;
+use jinn_core_types::SessionId;
+use jinn_session_store_msg::{
+    SearchOutcome, SearchParams, SearchableRole, SessionSummary,
+};
 
 use std::fmt::Write as _;
 
@@ -242,7 +244,7 @@ struct ResolvedSessions {
 async fn resolve_sessions(
     scope: Scope,
     explicit: Option<String>,
-    current: Option<&jinn_domain::protocol::SessionId>,
+    current: Option<&SessionId>,
     store: &jinn_domain::feat::session::session_store::SessionStoreService,
 ) -> Result<ResolvedSessions, String> {
     if let Some(id) = explicit {
@@ -326,7 +328,7 @@ async fn resolve_sessions(
 
 /// Builds the successful [`ToolResult`] from a search outcome.
 fn outcome_to_result(
-    outcome: &jinn_domain::feat::session_search::SearchOutcome,
+    outcome: &SearchOutcome,
     sessions: &ResolvedSessions,
     query: &str,
 ) -> String {

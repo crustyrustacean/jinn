@@ -1,7 +1,8 @@
 //! The [`Intent`] enum - one variant per user-initiated action.
 use std::sync::Arc;
 
-use crate::protocol::{PickerKind, SessionId};
+use crate::protocol::PickerKind;
+use jinn_core_types::SessionId;
 
 /// The search root for the directory picker (shared vocabulary from
 /// `jinn-slices`; the scope-focus cell carries it in `TuiSignals`).
@@ -158,14 +159,6 @@ pub enum KernelIntent {
     /// Jump the cursor to the previous (older) Sources (annotation) entry.
     ChatEntryJumpPrevSources,
     /// Pin the currently selected chat entry.
-    /// Open the selected task call's subagent session.
-    LoadSubagentSession,
-    /// Close the selected sidebar session (arms a confirmation prompt).
-    SidebarSessionClose,
-    /// Archive the selected session and its visible subtree (arms prompt).
-    SidebarSessionArchiveTree,
-    /// Tear down the selected session root and archive its subtree (arms prompt).
-    SidebarSessionTeardownTree,
     ChatEntryPinSelected,
     /// Toggle expand/collapse of the selected tool entry (tool call, tool result, or annotation).
     ExpandToolEntry,
@@ -344,10 +337,6 @@ impl std::fmt::Display for KernelIntent {
             KernelIntent::ChatEntryJumpPrevPinned => write!(f, "previous pinned entry"),
             KernelIntent::ChatEntryJumpNextSources => write!(f, "next sources entry"),
             KernelIntent::ChatEntryJumpPrevSources => write!(f, "previous sources entry"),
-            KernelIntent::LoadSubagentSession => write!(f, "open subagent session"),
-            KernelIntent::SidebarSessionClose => write!(f, "close session"),
-            KernelIntent::SidebarSessionArchiveTree => write!(f, "archive session tree"),
-            KernelIntent::SidebarSessionTeardownTree => write!(f, "teardown session tree"),
             KernelIntent::ChatEntryPinSelected => write!(f, "pin entry"),
             KernelIntent::ExpandToolEntry => write!(f, "expand tool entry"),
             KernelIntent::ToggleAuditPopup => write!(f, "toggle audit popup"),

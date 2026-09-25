@@ -259,7 +259,7 @@ impl Phase {
 /// A phased task list - the top-level container for agent planning.
 ///
 /// Contains ordered phases, each containing ordered tasks.
-/// Stored per-session on [`SessionCore`](crate::feat::session::chat_session::SessionCore).
+/// Stored in the session snapshot's metadata alongside the conversation.
 ///
 /// # Persistence
 ///

@@ -8,6 +8,7 @@ jinn-chat-input-msg = { workspace = true }
 jinn-slices = { workspace = true }
 
 [dev-dependencies]
+jinn-core-types = { workspace = true }
 rstest = { workspace = true }
 tokio = { workspace = true }
 jinn-domain = { workspace = true }

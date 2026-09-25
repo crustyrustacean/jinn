@@ -25,9 +25,9 @@ use derive_more::Debug;
 use error_stack::Report;
 use jinn_discord_msg::DiscordStatusUpdate;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
-use jinn_domain::feat::session::chat_session::ChatSessionState;
-use jinn_domain::protocol::ChatEntry;
+use jinn_core_types::{ChatEntry, SessionId};
 use jinn_domain::{Bridge, State};
+use jinn_session_state::SessionReadProjection;
 use jinn_session_store_msg::SessionLoadRequested;
 use poise::serenity_prelude as serenity;
 use wherror::Error;
@@ -228,7 +228,7 @@ async fn request_loop(
 async fn handle_create_thread(
     data: &BotData,
     http: &serenity::Http,
-    session_id: jinn_domain::SessionId,
+    session_id: jinn_core_types::SessionId,
     title: String,
 ) {
     // 1. Already-bound guard: refuse to rebind, never orphan an existing thread.
@@ -335,7 +335,7 @@ async fn handle_create_thread(
 }
 
 /// Publish a `DiscordThreadCreateFailed` event for the session.
-fn report_failure(bridge: &Bridge, session_id: jinn_domain::SessionId, reason: CreateThreadReason) {
+fn report_failure(bridge: &Bridge, session_id: jinn_core_types::SessionId, reason: CreateThreadReason) {
     publish(bridge, DiscordThreadCreateFailed { session_id, reason });
 }
 
@@ -448,19 +448,21 @@ async fn drain_loop(
 }
 
 /// Read the final assistant/error reply for a session from shared state.
-fn read_reply(data: &BotData, session_id: &jinn_domain::SessionId) -> Option<FinalReply> {
+fn read_reply(data: &BotData, session_id: &SessionId) -> Option<FinalReply> {
     let state = data.state.read();
     // Fallible lookup: the session may have been concurrently closed/archived
     // between the TurnFinished event and this read. Returning None makes the
     // drain loop skip the reply rather than panic and tear down the bot.
-    let session = state.try_session(session_id)?;
-    read_final_reply(session.history())
+    let projection = state
+        .try_session(session_id)
+        .map(SessionReadProjection::from)?;
+    read_final_reply(projection.entries())
 }
 
 /// Look up the Discord thread bound to a jinn session (reverse mapping).
 async fn resolve_thread(
     data: &BotData,
-    session_id: &jinn_domain::SessionId,
+    session_id: &SessionId,
 ) -> Result<Option<serenity::ChannelId>, String> {
     match data
         .thread_map
@@ -580,14 +582,17 @@ async fn handle_inbound_message(
         return Ok(());
     };
 
-    let session_id: jinn_domain::SessionId = session_id.into();
+    let session_id: SessionId = session_id.into();
 
     // Read the phase under a short-lived read lock, then drop the lock before
     // any publish. Holding the lock across a `Bridge::send` can deadlock if the
     // bus dispatch path re-enters `State`.
     let phase = {
         let state = data.state.read();
-        state.try_session(&session_id).map(ChatSessionState::phase)
+        state
+            .try_session(&session_id)
+            .map(SessionReadProjection::from)
+            .map(|projection| projection.phase())
     };
 
     match classify_inbound(true, phase) {

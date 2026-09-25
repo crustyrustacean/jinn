@@ -29,12 +29,12 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
+use jinn_core_types::ChatEntry;
 use jinn_domain::PushChatEntry;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::feat::picker::mcp_picker_entry::McpPreviewMode;
 use jinn_domain::feat::picker::mcp_picker_entry::McpServerEntry;
 use jinn_domain::feat::ui::picker_states::PickerExt;
-use jinn_domain::protocol::ChatEntry;
 use jinn_mcp_msg::McpEnablementChanged;
 use jinn_mcp_msg::RestartMcpServer;
 use jinn_picker::picker_style::dim_style;
@@ -416,7 +416,7 @@ mod tests {
     use jinn_domain::PickerKind;
     use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
-    use jinn_domain::feat::session::chat_session::ChatSessionState;
+    use jinn_session_state::ChatSessionState;
     use jinn_mcp_msg::McpConnectionStatus;
     use jinn_picker::MCP_SERVER_ID;
     use jinn_picker::SpecHandle;

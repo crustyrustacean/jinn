@@ -151,13 +151,15 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         }
     }
 
-    refresh_mcp_inspector_snapshot(&mut wstate);
+    refresh_mcp_inspector_snapshot(&mut wstate, &app.services.slices);
 }
 
-/// Refreshes the selected MCP server picker entry's live status/stderr/tools
-/// snapshot from the active session's maps before render reads it. No-op
-/// unless the MCP server inspector is the active overlay.
-fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
+/// Refreshes the selected MCP server picker entry's live runtime projection.
+/// No-op unless the MCP server inspector is the active overlay.
+fn refresh_mcp_inspector_snapshot(
+    state: &mut jinn_domain::AppState,
+    slices: &jinn_domain::common::slices::Slices,
+) {
     use jinn_domain::FocusScope;
     let is_mcp_picker = matches!(
         &state.frontend.scope(),
@@ -174,13 +176,21 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
     };
     let session_id = state.active_session().session_id().clone();
     let (status, stderr_tail, tools) = {
-        let session = state.active_session();
-        let status = session.mcp_server_status().get(&server_name).copied();
-        let stderr_tail = session
-            .mcp_server_stderr()
-            .get(&server_name)
-            .cloned()
-            .unwrap_or_default();
+        let runtime = slices
+            .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot());
+        let (status, stderr_tail) = runtime
+            .as_ref()
+            .map(|runtime| {
+                let runtime = runtime.read();
+                (
+                    runtime.status(&session_id, &server_name),
+                    runtime
+                        .stderr(&session_id, &server_name)
+                        .map(str::to_owned)
+                        .unwrap_or_default(),
+                )
+            })
+            .unwrap_or((None, String::new()));
         let defs = state
             .tool_registry()
             .map(|cell| cell.read().tools_for_session(&session_id))

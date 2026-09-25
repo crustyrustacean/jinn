@@ -33,7 +33,7 @@ use jinn_domain::common::state::State;
 use jinn_domain::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use jinn_domain::feat::session_lifecycle::protocol::command::PersistSession;
 use jinn_domain::protocol::ChatEntry;
-use jinn_domain::protocol::SessionId;
+use jinn_core_types::SessionId;
 use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;

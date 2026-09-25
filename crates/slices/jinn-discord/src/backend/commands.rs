@@ -12,8 +12,9 @@ use std::time::Duration;
 
 use crate::authorize;
 use jinn_context::PromptTemplateStore;
+use jinn_core_types::SessionId;
 use jinn_domain::protocol::KernelIntent;
-use jinn_domain::{Bridge, SessionId};
+use jinn_domain::Bridge;
 use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_store_msg::ArchiveSession;
 use poise::serenity_prelude as serenity;
@@ -300,7 +301,7 @@ pub async fn prompts(ctx: BotContext<'_>) -> Result<(), BotError> {
     let thread_id = channel_id.get().to_string();
     let reply = match data.thread_map.get_session_by_thread(&thread_id).await {
         Ok(Some(id)) => {
-            let session_id: jinn_domain::SessionId = id.into();
+            let session_id: jinn_core_types::SessionId = id.into();
             // 2. Read the session's prompt store under a single short-lived
             //    read lock. The decision (list / empty / missing) is captured
             //    as a `Lookup` so the guard is dropped before the await on

@@ -87,13 +87,13 @@ mod tests {
     use jinn_domain::common::app_state::AppState;
     use jinn_slices::FocusScope;
 
-    use jinn_domain::protocol::SessionId;
+    use jinn_core_types::SessionId;
 
     /// Two sessions exist in state; cursor points at the second-inserted session.
     fn state_with_two_sessions_cursor_on_second() -> (AppState, SessionId) {
         let mut state = AppState::default_with_scope_focus();
         let _first = state.session.active_session_id().clone();
-        let second_session = jinn_domain::feat::session::chat_session::ChatSessionState::default();
+        let second_session = jinn_session_state::ChatSessionState::default();
         let second = second_session.session_id().clone();
         state.session.insert(second_session);
         // Cursor points at the second session in sorted order.

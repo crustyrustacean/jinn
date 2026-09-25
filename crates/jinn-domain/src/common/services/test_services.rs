@@ -9,13 +9,14 @@ use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, InMemoryConfigStorage,
     LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService, SessionSummary};
-use crate::protocol::SessionId;
+use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService};
+use jinn_core_types::SessionId;
 use jinn_preferences_config::{
     AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
     UserPreferencesStorageService,
 };
 use jinn_session_state::SessionSnapshot;
+use jinn_session_store_msg::SessionSummary;
 
 use super::Services;
 /// Single shared tokio runtime for the entire test binary.

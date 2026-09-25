@@ -2,7 +2,7 @@
 
 use jinn_domain::common::app_state::{AppState, FocusScope, RenameSessionInputState};
 
-use jinn_domain::feat::session::sessions_list::state::sorted_open_sessions;
+use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_domain::protocol::IntentResult;
 use jinn_session_store_msg::PersistSession;
 use jinn_slices::SliceScopeId;
@@ -200,7 +200,7 @@ mod tests {
         for _ in 1..count {
             state
                 .session
-                .insert(jinn_domain::feat::session::chat_session::ChatSessionState::new());
+                .insert(jinn_session_state::ChatSessionState::new());
         }
         state
     }

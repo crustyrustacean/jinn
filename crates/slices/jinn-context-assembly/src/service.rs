@@ -70,7 +70,7 @@ mod tests {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::state::State;
     use jinn_domain::feat::context::protocol::inputs::AssembleContext;
-    use jinn_domain::feat::context::snapshot::build_assembly_inputs;
+    use crate::inputs::build_assembly_inputs;
     use jinn_domain::protocol::ChatEntry;
 
     #[rstest::rstest]

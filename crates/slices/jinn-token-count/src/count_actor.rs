@@ -18,12 +18,14 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
+use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
 use jinn_domain::common::state::State;
 use jinn_domain::common::tcaps::session::SessionCap;
 use jinn_domain::feat::context::strategy::token_estimator::{
     TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_content_tokens,
 };
 use jinn_session_history_msg::HistoryAppended;
+use jinn_session_state::SessionReadProjection;
 use jinn_session_store_msg::SessionLoadCompleted;
 
 /// The token count actor's static trouper path.
@@ -100,13 +102,16 @@ impl TokenCountActor {
 
     /// Handles a [`HistoryAppended`] event by computing counts for the active
     /// session's entries that don't have one yet, filling them in memory.
-    pub fn handle_history_appended(&self, session_id: &jinn_domain::protocol::SessionId) {
+    pub fn handle_history_appended(&self, session_id: &SessionId) {
         let counts = {
             let state = self.state.read();
-            let Some(session) = state.try_session(session_id) else {
-                return;
-            };
-            self.compute_missing_counts(session.history())
+            state
+                .try_session(session_id)
+                .map(SessionReadProjection::from)
+                .map(|projection| self.compute_missing_counts(projection.entries()))
+        };
+        let Some(counts) = counts else {
+            return;
         };
 
         if counts.is_empty() {
@@ -119,13 +124,16 @@ impl TokenCountActor {
     /// loaded session's entries that don't have one yet, filling them in
     /// memory. The session was inserted into state before this event was
     /// emitted, so the fill lands on the live session.
-    pub fn handle_session_load_completed(&self, session_id: &jinn_domain::protocol::SessionId) {
+    pub fn handle_session_load_completed(&self, session_id: &SessionId) {
         let counts = {
             let state = self.state.read();
-            let Some(session) = state.try_session(session_id) else {
-                return;
-            };
-            self.compute_missing_counts(session.history())
+            state
+                .try_session(session_id)
+                .map(SessionReadProjection::from)
+                .map(|projection| self.compute_missing_counts(projection.entries()))
+        };
+        let Some(counts) = counts else {
+            return;
         };
         if counts.is_empty() {
             return;
@@ -137,10 +145,7 @@ impl TokenCountActor {
     ///
     /// Content-derived: entries already carrying a count are skipped — their
     /// text is immutable, so recomputing could only produce the same value.
-    fn compute_missing_counts(
-        &self,
-        history: &[jinn_domain::protocol::ChatEntry],
-    ) -> HashMap<jinn_domain::protocol::ChatEntryId, u32> {
+    fn compute_missing_counts(&self, history: &[ChatEntry]) -> HashMap<ChatEntryId, u32> {
         let estimator = TiktokenEstimator(self.counter);
         let mut counts = HashMap::new();
         for entry in history {
@@ -154,11 +159,7 @@ impl TokenCountActor {
     }
 
     /// Fills computed counts into the named session's entries.
-    fn fill_counts(
-        &self,
-        session_id: &jinn_domain::protocol::SessionId,
-        counts: &HashMap<jinn_domain::protocol::ChatEntryId, u32>,
-    ) {
+    fn fill_counts(&self, session_id: &SessionId, counts: &HashMap<ChatEntryId, u32>) {
         self.state.with_session(&self.session_cap, |view| {
             if let Some(session) = view.session.map().get_mut(session_id) {
                 session.fill_missing_token_counts(counts);
@@ -192,7 +193,7 @@ mod tests {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::tcaps::mint::mint_session_cap;
     use jinn_domain::feat::context::strategy::token_estimator::estimate_entry_tokens;
-    use jinn_domain::feat::session::ChatSessionState;
+    use jinn_session_state::ChatSessionState;
     use jinn_domain::protocol::ChangeSource;
     use jinn_domain::protocol::ChatEntry;
     use jinn_domain::protocol::ContextOverride;

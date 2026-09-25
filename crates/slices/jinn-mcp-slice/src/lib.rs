@@ -40,7 +40,8 @@ mod transport_routing_tests;
 pub mod connection;
 pub mod coordinator;
 
-use jinn_mcp_msg::McpCoordinatorHandle;
+use jinn_mcp_msg::{McpCoordinatorHandle, McpRuntimeState, mcp_runtime_slot};
+use jinn_slices::{Slices, SlotTaken, TypedCell};
 use std::sync::Arc;
 
 /// Debug name for the minted handle (service-trait convention).
@@ -53,6 +54,11 @@ const RESTART_ASK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 /// [`RESTART_ASK_TIMEOUT`] remains authoritative; this inner bound is the
 /// runtime's own lease deadline.
 const RESTART_INNER_ASK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(75);
+
+/// Registers and returns the MCP runtime-state write cell.
+pub fn activate_runtime(slices: &Slices) -> Result<TypedCell<McpRuntimeState>, SlotTaken> {
+    slices.register(mcp_runtime_slot(), McpRuntimeState::default())
+}
 
 /// Mint the kernel-side handle from the spawned coordinator actor.
 ///

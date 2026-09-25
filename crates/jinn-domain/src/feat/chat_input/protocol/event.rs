@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::ChatEntry;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 
 /// A chat entry was added to the conversation history.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]

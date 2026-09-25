@@ -120,7 +120,7 @@ mod tests {
     use super::*;
     use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
-    use jinn_domain::feat::session::ChatSessionState;
+    use jinn_session_state::ChatSessionState;
     use jinn_domain::protocol::PickerKind;
     use jinn_picker::ActionCtx;
     use jinn_picker::PERSONA_ID;

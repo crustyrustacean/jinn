@@ -1,8 +1,8 @@
 //! Archive session handler.
 
+use crate::sections::sessions::close::validate_session_close;
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::session::sessions_list::close::validate_session_close;
 
 /// Handles `SidebarSessionArchive` - archives the selected session without teardown.
 ///

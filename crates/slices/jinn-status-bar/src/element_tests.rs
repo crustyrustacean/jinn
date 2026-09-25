@@ -1098,7 +1098,7 @@ fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
         prompt_tokens: Some(1000),
         cached_tokens: Some(960),
     });
-    let child_id = jinn_domain::protocol::SessionId::new();
+    let child_id = jinn_core_types::SessionId::new();
     let active_id = state.session.active_session_id().clone();
     {
         let child = state.session_mut_or_create(&child_id);
@@ -1162,7 +1162,7 @@ fn render_tree_cache_segment_keeps_muted_neighbors() {
         prompt_tokens: Some(1000),
         cached_tokens: Some(960),
     });
-    let child_id = jinn_domain::protocol::SessionId::new();
+    let child_id = jinn_core_types::SessionId::new();
     let active_id = state.session.active_session_id().clone();
     {
         let child = state.session_mut_or_create(&child_id);
@@ -1301,7 +1301,7 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
     });
 
     // Create a child session.
-    let child_id = jinn_domain::protocol::SessionId::new();
+    let child_id = jinn_core_types::SessionId::new();
     let active_id = state.session.active_session_id().clone();
     {
         let child = state.session_mut_or_create(&child_id);
@@ -1347,14 +1347,14 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
     let mut state = AppState::default_with_scope_focus();
 
     // Create parent session first.
-    let parent_id = jinn_domain::protocol::SessionId::new();
+    let parent_id = jinn_core_types::SessionId::new();
     {
         let parent = state.session_mut_or_create(&parent_id);
         parent.push_entry(jinn_domain::protocol::ChatEntry::user("parent msg"));
     }
 
     // Create child session.
-    let child_id = jinn_domain::protocol::SessionId::new();
+    let child_id = jinn_core_types::SessionId::new();
     {
         let child = state.session_mut_or_create(&child_id);
         child.push_entry(jinn_domain::protocol::ChatEntry::user("child msg"));

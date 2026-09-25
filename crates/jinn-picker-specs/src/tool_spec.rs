@@ -250,7 +250,7 @@ mod tests {
         defs: &[(&str, &str, Option<jinn_core_types::ServerToolType>)],
     ) -> AppState {
         let mut state = AppState::default_with_scope_focus();
-        let origin = jinn_domain::feat::session::chat_session::ChatSessionState::new();
+        let origin = jinn_session_state::ChatSessionState::new();
         state.session.insert(origin);
         state
             .session
@@ -533,9 +533,9 @@ mod tests {
     fn open_marks_task_disabled_in_subagent_session() {
         // Given a subagent (child) session whose spawn stamp disables task.
         let mut state = AppState::default_with_scope_focus();
-        let parent_id = jinn_domain::protocol::SessionId::new();
+        let parent_id = jinn_core_types::SessionId::new();
         let child =
-            jinn_domain::feat::session::chat_session::ChatSessionState::new_child(&parent_id, true);
+            jinn_session_state::ChatSessionState::new_child(&parent_id, true);
         state.session.insert(child);
         state
             .session

@@ -38,7 +38,7 @@ use trouper::registry::RegistryError;
 use error_stack::{Report, ResultExt as _};
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
-use jinn_domain::protocol::SessionId;
+use jinn_core_types::SessionId;
 use jinn_mcp_msg::{McpConnectionStatus, McpServerLog, McpServerStatus};
 use jinn_mcp_msg::{McpServerConfig, TransportKind};
 use jinn_tools_msg::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncate_tail};

@@ -11,7 +11,7 @@ use crate::common::app_state::AppState;
 use crate::feat::context::protocol::inputs::AssembleContext;
 use crate::feat::context::protocol::inputs::AssembledResponse;
 use crate::feat::context::protocol::inputs::AssemblyInputs;
-use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
+use jinn_core_types::DEFAULT_PERSONA_NAME;
 
 /// Snapshots everything the assembly service needs for `session_id`.
 ///

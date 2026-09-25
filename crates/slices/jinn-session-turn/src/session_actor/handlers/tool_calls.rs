@@ -5,7 +5,8 @@
 
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
-use jinn_domain::feat::context::snapshot::{assemble_via_service, build_assembly_inputs};
+use jinn_context_assembly::inputs::build_assembly_inputs;
+use jinn_domain::feat::context::snapshot::assemble_via_service;
 use jinn_core_types::PinPosition;
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_inference_msg::SendToLlmProvider;

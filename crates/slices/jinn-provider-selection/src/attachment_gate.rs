@@ -12,10 +12,11 @@
 //! Unknown models are blocked, not allowed: the user marks a model capable via
 //! `[[providers.model_info]]` `input_modalities` in `providers.toml`.
 
+use jinn_core_types::SessionId;
 use jinn_domain::common::services::Services;
 use jinn_domain::common::state::State;
 use jinn_domain::feat::provider_infra::{Modality, ModelCache, ModelsDevData};
-use jinn_domain::protocol::{ChatEntry, ChatEntryKind, SessionId};
+use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
 
 /// Decides whether a user entry with attachments may be dispatched to the model.
 ///

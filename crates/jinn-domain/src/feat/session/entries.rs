@@ -11,7 +11,7 @@ use crate::common::services::Services;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::theme::Theme;
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
 
 use super::SessionStoreService;
 
@@ -241,7 +241,7 @@ mod tests {
     use crate::common::services::test_services::TestServices;
     use crate::feat::session::picker_entry::SessionTreeEntry;
     use crate::feat::theme::default_theme;
-    use crate::protocol::SessionId;
+    use jinn_core_types::SessionId;
     use jinn_selection_widget::PickerItem;
     use jinn_selection_widget::TreeItem;
     use jinn_session_state::SessionSnapshot;

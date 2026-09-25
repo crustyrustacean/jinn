@@ -7,7 +7,8 @@
 )]
 
 use crate::common::app_state::*;
-use crate::protocol::{ChatEntry, Mode, PickerKind, SessionId};
+use crate::protocol::{ChatEntry, Mode, PickerKind};
+use jinn_core_types::SessionId;
 
 #[rstest::rstest]
 fn push_entry_adds_to_history() {

@@ -20,14 +20,12 @@ use std::pin::Pin;
 
 use crate::tool_types::ToolContext;
 use jiff::Timestamp;
-use jinn_core_types::ServerToolType;
+use jinn_core_types::{ServerToolType, SessionId};
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::session::chat_session::ChatSessionState;
-use jinn_domain::protocol::SessionId;
 use jinn_mcp_msg::McpConnectionStatus;
 use jinn_session_msg::SessionClosed;
 use jinn_tools_msg::{CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools};
@@ -582,7 +580,7 @@ impl ToolOrchestratorActor {
             let guard = self.state.read();
             guard.session.get(session_id).map_or_else(
                 || guard.session.default_cwd().clone(),
-                |s: &ChatSessionState| s.cwd().to_owned(),
+                |session| session.cwd().to_owned(),
             )
         };
         let max_output_lines = prefs.max_tool_output_lines;
@@ -788,15 +786,25 @@ impl ToolOrchestratorActor {
     /// server cannot take the call yet).
     fn mcp_rejection_reason(&self, session_id: &SessionId, provider: &str) -> Option<String> {
         let server = server_name_of_provider(provider)?;
-        let guard = self.state.read();
-        let session = guard.session.get(session_id)?;
-        if !session.is_mcp_server_enabled(server) {
+        let enabled = {
+            let guard = self.state.read();
+            let session = guard.session.get(session_id)?;
+            session.is_mcp_server_enabled(server)
+        };
+        if !enabled {
             return Some(format!(
                 "MCP server '{server}' is disabled for this session; \
                  ask the user to re-enable it via the MCP server picker"
             ));
         }
-        match session.mcp_server_status().get(server) {
+        let runtime = self
+            .services
+            .slices
+            .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot());
+        let status = runtime
+            .as_ref()
+            .and_then(|runtime| runtime.read().status(session_id, server));
+        match status {
             Some(McpConnectionStatus::Running) => None,
             Some(McpConnectionStatus::Dead) => Some(format!(
                 "MCP server '{server}' is enabled but its connection is dead; \
@@ -1410,7 +1418,7 @@ mod mcp_dispatch_gate_tests {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
     use jinn_domain::common::state::State;
-    use jinn_domain::protocol::SessionId;
+    use jinn_core_types::SessionId;
     use jinn_mcp_msg::McpConnectionStatus;
     use jinn_session_msg::SessionClosed;
     use jinn_tools_msg::{ExecuteTool, ExecuteToolBatch, RegisterTools};
@@ -1428,6 +1436,13 @@ mod mcp_dispatch_gate_tests {
     ) {
         let harness = TestHarness::new().await;
         let services = harness.services().await;
+        let _runtime = services
+            .slices
+            .register(
+                jinn_mcp_msg::mcp_runtime_slot(),
+                jinn_mcp_msg::McpRuntimeState::default(),
+            )
+            .expect("MCP runtime cell is registered exactly once");
         ToolOrchestratorActor::spawn(
             &services.trouper_system.clone(),
             ToolOrchestratorActorDeps {
@@ -1480,6 +1495,15 @@ mod mcp_dispatch_gate_tests {
             .slices
             .reader(&jinn_tools_msg::tools_registry_slot())
             .expect("tools registry cell")
+    }
+
+    fn mcp_runtime(
+        services: &jinn_domain::common::services::Services,
+    ) -> jinn_slices::TypedCell<jinn_mcp_msg::McpRuntimeState> {
+        services
+            .slices
+            .reader(&jinn_mcp_msg::mcp_runtime_slot())
+            .expect("MCP runtime cell")
     }
 
     async fn publish_batch(harness: &TestHarness, session_id: &SessionId) {
@@ -1615,13 +1639,10 @@ mod mcp_dispatch_gate_tests {
             .session
             .get_or_create(&session_id)
             .enable_mcp_server("stub");
-        state
-            .write_test_no_cap()
-            .session
-            .get_mut(&session_id)
-            .expect("session")
-            .set_mcp_server_status("stub", McpConnectionStatus::Dead);
-        let (harness, _services) = spawn_orchestrator(&state).await;
+        let (harness, services) = spawn_orchestrator(&state).await;
+        mcp_runtime(&services).update(|runtime| {
+            runtime.set_status(&session_id, "stub", McpConnectionStatus::Dead);
+        });
         register_stub_tools(&harness, &session_id).await;
         let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
 
@@ -1650,13 +1671,10 @@ mod mcp_dispatch_gate_tests {
             .session
             .get_or_create(&session_id)
             .enable_mcp_server("stub");
-        state
-            .write_test_no_cap()
-            .session
-            .get_mut(&session_id)
-            .expect("session")
-            .set_mcp_server_status("stub", McpConnectionStatus::Running);
-        let (harness, _services) = spawn_orchestrator(&state).await;
+        let (harness, services) = spawn_orchestrator(&state).await;
+        mcp_runtime(&services).update(|runtime| {
+            runtime.set_status(&session_id, "stub", McpConnectionStatus::Running);
+        });
         register_stub_tools(&harness, &session_id).await;
         let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
 

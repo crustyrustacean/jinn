@@ -5,6 +5,7 @@ use std::time::Duration;
 use error_stack::Report;
 use futures::StreamExt as _;
 use jiff::Timestamp;
+use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::Services;
@@ -12,7 +13,7 @@ use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::feat::provider_infra::LlmServiceFactoryService;
 use jinn_domain::feat::provider_infra::StopReason;
 use jinn_domain::feat::provider_infra::StreamEvent;
-use jinn_domain::protocol::{ChatEntry, SessionId};
+use jinn_domain::protocol::ChatEntry;
 use jinn_inference_msg::{
     CancelStream, SendToLlmProvider, StreamCompleted, StreamCompletedReason, StreamOrigin,
     StreamToken,
