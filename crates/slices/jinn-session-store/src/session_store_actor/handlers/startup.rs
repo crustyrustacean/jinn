@@ -3,6 +3,7 @@
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
 use jinn_domain::feat::session::profile::SessionSeed;
+use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 
 use crate::session_store_actor::SessionStoreActor;
@@ -98,7 +99,9 @@ impl SessionStoreActor {
         }
         for mut session in loaded {
             session.mark_interacted();
-            self.load_and_insert(session).await;
+            let session_id = self.insert_loaded_session(session);
+            self.publish(SessionLoadCompleted { session_id })
+                .await;
         }
 
         self.hydrate_all_tree_frozen_nodes(&self.services.session_store)

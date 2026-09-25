@@ -231,7 +231,7 @@ impl SessionLifecycleActor {
             entry,
         })
         .await;
-        self.publish(jinn_session_lifecycle_msg::PersistSession {
+        self.publish(jinn_session_store_msg::PersistSession {
             session_id: session_id.clone(),
         })
         .await;

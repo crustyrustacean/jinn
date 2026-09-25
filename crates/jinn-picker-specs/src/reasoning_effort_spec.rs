@@ -213,7 +213,7 @@ fn confirm_reasoning(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     };
 
     PickerOutcome::empty()
-        .with_message(jinn_domain::feat::session::protocol::mark_session_interacted::MarkSessionInteracted {
+        .with_message(jinn_session_msg::MarkSessionInteracted {
             session_id,
         })
         .with_message(

@@ -42,7 +42,7 @@ use trouper::system::ActorSystem;
 
 use jinn_core_types::SessionId;
 use jinn_domain::Services;
-use jinn_domain::feat::session::protocol::retry_stalled_session::RetryStalledSession;
+use jinn_session_msg::RetryStalledSession;
 use jinn_inference_msg::CancelStream;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_inference_msg::StreamCompleted;

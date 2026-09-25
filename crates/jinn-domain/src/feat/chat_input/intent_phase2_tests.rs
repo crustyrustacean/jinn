@@ -16,7 +16,7 @@ fn hash_trigger_valid_after_space() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+        jinn_context::PromptTemplateStore::from_vec(vec![
             crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -49,7 +49,7 @@ fn hash_trigger_valid_after_newline() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+        jinn_context::PromptTemplateStore::from_vec(vec![
             crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -80,7 +80,7 @@ fn hash_trigger_invalid_after_letter() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+        jinn_context::PromptTemplateStore::from_vec(vec![
             crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -142,7 +142,7 @@ fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+        jinn_context::PromptTemplateStore::from_vec(vec![
             crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -202,7 +202,7 @@ fn delete_forward_deactivates_when_cursor_at_token_start() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+        jinn_context::PromptTemplateStore::from_vec(vec![
             crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -240,7 +240,7 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+        jinn_context::PromptTemplateStore::from_vec(vec![
             crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -299,7 +299,7 @@ fn reactivating_hash_autocomplete_within_token() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+        jinn_context::PromptTemplateStore::from_vec(vec![
             crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -406,7 +406,7 @@ fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+        jinn_context::PromptTemplateStore::from_vec(vec![
             crate::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),

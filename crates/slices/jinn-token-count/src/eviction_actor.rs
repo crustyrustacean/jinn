@@ -14,7 +14,7 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use jinn_core_types::session_id::SessionId;
-use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
+use jinn_session_msg::SessionClosed;
 use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
 /// The eviction actor's static trouper path.

@@ -18,7 +18,7 @@
 //! Spawns a regular session linked to the caller (empty history, empty task
 //! list, inheriting the parent's model, CWD, persona, tools, skills, and MCP
 //! servers), enqueues the given prompt into it, and blocks until the child
-//! reaches [`PhaseKind::Idle`](jinn_domain::feat::session::phase_machine::PhaseKind). The
+//! reaches [`PhaseKind::Idle`](jinn_session_msg::PhaseKind). The
 //! child's last chat entry becomes the tool result. Subagents are just
 //! sessions: they appear in the sidebar, can be steered, and persist.
 //!

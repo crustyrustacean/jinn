@@ -12,12 +12,10 @@ use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::BusService;
 use jinn_domain::common::state::State;
 use jinn_domain::common::tcaps::session::SessionCap;
-use jinn_domain::feat::session::protocol::close_session::CloseSession;
-use jinn_domain::feat::session::protocol::teardown_session_tree::TeardownSessionTree;
 use jinn_session_lifecycle_msg::builtin::BuiltinRegistry;
 use jinn_session_lifecycle_msg::{
-    CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
-    RunSessionTeardown, SetSessionCwd,
+    CancelLifecycleCommand, CloseSession, FinishSessionSetup, FinishSessionTeardown,
+    RunSessionSetup, RunSessionTeardown, SetSessionCwd, TeardownSessionTree,
 };
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;

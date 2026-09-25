@@ -22,7 +22,7 @@ use jinn_session_history_msg::PushChatEntry;
 use super::super::SessionPersistenceActor;
 use super::image_resolve::ResolveOutcome;
 use crate::feat::context::prompt_template::PendingPath;
-use crate::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 use jinn_turn_dispatch_msg::DispatchTurn;
 
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
@@ -300,7 +300,7 @@ impl SessionPersistenceActor {
         &self,
         payload: &EnqueueResumeTurn,
     ) {
-        use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+        use jinn_session_msg::SessionPhaseChanged;
         use crate::protocol::ChatEntry;
 
         // Only dispatch from Idle. Busy sessions ignore resume (no queuing).
@@ -422,7 +422,7 @@ mod tests {
 
     use crate::common::services::BusAudit;
     use crate::feat::chat_input::protocol::command::{EnqueueResumeTurn, EnqueueUserMessage};
-    use crate::feat::session::phase_machine::PhaseKind;
+    use jinn_session_msg::PhaseKind;
     use crate::protocol::{ChatEntry, ChatEntryKind};
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_session_history_msg::PushChatEntry;

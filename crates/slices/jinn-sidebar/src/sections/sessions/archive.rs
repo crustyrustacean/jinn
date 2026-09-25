@@ -12,7 +12,7 @@ use jinn_domain::feat::session::sessions_list::close::validate_session_close;
 /// # Panics
 /// Panics if `sessions_section.selected_index` is `None`.
 pub fn handle_session_archive(state: &mut AppState) -> jinn_domain::protocol::IntentResult {
-    use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
+    use jinn_session_store_msg::ArchiveSession;
 
     // Validate - same preconditions as session close.
     if validate_session_close(state).is_err() {

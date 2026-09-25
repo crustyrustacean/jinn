@@ -2,7 +2,7 @@
 
 use super::state::sorted_open_sessions;
 use crate::common::app_state::AppState;
-use crate::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 
 /// Why a session close can be rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,7 +105,7 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
             let reasoning_effort = state.frontend.app_state.reasoning_effort;
 
             let mut profile =
-                crate::feat::session::profile::SessionProfile::from_model_selection(model);
+                jinn_core_types::SessionProfile::from_model_selection(model);
             profile.reasoning_effort = reasoning_effort;
             {
                 let p = &mut profile;
@@ -153,7 +153,7 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
 ///
 /// Panics if `sessions_section.selected_index` is `None`.
 pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::protocol::IntentResult {
-    use crate::feat::session::protocol::close_session::CloseSession;
+    use jinn_session_lifecycle_msg::CloseSession;
 
     // Validate.
     if validate_session_close(state).is_err() {

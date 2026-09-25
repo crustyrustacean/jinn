@@ -8,7 +8,7 @@
 
 use crate::tool_types::ToolContext;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use jinn_domain::feat::session::session_summary::SessionSummary;
+use jinn_session_store_msg::SessionSummary;
 use jinn_domain::feat::session_search::{SearchParams, SearchableRole};
 
 use std::fmt::Write as _;

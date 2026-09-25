@@ -23,11 +23,11 @@ use ratatui::text::Span;
 
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
+use jinn_session_msg::MarkSessionInteracted;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_provider_selection_msg::LoadEndpointPickerEntries;
 use jinn_provider_selection_msg::RefreshEndpointPickerEntries;
-use jinn_provider_selection_msg::endpoint::Endpoint;
+use jinn_core_types::Endpoint;
 use jinn_provider_selection_msg::endpoint::EndpointEntry;
 
 /// Builds the endpoint picker's spec.

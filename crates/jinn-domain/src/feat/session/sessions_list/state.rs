@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::common::app_state::AppState;
-use crate::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 use crate::protocol::SessionId;
 
 pub use jinn_sidebar_msg::{SessionEntry, SessionEntryKind, SessionsSectionState};
@@ -147,7 +147,7 @@ pub fn sorted_open_sessions_split(
     let entries: Vec<SessionEntry> = session
         .iter()
         .filter(|(_, session)| {
-            session.session_state() == crate::feat::session::chat_session::SessionState::Loaded
+            session.session_state() == jinn_session_store_msg::SessionState::Loaded
         })
         .map(|(id, session)| SessionEntry {
             kind: SessionEntryKind::Session,

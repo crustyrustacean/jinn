@@ -1,28 +1,3 @@
-//! Request to fork a session at a specific entry ordinal.
-//!
-//! Emitted when the user confirms a selection in the fork picker.
-//! The persistence actor receives this command, calls `store.fork()`,
-//! loads the new session, and sends back a [`SessionLoadCompleted`] command.
-//!
-//! [`SessionLoadCompleted`]: crate::feat::session::protocol::session_load_completed::SessionLoadCompleted
+//! Compatibility export for the session-fork command.
 
-use serde::{Deserialize, Serialize};
-
-use crate::BusMessage;
-use crate::protocol::SessionId;
-
-/// Request to fork a session at a specific entry ordinal.
-///
-/// Creates a new session with all entries from the source session up to and
-/// including `at_ordinal`. Entry data is shared (not duplicated) via the
-/// SQLite junction table.
-#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
-#[schema(description = "Fork a session at an entry ordinal.")]
-pub struct SessionForkRequested {
-    /// The session to fork from.
-    pub source_session_id: SessionId,
-    /// Include entries with ordinal <= this value in the forked session.
-    pub at_ordinal: usize,
-}
-
-impl BusMessage for SessionForkRequested {}
+pub use jinn_session_store_msg::SessionForkRequested;

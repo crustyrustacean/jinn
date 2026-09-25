@@ -3,14 +3,14 @@
 //! See [`SessionPersistenceActor::on_retry_stalled_session`]. The
 //! stall-watchdog actor in the `jinn-watchdog` slice detects silence on an
 //! in-flight provider stream and publishes
-//! [`RetryStalledSession`](crate::feat::session::protocol::retry_stalled_session::RetryStalledSession)
+//! [`RetryStalledSession`](jinn_session_msg::RetryStalledSession)
 //! (alongside the visible retry marker entry). A hung stream is treated like
 //! a hard provider error: partial streaming entries are discarded and the
 //! turn is re-dispatched.
 
 use crate::common::actor_deps::BusPublish;
-use crate::feat::session::phase_machine::PhaseKind;
-use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
+use jinn_session_msg::PhaseKind;
+use jinn_session_msg::RetryStalledSession;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_turn_dispatch_msg::DispatchTurn;
 
@@ -149,7 +149,7 @@ mod tests {
     use crate::common::services::BusAudit;
     use jinn_inference_msg::SendToLlmProvider;
 
-    use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
+    use jinn_session_msg::RetryStalledSession;
     use crate::feat::session::session_actor::SessionPersistenceActor;
     use crate::protocol::ChatEntryKind;
     use crate::protocol::SessionId;

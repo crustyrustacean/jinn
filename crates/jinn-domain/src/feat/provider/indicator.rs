@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
-use crate::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;

@@ -116,23 +116,77 @@ pub struct SessionArchived {
     pub session_id: SessionId,
 }
 
+/// Mark a session as having been interacted with by the user.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Mark a session as interacted by the user.")]
+pub struct MarkSessionInteracted {
+    /// The session the user interacted with.
+    pub session_id: SessionId,
+}
+
+/// Emitted after a session records its first user interaction.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session recorded its first user interaction.")]
+pub struct UserInteracted {
+    /// The session that was interacted with.
+    pub session_id: SessionId,
+}
+
+/// Re-dispatch a turn whose in-flight provider stream stalled.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Re-dispatch a turn whose stream stalled.")]
+pub struct RetryStalledSession {
+    /// The session whose turn has stalled.
+    pub session_id: SessionId,
+    /// The one-based restart attempt within the current stall lineage.
+    pub attempt: u32,
+    /// The restart budget enforced by the watchdog.
+    pub max_restarts: u32,
+}
+
+/// Emitted after a session's close workflow has completed.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session close workflow completed.")]
+pub struct SessionClosed {
+    /// The session that was closed.
+    pub session_id: SessionId,
+}
+
+/// Emitted immediately after a session is removed from the live session map.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session was removed from the live session map.")]
+pub struct SessionRemoved {
+    /// The session removed from the live map.
+    pub session_id: SessionId,
+}
+
 // ── wire contracts ──────────────────────────────────────────────────
 
 impl jinn_slices::BusMessage for PhaseKind {}
+impl jinn_slices::BusMessage for MarkSessionInteracted {}
+impl jinn_slices::BusMessage for RetryStalledSession {}
+impl jinn_slices::BusMessage for SessionClosed {}
+impl jinn_slices::BusMessage for SessionRemoved {}
 impl jinn_slices::BusMessage for SessionPhaseChanged {}
 impl jinn_slices::BusMessage for SessionSetupCompleted {}
 impl jinn_slices::BusMessage for SessionTeardownFinished {}
 impl jinn_slices::BusMessage for SessionArchived {}
+impl jinn_slices::BusMessage for UserInteracted {}
 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, reason = "test code")]
 
+    use super::MarkSessionInteracted;
     use super::PhaseKind;
+    use super::RetryStalledSession;
     use super::SessionArchived;
+    use super::SessionClosed;
     use super::SessionPhaseChanged;
+    use super::SessionRemoved;
     use super::SessionSetupCompleted;
     use super::SessionTeardownFinished;
+    use super::UserInteracted;
     use std::path::PathBuf;
     use std::str::FromStr;
 
@@ -196,5 +250,43 @@ mod tests {
         assert_eq!(round.1.error.as_deref(), Some("boom"));
         assert_eq!(round.2.error, None);
         assert_eq!(round.3.session_id, round.0.session_id);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn promoted_session_contracts_roundtrip_through_json() {
+        // Given one of each promoted session command and event.
+        let id = jinn_core_types::SessionId::new();
+        let contracts = (
+            MarkSessionInteracted { session_id: id.clone() },
+            UserInteracted { session_id: id.clone() },
+            RetryStalledSession {
+                session_id: id.clone(),
+                attempt: 2,
+                max_restarts: 5,
+            },
+            SessionClosed { session_id: id.clone() },
+            SessionRemoved { session_id: id.clone() },
+        );
+
+        // When serializing and deserializing the wire tuple.
+        let json = serde_json::to_string(&contracts).unwrap();
+        let restored = serde_json::from_str::<(
+            MarkSessionInteracted,
+            UserInteracted,
+            RetryStalledSession,
+            SessionClosed,
+            SessionRemoved,
+        )>(&json)
+        .unwrap();
+
+        // Then every moved payload survives unchanged.
+        assert_eq!(restored.0.session_id, id);
+        assert_eq!(restored.1.session_id, id);
+        assert_eq!(restored.2.session_id, id);
+        assert_eq!(restored.2.attempt, 2);
+        assert_eq!(restored.2.max_restarts, 5);
+        assert_eq!(restored.3.session_id, id);
+        assert_eq!(restored.4.session_id, id);
     }
 }

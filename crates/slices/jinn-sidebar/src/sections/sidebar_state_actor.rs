@@ -14,7 +14,7 @@ use trouper::system::ActorSystem;
 
 use crate::sections::sessions;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
+use jinn_session_msg::SessionClosed;
 
 /// The sidebar state actor's static trouper path.
 pub const SIDEBAR_STATE_PATH: &str = "sidebar-state";
@@ -137,7 +137,7 @@ mod tests {
         }
 
         // When handling SessionClosed.
-        let payload = jinn_domain::feat::session::protocol::session_closed::SessionClosed {
+        let payload = jinn_session_msg::SessionClosed {
             session_id: removed_id,
         };
         actor.handle_session_closed(&payload);
@@ -175,7 +175,7 @@ mod tests {
         }
 
         // When handling SessionClosed.
-        let payload = jinn_domain::feat::session::protocol::session_closed::SessionClosed {
+        let payload = jinn_session_msg::SessionClosed {
             session_id: removed_id,
         };
         actor.handle_session_closed(&payload);
@@ -217,7 +217,7 @@ mod tests {
         }
 
         // When handling SessionClosed.
-        let payload = jinn_domain::feat::session::protocol::session_closed::SessionClosed {
+        let payload = jinn_session_msg::SessionClosed {
             session_id: removed_id,
         };
         actor.handle_session_closed(&payload);

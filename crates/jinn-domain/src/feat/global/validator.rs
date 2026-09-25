@@ -1,7 +1,7 @@
 //! Global intent validators - quit, toggle which-key, and interrupt.
 
 use crate::common::app_state::AppState;
-use crate::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 use wherror::Error;
 
 /// Validates the Quit intent.

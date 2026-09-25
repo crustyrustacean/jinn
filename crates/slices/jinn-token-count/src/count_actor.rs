@@ -23,7 +23,7 @@ use jinn_domain::common::tcaps::session::SessionCap;
 use jinn_domain::feat::context::strategy::token_estimator::{
     TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_content_tokens,
 };
-use jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_session_history_msg::HistoryAppended;
 
 /// The token count actor's static trouper path.
@@ -121,14 +121,19 @@ impl TokenCountActor {
     /// emitted, so the fill lands on the live session.
     pub fn handle_session_load_completed(
         &self,
-        session: &jinn_domain::feat::session::ChatSessionState,
+        session_id: &jinn_domain::protocol::SessionId,
     ) {
-        let counts = self.compute_missing_counts(session.history());
+        let counts = {
+            let state = self.state.read();
+            let Some(session) = state.try_session(session_id) else {
+                return;
+            };
+            self.compute_missing_counts(session.history())
+        };
         if counts.is_empty() {
             return;
         }
-        let session_id = session.session_id().clone();
-        self.fill_counts(&session_id, &counts);
+        self.fill_counts(session_id, &counts);
     }
 
     /// Computes counts for history entries whose count is not yet computed.
@@ -173,7 +178,7 @@ impl MsgHandler<HistoryAppended> for TokenCountActor {
 
 impl MsgHandler<SessionLoadCompleted> for TokenCountActor {
     async fn handle(&mut self, msg: &SessionLoadCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_load_completed(&msg.session);
+        self.handle_session_load_completed(msg.session_id());
     }
 }
 
@@ -270,7 +275,7 @@ mod tests {
         let actor = actor_for(&state);
 
         // When handling SessionLoadCompleted.
-        actor.handle_session_load_completed(&loaded_session);
+        actor.handle_session_load_completed(loaded_session.session_id());
 
         // Then all 5 entries in the live session have counts.
         let session_id = loaded_session.session_id().clone();

@@ -173,7 +173,7 @@ impl InteractiveTermActor {
             // Teardown sub: a closed chat session takes its terminal with
             // it (the pty drop kills the process group) instead of
             // outliving the session until app exit.
-            .handles::<jinn_domain::feat::session::protocol::session_closed::SessionClosed>()
+            .handles::<jinn_session_msg::SessionClosed>()
             // Ask replies leave the handlers through ctx.reply; the flush
             // gate drops any outbound type not declared here.
             .emits::<SpawnTermOutcome>()
@@ -584,12 +584,12 @@ impl InteractiveTermActor {
     }
 }
 
-impl MsgHandler<jinn_domain::feat::session::protocol::session_closed::SessionClosed>
+impl MsgHandler<jinn_session_msg::SessionClosed>
     for InteractiveTermActor
 {
     async fn handle(
         &mut self,
-        msg: &jinn_domain::feat::session::protocol::session_closed::SessionClosed,
+        msg: &jinn_session_msg::SessionClosed,
         _ctx: &mut MsgCtx<'_>,
     ) {
         // `remove_session` clears the live flag before dropping the session
@@ -1991,7 +1991,7 @@ mod tests {
         // When closing session A.
         harness
             .publish(
-                jinn_domain::feat::session::protocol::session_closed::SessionClosed {
+                jinn_session_msg::SessionClosed {
                     session_id: chat_a.clone(),
                 },
             )
@@ -2034,7 +2034,7 @@ mod tests {
         // When closing session A.
         harness
             .publish(
-                jinn_domain::feat::session::protocol::session_closed::SessionClosed {
+                jinn_session_msg::SessionClosed {
                     session_id: chat_a.clone(),
                 },
             )

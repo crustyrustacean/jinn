@@ -8,7 +8,7 @@
 //! decision logic is unit-testable without constructing Discord types.
 
 use crate::route::{RouteDecision, route_decision};
-use jinn_domain::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 use poise::serenity_prelude::MessageType;
 
 /// Whether a Discord message of this type is a genuine user-authored text
@@ -83,7 +83,7 @@ pub fn classify_inbound(bound: bool, phase: Option<PhaseKind>) -> InboundOutcome
 #[cfg(test)]
 mod tests {
     use super::{InboundOutcome, classify_inbound, is_forwardable_message_type};
-    use jinn_domain::feat::session::phase_machine::PhaseKind;
+    use jinn_session_msg::PhaseKind;
     use poise::serenity_prelude::MessageType;
 
     #[rstest::rstest]

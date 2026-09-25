@@ -3,7 +3,7 @@
 use jinn_domain::common::app_state::{AppState, FocusScope, RenameSessionInputState};
 
 use jinn_domain::feat::session::sessions_list::state::sorted_open_sessions;
-use jinn_domain::feat::session_lifecycle::protocol::command::PersistSession;
+use jinn_session_store_msg::PersistSession;
 use jinn_domain::protocol::IntentResult;
 use jinn_slices::SliceScopeId;
 

@@ -7,7 +7,7 @@
 
 use super::super::SessionPersistenceActor;
 use crate::common::actor_deps::BusPublish;
-use crate::feat::session::protocol::UserInteracted;
+use jinn_session_msg::{MarkSessionInteracted, UserInteracted};
 
 impl SessionPersistenceActor {
     /// Saves the current state of a session to disk.
@@ -70,7 +70,7 @@ impl SessionPersistenceActor {
     /// Sets `has_interacted = true` on the session and emits a `UserInteracted` event.
     pub(in crate::feat::session::session_actor) async fn handle_mark_session_interacted(
         &mut self,
-        payload: &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted,
+        payload: &MarkSessionInteracted,
     ) {
         self.state.with_session(&self.cap, |view| {
             if let Some(session) = view.session.map().get_mut(&payload.session_id) {
@@ -190,7 +190,7 @@ mod tests {
         // When MarkSessionInteracted is handled.
         actor
             .handle_mark_session_interacted(
-                &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted {
+                &jinn_session_msg::MarkSessionInteracted {
                     session_id: session_id.clone(),
                 },
             )
@@ -213,7 +213,7 @@ mod tests {
         // When MarkSessionInteracted is handled.
         actor
             .handle_mark_session_interacted(
-                &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted {
+                &jinn_session_msg::MarkSessionInteracted {
                     session_id: session_id.clone(),
                 },
             )
@@ -236,7 +236,7 @@ mod tests {
         // When MarkSessionInteracted is handled.
         actor
             .handle_mark_session_interacted(
-                &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted {
+                &jinn_session_msg::MarkSessionInteracted {
                     session_id: session_id.clone(),
                 },
             )

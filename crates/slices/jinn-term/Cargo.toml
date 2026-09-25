@@ -8,6 +8,7 @@ jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-sidebar-msg = { workspace = true }
 jinn-status-bar-msg = { workspace = true }
+jinn-session-msg = { workspace = true }
 jinn-term-msg = { workspace = true }
 jinn-theme = { workspace = true }
 ratatui = { workspace = true }

@@ -9,10 +9,9 @@ use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_domain::common::state::State;
 use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
-use jinn_domain::feat::session::protocol::session_archived::SessionArchived;
-use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
-use jinn_domain::feat::session::{SessionStore, SessionStoreService};
-use jinn_session_lifecycle_msg::PersistSession;
+use jinn_session_msg::{SessionArchived, SessionClosed};
+use jinn_domain::feat::session::{ChatSessionState, SessionStore, SessionStoreService};
+use jinn_session_store_msg::{PersistSession, SessionLoadCompleted, SessionLoadRequested};
 
 use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};
 use crate::sqlite::SqliteSessionStore;
@@ -64,6 +63,44 @@ where
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     condition().await
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn load_completed_is_published_after_session_is_fully_initialized() {
+    // Given a session persisted in the store and removed from the live map.
+    let fixture = actor_fixture().await;
+    let completed = fixture.harness.spawn_recorder::<SessionLoadCompleted>().await;
+    let session_id = jinn_core_types::SessionId::new();
+    let mut stored = ChatSessionState::new();
+    stored.set_session_id(session_id.clone());
+    stored.set_model(jinn_core_types::ModelSelection::Single(
+        "ollama/llama3".to_owned(),
+    ));
+    stored.push_entry(jinn_core_types::ChatEntry::user("loaded"));
+    fixture.store.save(&stored).await.expect("save session");
+    {
+        let mut state = fixture.state.write_test_no_cap();
+        state.session.remove(&session_id);
+        state.session.begin_load(session_id.clone());
+    }
+
+    // When the load request is published.
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+        })
+        .await;
+
+    // Then the completion ID resolves to a fully initialized live session.
+    let completed = await_recorded(&completed, 1, Duration::from_secs(1)).await;
+    assert_eq!(completed[0].session_id, session_id);
+    let state = fixture.state.read();
+    let session = state.session.get(&session_id).expect("loaded session");
+    assert_eq!(state.session.active_session_id(), &session_id);
+    assert!(session.has_interacted());
+    assert!(!state.session.is_loading());
 }
 
 #[rstest::rstest]

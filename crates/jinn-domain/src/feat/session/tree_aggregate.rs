@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::compute_turn_count;
-use crate::feat::session::token_stats::TokenStats;
+use jinn_token_count_msg::TokenStats;
 use crate::protocol::SessionId;
 
 pub use jinn_session_store_msg::FrozenTreeNode;

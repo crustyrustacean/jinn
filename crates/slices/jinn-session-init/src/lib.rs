@@ -104,7 +104,7 @@ pub fn install_actors(
         .change_context(SliceActivateError)
         .attach("installing the jinn.discovery partition set")?;
 
-    supervisor::SessionInitSupervisor::spawn(system);
+    supervisor::SessionInitSupervisor::spawn(system, state.clone());
     notifier::DiscoveryNotifier::spawn(system, state);
 
     Ok(())

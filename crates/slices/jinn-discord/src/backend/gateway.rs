@@ -26,7 +26,7 @@ use error_stack::Report;
 use jinn_discord_msg::DiscordStatusUpdate;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use jinn_domain::feat::session::chat_session::ChatSessionState;
-use jinn_domain::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use jinn_session_store_msg::SessionLoadRequested;
 use jinn_domain::protocol::ChatEntry;
 use jinn_domain::{Bridge, State};
 use poise::serenity_prelude as serenity;

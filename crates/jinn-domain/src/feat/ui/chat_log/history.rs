@@ -32,7 +32,7 @@ use std::sync::Arc;
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
-use crate::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 use crate::feat::theme::Theme;
 use crate::protocol::ToolResultStatus;
 use crate::protocol::{ChatEntry, ChatEntryKind};

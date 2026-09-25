@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use crate::feat::session::chat_session::SessionState;
+use jinn_session_store_msg::SessionState;
 use crate::feat::theme::Theme;
 use crate::protocol::SessionId;
 use jinn_picker::RowCtx;

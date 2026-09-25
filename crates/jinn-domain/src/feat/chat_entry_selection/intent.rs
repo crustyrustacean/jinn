@@ -4,7 +4,7 @@ use crate::ChatEntry;
 use crate::ChatEntryKind;
 use crate::common::app_state::AppState;
 use crate::feat::session::ChatSessionState;
-use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
+use jinn_session_store_msg::SessionForkRequested;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{IntentResult, PinPosition};
 use jinn_session_history_msg::PushChatEntry;
@@ -414,7 +414,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
 /// propagate shown blocks, advance cursor.
 fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
     use crate::feat::context::protocol::event::ContextOverrideChanged;
-    use crate::feat::session_lifecycle::protocol::command::PersistSession;
+    use jinn_session_store_msg::PersistSession;
 
     // If cursor is on a collapsed block, skip past it before validation.
     // Validation calls selected_entry() which returns None for collapsed blocks.
@@ -476,7 +476,7 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 /// validation (e.g. collapsed ignored block).
 pub fn handle_reset_selected(state: &mut AppState) -> IntentResult {
     use crate::feat::context::protocol::event::ContextOverrideChanged;
-    use crate::feat::session_lifecycle::protocol::command::PersistSession;
+    use jinn_session_store_msg::PersistSession;
     use crate::protocol::ChatEntry;
     use crate::protocol::ContextOverride;
 

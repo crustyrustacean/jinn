@@ -1,7 +1,7 @@
 //! Session snapshot persistence.
 
 use jinn_domain::protocol::SessionId;
-use jinn_session_lifecycle_msg::PersistSession;
+use jinn_session_store_msg::PersistSession;
 
 use crate::session_store_actor::SessionStoreActor;
 

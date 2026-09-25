@@ -27,8 +27,8 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::feat::session::phase_machine::PhaseKind;
-use jinn_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+use jinn_session_msg::PhaseKind;
+use jinn_session_msg::SessionPhaseChanged;
 use jinn_domain::protocol::SessionId;
 
 /// Dependencies for spawning a [`TaskPhaseListenerActor`].

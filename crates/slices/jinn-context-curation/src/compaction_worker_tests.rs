@@ -630,7 +630,7 @@ fn session_continues_after_background_compaction() {
     let session = guard.session(&session_id);
     assert_eq!(
         session.phase(),
-        jinn_domain::feat::session::phase_machine::PhaseKind::Sending,
+        jinn_session_msg::PhaseKind::Sending,
         "session should remain in Sending phase after background compaction"
     );
 }

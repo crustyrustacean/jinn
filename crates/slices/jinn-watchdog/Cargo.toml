@@ -8,6 +8,7 @@ description = "The watchdog slice: always-on behavioral supervision of in-flight
 test-harness = ["jinn-domain/test-harness"]
 
 [dependencies]
+jinn-core-types = { workspace = true }
 jinn-inference-msg = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
@@ -17,7 +18,7 @@ trouper = { workspace = true }
 # fabric and read the watchdog config sections through Services (bus +
 # activation-time snapshot of the user preferences via State) — granted
 # at slice activation. No config data flows back kernel-side.
-jinn-core-types = { workspace = true }
+jinn-session-msg = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-preferences-config = { workspace = true }

@@ -4,12 +4,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::session::chat_session::{ChatSessionState, SessionState};
+use jinn_domain::feat::session::ChatSessionState;
+use jinn_session_store_msg::SessionState;
 use jinn_domain::feat::session::profile::{SessionProfile, SessionSeed};
-use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
-use jinn_domain::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
-use jinn_domain::feat::session::protocol::session_archived::SessionArchived;
-use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
+use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
+
+use jinn_session_msg::{SessionArchived, SessionClosed, SessionRemoved};
 use jinn_domain::feat::session::sessions_list::reconcile::reconcile_split;
 use jinn_domain::feat::session::sessions_list::state::update_visual_parents_on_removal_split;
 use jinn_domain::feat::session::snapshot_frozen_node;
@@ -58,7 +58,7 @@ impl SessionStoreActor {
                 session.is_busy()
                     || !matches!(
                         session.phase(),
-                        jinn_domain::feat::session::phase_machine::PhaseKind::Idle
+                        jinn_session_msg::PhaseKind::Idle
                     )
             })
         });
@@ -115,6 +115,10 @@ impl SessionStoreActor {
         self.snapshot_before_removal(session_id);
         let mcp_enablement = self.remove_and_replace(session_id);
 
+        self.publish(SessionRemoved {
+            session_id: session_id.clone(),
+        })
+        .await;
         self.publish(SessionArchived {
             session_id: session_id.clone(),
         })

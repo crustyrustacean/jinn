@@ -146,7 +146,7 @@ mod tests {
     }
     use super::*;
     use crate::common::focus::FocusScope;
-    use crate::feat::session::phase_machine::PhaseKind;
+    use jinn_session_msg::PhaseKind;
 
     fn handle_quit(state: &mut AppState) -> IntentResult {
         super::handle_quit(state)

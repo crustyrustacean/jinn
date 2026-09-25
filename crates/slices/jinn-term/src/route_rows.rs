@@ -297,7 +297,7 @@ pub fn handle_push_screen(state: &mut AppState, slices: &jinn_slices::Slices) ->
 
     let text = push_screen_text(&screen);
     let session_id = state.session.active_session_id().clone();
-    if state.active_session().phase() == jinn_domain::feat::session::phase_machine::PhaseKind::Idle
+    if state.active_session().phase() == jinn_session_msg::PhaseKind::Idle
     {
         IntentResult::empty().with_message(
             jinn_domain::feat::chat_input::protocol::command::EnqueueUserMessage {

@@ -18,8 +18,8 @@ use ratatui::text::Span;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::feat::session::picker_entry::SessionTreeEntry;
 use jinn_domain::feat::session::picker_entry::session_row;
-use jinn_domain::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
-use jinn_domain::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use jinn_session_store_msg::LoadSessionPickerEntries;
+use jinn_session_store_msg::SessionLoadRequested;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 
 /// Builds the session picker's spec.
@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use jinn_domain::PickerKind;
     use jinn_domain::feat::picker::intent::handle_open_picker;
-    use jinn_domain::feat::session::chat_session::SessionState;
+    use jinn_session_store_msg::SessionState;
 
     #[rstest::rstest]
     fn open_resets_storage_and_emits_the_load_message() {

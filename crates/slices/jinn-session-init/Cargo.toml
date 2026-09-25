@@ -21,6 +21,7 @@ trouper = { workspace = true }
 # kernel event types this slice translates and returns via relays.
 jinn-domain = { workspace = true, features = ["test-harness"] }
 jinn-session-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

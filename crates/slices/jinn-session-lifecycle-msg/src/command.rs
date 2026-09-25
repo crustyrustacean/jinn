@@ -48,20 +48,52 @@ pub struct RunSessionTeardown {
 
 impl BusMessage for RunSessionTeardown {}
 
-/// Request to persist a session to SQLite immediately.
-///
-/// Emitted by the `IntentHandler` alongside `RunSessionSetup` so the session
-/// is saved before the setup command even begins executing. This ensures the
-/// session's lifecycle metadata (name, args) survives an app crash during setup.
-/// Also used by other flows (teardown, archive) that need to persist state changes.
+/// Close a session, running its teardown lifecycle when configured.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
-#[schema(description = "Persist a session snapshot to the store.")]
-pub struct PersistSession {
-    /// The session to persist.
+#[schema(description = "Close a session (running teardown when due).")]
+pub struct CloseSession {
+    /// The session to close.
     pub session_id: SessionId,
 }
 
-impl BusMessage for PersistSession {}
+impl BusMessage for CloseSession {}
+
+/// Tear down a session, then archive it and all descendants.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Tear down a subtree root and archive its members.")]
+pub struct TeardownSessionTree {
+    /// The root of the subtree to tear down and archive.
+    pub root: SessionId,
+}
+
+impl BusMessage for TeardownSessionTree {}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, reason = "test code")]
+
+    use super::{CloseSession, TeardownSessionTree};
+    use jinn_core_types::SessionId;
+
+    #[rstest::rstest]
+    #[test]
+    fn promoted_lifecycle_commands_roundtrip_through_json() {
+        // Given one close command and one tree-teardown command.
+        let id = SessionId::new();
+        let root = SessionId::new();
+        let commands = (CloseSession { session_id: id.clone() }, TeardownSessionTree { root: root.clone() });
+
+        // When serializing and deserializing the wire tuple.
+        let json = serde_json::to_string(&commands).unwrap();
+        let restored: (CloseSession, TeardownSessionTree) = serde_json::from_str(&json).unwrap();
+
+        // Then every moved payload survives unchanged.
+        assert_eq!(restored.0.session_id, id);
+        assert_eq!(restored.1.root, root);
+    }
+}
+
+pub use jinn_session_store_msg::PersistSession;
 
 /// Request to set a session's working directory.
 ///

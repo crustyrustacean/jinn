@@ -13,7 +13,7 @@ use jinn_core_types::model_selection::{AlloyStrategy, ModelSelection};
 use jinn_domain::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_domain::common::ui_element::UiElement;
-use jinn_domain::feat::session::token_stats::TokenRecord;
+use jinn_token_count_msg::TokenRecord;
 
 #[rstest::rstest]
 fn name_returns_status_bar() {
@@ -233,7 +233,7 @@ fn render_shows_token_counts_with_zero_values() {
 #[rstest::rstest]
 fn render_shows_token_counts_with_values() {
     // Given a session with token records.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -269,7 +269,7 @@ fn render_shows_token_counts_with_values() {
 #[rstest::rstest]
 fn render_shows_cache_percent_when_cached_tokens_present() {
     // Given a session with a measured turn reporting cache hits.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -440,7 +440,7 @@ fn render_info_line_cache_segment_is_warning_between_90_and_94_percent(
 #[rstest::rstest]
 fn render_hides_cache_glyph_when_no_cached_tokens() {
     // Given a session with no cache hits (cached_tokens = None).
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -475,7 +475,7 @@ fn render_cache_percent_uses_measured_turns_only() {
     // Given a session with one measured turn (prompt=1000, cached=400) and one
     // cancelled turn (estimate=50, no usage). 400/1000 = 40%, not affected by
     // the cancelled turn's estimate.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -517,7 +517,7 @@ fn render_cache_percent_uses_measured_turns_only() {
 #[rstest::rstest]
 fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
     // Given a session with a cached context size but no model cache.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -777,7 +777,7 @@ fn render_shows_tilde_substitution_for_path_under_home() {
 #[rstest::rstest]
 fn render_shows_context_limit_with_usage_and_percentage() {
     // Given a session with a cached context size and a model cache with context_length.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Single(
@@ -832,7 +832,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
 #[rstest::rstest]
 fn render_falls_back_when_no_context_limit_in_cache() {
     // Given a session with a cached context size but no context_length in the model cache.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -890,7 +890,7 @@ fn render_falls_back_when_no_context_limit_in_cache() {
 #[rstest::rstest]
 fn render_falls_back_when_no_model_cache() {
     // Given a session with a cached context size but no model cache at all.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -1046,7 +1046,7 @@ fn render_always_shows_cost_even_when_zero() {
 #[rstest::rstest]
 fn render_shows_cost_with_non_zero_value() {
     // Given a session with a token record that has cost data.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -1081,7 +1081,7 @@ fn render_shows_cost_with_non_zero_value() {
 
 #[rstest::rstest]
 fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
 
     // Given a parent and child session whose aggregated ledgers report 96% cache hits.
     let mut element = StatusBarElement;
@@ -1209,7 +1209,7 @@ fn render_tree_cache_segment_keeps_muted_neighbors() {
 #[rstest::rstest]
 fn render_shows_cost_before_turns_indicator() {
     // Given a state with history entries producing turns and a token record with cost.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -1281,7 +1281,7 @@ fn render_hides_tree_aggregate_for_single_session() {
 #[rstest::rstest]
 fn render_shows_tree_aggregate_when_parent_has_child() {
     // Given a parent session with a child session.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
 
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
@@ -1803,7 +1803,7 @@ fn status_bar_omits_indicator_when_no_model_selected() {
 
 #[rstest::rstest]
 fn status_bar_alloy_indicator_reflects_last_dispatched_member() {
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     // Given an alloy where the last-dispatched member is image-capable.
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Alloy {

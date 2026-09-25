@@ -56,7 +56,7 @@ impl SessionStore for StubStore {
     async fn load_summaries(
         &self,
     ) -> Result<
-        Vec<jinn_domain::feat::session::session_summary::SessionSummary>,
+        Vec<jinn_session_store_msg::SessionSummary>,
         Report<SessionStoreError>,
     > {
         Ok(Vec::new())
@@ -100,7 +100,7 @@ impl SessionStore for StubStore {
     async fn load_unarchived_summaries(
         &self,
     ) -> Result<
-        Vec<jinn_domain::feat::session::session_summary::SessionSummary>,
+        Vec<jinn_session_store_msg::SessionSummary>,
         Report<SessionStoreError>,
     > {
         Ok(Vec::new())

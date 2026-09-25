@@ -49,7 +49,7 @@ pub struct ContextFilesLoaded {
     pub session_id: SessionId,
     /// The discovered context files (AGENTS.md / CLAUDE.md), ordered
     /// least-local (root-most ancestor) to most-local (cwd).
-    pub files: Vec<crate::feat::context::env_context::ContextFile>,
+    pub files: Vec<jinn_context::ContextFile>,
     /// Error message if scanning failed, `None` on success.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,

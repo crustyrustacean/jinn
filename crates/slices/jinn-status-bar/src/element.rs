@@ -13,7 +13,7 @@ use jinn_domain::feat::provider_infra::InputModalities;
 use jinn_domain::feat::provider_infra::ModelCache;
 use jinn_domain::feat::provider_infra::ModelInfo;
 use jinn_domain::feat::session::aggregate_tree_stats;
-use jinn_domain::feat::session::token_stats::TokenStats;
+use jinn_token_count_msg::TokenStats;
 use jinn_domain::resolve_effort;
 use jinn_theme::Theme;
 use ratatui::Frame;

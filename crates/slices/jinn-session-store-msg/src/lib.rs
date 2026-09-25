@@ -5,10 +5,17 @@
 //! `jinn-session-store` both use these types. Neither crate can own them
 //! without depending on the other, so they live at the shared low level.
 
+pub mod command;
+pub mod event;
 pub mod projections;
 pub mod session_search;
 pub mod session_state;
 
+pub use command::{
+    ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, PersistSession,
+    SessionForkRequested, SessionLoadRequested,
+};
+pub use event::SessionLoadCompleted;
 pub use projections::{FrozenTreeNode, SessionSummary};
 pub use session_search::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, SearchableRole, TranscriptEntry,

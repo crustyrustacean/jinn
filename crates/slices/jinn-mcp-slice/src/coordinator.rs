@@ -33,9 +33,9 @@ use crate::connection::{McpActor, McpActorDeps, McpConnectionStateProbe, McpConn
 use jinn_domain::Services;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::feat::session::protocol::session_archived::SessionArchived;
-use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
-use jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use jinn_session_msg::SessionArchived;
+use jinn_session_msg::SessionClosed;
+use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_domain::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionTeardownFinished,
 };
@@ -341,11 +341,17 @@ fn configured_servers(services: &Services) -> Vec<(String, McpServerConfig)> {
 impl MsgHandler<SessionLoadCompleted> for McpCoordinatorActor {
     async fn handle(&mut self, msg: &SessionLoadCompleted, _ctx: &mut MsgCtx<'_>) {
         // Given a session restored from disk.
-        let session_id = msg.session.session_id().clone();
-        let enabled = msg.session.enabled_mcp_servers().clone();
+        let enabled = self
+            .state
+            .read()
+            .session
+            .get(msg.session_id())
+            .map(|session| session.enabled_mcp_servers().clone());
 
         // When reconciling its enablement.
-        self.reconcile(&session_id, &enabled).await;
+        if let Some(enabled) = enabled {
+            self.reconcile(msg.session_id(), &enabled).await;
+        }
     }
 }
 
@@ -503,7 +509,8 @@ mod lifecycle_tests {
     use jinn_preferences_config::user_preferences::UserPreferences;
 
     use super::{McpCoordinatorActor, McpCoordinatorActorDeps};
-    use jinn_domain::feat::session::protocol::session_closed::SessionClosed;
+    use jinn_session_msg::SessionClosed;
+    use jinn_session_store_msg::SessionLoadCompleted;
     use jinn_mcp_msg::McpEnablementChanged;
 
     /// A configured MCP server whose command will never spawn successfully,
@@ -817,18 +824,14 @@ mod lifecycle_tests {
         let (_actor, _services, state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
         let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
-        let session = {
-            let app_state = state.read();
-            app_state
-                .session
-                .get(&session_id)
-                .expect("just inserted")
-                .clone()
-        };
 
         // When publishing SessionLoadCompleted for that session.
         harness
-            .publish(jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted { session })
+            .publish(
+                SessionLoadCompleted {
+                    session_id: session_id.clone(),
+                },
+            )
             .await;
 
         // Then an McpActor was spawned for the loaded server (a Starting

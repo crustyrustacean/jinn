@@ -31,8 +31,9 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use jinn_core_types::SessionId;
+use jinn_domain::common::state::State;
 use jinn_domain::feat::context::protocol::command::ScanContextFiles;
-use jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_domain::feat::session_lifecycle::protocol::event::{SessionCreated, SessionCwdChanged};
 use jinn_session_init_msg::RescanPromptTemplates;
 use jinn_session_msg::SessionSetupCompleted;
@@ -48,20 +49,25 @@ const CWD_SENTINEL: &str = ".";
 /// The session-init supervisor: a pure payload router from the
 /// trigger topic to the discovery partition set.
 pub struct SessionInitSupervisor {
+    /// Shared state used to resolve a completed session's working directory.
+    state: State,
     /// The partition set's public path (a static path, not a handle:
     /// the kernel resolves the entity per key).
     discovery: ActorPath,
 }
 
 impl ServiceActor for SessionInitSupervisor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "trait contract: start is never called (spawn uses start_with)"
+    )]
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Stateless: the partition set's path is a compile-time constant
-        // of the slice, so no injected handles are needed.
-        Ok(Self {
-            discovery: ActorPath::new(crate::DISCOVERY_PATH),
-        })
+        Err(
+            error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
+                .attach("SessionInitSupervisor is spawned via start_with"),
+        )
     }
 }
 
@@ -79,9 +85,21 @@ impl SessionInitSupervisor {
     /// Panics if the topic subscription fails, which can only happen on
     /// a broken actor system; the activate-before-first-trigger
     /// ordering relies on the cursor being registered.
-    pub fn spawn(system: &ActorSystem) -> ActorPath {
+    pub fn spawn(system: &ActorSystem, state: State) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(crate::SUPERVISOR_PATH))
+            .start_with({
+                let state = state.clone();
+                move || {
+                    let state = state.clone();
+                    Box::pin(async move {
+                        Ok(Self {
+                            state,
+                            discovery: ActorPath::new(crate::DISCOVERY_PATH),
+                        })
+                    })
+                }
+            })
             .mailbox(1024, trouper::inbox::OverloadPolicy::Block)
             .handles::<SessionCreated>()
             .handles::<SessionSetupCompleted>()
@@ -151,7 +169,15 @@ impl MsgHandler<SessionSetupCompleted> for SessionInitSupervisor {
 
 impl MsgHandler<SessionLoadCompleted> for SessionInitSupervisor {
     async fn handle(&mut self, msg: &SessionLoadCompleted, ctx: &mut MsgCtx<'_>) {
-        self.gated_run(ctx, msg.session_id(), msg.session.cwd());
+        let cwd = self
+            .state
+            .read()
+            .session
+            .get(msg.session_id())
+            .map(|session| session.cwd().to_path_buf());
+        if let Some(cwd) = cwd {
+            self.gated_run(ctx, msg.session_id(), &cwd);
+        }
     }
 }
 

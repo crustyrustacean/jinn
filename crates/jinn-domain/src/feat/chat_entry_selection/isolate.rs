@@ -14,7 +14,7 @@
 use super::validator;
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
-use crate::feat::session_lifecycle::protocol::command::PersistSession;
+use jinn_session_store_msg::PersistSession;
 use crate::protocol::{ChatEntryId, ContextOverride, IntentResult};
 use jinn_session_history::history_editor::tool_group_end;
 

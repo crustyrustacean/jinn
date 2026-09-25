@@ -77,7 +77,7 @@ pub fn handle_load_subagent_session(state: &mut AppState) -> IntentResult {
 
     state.session.begin_load(child_id.clone());
     IntentResult::new_message(
-        crate::feat::session::protocol::session_load_requested::SessionLoadRequested {
+        jinn_session_store_msg::SessionLoadRequested {
             session_id: child_id,
         },
     )

@@ -6,6 +6,7 @@ description = "The context-curation slice: auto-prune strategies and history com
 
 [dependencies]
 jinn-context-curation-msg = { workspace = true }
+jinn-session-msg = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-token-count-msg = { workspace = true }
 jinn-preferences-config = { workspace = true }

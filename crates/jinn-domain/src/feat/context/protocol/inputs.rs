@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use jinn_core_types::SessionId;
 
-use crate::feat::context::env_context::ContextFile;
+use jinn_context::ContextFile;
 use crate::feat::persona::Persona;
 use crate::feat::skills::Skill;
 use crate::protocol::ChatEntry;

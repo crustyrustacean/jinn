@@ -1,7 +1,7 @@
 use crate::BusService;
-use crate::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 use crate::feat::session::protocol::history_appended::HistoryAppended;
-use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+use jinn_session_msg::SessionPhaseChanged;
 use crate::protocol::SessionId;
 
 /// Emit a `SessionPhaseChanged` event if the phase actually changed.
@@ -94,7 +94,7 @@ use parking_lot::Mutex;
 #[cfg(test)]
 /// A fake session store that returns pre-loaded sessions for testing.
 pub(crate) struct PopulatedFakeStore {
-    summaries: parking_lot::Mutex<Vec<crate::feat::session::session_summary::SessionSummary>>,
+    summaries: parking_lot::Mutex<Vec<jinn_session_store_msg::SessionSummary>>,
     sessions: parking_lot::Mutex<Vec<crate::feat::session::chat_session::ChatSessionState>>,
     archived: parking_lot::Mutex<Vec<crate::protocol::SessionId>>,
     saved: parking_lot::Mutex<Vec<crate::feat::session::chat_session::ChatSessionState>>,
@@ -106,12 +106,12 @@ impl PopulatedFakeStore {
     pub(super) fn new(sessions: Vec<crate::feat::session::chat_session::ChatSessionState>) -> Self {
         let summaries = sessions
             .iter()
-            .map(|s| crate::feat::session::session_summary::SessionSummary {
+            .map(|s| jinn_session_store_msg::SessionSummary {
                 session_id: s.session_id().clone(),
                 title: s.title().unwrap_or("Untitled Session").to_owned(),
                 updated_at: *s.updated_at(),
                 created_at: *s.created_at(),
-                session_state: crate::feat::session::chat_session::SessionState::Loaded,
+                session_state: jinn_session_store_msg::SessionState::Loaded,
                 parent_session: s.parent_session().clone(),
                 project: s.project().map(std::path::Path::to_path_buf),
             })
@@ -167,7 +167,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
     async fn load_summaries(
         &self,
     ) -> Result<
-        Vec<crate::feat::session::session_summary::SessionSummary>,
+        Vec<jinn_session_store_msg::SessionSummary>,
         error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
     > {
         if *self.fail_load_summaries.lock() {
@@ -237,12 +237,12 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
         // Keep summaries in sync so follow-up loads see the fork.
         self.summaries
             .lock()
-            .push(crate::feat::session::session_summary::SessionSummary {
+            .push(jinn_session_store_msg::SessionSummary {
                 session_id: new_id.clone(),
                 title: source.title().unwrap_or("Untitled Session").to_owned(),
                 updated_at: *source.updated_at(),
                 created_at: *source.created_at(),
-                session_state: crate::feat::session::chat_session::SessionState::Loaded,
+                session_state: jinn_session_store_msg::SessionState::Loaded,
                 parent_session: Some(source_session_id.clone()),
                 project: source.project().map(std::path::Path::to_path_buf),
             });
@@ -277,7 +277,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
     async fn load_unarchived_summaries(
         &self,
     ) -> Result<
-        Vec<crate::feat::session::session_summary::SessionSummary>,
+        Vec<jinn_session_store_msg::SessionSummary>,
         error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
     > {
         Ok(self.summaries.lock().clone())

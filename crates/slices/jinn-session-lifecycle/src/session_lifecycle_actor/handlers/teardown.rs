@@ -4,12 +4,13 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::CommandTemplate;
 use jinn_session_lifecycle_msg::builtin::BuiltinId;
+use jinn_session_store_msg::{ArchiveSessionTree, PersistSession};
 use jinn_session_lifecycle_msg::{
-    FinishSessionTeardown, PersistSession, RunSessionTeardown, SessionTeardownFinished,
+    FinishSessionTeardown, RunSessionTeardown, SessionTeardownFinished,
     TeardownFollowUp,
 };
 
@@ -64,7 +65,7 @@ impl SessionLifecycleActor {
 
     pub(in crate::session_lifecycle_actor) async fn handle_teardown_session_tree(
         &mut self,
-        payload: &jinn_domain::feat::session::protocol::teardown_session_tree::TeardownSessionTree,
+        payload: &jinn_session_lifecycle_msg::TeardownSessionTree,
     ) {
         if self.guarded_tree_closure(&payload.root).await.is_none() {
             return;
@@ -223,12 +224,7 @@ impl SessionLifecycleActor {
     }
 
     pub(super) async fn publish_archive_tree(&self, root: &SessionId) {
-        self.publish(
-            jinn_domain::feat::session::protocol::archive_session_tree::ArchiveSessionTree {
-                root: root.clone(),
-            },
-        )
-        .await;
+        self.publish(ArchiveSessionTree { root: root.clone() }).await;
     }
 
     fn lifecycle_teardown(

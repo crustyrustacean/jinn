@@ -24,11 +24,11 @@ pub use jinn_sidebar_msg::{ArchiveTreePrompt, TreePromptAction};
 fn command_for(action: TreePromptAction, root: SessionId) -> crate::protocol::IntentResult {
     match action {
         TreePromptAction::Archive => {
-            use crate::feat::session::protocol::archive_session_tree::ArchiveSessionTree;
+            use jinn_session_store_msg::ArchiveSessionTree;
             crate::protocol::IntentResult::new_message(ArchiveSessionTree { root })
         }
         TreePromptAction::TeardownAndArchive => {
-            use crate::feat::session::protocol::teardown_session_tree::TeardownSessionTree;
+            use jinn_session_lifecycle_msg::TeardownSessionTree;
             crate::protocol::IntentResult::new_message(TeardownSessionTree { root })
         }
     }

@@ -39,6 +39,7 @@ pub mod session_new;
 pub mod session_phase_changed {
     pub use jinn_session_msg::SessionPhaseChanged;
 }
+pub mod session_removed;
 pub mod teardown_session_tree;
 pub mod user_interacted;
 
@@ -50,5 +51,6 @@ pub use retry_stalled_session::RetryStalledSession;
 pub use session_archived::SessionArchived;
 pub use session_closed::SessionClosed;
 pub use session_phase_changed::SessionPhaseChanged;
+pub use session_removed::SessionRemoved;
 pub use teardown_session_tree::TeardownSessionTree;
 pub use user_interacted::UserInteracted;

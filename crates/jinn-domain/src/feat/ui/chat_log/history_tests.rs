@@ -1399,7 +1399,7 @@ fn render_annotation_entry_expanded_shows_source_title_and_url() {
 /// optional child session in the given phase.
 fn task_waiting_fixture(
     child_id: Option<crate::protocol::SessionId>,
-    child_phase: Option<crate::feat::session::phase_machine::PhaseKind>,
+    child_phase: Option<jinn_session_msg::PhaseKind>,
 ) -> AppState {
     use crate::protocol::ChatEntryKind;
     use jinn_tools_msg::TASK_TOOL_NAME;
@@ -1420,10 +1420,10 @@ fn task_waiting_fixture(
     if let (Some(child), Some(phase)) = (child_id, child_phase) {
         let child_session = state.session.get_or_create(&child);
         match phase {
-            crate::feat::session::phase_machine::PhaseKind::Sending => {
+            jinn_session_msg::PhaseKind::Sending => {
                 child_session.begin_sending();
             }
-            crate::feat::session::phase_machine::PhaseKind::Streaming => {
+            jinn_session_msg::PhaseKind::Streaming => {
                 child_session.begin_sending();
                 child_session.begin_streaming();
             }
@@ -1439,7 +1439,7 @@ fn buffer_contains(buffer: &ratatui::buffer::Buffer, needle: &str) -> bool {
 
 #[rstest::rstest]
 fn waiting_line_renders_for_pending_task_call_with_running_child() {
-    use crate::feat::session::phase_machine::PhaseKind;
+    use jinn_session_msg::PhaseKind;
 
     // Given a pending task call linked to an in-memory child in Sending phase.
     let mut element = ChatLogElement::new();
@@ -1583,7 +1583,7 @@ fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
     let child_id = crate::protocol::SessionId::new();
     let mut state = task_waiting_fixture(
         Some(child_id.clone()),
-        Some(crate::feat::session::phase_machine::PhaseKind::Streaming),
+        Some(jinn_session_msg::PhaseKind::Streaming),
     );
 
     let (mut terminal, area) = setup_term(80, 12);

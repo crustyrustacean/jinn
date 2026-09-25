@@ -12,6 +12,8 @@ trouper = { workspace = true }
 # (State + SessionCap), granted at slice activation.
 jinn-core-types = { workspace = true }
 jinn-session-history-msg = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-slices = { workspace = true }
 serde_json = { workspace = true }

@@ -14,13 +14,14 @@ use crate::feat::session::sessions_list::close::validate_session_close;
 use crate::feat::session::sessions_list::state::sorted_open_sessions;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
 use crate::feat::session_lifecycle::protocol::command::{
-    PersistSession, RunSessionSetup, RunSessionTeardown,
+    RunSessionSetup, RunSessionTeardown,
 };
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::protocol::{IntentResult, SessionId};
 use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::setup_running_msg;
+use jinn_session_store_msg::PersistSession;
 
 /// Errors that can occur when validating arg input.
 #[derive(Debug, Error)]
@@ -447,7 +448,7 @@ fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLife
 /// The session actor handles actual removal, active session switching, and emits
 /// `SessionClosed` for the sidebar actor to clamp the cursor.
 fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
-    use crate::feat::session::protocol::close_session::CloseSession;
+    use jinn_session_lifecycle_msg::CloseSession;
     IntentResult::new_message(CloseSession {
         session_id: closing_id.clone(),
     })

@@ -8,6 +8,8 @@ jinn-mcp-msg = { workspace = true }
 jinn-sidebar-msg = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-session-history-msg = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
 jinn-term-msg = { workspace = true }
 jinn-theme = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.

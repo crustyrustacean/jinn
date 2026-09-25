@@ -5,31 +5,33 @@ use std::collections::{HashMap, HashSet};
 use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::session::SessionStoreService;
-use jinn_domain::feat::session::chat_session::{ChatSessionState, SessionState};
-use jinn_domain::feat::session::protocol::session_fork_requested::SessionForkRequested;
-use jinn_domain::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use jinn_domain::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use jinn_domain::feat::session::chat_session::ChatSessionState;
+use jinn_session_store_msg::SessionForkRequested;
+use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested};
 use jinn_domain::feat::session::snapshot_frozen_node;
 use jinn_domain::protocol::{ChatEntry, system::ActiveSessionChanged};
 
 use crate::session_store_actor::SessionStoreActor;
 
 impl SessionStoreActor {
-    /// Inserts a loaded session before publishing its completion event.
-    pub(crate) async fn load_and_insert(&self, session: ChatSessionState) {
+    /// Inserts a loaded session and returns its ID.
+    pub(crate) fn insert_loaded_session(
+        &self,
+        session: ChatSessionState,
+    ) -> SessionId {
         let session_id = session.session_id().clone();
         self.state.with_session(&self.session_cap, |view| {
-            view.session.map().insert(session.clone());
+            view.session.map().insert(session);
             view.session.map().remove_frozen_node(&session_id);
         });
-        self.publish(SessionLoadCompleted { session }).await;
+        session_id
     }
 
-    /// Restores a loaded session into active state and persists the result.
-    pub(crate) async fn handle_session_load_completed(&self, payload: &SessionLoadCompleted) {
-        let session_id = payload.session.session_id().clone();
+    /// Completes initialization of an explicitly loaded session, then publishes its ID.
+    pub(crate) async fn restore_loaded_session(&self, session: ChatSessionState) {
+        let session_id = session.session_id().clone();
         let original_cwd = {
-            let model = if payload.session.model_selection().is_no_provider() {
+            let model = if session.model_selection().is_no_provider() {
                 self.state
                     .read()
                     .frontend
@@ -38,11 +40,11 @@ impl SessionStoreActor {
                     .clone()
                     .unwrap_or_default()
             } else {
-                payload.session.model_selection().clone()
+                session.model_selection().clone()
             };
 
             self.state.with_session(&self.session_cap, |view| {
-                view.session.map().insert(payload.session.clone());
+                view.session.map().insert(session);
             });
             self.state.with_preferences(&self.frontend_cap, |ops| {
                 ops.frontend().update_sections(|sections| {
@@ -77,6 +79,7 @@ impl SessionStoreActor {
         })
         .await;
         self.save_active_session(&session_id).await;
+        self.publish(SessionLoadCompleted { session_id }).await;
     }
 
     /// Replaces a missing working directory with the application default.
@@ -99,13 +102,11 @@ impl SessionStoreActor {
     pub(crate) async fn on_load_requested(&self, payload: &SessionLoadRequested) {
         let store = self.services.session_store.clone();
         match store.load_session(&payload.session_id).await {
-            Ok(Some(mut session)) => {
+            Ok(Some(session)) => {
                 if let Err(error) = store.set_archived(&payload.session_id, false).await {
                     tracing::warn!(?error, "failed to unarchive session on load");
                 }
-                session.set_session_state(SessionState::Loaded);
-                self.load_and_insert(session).await;
-                self.restore_loaded_session(&payload.session_id).await;
+                self.restore_loaded_session(session).await;
                 self.hydrate_tree_frozen_nodes(&store, &payload.session_id)
                     .await;
             }
@@ -114,29 +115,13 @@ impl SessionStoreActor {
                     session_id = ?payload.session_id,
                     "session load returned None"
                 );
-                self.publish_empty_session(&payload.session_id).await;
+                self.clear_load();
             }
             Err(error) => {
                 tracing::warn!(?error, "failed to load session");
-                self.publish_empty_session(&payload.session_id).await;
+                self.clear_load();
             }
         }
-    }
-
-    /// Runs the user-facing restore flow for a session already in state.
-    async fn restore_loaded_session(&self, session_id: &SessionId) {
-        let Some(session) = self.state.read().session.get(session_id).cloned() else {
-            return;
-        };
-        self.handle_session_load_completed(&SessionLoadCompleted { session })
-            .await;
-    }
-
-    /// Publishes an empty fallback session when a requested load fails.
-    async fn publish_empty_session(&self, session_id: &SessionId) {
-        let mut session = ChatSessionState::new();
-        session.set_session_id(session_id.clone());
-        self.publish(SessionLoadCompleted { session }).await;
     }
 
     /// Persists the source, forks it in the store, then restores the child.
@@ -164,8 +149,7 @@ impl SessionStoreActor {
 
         match self.services.session_store.load_session(&new_id).await {
             Ok(Some(session)) => {
-                self.load_and_insert(session).await;
-                self.restore_loaded_session(&new_id).await;
+                self.restore_loaded_session(session).await;
             }
             Ok(None) => {
                 tracing::warn!("forked session not found after creation");

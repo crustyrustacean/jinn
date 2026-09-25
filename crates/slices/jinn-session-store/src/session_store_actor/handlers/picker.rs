@@ -1,6 +1,6 @@
 //! Session picker hydration from the store.
 
-use jinn_domain::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use jinn_session_store_msg::LoadSessionPickerEntries;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 
 use crate::session_store_actor::SessionStoreActor;

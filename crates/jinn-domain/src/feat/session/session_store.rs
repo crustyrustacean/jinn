@@ -15,7 +15,7 @@ use error_stack::Report;
 use wherror::Error;
 
 use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session::session_summary::SessionSummary;
+use jinn_session_store_msg::SessionSummary;
 use crate::feat::session_search::{SearchOutcome, SearchParams, TranscriptWindow};
 use crate::protocol::{ChatEntryId, SessionId};
 

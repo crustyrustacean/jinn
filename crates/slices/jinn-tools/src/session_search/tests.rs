@@ -18,7 +18,7 @@ use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::feat::session::session_store::{
     SessionStore, SessionStoreError, SessionStoreService,
 };
-use jinn_domain::feat::session::session_summary::SessionSummary;
+use jinn_session_store_msg::SessionSummary;
 use jinn_domain::feat::session_search::{SearchOutcome, SearchParams, SearchableRole};
 use jinn_domain::protocol::{ChatEntryId, SessionId};
 
@@ -188,7 +188,7 @@ fn summary(id: &str, title: &str, project: Option<&str>) -> SessionSummary {
         title: title.to_owned(),
         updated_at: jiff::Timestamp::now(),
         created_at: jiff::Timestamp::now(),
-        session_state: jinn_domain::feat::session::chat_session::SessionState::Loaded,
+        session_state: jinn_session_store_msg::SessionState::Loaded,
         parent_session: None,
         project: project.map(std::path::PathBuf::from),
     }

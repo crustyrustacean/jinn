@@ -9,7 +9,7 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger, InputMode};
-use crate::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 use crate::protocol::ChatEntry;
 
 /// Empty slice registry + route table for handler tests that don't
@@ -1900,7 +1900,7 @@ fn hash_autocomplete_populates_matches_from_template_store() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+        jinn_context::PromptTemplateStore::from_vec(vec![
             PromptTemplate {
                 name: "my_template".to_owned(),
                 description: "A test template".to_owned(),

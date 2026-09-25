@@ -25,9 +25,9 @@ use jinn_core_types::{ChatEntryId, ContextOverride, EntryTiming, SessionId};
 use jinn_domain::feat::session::chat_session::{
     ChatSessionState, LifecycleScriptState, SessionCore, SessionOrigin, SessionState,
 };
-use jinn_domain::feat::session::profile::SessionProfile;
-use jinn_domain::feat::session::session_summary::SessionSummary;
-use jinn_domain::feat::session::token_stats::TokenRecord;
+use jinn_core_types::SessionProfile;
+use jinn_session_store_msg::SessionSummary;
+use jinn_token_count_msg::TokenRecord;
 use jinn_provider::Attachment;
 use jinn_session_store_msg::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, TranscriptEntry, TranscriptWindow,

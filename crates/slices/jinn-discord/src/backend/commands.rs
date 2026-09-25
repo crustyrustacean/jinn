@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use crate::authorize;
 use jinn_context::PromptTemplateStore;
-use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
+use jinn_session_store_msg::ArchiveSession;
 use jinn_domain::protocol::KernelIntent;
 use jinn_domain::{Bridge, SessionId};
 use jinn_preferences_config::schemas::SessionLifecycle;

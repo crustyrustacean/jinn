@@ -546,7 +546,7 @@ async fn token_ledger_round_trips() {
     session.set_session_id(session_id.clone());
     session.set_title("Tokens".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    session.push_token_record(jinn_domain::feat::session::token_stats::TokenRecord {
+    session.push_token_record(jinn_token_count_msg::TokenRecord {
         model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 100,
@@ -575,7 +575,7 @@ async fn token_ledger_round_trips() {
 async fn token_ledger_round_trips_prompt_and_cached_tokens() {
     // Given a session with token records carrying provider-reported prompt
     // and cached token counts, plus one record with both as None.
-    use jinn_domain::feat::session::token_stats::TokenRecord;
+    use jinn_token_count_msg::TokenRecord;
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
@@ -1329,7 +1329,7 @@ async fn legacy_automated_row_loads_as_normal_session() {
     );
     assert_eq!(
         loaded.session_state(),
-        jinn_domain::feat::session::chat_session::SessionState::Loaded,
+        jinn_session_store_msg::SessionState::Loaded,
     );
 }
 
@@ -1427,7 +1427,7 @@ fn metadata_blob_is_unchanged_by_group_composition() {
     session.set_lifecycle_name(Some("dev".to_owned()));
     session.set_lifecycle_args(vec!["--fast".to_owned()]);
     session.advance_lifecycle_after_setup();
-    session.set_session_state(jinn_domain::feat::session::chat_session::SessionState::Archived);
+    session.set_session_state(jinn_session_store_msg::SessionState::Archived);
     session.set_persist(false);
 
     // When converting the session core to the persisted metadata representation.
@@ -1815,7 +1815,7 @@ async fn set_archived_many_round_trips_subset() {
             .find(|s| s.session_id == *id)
             .expect("summary")
             .session_state
-            == jinn_domain::feat::session::chat_session::SessionState::Archived
+            == jinn_session_store_msg::SessionState::Archived
     };
     assert!(is_archived(&a));
     assert!(!is_archived(&b));
@@ -1840,7 +1840,7 @@ async fn set_archived_many_with_empty_slice_is_noop() {
     let summaries = store.load_summaries().await.expect("summaries");
     assert_eq!(
         summaries[0].session_state,
-        jinn_domain::feat::session::chat_session::SessionState::Loaded
+        jinn_session_store_msg::SessionState::Loaded
     );
 }
 
@@ -1867,7 +1867,7 @@ async fn set_archived_many_false_un_archives() {
     // Then both sessions are loaded again.
     let summaries = store.load_summaries().await.expect("summaries");
     assert!(summaries.iter().all(|s| {
-        s.session_state == jinn_domain::feat::session::chat_session::SessionState::Loaded
+        s.session_state == jinn_session_store_msg::SessionState::Loaded
     }));
 }
 
@@ -1889,7 +1889,7 @@ async fn set_archived_many_ignores_unknown_ids() {
     let summaries = store.load_summaries().await.expect("summaries");
     assert_eq!(
         summaries[0].session_state,
-        jinn_domain::feat::session::chat_session::SessionState::Archived
+        jinn_session_store_msg::SessionState::Archived
     );
 }
 

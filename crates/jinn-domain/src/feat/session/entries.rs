@@ -240,9 +240,9 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
     use crate::feat::session::chat_session::ChatSessionState;
-    use crate::feat::session::chat_session::SessionState;
+    use jinn_session_store_msg::SessionState;
     use crate::feat::session::picker_entry::SessionTreeEntry;
-    use crate::feat::session::session_summary::SessionSummary;
+    use jinn_session_store_msg::SessionSummary;
     use crate::feat::theme::default_theme;
     use crate::protocol::SessionId;
     use jinn_selection_widget::PickerItem;

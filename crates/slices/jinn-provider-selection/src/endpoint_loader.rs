@@ -7,7 +7,7 @@
 //! the fetch stays behind the actor's cache.
 
 use jinn_core_types::ModelSelection;
-use jinn_provider_selection_msg::endpoint::Endpoint;
+use jinn_core_types::Endpoint;
 use jinn_provider_selection_msg::endpoint::EndpointEntry;
 
 use jinn_domain::Services;
