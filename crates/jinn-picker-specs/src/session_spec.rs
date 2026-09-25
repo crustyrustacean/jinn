@@ -168,7 +168,7 @@ mod tests {
 
         // When confirming through the real confirm path.
         let registry = crate::build_picker_registry();
-        let (result, _redispatch) =
+        let result =
             jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
 
         // Then the switch command is dispatched and the picker closes.

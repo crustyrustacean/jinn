@@ -78,6 +78,7 @@ fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
     match id.as_str() {
         "persona" => Some(Scope::PickerPersona),
         "skill" => Some(Scope::PickerSkill),
+        "theme" => Some(Scope::PickerTheme),
         "tool" => Some(Scope::PickerTool),
         "mcp-server" => Some(Scope::PickerMcpServer),
         "session-lifecycle" => Some(Scope::PickerLifecycle),
@@ -404,6 +405,34 @@ mod tests {
     use jinn_slices::route::RouteOutcome;
     use jinn_slices::route::RouteRow;
     use ratatui_which_key::Keymap;
+
+    /// Drift guard: every registered spec must resolve to a static keymap
+    /// scope in [`picker_spec_scope`].
+    ///
+    /// A spec missing from that table has all of its declared bind rows
+    /// silently dropped by `bind_picker_spec_rows` — the picker's footer
+    /// advertises a key that does nothing. The mapping also feeds
+    /// `pickers.spec().bottom_rows()` geometry consumers, so a gap there is
+    /// invisible until the picker is on screen.
+    #[rstest::rstest]
+    #[test]
+    fn every_registered_spec_maps_to_a_static_keymap_scope() {
+        // Given the real picker registry.
+        let registry = jinn_picker_specs::build_picker_registry();
+
+        // When mapping every registered spec id to its scope.
+        let unresolved: Vec<&str> = registry
+            .ids()
+            .into_iter()
+            .filter(|id| super::picker_spec_scope(jinn_picker::PickerId::new(id)).is_none())
+            .collect();
+
+        // Then every spec resolves to a scope.
+        assert!(
+            unresolved.is_empty(),
+            "specs with no keymap scope — their bind rows would be dropped: {unresolved:?}"
+        );
+    }
 
     fn quake_open_row() -> RouteRow {
         RouteRow {

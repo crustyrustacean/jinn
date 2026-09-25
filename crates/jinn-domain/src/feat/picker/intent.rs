@@ -1,16 +1,15 @@
 //! Picker intent handlers - navigation, filtering, confirmation, and scope toggling.
 //!
 //! Handles all picker intents: open, insert char, backspace, confirm, move up/down,
-//! cursor movement, and keymap scope filter toggle. The `handle_picker_confirm`
-//! function returns `(IntentResult, Option<Intent>)` to allow the caller
-//! (`jinn-intent`) to re-dispatch keymap intents without creating a circular
-//! dependency.
+//! and cursor movement. Confirmation is owned entirely by the active spec's
+//! confirm hook — there is no intent re-dispatch, so no handler here returns a
+//! follow-up intent.
 
 use crate::common::app_state::AppState;
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_slices::FocusScope;
 
-use crate::protocol::{IntentResult, KernelIntent, PickerKind};
+use crate::protocol::{IntentResult, PickerKind};
 
 use super::geometry::active_viewport;
 use super::validator;
@@ -102,18 +101,15 @@ pub fn handle_backspace(state: &mut AppState) -> IntentResult {
 
 /// Confirms the active picker selection.
 ///
-/// Returns `(IntentResult, Option<Intent>)`. For Provider and
-/// Session pickers, the second element is `None`. For Keymap picker, returns
-/// `(IntentResult::empty(), Some(selected_intent))` so the caller can re-dispatch.
+/// Every kind is spec-driven: the spec's confirm hook owns confirm behavior.
 pub fn handle_picker_confirm(
     state: &mut AppState,
     pickers: &jinn_picker::PickerRegistry,
-) -> (IntentResult, Option<KernelIntent>) {
+) -> IntentResult {
     if validator::validate_picker_confirm(state).is_err() {
-        return (IntentResult::empty(), None);
+        return IntentResult::empty();
     }
 
-    // Every kind is spec-driven: the confirm hook owns confirm behavior.
     // An empty registry (test seams) falls through with nothing to do.
     if state
         .frontend
@@ -122,16 +118,13 @@ pub fn handle_picker_confirm(
         .and_then(jinn_picker::spec_id_for_kind)
         .is_some_and(|id| pickers.get(id).is_some())
     {
-        return (
-            crate::feat::picker::action::run_active_hook(
-                state,
-                pickers,
-                crate::feat::picker::action::Hook::Confirm,
-            ),
-            None,
+        return crate::feat::picker::action::run_active_hook(
+            state,
+            pickers,
+            crate::feat::picker::action::Hook::Confirm,
         );
     }
-    (IntentResult::empty(), None)
+    IntentResult::empty()
 }
 
 /// Moves the selection up in the active picker.
@@ -281,11 +274,10 @@ mod tests {
         let len_before = state.frontend.scope_len();
 
         // When confirming.
-        let (result, follow_up) = handle_picker_confirm(&mut state, &empty_pickers());
+        let result = handle_picker_confirm(&mut state, &empty_pickers());
 
-        // Then no commands, no follow-up, and the scope stack is unchanged.
+        // Then no commands are emitted and the scope stack is unchanged.
         assert!(result.message_names.is_empty(), "no commands");
-        assert!(follow_up.is_none(), "no follow-up");
         assert_eq!(
             state.frontend.scope_len(),
             len_before,

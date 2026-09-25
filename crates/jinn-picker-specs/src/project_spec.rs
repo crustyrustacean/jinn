@@ -232,7 +232,7 @@ mod tests {
             jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
 
         // Then a new session was created (a message was emitted to drive it).
-        assert!(!result.0.message_names.is_empty());
+        assert!(!result.message_names.is_empty());
         // And the new active session's CWD is the chosen project dir, not the
         // previously active session's CWD.
         assert_eq!(

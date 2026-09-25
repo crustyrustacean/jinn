@@ -27,6 +27,7 @@ use crate::hooks::PickerStatusFn;
 use crate::host::PickerHost;
 use crate::id::PickerId;
 use crate::outcome::PickerOutcome;
+use crate::render::RenderOutcome;
 use crate::widget::WidgetKind;
 
 /// The id of the persona picker's spec.
@@ -175,11 +176,13 @@ pub trait ErasedPickerSpec: Send + Sync {
 
     /// The erased render driver: dispatches on the widget kind and drives
     /// the corresponding selection widget with the spec's title, footers,
-    /// colors, preview scroll, and preview cache. Returns `false` when the
-    /// host lent no compatible storage (e.g. the kind is mapped but its
-    /// storage has not been wrapped yet) — callers fall back to the
-    /// legacy renderer.
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, host: &dyn PickerHost) -> bool;
+    /// colors, preview scroll, and preview cache.
+    ///
+    /// Reports [`RenderOutcome::NoCompatibleStorage`] when the host lent
+    /// nothing this spec can drive, in which case `area` is left untouched.
+    /// There is no fallback renderer: a spec that cannot draw is a wiring
+    /// defect, and callers must report it rather than paper over it.
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, host: &dyn PickerHost) -> RenderOutcome;
 
     /// Downcast seam for the registry's typed window: the spec back as an
     /// `Any` handle so `make_items` can recover the entry type.
@@ -345,7 +348,7 @@ where
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, host: &dyn PickerHost) -> bool {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, host: &dyn PickerHost) -> RenderOutcome {
         crate::render::render_spec(self, frame, area, host)
     }
 

@@ -54,6 +54,7 @@ pub use registry::{
     SESSION_ID, SESSION_LIFECYCLE_ID, SKILL_ID, TASK_LIST_ID, THEME_ID, TOOL_ID, spec_id_for_kind,
 };
 pub use render::KeybindLine;
+pub use render::RenderOutcome;
 pub use render::keybind_line;
 pub use scroll::PickerScrolls;
 pub use widget::{PickerWidget, PreviewSpec, WidgetKind};

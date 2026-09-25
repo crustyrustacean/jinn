@@ -14,7 +14,18 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
         && let Some(spec) = ctx.pickers.get(id)
     {
         let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(ctx.state);
-        spec.render(frame, area, &host);
+        let outcome = spec.render(frame, area, &host);
+        // There is no fallback renderer, so a spec that could not draw
+        // leaves an empty popup on screen. That is a wiring defect — the
+        // spec's storage shape does not match what the host lends — and it
+        // is otherwise completely silent, so say so loudly.
+        if !outcome.drew() {
+            tracing::error!(
+                picker = spec.id().as_str(),
+                widget = ?spec.widget_kind(),
+                "picker spec drew nothing: the host lent no storage it could drive",
+            );
+        }
     }
 }
 
@@ -136,6 +147,54 @@ mod tests {
         assert_eq!(
             drawn_footer_rows, declared,
             "picker {kind} draws {drawn_footer_rows} footer rows but declares {declared}",
+        );
+    }
+
+    /// Every registered spec must draw through the real render host.
+    ///
+    /// A spec whose lent storage is the wrong shape — a tree spec handed a
+    /// flat `SelectionState`, or a flat spec with no compatible lend — draws
+    /// *nothing at all*: no error, no log, just an empty frame. This walks
+    /// every spec the app actually registers so that failure mode is caught
+    /// here rather than on screen.
+    #[rstest::rstest]
+    #[test]
+    fn every_registered_spec_renders_a_non_empty_frame() {
+        // Given the real picker registry and default state.
+        let state = AppState::default_with_scope_focus();
+        let pickers = jinn_picker_specs::build_picker_registry();
+        let area = Rect::new(0, 0, 100, 30);
+
+        // When rendering each registered spec through the real render host.
+        let blank_specs: Vec<&str> = pickers
+            .ids()
+            .into_iter()
+            .filter(|id| {
+                let spec = pickers.get(id).expect("registered spec");
+                let mut terminal =
+                    Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+                terminal
+                    .draw(|frame| {
+                        let host =
+                            jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
+                        spec.render(frame, area, &host);
+                    })
+                    .expect("draw");
+                let rendered: String = terminal
+                    .backend()
+                    .buffer()
+                    .content
+                    .iter()
+                    .map(ratatui::buffer::Cell::symbol)
+                    .collect();
+                rendered.trim().is_empty()
+            })
+            .collect();
+
+        // Then no spec renders an empty frame.
+        assert!(
+            blank_specs.is_empty(),
+            "specs that rendered nothing: {blank_specs:?}"
         );
     }
 

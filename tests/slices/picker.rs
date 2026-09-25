@@ -93,8 +93,7 @@ fn confirm_session_picker_begins_loading_the_selected_session() {
     });
 
     // When confirming through the kernel's dispatch.
-    let (result, _) =
-        jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
+    let result = jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
 
     // Then the load began for the selected (second) session.
     let guard = state

@@ -375,14 +375,7 @@ impl IntentHandler {
             }
             KernelIntent::PickerBackspace => crate::feat::picker::intent::handle_backspace(state),
             KernelIntent::PickerConfirm => {
-                let (result, maybe_intent) =
-                    crate::feat::picker::intent::handle_picker_confirm(state, pickers);
-                if let Some(intent) = maybe_intent {
-                    let redispatch = IntentHandler::handle(&intent, state, slices, routes, pickers);
-                    result.merge(redispatch)
-                } else {
-                    result
-                }
+                crate::feat::picker::intent::handle_picker_confirm(state, pickers)
             }
             KernelIntent::CtrlClear => {
                 let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);

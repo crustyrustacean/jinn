@@ -457,7 +457,7 @@ mod tests {
         select(&mut state, ReasoningEffort::Medium);
 
         // When confirming through the real confirm path (hook + fold).
-        let _ = jinn_domain::feat::picker::intent::handle_picker_confirm(
+        let _result = jinn_domain::feat::picker::intent::handle_picker_confirm(
             &mut state,
             &crate::build_picker_registry(),
         );

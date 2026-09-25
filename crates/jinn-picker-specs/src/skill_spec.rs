@@ -988,8 +988,9 @@ mod render_cache_tests {
             .pickers
             .get(id)
             .expect("skill spec registered in the domain registry");
-        assert!(
+        assert_eq!(
             spec.render(frame, area, &host),
+            jinn_picker::RenderOutcome::Drew,
             "spec render must drive the preview widget"
         );
     }
