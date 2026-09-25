@@ -362,6 +362,10 @@ Entries are added or amended **only with human approval**.
 - (slices) The term slice is a crate owning the PTY actor family, the per-session terminal tab state cell, and the terminal control registry; the tools ask it through a TermHandle trait and the TUI renders the terminal overlay from jinn-term-msg types.
 - (term) The terminal control toggle is a per-session ownership flip between the user and the agent, resolved through the control registry the term slice mints at spawn.
 - (term) The previous session's terminal control holder is released when the active session changes while the overlay is open.
+- (term) Keys forwarded to a child pty encode to the byte sequences of the `xterm-256color` identity jinn advertises, rather than the alternate CSI forms a real xterm also accepts.
+- (term) The terminal key encoder is a compiled-in table with no runtime terminfo lookup, so a child receives identical key bytes on every platform.
+- (term) Shift+Tab reaches a child pty as `ESC[Z`, carried as Tab with the shift modifier.
+- (keybinds) Shift+Tab is represented as `Key::Tab` with the shift modifier rather than a distinct key variant, so `<s-tab>` notation and display work through the existing modifier path.
 - (tools) The jinn-tools slice owns the tool orchestrator, the built-in and todo tools, the task subagent machinery, and the tool protocol contracts in jinn-tools-msg; tool nouns (ToolDefinition/ToolCall/ToolResult) live in jinn-core-types.
 - (slices) Kernel feature extraction follows the absorb model: each slice family absorbs its feat/ modules, leaving jinn-domain as shared multi-slice vocabulary.
 - (slices) The turn-dispatch slice is a crate owning the queue ServiceActor and the enqueue dispatch path; its wire contracts live in jinn-turn-dispatch-msg.
