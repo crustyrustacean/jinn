@@ -1,7 +1,7 @@
 //! Viewport computation - scroll math and visible entry determination.
 
 /// Accumulated scroll computation results.
-pub(crate) struct ScrollState {
+pub struct ScrollState {
     pub blank_count: usize,
     pub max_offset: u16,
     pub clamped: u16,
@@ -12,7 +12,7 @@ pub(crate) struct ScrollState {
     clippy::else_if_without_else,
     reason = "no-op on fallthrough is intentional"
 )]
-pub(crate) fn compute_scroll(
+pub fn compute_scroll(
     area_height: u16,
     total_wrapped: u16,
     selected_idx: Option<usize>,
@@ -57,7 +57,7 @@ pub(crate) fn compute_scroll(
 }
 
 /// Determine which entry indices overlap the current viewport.
-pub(crate) fn find_visible_indices(
+pub fn find_visible_indices(
     entry_line_ranges: &[(u16, u16)],
     blank_count: usize,
     clamped: u16,

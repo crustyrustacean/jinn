@@ -18,8 +18,10 @@ pub(crate) mod assistant;
 pub mod audit_popup;
 pub(crate) mod compaction;
 pub(crate) mod error_entry;
+pub mod gutter;
 pub(crate) mod line_count_cache;
 pub(crate) mod markdown;
+pub mod scroll_indicator;
 pub(crate) mod shared;
 
 pub(crate) mod system;
@@ -28,12 +30,19 @@ pub(crate) mod tool_call;
 pub(crate) mod tool_result;
 pub(crate) mod transient;
 pub(crate) mod user;
+pub mod viewport;
 
 pub use audit_popup::format_audit_lines;
 pub use audit_popup::{AUDIT_POPUP_WIDTH, audit_popup_rect};
+pub use gutter::{
+    GutterStyle, build_blank_gutter_lines, build_collapsed_block_gutter_line,
+    build_entry_gutter_lines,
+};
 pub use line_count_cache::EntryLineCache;
 pub use markdown::render_markdown;
+pub use scroll_indicator::render_scroll_indicator;
 pub use shared::{GUTTER_WIDTH, RenderContext, strip_ansi};
+pub use viewport::{ScrollState, compute_scroll, find_visible_indices};
 
 use jinn_core_types::{ChatEntry, ChatEntryKind};
 use ratatui::text::Line;

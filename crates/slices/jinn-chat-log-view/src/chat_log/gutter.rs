@@ -7,7 +7,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use jinn_theme::Theme;
 
 /// Context needed to style gutter lines for an entry.
-pub(crate) struct GutterStyle<'a> {
+pub struct GutterStyle<'a> {
     pub is_pinned: bool,
     pub is_selected: bool,
     pub chat_log_active: bool,
@@ -25,7 +25,7 @@ pub(crate) struct GutterStyle<'a> {
 /// col 1 is a plain space. The pin icon first line is an exception: when
 /// selected+focused, it gets yellow bg and the pin emoji occupies both columns
 /// as a single span.
-pub(crate) fn build_entry_gutter_lines(
+pub fn build_entry_gutter_lines(
     entry_content_lines: &[Line<'static>],
     ctx: &GutterStyle<'_>,
 ) -> Vec<Line<'static>> {
@@ -96,7 +96,7 @@ pub(crate) fn build_entry_gutter_lines(
 }
 
 /// Build blank gutter spacer lines for bottom-alignment padding.
-pub(crate) fn build_blank_gutter_lines(
+pub fn build_blank_gutter_lines(
     count: usize,
     theme: &Theme,
     gutter_str: &str,
@@ -114,7 +114,7 @@ pub(crate) fn build_blank_gutter_lines(
 /// Build a single gutter line for a collapsed ignored block summary.
 ///
 /// Uses gray indicator when not selected, yellow cursor bar when selected.
-pub(crate) fn build_collapsed_block_gutter_line(
+pub fn build_collapsed_block_gutter_line(
     is_selected: bool,
     chat_log_active: bool,
     theme: &Theme,
