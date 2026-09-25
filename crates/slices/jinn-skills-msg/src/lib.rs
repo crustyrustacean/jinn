@@ -9,10 +9,18 @@
 use std::path::PathBuf;
 
 mod frontmatter;
+mod loaded_name;
 mod skill;
+mod skill_picker_state;
 
 pub use frontmatter::SkillFrontmatter;
+pub use loaded_name::{
+    SKILL_CONTENT_PREFIX, SKILL_ICON, loaded_skill_summary_label, parse_loaded_skill_name,
+};
 pub use skill::{Skill, SkillSource};
+pub use skill_picker_state::{
+    SkillEntry, SkillPickerState, body_hash_key, skill_picker_slot, skill_row,
+};
 
 use serde::{Deserialize, Serialize};
 

@@ -6,7 +6,11 @@ description = "Skills crossing contracts: SkillsLoaded event and ScanSkills comm
 
 [dependencies]
 jinn-core-types = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-selection-widget = { workspace = true }
 jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
 serde = { workspace = true }
 trouper = { workspace = true }
 

@@ -2072,7 +2072,7 @@ dependencies = [
  "jinn-core-types",
  "jinn-domain",
  "jinn-provider",
- "jinn-skills",
+ "jinn-skills-msg",
  "jinn-slices",
  "jinn-theme",
  "jinn-tools-msg",
@@ -3205,7 +3205,10 @@ dependencies = [
 name = "jinn-skills"
 version = "0.118.0"
 dependencies = [
+ "jinn-chat-log-view",
+ "jinn-picker",
  "jinn-skills-msg",
+ "ratatui",
  "rstest",
  "serde",
  "tempfile",
@@ -3216,7 +3219,11 @@ name = "jinn-skills-msg"
 version = "0.118.0"
 dependencies = [
  "jinn-core-types",
+ "jinn-picker",
+ "jinn-selection-widget",
  "jinn-slices",
+ "jinn-theme",
+ "ratatui",
  "rstest",
  "serde",
  "serde_json",

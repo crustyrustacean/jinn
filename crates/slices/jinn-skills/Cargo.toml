@@ -5,7 +5,10 @@ edition.workspace = true
 description = "The skills slice: skill data model, frontmatter parsing, scanning, and prompt formatting."
 
 [dependencies]
+jinn-chat-log-view = { workspace = true }
+jinn-picker = { workspace = true }
 jinn-skills-msg = { workspace = true }
+ratatui = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
