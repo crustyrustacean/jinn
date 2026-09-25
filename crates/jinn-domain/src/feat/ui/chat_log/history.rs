@@ -306,7 +306,8 @@ impl<'a> HistoryRender<'a> {
                         self.is_streaming_tool_call(entry),
                         self.is_task_waiting(entry),
                     );
-                    if let Some(hit) = cache.get(entry, is_expanded, variant, self.content_width) {
+                    let probe = cache.probe(entry, is_expanded, variant, self.content_width);
+                    if let Some(hit) = probe.hit {
                         let start = wrapped_cursor;
                         let end = wrapped_cursor + hit.wrapped_count;
                         self.entry_line_ranges.push((start, end));
@@ -347,6 +348,7 @@ impl<'a> HistoryRender<'a> {
                         };
                         cache.insert_with_lines(
                             entry,
+                            probe.content,
                             is_expanded,
                             variant,
                             self.content_width,

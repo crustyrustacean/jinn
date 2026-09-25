@@ -1951,3 +1951,113 @@ fn streaming_tool_call_renders_streaming_variant_after_many_completed_calls() {
         "the streaming entry's arguments should be adjacent lines"
     );
 }
+
+#[rstest::rstest]
+fn large_session_frame_does_not_refingerprint_unchanged_entries() {
+    // Given a session holding many large tool results, rendered once to warm
+    // the line cache.
+    let mut state = AppState::default_with_scope_focus();
+    for i in 0..120 {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result(
+                format!("tr_{i}"),
+                "bash",
+                format!("{} output line\n", "x".repeat(2_000)),
+                ToolResultStatus::Success,
+            ));
+    }
+    let (mut terminal, area) = setup_term(80, 24);
+    let mut element = ChatLogElement::new();
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    let after_warmup = state
+        .frontend
+        .caches
+        .entry_line_cache
+        .read()
+        .fingerprint_computations();
+
+    // When redrawing several times with nothing changed.
+    for _ in 0..5 {
+        terminal
+            .draw(|frame| {
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+                element.render(frame, area, &ctx);
+            })
+            .unwrap();
+    }
+
+    // Then no further full content fingerprints were computed.
+    let after_redraws = state
+        .frontend
+        .caches
+        .entry_line_cache
+        .read()
+        .fingerprint_computations();
+    assert_eq!(
+        after_redraws, after_warmup,
+        "redrawing an unchanged session should not rehash entry content"
+    );
+    assert!(
+        after_warmup <= 120,
+        "the first frame hashes at most one fingerprint per entry, got {after_warmup}"
+    );
+}
+
+#[rstest::rstest]
+fn streaming_tool_output_renders_the_appended_text() {
+    // Given a session streaming a bash tool result.
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().begin_streaming();
+    state
+        .active_session_mut()
+        .begin_tool_result("tr_live", "bash", jiff::Timestamp::now());
+    state.active_session_mut().append_tool_result_output(
+        "tr_live",
+        "first chunk of output",
+        jinn_tools_msg::ToolOutputKind::Normal,
+    );
+
+    let (mut terminal, area) = setup_term(60, 12);
+    let mut element = ChatLogElement::new();
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // When more output arrives, growing the entry's content.
+    state.active_session_mut().append_tool_result_output(
+        "tr_live",
+        "second chunk",
+        jinn_tools_msg::ToolOutputKind::Normal,
+    );
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the appended text is rendered, so the cached lines were invalidated.
+    let rows = rendered_content_rows(&state, 60, 12);
+    assert!(
+        rows.iter().any(|r| r.contains("second")),
+        "appended tool output should be rendered after re-render"
+    );
+}

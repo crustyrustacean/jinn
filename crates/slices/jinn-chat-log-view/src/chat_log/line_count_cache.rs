@@ -15,6 +15,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use ratatui::text::Line;
 
@@ -25,6 +26,9 @@ use jinn_core_types::{ChatEntry, ChatEntryId};
 pub struct CachedEntryCount {
     /// Fingerprint of the entry's content when this count was computed.
     pub fingerprint: u64,
+    /// O(1) summary of the same content, used to skip re-hashing when the
+    /// entry is looked up again and is very likely unchanged.
+    pub signature: u64,
     /// Whether the entry was expanded when this count was computed.
     pub is_expanded: bool,
     /// Hash of the status-derived render inputs (paired result status,
@@ -55,6 +59,27 @@ pub struct CacheHit {
     pub lines: Option<Arc<Vec<Line<'static>>>>,
 }
 
+/// The two hashes describing an entry's content at probe time.
+///
+/// Bundled so a miss can be stored without hashing the entry again: the
+/// fingerprint may have been skipped entirely when the signature matched.
+#[derive(Debug, Clone, Copy)]
+pub struct ContentIdentity {
+    /// The O(1) content summary.
+    pub signature: u64,
+    /// The full content hash.
+    pub fingerprint: u64,
+}
+
+/// The outcome of a cache probe: the hit, if any, plus the content identity to
+/// store when storing a fresh count.
+pub struct CacheProbe {
+    /// The cached count and lines, when the entry is unchanged.
+    pub hit: Option<CacheHit>,
+    /// Content identity observed during this probe.
+    pub content: ContentIdentity,
+}
+
 /// Cache mapping entry IDs to their cached wrapped line counts and rendered lines.
 ///
 /// Owned by [`FrontendCaches`] - populated during the render pass, used
@@ -68,13 +93,32 @@ pub struct CacheHit {
 /// - **Streaming (content change):** detected by fingerprint mismatch → automatic miss.
 /// - **Expand/collapse:** detected by `is_expanded` mismatch → automatic miss.
 /// - **New entry:** no cache entry exists → automatic miss.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct EntryLineCache {
     /// The content width used when cache entries were computed.
     /// If the current width differs, the entire cache is invalid.
     content_width: Option<u16>,
     /// Per-entry cached counts.
     entries: HashMap<ChatEntryId, CachedEntryCount>,
+    /// How many times a full content fingerprint has been computed.
+    ///
+    /// The whole point of the signature gate is that this stays flat across
+    /// steady-state frames, so it is worth being able to observe in tests.
+    /// It is an atomic so a hash can be counted while a cached entry is still
+    /// borrowed, and so the cache stays `Sync` under its `RwLock`.
+    fingerprint_computations: AtomicU64,
+}
+
+impl Clone for EntryLineCache {
+    fn clone(&self) -> Self {
+        Self {
+            content_width: self.content_width,
+            entries: self.entries.clone(),
+            // A clone starts its own tally rather than inheriting a count
+            // that says nothing about the entries it now owns.
+            fingerprint_computations: AtomicU64::new(0),
+        }
+    }
 }
 
 impl EntryLineCache {
@@ -99,27 +143,91 @@ impl EntryLineCache {
         variant: u64,
         content_width: u16,
     ) -> Option<CacheHit> {
+        self.probe(entry, is_expanded, variant, content_width).hit
+    }
+
+    /// Look up an entry, also reporting the content fingerprint that was
+    /// computed (or skipped) so the caller can store it on a miss instead of
+    /// hashing the entry a second time.
+    pub fn probe(
+        &mut self,
+        entry: &ChatEntry,
+        is_expanded: bool,
+        variant: u64,
+        content_width: u16,
+    ) -> CacheProbe {
         // If content width changed, clear everything.
         if self.content_width != Some(content_width) {
             self.entries.clear();
             self.content_width = Some(content_width);
-            return None;
+            return CacheProbe {
+                hit: None,
+                content: self.fresh_content(entry),
+            };
         }
 
-        let cached = self.entries.get(&entry.id)?;
-        (cached.fingerprint == entry.content_fingerprint()
-            && cached.is_expanded == is_expanded
-            && cached.variant == variant)
-            .then(|| CacheHit {
-                wrapped_count: cached.wrapped_count,
-                lines: cached.lines.clone(),
-            })
+        let signature = entry.content_signature();
+        let Some(cached) = self.entries.get(&entry.id) else {
+            return CacheProbe {
+                hit: None,
+                content: self.fresh_content(entry),
+            };
+        };
+
+        // The signature is O(1) and covers every field the fingerprint reads.
+        // When it matches, the content is almost certainly unchanged, so the
+        // full hash — which costs time proportional to the entry's size — is
+        // skipped entirely.
+        let content = if cached.signature == signature {
+            ContentIdentity {
+                signature,
+                fingerprint: cached.fingerprint,
+            }
+        } else {
+            ContentIdentity {
+                signature,
+                fingerprint: self.fingerprint_of(entry),
+            }
+        };
+
+        CacheProbe {
+            hit: (content.fingerprint == cached.fingerprint
+                && cached.is_expanded == is_expanded
+                && cached.variant == variant)
+                .then(|| CacheHit {
+                    wrapped_count: cached.wrapped_count,
+                    lines: cached.lines.clone(),
+                }),
+            content,
+        }
+    }
+
+    /// Compute and count a full content fingerprint.
+    fn fingerprint_of(&self, entry: &ChatEntry) -> u64 {
+        self.fingerprint_computations
+            .fetch_add(1, Ordering::Relaxed);
+        entry.content_fingerprint()
+    }
+
+    /// Fingerprint an entry with no cached counterpart to compare against.
+    fn fresh_content(&self, entry: &ChatEntry) -> ContentIdentity {
+        ContentIdentity {
+            signature: entry.content_signature(),
+            fingerprint: self.fingerprint_of(entry),
+        }
+    }
+
+    /// How many full content fingerprints this cache has computed.
+    #[must_use]
+    pub fn fingerprint_computations(&self) -> u64 {
+        self.fingerprint_computations.load(Ordering::Relaxed)
     }
 
     /// Store a wrapped line count for an entry (without rendered lines).
     pub fn insert(
         &mut self,
         entry: &ChatEntry,
+        content: ContentIdentity,
         is_expanded: bool,
         variant: u64,
         content_width: u16,
@@ -129,7 +237,8 @@ impl EntryLineCache {
         self.entries.insert(
             entry.id.clone(),
             CachedEntryCount {
-                fingerprint: entry.content_fingerprint(),
+                fingerprint: content.fingerprint,
+                signature: content.signature,
                 is_expanded,
                 variant,
                 wrapped_count,
@@ -142,6 +251,7 @@ impl EntryLineCache {
     pub fn insert_with_lines(
         &mut self,
         entry: &ChatEntry,
+        content: ContentIdentity,
         is_expanded: bool,
         variant: u64,
         content_width: u16,
@@ -152,7 +262,8 @@ impl EntryLineCache {
         self.entries.insert(
             entry.id.clone(),
             CachedEntryCount {
-                fingerprint: entry.content_fingerprint(),
+                fingerprint: content.fingerprint,
+                signature: content.signature,
                 is_expanded,
                 variant,
                 wrapped_count,
@@ -206,12 +317,51 @@ mod tests {
     use jinn_core_types::ToolResultStatus;
     use jinn_core_types::{ChatEntry, ChatEntryKind};
 
+    /// Store a count the way the render pass does, via a probe.
+    fn insert(
+        entry: &ChatEntry,
+        cache: &mut EntryLineCache,
+        is_expanded: bool,
+        variant: u64,
+        width: u16,
+        wrapped_count: u16,
+    ) {
+        let content = cache.probe(entry, is_expanded, variant, width).content;
+        cache.insert(entry, content, is_expanded, variant, width, wrapped_count);
+    }
+
+    /// Store rendered lines the way the render pass does, via a probe.
+    #[expect(
+        clippy::rc_buffer,
+        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
+    )]
+    fn insert_with_lines(
+        entry: &ChatEntry,
+        cache: &mut EntryLineCache,
+        is_expanded: bool,
+        variant: u64,
+        width: u16,
+        wrapped_count: u16,
+        lines: Arc<Vec<Line<'static>>>,
+    ) {
+        let content = cache.probe(entry, is_expanded, variant, width).content;
+        cache.insert_with_lines(
+            entry,
+            content,
+            is_expanded,
+            variant,
+            width,
+            wrapped_count,
+            lines,
+        );
+    }
+
     #[rstest::rstest]
     fn cache_hit_returns_count() {
         // Given an entry and a cache with its count.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 0, 80, 5);
+        insert(&entry, &mut cache, false, 0, 80, 5);
 
         // When looking up the same entry.
         let result = cache.get(&entry, false, 0, 80);
@@ -238,7 +388,7 @@ mod tests {
         // Given a cache with an entry's count.
         let mut cache = EntryLineCache::new();
         let mut entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 0, 80, 5);
+        insert(&entry, &mut cache, false, 0, 80, 5);
 
         // When the entry's content changes.
         if let jinn_core_types::ChatEntryKind::Assistant(ref mut text) = entry.kind {
@@ -255,7 +405,7 @@ mod tests {
         // Given a cache with an entry at is_expanded=false.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 0, 80, 5);
+        insert(&entry, &mut cache, false, 0, 80, 5);
 
         // When looking up with is_expanded=true.
         let result = cache.get(&entry, true, 0, 80);
@@ -269,7 +419,7 @@ mod tests {
         // Given a cache with entries at width 80.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 0, 80, 5);
+        insert(&entry, &mut cache, false, 0, 80, 5);
 
         // When looking up at width 100.
         let result = cache.get(&entry, false, 0, 100);
@@ -285,8 +435,8 @@ mod tests {
         let mut cache = EntryLineCache::new();
         let entry1 = ChatEntry::assistant("hello");
         let entry2 = ChatEntry::assistant("world");
-        cache.insert(&entry1, false, 0, 80, 3);
-        cache.insert(&entry2, false, 0, 80, 5);
+        insert(&entry1, &mut cache, false, 0, 80, 3);
+        insert(&entry2, &mut cache, false, 0, 80, 5);
 
         // When invalidating entry1.
         cache.invalidate_entry(&entry1.id);
@@ -303,7 +453,7 @@ mod tests {
     fn clear_removes_all_entries() {
         // Given a cache with entries.
         let mut cache = EntryLineCache::new();
-        cache.insert(&ChatEntry::assistant("hello"), false, 0, 80, 3);
+        insert(&ChatEntry::assistant("hello"), &mut cache, false, 0, 80, 3);
 
         // When clearing.
         cache.clear();
@@ -350,7 +500,7 @@ mod tests {
         // Given a cache with a pending ToolResult entry.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::tool_result("id", "bash", "", ToolResultStatus::Pending);
-        cache.insert(&entry, false, 0, 80, 5);
+        insert(&entry, &mut cache, false, 0, 80, 5);
 
         // When looking up the pending entry with unchanged content.
         let result = cache.get(&entry, false, 0, 80);
@@ -364,7 +514,7 @@ mod tests {
         // Given a cache with a pending ToolResult entry.
         let mut cache = EntryLineCache::new();
         let mut entry = ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Pending);
-        cache.insert(&entry, false, 0, 80, 5);
+        insert(&entry, &mut cache, false, 0, 80, 5);
 
         // When the entry's content changes (simulating tool output growth).
         if let ChatEntryKind::ToolResult {
@@ -386,7 +536,7 @@ mod tests {
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
         let lines = Arc::new(vec![Line::from("hello")]);
-        cache.insert_with_lines(&entry, false, 0, 80, 1, lines.clone());
+        insert_with_lines(&entry, &mut cache, false, 0, 80, 1, lines.clone());
 
         // When looking up the same entry.
         let result = cache.get(&entry, false, 0, 80);
@@ -403,7 +553,7 @@ mod tests {
         // Given an entry inserted via insert() (no lines).
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 0, 80, 5);
+        insert(&entry, &mut cache, false, 0, 80, 5);
 
         // When looking up the same entry.
         let result = cache.get(&entry, false, 0, 80);
@@ -419,7 +569,7 @@ mod tests {
         // Given a cache with an entry under variant 7.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 7, 80, 5);
+        insert(&entry, &mut cache, false, 7, 80, 5);
 
         // When looking up with the same variant.
         let result = cache.get(&entry, false, 7, 80);
@@ -433,12 +583,88 @@ mod tests {
         // Given a cache with an entry under variant 7.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
-        cache.insert(&entry, false, 7, 80, 5);
+        insert(&entry, &mut cache, false, 7, 80, 5);
 
         // When looking up with a different variant.
         let result = cache.get(&entry, false, 8, 80);
 
         // Then the cache misses.
         assert!(result.is_none());
+    }
+    #[rstest::rstest]
+    fn repeat_lookup_of_unchanged_entry_computes_no_fingerprint() {
+        // Given a cache warmed with a large entry.
+        let mut cache = EntryLineCache::new();
+        let entry =
+            ChatEntry::tool_result("id", "bash", "x".repeat(50_000), ToolResultStatus::Success);
+        insert(&entry, &mut cache, false, 0, 80, 40);
+
+        // When looking it up many times, as a frame does per visible entry.
+        for _ in 0..1_000 {
+            assert!(cache.get(&entry, false, 0, 80).is_some());
+        }
+
+        // Then no full fingerprint was computed beyond the initial one.
+        assert_eq!(
+            cache.fingerprint_computations(),
+            1,
+            "steady-state lookups should reuse the cached fingerprint"
+        );
+    }
+
+    #[rstest::rstest]
+    fn changed_entry_length_computes_one_fingerprint_per_lookup() {
+        // Given a cached entry whose content later changes length.
+        let mut cache = EntryLineCache::new();
+        let mut entry = ChatEntry::tool_result("id", "bash", "line one", ToolResultStatus::Success);
+        insert(&entry, &mut cache, false, 0, 80, 4);
+
+        // When the content grows, as streaming tool output does.
+        if let ChatEntryKind::ToolResult {
+            ref mut content, ..
+        } = entry.kind
+        {
+            content.push_str(" plus more output");
+        }
+
+        // Then the lookup misses and did hash once to discover the change.
+        assert!(cache.get(&entry, false, 0, 80).is_none());
+        assert_eq!(cache.fingerprint_computations(), 2);
+    }
+
+    #[rstest::rstest]
+    fn storing_a_missed_entry_does_not_rehash_it() {
+        // Given a cache that missed on an entry.
+        let mut cache = EntryLineCache::new();
+        let entry =
+            ChatEntry::tool_result("id", "bash", "y".repeat(50_000), ToolResultStatus::Success);
+        let probe = cache.probe(&entry, false, 0, 80);
+
+        // When storing the count using the identity from that same probe.
+        cache.insert(&entry, probe.content, false, 0, 80, 10);
+
+        // Then the entry was hashed exactly once, not once per phase.
+        assert_eq!(
+            cache.fingerprint_computations(),
+            1,
+            "the insert should reuse the probe's fingerprint"
+        );
+    }
+
+    #[rstest::rstest]
+    fn cached_lines_survive_a_fingerprint_skipped_hit() {
+        // Given an entry cached with rendered lines.
+        let mut cache = EntryLineCache::new();
+        let entry = ChatEntry::assistant("hello world");
+        let lines = Arc::new(vec![Line::from("hello world")]);
+        insert_with_lines(&entry, &mut cache, false, 0, 80, 1, lines.clone());
+
+        // When it is looked up again unchanged.
+        let hit = cache.get(&entry, false, 0, 80);
+
+        // Then the same lines come back, so skipping the hash changed nothing.
+        let hit = hit.expect("should be a cache hit");
+        assert_eq!(hit.wrapped_count, 1);
+        assert_eq!(*hit.lines.expect("should have lines"), *lines);
     }
 }
