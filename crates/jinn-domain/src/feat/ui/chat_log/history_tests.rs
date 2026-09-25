@@ -2621,3 +2621,151 @@ fn row_text(buffer: &ratatui::buffer::Buffer, area: ratatui::layout::Rect) -> St
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+// ---------------------------------------------------------------------------
+// Measurement coverage
+// ---------------------------------------------------------------------------
+
+/// The width a chat log rendered into `width` columns lays its entries out at.
+fn content_width_for(width: u16) -> u16 {
+    width - GUTTER_WIDTH
+}
+
+/// State with `count` user entries in its active session, at `content_width`.
+fn measured_state(count: usize, content_width: u16) -> AppState {
+    let mut state = normal_state();
+    for index in 0..count {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user(format!("message {index}")));
+    }
+    state.active_session_mut().set_content_width(content_width);
+    state
+}
+
+/// Whether a frame of the given width would find the session fully measured.
+fn coverage_at(state: &AppState, content_width: u16) -> bool {
+    let mut cache = state.frontend.caches.entry_line_cache.write();
+    crate::feat::ui::chat_log::is_session_measured(
+        &mut cache,
+        state,
+        &state.active_session().session_id().clone(),
+        content_width,
+    )
+}
+
+/// Renders one frame, filling the cache the way a real frame would.
+fn measure_by_rendering(state: &AppState, width: u16, height: u16) {
+    let mut element = ChatLogElement::new();
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+}
+
+#[rstest::rstest]
+fn an_unmeasured_session_reports_not_covered() {
+    // Given a session that has never been rendered.
+    let state = measured_state(4, 60);
+
+    // When coverage is checked at the width it would render at.
+    let covered = coverage_at(&state, 60);
+
+    // Then it is not covered.
+    assert!(!covered, "a session with no counts needs a measurement");
+}
+
+#[rstest::rstest]
+fn a_session_measured_at_a_width_reports_covered() {
+    // Given a session a real frame has already measured.
+    let state = measured_state(4, 60);
+    measure_by_rendering(&state, 62, 10);
+
+    // When coverage is checked at that same width.
+    let covered = coverage_at(&state, content_width_for(62));
+
+    // Then it is covered.
+    assert!(
+        covered,
+        "a measured session needs no further measurement, cache holds {}",
+        state.frontend.caches.entry_line_cache.read().len()
+    );
+}
+
+#[rstest::rstest]
+fn a_session_measured_at_one_width_is_not_covered_at_another() {
+    // Given a session measured by a frame of one width.
+    let state = measured_state(4, 60);
+    measure_by_rendering(&state, 62, 10);
+
+    // When coverage is checked at a different width.
+    let covered = coverage_at(&state, content_width_for(62) + 1);
+
+    // Then it is not covered, because those counts are wrong at this width.
+    assert!(!covered, "counts measured at one width cannot serve another");
+}
+
+#[rstest::rstest]
+fn a_session_with_a_collapsed_ignored_block_reports_covered() {
+    // Given a long session that renders as a collapsed block plus visible
+    // entries, and that has been measured.
+    let mut state = measured_state(0, 60);
+    for index in 0..12 {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::system(format!("noise {index}")));
+    }
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::user("the visible question"));
+    measure_by_rendering(&state, 62, 20);
+
+    // When coverage is checked.
+    let visual_items = state.active_session().visual_items_snapshot().len();
+    let covered = coverage_at(&state, content_width_for(62));
+
+    // Then it is covered.
+    //
+    // A collapsed block is one line and is never cached, so a coverage check
+    // that probed it would report a miss no measurement could ever fix.
+    assert!(
+        visual_items > 0,
+        "the session must render as visual items for this to mean anything"
+    );
+    assert!(
+        covered,
+        "a collapsed ignored block must not read as an unmeasured entry"
+    );
+}
+
+#[rstest::rstest]
+fn coverage_agrees_with_what_the_render_pass_does() {
+    // Given a session holding a tool call and its result, which are what the
+    // render variant keys on.
+    let mut state = measured_state(0, 60);
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_call("id-1", "grep", "{}"));
+    state.active_session_mut().push_entry(ChatEntry::tool_result(
+        "id-1",
+        "grep",
+        "found it",
+        ToolResultStatus::Success,
+    ));
+    state.active_session_mut().push_entry(ChatEntry::user("thanks"));
+
+    // When a frame measures it and coverage is then checked.
+    measure_by_rendering(&state, 62, 20);
+    let covered = coverage_at(&state, content_width_for(62));
+
+    // Then coverage says the next frame is a full cache hit.
+    assert!(
+        covered,
+        "coverage must agree with the render pass, or every switch re-measures"
+    );
+}

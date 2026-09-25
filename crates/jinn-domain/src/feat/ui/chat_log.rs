@@ -20,6 +20,7 @@ mod layout_tests;
 pub(crate) mod layout_worker;
 
 pub use history::ChatLogElement;
+pub use history::is_session_measured;
 pub use layout_complete::{LayoutApplied, LayoutCompletionActor, LayoutCompletionActorDeps};
 pub use layout_supervisor::{LAYOUT_DEADLINE, LayoutSupervisorActor, LayoutSupervisorActorDeps};
 pub use layout_worker::{LayoutWorkerActor, LayoutWorkerActorDeps};
