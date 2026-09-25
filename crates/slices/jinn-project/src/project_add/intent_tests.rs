@@ -75,6 +75,7 @@ fn ctx<'a>(state: &'a mut FakeState, slices: &'a jinn_slices::Slices) -> ActionC
     ActionCtx {
         state,
         slices,
+        config: jinn_slices::empty_config_layer(),
         key_bytes: Vec::new(),
     }
 }

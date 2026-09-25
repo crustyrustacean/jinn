@@ -920,6 +920,7 @@ mod tests {
             &Slices::new(),
             &KeyRoutes::new(),
             &pickers,
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the picker scope is gone — ESC actually leaves the picker.

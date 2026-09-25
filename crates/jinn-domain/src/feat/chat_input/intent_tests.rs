@@ -121,7 +121,10 @@ fn submit_message_returns_enqueue_command() {
     state.update_active_input(|i| i.insert_text("hi"));
 
     // When handling SubmitMessage.
-    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then a MarkSessionInteracted and an EnqueueUserMessage command are returned.
     assert_eq!(result.message_names.len(), 2);
@@ -136,7 +139,10 @@ fn submit_message_clears_input_buffer() {
     state.update_active_input(|i| i.insert_text("hi"));
 
     // When handling SubmitMessage.
-    let _result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let _result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the input buffer is reset.
     assert!(
@@ -152,7 +158,10 @@ fn submit_message_noop_with_empty_buffer() {
     let mut state = AppState::default_with_scope_focus();
 
     // When handling SubmitMessage.
-    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then no commands are returned.
     assert!(result.message_names.is_empty());
@@ -170,7 +179,10 @@ fn submit_message_completes_and_submits_when_hash_autocomplete_active() {
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Hash, matches));
 
     // When handling SubmitMessage.
-    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the autocomplete is completed and the message is submitted.
     assert!(
@@ -194,7 +206,10 @@ fn submit_message_with_hash_autocomplete_clears_buffer() {
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Hash, matches));
 
     // When handling SubmitMessage.
-    let _result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let _result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the input buffer is cleared.
     assert!(
@@ -246,7 +261,10 @@ fn toggle_input_mode_is_sticky_across_submissions() {
     state.update_active_input(|i| i.insert_text("h"));
 
     // When submitting while Idle (falls back to enqueue).
-    let _ = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then mode remains Steer (sticky).
     assert_eq!(
@@ -268,7 +286,10 @@ fn queue_submit_always_enqueues() {
     state.update_active_input(|i| i.insert_text("h"));
 
     // When submitting.
-    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then an EnqueueUserMessage command is emitted.
     assert_eq!(result.message_names.len(), 2);
@@ -301,7 +322,10 @@ fn steer_submit_while_busy_routes_to_steer(
     state.update_active_input(|i| i.insert_text("h"));
 
     // When submitting.
-    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then SubmitSteeringMessage command emitted (not EnqueueUserMessage).
     assert!(
@@ -332,7 +356,10 @@ fn steer_submit_while_idle_falls_back_to_enqueue() {
     assert_eq!(state.session.active_session().phase(), PhaseKind::Idle);
 
     // When submitting.
-    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then EnqueueUserMessage command emitted (fall-through).
     assert!(
@@ -1312,7 +1339,10 @@ fn submit_new_command_creates_session() {
     state.update_active_input(|i| i.insert_text("/new"));
 
     // When handling SubmitMessage.
-    let _result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let _result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then a new session is created.
     assert_ne!(*state.session.active_session_id(), old_id);
@@ -1331,7 +1361,10 @@ fn submit_new_command_emits_no_enqueue_command() {
     state.update_active_input(|i| i.insert_text("/new"));
 
     // When handling SubmitMessage.
-    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then no EnqueueUserMessage was emitted.
     assert!(
@@ -1350,7 +1383,10 @@ fn submit_unknown_slash_command_sends_as_chat() {
     state.update_active_input(|i| i.insert_text("/lol"));
 
     // When handling SubmitMessage.
-    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the message is submitted as a normal chat message.
     // MarkSessionInteracted + EnqueueUserMessage.
@@ -1378,7 +1414,10 @@ fn submit_unknown_slash_command_clears_buffer() {
     state.update_active_input(|i| i.insert_text("/lol"));
 
     // When handling SubmitMessage.
-    let _result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let _result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the buffer is cleared.
     assert!(
@@ -1395,7 +1434,10 @@ fn submit_compact_slash_command_pushes_system_message() {
     state.update_active_input(|i| i.insert_text("/compact"));
 
     // When handling SubmitMessage.
-    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then a MarkSessionInteracted and TriggerCompaction command are dispatched.
     assert_eq!(result.message_names.len(), 2);
@@ -1422,7 +1464,10 @@ fn submit_compact_slash_command_clears_buffer() {
     state.update_active_input(|i| i.insert_text("/compact"));
 
     // When handling SubmitMessage.
-    let _result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let _result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the buffer is cleared.
     assert!(
@@ -1481,7 +1526,10 @@ fn enter_completes_and_executes_slash_command() {
     // Entries: compact(0), compact-all(1), new(2). Default = 2 (= new).
 
     // When pressing Enter (SubmitMessage with autocomplete active).
-    let _result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let _result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the command is completed and executed.
     assert_ne!(
@@ -1503,7 +1551,10 @@ fn enter_slash_command_emits_no_enqueue() {
     crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
 
     // When pressing Enter (SubmitMessage with autocomplete active).
-    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+    let result = crate::feat::chat_input::intent::handle_submit_message(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then no EnqueueUserMessage was emitted.
     assert!(
@@ -1986,6 +2037,7 @@ fn ctrl_clear_input_empties_chat_input_via_handler() {
         &empty_slices(),
         &empty_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the chat input is cleared and scope remains Input.
@@ -2033,6 +2085,7 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
         &empty_slices(),
         &empty_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then nothing changes: no scope change, no commands, buffer still empty.

@@ -117,6 +117,7 @@ fn confirm_lifecycle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
         &lifecycle_name,
         &[],
         None,
+        crate::empty_config_layer(),
     );
     PickerOutcome::from_route_result(result)
 }

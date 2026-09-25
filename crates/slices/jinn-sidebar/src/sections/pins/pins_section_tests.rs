@@ -467,6 +467,7 @@ fn session_new_works_when_sidebar_sessions_focused() {
         &empty_slices(),
         &empty_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then a new session is created.
@@ -499,6 +500,7 @@ fn session_new_works_when_not_in_sidebar() {
         &empty_slices(),
         &empty_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then a new session is created (no section restriction outside sidebar).

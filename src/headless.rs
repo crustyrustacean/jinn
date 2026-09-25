@@ -110,6 +110,7 @@ impl HeadlessApp {
                         &self.services.slices,
                         &self.services.key_routes,
                         &self.services.picker_registry,
+                        &self.services.config,
                     );
                     drop(state);
 

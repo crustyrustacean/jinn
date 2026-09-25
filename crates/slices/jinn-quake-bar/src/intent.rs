@@ -328,6 +328,7 @@ mod tests {
                 jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )
@@ -353,6 +354,7 @@ mod tests {
                 jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )
@@ -380,6 +382,7 @@ mod tests {
             jinn_slices::ActionCtx {
                 state: &mut state,
                 slices: &slices,
+                config: jinn_slices::empty_config_layer(),
                 key_bytes: Vec::new(),
             },
         );
@@ -410,6 +413,7 @@ mod tests {
             jinn_slices::ActionCtx {
                 state: &mut state,
                 slices: &slices,
+                config: jinn_slices::empty_config_layer(),
                 key_bytes: Vec::new(),
             },
         );
@@ -468,6 +472,7 @@ mod tests {
                 jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )
@@ -487,6 +492,7 @@ mod tests {
                 jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )

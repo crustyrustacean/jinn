@@ -167,6 +167,10 @@ pub struct ActionCtx<'a> {
     pub state: &'a mut dyn SliceActionState,
     /// The slice registry, borrowed from the intent handler.
     pub slices: &'a crate::slices::Slices,
+    /// The configuration layer, borrowed from the intent handler. A route
+    /// action that seeds a session or reads a setting resolves through
+    /// this rather than through a state cache.
+    pub config: &'a jinn_config::ConfigLayer,
     /// The dispatching dynamic intent's byte payload, if any.
     pub key_bytes: Vec<u8>,
 }
@@ -712,6 +716,34 @@ mod row_store {
     }
 }
 
+/// A process-lifetime configuration layer with nothing in it.
+///
+/// Route actions reach config through [`ActionCtx::config`], which the
+/// intent handler fills. A caller assembling an `ActionCtx` by hand — a
+/// test, or a slice's own unit test — has no handler to borrow from, and
+/// a spec that only reads config does not need a real document. Every
+/// section reads as its default through this.
+///
+/// # Panics
+///
+/// Panics if the shared empty layer cannot be constructed. That can only
+/// fail if an empty document stops parsing, which is a build-time
+/// invariant of the layer rather than anything a caller can cause.
+#[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "an empty document always parses; failure is a broken invariant, not a caller error"
+)]
+pub fn empty_config_layer() -> &'static jinn_config::ConfigLayer {
+    static EMPTY: std::sync::OnceLock<jinn_config::ConfigLayer> = std::sync::OnceLock::new();
+    EMPTY.get_or_init(|| {
+        jinn_config::ConfigLayer::load(std::sync::Arc::new(
+            jinn_config::InMemoryConfigStorage::default(),
+        ))
+        .expect("an empty document always loads")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::ActionCtx;
@@ -756,6 +788,7 @@ mod tests {
         ActionCtx {
             state,
             slices,
+            config: super::empty_config_layer(),
             key_bytes: Vec::new(),
         }
     }

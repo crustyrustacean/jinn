@@ -41,6 +41,7 @@ pub fn handle_to_discord_thread(ctx: ActionCtx<'_>) -> IntentResult {
     let ActionCtx {
         state,
         slices,
+        config: _,
         key_bytes: _,
     } = ctx;
     // Precondition 1: title exists. The session title is `None` until the first
@@ -147,6 +148,7 @@ mod tests {
         ActionCtx {
             state,
             slices,
+            config: jinn_slices::empty_config_layer(),
             key_bytes: Vec::new(),
         }
     }

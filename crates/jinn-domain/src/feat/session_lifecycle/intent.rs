@@ -27,6 +27,7 @@ pub fn handle_session_lifecycle_setup(
     lifecycle_name: &str,
     args: &[String],
     cwd: Option<&std::path::Path>,
+    config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     // Extract setup command before mutating state (borrow checker).
     let setup_command = find_lifecycle(state, lifecycle_name).and_then(|l| l.setup.clone());
@@ -47,7 +48,7 @@ pub fn handle_session_lifecycle_setup(
 
     // Seed per-session defaults from jinn.toml (disablement sets +
     // auto-enabled MCP servers), matching every other session-creation path.
-    let seed = SessionSeed::from_preferences(&state.frontend.preferences);
+    let seed = SessionSeed::from_config(config);
 
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
         model,
@@ -274,7 +275,13 @@ mod tests {
         let old_id = state.session.active_session_id().clone();
 
         // When handling SessionLifecycleSetup with blank lifecycle.
-        let result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -312,6 +319,7 @@ mod tests {
             "",
             &[],
             Some(std::path::Path::new("/tmp/explicit-dir")),
+            crate::common::render_ctx::empty_config_layer(),
         );
 
         // Then the new session's CWD is the explicit override, not the active
@@ -339,7 +347,13 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup with no explicit cwd.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new session's CWD is the stashed starting CWD, not the
         // active session's CWD.
@@ -362,7 +376,13 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new active session is stamped with the stashed project.
         assert_eq!(
@@ -377,7 +397,13 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When handling SessionLifecycleSetup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new active session has no project association.
         assert_eq!(state.active_session().project(), None);
@@ -392,10 +418,22 @@ mod tests {
                 project_dir: std::path::PathBuf::from("/tmp/first-project"),
                 starting_cwd: std::path::PathBuf::from("/tmp/first-project"),
             });
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // When creating a second session (the stash is now None).
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the second session has no project association (no leak from
         // the first creation).
@@ -425,7 +463,13 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup with the scripted lifecycle.
-        let _result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "fossil branch",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new session's in-memory CWD is the inherited value
         // (pre-seeded before the actor runs the script). The actor may
@@ -453,7 +497,13 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup.
-        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
+        let result = handle_session_lifecycle_setup(
+            &mut state,
+            "fossil branch",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -493,6 +543,7 @@ mod tests {
             "fossil branch",
             &["my-branch".to_owned()],
             None,
+            crate::common::render_ctx::empty_config_layer(),
         );
 
         // Then PersistSession is emitted first.
@@ -515,7 +566,13 @@ mod tests {
         });
 
         // When handling SessionLifecycleSetup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then overlays are cleared and Input scope is pushed.
         assert!(matches!(
@@ -601,7 +658,10 @@ mod tests {
             .push_entry(ChatEntry::user("old"));
 
         // When handling SessionNew (delegates to blank lifecycle setup).
-        let result = crate::feat::session::intent::handle_session_new(&mut state);
+        let result = crate::feat::session::intent::handle_session_new(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then a new session is created (same behavior as before).
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -618,7 +678,13 @@ mod tests {
         assert!(state.active_session().is_empty());
 
         // When creating a new session via lifecycle setup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the old empty session is preserved (no auto-close).
         assert!(state.session.contains(&old_id));
@@ -636,7 +702,13 @@ mod tests {
             .push_entry(ChatEntry::user("hello"));
 
         // When creating a new session.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the old session is preserved.
         assert!(state.session.contains(&old_id));
@@ -653,7 +725,13 @@ mod tests {
         state.frontend.app_state.reasoning_effort = Some(crate::ReasoningEffort::High);
 
         // When creating a new session via lifecycle setup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new session owns the seeded effort (a copy, not a live reference).
         assert_eq!(
@@ -670,7 +748,13 @@ mod tests {
         state.frontend.app_state.reasoning_effort = None;
 
         // When creating a new session via lifecycle setup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new session's effort is None (provider decides).
         assert_eq!(
@@ -681,18 +765,16 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn lifecycle_setup_seeds_disabled_tools_and_skills_from_preferences() {
-        // Given preferences disabling a tool and a skill.
+    fn lifecycle_setup_seeds_disabled_tools_and_skills_from_config() {
+        // Given configuration disabling a tool and a skill.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.preferences.disabled_tools =
-            ["bash"].iter().map(|s| (*s).to_owned()).collect();
-        state.frontend.preferences.disabled_skills = ["phased-task-loop"]
-            .iter()
-            .map(|s| (*s).to_owned())
-            .collect();
+        let config = crate::testutil::config_layer(
+            "[tools]\ndisabled = [\"bash\"]\n\
+             [skills]\ndisabled = [\"phased-task-loop\"]\n",
+        );
 
         // When creating a new session via lifecycle setup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None, &config);
 
         // Then the new session carries both disablement sets.
         assert!(state.active_session().disabled_tools().contains("bash"));
@@ -707,21 +789,14 @@ mod tests {
 
     #[rstest::rstest]
     fn lifecycle_setup_with_auto_enabled_mcp_returns_enablement_message() {
-        // Given preferences with one auto-enabled MCP server.
+        // Given configuration with one auto-enabled MCP server.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.preferences.mcp_server = [(
-            "excalimate".to_owned(),
-            jinn_mcp_msg::McpServerConfig {
-                command: Some("npx".to_owned()),
-                auto_enable: true,
-                ..Default::default()
-            },
-        )]
-        .into_iter()
-        .collect();
+        let config = crate::testutil::config_layer(
+            "[mcp.excalimate]\nauto_enable = true\ncommand = \"npx\"\n",
+        );
 
         // When creating a new session (blank lifecycle).
-        let result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let result = handle_session_lifecycle_setup(&mut state, "", &[], None, &config);
 
         // Then the new session has the server enabled.
         assert!(state.active_session().is_mcp_server_enabled("excalimate"));
@@ -737,21 +812,13 @@ mod tests {
 
     #[rstest::rstest]
     fn lifecycle_setup_without_auto_enable_emits_no_enablement_message() {
-        // Given preferences with a server that is NOT auto-enabled.
+        // Given configuration with a server that is NOT auto-enabled.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.preferences.mcp_server = [(
-            "manual".to_owned(),
-            jinn_mcp_msg::McpServerConfig {
-                command: Some("npx".to_owned()),
-                auto_enable: false,
-                ..Default::default()
-            },
-        )]
-        .into_iter()
-        .collect();
+        let config =
+            crate::testutil::config_layer("[mcp.manual]\nauto_enable = false\ncommand = \"npx\"\n");
 
         // When creating a new session.
-        let result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let result = handle_session_lifecycle_setup(&mut state, "", &[], None, &config);
 
         // Then the server is not enabled on the new session.
         assert!(!state.active_session().is_mcp_server_enabled("manual"));
@@ -768,31 +835,29 @@ mod tests {
     fn scripted_lifecycle_setup_with_auto_enable_attaches_enablement_message() {
         // Given a scripted lifecycle and one auto-enabled server.
         let mut state = AppState::default_with_scope_focus();
+        let lifecycle = SessionLifecycle {
+            name: "fossil branch".to_owned(),
+            description: None,
+            setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
+                "echo /tmp/workdir".to_owned(),
+            )),
+            teardown: None,
+        };
+        let config = crate::testutil::config_layer(&format!(
+            "[[session_lifecycle.lifecycle]]\nname = \"{}\"\n\
+             setup_command = \"echo /tmp/workdir\"\n\
+             [mcp.excalimate]\nauto_enable = true\ncommand = \"npx\"\n",
+            lifecycle.name,
+        ));
         state
             .frontend
             .preferences
             .session_lifecycles
-            .push(SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: None,
-                setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "echo /tmp/workdir".to_owned(),
-                )),
-                teardown: None,
-            });
-        state.frontend.preferences.mcp_server = [(
-            "excalimate".to_owned(),
-            jinn_mcp_msg::McpServerConfig {
-                command: Some("npx".to_owned()),
-                auto_enable: true,
-                ..Default::default()
-            },
-        )]
-        .into_iter()
-        .collect();
+            .push(lifecycle);
 
         // When creating a session with the scripted lifecycle.
-        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
+        let result =
+            handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None, &config);
 
         // Then the enablement message follows SessionCreated in the chain.
         let created_idx = result
@@ -830,7 +895,13 @@ mod tests {
                 )),
                 teardown: None,
             });
-        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
+        let result = handle_session_lifecycle_setup(
+            &mut state,
+            "fossil branch",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then both sessions exist (old empty one is preserved).
         assert_eq!(state.session.session_count(), 2);

@@ -148,6 +148,7 @@ mod tests {
                 ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )
@@ -198,6 +199,7 @@ mod tests {
                 ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )
@@ -223,6 +225,7 @@ mod tests {
             ActionCtx {
                 state: &mut jinn_domain::common::app_state::AppState::default(),
                 slices: &jinn_slices::Slices::new(),
+                config: jinn_slices::empty_config_layer(),
                 key_bytes: Vec::new(),
             },
         );

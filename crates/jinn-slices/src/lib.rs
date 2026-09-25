@@ -87,6 +87,7 @@ pub use route::RouteResult;
 pub use route::RouteRow;
 pub use route::ScopeSignal;
 pub use route::SliceActionState;
+pub use route::empty_config_layer;
 pub use route_publish::PublishSink;
 pub use service_status::ServiceStatusUpdate;
 pub use slice_scope::SliceScopeId;

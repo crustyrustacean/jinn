@@ -1,14 +1,21 @@
 //! The `[tools]` section — the tools slice's own configuration.
 //!
-//! Three scalars: the fallback tool timeout and the two output caps the
-//! bash tool applies. The disabled-tools list lives in its own section
-//! because it is written at runtime, not read as a scalar.
+//! The fallback tool timeout, the two output caps the bash tool
+//! applies, and the list of tools a new session starts with disabled.
 
 use serde::{Deserialize, Serialize};
 
 /// The `[tools]` section.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolsConfig {
+    /// Tools a NEW session starts with disabled, by tool name.
+    ///
+    /// `BTreeSet`, not `HashSet`: the patcher rewrites this array's bytes
+    /// on save, and hash iteration order would reshuffle the user's list
+    /// between runs.
+    #[serde(default)]
+    pub disabled: std::collections::BTreeSet<String>,
+
     /// Fallback timeout for a tool that declares none of its own, in
     /// seconds. Default: 300.
     #[serde(default = "default_timeout_secs")]
@@ -32,6 +39,7 @@ fn default_timeout_secs() -> u64 {
 impl Default for ToolsConfig {
     fn default() -> Self {
         Self {
+            disabled: std::collections::BTreeSet::new(),
             default_timeout_secs: default_timeout_secs(),
             max_output_lines: None,
             max_output_bytes: None,

@@ -721,6 +721,7 @@ mod term_keybinds_spot_check {
                 jinn_slices::route::ActionCtx {
                     state: &mut state,
                     slices: &jinn_slices::Slices::new(),
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )

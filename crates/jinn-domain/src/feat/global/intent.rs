@@ -392,6 +392,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then scope is back to Normal (picker closed).
@@ -425,6 +426,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
         assert!(state.frontend.is_picker());
         assert!(
@@ -442,6 +444,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
         assert!(!state.frontend.is_picker());
         assert_eq!(state.frontend.scope(), FocusScope::Normal);

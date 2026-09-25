@@ -69,32 +69,13 @@ impl<'a> RenderCtx<'a> {
     ///
     /// Every section reads as its default through this, so a test that
     /// does not care about configuration can build a context without one.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the shared empty layer cannot be constructed. That can
-    /// only fail if an empty document stops parsing, which is a build-time
-    /// invariant of the layer rather than anything a caller can cause.
     #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "an empty document always parses; failure is a broken invariant, not a caller error"
-    )]
     pub fn new_with_default_config(
         state: &'a AppState,
         slices: &'a Slices,
         overlay_views: &'a OverlayViews<SliceFacts>,
     ) -> Self {
-        // A leaked-once, process-lifetime empty layer: constructing one per
-        // call would allocate a document for every test.
-        static EMPTY: std::sync::OnceLock<jinn_config::ConfigLayer> = std::sync::OnceLock::new();
-        let config = EMPTY.get_or_init(|| {
-            jinn_config::ConfigLayer::load(std::sync::Arc::new(
-                jinn_config::InMemoryConfigStorage::default(),
-            ))
-            .expect("an empty document always loads")
-        });
-        Self::new(state, slices, overlay_views, config)
+        Self::new(state, slices, overlay_views, empty_config_layer())
     }
 
     /// Supplies the app's picker registry, consuming and returning self
@@ -183,6 +164,33 @@ impl<'a> RenderCtx<'a> {
         ]);
         facts
     }
+}
+
+/// A process-lifetime configuration layer with nothing in it, for tests
+/// that reach a config-taking function without caring about config.
+///
+/// Every section reads as its default through it. Backed by a
+/// `OnceLock` so a test does not allocate a document per call.
+///
+/// # Panics
+///
+/// Panics if the shared empty layer cannot be constructed. That can only
+/// fail if an empty document stops parsing, which is a build-time
+/// invariant of the layer rather than anything a caller can cause.
+#[cfg(any(test, feature = "test-harness"))]
+#[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "an empty document always parses; failure is a broken invariant, not a caller error"
+)]
+pub fn empty_config_layer() -> &'static jinn_config::ConfigLayer {
+    static EMPTY: std::sync::OnceLock<jinn_config::ConfigLayer> = std::sync::OnceLock::new();
+    EMPTY.get_or_init(|| {
+        jinn_config::ConfigLayer::load(std::sync::Arc::new(
+            jinn_config::InMemoryConfigStorage::default(),
+        ))
+        .expect("an empty document always loads")
+    })
 }
 
 #[cfg(test)]

@@ -318,7 +318,10 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
 /// No auto-dispatch: the new session stays idle, ready for the next user message.
 ///
 /// [`PushChatEntry`]: jinn_session_history_msg::PushChatEntry
-pub fn handle_new_session_from_entry(state: &mut AppState) -> IntentResult {
+pub fn handle_new_session_from_entry(
+    state: &mut AppState,
+    config: &jinn_config::ConfigLayer,
+) -> IntentResult {
     if super::validator::validate_new_session_from_entry(state).is_err() {
         return IntentResult::empty();
     }
@@ -341,6 +344,7 @@ pub fn handle_new_session_from_entry(state: &mut AppState) -> IntentResult {
         "",
         &[],
         None,
+        config,
     );
 
     // After setup, the active session is the new one.
@@ -3081,7 +3085,10 @@ mod new_session_from_entry_tests {
         let old_id = state.session.active_session_id().clone();
 
         // When handling new session from entry.
-        let _result = handle_new_session_from_entry(&mut state);
+        let _result = handle_new_session_from_entry(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the active session switched to a new one.
         assert_ne!(state.session.active_session_id(), &old_id);
@@ -3097,7 +3104,10 @@ mod new_session_from_entry_tests {
         state.active_session_mut().select_next_entry();
 
         // When handling new session from entry.
-        let result = handle_new_session_from_entry(&mut state);
+        let result = handle_new_session_from_entry(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then a PushChatEntry command is returned.
         assert!(
@@ -3120,7 +3130,10 @@ mod new_session_from_entry_tests {
         state.active_session_mut().select_next_entry();
 
         // When handling new session from entry.
-        let result = handle_new_session_from_entry(&mut state);
+        let result = handle_new_session_from_entry(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then a SessionCreated event is returned (from the lifecycle setup).
         assert!(
@@ -3143,7 +3156,10 @@ mod new_session_from_entry_tests {
         state.active_session_mut().select_next_entry();
 
         // When handling new session from entry.
-        let result = handle_new_session_from_entry(&mut state);
+        let result = handle_new_session_from_entry(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then no dispatch command is emitted.
         assert!(
@@ -3167,7 +3183,10 @@ mod new_session_from_entry_tests {
         let old_id = state.session.active_session_id().clone();
 
         // When handling new session from entry.
-        let _result = handle_new_session_from_entry(&mut state);
+        let _result = handle_new_session_from_entry(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the old session is still present in the sessions map.
         assert!(state.session.contains(&old_id));
@@ -3185,7 +3204,10 @@ mod new_session_from_entry_tests {
         state.active_session_mut().select_next_entry();
 
         // When handling new session from entry.
-        let _result = handle_new_session_from_entry(&mut state);
+        let _result = handle_new_session_from_entry(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new session inherited the old active session's CWD.
         assert_eq!(state.active_session().cwd(), inherited_cwd);
@@ -3202,7 +3224,10 @@ mod new_session_from_entry_tests {
         let old_id = state.session.active_session_id().clone();
 
         // When handling new session from entry.
-        let result = handle_new_session_from_entry(&mut state);
+        let result = handle_new_session_from_entry(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the result is empty and the active session is unchanged.
         assert!(result.message_names.is_empty());
@@ -3220,7 +3245,10 @@ mod new_session_from_entry_tests {
         let old_id = state.session.active_session_id().clone();
 
         // When handling new session from entry.
-        let result = handle_new_session_from_entry(&mut state);
+        let result = handle_new_session_from_entry(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the result is empty and the active session is unchanged.
         assert!(result.message_names.is_empty());

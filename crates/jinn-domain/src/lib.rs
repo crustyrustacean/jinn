@@ -31,6 +31,8 @@ pub mod feat;
 
 // Not yet reorganized (handled in later phases)
 pub mod protocol;
+#[cfg(any(test, feature = "test-harness"))]
+pub mod testutil;
 
 // Re-export actor types that are still in use
 pub use common::actor::{ActorCounter, ActorName};

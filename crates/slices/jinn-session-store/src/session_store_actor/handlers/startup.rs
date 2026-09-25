@@ -14,8 +14,7 @@ impl SessionStoreActor {
         _config: &jinn_provider_config::ProvidersConfig,
     ) {
         let app_state = self.services.app_state_storage.read();
-        let preferences = self.services.user_preferences_storage.read();
-        let welcome_mcp_enablement = self.seed_welcome_session(&app_state, &preferences);
+        let welcome_mcp_enablement = self.seed_welcome_session(&app_state);
         self.state
             .with_frontend_app_state(|ops| ops.set(app_state.clone()));
 
@@ -36,7 +35,6 @@ impl SessionStoreActor {
     fn seed_welcome_session(
         &self,
         app_state: &jinn_preferences_config::app_state_file::AppStateFile,
-        preferences: &jinn_preferences_config::UserPreferences,
     ) -> Option<jinn_mcp_msg::McpEnablementChanged> {
         let mut enablement = None;
         self.state.with_session(|view| {
@@ -49,7 +47,7 @@ impl SessionStoreActor {
             }
             session.profile_mut().reasoning_effort = app_state.reasoning_effort;
 
-            let seed = SessionSeed::from_preferences(preferences);
+            let seed = SessionSeed::from_config(&self.services.config);
             {
                 let profile = session.profile_mut();
                 profile.disabled_tools.clone_from(&seed.disabled_tools);

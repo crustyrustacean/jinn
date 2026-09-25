@@ -138,6 +138,7 @@ fn confirm_arg_input(ctx: &mut ActionCtx<'_>, cell: &ArgInputCell) -> IntentResu
         &lifecycle_name,
         &args,
         None,
+        ctx.config,
     )
 }
 
@@ -219,6 +220,7 @@ mod tests {
         ActionCtx {
             state,
             slices,
+            config: jinn_slices::empty_config_layer(),
             key_bytes: Vec::new(),
         }
     }

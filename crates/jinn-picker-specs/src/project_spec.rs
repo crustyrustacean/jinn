@@ -148,6 +148,7 @@ pub fn project_spec() -> PickerSpec<ProjectEntry> {
                     "",
                     &[],
                     None,
+                    jinn_domain::common::render_ctx::empty_config_layer(),
                 );
             PickerOutcome::from_route_result(result)
         })
