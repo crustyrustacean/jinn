@@ -102,7 +102,7 @@ pub fn session_list_key(state: &AppState) -> Vec<SessionListKey> {
                         .reader::<jinn_term_msg::TerminalTabState>(&jinn_term_msg::term_tabs_slot())
                 })
                 .is_some_and(|cell| cell.read().live_terms.contains(id));
-            SessionListKey::of_session(id, session, &active_id, has_live_term)
+            SessionListKey::of_session(id, session, active_id, has_live_term)
         })
         .collect()
 }

@@ -3284,12 +3284,11 @@ fn adding_a_session_rebuilds_the_tree() {
     };
 
     // When a new session is added.
-    let added = {
+    {
         let mut s = ChatSessionState::new();
         s.push_entry(ChatEntry::user("a newly added session"));
-        state.session.insert(s)
-    };
-    let _ = added;
+        state.session.insert(s);
+    }
 
     // Then the tree is rebuilt.
     let slices = jinn_slices::Slices::new();
@@ -3321,22 +3320,20 @@ fn a_renamed_session_rebuilds_the_tree() {
 
     // Then a same-length rename still invalidates the memo.
     let target = state.session.iter().next().map(|(id, _)| id.clone());
-    if let Some(id) = target {
-        if let Some(session) = state.session.get_mut(&id) {
-            let original = session.title().unwrap_or("Untitled Session").to_owned();
-            // Same byte length, different bytes at the head and the tail, so
-            // only the boundary digest can catch it.
-            let flipped = original
-                .chars()
-                .map(|c| if c == 'a' { 'b' } else { 'a' })
-                .collect::<String>();
-            assert_eq!(
-                original.len(),
-                flipped.len(),
-                "the rename is deliberately length-preserving"
-            );
-            session.set_title(flipped);
-        }
+    if let Some(session) = target.as_ref().and_then(|id| state.session.get_mut(id)) {
+        let original = session.title().unwrap_or("Untitled Session").to_owned();
+        // Same byte length, different bytes at the head and the tail, so
+        // only the boundary digest can catch it.
+        let flipped = original
+            .chars()
+            .map(|c| if c == 'a' { 'b' } else { 'a' })
+            .collect::<String>();
+        assert_eq!(
+            original.len(),
+            flipped.len(),
+            "the rename is deliberately length-preserving"
+        );
+        session.set_title(flipped);
     }
 
     // Then exactly one more rebuild happens.
