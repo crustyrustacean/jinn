@@ -12,7 +12,7 @@
 //! exactly as the migration docs prescribe for this slice.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use parking_lot::RwLock;
 
@@ -48,7 +48,7 @@ pub enum VisualItem {
 #[derive(Debug, Clone, Default)]
 pub struct SavedHistoryPosition {
     /// The scroll offset at the time of capture.
-    pub scroll_offset: Option<u16>,
+    pub scroll_offset: Option<u32>,
     /// The entry ID of the cursor at the time of capture.
     pub selected_cursor_id: Option<ChatEntryId>,
 }
@@ -65,7 +65,7 @@ pub struct ChatLogViewUi {
     ///
     /// `None` means "show the bottom of the conversation" (auto-scroll).
     /// `Some(n)` means the user has manually scrolled to offset `n`.
-    pub scroll_offset: Option<u16>,
+    pub scroll_offset: Option<u32>,
     /// The entry ID of the currently selected cursor position, if any.
     ///
     /// This is the source of truth for selection. The visual-item index
@@ -75,27 +75,27 @@ pub struct ChatLogViewUi {
     ///
     /// Used by scroll handlers to resolve the "at bottom" sentinel into
     /// a concrete offset so `scroll_up` / `scroll_down` work correctly.
-    /// Uses `AtomicU16` for interior mutability since the element receives
+    /// Uses `AtomicU32` for interior mutability since the element receives
     /// `&self`.
-    pub last_max_offset: AtomicU16,
+    pub last_max_offset: AtomicU32,
     /// The actual viewport scroll offset after clamping and
     /// scroll-to-selected adjustment, as computed by the render pipeline.
     ///
     /// Unlike `scroll_offset` (the user's intent), this reflects what's
     /// actually displayed. Written by the renderer each frame, read by
     /// intent handlers to determine visible entries.
-    pub rendered_scroll_offset: AtomicU16,
+    pub rendered_scroll_offset: AtomicU32,
     /// Per-entry wrapped line ranges computed by the renderer each frame.
     ///
     /// `entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line)` in
     /// wrapped coordinate space. Used by intent handlers to determine which
     /// entries are visible in the viewport.
-    pub entry_line_ranges: RwLock<Vec<(u16, u16)>>,
+    pub entry_line_ranges: RwLock<Vec<(u32, u32)>>,
     /// The viewport height (render area height) set by the renderer each
     /// frame.
-    pub viewport_height: AtomicU16,
+    pub viewport_height: AtomicU32,
     /// Number of blank lines prepended by the renderer for bottom-alignment.
-    pub blank_count: AtomicU16,
+    pub blank_count: AtomicU32,
     /// The set of chat entry IDs whose tool result content is expanded.
     ///
     /// When a tool result entry is expanded, its full content is shown
@@ -136,13 +136,13 @@ impl Clone for ChatLogViewUi {
         Self {
             scroll_offset: self.scroll_offset,
             selected_cursor_id: self.selected_cursor_id.clone(),
-            last_max_offset: AtomicU16::new(self.last_max_offset.load(Ordering::Relaxed)),
-            rendered_scroll_offset: AtomicU16::new(
+            last_max_offset: AtomicU32::new(self.last_max_offset.load(Ordering::Relaxed)),
+            rendered_scroll_offset: AtomicU32::new(
                 self.rendered_scroll_offset.load(Ordering::Relaxed),
             ),
             entry_line_ranges: RwLock::new(self.entry_line_ranges.read().clone()),
-            viewport_height: AtomicU16::new(self.viewport_height.load(Ordering::Relaxed)),
-            blank_count: AtomicU16::new(self.blank_count.load(Ordering::Relaxed)),
+            viewport_height: AtomicU32::new(self.viewport_height.load(Ordering::Relaxed)),
+            blank_count: AtomicU32::new(self.blank_count.load(Ordering::Relaxed)),
             expanded_entries: self.expanded_entries.clone(),
             saved_history_position: self.saved_history_position.clone(),
             shown_ignored_blocks: self.shown_ignored_blocks.clone(),

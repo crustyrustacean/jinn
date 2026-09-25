@@ -43,7 +43,7 @@ pub struct CachedEntryCount {
     /// streaming flag, subagent-waiting flag) at compute time.
     pub variant: u64,
     /// The wrapped line count for this entry.
-    pub wrapped_count: u16,
+    pub wrapped_count: u32,
     /// Pre-rendered lines for this entry, if available.
     ///
     /// `None` when inserted via [`EntryLineCache::insert`] (count-only).
@@ -63,7 +63,7 @@ pub struct CachedEntryCount {
 /// Result of a successful cache hit.
 pub struct CacheHit {
     /// The wrapped line count for this entry.
-    pub wrapped_count: u16,
+    pub wrapped_count: u32,
     /// Pre-rendered lines for this entry, if they were cached.
     #[expect(
         clippy::rc_buffer,
@@ -299,7 +299,7 @@ impl EntryLineCache {
         is_expanded: bool,
         variant: u64,
         content_width: u16,
-        wrapped_count: u16,
+        wrapped_count: u32,
     ) {
         self.sync_invalidation(content_width);
         self.entries.insert(
@@ -324,7 +324,7 @@ impl EntryLineCache {
         is_expanded: bool,
         variant: u64,
         content_width: u16,
-        wrapped_count: u16,
+        wrapped_count: u32,
         lines: Arc<Vec<Line<'static>>>,
     ) {
         self.sync_invalidation(content_width);
@@ -403,7 +403,7 @@ mod tests {
         is_expanded: bool,
         variant: u64,
         width: u16,
-        wrapped_count: u16,
+        wrapped_count: u32,
     ) {
         let content = cache.probe(entry, is_expanded, variant, width).content;
         cache.insert(entry, content, is_expanded, variant, width, wrapped_count);
@@ -420,7 +420,7 @@ mod tests {
         is_expanded: bool,
         variant: u64,
         width: u16,
-        wrapped_count: u16,
+        wrapped_count: u32,
         lines: Arc<Vec<Line<'static>>>,
     ) {
         let content = cache.probe(entry, is_expanded, variant, width).content;

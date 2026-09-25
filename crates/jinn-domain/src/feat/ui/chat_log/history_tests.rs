@@ -2061,3 +2061,73 @@ fn streaming_tool_output_renders_the_appended_text() {
         "appended tool output should be rendered after re-render"
     );
 }
+
+/// A session whose wrapped content exceeds `u16::MAX` (65,535) lines.
+///
+/// Each entry wraps to many rows at a narrow width, so only a few thousand
+/// entries are needed to overflow the old `u16` line math.
+fn oversized_session(entries: usize) -> AppState {
+    let mut s = normal_state();
+    // ~40 wrapped rows per entry at 36 content columns.
+    let body = "wrapped content line that is long enough to wrap repeatedly. ".repeat(10);
+    for i in 0..entries {
+        s.active_session_mut()
+            .push_entry(ChatEntry::user(format!("{i}: {body}")));
+    }
+    s
+}
+
+#[rstest::rstest]
+fn line_math_survives_a_session_past_65535_wrapped_lines() {
+    // Given a session long enough that its wrapped line total exceeds u16::MAX.
+    let state = oversized_session(4_000);
+    let mut element = ChatLogElement::new();
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the recorded total wrapped line count is the true value, not a u16
+    // wraparound, so the scroll math has something real to clamp against.
+    let total = state.active_session().rendered_max_offset();
+    assert!(
+        total > u32::from(u16::MAX),
+        "a 4000-entry wrapping session should exceed 65535 wrapped lines, got {total}"
+    );
+}
+
+#[rstest::rstest]
+fn an_oversized_session_scrolls_to_a_recent_entry() {
+    // Given a session past the old u16 wraparound point.
+    let state = oversized_session(4_000);
+    let mut element = ChatLogElement::new();
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When rendering and asking for the last entry's screen row.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the selected entry maps to a real row inside the viewport rather
+    // than a wrapped-around one.
+    let row = state
+        .active_session()
+        .selected_entry_screen_y(0)
+        .expect("selected entry should have a screen row");
+    assert!(
+        row < area.height,
+        "the selected entry should land inside the viewport, got row {row}"
+    );
+}
