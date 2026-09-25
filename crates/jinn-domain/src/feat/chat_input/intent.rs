@@ -18,10 +18,10 @@ use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::AutocompleteTrigger;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::InputMode;
-use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::protocol::{ChatEntry, IntentResult};
 use jinn_chat_input_msg::{
-    AutocompleteState, EnqueueUserMessage, ListDirectory, SubmitSteeringMessage, resolve_list_dir,
+    AutocompleteState, EnqueueUserMessage, ListDirectory, SlashCommand, SubmitSteeringMessage,
+    resolve_list_dir,
 };
 use jinn_context::PromptTemplateStore;
 use jinn_core_types::SessionId;
