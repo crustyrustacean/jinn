@@ -25,8 +25,8 @@ use std::time::Duration;
 use jinn_core_types::SessionId;
 use jinn_domain::AppCore;
 use jinn_domain::common::actor_deps::ActorDeps;
-use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use jinn_inference_msg::SendToLlmProvider;
+use jinn_llm_support::token_estimator::TiktokenCounter;
 use jinn_preferences_config::StallWatchdogConfig;
 use jinn_tui::TuiApp;
 
@@ -71,7 +71,7 @@ async fn composed_app_with_fast_stall_watchdog() -> (TuiApp, SessionId) {
             state: state.clone(),
             counter: TiktokenCounter::o200k_base(),
             token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-            image_converter: jinn_domain::feat::image_convert::ImageConverterService::system(),
+            image_converter: jinn_llm_support::image_convert::ImageConverterService::system(),
         },
     );
 

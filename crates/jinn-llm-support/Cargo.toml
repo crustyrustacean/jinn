@@ -20,7 +20,9 @@ which = { workspace = true }
 wherror = { workspace = true }
 
 [dev-dependencies]
+jinn-context-curation = { workspace = true }
 rstest = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

@@ -138,10 +138,6 @@ impl EntryLineCache {
         );
     }
 
-    #[expect(
-        clippy::rc_buffer,
-        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
-    )]
     /// Store a wrapped line count and rendered lines for an entry.
     pub fn insert_with_lines(
         &mut self,
