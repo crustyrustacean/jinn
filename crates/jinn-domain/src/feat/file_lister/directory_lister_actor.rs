@@ -41,8 +41,6 @@ pub struct DirectoryListerActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
-    /// Authority to write `frontend.file_picker`.
-    pub frontend_cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 /// Lists directories on `ListDirectory` commands and writes results to
@@ -52,8 +50,6 @@ pub struct DirectoryListerActor {
     bus: BusService,
     /// Shared application state.
     state: State,
-    /// Authority to write `frontend.file_picker`.
-    frontend_cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 impl BusPublish for DirectoryListerActor {
@@ -105,7 +101,6 @@ impl DirectoryListerActor {
                         Ok(Self {
                             bus: deps.deps.services.bus.clone(),
                             state: deps.state,
-                            frontend_cap: deps.frontend_cap,
                         })
                     })
                 }

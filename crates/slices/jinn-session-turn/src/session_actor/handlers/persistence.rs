@@ -24,7 +24,6 @@ impl SessionPersistenceActor {
         let store = &self.services.session_store;
 
         let state = self.state.clone();
-        let cap = self.cap;
         let session_id = session_id.clone();
         let session_id_log = session_id.clone();
 

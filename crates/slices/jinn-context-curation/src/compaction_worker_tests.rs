@@ -114,7 +114,6 @@ fn test_worker(summary_text: &str) -> CompactionWorker {
         services,
         handle,
         State::new(AppState::default_with_scope_focus()),
-        jinn_domain::common::tcaps::mint::mint_session_cap(),
         String::new(),
     )
 }
@@ -144,13 +143,7 @@ fn test_worker_with_session(
         .build();
     let handle = services.handle.clone();
 
-    let worker = CompactionWorker::new(
-        services,
-        handle,
-        state,
-        jinn_domain::common::tcaps::mint::mint_session_cap(),
-        String::new(),
-    );
+    let worker = CompactionWorker::new(services, handle, state, String::new());
 
     (worker, session_id)
 }
@@ -234,7 +227,6 @@ fn compaction_passes_prompt_explicitly_not_in_message_array() {
         services,
         handle,
         State::new(AppState::default_with_scope_focus()),
-        jinn_domain::common::tcaps::mint::mint_session_cap(),
         String::new(),
     );
     let history = alternating_history(20);
@@ -599,13 +591,7 @@ fn session_continues_after_background_compaction() {
         .expect("save test prefs");
     let handle = services.handle.clone();
 
-    let worker = CompactionWorker::new(
-        services,
-        handle,
-        state,
-        jinn_domain::common::tcaps::mint::mint_session_cap(),
-        String::new(),
-    );
+    let worker = CompactionWorker::new(services, handle, state, String::new());
 
     // When evaluating compaction for the session.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
@@ -744,13 +730,7 @@ impl ThresholdTestEnv {
             .save(&prefs)
             .expect("save test prefs");
         let handle = services.handle.clone();
-        CompactionWorker::new(
-            services,
-            handle,
-            self.state.clone(),
-            jinn_domain::common::tcaps::mint::mint_session_cap(),
-            String::new(),
-        )
+        CompactionWorker::new(services, handle, self.state.clone(), String::new())
     }
 
     /// Run evaluate (auto-compaction path) and return mutations.
@@ -1269,13 +1249,7 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
         .save(&prefs)
         .expect("save test prefs");
     let handle = services.handle.clone();
-    let worker = CompactionWorker::new(
-        services,
-        handle,
-        state,
-        jinn_domain::common::tcaps::mint::mint_session_cap(),
-        String::new(),
-    );
+    let worker = CompactionWorker::new(services, handle, state, String::new());
 
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let mutations = rt.block_on(async { worker.evaluate(&session_id, Arc::from([])).await });
@@ -1594,13 +1568,7 @@ fn error_clears_flag_and_allows_retry() {
             });
     }
 
-    let worker = CompactionWorker::new(
-        services,
-        handle,
-        state,
-        jinn_domain::common::tcaps::mint::mint_session_cap(),
-        String::new(),
-    );
+    let worker = CompactionWorker::new(services, handle, state, String::new());
 
     // When evaluating (LLM will fail).
     let rt = tokio::runtime::Runtime::new().expect("test runtime");

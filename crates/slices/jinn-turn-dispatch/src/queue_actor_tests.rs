@@ -49,7 +49,6 @@ async fn create_actor() -> (QueueActor, State, BusAudit) {
         QueueActor {
             state: state.clone(),
             services,
-            cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
         },
         state,
         audit,
@@ -1025,7 +1024,6 @@ async fn dispatch_turn_with_assembly_failure_publishes_nothing() {
     let actor = QueueActor {
         state: state.clone(),
         services,
-        cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
     };
     let sid = session_id();
     {

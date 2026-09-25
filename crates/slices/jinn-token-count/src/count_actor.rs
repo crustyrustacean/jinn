@@ -20,7 +20,6 @@ use trouper::system::ActorSystem;
 
 use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::session::SessionCap;
 use jinn_domain::feat::context::strategy::token_estimator::{
     TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_content_tokens,
 };
@@ -39,7 +38,6 @@ pub const TOKEN_COUNT_PATH: &str = "token-count";
 pub struct TokenCountActor {
     state: State,
     counter: TiktokenCounter,
-    session_cap: SessionCap,
 }
 
 /// Thin adapter that implements [`TokenEstimator`] by delegating to
@@ -67,7 +65,7 @@ impl ServiceActor for TokenCountActor {
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the state handle and
-        // capability via `start_with`.
+        // counter via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("TokenCountActor is spawned via start_with"),
@@ -90,7 +88,6 @@ impl TokenCountActor {
                         Ok(Self {
                             state,
                             counter: TiktokenCounter::o200k_base(),
-                            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                         })
                     })
                 }
@@ -191,7 +188,6 @@ mod tests {
     )]
     use super::*;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::tcaps::mint::mint_session_cap;
     use jinn_domain::feat::context::strategy::token_estimator::estimate_entry_tokens;
     use jinn_domain::protocol::ChangeSource;
     use jinn_domain::protocol::ChatEntry;
@@ -202,7 +198,6 @@ mod tests {
         TokenCountActor {
             state: state.clone(),
             counter: TiktokenCounter::o200k_base(),
-            session_cap: mint_session_cap(),
         }
     }
 

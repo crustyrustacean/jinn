@@ -61,7 +61,6 @@ use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::SessionCap;
 use jinn_domain::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use jinn_domain::feat::context::snapshot::assemble_via_service;
 use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
@@ -89,8 +88,6 @@ pub struct QueueActor {
     state: State,
     /// Application-wide runtime services (bus publish, assembly ask, paths).
     services: Services,
-    /// Authority to write the session capsule.
-    cap: SessionCap,
 }
 
 impl BusPublish for QueueActor {
@@ -129,11 +126,7 @@ impl QueueActor {
                     let state = state.clone();
                     let services = services.clone();
                     Box::pin(async move {
-                        Ok(Self {
-                            state,
-                            services,
-                            cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-                        })
+                        Ok(Self { state, services })
                     })
                 }
             })

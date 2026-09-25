@@ -19,21 +19,18 @@ pub const SIDEBAR_STATE_PATH: &str = "sidebar-state";
 
 /// Actor that adjusts sidebar cursor state in response to session close.
 ///
-/// Holds the shared [`State`] handle and the two write capabilities —
-/// injected at spawn via `start_with` (they cannot ride trouper's JSON
-/// args).
+/// Holds the shared [`State`] handle, injected at spawn via `start_with`
+/// because it cannot ride trouper's JSON args.
 pub struct SidebarStateActor {
     state: State,
-    session_cap: jinn_domain::common::tcaps::session::SessionCap,
-    frontend_cap: jinn_domain::common::tcaps::frontend::FrontendCap,
 }
 
 impl ServiceActor for SidebarStateActor {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the state handle and
-        // capabilities via `start_with`.
+        // Never called: the spawn helper injects the state handle via
+        // `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("SidebarStateActor is spawned via start_with"),
@@ -52,13 +49,7 @@ impl SidebarStateActor {
             .start_with({
                 move || {
                     let state = state.clone();
-                    Box::pin(async move {
-                        Ok(Self {
-                            state,
-                            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-                            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
-                        })
-                    })
+                    Box::pin(async move { Ok(Self { state }) })
                 }
             })
             .handles::<SessionRemoved>()
@@ -67,16 +58,15 @@ impl SidebarStateActor {
 
     /// Reconcile sidebar cursor and active session after a session is removed.
     fn handle_session_removed(&self, payload: &SessionRemoved) {
-        self.state
-            .with_session_sidebar(|view| {
-                sessions::state::repair_visual_parents_after_removal(
-                    view.session.map(),
-                    view.frontend,
-                    &payload.session_id,
-                    payload.removed_parent.as_ref(),
-                );
-                sessions::reconcile_split(view.session.map(), view.frontend);
-            });
+        self.state.with_session_sidebar(|view| {
+            sessions::state::repair_visual_parents_after_removal(
+                view.session.map(),
+                view.frontend,
+                &payload.session_id,
+                payload.removed_parent.as_ref(),
+            );
+            sessions::reconcile_split(view.session.map(), view.frontend);
+        });
     }
 }
 
@@ -104,8 +94,6 @@ mod tests {
     fn test_actor() -> SidebarStateActor {
         SidebarStateActor {
             state: State::new(AppState::default_with_scope_focus()),
-            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
         }
     }
 

@@ -43,8 +43,6 @@ pub fn activate(services: &Services, state: State) -> SessionStoreHandles {
         session_store_actor::SessionStoreActorDeps {
             services: services.clone(),
             state,
-            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
         },
     );
 

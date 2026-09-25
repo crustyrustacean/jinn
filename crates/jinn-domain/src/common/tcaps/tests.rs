@@ -6,7 +6,6 @@
 
 use crate::common::app_state::AppState;
 use crate::common::state::State;
-use crate::common::tcaps::mint;
 
 // ── TC6 ───────────────────────────────────────────────────────────────────
 // TC6 ("mint is the only construction site") is structurally subsumed by TC1
@@ -32,12 +31,11 @@ fn read_returns_full_snapshot() {
 #[rstest::rstest]
 #[test]
 fn push_entry_routes_through_history_append() {
-    // Given a State with one active session and a minted SessionCap.
+    // Given a State with one active session.
     let state = State::new(AppState::default());
-    let cap = mint::mint_session_cap();
     let before = state.read().active_session().history().len();
 
-    // When appending an entry through the cap-gated projection.
+    // When appending an entry through the session projection.
     state.with_session(|view| {
         let entry = crate::protocol::ChatEntry::system("hello");
         view.session.map().active_session_mut().push_entry(entry);

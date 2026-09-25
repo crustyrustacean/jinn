@@ -69,8 +69,6 @@ async fn composed_app_with_fast_stall_watchdog() -> (TuiApp, SessionId) {
                 services: services.clone(),
             },
             state: state.clone(),
-            cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
             counter: TiktokenCounter::o200k_base(),
             token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
             image_converter: jinn_domain::feat::image_convert::ImageConverterService::system(),

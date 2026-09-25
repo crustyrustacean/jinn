@@ -90,7 +90,6 @@ impl CompactionActor {
                             services.clone(),
                             handle,
                             state.clone(),
-                            jinn_domain::common::tcaps::mint::mint_session_cap(),
                             compaction_prompt,
                         );
                         Ok(Self {

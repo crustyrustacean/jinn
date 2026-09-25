@@ -34,8 +34,6 @@ pub const CONTEXT_SIZE_PATH: &str = "context-size";
 pub struct ContextSizeActor {
     /// Shared application state.
     state: State,
-    /// Authority to write assembled context size into sessions.
-    session_cap: jinn_domain::common::tcaps::session::SessionCap,
     /// Runtime services (the trouper system for assembly asks).
     services: jinn_domain::common::services::Services,
 }
@@ -48,8 +46,8 @@ impl ServiceActor for ContextSizeActor {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the state handle,
-        // counter, and capability via `start_with`.
+        // Never called: the spawn helper injects the state handle and
+        // services via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("ContextSizeActor is spawned via start_with"),
@@ -73,13 +71,7 @@ impl ContextSizeActor {
                 move || {
                     let state = state.clone();
                     let services = services.clone();
-                    Box::pin(async move {
-                        Ok(Self {
-                            state,
-                            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-                            services,
-                        })
-                    })
+                    Box::pin(async move { Ok(Self { state, services }) })
                 }
             })
             .handles::<HistoryAppended>()
@@ -183,7 +175,6 @@ mod tests {
         }
         ContextSizeActor {
             state: State::new(AppState::default()),
-            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             services,
         }
     }

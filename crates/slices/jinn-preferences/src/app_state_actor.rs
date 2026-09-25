@@ -32,7 +32,6 @@ pub struct AppStateActor {
     /// Shared application state — writes frontend.app_state, sidebar_width,
     /// theme, and context.active_persona inline after persist.
     state: State,
-    frontend_cap: jinn_domain::common::tcaps::frontend::FrontendCap,
 }
 
 impl ServiceActor for AppStateActor {
@@ -43,8 +42,8 @@ impl ServiceActor for AppStateActor {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the state handle and
-        // capability via `start_with`.
+        // Never called: the spawn helper injects the state handle
+        // via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("AppStateActor is spawned via start_with"),
@@ -60,7 +59,6 @@ impl AppStateActor {
         system: &ActorSystem,
         services: Services,
         state: State,
-        frontend_cap: jinn_domain::common::tcaps::frontend::FrontendCap,
     ) -> ActorPath {
         spawn_service_builder::<Self>(system)
             .at(ActorPath::new(APP_STATE_ACTOR_PATH))
@@ -70,7 +68,6 @@ impl AppStateActor {
                         Ok(Self {
                             services: services.clone(),
                             state: state.clone(),
-                            frontend_cap,
                         })
                     })
                 }
@@ -194,7 +191,6 @@ mod tests {
             state: jinn_domain::common::state::State::new(
                 jinn_domain::common::app_state::AppState::default(),
             ),
-            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
         };
         (actor, services)
     }

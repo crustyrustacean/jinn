@@ -24,7 +24,6 @@ use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::mint::mint_session_cap;
 use jinn_domain::feat::chat_input::protocol::command::EnqueueUserMessage;
 use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
 use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
@@ -61,7 +60,6 @@ async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -
         max_output_lines: None,
         max_output_bytes: None,
         dispatched_at: jiff::Timestamp::now(),
-        session_cap: Some(mint_session_cap()),
         mcp_coordinator: None,
         interactive_term: None,
         task_spawns: Some(services.task_spawns.clone()),

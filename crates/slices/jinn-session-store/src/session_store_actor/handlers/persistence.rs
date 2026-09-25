@@ -13,7 +13,6 @@ impl SessionStoreActor {
     pub(crate) async fn save_active_session(&self, session_id: &SessionId) {
         let services = self.services.clone();
         let state = self.state.clone();
-        let cap = self.session_cap;
         let requested_id = session_id.clone();
         let logged_id = session_id.clone();
 

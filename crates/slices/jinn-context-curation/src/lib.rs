@@ -14,8 +14,8 @@
 //! `TriggerCompaction`).
 //!
 //! Kernel dependency (see Cargo.toml): the compaction worker reads
-//! through tcaps (State + SessionCap) and consumes the kernel
-//! token_estimator, granted at slice activation.
+//! through `State` and consumes the kernel token estimator, granted at
+//! slice activation.
 
 pub mod compaction_actor;
 pub mod compaction_algorithm;

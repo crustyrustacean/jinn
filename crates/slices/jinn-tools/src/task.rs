@@ -397,9 +397,6 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     let Some(bus) = ctx.bus else {
         return tool_error(call, "no message bus available");
     };
-    let Some(session_cap) = ctx.session_cap else {
-        return tool_error(call, "no session authority available");
-    };
     let args = match parse_args(&call.arguments) {
         Ok(args) => args,
         Err(msg) => return tool_error(call, &msg),

@@ -45,8 +45,6 @@ use jinn_context::PromptTemplateStore;
 use jinn_context::env_context::ContextFile;
 use jinn_core_types::SessionId;
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::frontend::FrontendCap;
-use jinn_domain::common::tcaps::session::SessionCap;
 use jinn_skills::Skill;
 
 use crate::commands::{RescanContext, RescanPrompts, RescanSkills, RunDiscovery};
@@ -87,10 +85,10 @@ enum Resource {
 
 /// The per-session discovery worker.
 ///
-/// Holds the write authorities (caps), the trouper system handle for
-/// out-of-task publishes, and the launch-wide scan inputs (home + the
-/// four resource dirs). The session id arrives as the entity's `"key"`
-/// genesis arg (the partition set merges it into the args template).
+/// Holds the trouper system handle for out-of-task publishes and the
+/// launch-wide scan inputs (home + the four resource dirs). The session
+/// id arrives as the entity's `"key"` genesis arg (the partition set
+/// merges it into the args template).
 pub struct SessionDiscoveryWorker {
     /// The session this entity serves (the shard key).
     session_id: SessionId,
@@ -99,10 +97,6 @@ pub struct SessionDiscoveryWorker {
     system: ActorSystem,
     /// Shared application state.
     state: State,
-    /// Authority to write discovered sets into sessions.
-    session_cap: SessionCap,
-    /// Authority to reload the skills picker in the frontend.
-    frontend_cap: FrontendCap,
     /// Monotonic run counter: a waiter observing a smaller value than
     /// the current run has been superseded and no-ops.
     run: Arc<AtomicU64>,
@@ -122,7 +116,7 @@ pub struct SessionDiscoveryWorker {
     settle_budget: std::time::Duration,
 }
 
-/// The authorities and inputs one worker entity is granted at genesis.
+/// The handles and inputs one worker entity is granted at genesis.
 #[derive(Clone)]
 pub struct WorkerDeps {
     /// The session this entity serves (the partition key).
@@ -131,10 +125,6 @@ pub struct WorkerDeps {
     pub system: ActorSystem,
     /// Shared application state.
     pub state: State,
-    /// Authority to write discovered sets into sessions.
-    pub session_cap: SessionCap,
-    /// Authority to reload the skills picker in the frontend.
-    pub frontend_cap: FrontendCap,
     /// The user's home dir.
     pub home: PathBuf,
     /// The system-installed skills dir.
@@ -150,9 +140,8 @@ pub struct WorkerDeps {
 }
 
 impl WorkerDeps {
-    /// Mints the per-entity authorities for one session: shared state
-    /// and system handle, fresh caps, launch-wide scan inputs from
-    /// the launch's `AppPaths`.
+    /// Builds the handles and launch-wide scan inputs for one session
+    /// from the launch's `AppPaths`.
     ///
     /// `settle_budget` overrides the default wait (tests inject a
     /// shorter one); `None` uses [`SETTLE_BUDGET`].
@@ -168,8 +157,6 @@ impl WorkerDeps {
             session_id,
             system: system.clone(),
             state: state.clone(),
-            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
             home: paths.home_dir().to_path_buf(),
             system_skills_dir: paths.system_skills_dir(),
             global_skills_dir: paths.skills_dir(),
@@ -179,7 +166,7 @@ impl WorkerDeps {
         }
     }
 
-    /// Mints the per-entity authorities with the default settle budget.
+    /// Builds the per-entity handles with the default settle budget.
     #[must_use]
     pub fn for_session(
         system: &ActorSystem,
@@ -195,11 +182,11 @@ impl ServiceActor for SessionDiscoveryWorker {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // The caps and State cannot ride JSON args; entities spawn via
-        // the partition factory's `start_with` closure (see `spawn`).
+        // State cannot ride JSON args; entities spawn via the partition
+        // factory's `start_with` closure (see `spawn`).
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
-                "SessionDiscoveryWorker spawns via the partition factory; start requires caps",
+                "SessionDiscoveryWorker spawns via the partition factory; start requires state",
             ),
         )
     }
@@ -210,7 +197,7 @@ impl SessionDiscoveryWorker {
     ///
     /// Called by the partition factory on activation; the factory
     /// closure captures the deps so every activation of this partition
-    /// set grants its entity the same authorities.
+    /// set receives the same handles.
     pub fn spawn(system: &ActorSystem, path: ActorPath, deps: WorkerDeps) -> ActorPath {
         let system_handle = system.clone();
         trouper::builder::spawn_service_builder::<Self>(system)
@@ -222,8 +209,6 @@ impl SessionDiscoveryWorker {
                     let SessionDiscoveryWorkerDepsBuilder {
                         session_id,
                         state,
-                        session_cap,
-                        frontend_cap,
                         home,
                         system_skills_dir,
                         global_skills_dir,
@@ -236,8 +221,6 @@ impl SessionDiscoveryWorker {
                         session_id,
                         system,
                         state,
-                        session_cap,
-                        frontend_cap,
                         run: Arc::new(AtomicU64::new(0)),
                         home,
                         system_skills_dir,
@@ -300,8 +283,6 @@ impl SessionDiscoveryWorker {
         let project_dirs = scans::project_skills_dirs(cwd, &self.home);
         let system = self.system.clone();
         let state = self.state.clone();
-        let session_cap = self.session_cap;
-        let frontend_cap = self.frontend_cap;
         let session_id = self.session_id.clone();
         let system_dir = self.system_skills_dir.clone();
         let global_dir = self.global_skills_dir.clone();
@@ -313,7 +294,7 @@ impl SessionDiscoveryWorker {
             match joined {
                 Ok(skills) => {
                     tracing::info!(count = skills.len(), "scanned agent skills");
-                    write_skills(&state, &session_cap, &frontend_cap, &session_id, &skills);
+                    write_skills(&state, &session_id, &skills);
                     publish(
                         &system,
                         jinn_skills_msg::SkillsLoaded {
@@ -354,7 +335,6 @@ impl SessionDiscoveryWorker {
         let project_dirs = scans::project_prompts_dirs(cwd, &self.home);
         let system = self.system.clone();
         let state = self.state.clone();
-        let session_cap = self.session_cap;
         let session_id = self.session_id.clone();
         let user_dir = self.user_prompts_dir.clone();
         let system_dir = self.system_prompts_dir.clone();
@@ -367,7 +347,7 @@ impl SessionDiscoveryWorker {
                 Ok(Ok(store)) => {
                     tracing::info!(count = store.len(), "rescanned prompt templates");
                     let count = store.len();
-                    write_prompts(&state, &session_cap, &session_id, &store);
+                    write_prompts(&state, &session_id, &store);
                     publish(
                         &system,
                         jinn_session_init_msg::PromptTemplatesLoaded {
@@ -420,7 +400,6 @@ impl SessionDiscoveryWorker {
         }
         let system = self.system.clone();
         let state = self.state.clone();
-        let session_cap = self.session_cap;
         let session_id = self.session_id.clone();
         let home = self.home.clone();
         let cwd = cwd.to_path_buf();
@@ -430,7 +409,7 @@ impl SessionDiscoveryWorker {
             match joined {
                 Ok(files) => {
                     tracing::info!(count = files.len(), "scanned project context files");
-                    write_context(&state, &session_cap, &session_id, &files);
+                    write_context(&state, &session_id, &files);
                     publish(
                         &system,
                         jinn_domain::feat::context::protocol::event::ContextFilesLoaded {
@@ -536,8 +515,6 @@ impl SessionDiscoveryWorker {
 struct SessionDiscoveryWorkerDepsBuilder {
     session_id: SessionId,
     state: State,
-    session_cap: SessionCap,
-    frontend_cap: FrontendCap,
     home: PathBuf,
     system_skills_dir: PathBuf,
     global_skills_dir: PathBuf,
@@ -553,8 +530,6 @@ impl WorkerDeps {
         SessionDiscoveryWorkerDepsBuilder {
             session_id: self.session_id.clone(),
             state: self.state.clone(),
-            session_cap: self.session_cap,
-            frontend_cap: self.frontend_cap,
             home: self.home.clone(),
             system_skills_dir: self.system_skills_dir.clone(),
             global_skills_dir: self.global_skills_dir.clone(),
@@ -670,13 +645,7 @@ async fn join_outcome(handle: tokio::task::JoinHandle<ResourceOutcome>) -> Resou
 }
 
 /// Writes the discovered skills into the session and reloads the picker.
-fn write_skills(
-    state: &State,
-    session_cap: &SessionCap,
-    frontend_cap: &FrontendCap,
-    session_id: &SessionId,
-    skills: &[Skill],
-) {
+fn write_skills(state: &State, session_id: &SessionId, skills: &[Skill]) {
     state.with_session(|view| {
         if let Some(session) = view.session.map().get_mut(session_id) {
             session.set_discovered_skills(skills.to_vec());
@@ -703,12 +672,7 @@ fn write_skills(
 }
 
 /// Writes the discovered prompt templates into the session.
-fn write_prompts(
-    state: &State,
-    session_cap: &SessionCap,
-    session_id: &SessionId,
-    store: &PromptTemplateStore,
-) {
+fn write_prompts(state: &State, session_id: &SessionId, store: &PromptTemplateStore) {
     state.with_session(|view| {
         if let Some(session) = view.session.map().get_mut(session_id) {
             session.set_discovered_prompt_templates(store.clone());
@@ -717,12 +681,7 @@ fn write_prompts(
 }
 
 /// Writes the discovered context files into the session.
-fn write_context(
-    state: &State,
-    session_cap: &SessionCap,
-    session_id: &SessionId,
-    files: &[ContextFile],
-) {
+fn write_context(state: &State, session_id: &SessionId, files: &[ContextFile]) {
     state.with_session(|view| {
         if let Some(session) = view.session.map().get_mut(session_id) {
             session.set_discovered_context_files(files.to_vec());

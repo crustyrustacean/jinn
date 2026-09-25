@@ -17,7 +17,6 @@ async fn create_actor() -> (PreferencesActor, State) {
     let actor = PreferencesActor {
         services: services.clone(),
         state: state.clone(),
-        cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
     };
     (actor, state)
 }

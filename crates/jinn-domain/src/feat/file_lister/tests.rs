@@ -14,7 +14,6 @@ use crate::common::app_state::AppState;
 use crate::common::bus::test_harness::TestHarness;
 use crate::common::services::test_services::TestServices;
 use crate::common::state::State;
-use crate::common::tcaps::mint::mint_frontend_cap;
 use jinn_core_types::SessionId;
 
 use super::directory_lister_actor::{
@@ -28,10 +27,6 @@ fn file_entry(name: &str) -> FileEntry {
         name: name.into(),
         is_dir: false,
     }
-}
-
-fn mint_cap() -> crate::common::tcaps::frontend::FrontendCap {
-    mint_frontend_cap()
 }
 
 // ── resolve_list_dir ───────────────────────────────────────────────────────
@@ -253,7 +248,6 @@ async fn spawn_actor(deps: &ActorDeps, state: &State) -> trouper::actor::ActorPa
         DirectoryListerActorDeps {
             deps: deps.clone(),
             state: state.clone(),
-            frontend_cap: mint_frontend_cap(),
         },
     )
 }

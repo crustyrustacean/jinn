@@ -74,7 +74,6 @@ pub fn activate(
         host.system(),
         session_lifecycle_actor::SessionLifecycleActorDeps {
             state,
-            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             services: services.clone(),
             builtin_registry,
             shell,

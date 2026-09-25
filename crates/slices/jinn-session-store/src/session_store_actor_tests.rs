@@ -40,8 +40,6 @@ async fn actor_fixture() -> ActorFixture {
         SessionStoreActorDeps {
             services,
             state: state.clone(),
-            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
         },
     );
     ActorFixture {

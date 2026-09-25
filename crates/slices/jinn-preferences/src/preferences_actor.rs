@@ -37,8 +37,6 @@ pub struct PreferencesActor {
     services: Services,
     /// Shared application state — writes `frontend.preferences` inline after persist.
     state: State,
-    /// Write authority for `frontend.preferences`.
-    cap: jinn_domain::common::tcaps::FrontendCap,
 }
 
 impl ServiceActor for PreferencesActor {
@@ -49,8 +47,8 @@ impl ServiceActor for PreferencesActor {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the state handle and
-        // capability via `start_with`.
+        // Never called: the spawn helper injects the state handle
+        // via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("PreferencesActor is spawned via start_with"),
@@ -66,7 +64,6 @@ impl PreferencesActor {
         system: &ActorSystem,
         services: Services,
         state: State,
-        cap: jinn_domain::common::tcaps::FrontendCap,
     ) -> ActorPath {
         spawn_service_builder::<Self>(system)
             .at(ActorPath::new(PREFERENCES_ACTOR_PATH))
@@ -76,7 +73,6 @@ impl PreferencesActor {
                         Ok(Self {
                             services: services.clone(),
                             state: state.clone(),
-                            cap,
                         })
                     })
                 }

@@ -330,8 +330,6 @@ impl ActorSystemBuilder {
             jinn_session_turn::session_actor::SessionPersistenceActorDeps {
                 deps: actor_deps.clone(),
                 state: state.clone(),
-                cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-                frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 counter: token_counter,
                 token_cache: entry_token_cache.clone(),
                 image_converter: jinn_domain::feat::image_convert::ImageConverterService::system(),
@@ -349,7 +347,6 @@ impl ActorSystemBuilder {
                 deps: actor_deps.clone(),
                 state: state.clone(),
                 services: services.clone(),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 builtin_filter: None,
             },
         );
@@ -426,7 +423,6 @@ impl ActorSystemBuilder {
             jinn_domain::feat::file_lister::DirectoryListerActorDeps {
                 deps: actor_deps.clone(),
                 state: state.clone(),
-                frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
             },
         );
 
@@ -688,11 +684,10 @@ async fn jinn_preferences_activate(
     services: &mut Services,
     state: jinn_domain::common::state::State,
 ) {
-    // The two persistence actors spawn here (with the state handle and
-    // their frontend caps) and subscribe synchronously — this must
-    // complete before the env-init tail publishes `EnvironmentLoaded`,
-    // which triggers publishes of `UpdateAppState`/`UpdatePreferences`
-    // on first boot.
+    // The two persistence actors spawn here with shared state and services,
+    // then subscribe synchronously — this must complete before the env-init
+    // tail publishes `EnvironmentLoaded`, which triggers publishes of
+    // `UpdateAppState`/`UpdatePreferences` on first boot.
     let system = services.trouper_system.clone();
     let services_handle = services.clone();
     let mut host = jinn_slices::SliceHost::new(
