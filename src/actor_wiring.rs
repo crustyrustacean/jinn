@@ -598,6 +598,10 @@ fn jinn_chat_log_view_activate(services: &mut Services, state: &jinn_domain::Sta
         panic!("chat-log-view slice finalize failed: {error}");
     }
     state.read().session.attach_slices(services.slices.clone());
+    // The layout worker pool and the actor that ends a session load once the
+    // chat log has been measured. Spawned here so their subscriptions are
+    // live before the first session can be loaded.
+    jinn_domain::feat::ui::chat_log::install_layout_actors(&services.trouper_system, state.clone());
 }
 
 /// Activates the chat-input slice: its state cell only. No routes, no

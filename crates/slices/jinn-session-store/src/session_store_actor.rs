@@ -7,6 +7,7 @@
 mod handlers;
 
 use jinn_boot_msg::EnvironmentLoaded;
+use jinn_chat_log_view_msg::{ArmLayoutDeadline, LayoutChatSession};
 use jinn_domain::Services;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::BusService;
@@ -95,6 +96,12 @@ impl SessionStoreActor {
             .handles::<ArchiveSession>()
             .handles::<ArchiveSessionTree>()
             .handles::<EnvironmentLoaded>()
+            // A successful load hands the chat log to the layout workers
+            // instead of clearing the load guard, so the chat log's loading
+            // indication stays up until it has been measured. The flush gate
+            // drops any outbound type not declared here.
+            .emits::<LayoutChatSession>()
+            .emits::<ArmLayoutDeadline>()
             .mailbox(
                 SESSION_STORE_MAILBOX_CAPACITY,
                 trouper::inbox::OverloadPolicy::Block,
@@ -105,8 +112,8 @@ impl SessionStoreActor {
 }
 
 impl MsgHandler<SessionLoadRequested> for SessionStoreActor {
-    async fn handle(&mut self, msg: &SessionLoadRequested, _ctx: &mut MsgCtx<'_>) {
-        self.on_load_requested(msg).await;
+    async fn handle(&mut self, msg: &SessionLoadRequested, ctx: &mut MsgCtx<'_>) {
+        self.on_load_requested(ctx, msg).await;
     }
 }
 
@@ -117,8 +124,8 @@ impl MsgHandler<LoadSessionPickerEntries> for SessionStoreActor {
 }
 
 impl MsgHandler<SessionForkRequested> for SessionStoreActor {
-    async fn handle(&mut self, msg: &SessionForkRequested, _ctx: &mut MsgCtx<'_>) {
-        self.on_session_fork_requested(msg).await;
+    async fn handle(&mut self, msg: &SessionForkRequested, ctx: &mut MsgCtx<'_>) {
+        self.on_session_fork_requested(ctx, msg).await;
     }
 }
 

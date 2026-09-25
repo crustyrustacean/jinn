@@ -275,6 +275,16 @@ impl ChatSessionState {
         taken.into_inner()
     }
 
+    /// A snapshot copy of the expanded entry ids.
+    ///
+    /// The off-thread chat log layout reads the set once per job rather than
+    /// testing membership per entry, matching
+    /// [`Self::streaming_tool_call_ids`]'s single-snapshot approach.
+    #[must_use]
+    pub fn expanded_entry_ids(&self) -> std::collections::HashSet<ChatEntryId> {
+        self.with_view(|v| v.expanded_entries.clone(), Default::default)
+    }
+
     /// A snapshot copy of the shown-ignored-blocks set. Builders that read
     /// the set alongside history (`build_visual_items`, sweep propagation)
     /// work on the copy so the view lock is never held across computation.
@@ -2648,6 +2658,27 @@ impl ChatSessionState {
     pub fn entry_line_ranges_writes(&self) -> u64 {
         self.with_view(
             jinn_chat_log_view_msg::ChatLogViewUi::entry_line_ranges_writes,
+            || 0,
+        )
+    }
+
+    /// Store the content width the renderer just measured at.
+    ///
+    /// The session load reads this back to measure a freshly loaded history
+    /// at the width the next frame will use, so the measurement is not
+    /// discarded as stale.
+    pub fn set_content_width(&self, width: u16) {
+        self.update_view(|v| v.content_width.store(u32::from(width), Ordering::Relaxed));
+    }
+
+    /// The content width the last render measured at.
+    ///
+    /// `0` before the first render, which the renderer also treats as "do
+    /// not wrap".
+    #[must_use]
+    pub fn content_width(&self) -> u16 {
+        self.with_view(
+            |v| u16::try_from(v.content_width.load(Ordering::Relaxed)).unwrap_or(u16::MAX),
             || 0,
         )
     }

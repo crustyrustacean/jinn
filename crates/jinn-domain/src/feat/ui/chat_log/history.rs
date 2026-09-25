@@ -33,7 +33,9 @@ use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_chat_log_view_msg::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
 };
+use jinn_core_types::SessionId;
 use jinn_session_msg::PhaseKind;
+use jinn_session_state::ChatSessionState;
 use jinn_theme::Theme;
 use jinn_tools_msg::TASK_TOOL_NAME;
 use ratatui::Frame;
@@ -59,7 +61,10 @@ const GUTTER_STR: &str = "𜺏 ";
 /// background tint, streaming flag, subagent-waiting line). Used as the
 /// render-variant component of the entry line cache key so the cache
 /// invalidates when any of them flips.
-fn render_variant(
+///
+/// Shared with the off-thread layout worker, which must produce byte-identical
+/// variants or every count it publishes would miss.
+pub(crate) fn render_variant(
     paired_status: Option<ToolResultStatus>,
     is_streaming: bool,
     is_waiting_on_subagent: bool,
@@ -68,6 +73,88 @@ fn render_variant(
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     (paired_status, is_streaming, is_waiting_on_subagent).hash(&mut hasher);
     hasher.finish()
+}
+
+/// The per-entry render inputs that live in application state rather than in
+/// the history itself.
+///
+/// Snapshotted once per layout job so the off-thread measurement sees a stable
+/// set: the render pass gathers the same three things every frame, and a
+/// measurement taken across a state change would produce counts that no frame
+/// could ever hit.
+pub(crate) struct LayoutInputs {
+    /// Theme colors, cloned once per job rather than once per entry.
+    theme: Theme,
+    /// Entries whose tool result content is expanded.
+    expanded: HashSet<ChatEntryId>,
+    /// Tool call entries still streaming their arguments.
+    streaming: HashSet<ChatEntryId>,
+    /// Child sessions loaded and actively running, by session id.
+    running_children: HashSet<SessionId>,
+}
+
+impl LayoutInputs {
+    /// Snapshots the layout inputs for one session.
+    pub(crate) fn snapshot(state: &AppState, session_id: &SessionId) -> Self {
+        use jinn_session_msg::PhaseKind;
+
+        let running_children = state
+            .session
+            .iter()
+            .filter(|(_, child)| matches!(child.phase(), PhaseKind::Sending | PhaseKind::Streaming))
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        let session = state.session.get(session_id);
+        Self {
+            theme: state.frontend.theme.clone(),
+            expanded: session.map_or_else(HashSet::new, ChatSessionState::expanded_entry_ids),
+            streaming: session.map_or_else(HashSet::new, ChatSessionState::streaming_tool_call_ids),
+            running_children,
+        }
+    }
+
+    /// Whether this entry's tool result content is expanded.
+    pub(crate) fn is_expanded(&self, id: &ChatEntryId) -> bool {
+        self.expanded.contains(id)
+    }
+
+    /// The theme to render this job's entries with.
+    pub(crate) fn theme(&self) -> &Theme {
+        &self.theme
+    }
+
+    /// Whether this tool call is still streaming its arguments.
+    pub(crate) fn is_streaming(&self, id: &ChatEntryId) -> bool {
+        self.streaming.contains(id)
+    }
+
+    /// Whether this `task` call is waiting on a loaded, running child session.
+    pub(crate) fn is_task_waiting(
+        &self,
+        entry: &ChatEntry,
+        tool_result_statuses: &HashMap<String, ToolResultStatus>,
+    ) -> bool {
+        let ChatEntryKind::ToolCall {
+            id,
+            name,
+            child_session,
+            ..
+        } = &entry.kind
+        else {
+            return false;
+        };
+        if name != TASK_TOOL_NAME {
+            return false;
+        }
+        // A paired result means the tool already finished.
+        if tool_result_statuses.contains_key(id) {
+            return false;
+        }
+        child_session
+            .as_ref()
+            .is_some_and(|child| self.running_children.contains(child))
+    }
 }
 
 /// Display element for the full conversation history.
@@ -113,6 +200,10 @@ impl UiElement for ChatLogElement {
                 session.set_viewport_height(area.height);
                 session.set_blank_count(render.scroll.blank_count as u32);
                 session.set_rendered_scroll_offset(render.scroll.clamped);
+                // Published so a session loaded later measures at the width
+                // this frame used, instead of being measured at a guessed
+                // width and thrown away as stale.
+                session.set_content_width(render.content_width);
             }
 
             render.find_visible_indices();

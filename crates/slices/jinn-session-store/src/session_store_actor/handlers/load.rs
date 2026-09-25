@@ -2,13 +2,22 @@
 
 use std::collections::{HashMap, HashSet};
 
+use jinn_chat_log_view_msg::{ArmLayoutDeadline, DEFAULT_MIN_COLLAPSE_COUNT, LayoutChatSession};
 use jinn_core_types::{ChatEntry, SessionId};
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::session::SessionStoreService;
+use jinn_domain::feat::ui::chat_log::layout_supervisor::{LAYOUT_DEADLINE, LAYOUT_SUPERVISOR_PATH};
 use jinn_domain::protocol::system::ActiveSessionChanged;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_session_store_msg::SessionForkRequested;
 use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested};
+use trouper::actor::ActorPath;
+use trouper::context::MsgCtx;
+use trouper::envelope::Address;
+
+/// Default lines before a tool call or result is truncated, matching the
+/// chat log renderer's own fallback.
+const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 
 use crate::session_store_actor::SessionStoreActor;
 
@@ -24,7 +33,18 @@ impl SessionStoreActor {
     }
 
     /// Completes initialization of an explicitly loaded session, then publishes its ID.
-    pub(crate) async fn restore_loaded_session(&self, snapshot: SessionSnapshot) {
+    ///
+    /// The load guard is deliberately *not* cleared here. The chat log's
+    /// loading indication is driven by that guard, and clearing it the moment
+    /// the session is in memory is what made the next frame run the whole
+    /// layout pass — the freeze this hand-off exists to avoid. Instead the
+    /// chat log is handed to the layout workers, and the completion actor
+    /// clears the guard once the line counts are measured.
+    pub(crate) async fn restore_loaded_session(
+        &self,
+        ctx: &mut MsgCtx<'_>,
+        snapshot: SessionSnapshot,
+    ) {
         let session_id = snapshot.metadata.session_id.clone();
         let model = if snapshot.metadata.profile.model.is_no_provider() {
             self.state
@@ -42,6 +62,12 @@ impl SessionStoreActor {
         session.mark_interacted();
         let original_cwd = session.cwd().to_path_buf();
 
+        // Everything the measurement needs, taken while the session is still
+        // owned here. Once it is moved into the map only a borrow of its
+        // history is reachable, and a worker thread cannot hold that — so the
+        // deep clone has to happen now, or not at all.
+        let layout_inputs = self.collect_layout_inputs(&session, &session_id);
+
         self.state.with_preferences(|ops| {
             ops.frontend().update_sections(|sections| {
                 sections
@@ -55,8 +81,27 @@ impl SessionStoreActor {
             map.remove_frozen_node(&session_id);
             map.insert(session);
             map.set_active(session_id.clone());
-            map.clear_load();
         });
+
+        // Dispatched only now that the session is active, so the completion
+        // actor's active-session check sees it and the workers measure the
+        // session that is actually on screen.
+        //
+        // Typed sends: the history travels as a live value and is never
+        // serialized, and the route table hands the job to one worker of the
+        // pool.
+        ctx.send_to_any(LayoutChatSession {
+            session_id: session_id.clone(),
+            ..layout_inputs
+        });
+        ctx.send(
+            Address::Path(ActorPath::new(LAYOUT_SUPERVISOR_PATH)),
+            ArmLayoutDeadline {
+                session_id: session_id.clone(),
+                after: LAYOUT_DEADLINE,
+            },
+            None,
+        );
 
         let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
         if !cwd_exists {
@@ -69,6 +114,43 @@ impl SessionStoreActor {
         .await;
         self.save_active_session(&session_id).await;
         self.publish(SessionLoadCompleted { session_id }).await;
+    }
+
+    /// Everything the layout workers need to measure a freshly loaded session.
+    ///
+    /// The content width is the one the chat log last rendered at, which is the
+    /// width the next frame will use. Measuring at a guess instead would yield
+    /// counts that first frame could not use, throwing the whole measurement
+    /// away and leaving the frame to do exactly the work this hand-off exists
+    /// to avoid.
+    fn collect_layout_inputs(
+        &self,
+        session: &ChatSessionState,
+        session_id: &SessionId,
+    ) -> LayoutChatSession {
+        // One read guard for both reads: taking a second would deadlock.
+        let state = self.state.read();
+        let preferences = &state.frontend.preferences;
+        LayoutChatSession {
+            session_id: session_id.clone(),
+            // From the session that was on screen before this load, which is
+            // the frame that will render the new one.
+            content_width: state
+                .session
+                .get(state.session.active_session_id())
+                .map_or(0, ChatSessionState::content_width),
+            entries: session.history().to_vec(),
+            // Read from the incoming session rather than the active one: the
+            // session was not active when it was still owned here, and its own
+            // view state is the one that will be measured.
+            shown_ignored_blocks: session.shown_ignored_blocks_snapshot(),
+            min_collapse_count: preferences
+                .min_collapse_count
+                .unwrap_or(DEFAULT_MIN_COLLAPSE_COUNT),
+            tool_entry_max_lines: preferences
+                .tool_entry_max_lines
+                .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES),
+        }
     }
 
     /// Replaces a missing working directory with the application default.
@@ -88,14 +170,18 @@ impl SessionStoreActor {
     }
 
     /// Loads a full session from storage and restores it into active state.
-    pub(crate) async fn on_load_requested(&self, payload: &SessionLoadRequested) {
+    pub(crate) async fn on_load_requested(
+        &self,
+        ctx: &mut MsgCtx<'_>,
+        payload: &SessionLoadRequested,
+    ) {
         let store = self.services.session_store.clone();
         match store.load_session(&payload.session_id).await {
             Ok(Some(session)) => {
                 if let Err(error) = store.set_archived(&payload.session_id, false).await {
                     tracing::warn!(?error, "failed to unarchive session on load");
                 }
-                self.restore_loaded_session(session).await;
+                self.restore_loaded_session(ctx, session).await;
                 self.hydrate_tree_frozen_nodes(&store, &payload.session_id)
                     .await;
             }
@@ -114,7 +200,11 @@ impl SessionStoreActor {
     }
 
     /// Persists the source, forks it in the store, then restores the child.
-    pub(crate) async fn on_session_fork_requested(&self, payload: &SessionForkRequested) {
+    pub(crate) async fn on_session_fork_requested(
+        &self,
+        ctx: &mut MsgCtx<'_>,
+        payload: &SessionForkRequested,
+    ) {
         self.state.with_session(|view| {
             if let Some(session) = view.session.map().get_mut(&payload.source_session_id) {
                 session.mark_interacted();
@@ -138,7 +228,7 @@ impl SessionStoreActor {
 
         match self.services.session_store.load_session(&new_id).await {
             Ok(Some(session)) => {
-                self.restore_loaded_session(session).await;
+                self.restore_loaded_session(ctx, session).await;
             }
             Ok(None) => {
                 tracing::warn!("forked session not found after creation");

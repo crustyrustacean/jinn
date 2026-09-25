@@ -668,7 +668,47 @@ async fn load_completed_is_published_after_session_is_fully_initialized() {
     let session = state.session.get(&session_id).expect("loaded session");
     assert_eq!(state.session.active_session_id(), &session_id);
     assert!(session.has_interacted());
-    assert!(!state.session.is_loading());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_loaded_session_holds_the_load_guard_for_the_chat_log_measurement() {
+    // Given a session persisted in the store and removed from the live map.
+    let fixture = actor_fixture().await;
+    let session_id = jinn_core_types::SessionId::new();
+    let mut stored = ChatSessionState::new();
+    stored.set_session_id(session_id.clone());
+    stored.set_model(jinn_core_types::ModelSelection::Single(
+        "ollama/llama3".to_owned(),
+    ));
+    stored.push_entry(jinn_core_types::ChatEntry::user("loaded"));
+    fixture
+        .store
+        .save(&stored.capture_snapshot())
+        .await
+        .expect("save session");
+    {
+        let mut state = fixture.state.write();
+        state.session.remove(&session_id);
+        state.session.begin_load(session_id.clone());
+    }
+
+    // When the load request is published.
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+        })
+        .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Then the guard is still held, because the chat log has not been
+    // measured yet — this fixture has no layout workers, which is exactly the
+    // path the supervisor's deadline is the backstop for.
+    assert!(
+        fixture.state.read().session.is_loading(),
+        "the load guard must outlive the disk read so the chat log can measure first"
+    );
 }
 
 #[rstest::rstest]

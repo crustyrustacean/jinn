@@ -99,6 +99,14 @@ pub struct ChatLogViewUi {
     pub viewport_height: AtomicU32,
     /// Number of blank lines prepended by the renderer for bottom-alignment.
     pub blank_count: AtomicU32,
+    /// The content width the last render measured at.
+    ///
+    /// The chat log's area width minus its gutter. The session load needs
+    /// this to measure a newly loaded history at the width the next frame
+    /// will actually use, so a load-time measurement is not thrown away as
+    /// stale. Written by the renderer each frame; `0` before the first one,
+    /// which the renderer also treats as "do not wrap".
+    pub content_width: AtomicU32,
     /// The set of chat entry IDs whose tool result content is expanded.
     ///
     /// When a tool result entry is expanded, its full content is shown
@@ -158,6 +166,7 @@ impl Clone for ChatLogViewUi {
             entry_line_ranges: RwLock::new(self.entry_line_ranges.read().clone()),
             viewport_height: AtomicU32::new(self.viewport_height.load(Ordering::Relaxed)),
             blank_count: AtomicU32::new(self.blank_count.load(Ordering::Relaxed)),
+            content_width: AtomicU32::new(self.content_width.load(Ordering::Relaxed)),
             expanded_entries: self.expanded_entries.clone(),
             saved_history_position: self.saved_history_position.clone(),
             shown_ignored_blocks: self.shown_ignored_blocks.clone(),

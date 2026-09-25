@@ -93,6 +93,25 @@ pub struct CacheProbe {
     pub content: ContentIdentity,
 }
 
+/// One entry's measured wrapped line count, ready to be stored.
+///
+/// Carries everything the cache keys on except the rendered lines, which the
+/// measurement discards. Produced by the off-thread layout worker and applied
+/// in one batch by [`EntryLineCache::insert_counts`].
+#[derive(Debug, Clone)]
+pub struct MeasuredLineCount {
+    /// The entry this count describes.
+    pub id: ChatEntryId,
+    /// The entry's content identity as the worker observed it.
+    pub content: ContentIdentity,
+    /// Whether the entry was expanded when the count was computed.
+    pub is_expanded: bool,
+    /// Hash of the status-derived render inputs at compute time.
+    pub variant: u64,
+    /// The measured wrapped line count.
+    pub wrapped_count: u32,
+}
+
 /// Cache mapping entry IDs to their cached wrapped line counts and rendered lines.
 ///
 /// Owned by [`FrontendCaches`] - populated during the render pass, used
@@ -340,6 +359,39 @@ impl EntryLineCache {
                 last_touched: self.touch_counter,
             },
         );
+    }
+
+    /// Store a batch of measured wrapped line counts, one per entry.
+    ///
+    /// Used by the off-thread layout worker, which measures a whole session
+    /// at once and hands back only the counts. The per-entry invalidation
+    /// check is hoisted out of the loop: the batch is computed at a single
+    /// width, so checking once and then storing all of them avoids clearing
+    /// the cache on the first item and re-checking the width for every
+    /// subsequent one.
+    ///
+    /// Each `MeasuredLineCount` carries the entry's content identity as the
+    /// worker observed it, so storing a count never re-hashes the entry.
+    pub fn insert_counts(&mut self, measured: &[MeasuredLineCount], content_width: u16) {
+        self.sync_invalidation(content_width);
+        let touch_counter = self.touch_counter;
+        for count in measured {
+            self.entries.insert(
+                count.id.clone(),
+                CachedEntryCount {
+                    fingerprint: count.content.fingerprint,
+                    signature: count.content.signature,
+                    is_expanded: count.is_expanded,
+                    variant: count.variant,
+                    wrapped_count: count.wrapped_count,
+                    // Counts only: the rendered lines are what the worker's
+                    // measurement deliberately threw away, and a later
+                    // render miss repopulates them for the visible entries.
+                    lines: None,
+                    last_touched: touch_counter,
+                },
+            );
+        }
     }
 
     /// Synchronize invalidation state: clear cache if content width has changed.
