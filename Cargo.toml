@@ -189,7 +189,7 @@ jinn-slices = { path = "crates/jinn-slices" }
 jinn-session-msg = { path = "crates/jinn-session-msg" }
 jinn-session-state = { path = "crates/jinn-session-state" }
 jinn-boot = { path = "crates/slices/jinn-boot" }
-jinn-boot-msg = { path = "crates/jinn-boot-msg" }
+jinn-boot-msg = { path = "crates/slices/jinn-boot-msg" }
 jinn-session-store = { path = "crates/slices/jinn-session-store" }
 jinn-session-turn = { path = "crates/slices/jinn-session-turn" }
 jinn-session-store-msg = { path = "crates/slices/jinn-session-store-msg" }
@@ -237,7 +237,7 @@ jinn-status-bar-msg = { path = "crates/slices/jinn-status-bar-msg" }
 jinn-term = { path = "crates/slices/jinn-term" }
 jinn-tools = { path = "crates/slices/jinn-tools" }
 jinn-term-msg = { path = "crates/slices/jinn-term-msg" }
-jinn-tools-msg = { path = "crates/jinn-tools-msg" }
+jinn-tools-msg = { path = "crates/slices/jinn-tools-msg" }
 jinn-theme-msg = { path = "crates/slices/jinn-theme-msg" }
 jinn-token-count-msg = { path = "crates/slices/jinn-token-count-msg" }
 jinn-turn-dispatch-msg = { path = "crates/slices/jinn-turn-dispatch-msg" }

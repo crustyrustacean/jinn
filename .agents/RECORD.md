@@ -36,7 +36,7 @@ Entries are added or amended **only with human approval**.
 - (arch) All actors run on the trouper runtime, and schema-id-tagged messages route through BusService on trouper topics without bridge relays.
 - (arch) Slices may import jinn-domain and foundation vocabulary; kernel code may consume kernel-adjacent vocabulary and lib-only slice behavior only where the dependency graph remains acyclic.
 - (slices) Slice integration uses each slice's activation function from composition, with activation owning the slice's actors, cells, routes, and views.
-- (slices) Slice crates live under `crates/slices/`, while shared and kernel-adjacent crates live under `crates/`; each family chooses a low-level `-msg` crate for vocabulary consumed across its kernel and slice boundaries.
+- (slices) Slice activation crates and their paired `-msg` contract crates live under `crates/slices/`; shared and kernel-adjacent crates live under `crates/`.
 - (slices) Slices read their `jinn.toml` section through read-only typed or dynamic config-section views; defaults are supplied by the slice.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
 - (arch) `jinn-tui` compiles with zero slice-crate dependencies: tui tests use synthetic slice-shaped inputs, and tests composing real slice rows, cells, or activation live in the root crate's `tests/` integration targets with a `tests/common` harness.
