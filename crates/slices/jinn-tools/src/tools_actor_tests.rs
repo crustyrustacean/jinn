@@ -119,8 +119,7 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
                 deps
             },
             state,
-            counter:
-                jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
+            counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
             token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
             image_converter: jinn_llm_support::image_convert::ImageConverterService::unavailable(),
         },

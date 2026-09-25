@@ -415,8 +415,8 @@ mod tests {
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
         use jinn_domain::common::state::State;
-        use jinn_llm_support::token_estimator::TiktokenCounter;
         use jinn_inference_msg::SendToLlmProvider;
+        use jinn_llm_support::token_estimator::TiktokenCounter;
         use std::time::Duration;
 
         let harness = TestHarness::new().await;
@@ -484,9 +484,9 @@ mod tests {
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
         use jinn_domain::common::state::State;
-        use jinn_llm_support::token_estimator::TiktokenCounter;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
+        use jinn_llm_support::token_estimator::TiktokenCounter;
         use jinn_session_msg::PhaseKind;
         use jinn_tools_msg::ToolBatchCompleted;
         use std::time::Duration;
@@ -636,9 +636,9 @@ mod tests {
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
         use jinn_domain::common::state::State;
-        use jinn_llm_support::token_estimator::TiktokenCounter;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::StreamToken;
+        use jinn_llm_support::token_estimator::TiktokenCounter;
         use std::time::Duration;
 
         let harness = TestHarness::new_best_effort().await;

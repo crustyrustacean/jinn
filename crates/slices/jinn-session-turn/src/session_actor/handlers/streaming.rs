@@ -10,9 +10,9 @@ use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_llm_support::token_estimator::{TiktokenCounter, TokenCounter};
 use jinn_domain::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_inference_msg::{StreamCompleted, StreamCompletedReason, StreamToken};
+use jinn_llm_support::token_estimator::{TiktokenCounter, TokenCounter};
 use jinn_session_history_msg::CitationsReceived;
 use jinn_session_msg::SessionPhaseChanged;
 use jinn_session_state::ChatSessionState;
@@ -1766,8 +1766,7 @@ mod tests {
         };
         actor.on_stream_completed(&event).await;
 
-        let counter =
-            jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
+        let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
         let expected = counter.count(content) as u32;
 
         let state = actor.state.read();

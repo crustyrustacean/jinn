@@ -376,8 +376,7 @@ pub(crate) async fn test_actor_with_store_recording(
                 jinn_domain::common::app_state::AppState::default(),
             ),
             services,
-            counter:
-                jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
+            counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
             token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
             image_converter: test_image_converter(),
         },

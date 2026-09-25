@@ -188,10 +188,10 @@ mod tests {
     )]
     use super::*;
     use jinn_domain::common::app_state::AppState;
-    use jinn_llm_support::token_estimator::estimate_entry_tokens;
     use jinn_domain::protocol::ChangeSource;
     use jinn_domain::protocol::ChatEntry;
     use jinn_domain::protocol::ContextOverride;
+    use jinn_llm_support::token_estimator::estimate_entry_tokens;
     use jinn_session_state::ChatSessionState;
 
     fn actor_for(state: &State) -> TokenCountActor {

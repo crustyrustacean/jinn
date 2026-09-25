@@ -108,11 +108,7 @@ pub fn render_skill_preview(
     if entry.body.is_empty() {
         return Vec::new();
     }
-    jinn_chat_log_view::chat_log::render_markdown(
-        &entry.body,
-        ctx.width as u16,
-        &entry.theme,
-    )
+    jinn_chat_log_view::chat_log::render_markdown(&entry.body, ctx.width as u16, &entry.theme)
 }
 
 /// Splits match indices from `search_text = "{name} {description}"` into

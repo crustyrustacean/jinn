@@ -2429,17 +2429,14 @@ dependencies = [
  "parking_lot",
  "rand 0.9.5",
  "ratatui",
- "ratatui-markdown",
  "ratatui-which-key",
  "rstest",
  "rusqlite",
  "rustls 0.23.45",
  "serde",
  "serde_json",
- "strip-ansi-escapes",
  "tempfile",
  "throbber-widgets-tui",
- "tiktoken",
  "tokio",
  "toml",
  "tracing",
@@ -2450,7 +2447,6 @@ dependencies = [
  "uuid",
  "wasm-encoder",
  "wherror",
- "which 7.0.3",
 ]
 
 [[package]]

@@ -765,8 +765,7 @@ fn jinn_context_curation_activate(
     let prefs = user_preferences_storage.read();
     let auto_prune = prefs.auto_prune.clone();
     let entry_token_cache = HistoryWorkerChatEntryTokenCache::default();
-    let counter =
-        jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
+    let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
 
     let mut workers: Vec<Box<dyn HistoryWorker>> = Vec::new();
 

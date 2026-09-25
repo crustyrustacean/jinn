@@ -17,10 +17,10 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::sections::sessions::MAX_VISIBLE_SESSIONS;
 use crate::sections::sessions::state::sorted_open_sessions;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_chat_log_view::chat_log::RenderContext;
 use jinn_chat_log_view::chat_log::entry_to_lines;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_session_state::ChatSessionState;
 use jinn_sidebar_msg::SessionPreviewCache;
 use jinn_theme::Theme;

@@ -1,7 +1,7 @@
 //! Conversion from chat entries to LLM messages.
 
-use jinn_core_types::{ChatEntry, ChatEntryKind, ContextOverride};
 use jinn_core_types::tool_types::ToolCall;
+use jinn_core_types::{ChatEntry, ChatEntryKind, ContextOverride};
 use jinn_provider::LlmMessage;
 
 /// Convert chat history entries to LLM messages.

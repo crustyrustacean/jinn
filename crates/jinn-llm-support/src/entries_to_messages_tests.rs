@@ -1435,8 +1435,8 @@ fn excluding_compaction_summary_yields_valid_message_sequence() {
     // summary-compaction would sit between a ToolResult and an Assistant, and
     // whose reserve boundary lands on an Assistant opener.
     //   [User, Assistant(big), ToolCall, ToolResult, Assistant(opener), User(recent)]
-    use jinn_core_types::ChangeSource;
     use jinn_context_curation::compaction_algorithm::adjust_cut_to_boundary;
+    use jinn_core_types::ChangeSource;
 
     let big_padding = "w".repeat(600);
     let mut entries = vec![

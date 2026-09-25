@@ -16,11 +16,9 @@ use jinn_context::env_context::{
 };
 use jinn_context_assembly_msg::AssemblyInputs;
 use jinn_core_types::ToolDefinition;
-use jinn_llm_support::token_estimator::{
-    IMAGE_ATTACHMENT_TOKENS, TokenCounter,
-};
-use jinn_llm_support::tool_prompt::build_tool_context_block;
 use jinn_domain::protocol::{ChatEntry, LlmMessage, PinPosition, entries_to_messages};
+use jinn_llm_support::token_estimator::{IMAGE_ATTACHMENT_TOKENS, TokenCounter};
+use jinn_llm_support::tool_prompt::build_tool_context_block;
 use jinn_skills::format_skills_for_prompt;
 use jinn_slices::AssembledPrompt;
 use jinn_slices::SystemPrompt;
@@ -294,8 +292,7 @@ fn count_tool_schema_tokens(tools: &[ToolDefinition], counter: &dyn TokenCounter
 /// [`AssemblyInputs`].
 pub fn assemble_erased(inputs: serde_json::Value) -> Result<AssembledPrompt, serde_json::Error> {
     let inputs: AssemblyInputs = serde_json::from_value(inputs)?;
-    let counter =
-        jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
+    let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
     Ok(assemble(&inputs, &counter))
 }
 
@@ -316,9 +313,9 @@ mod tests {
     use jinn_core_types::tool_types::ToolDefinition;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::state::State;
-    use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_domain::protocol::ChatEntry;
     use jinn_domain::protocol::ToolResultStatus;
+    use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_skills_msg::Skill;
     use jinn_tools_msg::TASK_TOOL_NAME;
 
@@ -373,9 +370,7 @@ mod tests {
     /// can recompute minimap-style per-entry sums with the same tokenizer.
     struct CounterAsEstimator<'a>(&'a TiktokenCounter);
 
-    impl jinn_llm_support::token_estimator::TokenEstimator
-        for CounterAsEstimator<'_>
-    {
+    impl jinn_llm_support::token_estimator::TokenEstimator for CounterAsEstimator<'_> {
         fn estimate(&self, text: &str) -> usize {
             self.0.count(text)
         }
@@ -1626,10 +1621,7 @@ mod tests {
         // estimator (765), so both sides of the minimap invariant agree.
         assert_eq!(
             counted - baseline,
-            u32::try_from(
-                jinn_llm_support::token_estimator::IMAGE_ATTACHMENT_TOKENS
-            )
-            .unwrap_or(0),
+            u32::try_from(jinn_llm_support::token_estimator::IMAGE_ATTACHMENT_TOKENS).unwrap_or(0),
             "image attachment must add the flat per-image cost"
         );
     }
@@ -1651,10 +1643,8 @@ mod tests {
         let text_only = counter().count("describe these");
 
         // Then the flat cost is added once per image.
-        let image_flat = u32::try_from(
-            jinn_llm_support::token_estimator::IMAGE_ATTACHMENT_TOKENS,
-        )
-        .unwrap_or(0);
+        let image_flat =
+            u32::try_from(jinn_llm_support::token_estimator::IMAGE_ATTACHMENT_TOKENS).unwrap_or(0);
         assert_eq!(
             counted - text_only as u32,
             image_flat * 2,
@@ -1806,8 +1796,9 @@ mod tests {
                 .iter()
                 .filter(|entry| entry.is_in_context())
                 .map(|entry| {
-                    jinn_llm_support::token_estimator::
-                    estimate_entry_content_tokens(&estimator, entry)
+                    jinn_llm_support::token_estimator::estimate_entry_content_tokens(
+                        &estimator, entry,
+                    )
                 })
                 .sum()
         };
