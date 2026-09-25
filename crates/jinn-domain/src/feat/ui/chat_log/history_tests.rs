@@ -2228,7 +2228,7 @@ fn gutter_padding_matches_content_rows_for_a_wrapping_entry() {
         .filter(|row| {
             let mut chars = row.chars();
             matches!(chars.next(), Some(c) if c != ' ')
-                && matches!(chars.next(), Some('┃') | Some(' '))
+                && matches!(chars.next(), Some('┃' | ' '))
         })
         .count();
     assert!(
