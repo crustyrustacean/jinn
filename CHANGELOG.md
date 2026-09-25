@@ -31,7 +31,9 @@
 - Active sessions are now progressively loaded and a spinner was added to the sidebar to indicate when sessions are loading.
 - Arrows keys + a few non-printable keys now work properly in interactive terms.
   - `jinn` used codes that didn't match TERMINFO, so some applications wouldn't properly register non-printable keys.
-- Overall performance improvement on Markdown rendering. Chat log, session previews, and skill picker rendering should be faster and use significantly less memory.
+- Overall performance improvement on Markdown rendering.
+  - Chat log, session previews, and skill picker rendering is faster and uses significantly less memory.
+  - There is no longer UI stuttering on gigantic sessions.
 - Add new `global_command_policy` TOML config to block commands across all projects. Recommend adding the below to your `jinn.toml` (it ships by default with a fresh config):
 
 ```toml
