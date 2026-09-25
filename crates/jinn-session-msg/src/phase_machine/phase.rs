@@ -11,8 +11,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-pub use jinn_session_msg::PhaseKind;
-pub use jinn_session_msg::PhaseKindParseError;
+pub use crate::PhaseKind;
 
 /// No per-phase data needed for Idle.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

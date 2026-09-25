@@ -43,7 +43,7 @@ mod expand_tokens_tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::protocol::PromptTemplate;
+    use crate::PromptTemplate;
 
     fn make_store(templates: Vec<(&str, &str, &str)>) -> PromptTemplateStore {
         PromptTemplateStore::from_vec(

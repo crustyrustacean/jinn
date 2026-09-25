@@ -321,17 +321,9 @@ mod tests {
 
         let mut state = AppState::default_with_scope_focus();
         let second_id = SessionId::new();
-        let mut second_session = AppState::default_with_scope_focus();
-        second_session.active_session_mut().begin_streaming();
-        let mut second_session: crate::feat::session::chat_session::ChatSessionState =
-            second_session
-                .session
-                .sessions_mut()
-                .drain()
-                .map(|(_, v)| v)
-                .next()
-                .unwrap();
+        let mut second_session = crate::feat::session::chat_session::ChatSessionState::new();
         second_session.set_session_id(second_id.clone());
+        second_session.begin_streaming();
         state.session.insert(second_session);
 
         // When handling Interrupt targeting the second session.

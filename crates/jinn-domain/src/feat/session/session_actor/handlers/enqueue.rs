@@ -183,7 +183,7 @@ impl SessionPersistenceActor {
         entry: &mut ChatEntry,
     ) -> Vec<PendingPath> {
         use crate::feat::context::prompt_template::PathResolveContext;
-        use crate::feat::session::chat_session::expand_user_entry as expand;
+        use jinn_session_state::chat_session::expand_user_entry as expand;
         let (store, cwd) = {
             let guard = self.state.read();
             guard

@@ -11,10 +11,10 @@
 
 use std::collections::BTreeMap;
 
-use jinn_core_types::ToolDefinition;
-use jinn_domain::feat::context::env_context::{
+use jinn_context::env_context::{
     context_files_section, cwd_section, date_section, persona_section,
 };
+use jinn_core_types::ToolDefinition;
 use jinn_domain::feat::context::protocol::inputs::AssemblyInputs;
 use jinn_domain::feat::context::strategy::token_estimator::{
     IMAGE_ATTACHMENT_TOKENS, TokenCounter,
@@ -309,12 +309,12 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use jinn_context::env_context::ContextFile;
     use jinn_core_types::ServerToolType;
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_core_types::tool_types::ToolDefinition;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::context::env_context::ContextFile;
     use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
     use jinn_domain::protocol::ToolResultStatus;
     use jinn_domain::protocol::{ChatEntry, SessionId};

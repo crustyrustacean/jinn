@@ -164,6 +164,7 @@ jinn-domain = { path = "crates/jinn-domain" }
 jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }
+jinn-context = { path = "crates/jinn-context" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-dashboard = { path = "crates/slices/jinn-dashboard" }
 jinn-theme-slice = { path = "crates/slices/jinn-theme" }
@@ -179,6 +180,7 @@ jinn-cwd = { path = "crates/slices/jinn-cwd" }
 jinn-status-bar = { path = "crates/slices/jinn-status-bar" }
 jinn-slices = { path = "crates/jinn-slices" }
 jinn-session-msg = { path = "crates/jinn-session-msg" }
+jinn-session-state = { path = "crates/jinn-session-state" }
 jinn-boot = { path = "crates/slices/jinn-boot" }
 jinn-boot-msg = { path = "crates/jinn-boot-msg" }
 jinn-session-store = { path = "crates/slices/jinn-session-store" }

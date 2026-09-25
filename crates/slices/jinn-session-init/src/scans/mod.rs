@@ -2,9 +2,8 @@
 //! discovery worker runs on blocking threads.
 //!
 //! The scan kernels (`feat::discovery` bounded walk, `feat::skills::scan`)
-//! live in the kernel crates; the slice reaches back into the kernel only
-//! for the shared data model ([`Skill`]) and the YAML frontmatter parser,
-//! which have other kernel consumers.
+//! live in the kernel crates. Portable prompt/context values come from
+//! `jinn-context`; the skill model and YAML frontmatter remain in `jinn-skills`.
 //!
 //! - [`vcs`] — marker-based VCS-root detection.
 //! - [`walk`] — the bounded cwd→ancestor walk (exclusive `$HOME`,
@@ -19,8 +18,8 @@ pub mod walk;
 pub use skills::scan_skills_merged;
 pub use walk::{project_context_files, project_prompts_dirs, project_skills_dirs};
 
-use jinn_domain::feat::context::env_context::ContextFile;
-use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
+use jinn_context::PromptTemplateStore;
+use jinn_context::env_context::ContextFile;
 
 /// Relative location of project skills under a project root.
 pub const SKILLS_SUBDIR: &str = ".agents/skills";

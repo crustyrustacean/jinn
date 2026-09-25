@@ -2,10 +2,10 @@
 //! `@path` attachment scanning — detects `@path` tokens in user text,
 //! rewrites them to `file://` URIs, and collects the resolved paths.
 //!
-//! This runs as a second expansion pass after `#token` expansion (see
-//! [`super::expand_tokens`]). Each `@path` reference is resolved against the
-//! session CWD and replaced in place by `(file:///resolved/absolute/path)` so
-//! that terminals with OSC-8 link support auto-link the original file.
+//! This runs as a second expansion pass after `#token` expansion. Each `@path`
+//! reference is resolved against the session CWD and replaced in place by
+//! `(file:///resolved/absolute/path)` so terminals with OSC-8 link support
+//! auto-link the original file.
 //!
 //! Accepted forms (each at a word boundary — start of buffer or preceded by
 //! space/newline):

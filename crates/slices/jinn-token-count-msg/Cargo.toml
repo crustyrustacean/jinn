@@ -5,6 +5,7 @@ edition.workspace = true
 [dependencies]
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
+jiff = { workspace = true }
 serde = { workspace = true }
 dashmap = { workspace = true }
 

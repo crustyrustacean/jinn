@@ -334,7 +334,7 @@ impl SessionPhaseMachine {
     /// Validate the current phase, then swap to `next`.
     ///
     /// Returns [`TransitionOutcome`] recording the before/after phases.
-    pub(in crate::feat::session::phase_machine) fn transition(
+    pub(crate) fn transition(
         &mut self,
         expected: PhaseKind,
         next: Phase,
@@ -349,10 +349,7 @@ impl SessionPhaseMachine {
     }
 
     /// Validate that the current phase matches the expected kind.
-    pub(in crate::feat::session::phase_machine) fn validate(
-        &self,
-        expected: PhaseKind,
-    ) -> Result<PhaseKind, TransitionError> {
+    pub(crate) fn validate(&self, expected: PhaseKind) -> Result<PhaseKind, TransitionError> {
         let actual = self.phase.kind();
         if actual == expected {
             Ok(actual)

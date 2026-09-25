@@ -41,12 +41,12 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
+use jinn_context::PromptTemplateStore;
+use jinn_context::env_context::ContextFile;
 use jinn_core_types::SessionId;
 use jinn_domain::common::state::State;
 use jinn_domain::common::tcaps::frontend::FrontendCap;
 use jinn_domain::common::tcaps::session::SessionCap;
-use jinn_domain::feat::context::env_context::ContextFile;
-use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
 use jinn_skills::Skill;
 
 use crate::commands::{RescanContext, RescanPrompts, RescanSkills, RunDiscovery};

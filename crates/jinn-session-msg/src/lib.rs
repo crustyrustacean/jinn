@@ -6,16 +6,15 @@
 //! (e.g. the discord bridge) both depend on this crate — the types
 //! have exactly one home.
 //!
-//! The crate stays narrow: only types that at least one slice consumes
-//! move here. Kernel-only session machinery (the [`Phase`] state
-//! machine, persistence commands) remains in `jinn-domain`.
-//!
-//! [`Phase`]: jinn_domain::feat::session::phase_machine::Phase
+//! The crate publishes shared session vocabulary: phase values and the
+//! validated phase machine, plus lifecycle events consumed across slices.
+//! Persistence commands remain owned by their implementation boundary.
 
 use jinn_core_types::SessionId;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub mod phase_machine;
 pub mod session_origin;
 
 pub use session_origin::SessionOrigin;

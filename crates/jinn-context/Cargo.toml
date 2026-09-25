@@ -1,0 +1,25 @@
+[package]
+name = "jinn-context"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Portable prompt-template, attachment-path, and project-context models and loaders."
+
+[dependencies]
+jinn-persona-msg = { workspace = true }
+error-stack = { workspace = true }
+fuzzy-matcher = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+wherror = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

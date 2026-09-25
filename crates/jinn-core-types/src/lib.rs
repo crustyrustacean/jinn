@@ -20,12 +20,14 @@ pub mod chat_entry;
 pub mod chat_entry_id;
 pub mod chat_history;
 pub mod context_override;
+pub mod endpoint;
 pub mod entry_timing;
 pub mod history_mutation;
 pub mod llm_message;
 pub mod model_selection;
 pub mod reasoning;
 pub mod session_id;
+pub mod session_profile;
 pub mod tool_result_status;
 pub mod tool_types;
 pub mod url_citation;
@@ -43,12 +45,14 @@ pub use chat_entry::{
 pub use chat_entry_id::ChatEntryId;
 pub use chat_history::ChatHistory;
 pub use context_override::ContextOverride;
+pub use endpoint::Endpoint;
 pub use entry_timing::EntryTiming;
 pub use history_mutation::HistoryMutation;
 pub use llm_message::LlmMessage;
 pub use model_selection::{AlloyData, AlloyStrategy, ModelSelection, NO_PROVIDER_ID};
 pub use reasoning::ReasoningEffort;
 pub use session_id::SessionId;
+pub use session_profile::{DEFAULT_PERSONA_NAME, SessionProfile};
 pub use tool_result_status::ToolResultStatus;
 pub use tool_types::{
     ServerToolType, ToolCall, ToolDefinition, ToolResult, ToolResultPinPosition, TruncatedBy,

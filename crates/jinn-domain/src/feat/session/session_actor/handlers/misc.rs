@@ -150,12 +150,7 @@ impl SessionPersistenceActor {
                         } = &mutation
                         {
                             let cost = token_costs.get(entry_id).copied().unwrap_or(0);
-                            session.core.ephemeral.accumulated_overrides.push(
-                                entry_id.clone(),
-                                *value,
-                                source.clone(),
-                                cost,
-                            );
+                            session.route_override(entry_id.clone(), *value, source.clone(), cost);
                         }
                     } else {
                         // All other mutations apply immediately:
@@ -172,7 +167,7 @@ impl SessionPersistenceActor {
 
                 tracing::debug!(
                     session_id = %payload.session_id,
-                    queue_len = session.core.ephemeral.pending_mutations.len(),
+                    queue_len = session.pending_mutation_count(),
                     accumulated = session.accumulated_overrides_total(),
                     threshold,
                     "routed history mutations from worker"
@@ -448,9 +443,9 @@ mod tests {
             session.history()[0].context_override(),
             crate::protocol::ContextOverride::Default
         );
-        assert!(session.core.ephemeral.pending_mutations.is_empty());
+        assert!(!session.has_pending_mutations());
         assert!(
-            !session.core.ephemeral.accumulated_overrides.is_empty(),
+            session.accumulated_prune_count() > 0,
             "sub-threshold override should be buffered in the accumulator"
         );
     }
@@ -475,7 +470,7 @@ mod tests {
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
-        assert!(session.core.ephemeral.pending_mutations.is_empty());
+        assert!(!session.has_pending_mutations());
     }
 
     #[rstest::rstest]
@@ -501,7 +496,7 @@ mod tests {
 
         let state = actor.state.read();
         let session = state.session.get(&new_session_id).unwrap();
-        assert!(session.core.ephemeral.pending_mutations.is_empty());
+        assert!(!session.has_pending_mutations());
     }
 
     #[rstest::rstest]
@@ -566,7 +561,7 @@ mod tests {
         // one override sits in the accumulator.
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
-        assert_eq!(session.core.ephemeral.pending_mutations.len(), 0);
+        assert_eq!(session.pending_mutation_count(), 0);
         assert_eq!(
             session.history()[0].context_override(),
             crate::protocol::ContextOverride::Default
@@ -576,7 +571,7 @@ mod tests {
             crate::protocol::ContextOverride::ForcedInclude
         );
         assert_eq!(
-            session.core.ephemeral.accumulated_overrides.len(),
+            session.accumulated_prune_count(),
             1,
             "only the ForcedExclude (prune) should be buffered; the include applies immediately"
         );
@@ -627,8 +622,9 @@ mod tests {
             let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
-            let id = session.core.identity.session_id.clone();
-            session.core.history_work.history[0].apply_context_override(
+            let id = session.session_id().clone();
+            session.set_entry_context_override_at(
+                0,
                 crate::protocol::ContextOverride::ForcedExclude,
                 ChangeSource::Internal {
                     label: "setup".to_owned(),
@@ -711,7 +707,7 @@ mod tests {
             "worker ForcedInclude must apply immediately"
         );
         assert!(
-            session.core.ephemeral.accumulated_overrides.is_empty(),
+            session.accumulated_prune_count() == 0,
             "worker ForcedInclude must not enter the accumulation buffer"
         );
     }
@@ -755,7 +751,7 @@ mod tests {
             "compaction ForcedExclude must apply immediately"
         );
         assert!(
-            session.core.ephemeral.accumulated_overrides.is_empty(),
+            session.accumulated_prune_count() == 0,
             "compaction ForcedExclude must not enter the accumulation buffer"
         );
     }

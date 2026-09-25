@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 use crate::authorize;
-use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
+use jinn_context::PromptTemplateStore;
 use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
 use jinn_domain::protocol::KernelIntent;
 use jinn_domain::{Bridge, SessionId};
@@ -542,8 +542,7 @@ fn render_prompts_list(store: &PromptTemplateStore) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{format_lifecycle_list, render_prompts_list};
-    use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
-    use jinn_domain::protocol::PromptTemplate;
+    use jinn_context::{PromptTemplate, PromptTemplateStore};
     use jinn_preferences_config::schemas::LifecycleCommand;
     use jinn_preferences_config::schemas::SessionLifecycle;
 

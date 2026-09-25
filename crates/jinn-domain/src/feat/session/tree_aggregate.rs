@@ -14,6 +14,8 @@ use crate::feat::session::compute_turn_count;
 use crate::feat::session::token_stats::TokenStats;
 use crate::protocol::SessionId;
 
+pub use jinn_session_store_msg::FrozenTreeNode;
+
 /// Aggregate statistics for an entire session tree.
 ///
 /// Sums tokens, cost, and turns across ALL sessions in the tree (root + all
@@ -30,33 +32,6 @@ pub struct TreeAggregateStats {
     pub total_turns: u32,
     /// Number of sessions in the tree.
     pub session_count: usize,
-    /// Effective sent total (provider-reported prompt_tokens else estimate).
-    pub effective_sent: u64,
-    /// Sum of provider-reported prompt_tokens over measured turns.
-    pub measured_sent: u64,
-    /// Sum of provider-reported cache-hit counts.
-    pub cached_total: u64,
-}
-
-/// A lightweight snapshot of an archived session's stats.
-///
-/// Created at archive time, before the session is removed from the in-memory
-/// `SessionMap`. Used by [`aggregate_tree_stats`] to include archived sessions
-/// in the tree summary without requiring disk I/O.
-#[derive(Debug, Clone)]
-pub struct FrozenTreeNode {
-    /// The archived session's ID.
-    pub session_id: SessionId,
-    /// Parent session ID - `None` for root sessions.
-    pub parent_session_id: Option<SessionId>,
-    /// Total tokens sent across all requests in this session.
-    pub total_sent: u64,
-    /// Total tokens received across all responses in this session.
-    pub total_received: u64,
-    /// Total cost in USD across all requests in this session.
-    pub total_cost: f64,
-    /// Total turns (user messages) in this session.
-    pub total_turns: u32,
     /// Effective sent total (provider-reported prompt_tokens else estimate).
     pub effective_sent: u64,
     /// Sum of provider-reported prompt_tokens over measured turns.

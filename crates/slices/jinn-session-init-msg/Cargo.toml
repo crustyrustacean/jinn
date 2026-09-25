@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Session-init crossing contracts: the prompt-template rescan command, loaded event, and the PromptTemplate noun."
 
 [dependencies]
+jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 serde = { workspace = true }

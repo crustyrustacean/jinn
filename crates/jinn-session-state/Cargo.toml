@@ -1,0 +1,36 @@
+[package]
+name = "jinn-session-state"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Authoritative live session aggregate, session registry, runtime state, and snapshot contracts."
+
+[dependencies]
+jinn-chat-input-msg = { workspace = true }
+jinn-chat-log-view-msg = { workspace = true }
+jinn-context = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-mcp-msg = { workspace = true }
+jinn-session-history = { workspace = true }
+jinn-skills = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-token-count-msg = { workspace = true }
+jinn-tools-msg = { workspace = true }
+jinn-turn-dispatch-msg = { workspace = true }
+error-stack = { workspace = true }
+jiff = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+wherror = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

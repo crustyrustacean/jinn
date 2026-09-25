@@ -80,7 +80,7 @@ fn worker_exclude_refused_for_pinned_member() {
     // Given a loop whose result is pinned (skill-load shape).
     let mut session = session_with(simple_loop());
     let ids = entry_ids(&session);
-    session.core.history_work.history[3].pin_position = Some(PinPosition::Relative);
+    session.edit_history().pin(&ids[3], PinPosition::Relative);
 
     // When a worker excludes the call.
     let changed = session.edit_history().set_context(
@@ -135,7 +135,7 @@ fn user_exclude_refused_for_pinned_chunk() {
     // Given a pinned loop.
     let mut session = session_with(simple_loop());
     let ids = entry_ids(&session);
-    session.core.history_work.history[1].pin_position = Some(PinPosition::Relative);
+    session.edit_history().pin(&ids[1], PinPosition::Relative);
 
     // When the user excludes a member.
     let changed = session.edit_history().set_context(
@@ -162,7 +162,10 @@ fn internal_exclude_bypasses_pin_guard() {
         ChatEntry::assistant(""),
         ChatEntry::tool_call("dangling", "bash", "{}"),
     ]);
-    session.core.history_work.history[1].pin_position = Some(PinPosition::Relative);
+    let assistant_id = session.history()[1].id.clone();
+    session
+        .edit_history()
+        .pin(&assistant_id, PinPosition::Relative);
 
     // When the internal dangling sweep runs.
     let changed = session.edit_history().exclude_incomplete_trailing_loops();

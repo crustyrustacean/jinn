@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::protocol::PromptTemplate;
+use crate::PromptTemplate;
 use error_stack::{Report, ResultExt as _};
 use fuzzy_matcher::FuzzyMatcher as _;
 use fuzzy_matcher::skim::SkimMatcherV2;

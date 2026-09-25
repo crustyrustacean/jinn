@@ -1,16 +1,10 @@
-//! Session-init crossing contracts — the prompt-template scan pair and
-//! the [`PromptTemplate`] noun.
+//! Session-init crossing contracts — the prompt-template scan pair.
 //!
-//! Re-homed from the kernel `feat/provider/protocol/` (the pair) and
-//! `feat/context/protocol/prompt_template.rs` (the noun) in the
-//! provider-selection window: the pair's producer is this slice's prompt
-//! scan worker, so its contracts live where the producer lives (the
-//! `SkillsLoaded`/`ScanSkills` precedent). The crossing-schema ids
-//! ("RescanPromptTemplates", "PromptTemplatesLoaded") are unchanged.
-//!
-//! `PromptTemplateStore` and the loading/parsing stay kernel-side until
-//! the context family migrates; this crate carries only the wire noun so
-//! it has no kernel dependency.
+//! The producer is this slice's prompt scan worker, so the scan command and
+//! loaded event live in this crate. The portable [`PromptTemplate`] value is
+//! owned by `jinn-context` and re-exported here to preserve existing producer
+//! and consumer import paths. The crossing-schema ids ("RescanPromptTemplates",
+//! "PromptTemplatesLoaded") are unchanged.
 
 use std::path::PathBuf;
 
@@ -19,26 +13,7 @@ use serde::{Deserialize, Serialize};
 use jinn_core_types::SessionId;
 use jinn_slices::BusMessage;
 
-/// A reusable prompt template loaded from `~/.config/jinn/prompts/`.
-///
-/// Parsed from a markdown file with TOML frontmatter:
-///
-/// ```markdown
-/// +++
-/// name = "code-review"
-/// description = "Perform a thorough code review"
-/// +++
-/// You are an expert code reviewer...
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptTemplate {
-    /// Unique identifier used in `$name` references.
-    pub name: String,
-    /// Short human-readable description shown in the autocomplete popup.
-    pub description: String,
-    /// The full template body text.
-    pub body: String,
-}
+pub use jinn_context::PromptTemplate;
 
 /// Rescan prompt templates for a specific session.
 ///

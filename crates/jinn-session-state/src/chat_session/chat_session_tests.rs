@@ -7,14 +7,14 @@
     reason = "test code"
 )]
 
-use crate::feat::session::profile::SessionProfile;
+use jinn_core_types::SessionProfile;
 
-use crate::feat::session::token_stats::TokenRecord;
-use crate::feat::ui::chat_log::visual_item::{
+use jinn_chat_log_view_msg::visual_item::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
 };
-use crate::protocol::ToolResultStatus;
-use crate::protocol::{
+use jinn_token_count_msg::TokenRecord;
+
+use jinn_core_types::{
     ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, EntryTiming, PinPosition, SessionId,
 };
 use std::path::PathBuf;
@@ -38,8 +38,8 @@ fn push_entry_adds_to_history() {
 #[rstest::rstest]
 fn push_entry_expands_known_prompt_token_in_user_entry() {
     // Given a session whose store has a `#name` template.
-    use crate::PromptTemplate;
-    use crate::feat::context::prompt_template::PromptTemplateStore;
+    use jinn_context::PromptTemplate;
+    use jinn_context::PromptTemplateStore;
 
     let mut session = ChatSessionState::new();
     session.set_discovered_prompt_templates(PromptTemplateStore::from_vec(vec![PromptTemplate {
@@ -67,9 +67,7 @@ fn push_entry_expands_known_prompt_token_in_user_entry() {
 fn push_entry_leaves_unknown_prompt_token_literal() {
     // Given a session with a store that has no matching template.
     let mut session = ChatSessionState::new();
-    session.set_discovered_prompt_templates(
-        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![]),
-    );
+    session.set_discovered_prompt_templates(jinn_context::PromptTemplateStore::from_vec(vec![]));
 
     // When pushing a user entry with an unknown token.
     let index = session.push_entry(ChatEntry::user("#nope"));
@@ -519,7 +517,7 @@ fn enqueue_message_adds_to_queue() {
             display: "hello".to_owned(),
             expanded: "hello".to_owned(),
             attachments: Vec::new(),
-            outcome: crate::protocol::AttachmentOutcome::default(),
+            outcome: jinn_core_types::AttachmentOutcome::default(),
         }
     ));
 }
@@ -550,7 +548,7 @@ fn dequeue_message_returns_first_in_order() {
             display: "first".to_owned(),
             expanded: "first".to_owned(),
             attachments: Vec::new(),
-            outcome: crate::protocol::AttachmentOutcome::default(),
+            outcome: jinn_core_types::AttachmentOutcome::default(),
         }
     );
     assert_eq!(session.queue_len(), 1);
@@ -603,7 +601,7 @@ fn drain_returns_all_in_order() {
             display: "a".to_owned(),
             expanded: "a".to_owned(),
             attachments: Vec::new(),
-            outcome: crate::protocol::AttachmentOutcome::default(),
+            outcome: jinn_core_types::AttachmentOutcome::default(),
         }
     );
     assert_eq!(
@@ -612,7 +610,7 @@ fn drain_returns_all_in_order() {
             display: "b".to_owned(),
             expanded: "b".to_owned(),
             attachments: Vec::new(),
-            outcome: crate::protocol::AttachmentOutcome::default(),
+            outcome: jinn_core_types::AttachmentOutcome::default(),
         }
     );
     assert_eq!(
@@ -621,7 +619,7 @@ fn drain_returns_all_in_order() {
             display: "c".to_owned(),
             expanded: "c".to_owned(),
             attachments: Vec::new(),
-            outcome: crate::protocol::AttachmentOutcome::default(),
+            outcome: jinn_core_types::AttachmentOutcome::default(),
         }
     );
 }
@@ -1264,7 +1262,7 @@ fn pin_entry_at_block_end_no_forward_propagation() {
 /// would collapse because `shown_ignored_blocks` didn't cover it.
 #[rstest::rstest]
 fn regression_pin_in_expanded_block_keeps_all_visible() {
-    use crate::feat::ui::chat_log::visual_item::{
+    use jinn_chat_log_view_msg::visual_item::{
         DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
     };
 
@@ -1356,7 +1354,7 @@ fn regression_toggle_h_after_pin_split_toggles_correct_sub_block() {
 /// one block controlled by the original representative.
 #[rstest::rstest]
 fn regression_unpin_remerges_block_correctly() {
-    use crate::feat::ui::chat_log::visual_item::{
+    use jinn_chat_log_view_msg::visual_item::{
         DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
     };
 
@@ -1571,7 +1569,7 @@ fn selected_entry_returns_entry_at_index() {
             display: "b".to_owned(),
             expanded: "b".to_owned(),
             attachments: Vec::new(),
-            outcome: crate::protocol::AttachmentOutcome::default(),
+            outcome: jinn_core_types::AttachmentOutcome::default(),
         }
     );
 }
@@ -3202,7 +3200,7 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
 #[rstest::rstest]
 fn select_next_walks_visual_items_with_collapsed_block() {
     // Given a session with visual items: [Entry, CollapsedBlock, Entry].
-    use crate::feat::ui::chat_log::visual_item::{
+    use jinn_chat_log_view_msg::visual_item::{
         DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
     };
 
@@ -3243,7 +3241,7 @@ fn select_next_walks_visual_items_with_collapsed_block() {
 #[rstest::rstest]
 fn select_prev_walks_visual_items_with_collapsed_block() {
     // Given a session with visual items: [Entry, CollapsedBlock, Entry, ...].
-    use crate::feat::ui::chat_log::visual_item::{
+    use jinn_chat_log_view_msg::visual_item::{
         DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
     };
 
@@ -3283,7 +3281,7 @@ fn select_prev_walks_visual_items_with_collapsed_block() {
 #[rstest::rstest]
 fn selected_entry_returns_none_for_collapsed_block() {
     // Given a session with visual items where a collapsed block is selected.
-    use crate::feat::ui::chat_log::visual_item::{
+    use jinn_chat_log_view_msg::visual_item::{
         DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
     };
 
@@ -3574,7 +3572,7 @@ fn force_exclude_preserves_complete_tool_loop() {
         "tc-1",
         "bash",
         "file.txt",
-        crate::protocol::ToolResultStatus::Success,
+        jinn_core_types::ToolResultStatus::Success,
     ));
 
     // When force-excluding dangling tool calls.
@@ -3661,7 +3659,7 @@ fn force_exclude_mixed_complete_and_incomplete() {
         "tc-1",
         "bash",
         "file.txt",
-        crate::protocol::ToolResultStatus::Success,
+        jinn_core_types::ToolResultStatus::Success,
     ));
     session.push_entry(ChatEntry::assistant(""));
     session.push_entry(ChatEntry::tool_call("tc-2", "read", r#"{"file":"a.rs"}"#));
@@ -5181,21 +5179,21 @@ fn discovered_sets_are_independent_between_sessions() {
     // Given two sessions with different discovered skills.
     let mut a = ChatSessionState::new();
     let mut b = ChatSessionState::new();
-    a.set_discovered_skills(vec![crate::feat::skills::Skill {
+    a.set_discovered_skills(vec![jinn_skills::Skill {
         name: "session-a-only".into(),
         description: String::new(),
         body: String::new(),
         file_path: PathBuf::new(),
         base_dir: PathBuf::new(),
-        source: crate::feat::skills::SkillSource::Global,
+        source: jinn_skills::SkillSource::Global,
     }]);
-    b.set_discovered_skills(vec![crate::feat::skills::Skill {
+    b.set_discovered_skills(vec![jinn_skills::Skill {
         name: "session-b-only".into(),
         description: String::new(),
         body: String::new(),
         file_path: PathBuf::new(),
         base_dir: PathBuf::new(),
-        source: crate::feat::skills::SkillSource::Global,
+        source: jinn_skills::SkillSource::Global,
     }]);
 
     // Then session A sees only its skill, B sees only its own — no clobbering.
@@ -5209,7 +5207,7 @@ fn discovered_sets_are_independent_between_sessions() {
 fn discovered_context_files_round_trip_empty_after_serialization() {
     // Given a session with discovered context files populated in ephemeral state.
     let mut session = ChatSessionState::new();
-    session.set_discovered_context_files(vec![crate::feat::context::env_context::ContextFile {
+    session.set_discovered_context_files(vec![jinn_context::ContextFile {
         path: PathBuf::from("/nonexistent/AGENTS.md"),
         content: "should not persist".into(),
     }]);
@@ -5288,10 +5286,10 @@ fn loaded_skills_returns_only_valid_pinned_skill_names() {
     );
 }
 
-use crate::protocol::HistoryMutation;
+use jinn_core_types::HistoryMutation;
 
 fn session_with_excluded_entry(
-    source: crate::protocol::ChangeSource,
+    source: jinn_core_types::ChangeSource,
 ) -> (super::ChatSessionState, ChatEntryId) {
     let mut entry = ChatEntry::assistant("excluded");
     let id = entry.id.clone();
@@ -5627,7 +5625,7 @@ fn reset_streaming_entries_for_retry_removes_partial_streaming_entry() {
     assert_eq!(removed, 1, "exactly one streaming entry should be removed");
     assert_eq!(
         session.phase(),
-        crate::feat::session::phase_machine::PhaseKind::Streaming,
+        jinn_session_msg::PhaseKind::Streaming,
         "must stay in Streaming phase so the retry can reuse it"
     );
     assert_eq!(
@@ -5823,7 +5821,7 @@ fn set_model_to_alloy_clears_endpoint_pin() {
     session.set_model(ModelSelection::Single(
         "openrouter/anthropic/claude".to_owned(),
     ));
-    session.profile_mut().endpoint = Some(jinn_provider_selection_msg::endpoint::Endpoint {
+    session.profile_mut().endpoint = Some(jinn_core_types::Endpoint {
         tag: "anthropic".to_owned(),
         provider_name: "Anthropic".to_owned(),
     });
@@ -6043,7 +6041,7 @@ fn worker_include_on_todo_tool_call_covers_whole_tool_loop() {
         "tc-1",
         "todo_get_task_list",
         "task list",
-        crate::protocol::ToolResultStatus::Success,
+        jinn_core_types::ToolResultStatus::Success,
     ));
     let call_id = session.history()[2].id.clone();
 
@@ -6086,7 +6084,7 @@ fn tool_age_window_exclude_refused_on_included_todo_pair() {
         "tc-1",
         "todo_get_task_list",
         "task list",
-        crate::protocol::ToolResultStatus::Success,
+        jinn_core_types::ToolResultStatus::Success,
     ));
     let call_id = session.history()[2].id.clone();
     session.edit_history().set_context(

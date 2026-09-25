@@ -6,6 +6,7 @@ publish.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 daow = { workspace = true }
+jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-discord-msg = { workspace = true }
 # The bridge subscriber folds trouper topic events (session lifecycle

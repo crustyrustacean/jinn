@@ -9,6 +9,7 @@ serde = { workspace = true }
 parking_lot = { workspace = true }
 
 [dev-dependencies]
+rstest = { workspace = true }
 
 [lints]
 workspace = true

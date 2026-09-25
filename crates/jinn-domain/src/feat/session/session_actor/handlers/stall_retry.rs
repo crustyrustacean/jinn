@@ -36,7 +36,7 @@ impl SessionPersistenceActor {
     ) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&payload.session_id);
-            session.core.ephemeral.stream_dispatched_at = Some(payload.dispatched_at);
+            session.arm_stream(payload.dispatched_at);
         });
         tracing::debug!(
             session_id = %payload.session_id,
@@ -80,7 +80,7 @@ impl SessionPersistenceActor {
         let acted = self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming)
-                && session.core.ephemeral.stream_dispatched_at.is_some()
+                && session.has_in_flight_stream()
             {
                 let removed = session.reset_streaming_entries_for_retry();
                 // Partial tool calls left by a starved/errored stream
@@ -107,7 +107,7 @@ impl SessionPersistenceActor {
                 tracing::warn!(
                     session_id = %payload.session_id,
                     phase = ?session.phase(),
-                    stream_in_flight = session.core.ephemeral.stream_dispatched_at.is_some(),
+                    stream_in_flight = session.has_in_flight_stream(),
                     "stalled-stream restart refused: no in-flight stream"
                 );
                 false
@@ -173,7 +173,7 @@ mod tests {
                 .expect("append first token");
             // Register the in-flight stream generation — the guard's source
             // of truth.
-            session.core.ephemeral.stream_dispatched_at = Some(jiff::Timestamp::now());
+            session.arm_stream(jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
         (
@@ -218,9 +218,7 @@ mod tests {
             let state = actor.state.read();
             let session = state.session.get(&session_id).expect("session exists");
             let has_partial = session
-                .core
-                .history_work
-                .history
+                .history()
                 .iter()
                 .any(|e| matches!(e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"));
             assert!(!has_partial, "partial assistant entry must be discarded");
@@ -246,7 +244,7 @@ mod tests {
         {
             let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
-            session.core.ephemeral.stream_dispatched_at = None;
+            session.clear_stream_generation();
         }
 
         // When the retry handler runs.
@@ -257,7 +255,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            session.core.history_work.history.iter().any(|e| matches!(
+            session.history().iter().any(|e| matches!(
                 e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"
             )),
             "a self-resolved stream must not be discarded"
@@ -273,14 +271,9 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            use crate::feat::session::phase_machine::PhaseTransitions;
             let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
-            let _ = session
-                .core
-                .ephemeral
-                .machine
-                .on_stream_completed_finished();
+            session.finish_streaming(true, jiff::Timestamp::now());
         }
 
         // When the retry handler runs.
@@ -290,7 +283,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            session.core.history_work.history.iter().any(|e| matches!(
+            session.history().iter().any(|e| matches!(
                 e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"
             )),
             "an idle session must not be restarted"
@@ -321,7 +314,7 @@ mod tests {
         // request context — it is marked ForcedExclude.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        let has_active_partial = session.core.history_work.history.iter().any(|e| {
+        let has_active_partial = session.history().iter().any(|e| {
             matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-partial")
                 && !matches!(
                     e.context_override(),
@@ -354,7 +347,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(
-            session.core.ephemeral.stream_dispatched_at,
+            session.stream_dispatched_at(),
             Some(dispatched_at),
             "SendToLlmProvider receipt must arm the in-flight-stream guard"
         );
@@ -388,7 +381,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            !session.core.history_work.history.iter().any(|e| matches!(
+            !session.history().iter().any(|e| matches!(
                 e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"
             )),
             "retry after dispatch receipt must discard partial entries"

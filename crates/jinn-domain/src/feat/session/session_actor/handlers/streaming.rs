@@ -143,10 +143,7 @@ impl SessionPersistenceActor {
                 view.session
                     .map()
                     .get_or_create(&event.session_id)
-                    .core
-                    .ephemeral
-                    .pending_tool_batch
-                    .take()
+                    .take_buffered_tool_results()
                     .is_some()
             })
         };
@@ -204,7 +201,7 @@ impl SessionPersistenceActor {
                 // stream (e.g. a retry re-dispatched while the old task was still
                 // alive). A completion whose `dispatched_at` predates the current
                 // generation is dropped silently.
-                if let Some(active) = session.core.ephemeral.stream_dispatched_at
+                if let Some(active) = session.stream_dispatched_at()
                     && event.dispatched_at < active
                 {
                     tracing::warn!(
@@ -217,7 +214,7 @@ impl SessionPersistenceActor {
                     return None;
                 }
                 // This generation is now consumed.
-                session.core.ephemeral.stream_dispatched_at = None;
+                session.clear_stream_generation();
 
                 let old_phase = session.phase();
 
@@ -2453,7 +2450,7 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_streaming();
             let now = jiff::Timestamp::now();
-            session.core.ephemeral.stream_dispatched_at = Some(now);
+            session.arm_stream(now);
             state.session.active_session_id().clone()
         };
 
@@ -2486,7 +2483,7 @@ mod tests {
             "stale-generation StreamCompleted must not transition the session"
         );
         assert!(
-            session.core.ephemeral.stream_dispatched_at.is_some(),
+            session.has_in_flight_stream(),
             "generation guard must remain set for stale events"
         );
     }

@@ -301,7 +301,7 @@ impl SessionPersistenceActor {
                             result_count = event.results.len(),
                             "buffering early ToolBatchCompleted: StreamCompleted(ToolUse) still in flight"
                         );
-                        session.core.ephemeral.pending_tool_batch = Some(event.results.clone());
+                        session.buffer_tool_results(event.results.clone());
                         return false;
                     }
                     other => {
@@ -678,7 +678,7 @@ mod tests {
             session.begin_streaming();
             // Simulate an already-finished tool batch racing ahead of
             // StreamCompleted(ToolUse) — exactly the wedge precondition.
-            session.core.ephemeral.pending_tool_batch = Some(vec![ToolResult {
+            session.buffer_tool_results(vec![ToolResult {
                 tool_call_id: "tc-1".to_owned(),
                 name: "bash".to_owned(),
                 content: "ok".to_owned(),
@@ -809,7 +809,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            session.core.ephemeral.pending_tool_batch.is_some(),
+            session.has_buffered_tool_results(),
             "results should be buffered while still Streaming"
         );
     }
@@ -823,7 +823,7 @@ mod tests {
             let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.core.ephemeral.pending_tool_batch = Some(vec![ToolResult {
+            session.buffer_tool_results(vec![ToolResult {
                 tool_call_id: "tc-1".to_owned(),
                 name: "read".to_owned(),
                 content: "file".to_owned(),
@@ -859,7 +859,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            session.core.ephemeral.pending_tool_batch.is_none(),
+            !session.has_buffered_tool_results(),
             "buffer should be drained after StreamCompleted(ToolUse)"
         );
     }

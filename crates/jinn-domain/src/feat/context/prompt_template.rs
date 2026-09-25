@@ -1,27 +1,13 @@
-//! Prompt template data model, loading, and lookup.
+//! Compatibility exports for portable prompt and attachment context helpers.
 //!
-//! Templates are markdown files with TOML frontmatter (delimited by `+++`).
-//! This crate provides types for loading, storing, and searching templates
-//! independently of the application bus or state.
-//!
-//! The [`PromptTemplate`] data struct itself lives in `jinn-domain` so it
-//! can travel across the actor boundary. This crate owns the loading, parsing,
-//! and storage logic.
+//! Values, parsing, lookup, expansion, and attachment scanning are owned by
+//! `jinn-context`. This kernel path remains until consumers are migrated.
 
-mod attachment_path;
-mod expand;
-mod loader;
-mod store;
-#[cfg(test)]
-mod store_tests;
-
-pub use attachment_path::ScanResult;
-pub use attachment_path::scan_at_paths;
-pub use attachment_path::scan_at_paths_with_degraded;
-pub use attachment_path::{ImageKind, classify_image_bytes};
-pub use attachment_path::{PathResolveContext, PendingPath};
-pub use expand::expand_tokens;
-pub use loader::PromptTemplateParseError;
-pub use loader::render_template_file;
-pub use store::PromptTemplateStore;
-pub use store::PromptTemplateStoreError;
+pub use jinn_context::attachment_path::{
+    ImageKind, PathResolveContext, PendingPath, ScanResult, classify_image_bytes, scan_at_paths,
+    scan_at_paths_with_degraded,
+};
+pub use jinn_context::{
+    PromptTemplateParseError, PromptTemplateStore, PromptTemplateStoreError, expand_tokens,
+    render_template_file,
+};

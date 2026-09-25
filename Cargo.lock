@@ -2070,6 +2070,7 @@ dependencies = [
  "jinn-core-types",
  "jinn-slices",
  "parking_lot",
+ "rstest",
  "serde",
 ]
 
@@ -2126,10 +2127,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-context"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "fuzzy-matcher",
+ "jinn-persona-msg",
+ "regex",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-context-assembly"
 version = "0.118.0"
 dependencies = [
  "error-stack",
+ "jinn-context",
  "jinn-core-types",
  "jinn-domain",
  "jinn-persona-msg",
@@ -2263,6 +2283,7 @@ dependencies = [
  "daow",
  "derive_more",
  "error-stack",
+ "jinn-context",
  "jinn-core-types",
  "jinn-discord-msg",
  "jinn-domain",
@@ -2322,6 +2343,7 @@ dependencies = [
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-common",
+ "jinn-context",
  "jinn-context-assembly",
  "jinn-context-curation",
  "jinn-context-curation-msg",
@@ -2343,6 +2365,7 @@ dependencies = [
  "jinn-session-lifecycle-msg",
  "jinn-session-msg",
  "jinn-session-schema",
+ "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-sidebar-msg",
  "jinn-skills",
@@ -2770,6 +2793,7 @@ name = "jinn-session-init"
 version = "0.116.1"
 dependencies = [
  "error-stack",
+ "jinn-context",
  "jinn-core-types",
  "jinn-domain",
  "jinn-session-init-msg",
@@ -2792,6 +2816,7 @@ dependencies = [
 name = "jinn-session-init-msg"
 version = "0.118.0"
 dependencies = [
+ "jinn-context",
  "jinn-core-types",
  "jinn-slices",
  "rstest",
@@ -2868,6 +2893,35 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "tracing",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-session-state"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "jiff",
+ "jinn-chat-input-msg",
+ "jinn-chat-log-view-msg",
+ "jinn-context",
+ "jinn-core-types",
+ "jinn-mcp-msg",
+ "jinn-session-history",
+ "jinn-session-lifecycle-msg",
+ "jinn-session-msg",
+ "jinn-session-store-msg",
+ "jinn-skills",
+ "jinn-slices",
+ "jinn-token-count-msg",
+ "jinn-tools-msg",
+ "jinn-turn-dispatch-msg",
+ "parking_lot",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tracing",
  "wherror",
 ]
@@ -3153,6 +3207,7 @@ name = "jinn-token-count-msg"
 version = "0.118.0"
 dependencies = [
  "dashmap 6.2.1",
+ "jiff",
  "jinn-core-types",
  "jinn-slices",
  "rstest",

@@ -6,8 +6,8 @@
     reason = "test code"
 )]
 
-use crate::feat::context::prompt_template::store::{MAX_FUZZY_RESULTS, PromptTemplateStore};
-use crate::protocol::PromptTemplate;
+use crate::PromptTemplate;
+use crate::prompt_template::store::{MAX_FUZZY_RESULTS, PromptTemplateStore};
 use std::path::Path;
 use tempfile::TempDir;
 
