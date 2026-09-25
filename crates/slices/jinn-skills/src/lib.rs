@@ -11,8 +11,8 @@ pub mod loaded_name;
 pub mod scan;
 pub mod skill;
 
-pub use jinn_skills_msg::{Skill, SkillFrontmatter, SkillSource};
 pub use format::format_skills_for_prompt;
+pub use jinn_skills_msg::{Skill, SkillFrontmatter, SkillSource};
 pub use loaded_name::SKILL_CONTENT_PREFIX;
 pub use loaded_name::SKILL_ICON;
 pub use loaded_name::loaded_skill_summary_label;

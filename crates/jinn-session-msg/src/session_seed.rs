@@ -1,11 +1,6 @@
 //! Session-creation seed derived from user preferences.
-//!
-//! The portable profile value lives in `jinn-core-types`; this module keeps
-//! the preferences-to-seed policy above the foundational types.
 
 use std::collections::{BTreeSet, HashSet};
-
-pub use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionProfile};
 
 /// Per-session defaults derived from user preferences at session creation.
 #[derive(Debug, Clone, PartialEq)]
@@ -46,11 +41,12 @@ mod tests {
     #![allow(clippy::expect_used, reason = "test code")]
 
     use super::*;
+    use jinn_preferences_config::UserPreferences;
 
     #[rstest::rstest]
     fn session_seed_from_default_preferences_is_all_enabled() {
         // Given default (empty) user preferences.
-        let prefs = jinn_preferences_config::UserPreferences::default();
+        let prefs = UserPreferences::default();
 
         // When deriving the seed.
         let seed = SessionSeed::from_preferences(&prefs);
@@ -64,7 +60,7 @@ mod tests {
     #[rstest::rstest]
     fn session_seed_copies_preferences_and_auto_enabled_mcp() {
         // Given preferences with disabled names and one auto-enabled server.
-        let prefs = jinn_preferences_config::UserPreferences {
+        let prefs = UserPreferences {
             disabled_tools: ["bash", "mcp__excalimate__draw"]
                 .into_iter()
                 .map(str::to_owned)
@@ -102,7 +98,7 @@ mod tests {
     #[rstest::rstest]
     fn session_seed_excludes_servers_without_auto_enable() {
         // Given preferences with one enabled and one disabled MCP server.
-        let prefs = jinn_preferences_config::UserPreferences {
+        let prefs = UserPreferences {
             mcp_server: [
                 (
                     "on".to_owned(),

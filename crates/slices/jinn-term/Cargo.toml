@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+jinn-chat-input-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-sidebar-msg = { workspace = true }

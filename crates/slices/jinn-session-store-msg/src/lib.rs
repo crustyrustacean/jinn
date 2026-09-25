@@ -10,6 +10,7 @@ pub mod event;
 pub mod projections;
 pub mod session_search;
 pub mod session_state;
+pub mod session_tree_entry;
 
 pub use command::{
     ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, PersistSession,
@@ -22,3 +23,4 @@ pub use session_search::{
     TranscriptWindow, entry_ts_key, extract_searchable,
 };
 pub use session_state::SessionState;
+pub use session_tree_entry::{SessionTreeEntry, apply_project_column_width, session_row};

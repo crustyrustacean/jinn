@@ -8,8 +8,10 @@ description = "The session-turn slice: one coordinated reducer for session histo
 test-harness = ["jinn-domain/test-harness"]
 
 [dependencies]
+jinn-chat-input-msg = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-context = { workspace = true }
+jinn-context-assembly-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-context-assembly = { workspace = true }
 jinn-persona-msg = { workspace = true }

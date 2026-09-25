@@ -12,6 +12,10 @@
 
 pub use jinn_core_types::SessionId;
 
+pub mod prune_report;
+
+pub use prune_report::{PruneReport, prune_report};
+
 use serde::{Deserialize, Serialize};
 
 /// Ask the context-curation slice to compact a session's history.

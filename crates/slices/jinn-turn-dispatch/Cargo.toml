@@ -20,6 +20,7 @@ jinn-token-count-msg = { workspace = true }
 jinn-provider-selection = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 jinn-domain = { workspace = true }
+jinn-chat-input-msg = { workspace = true }
 jinn-context-assembly = { workspace = true }
 jinn-slices = { workspace = true }
 serde_json = { workspace = true }

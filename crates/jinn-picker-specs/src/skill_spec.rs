@@ -22,10 +22,10 @@ use ratatui::text::Span;
 use jinn_core_types::{ChatEntry, ChatEntryId, PinPosition, ToolResultStatus};
 use jinn_domain::RescanPromptTemplates;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::context::protocol::command::ScanContextFiles;
 use jinn_domain::feat::skills::ScanSkills;
 use jinn_domain::feat::skills::skill_entry::{body_hash_key, render_skill_preview, skill_row};
 use jinn_domain::feat::ui::picker_states::PickerExt;
+use jinn_session_init_msg::ScanContextFiles;
 use jinn_session_msg::MarkSessionInteracted;
 
 /// The kernel entry this picker's items wrap in storage.
@@ -337,7 +337,6 @@ mod tests {
     )]
     use super::*;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
-    use jinn_skills_msg::SkillSource;
     use jinn_domain::protocol::ChatEntryKind;
     use jinn_domain::protocol::PickerKind;
     use jinn_picker::PickerEntry;
@@ -346,6 +345,7 @@ mod tests {
     use jinn_picker::SKILL_ID;
     use jinn_selection_widget::SelectionState;
     use jinn_session_state::ChatSessionState;
+    use jinn_skills_msg::SkillSource;
     use jinn_slices::FocusScope;
 
     /// A discovered skill with a small markdown body.

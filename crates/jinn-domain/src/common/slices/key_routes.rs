@@ -34,9 +34,10 @@ impl SliceActionState for AppState {
         session_id: jinn_core_types::SessionId,
         cwd: std::path::PathBuf,
     ) -> jinn_slices::PublishClosure {
-        crate::common::bridge::Bridge::publish_closure(
-            crate::feat::session_lifecycle::protocol::command::SetSessionCwd { session_id, cwd },
-        )
+        crate::common::bridge::Bridge::publish_closure(jinn_session_lifecycle_msg::SetSessionCwd {
+            session_id,
+            cwd,
+        })
     }
 
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {

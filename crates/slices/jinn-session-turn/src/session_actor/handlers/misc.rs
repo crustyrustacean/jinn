@@ -1,11 +1,11 @@
 //! Miscellaneous handlers - skills refresh display and history mutation intake.
 
 use super::super::SessionPersistenceActor;
+use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
 use jinn_session_history_msg::SubmitHistoryMutations;
-use jinn_skills_msg::Skill;
 use jinn_session_msg::PhaseKind;
+use jinn_skills_msg::Skill;
 
 use jinn_domain::protocol::{ChatEntry, PickerKind};
 

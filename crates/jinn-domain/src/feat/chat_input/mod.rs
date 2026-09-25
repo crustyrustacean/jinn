@@ -22,7 +22,6 @@ pub mod intent;
 mod intent_phase2_tests;
 #[cfg(test)]
 mod intent_tests;
-pub mod protocol;
 pub mod slash_command;
 pub mod validator;
 
@@ -60,6 +59,3 @@ mod register_tests {
         assert_eq!(registry.iter_mut().count(), 1);
     }
 }
-
-#[cfg(test)]
-mod chat_input_tests;

@@ -8,7 +8,7 @@
 //! number always reflects the live history (re-includes drop out
 //! automatically and pending, un-flushed prunes never appear).
 
-use crate::protocol::{ChangeSource, ChatEntry, ContextOverride};
+use jinn_core_types::{ChangeSource, ChatEntry, ContextOverride};
 
 /// The `HistoryWorker::name` of the compaction worker.
 ///

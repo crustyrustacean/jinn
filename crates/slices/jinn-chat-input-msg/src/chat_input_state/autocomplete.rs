@@ -93,7 +93,7 @@ impl AutocompleteState {
     ///
     /// Used by the `@path` popup, whose entries live in `frontend.file_picker`
     /// rather than `matches`. `count` is the length of
-    /// [`FilePickerState::visible_entries`](crate::feat::file_lister::FilePickerState::visible_entries),
+    /// [`FilePickerState::visible_entries`](crate::FilePickerState::visible_entries),
     /// so the index never leaves the range the popup actually renders.
     pub fn move_up_bounded(&mut self, count: usize) {
         self.selected_index = self.selected_index.min(count.saturating_sub(1));

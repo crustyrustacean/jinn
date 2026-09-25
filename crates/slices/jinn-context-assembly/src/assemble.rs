@@ -14,8 +14,8 @@ use std::collections::BTreeMap;
 use jinn_context::env_context::{
     context_files_section, cwd_section, date_section, persona_section,
 };
+use jinn_context_assembly_msg::AssemblyInputs;
 use jinn_core_types::ToolDefinition;
-use jinn_domain::feat::context::protocol::inputs::AssemblyInputs;
 use jinn_domain::feat::context::strategy::token_estimator::{
     IMAGE_ATTACHMENT_TOKENS, TokenCounter,
 };

@@ -5,7 +5,11 @@ edition.workspace = true
 
 [dependencies]
 jinn-core-types = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-selection-widget = { workspace = true }
 jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
 trouper = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -7,8 +7,8 @@
 //! `User` entry is required.
 
 use crate::sections::sessions::state::{SessionEntryKind, sorted_open_sessions};
+use jinn_chat_input_msg::EnqueueResumeTurn;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::chat_input::protocol::command::EnqueueResumeTurn;
 use jinn_domain::protocol::IntentResult;
 
 /// Resume the session under the sidebar cursor.

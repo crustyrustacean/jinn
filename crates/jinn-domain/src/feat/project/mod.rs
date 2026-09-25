@@ -8,7 +8,4 @@
 //! Defined in `jinn.toml` under `[[project]]` and persisted comment-preserving
 //! via the [`DocumentPatcher`](crate::common::toml_patch::DocumentPatcher).
 
-pub mod picker_entry;
 pub mod resolver;
-
-pub use jinn_preferences_config::schemas::ProjectConfig;

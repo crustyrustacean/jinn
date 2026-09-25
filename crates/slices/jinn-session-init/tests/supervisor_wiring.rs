@@ -18,7 +18,7 @@ use jinn_core_types::SessionId;
 use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
+use jinn_session_lifecycle_msg::SessionCreated;
 
 /// Polls `check` until it passes or the retry budget runs out.
 async fn wait_for(check: impl Fn() -> bool) {

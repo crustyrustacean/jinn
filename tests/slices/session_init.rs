@@ -14,7 +14,8 @@ use std::time::Duration;
 use jinn_core_types::SessionId;
 use jinn_domain::common::bridge::Bridge;
 use jinn_domain::common::bus::test_harness::{Recorder, await_recorded};
-use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
+use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
+use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_state::ChatSessionState;
 use jinn_tui::TuiApp;
 
@@ -80,9 +81,8 @@ async fn session_created_triggers_discovery_and_loaded_events_land_on_slice_topi
     // and recorders on the bus for the three kernel event types.
     let (app, project, session_id) = composed_app_with_project().await;
     let skills_recorder = recorder_for::<jinn_domain::feat::skills::SkillsLoaded>(&app).await;
-    let prompts_recorder = recorder_for::<jinn_session_init_msg::PromptTemplatesLoaded>(&app).await;
-    let context_recorder =
-        recorder_for::<jinn_domain::feat::context::protocol::event::ContextFilesLoaded>(&app).await;
+    let prompts_recorder = recorder_for::<PromptTemplatesLoaded>(&app).await;
+    let context_recorder = recorder_for::<ContextFilesLoaded>(&app).await;
 
     // When the kernel publishes `SessionCreated` (the lifecycle event
     // that drives discovery): supervisor → keyed worker → Loaded
@@ -143,7 +143,7 @@ async fn boot_cwd_changed_triggers_initial_discovery() {
     // relay → supervisor → keyed worker → Loaded events → reverse
     // relays → this bus.
     let _ = app.core.bridge.send(Bridge::publish_closure(
-        jinn_domain::feat::session_lifecycle::protocol::event::SessionCwdChanged {
+        jinn_session_lifecycle_msg::SessionCwdChanged {
             session_id: session_id.clone(),
             cwd: project.clone(),
         },

@@ -1,7 +1,7 @@
 //! Tool picker entry type.
 //!
-//! The rendering lives in the tool picker's spec (`feat::picker::tool_spec`);
-//! this struct is the plain domain data the spec wraps.
+//! The rendering lives in the tool picker's canonical picker spec; this
+//! struct is the plain shared data the spec wraps.
 
 use jinn_theme::Theme;
 

@@ -798,12 +798,10 @@ mod lifecycle_tests {
 
         // When publishing SessionCreated for that session.
         harness
-            .publish(
-                jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated {
-                    session_id,
-                    cwd: std::env::temp_dir(),
-                },
-            )
+            .publish(jinn_session_lifecycle_msg::SessionCreated {
+                session_id,
+                cwd: std::env::temp_dir(),
+            })
             .await;
 
         // Then an McpActor was spawned for the seeded server (a Starting
@@ -858,12 +856,10 @@ mod lifecycle_tests {
         // When both SessionCreated and McpEnablementChanged carry the same
         // desired set (the common seeding flow emits both).
         harness
-            .publish(
-                jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated {
-                    session_id: session_id.clone(),
-                    cwd: std::env::temp_dir(),
-                },
-            )
+            .publish(jinn_session_lifecycle_msg::SessionCreated {
+                session_id: session_id.clone(),
+                cwd: std::env::temp_dir(),
+            })
             .await;
         harness
             .publish(McpEnablementChanged {
@@ -915,12 +911,10 @@ mod lifecycle_tests {
             }
         }
         harness
-            .publish(
-                jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated {
-                    session_id: session_id.clone(),
-                    cwd: std::env::temp_dir(),
-                },
-            )
+            .publish(jinn_session_lifecycle_msg::SessionCreated {
+                session_id: session_id.clone(),
+                cwd: std::env::temp_dir(),
+            })
             .await;
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 

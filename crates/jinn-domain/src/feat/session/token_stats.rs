@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use jinn_core_types::SessionId;
-pub use jinn_token_count_msg::{AggregatedTokenStats, TokenRecord, TokenStats};
+use jinn_token_count_msg::{AggregatedTokenStats, TokenStats};
 
 use jinn_session_state::ChatSessionState;
 

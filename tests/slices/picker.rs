@@ -15,10 +15,10 @@
 
 use jinn_core_types::SessionId;
 use jinn_domain::AppState;
-use jinn_domain::feat::session::picker_entry::SessionTreeEntry;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::SessionState;
+use jinn_session_store_msg::SessionTreeEntry;
 use jinn_slices::FocusScope;
 use jinn_slices::picker_kind::PickerKind;
 

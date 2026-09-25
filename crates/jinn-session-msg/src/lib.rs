@@ -16,8 +16,10 @@ use std::path::PathBuf;
 
 pub mod phase_machine;
 pub mod session_origin;
+mod session_seed;
 
 pub use session_origin::SessionOrigin;
+pub use session_seed::SessionSeed;
 
 // ── phase discriminant ──────────────────────────────────────────────
 

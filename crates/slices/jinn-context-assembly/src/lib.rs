@@ -1,7 +1,7 @@
 //! The context-assembly slice — a stateless assembly service.
 //!
 //! Assembling a system prompt + conversation messages is a PURE
-//! function of the caller-provided [`assemble::AssemblyInputs`]: the
+//! function of the caller-provided [`jinn_context_assembly_msg::AssemblyInputs`]: the
 //! service never reads `AppState`. The kernel's queue/session dispatch
 //! paths snapshot the session state they can see, send an
 //! `AssembleContext` message to the `context-assembly` trouper actor,

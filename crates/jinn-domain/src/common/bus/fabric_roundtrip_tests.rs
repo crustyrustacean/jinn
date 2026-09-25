@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::ProviderSwitched;
 use crate::common::bus::test_harness::{TestHarness, await_recorded};
 use crate::common::services::bus_service::BusService;
-use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
+use jinn_chat_input_msg::ChatEntrySubmitted;
 use jinn_core_types::{ChatEntry, SessionId, ToolResult};
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_msg::UserInteracted;

@@ -10,8 +10,7 @@
 use jinn_core_types::DEFAULT_PERSONA_NAME;
 use jinn_domain::PromptTemplatesLoaded;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::context::protocol::command::LoadPersonaPickerEntries;
-use jinn_domain::feat::persona::PersonaEntry;
+use jinn_persona_msg::{LoadPersonaPickerEntries, PersonaEntry, PersonasLoaded};
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 
@@ -121,10 +120,7 @@ impl SessionPersistenceActor {
     /// 2. Keep current active_persona if it still exists in the new list.
     /// 3. Fallback to `"coding-assistant"` by name.
     /// 4. If coding-assistant not found, pick first available.
-    pub(in crate::session_actor) fn on_personas_loaded(
-        &self,
-        payload: &jinn_domain::feat::context::protocol::event::PersonasLoaded,
-    ) {
+    pub(in crate::session_actor) fn on_personas_loaded(&self, payload: &PersonasLoaded) {
         if payload.error.is_some() {
             tracing::warn!(
                 error = ?payload.error,
@@ -211,7 +207,6 @@ mod tests {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::services::BusAudit;
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::context::protocol::event::PersonasLoaded;
     use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_domain::protocol::{ChatEntryId, PinPosition};
     use jinn_persona_msg::Persona;

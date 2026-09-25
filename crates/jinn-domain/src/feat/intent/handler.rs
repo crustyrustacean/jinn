@@ -30,6 +30,7 @@
 )]
 
 use crate::AppState;
+use jinn_status_bar_msg::{StatusBarState, status_bar_slot};
 use jinn_term_msg::command::ControlHolder;
 
 use crate::protocol::{PickerKind, ScopeSignal};
@@ -154,11 +155,11 @@ fn close_terminal_overlay_on_switch(
         registry.set(prev_active, ControlHolder::Agent);
     }
     state.frontend.scope_clear_overlays();
-    crate::feat::ui::status_hint::set_hint(
-        state,
-        slices,
-        Some("terminal overlay closed — active session changed".to_owned()),
-    );
+    if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+        status.update(|state| {
+            state.hint = Some("terminal overlay closed — active session changed".to_owned());
+        });
+    }
 }
 
 impl IntentHandler {
@@ -183,7 +184,9 @@ impl IntentHandler {
             .update_scope(|s| s.signals = jinn_slices::TuiSignals::new());
         // Status hints are transient: any fresh intent dismisses the previous
         // one (the handler arms that raise one run after this line).
-        crate::feat::ui::status_hint::set_hint(state, slices, None);
+        if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+            status.update(|state| state.hint = None);
+        }
 
         // Capture active session ID before processing for diff-after check.
         let prev_active = state.session.active_session_id().clone();
@@ -594,9 +597,8 @@ fn try_handle_cancel_stream_prompt(
 
     // Also cancel any running lifecycle command.
     if was_busy {
-        result = result.with_message(
-            crate::feat::session_lifecycle::protocol::CancelLifecycleCommand { session_id },
-        );
+        result =
+            result.with_message(jinn_session_lifecycle_msg::CancelLifecycleCommand { session_id });
     }
 
     Some(result)
@@ -641,6 +643,8 @@ mod tests {
         reason = "test code"
     )]
 
+    use jinn_status_bar_msg::{StatusBarState, status_bar_slot};
+
     /// Empty slice registry + route table for handler tests that don't
     /// exercise slices or route rows.
     fn empty_slices() -> jinn_slices::Slices {
@@ -661,13 +665,18 @@ mod tests {
         )]
         {
             slices
-                .register(
-                    jinn_status_bar_msg::status_bar_slot(),
-                    jinn_status_bar_msg::StatusBarState::default(),
-                )
+                .register(status_bar_slot(), StatusBarState::default())
                 .expect("fresh Slices never has the status-bar cell registered");
         }
         slices
+    }
+
+    fn status_hint(slices: &jinn_slices::Slices) -> Option<String> {
+        slices
+            .reader::<StatusBarState>(&status_bar_slot())?
+            .read()
+            .hint
+            .clone()
     }
 
     fn empty_routes() -> jinn_slices::route::KeyRoutes {
@@ -1063,21 +1072,17 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn set_hint_is_a_noop_without_the_status_bar_cell() {
-        // Given state with no activated status-bar slice (bare `Slices`).
-        let mut state = AppState::default_with_scope_focus();
+    fn status_hint_write_is_a_noop_without_the_status_bar_cell() {
+        // Given a slice registry without the status-bar cell.
         let slices = empty_slices();
 
-        // When an intent arm raises a hint through the write seam.
-        crate::feat::ui::status_hint::set_hint(
-            &mut state,
-            &slices,
-            Some("should be dropped".to_owned()),
-        );
+        // When attempting a hint write.
+        if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+            status.update(|state| state.hint = Some("should be dropped".to_owned()));
+        }
 
-        // Then the write is a silent no-op (removability: no slice, no
-        // hint anywhere, no panic).
-        assert!(crate::feat::ui::status_hint::hint(&slices).is_none());
+        // Then no status state is available to expose a hint.
+        assert!(status_hint(&slices).is_none());
     }
 
     #[rstest::rstest]
@@ -1110,7 +1115,10 @@ mod tests {
         // Given a state carrying a hint from a failed overlay toggle.
         let mut state = AppState::default_with_scope_focus();
         let slices = status_bar_slices();
-        crate::feat::ui::status_hint::set_hint(&mut state, &slices, Some("stale hint".to_owned()));
+        slices
+            .reader::<StatusBarState>(&status_bar_slot())
+            .expect("status-bar cell registered by test setup")
+            .update(|status| status.hint = Some("stale hint".to_owned()));
 
         // When handling any other intent.
         IntentHandler::handle(
@@ -1122,7 +1130,7 @@ mod tests {
         );
 
         // Then the hint is cleared.
-        assert!(crate::feat::ui::status_hint::hint(&slices).is_none());
+        assert!(status_hint(&slices).is_none());
     }
 
     #[rstest::rstest]
@@ -1264,7 +1272,7 @@ mod tests {
             "a switch under an open overlay must not carry it to the new session"
         );
         // And the hint explains the abrupt close.
-        let hint = crate::feat::ui::status_hint::hint(&slices);
+        let hint = status_hint(&slices);
         assert!(
             hint.as_deref().is_some_and(|h| h.contains("closed")),
             "expected an overlay-closed hint, got: {hint:?}"

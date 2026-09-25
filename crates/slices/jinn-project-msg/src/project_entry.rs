@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 
 use jinn_cwd_msg::shorten_path;
 use jinn_picker::picker_style::{active_marker, selected_style};
+use jinn_preferences_config::schemas::ProjectConfig;
 use jinn_theme::Theme;
 
 /// A curated project directory shown in the project picker.
@@ -84,10 +85,7 @@ pub fn render_project_row(
 ///
 /// Entries are sorted by their display string so the list is stable and
 /// alphabetical regardless of `jinn.toml` ordering.
-pub fn project_entries(
-    projects: &[crate::feat::project::ProjectConfig],
-    theme: &Theme,
-) -> Vec<ProjectEntry> {
+pub fn project_entries(projects: &[ProjectConfig], theme: &Theme) -> Vec<ProjectEntry> {
     let mut entries: Vec<_> = projects
         .iter()
         .map(|p| ProjectEntry::new(p.path.clone(), theme.clone()))
@@ -173,11 +171,11 @@ mod tests {
     fn project_entries_sorted_by_display() {
         // Given projects in a non-alphabetical order.
         let projects = vec![
-            crate::feat::project::ProjectConfig {
+            ProjectConfig {
                 path: std::path::PathBuf::from("/zzz"),
                 command_policy: Vec::new(),
             },
-            crate::feat::project::ProjectConfig {
+            ProjectConfig {
                 path: std::path::PathBuf::from("/aaa"),
                 command_policy: Vec::new(),
             },

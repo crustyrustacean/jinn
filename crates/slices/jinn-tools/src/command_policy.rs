@@ -12,9 +12,8 @@ use std::path::{Path, PathBuf};
 
 use regex::Regex;
 
+use jinn_preferences_config::schemas::ProjectConfig;
 use jinn_tools_msg::CommandPolicyRule;
-
-use jinn_domain::feat::project::ProjectConfig;
 
 /// Compiled blocked-command rules for one project. Empty matches nothing.
 #[derive(Debug, Clone, Default)]

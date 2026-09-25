@@ -6,6 +6,7 @@ version.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 daow = { workspace = true }
+jinn-chat-input-msg = { workspace = true }
 jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-discord-msg = { workspace = true }
@@ -16,6 +17,7 @@ jinn-discord-msg = { workspace = true }
 jinn-domain = { workspace = true, features = ["test-harness"] }
 jinn-preferences-config = { workspace = true }
 jinn-session-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
 jinn-session-state = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-slices = { workspace = true }

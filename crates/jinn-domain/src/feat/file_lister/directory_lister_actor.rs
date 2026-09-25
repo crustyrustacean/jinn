@@ -1,10 +1,7 @@
 //! [`DirectoryListerActor`] — async directory listing for the `@path` popup.
 
-use std::path::PathBuf;
-
 use error_stack::Report;
-use jinn_core_types::SessionId;
-use serde::{Deserialize, Serialize};
+use jinn_chat_input_msg::{FileEntry, ListDirectory};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -12,27 +9,6 @@ use trouper::registry::RegistryError;
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
-
-use super::file_picker_state::FileEntry;
-
-/// Command: list the directory at `path` (already resolved absolute) for the
-/// active session's `@path` popup.
-///
-/// `request_id` is the staleness token. The actor writes its result only when
-/// this matches `frontend.file_picker.expected_request_id`, so an earlier,
-/// slow read cannot overwrite a newer one.
-#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
-#[schema(description = "List a directory for the file picker popup.")]
-pub struct ListDirectory {
-    /// The session whose popup this listing is for.
-    pub session_id: SessionId,
-    /// Resolved absolute directory to list.
-    pub path: PathBuf,
-    /// Monotonic id tying this request to the expected reply slot.
-    pub request_id: u64,
-}
-
-impl crate::common::bus::BusMessage for ListDirectory {}
 
 /// Dependencies for [`DirectoryListerActor`].
 #[derive(Clone)]

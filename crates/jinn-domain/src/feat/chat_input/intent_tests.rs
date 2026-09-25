@@ -10,6 +10,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger, InputMode};
 use crate::protocol::ChatEntry;
+use jinn_chat_input_msg::{FileEntry, FilePickerState};
 use jinn_session_msg::PhaseKind;
 
 /// Empty slice registry + route table for handler tests that don't
@@ -2072,40 +2073,37 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
 
 /// Activates the `@` popup at the cursor and optionally seeds
 // `frontend.file_picker` with a listing. Returns the AppState for chaining.
-fn at_popup_with_entries(entries: Vec<crate::feat::file_lister::FileEntry>) -> AppState {
+fn at_popup_with_entries(entries: Vec<FileEntry>) -> AppState {
     let mut state = AppState::default_with_scope_focus();
     // Type `@` at the start of the buffer to activate the popup.
     let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
-    state.frontend.file_picker = crate::feat::file_lister::FilePickerState::with_entries(entries);
+    state.frontend.file_picker = FilePickerState::with_entries(entries);
     state.frontend.file_picker.loading = false;
     state
 }
 
 /// Activates the `@` popup with a seeded listing and positions the cursor
 // at the end of the given `filter` text (typed after the `@`).
-fn at_popup_with_filter_and_entries(
-    filter: &str,
-    entries: Vec<crate::feat::file_lister::FileEntry>,
-) -> AppState {
+fn at_popup_with_filter_and_entries(filter: &str, entries: Vec<FileEntry>) -> AppState {
     let mut state = AppState::default_with_scope_focus();
     let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
     for ch in filter.chars() {
         let _ = crate::feat::chat_input::intent::handle_insert_char(ch, &mut state);
     }
-    state.frontend.file_picker = crate::feat::file_lister::FilePickerState::with_entries(entries);
+    state.frontend.file_picker = FilePickerState::with_entries(entries);
     state.frontend.file_picker.loading = false;
     state
 }
 
-fn dir_entry(name: &str) -> crate::feat::file_lister::FileEntry {
-    crate::feat::file_lister::FileEntry {
+fn dir_entry(name: &str) -> FileEntry {
+    FileEntry {
         name: name.to_owned(),
         is_dir: true,
     }
 }
 
-fn file_entry(name: &str) -> crate::feat::file_lister::FileEntry {
-    crate::feat::file_lister::FileEntry {
+fn file_entry(name: &str) -> FileEntry {
+    FileEntry {
         name: name.to_owned(),
         is_dir: false,
     }
@@ -2437,8 +2435,7 @@ fn cursor_left_past_token_start_deactivates_popup() {
     let mut state = AppState::default_with_scope_focus();
     state.update_active_input(|i| i.insert_text("x "));
     let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
-    state.frontend.file_picker =
-        crate::feat::file_lister::FilePickerState::with_entries(vec![dir_entry("foo")]);
+    state.frontend.file_picker = FilePickerState::with_entries(vec![dir_entry("foo")]);
     state.frontend.file_picker.loading = false;
     for ch in "foo".chars() {
         let _ = crate::feat::chat_input::intent::handle_insert_char(ch, &mut state);
@@ -2485,8 +2482,7 @@ fn cursor_right_past_token_end_deactivates_popup() {
     // Given a buffer `@foo bar` with the @ popup active and the cursor after `foo`.
     let mut state = AppState::default_with_scope_focus();
     let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
-    state.frontend.file_picker =
-        crate::feat::file_lister::FilePickerState::with_entries(vec![dir_entry("foo")]);
+    state.frontend.file_picker = FilePickerState::with_entries(vec![dir_entry("foo")]);
     state.frontend.file_picker.loading = false;
     for ch in "foo".chars() {
         let _ = crate::feat::chat_input::intent::handle_insert_char(ch, &mut state);

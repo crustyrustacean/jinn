@@ -24,12 +24,8 @@ impl SessionStoreActor {
         let wrapped = jinn_picker::make_items_with_hooks(
             entries,
             jinn_picker::PickerItemHooks::new()
-                .row(jinn_domain::feat::session::picker_entry::session_row)
-                .search(
-                    |entry: &jinn_domain::feat::session::picker_entry::SessionTreeEntry| {
-                        entry.title.clone()
-                    },
-                ),
+                .row(jinn_session_store_msg::session_row)
+                .search(|entry: &jinn_session_store_msg::SessionTreeEntry| entry.title.clone()),
         );
         self.state.with_preferences(|ops| {
             ops.frontend().session_picker_mut().set_items(wrapped);

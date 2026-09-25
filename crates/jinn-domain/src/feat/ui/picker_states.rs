@@ -7,18 +7,18 @@
 
 use std::collections::HashSet;
 
-use crate::feat::persona::PersonaEntry;
-use crate::feat::picker::mcp_picker_entry::McpServerEntry;
-use crate::feat::picker::task_list_picker_entry::TaskListTreeEntry;
-use crate::feat::picker::tool_entry::ToolEntry;
-use crate::feat::session::picker_entry::SessionTreeEntry;
-use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
 use crate::feat::skills::skill_entry::SkillEntry;
+use jinn_mcp_msg::McpServerEntry;
+use jinn_persona_msg::PersonaEntry;
+use jinn_project_msg::ProjectEntry;
 use jinn_provider_selection_msg::ProviderPickerEntry;
 use jinn_provider_selection_msg::endpoint::EndpointEntry;
 use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
+use jinn_session_lifecycle_msg::SessionLifecycleEntry;
+use jinn_session_store_msg::SessionTreeEntry;
 use jinn_theme::Theme;
 use jinn_theme::ThemeEntry;
+use jinn_tools_msg::{TaskListTreeEntry, ToolEntry};
 
 /// All picker state - grouped so the picker subsystem can evolve independently.
 ///
@@ -79,9 +79,8 @@ pub struct PickerStates {
     pub task_list_picker:
         jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<TaskListTreeEntry>>,
 
-    pub project_picker: jinn_selection_widget::SelectionState<
-        jinn_picker::PickerEntry<crate::feat::project::picker_entry::ProjectEntry>,
-    >,
+    pub project_picker:
+        jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>>,
 
     /// Measured results-area row count for the currently-active picker, as
     /// written by the TUI render pre-pass each frame. Used by the picker
@@ -216,14 +215,10 @@ pub trait PickerExt {
     /// Read-only access to the project picker state.
     fn project_picker(
         &self,
-    ) -> &jinn_selection_widget::SelectionState<
-        jinn_picker::PickerEntry<crate::feat::project::picker_entry::ProjectEntry>,
-    >;
+    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>>;
     fn project_picker_mut(
         &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<
-        jinn_picker::PickerEntry<crate::feat::project::picker_entry::ProjectEntry>,
-    >;
+    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>>;
 
     /// Read-only access to the MCP server picker state.
     fn mcp_server_picker(
@@ -387,17 +382,13 @@ impl PickerExt for super::frontend_state::FrontendState {
     }
     fn project_picker(
         &self,
-    ) -> &jinn_selection_widget::SelectionState<
-        jinn_picker::PickerEntry<crate::feat::project::picker_entry::ProjectEntry>,
-    > {
+    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>> {
         &self.pickers.project_picker
     }
 
     fn project_picker_mut(
         &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<
-        jinn_picker::PickerEntry<crate::feat::project::picker_entry::ProjectEntry>,
-    > {
+    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>> {
         &mut self.pickers.project_picker
     }
 

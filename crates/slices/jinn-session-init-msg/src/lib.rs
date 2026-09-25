@@ -1,10 +1,12 @@
-//! Session-init crossing contracts — the prompt-template scan pair.
+//! Session-init crossing contracts — the discovery command and event pairs.
 //!
-//! The producer is this slice's prompt scan worker, so the scan command and
-//! loaded event live in this crate. The portable [`PromptTemplate`] value is
+//! The producer is this slice's discovery worker, so the scan commands and
+//! loaded events live in this crate. The portable [`PromptTemplate`] value is
 //! owned by `jinn-context` and re-exported here to preserve existing producer
-//! and consumer import paths. The crossing-schema ids ("RescanPromptTemplates",
-//! "PromptTemplatesLoaded") are unchanged.
+//! and consumer import paths. The crossing-schema ids remain unchanged.
+
+mod command;
+mod event;
 
 use std::path::PathBuf;
 
@@ -13,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use jinn_core_types::SessionId;
 use jinn_slices::BusMessage;
 
+pub use command::ScanContextFiles;
+pub use event::ContextFilesLoaded;
 pub use jinn_context::PromptTemplate;
 
 /// Rescan prompt templates for a specific session.
@@ -63,8 +67,10 @@ mod tests {
     #[rstest::rstest]
     #[case("RescanPromptTemplates")]
     #[case("PromptTemplatesLoaded")]
+    #[case("ScanContextFiles")]
+    #[case("ContextFilesLoaded")]
     fn crossing_schema_ids_are_stable(#[case] name: &str) {
-        // Given the two crossing contracts.
+        // Given the four crossing contracts.
         // When deriving their trouper schema ids.
         // Then the ids equal the type names (the compatibility surface).
         let id = match name {
@@ -74,9 +80,10 @@ mod tests {
             "PromptTemplatesLoaded" => {
                 <PromptTemplatesLoaded as trouper::schema::Schema>::schema_id()
             }
+            "ScanContextFiles" => <ScanContextFiles as trouper::schema::Schema>::schema_id(),
+            "ContextFilesLoaded" => <ContextFilesLoaded as trouper::schema::Schema>::schema_id(),
             other => unreachable!("unhandled name: {other}"),
         };
-        // Then the id is the type name (the compatibility surface).
         assert_eq!(id.name(), name);
     }
 

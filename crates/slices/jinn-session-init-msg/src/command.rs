@@ -1,18 +1,11 @@
-//! Command types for context management.
+//! Commands that trigger session-init resource discovery.
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::BusMessage;
 use jinn_core_types::SessionId;
-
-/// Load entries for the persona picker.
-#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
-#[schema(description = "Load persona picker entries from the persona catalog.")]
-pub struct LoadPersonaPickerEntries;
-
-impl BusMessage for LoadPersonaPickerEntries {}
+use jinn_slices::BusMessage;
 
 /// Scan project context files (AGENTS.md/CLAUDE.md) for a specific session.
 ///

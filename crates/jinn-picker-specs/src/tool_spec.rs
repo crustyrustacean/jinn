@@ -22,10 +22,10 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::picker::tool_entry::ToolEntry;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_picker::picker_style::dim_style;
 use jinn_picker::picker_style::split_match_indices;
+use jinn_tools_msg::ToolEntry;
 
 /// Builds the tool picker's spec.
 #[must_use]

@@ -18,7 +18,7 @@ use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
-use crate::feat::context::protocol::inputs::{AssembleContext, AssembledResponse};
+use jinn_context_assembly_msg::{AssembleContext, AssembledResponse};
 
 /// The path the stub registers at — identical to the slice service's, so
 /// test callers need no special addressing.

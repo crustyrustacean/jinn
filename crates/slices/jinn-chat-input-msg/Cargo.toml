@@ -8,6 +8,7 @@ unicode-width = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 serde = { workspace = true }
+trouper = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

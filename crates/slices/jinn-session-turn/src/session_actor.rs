@@ -29,18 +29,15 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
+use jinn_chat_input_msg::{EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage};
 use jinn_domain::PromptTemplatesLoaded;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::chat_input::protocol::command::{
-    EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage,
-};
-use jinn_domain::feat::context::protocol::command::LoadPersonaPickerEntries;
-use jinn_domain::feat::context::protocol::event::PersonasLoaded;
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use jinn_domain::feat::skills::SkillsLoaded;
 use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
+use jinn_persona_msg::{LoadPersonaPickerEntries, PersonasLoaded};
 use jinn_session_history_msg::CitationsReceived;
 use jinn_session_history_msg::SubmitHistoryMutations;
 use jinn_session_history_msg::TaskListUpdated;

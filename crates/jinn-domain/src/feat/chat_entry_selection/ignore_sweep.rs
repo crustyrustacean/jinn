@@ -22,9 +22,9 @@
 //! or `ForcedExclude` — never `Default`. Resetting to `Default` is `r`'s job,
 //! which does not use this sweep (it advances the cursor directly).
 use crate::common::app_state::AppState;
-use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::protocol::ChatEntry;
 use crate::protocol::{ChatEntryId, ContextOverride, IntentResult};
+use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_core_types::SessionId;
 use jinn_session_store_msg::PersistSession;
 

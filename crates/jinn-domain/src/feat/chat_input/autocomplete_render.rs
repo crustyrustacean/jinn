@@ -307,7 +307,7 @@ mod tests {
     )]
     use crate::common::app_state::AppState;
     use crate::feat::chat_input::intent::handle_insert_char;
-    use crate::feat::file_lister::{FileEntry, FilePickerState};
+    use jinn_chat_input_msg::{FileEntry, FilePickerState};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
@@ -638,7 +638,6 @@ mod tests {
     fn at_popup_uses_cursor_anchored_vertical_positioning() {
         // Given an @ popup whose trigger sits on a wrapped continuation line,
         // seeded with file-picker entries.
-        use crate::feat::file_lister::{FileEntry, FilePickerState};
         let mut state = AppState::default();
         state.update_active_input(|i| i.set_wrap_width(5));
         // "aaaa bbbb@" → row0 "aaaa ", row1 "bbb@"? Use a clean wrap:
@@ -668,7 +667,6 @@ mod tests {
     fn at_popup_horizontal_anchor_follows_wrapped_trigger_col() {
         // Given an @ popup whose trigger sits on a wrapped continuation line,
         // far from the terminal's right edge.
-        use crate::feat::file_lister::{FileEntry, FilePickerState};
         let mut state = AppState::default();
         state.update_active_input(|i| i.set_wrap_width(5));
         // "aaaa bbbb@" at width 5 → row0 "aaaa ", row1 "bbbb@" with @ at

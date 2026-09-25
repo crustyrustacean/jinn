@@ -413,7 +413,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
 /// Fresh press of `x`: validate, toggle the entry, capture sweep state,
 /// propagate shown blocks, advance cursor.
 fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
-    use crate::feat::context::protocol::event::ContextOverrideChanged;
+    use jinn_context_assembly_msg::ContextOverrideChanged;
     use jinn_session_store_msg::PersistSession;
 
     // If cursor is on a collapsed block, skip past it before validation.
@@ -475,9 +475,9 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 /// Returns gracefully if the selected entry cannot be resolved after
 /// validation (e.g. collapsed ignored block).
 pub fn handle_reset_selected(state: &mut AppState) -> IntentResult {
-    use crate::feat::context::protocol::event::ContextOverrideChanged;
     use crate::protocol::ChatEntry;
     use crate::protocol::ContextOverride;
+    use jinn_context_assembly_msg::ContextOverrideChanged;
     use jinn_session_store_msg::PersistSession;
 
     // Skip past obstacles before validation, mirroring the x-sweep

@@ -5,15 +5,14 @@
 //! and return `IntentResult` with commands for the actor system.
 
 use crate::common::app_state::AppState;
-use crate::feat::session::profile::{DEFAULT_PERSONA_NAME, SessionProfile};
-use crate::feat::session_lifecycle::command_template::CommandTemplate;
-use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
-use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::protocol::IntentResult;
-use jinn_core_types::SessionId;
+use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionId, SessionProfile};
 use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_history_msg::PushChatEntry;
-use jinn_session_lifecycle_msg::setup_running_msg;
+use jinn_session_lifecycle_msg::command::{RunSessionSetup, RunSessionTeardown};
+use jinn_session_lifecycle_msg::event::SessionCreated;
+use jinn_session_lifecycle_msg::{CommandTemplate, setup_running_msg};
+use jinn_session_msg::SessionSeed;
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::PersistSession;
 
@@ -48,8 +47,7 @@ pub fn handle_session_lifecycle_setup(
 
     // Seed per-session defaults from jinn.toml (disablement sets +
     // auto-enabled MCP servers), matching every other session-creation path.
-    let seed =
-        crate::feat::session::profile::SessionSeed::from_preferences(&state.frontend.preferences);
+    let seed = SessionSeed::from_preferences(&state.frontend.preferences);
 
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
         model,

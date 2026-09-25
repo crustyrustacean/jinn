@@ -12,34 +12,10 @@ use std::collections::{HashMap, HashSet};
 use jinn_core_types::SessionId;
 use jinn_session_state::ChatSessionState;
 use jinn_session_state::compute_turn_count;
-use jinn_token_count_msg::TokenStats;
+use jinn_token_count_msg::{TokenStats, TreeAggregateStats};
 
 pub use jinn_session_state::{snapshot_frozen_node, snapshot_frozen_node_from_snapshot};
 pub use jinn_session_store_msg::FrozenTreeNode;
-
-/// Aggregate statistics for an entire session tree.
-///
-/// Sums tokens, cost, and turns across ALL sessions in the tree (root + all
-/// descendants), regardless of which session is currently active.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct TreeAggregateStats {
-    /// Total tokens sent across all sessions in the tree.
-    pub total_sent: u64,
-    /// Total tokens received across all sessions in the tree.
-    pub total_received: u64,
-    /// Total cost across all sessions in the tree.
-    pub total_cost: f64,
-    /// Total turns across all sessions in the tree.
-    pub total_turns: u32,
-    /// Number of sessions in the tree.
-    pub session_count: usize,
-    /// Effective sent total (provider-reported prompt_tokens else estimate).
-    pub effective_sent: u64,
-    /// Sum of provider-reported prompt_tokens over measured turns.
-    pub measured_sent: u64,
-    /// Sum of provider-reported cache-hit counts.
-    pub cached_total: u64,
-}
 
 /// Find the root of the session tree containing `session_id`.
 ///

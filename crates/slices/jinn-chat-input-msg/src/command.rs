@@ -3,11 +3,12 @@
 //! Insertion, deletion, submission, and clearing of the text
 //! the user is composing.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
-use crate::BusMessage;
-use crate::protocol::ChatEntry;
-use jinn_core_types::SessionId;
+use jinn_core_types::{ChatEntry, SessionId};
+use jinn_slices::BusMessage;
 
 /// Enqueue a user message for processing by the message queue.
 ///
@@ -46,7 +47,7 @@ impl BusMessage for EnqueueResumeTurn {}
 /// If submitted while phase == Idle, the chat-input layer is responsible
 /// for routing to [`EnqueueUserMessage`] instead.
 ///
-/// See [`jinn_session_state::steering_buffer::SteeringBuffer`].
+/// See `jinn_session_state::steering_buffer::SteeringBuffer`.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Append a steering fragment to a busy session.")]
 pub struct SubmitSteeringMessage {
@@ -56,4 +57,23 @@ pub struct SubmitSteeringMessage {
     pub text: String,
 }
 
-impl crate::common::bus::BusMessage for SubmitSteeringMessage {}
+impl BusMessage for SubmitSteeringMessage {}
+
+/// Command: list the directory at `path` (already resolved absolute) for the
+/// active session's `@path` popup.
+///
+/// `request_id` is the staleness token. The actor writes its result only when
+/// this matches `frontend.file_picker.expected_request_id`, so an earlier,
+/// slow read cannot overwrite a newer one.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "List a directory for the file picker popup.")]
+pub struct ListDirectory {
+    /// The session whose popup this listing is for.
+    pub session_id: SessionId,
+    /// Resolved absolute directory to list.
+    pub path: PathBuf,
+    /// Monotonic id tying this request to the expected reply slot.
+    pub request_id: u64,
+}
+
+impl BusMessage for ListDirectory {}
