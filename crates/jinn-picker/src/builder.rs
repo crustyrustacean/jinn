@@ -266,6 +266,18 @@ where
         self
     }
 
+    /// Wraps `entries` through this spec's own declared hooks.
+    ///
+    /// This is the cycle-free seam for entry writers that live outside the
+    /// spec's crate: a caller holding only *this* picker's spec wraps its
+    /// entries identically to a full-registry `make_items` call, without
+    /// naming — or linking — any other picker. The item hooks never escape
+    /// the spec, so they need not be cloneable.
+    #[must_use]
+    pub fn make_items(&self, entries: Vec<T>) -> Vec<crate::entry::PickerEntry<T>> {
+        crate::entry::make_items(entries, &self.hooks)
+    }
+
     /// Dismantles the spec for registration (crate-private; the registry
     /// erases these parts into a boxed `ErasedPickerSpec`).
     #[expect(

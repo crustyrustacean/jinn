@@ -59,3 +59,4 @@ pub mod tool_spec;
 mod registry;
 
 pub use registry::build_picker_registry;
+pub use registry::single_spec_registry;

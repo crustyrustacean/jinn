@@ -76,6 +76,35 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
     })
 }
 
+/// The read-only selection storage for `id`, or `None` when no picker claims
+/// that id.
+///
+/// The one id→field table for read lends. Both host lenses delegate here, so
+/// the mutable and read-only mappings cannot drift: the earlier split let the
+/// mutable lens answer `None` for `provider`, `endpoint`, and `project`
+/// while the render lens answered correctly, which is a silent blank-popup
+/// defect rather than a compile error.
+#[must_use]
+pub fn selection_state_ref(state: &AppState, id: PickerId) -> Option<&dyn std::any::Any> {
+    match id.as_str() {
+        PERSONA_ID => Some(state.frontend.persona_picker() as &dyn std::any::Any),
+        SKILL_ID => Some(state.frontend.skill_picker() as &dyn std::any::Any),
+        THEME_ID => Some(state.frontend.theme_picker() as &dyn std::any::Any),
+        TOOL_ID => Some(state.frontend.tool_picker() as &dyn std::any::Any),
+        MCP_SERVER_ID => Some(state.frontend.mcp_server_picker() as &dyn std::any::Any),
+        SESSION_LIFECYCLE_ID => {
+            Some(state.frontend.session_lifecycle_picker() as &dyn std::any::Any)
+        }
+        REASONING_EFFORT_ID => Some(state.frontend.reasoning_effort_picker() as &dyn std::any::Any),
+        TASK_LIST_ID => Some(state.frontend.task_list_picker() as &dyn std::any::Any),
+        SESSION_ID => Some(state.frontend.session_picker() as &dyn std::any::Any),
+        PROVIDER_ID => Some(&state.frontend.pickers.provider_picker as &dyn std::any::Any),
+        ENDPOINT_ID => Some(state.frontend.endpoint_picker() as &dyn std::any::Any),
+        PROJECT_ID => Some(state.frontend.project_picker() as &dyn std::any::Any),
+        _ => None,
+    }
+}
+
 /// The host lens over the kernel state. Constructed transiently at
 /// dispatch/render with `&mut AppState` — it never outlives the guard.
 pub struct AppStatePickerHost<'a> {
@@ -122,22 +151,7 @@ impl PickerHost for AppStatePickerHost<'_> {
     }
 
     fn selection_state_ref(&self, id: PickerId) -> Option<&dyn std::any::Any> {
-        match id.as_str() {
-            PERSONA_ID => Some(self.state.frontend.persona_picker() as &dyn std::any::Any),
-            SKILL_ID => Some(self.state.frontend.skill_picker() as &dyn std::any::Any),
-            THEME_ID => Some(self.state.frontend.theme_picker() as &dyn std::any::Any),
-            TOOL_ID => Some(self.state.frontend.tool_picker() as &dyn std::any::Any),
-            MCP_SERVER_ID => Some(self.state.frontend.mcp_server_picker() as &dyn std::any::Any),
-            SESSION_LIFECYCLE_ID => {
-                Some(self.state.frontend.session_lifecycle_picker() as &dyn std::any::Any)
-            }
-            REASONING_EFFORT_ID => {
-                Some(self.state.frontend.reasoning_effort_picker() as &dyn std::any::Any)
-            }
-            TASK_LIST_ID => Some(self.state.frontend.task_list_picker() as &dyn std::any::Any),
-            SESSION_ID => Some(self.state.frontend.session_picker() as &dyn std::any::Any),
-            _ => None,
-        }
+        selection_state_ref(self.state, id)
     }
 
     fn state_any(&mut self) -> &mut dyn std::any::Any {
@@ -222,25 +236,7 @@ impl PickerHost for AppStateRenderHost<'_> {
     }
 
     fn selection_state_ref(&self, id: PickerId) -> Option<&dyn std::any::Any> {
-        match id.as_str() {
-            PERSONA_ID => Some(self.state.frontend.persona_picker() as &dyn std::any::Any),
-            SKILL_ID => Some(self.state.frontend.skill_picker() as &dyn std::any::Any),
-            THEME_ID => Some(self.state.frontend.theme_picker() as &dyn std::any::Any),
-            TOOL_ID => Some(self.state.frontend.tool_picker() as &dyn std::any::Any),
-            MCP_SERVER_ID => Some(self.state.frontend.mcp_server_picker() as &dyn std::any::Any),
-            SESSION_LIFECYCLE_ID => {
-                Some(self.state.frontend.session_lifecycle_picker() as &dyn std::any::Any)
-            }
-            REASONING_EFFORT_ID => {
-                Some(self.state.frontend.reasoning_effort_picker() as &dyn std::any::Any)
-            }
-            TASK_LIST_ID => Some(self.state.frontend.task_list_picker() as &dyn std::any::Any),
-            SESSION_ID => Some(self.state.frontend.session_picker() as &dyn std::any::Any),
-            PROVIDER_ID => Some(&self.state.frontend.pickers.provider_picker as &dyn std::any::Any),
-            ENDPOINT_ID => Some(self.state.frontend.endpoint_picker() as &dyn std::any::Any),
-            PROJECT_ID => Some(self.state.frontend.project_picker() as &dyn std::any::Any),
-            _ => None,
-        }
+        selection_state_ref(self.state, id)
     }
 
     #[expect(
@@ -373,6 +369,71 @@ mod tests {
         assert!(
             mapped,
             "persona lend should downcast to its wrapped SelectionState"
+        );
+    }
+
+    /// Drift guard: every registered spec id must resolve in *both* lenses.
+    ///
+    /// The two lenses answer the same id→field question, and a gap in either
+    /// one is silent: a read lend that returns `None` makes its spec render
+    /// nothing at all, with no error. A single shared table plus this guard
+    /// keeps the mutable and read-only mappings from drifting apart again.
+    #[rstest::rstest]
+    #[test]
+    fn every_registered_spec_resolves_in_both_host_lenses() {
+        // Given a fresh state and the full set of registered picker ids.
+        // The id list is spelled out rather than pulled from the registry:
+        // `jinn-domain` cannot depend on `jinn-picker-specs` (that dependency
+        // is the cycle this whole migration exists to remove), and listing
+        // them keeps this guard a real compile-time-complete check of the
+        // table above.
+        let ids = [
+            jinn_picker::PERSONA_ID,
+            jinn_picker::SKILL_ID,
+            jinn_picker::THEME_ID,
+            jinn_picker::TOOL_ID,
+            jinn_picker::MCP_SERVER_ID,
+            jinn_picker::SESSION_LIFECYCLE_ID,
+            jinn_picker::REASONING_EFFORT_ID,
+            jinn_picker::TASK_LIST_ID,
+            jinn_picker::SESSION_ID,
+            jinn_picker::PROVIDER_ID,
+            jinn_picker::ENDPOINT_ID,
+            jinn_picker::PROJECT_ID,
+        ];
+        let mut state = AppState::default_with_scope_focus();
+
+        // When lending each id through the read lens and the mutable lens.
+        let mut unresolved = Vec::new();
+        for id in &ids {
+            let picker_id = PickerId::new(id);
+            if selection_state_ref(&state, picker_id).is_none() {
+                unresolved.push(format!("{id} (read)"));
+            }
+            if AppStatePickerHost::new(&mut state)
+                .selection_state_ref(picker_id)
+                .is_none()
+            {
+                unresolved.push(format!("{id} (read-lens-via-host)"));
+            }
+            if AppStatePickerHost::new(&mut state)
+                .selection_state(picker_id)
+                .is_none()
+            {
+                unresolved.push(format!("{id} (mut)"));
+            }
+            if AppStateRenderHost::new(&state)
+                .selection_state_ref(picker_id)
+                .is_none()
+            {
+                unresolved.push(format!("{id} (render)"));
+            }
+        }
+
+        // Then every id resolves everywhere.
+        assert!(
+            unresolved.is_empty(),
+            "picker ids that lend no storage in some lens (silent blank popup): {unresolved:?}"
         );
     }
 

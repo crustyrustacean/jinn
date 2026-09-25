@@ -24,8 +24,7 @@
 use error_stack::Report;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::state::State;
-use jinn_picker::ENDPOINT_ID;
-use jinn_picker_specs::build_picker_registry;
+use jinn_picker_specs::endpoint_spec::endpoint_spec;
 use jinn_provider_config::ModelCache;
 use jinn_provider_config::ProviderRegistry;
 use jinn_provider_config::{InputModalities, Modality, ModelInfo, ProvidersConfig};
@@ -400,9 +399,7 @@ impl ProviderActor {
     /// Wraps `entries` through the endpoint spec's hooks and writes them
     /// into the endpoint picker (the render/navigation surface).
     fn write_endpoint_items(&self, entries: Vec<EndpointEntry>) {
-        let wrapped = build_picker_registry()
-            .make_items(ENDPOINT_ID, entries)
-            .unwrap_or_default();
+        let wrapped = endpoint_spec().make_items(entries);
         self.state.with_pickers(|p| {
             p.endpoint_picker.set_items(wrapped);
         });

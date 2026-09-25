@@ -36,11 +36,74 @@ pub fn build_picker_registry() -> PickerRegistry {
     registry
 }
 
+/// A registry holding exactly one picker spec.
+///
+/// Kernel dispatch paths that resolve a single known picker (a sidebar row
+/// that opens the task-list picker, say) can build just that spec instead of
+/// the full fan-out. Keeps each caller linked only to the picker it names.
+#[must_use]
+pub fn single_spec_registry<T>(spec: jinn_picker::PickerSpec<T>) -> PickerRegistry
+where
+    T: jinn_selection_widget::TreeItem + std::fmt::Debug + Send + Sync + 'static,
+{
+    let mut registry = PickerRegistry::new();
+    registry.register(spec);
+    registry
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, reason = "test module, panics are acceptable")]
     use super::*;
     use jinn_slices::picker_kind::PickerKind;
+
+    #[rstest::rstest]
+    #[test]
+    fn single_spec_registry_resolves_only_the_named_spec() {
+        // Given a registry holding just the persona spec.
+        let registry = single_spec_registry(crate::persona_spec::persona_spec());
+
+        // When looking specs up by id.
+        let persona = registry.get(jinn_picker::PERSONA_ID);
+        let other = registry.get(jinn_picker::PROJECT_ID);
+
+        // Then only the named spec resolves — the caller links to no other picker.
+        assert!(persona.is_some());
+        assert!(other.is_none());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn single_spec_registry_make_items_matches_the_full_registry() {
+        // Given a one-spec registry and the full fan-out registry.
+        let one = single_spec_registry(crate::persona_spec::persona_spec());
+        let all = build_picker_registry();
+        let entries = || {
+            vec![jinn_persona_msg::PersonaEntry {
+                name: "coder".to_owned(),
+                description: "code helper".to_owned(),
+                is_active: false,
+                theme: jinn_theme::default_theme(),
+            }]
+        };
+
+        // When wrapping identical entries through each.
+        let via_one =
+            one.make_items::<jinn_persona_msg::PersonaEntry>(jinn_picker::PERSONA_ID, entries());
+        let via_all =
+            all.make_items::<jinn_persona_msg::PersonaEntry>(jinn_picker::PERSONA_ID, entries());
+
+        // Then the wrapped items are identical — the seam loses nothing.
+        assert_eq!(via_one.is_some(), via_all.is_some());
+        assert_eq!(
+            via_one.as_ref().and_then(|items| items
+                .first()
+                .map(jinn_selection_widget::PickerItem::display_label)),
+            via_all.as_ref().and_then(|items| items
+                .first()
+                .map(jinn_selection_widget::PickerItem::display_label)),
+        );
+    }
 
     #[rstest::rstest]
     #[test]
