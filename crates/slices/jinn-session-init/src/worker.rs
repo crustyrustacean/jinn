@@ -677,7 +677,7 @@ fn write_skills(
     session_id: &SessionId,
     skills: &[Skill],
 ) {
-    state.with_session(session_cap, |view| {
+    state.with_session(|view| {
         if let Some(session) = view.session.map().get_mut(session_id) {
             session.set_discovered_skills(skills.to_vec());
         }
@@ -697,7 +697,7 @@ fn write_skills(
             r.frontend.theme.clone(),
         )
     };
-    state.with_skills_frontend(frontend_cap, |ops| {
+    state.with_skills_frontend(|ops| {
         ops.reload_picker(&discovered, &disabled, &sample_theme);
     });
 }
@@ -709,7 +709,7 @@ fn write_prompts(
     session_id: &SessionId,
     store: &PromptTemplateStore,
 ) {
-    state.with_session(session_cap, |view| {
+    state.with_session(|view| {
         if let Some(session) = view.session.map().get_mut(session_id) {
             session.set_discovered_prompt_templates(store.clone());
         }
@@ -723,7 +723,7 @@ fn write_context(
     session_id: &SessionId,
     files: &[ContextFile],
 ) {
-    state.with_session(session_cap, |view| {
+    state.with_session(|view| {
         if let Some(session) = view.session.map().get_mut(session_id) {
             session.set_discovered_context_files(files.to_vec());
         }

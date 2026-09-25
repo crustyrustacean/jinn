@@ -125,7 +125,7 @@ impl MsgHandler<ListDirectory> for DirectoryListerActor {
         let entries = result.unwrap_or_default();
 
         // Staleness guard: write only if this reply is still the expected one.
-        self.state.with_file_picker(&self.frontend_cap, |ops| {
+        self.state.with_file_picker(|ops| {
             let picker = ops.file_picker();
             if picker.expected_request_id == request_id {
                 picker.entries = entries;

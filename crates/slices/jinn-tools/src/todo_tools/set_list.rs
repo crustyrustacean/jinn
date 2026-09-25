@@ -140,7 +140,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let Some(session_cap) = &ctx.session_cap else {
             return tool_error(call, "no session capability");
         };
-        let result = state.with_session(session_cap, |view| {
+        let result = state.with_session(|view| {
             let session = view.session.map().get_unchecked_mut(&session_id);
             let list = session.task_list_mut();
             if phase_inputs.is_empty() {

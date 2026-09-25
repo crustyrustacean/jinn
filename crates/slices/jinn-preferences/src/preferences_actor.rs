@@ -100,7 +100,7 @@ impl PreferencesActor {
         // reload the open project picker so adds/removes round-tripping through
         // this actor are reflected immediately. The author of `frontend.preferences`
         // is this actor — keep the writes in one state guard.
-        self.state.with_preferences(&self.cap, |view| {
+        self.state.with_preferences(|view| {
             let frontend = view.frontend();
             frontend.preferences = prefs.clone();
             if frontend.is_picker()

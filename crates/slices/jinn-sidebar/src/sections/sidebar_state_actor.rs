@@ -68,7 +68,7 @@ impl SidebarStateActor {
     /// Reconcile sidebar cursor and active session after a session is removed.
     fn handle_session_removed(&self, payload: &SessionRemoved) {
         self.state
-            .with_session_sidebar(&self.session_cap, &self.frontend_cap, |view| {
+            .with_session_sidebar(|view| {
                 sessions::state::repair_visual_parents_after_removal(
                     view.session.map(),
                     view.frontend,

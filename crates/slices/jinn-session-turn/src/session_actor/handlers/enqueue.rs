@@ -72,7 +72,7 @@ impl SessionPersistenceActor {
         }
 
         let action = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
                 match session.phase() {
                     PhaseKind::Idle => {
@@ -162,7 +162,7 @@ impl SessionPersistenceActor {
 
         // Blocked: push the user entry and the error entry, then persist.
         // The session stays Idle — no phase transition, no dispatch.
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(session_id);
             session.push_entry(entry.clone());
             session.push_entry(error_entry);
@@ -281,7 +281,7 @@ impl SessionPersistenceActor {
         user_entry: ChatEntry,
         message: String,
     ) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(session_id);
             session.push_entry(user_entry);
             session.push_entry(ChatEntry::error(message));
@@ -320,7 +320,7 @@ impl SessionPersistenceActor {
         // Push UI-only resume marker and transition Idle → Sending.
         let marker = ChatEntry::system("\u{21bb} session resumed");
         let (old_phase, new_phase) = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
                 session.push_entry(marker.clone());
                 let old_phase = session.phase();
@@ -368,7 +368,7 @@ impl SessionPersistenceActor {
     ) {
         let fragment_len = payload.text.len();
         let new_depth = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
                 session
                     .steering_buffer_mut()
@@ -393,7 +393,7 @@ impl SessionPersistenceActor {
             preview = %payload.entry.text().chars().take(60).collect::<String>(),
             "handle_push_chat_entry"
         );
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             session.push_entry(payload.entry.clone());
         });

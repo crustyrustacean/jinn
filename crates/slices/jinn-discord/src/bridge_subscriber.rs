@@ -292,7 +292,7 @@ fn push_entry(
     session_id: &SessionId,
     entry: ChatEntry,
 ) {
-    state.with_session(&session_cap, |view| {
+    state.with_session(|view| {
         if let Some(session) = view.session.map().get_mut(session_id) {
             session.push_entry(entry);
         } else {
@@ -351,7 +351,7 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         // Seed the session so `push_entry` finds it.
-        state.with_session(&jinn_domain::common::tcaps::mint::mint_session_cap(), |v| {
+        state.with_session(|v| {
             v.session.map().get_or_create(&session_id);
         });
         let subscriber = DiscordBridgeSubscriber::new(
@@ -723,7 +723,7 @@ mod tests {
         let state = State::new(AppState::default());
         let sid = SessionId::new();
         let cap = jinn_domain::common::tcaps::mint::mint_session_cap();
-        state.with_session(&cap, |v| {
+        state.with_session(|v| {
             v.session.map().get_or_create(&sid);
         });
         DiscordBridgeSubscriber::spawn(

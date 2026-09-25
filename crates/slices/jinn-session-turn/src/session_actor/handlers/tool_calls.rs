@@ -22,7 +22,7 @@ use super::super::SessionPersistenceActor;
 impl SessionPersistenceActor {
     /// Begins tracking a streaming tool call.
     pub(in crate::session_actor) fn on_tool_use_started(&self, event: &ToolUseStarted) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&event.session_id);
             session.begin_tool_call(event.index, &event.id, &event.name, event.dispatched_at);
         });
@@ -32,7 +32,7 @@ impl SessionPersistenceActor {
     /// The placeholder entry was created by `on_tool_use_started`. This updates
     /// it in place with the full arguments string, avoiding a duplicate entry.
     pub(in crate::session_actor) fn on_tool_call_received(&self, event: &ToolCallReceived) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&event.session_id);
             session.finalize_tool_call(
                 &event.tool_call.id,
@@ -44,7 +44,7 @@ impl SessionPersistenceActor {
 
     /// Appends a partial JSON delta to a streaming tool call.
     pub(in crate::session_actor) fn on_tool_call_streaming(&self, event: &ToolCallStreaming) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&event.session_id);
             if let Err(e) = session.append_tool_call_delta(event.index, &event.partial_json) {
                 tracing::error!(err = ?e, "failed to append tool call delta");
@@ -57,7 +57,7 @@ impl SessionPersistenceActor {
         event: &ToolExecutionCompleted,
     ) {
         {
-            let should_continue = self.state.with_session(&self.cap, |view| -> bool {
+            let should_continue = self.state.with_session(|view| -> bool {
                 let session = view.session.map().get_or_create(&event.session_id);
                 // Drop stale results that arrive after a cancel. Legitimate tool
                 // execution only ever runs in `Sending`; a result landing in any
@@ -93,14 +93,14 @@ impl SessionPersistenceActor {
 
     /// Creates a pending ToolResult entry when a streaming tool starts executing.
     pub(in crate::session_actor) fn on_tool_execution_started(&self, event: &ToolExecutionStarted) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&event.session_id);
             session.begin_tool_result(&event.tool_call_id, &event.name, event.dispatched_at);
         });
     }
     /// Appends incremental output to a pending ToolResult entry.
     pub(in crate::session_actor) fn on_tool_execution_output(&self, event: &ToolExecutionOutput) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&event.session_id);
             session.append_tool_result_output(&event.tool_call_id, &event.output, event.kind);
         });
@@ -112,7 +112,7 @@ impl SessionPersistenceActor {
         // layout so committed loops never contain interstitials before
         // assembly (the read-side converter stays simple).
         let changed = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
                 let (count, changed) = session.drain_and_apply_pending_mutations();
                 if count > 0 {
@@ -137,7 +137,7 @@ impl SessionPersistenceActor {
 
         // Drain any pending steering fragments into history.
         {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
                 if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
                     let entry_id = entry.id.clone();
@@ -178,7 +178,7 @@ impl SessionPersistenceActor {
         // Resolve model under write lock (round-robin mutates index), push token
         // record, and transition phase — all in one lock acquisition.
         let (provider_id, model_used, reasoning_effort, endpoint_tag, old_phase, new_phase) = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
                 let old_phase = session.phase();
                 session.begin_streaming();
@@ -277,7 +277,7 @@ impl SessionPersistenceActor {
         // straggler that must not restart the loop. Must precede the
         // `tool_loop_disabled` branch.
         {
-            let should_continue = self.state.with_session(&self.cap, |view| -> bool {
+            let should_continue = self.state.with_session(|view| -> bool {
                 let session = view.session.map().get_or_create(&event.session_id);
                 match session.phase() {
                     PhaseKind::Sending => { /* normal path — proceed below */ }
@@ -332,7 +332,7 @@ impl SessionPersistenceActor {
 
         if tool_loop_disabled {
             let (old_phase, new_phase) = {
-                self.state.with_session(&self.cap, |view| {
+                self.state.with_session(|view| {
                     let session = view.session.map().get_or_create(session_id);
                     let old_phase = session.phase();
                     session.finish_sending_via_machine();

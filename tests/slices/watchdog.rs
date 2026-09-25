@@ -104,16 +104,13 @@ async fn silent_stream_trips_the_stall_watchdog_and_the_marker_lands_in_history(
         // seeds the phase itself. The in-flight-stream guard needs no
         // seeding — the session actor's dispatch receipt arms it from
         // the real `dispatched_at`.)
-        app.core.state.with_session(
-            &jinn_domain::common::tcaps::mint::mint_session_cap(),
-            |view| {
-                let session = view.session.map().get_or_create(&session_id);
-                session.begin_streaming();
-                session
-                    .append_stream_token("warm", dispatched_at)
-                    .expect("warm token registers the streaming generation");
-            },
-        );
+        app.core.state.with_session(|view| {
+            let session = view.session.map().get_or_create(&session_id);
+            session.begin_streaming();
+            session
+                .append_stream_token("warm", dispatched_at)
+                .expect("warm token registers the streaming generation");
+        });
     }
 
     // When the dispatch is published on the fabric — the same

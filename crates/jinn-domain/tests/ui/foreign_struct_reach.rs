@@ -13,7 +13,7 @@ use jinn_domain::common::tcaps::mint;
 fn main() {
     let state = State::new(AppState::default());
     let cap = mint::mint_session_cap();
-    state.with_session(&cap, |view| {
+    state.with_session(|view| {
         // `frontend` is not a field on SessionView — must be E0609.
         let _ = &view.frontend;
     });

@@ -14,7 +14,7 @@ use jinn_domain::common::tcaps::mint;
 fn main() {
     let state = State::new(AppState::default());
     let cap = mint::mint_session_cap();
-    state.with_session(&cap, |view| {
+    state.with_session(|view| {
         // Reach the private tuple field — must be E0613.
         let _leaked = view.session.0;
     });

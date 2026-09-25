@@ -121,7 +121,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return tool_error(call, "no session capability");
         };
         let phase_description = phase_input.description.clone();
-        let result = state.with_session(session_cap, |view| {
+        let result = state.with_session(|view| {
             let session = view.session.map().get_unchecked_mut(&session_id);
             let list = session.task_list_mut();
             let replaced = list.set_phase_from_input(&phase_input);

@@ -17,7 +17,7 @@ impl SessionLifecycleActor {
         payload: &RunSessionSetup,
     ) {
         {
-            self.state.with_session(&self.session_cap, |view| {
+            self.state.with_session(|view| {
                 if let Some(session) = view.session.map().get_mut(&payload.session_id) {
                     session.begin_busy();
                 }
@@ -47,7 +47,7 @@ impl SessionLifecycleActor {
             (Some(cwd), None) => {
                 let home = self.services.paths.home_dir().to_path_buf();
                 {
-                    self.state.with_session(&self.session_cap, |view| {
+                    self.state.with_session(|view| {
                         if let Some(session) = view.session.map().get_mut(&payload.session_id) {
                             session.set_cwd(cwd.clone());
                             session.set_home(home.clone());
@@ -84,7 +84,7 @@ impl SessionLifecycleActor {
             }
             (None, None) => {
                 let existing_cwd = {
-                    self.state.with_session(&self.session_cap, |view| {
+                    self.state.with_session(|view| {
                         let map = view.session.map();
                         if let Some(session) = map.get_mut(&payload.session_id) {
                             session.advance_lifecycle_after_setup();
@@ -179,7 +179,7 @@ impl SessionLifecycleActor {
         match handler.setup(session_id, args) {
             Ok(cwd) => {
                 let home = self.services.paths.home_dir().to_path_buf();
-                self.state.with_session(&self.session_cap, |view| {
+                self.state.with_session(|view| {
                     if let Some(session) = view.session.map().get_mut(session_id) {
                         session.set_cwd(cwd.clone());
                         session.set_home(home.clone());
@@ -220,7 +220,7 @@ impl SessionLifecycleActor {
         session_id: &jinn_core_types::SessionId,
         entry: jinn_core_types::ChatEntry,
     ) {
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             view.session
                 .map()
                 .get_or_create(session_id)
@@ -249,7 +249,7 @@ impl SessionLifecycleActor {
     }
 
     pub(super) fn complete_busy(&self, session_id: &jinn_core_types::SessionId) {
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             if let Some(session) = view.session.map().get_mut(session_id) {
                 session.complete_busy();
             }

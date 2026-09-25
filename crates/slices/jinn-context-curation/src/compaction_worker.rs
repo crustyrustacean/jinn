@@ -178,7 +178,7 @@ impl CompactionWorker {
 
         // Write session state (resolve_model advances the alloy round-robin index).
         let (model_name, history) = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_unchecked_mut(&trigger.session_id);
                 let model_name = session.profile_mut().model.resolve_model();
                 let history = session.history().to_vec();

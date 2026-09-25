@@ -33,7 +33,7 @@ impl SessionPersistenceActor {
             build_skills_refresh_message(&event.skills)
         };
 
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             if let Some(session) = view.session.map().get_mut(&event.session_id) {
                 session.push_entry(ChatEntry::transient(content));
             }
@@ -110,7 +110,7 @@ impl SessionPersistenceActor {
 
         // Capture what changed (if anything) so events can be emitted after releasing the write lock.
         let (session_id, changed) = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
 
                 for mutation in payload.mutations.clone() {

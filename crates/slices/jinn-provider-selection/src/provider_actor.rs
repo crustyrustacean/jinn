@@ -231,7 +231,7 @@ impl BusPublish for ProviderActor {
 impl ProviderActor {
     /// ProviderSwitch: update session profile and emit ProviderSwitched event.
     fn handle_provider_switch(&self, payload: &ProviderSwitch) {
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             view.session
                 .map()
                 .get_or_create(&payload.session_id)
@@ -256,7 +256,7 @@ impl ProviderActor {
             &model_selection,
             alloy_mode,
         );
-        self.state.with_pickers(&self.frontend_cap, |p| {
+        self.state.with_pickers(|p| {
             p.provider_picker = picker;
         });
     }
@@ -287,7 +287,7 @@ impl ProviderActor {
         self.deps.services.provider_registry.merge_cache(&cache);
         self.store_model_cache(cache);
         self.handle_load_provider_picker_entries();
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&event.session_id);
             session.push_entry(jinn_core_types::ChatEntry::transient(
                 models_refresh_transcript(event),
@@ -418,7 +418,7 @@ impl ProviderActor {
         let wrapped = build_picker_registry()
             .make_items(ENDPOINT_ID, entries)
             .unwrap_or_default();
-        self.state.with_pickers(&self.frontend_cap, |p| {
+        self.state.with_pickers(|p| {
             p.endpoint_picker.set_items(wrapped);
         });
     }

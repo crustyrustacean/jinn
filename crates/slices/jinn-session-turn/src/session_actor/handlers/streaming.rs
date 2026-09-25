@@ -25,7 +25,7 @@ impl SessionPersistenceActor {
     /// Appends a streaming token to the session's assistant entry,
     /// or to the thinking entry if the token is flagged as reasoning.
     pub(in crate::session_actor) fn on_stream_token(&self, event: &StreamToken) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&event.session_id);
             match session.phase() {
                 PhaseKind::Streaming => {}
@@ -137,7 +137,7 @@ impl SessionPersistenceActor {
         // is still `Streaming`. Now that the phase has advanced to `Sending`,
         // the continuation can be dispatched.
         let drained_batch = event.reason == StreamCompletedReason::ToolUse && {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 view.session
                     .map()
                     .get_or_create(&event.session_id)
@@ -163,7 +163,7 @@ impl SessionPersistenceActor {
         }
 
         {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(&event.session_id);
                 session.push_entry(ChatEntry::annotation(event.citations.clone()));
             });
@@ -189,7 +189,7 @@ impl SessionPersistenceActor {
     ) -> Option<StreamCompletionStateChange> {
         let mut changed_overrides: Vec<ChatEntryId> = Vec::new();
         self.state
-            .with_session(&self.cap, |view| -> Option<StreamCompletionStateChange> {
+            .with_session(|view| -> Option<StreamCompletionStateChange> {
                 let session = view.session.map().get_or_create(&event.session_id);
 
                 // Stale-generation guard: reject terminal events from an aborted prior

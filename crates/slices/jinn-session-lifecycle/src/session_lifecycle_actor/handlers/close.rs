@@ -58,7 +58,7 @@ impl SessionLifecycleActor {
     ) {
         self.lifecycle_child = None;
         let session_exists = {
-            self.state.with_session(&self.session_cap, |view| {
+            self.state.with_session(|view| {
                 let Some(session) = view.session.map().get_mut(&payload.session_id) else {
                     return false;
                 };
@@ -147,7 +147,7 @@ impl SessionLifecycleActor {
 
     async fn advance_after_teardown(&self, session_id: &SessionId) {
         let advanced = {
-            self.state.with_session(&self.session_cap, |view| {
+            self.state.with_session(|view| {
                 let Some(session) = view.session.map().get_mut(session_id) else {
                     return false;
                 };

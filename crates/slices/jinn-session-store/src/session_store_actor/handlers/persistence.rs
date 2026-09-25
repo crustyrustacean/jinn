@@ -19,7 +19,7 @@ impl SessionStoreActor {
 
         let snapshot = tokio::task::spawn_blocking(move || {
             {
-                state.with_session(&cap, |view| {
+                state.with_session(|view| {
                     if let Some(session) = view.session.map().get_mut(&requested_id) {
                         session.touch();
                     }

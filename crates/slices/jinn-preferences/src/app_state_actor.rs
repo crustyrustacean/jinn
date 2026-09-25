@@ -111,7 +111,7 @@ impl AppStateActor {
         );
 
         // Cache the entire state and update sidebar/theme/caches.
-        self.state.with_preferences(&self.frontend_cap, |ops| {
+        self.state.with_preferences(|ops| {
             let frontend = ops.frontend();
             frontend.app_state = updated.clone();
             frontend.sidebar_width = updated.sidebar_width.unwrap_or(30);
@@ -119,7 +119,7 @@ impl AppStateActor {
         });
 
         // Invalidate theme caches at the frontend level.
-        self.state.with_preferences(&self.frontend_cap, |ops| {
+        self.state.with_preferences(|ops| {
             ops.frontend().caches.invalidate_all();
         });
 

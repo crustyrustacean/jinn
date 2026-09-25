@@ -164,7 +164,7 @@ impl SessionLifecycleActor {
         session_id: &SessionId,
         command: &str,
     ) -> Option<String> {
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_mut(session_id)?;
             let args = session.lifecycle_args().to_vec();
             session.begin_busy();
@@ -201,7 +201,7 @@ impl SessionLifecycleActor {
                 .unwrap_or_default()
         };
         if handler.teardown(session_id, &args) {
-            self.state.with_session(&self.session_cap, |view| {
+            self.state.with_session(|view| {
                 if let Some(session) = view.session.map().get_mut(session_id) {
                     session.advance_lifecycle_after_teardown();
                 }

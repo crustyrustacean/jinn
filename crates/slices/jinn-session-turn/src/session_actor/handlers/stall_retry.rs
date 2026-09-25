@@ -31,7 +31,7 @@ impl SessionPersistenceActor {
     /// newest generation wins (the LLM actor aborts the superseded task),
     /// matching the stale-completion drop semantics.
     pub(in crate::session_actor) fn on_send_to_llm_provider(&self, payload: &SendToLlmProvider) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             session.arm_stream(payload.dispatched_at);
         });
@@ -74,7 +74,7 @@ impl SessionPersistenceActor {
     ) {
         // Discard partial streaming entries — but only while a stream is
         // genuinely in flight for this session.
-        let acted = self.state.with_session(&self.cap, |view| {
+        let acted = self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming)
                 && session.has_in_flight_stream()

@@ -18,7 +18,7 @@ impl SessionStoreActor {
         let preferences = self.services.user_preferences_storage.read();
         let welcome_mcp_enablement = self.seed_welcome_session(&app_state, &preferences);
         self.state
-            .with_frontend_app_state(&self.frontend_cap, |ops| ops.set(app_state.clone()));
+            .with_frontend_app_state(|ops| ops.set(app_state.clone()));
 
         if let Some(enablement) = welcome_mcp_enablement {
             self.publish(enablement).await;
@@ -40,7 +40,7 @@ impl SessionStoreActor {
         preferences: &jinn_preferences_config::UserPreferences,
     ) -> Option<jinn_mcp_msg::McpEnablementChanged> {
         let mut enablement = None;
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().active_session_mut();
             if !session.profile().model.is_no_provider() {
                 return;

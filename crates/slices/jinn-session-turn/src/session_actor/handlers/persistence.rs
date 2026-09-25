@@ -32,7 +32,7 @@ impl SessionPersistenceActor {
         // dropped before the potentially large durable snapshot clone.
         let snapshot = tokio::task::spawn_blocking(move || {
             {
-                state.with_session(&cap, |view| {
+                state.with_session(|view| {
                     if let Some(session) = view.session.map().get_mut(&session_id) {
                         session.touch();
                     }
@@ -69,7 +69,7 @@ impl SessionPersistenceActor {
         &mut self,
         payload: &MarkSessionInteracted,
     ) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             if let Some(session) = view.session.map().get_mut(&payload.session_id) {
                 session.mark_interacted();
             }

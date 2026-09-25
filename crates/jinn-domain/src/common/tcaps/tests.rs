@@ -38,7 +38,7 @@ fn push_entry_routes_through_history_append() {
     let before = state.read().active_session().history().len();
 
     // When appending an entry through the cap-gated projection.
-    state.with_session(&cap, |view| {
+    state.with_session(|view| {
         let entry = crate::protocol::ChatEntry::system("hello");
         view.session.map().active_session_mut().push_entry(entry);
     });

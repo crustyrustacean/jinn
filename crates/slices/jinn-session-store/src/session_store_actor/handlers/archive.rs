@@ -172,7 +172,7 @@ impl SessionStoreActor {
             .get(session_id)
             .map(snapshot_frozen_node);
         if let Some(frozen) = frozen {
-            self.state.with_session(&self.session_cap, |view| {
+            self.state.with_session(|view| {
                 view.session.insert_frozen_node(frozen);
             });
         }
@@ -215,7 +215,7 @@ impl SessionStoreActor {
             .session
             .get(session_id)
             .and_then(|session| session.parent_session().clone());
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             view.session
                 .map()
                 .remove_and_replace(session_id, fresh_session);

@@ -428,7 +428,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     // actor on EnqueueUserMessage, MCP coordinator on SessionCreated) looks
     // the session up by id — insertion must precede publication or they
     // would each `get_or_create` a bare session over the real child.
-    state.with_session(&session_cap, |view| {
+    state.with_session(|view| {
         let map = view.session.map();
         map.insert(child);
         // Stamp the parent's tool-call entry with the child link. The UI

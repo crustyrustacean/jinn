@@ -16,7 +16,7 @@ impl SessionStoreActor {
     /// Inserts a loaded session and returns its ID.
     pub(crate) fn insert_loaded_session(&self, session: ChatSessionState) -> SessionId {
         let session_id = session.session_id().clone();
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             view.session.map().insert(session);
             view.session.map().remove_frozen_node(&session_id);
         });
@@ -42,7 +42,7 @@ impl SessionStoreActor {
         session.mark_interacted();
         let original_cwd = session.cwd().to_path_buf();
 
-        self.state.with_preferences(&self.frontend_cap, |ops| {
+        self.state.with_preferences(|ops| {
             ops.frontend().update_sections(|sections| {
                 sections
                     .sessions
@@ -50,7 +50,7 @@ impl SessionStoreActor {
                     .retain(|_id, parent| parent != &session_id);
             });
         });
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             let map = view.session.map();
             map.remove_frozen_node(&session_id);
             map.insert(session);
@@ -74,7 +74,7 @@ impl SessionStoreActor {
     /// Replaces a missing working directory with the application default.
     fn restore_missing_cwd(&self, session_id: &SessionId, original_cwd: &std::path::Path) {
         let default_cwd = self.state.read().session.default_cwd().clone();
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             let Some(session) = view.session.map().get_mut(session_id) else {
                 return;
             };
@@ -115,7 +115,7 @@ impl SessionStoreActor {
 
     /// Persists the source, forks it in the store, then restores the child.
     pub(crate) async fn on_session_fork_requested(&self, payload: &SessionForkRequested) {
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             if let Some(session) = view.session.map().get_mut(&payload.source_session_id) {
                 session.mark_interacted();
             }
@@ -154,7 +154,7 @@ impl SessionStoreActor {
     /// Clears the global session loading guard.
     fn clear_load(&self) {
         self.state
-            .with_session(&self.session_cap, |view| view.session.map().clear_load());
+            .with_session(|view| view.session.map().clear_load());
     }
 
     /// Hydrates frozen nodes for the loaded session's whole tree.
@@ -238,7 +238,7 @@ impl SessionStoreActor {
         if frozen.is_empty() {
             return;
         }
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             for node in frozen {
                 view.session.insert_frozen_node(node);
             }

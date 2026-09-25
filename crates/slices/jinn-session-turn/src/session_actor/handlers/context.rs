@@ -41,7 +41,7 @@ impl SessionPersistenceActor {
     /// brand-new, never-sent-to session would otherwise be silently dropped
     /// by the `is_persistable` guard.
     pub(in crate::session_actor) async fn handle_pin_chat_entry(&self, payload: &PinChatEntry) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             session.pin_entry(&payload.entry_id, payload.position);
             session.mark_interacted();
@@ -59,7 +59,7 @@ impl SessionPersistenceActor {
     pub(in crate::session_actor) async fn handle_unpin_chat_entry(&self, payload: &UnpinChatEntry) {
         {
             self.state
-                .with_session_pins(&self.cap, &self.frontend_cap, |view| {
+                .with_session_pins(|view| {
                     let is_active = view.session.map().active_session_id() == &payload.session_id;
                     let old_index = if is_active {
                         view.frontend.with_sections(
@@ -191,7 +191,7 @@ impl SessionPersistenceActor {
         entries.sort_by_key(|e| e.name.to_lowercase());
 
         self.state
-            .with_persona_picker(&self.frontend_cap, |picker| {
+            .with_persona_picker(|picker| {
                 picker.set_items(entries);
             });
     }

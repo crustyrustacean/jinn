@@ -15,7 +15,7 @@ use jinn_domain::common::tcaps::mint;
 fn main() {
     let state = State::new(AppState::default());
     let wrong_cap = mint::mint_frontend_cap();
-    state.with_session(&wrong_cap, |_view| {
+    state.with_session(|_view| {
         // Passing FrontendCap where SessionCap is required — must be E0308.
     });
 }

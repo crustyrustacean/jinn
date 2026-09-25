@@ -11,10 +11,15 @@ pub mod frontend;
 pub mod intent_handler;
 pub mod mint;
 pub mod session;
-
 #[cfg(test)]
 mod tests;
 
+pub use crate::common::frontend_projection::{
+    AppStateOps, FilePickerOps, PersonaPickerOps, PreferencesOps, SkillPickerOps,
+};
+pub use crate::common::session_projection::{
+    SessionOps, SessionPinsView, SessionSidebarView, SessionView,
+};
 pub use frontend::FrontendCap;
 pub use intent_handler::IntentHandlerCap;
 pub use session::SessionCap;
