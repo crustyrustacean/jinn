@@ -16,11 +16,9 @@ fn install_rustls_provider_for_tests() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
-mod attachment;
 mod backend;
 mod fake;
 mod input_modalities;
-mod llm_message;
 mod no_providers;
 mod openai_compat;
 mod retry;
@@ -35,14 +33,14 @@ pub mod google;
 pub use anthropic::AnthropicFactory;
 pub use google::GoogleFactory;
 
-pub use attachment::Attachment;
 pub use backend::{Backend, BackendError};
 pub use fake::{FakeLlmServiceFactory, HungStreamFactory, ScriptedResponse, TOOL_LOOP_TRIGGER};
 pub use input_modalities::{InputModalities, Modality};
+pub use jinn_core_types::attachment::Attachment;
+pub use jinn_core_types::llm_message::LlmMessage;
 pub use jinn_core_types::reasoning::ReasoningEffort;
 pub use jinn_core_types::tool_types::{ServerToolType, ToolCall, ToolDefinition, ToolResult};
 pub use jinn_core_types::url_citation::UrlCitation;
-pub use llm_message::LlmMessage;
 pub use no_providers::NoProvidersAvailableFactory;
 pub use openai_compat::{
     EndpointInfo, OpenAiCompatibleFactory, OpenAiCompatibleService, ProviderConfig, list_endpoints,

@@ -17,10 +17,10 @@ pub mod protocol {
         CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
         RunSessionTeardown, SetSessionCwd, TeardownFollowUp,
     };
-    pub use jinn_session_lifecycle_msg::event::{
-        SessionCreated, SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
+    pub use jinn_session_lifecycle_msg::event::{SessionCreated, SessionCwdChanged};
+    pub use jinn_session_lifecycle_msg::{
+        SessionSetupCompleted, SessionTeardownFinished, command, event,
     };
-    pub use jinn_session_lifecycle_msg::{command, event};
 }
 
 pub use jinn_preferences_config::schemas::{BuiltinId, LifecycleCommand, SessionLifecycle};

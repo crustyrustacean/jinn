@@ -3,8 +3,8 @@
 use crate::ChatEntry;
 use crate::ChatEntryKind;
 use crate::common::app_state::AppState;
-use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{IntentResult, PinPosition};
+use jinn_chat_log_view_msg::VisualItem;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 use jinn_session_state::ChatSessionState;
@@ -1102,7 +1102,7 @@ mod tests {
     #[rstest::rstest]
     fn toggle_ignored_block_expands_collapsed_block() {
         // Given a session with a collapsed ignored block selected.
-        use crate::feat::ui::chat_log::visual_item::{
+        use jinn_chat_log_view_msg::{
             DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
         };
 
@@ -1162,7 +1162,7 @@ mod tests {
     #[rstest::rstest]
     fn toggle_ignored_block_collapses_expanded_block() {
         // Given a session with an expanded ignored block, an ignored entry selected.
-        use crate::feat::ui::chat_log::visual_item::{
+        use jinn_chat_log_view_msg::{
             DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
         };
 
@@ -1208,7 +1208,7 @@ mod tests {
         let target_vi_idx = items
             .iter()
             .position(|i| {
-                matches!(i, crate::feat::ui::chat_log::visual_item::VisualItem::Entry(hist_idx) if *hist_idx == 5)
+                matches!(i, jinn_chat_log_view_msg::VisualItem::Entry(hist_idx) if *hist_idx == 5)
             })
             .expect("should find ignored entry at history index 5");
         state
@@ -1884,7 +1884,7 @@ mod tests {
         // The 10 ignored entries form a collapsed block.
         // The sweep should skip the collapsed block entirely — no expansion,
         // no mutation of entries inside.
-        use crate::feat::ui::chat_log::visual_item::{
+        use jinn_chat_log_view_msg::{
             DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
         };
 
@@ -1969,7 +1969,7 @@ mod tests {
         // Given: 1 user, 15 ignored in a shown (expanded) block, 5 user.
         // Sweep un-ignore will bring entries into context, splitting the block.
         // The new forward sub-block should auto-expand.
-        use crate::feat::ui::chat_log::visual_item::{
+        use jinn_chat_log_view_msg::{
             DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
         };
 
@@ -2006,12 +2006,7 @@ mod tests {
         // Select entry at history index 1 (first ignored entry).
         let vi_idx = items
             .iter()
-            .position(|i| {
-                matches!(
-                    i,
-                    crate::feat::ui::chat_log::visual_item::VisualItem::Entry(1)
-                )
-            })
+            .position(|i| matches!(i, jinn_chat_log_view_msg::VisualItem::Entry(1)))
             .expect("entry at history index 1");
         state.active_session_mut().set_selected_entry_index(vi_idx);
 
@@ -2047,7 +2042,7 @@ mod tests {
         // Given: 1 user (in-context), 10 ignored (collapsed block), 3 user (in-context).
         // Sweep starts on the first user entry, should continue through the
         // collapsed block and reach the user entries after it.
-        use crate::feat::ui::chat_log::visual_item::{
+        use jinn_chat_log_view_msg::{
             DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
         };
 
@@ -2139,7 +2134,7 @@ mod tests {
     fn sweep_skips_multiple_collapsed_blocks() {
         // Given: 2 user, 10 ignored (block 1), 2 user, 10 ignored (block 2), 5 user.
         // Sweep starts on first user, skips collapsed blocks, processes in-between entries.
-        use crate::feat::ui::chat_log::visual_item::{
+        use jinn_chat_log_view_msg::{
             DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
         };
 
@@ -2951,10 +2946,10 @@ mod jump_compaction_tests {
     fn build_collapsed_block_between_compactions(
         state: &mut AppState,
     ) -> (ChatEntryId, ChatEntryId, usize) {
-        use crate::feat::ui::chat_log::visual_item::{
+        use crate::protocol::ChangeSource;
+        use jinn_chat_log_view_msg::{
             DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
         };
-        use crate::protocol::ChangeSource;
 
         state
             .active_session_mut()

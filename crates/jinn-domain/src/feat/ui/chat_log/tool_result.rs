@@ -22,9 +22,9 @@
 //! ⚠ Output truncated (X of Y)
 //! ```
 
-use crate::feat::skills::loaded_skill_summary_label;
 use crate::protocol::ToolResultStatus;
 use jinn_core_types::tool_types::TruncationMeta;
+use jinn_skills::loaded_skill_summary_label;
 use jinn_tools_msg::TASK_TOOL_NAME;
 use jinn_tools_msg::truncation::format_size;
 use ratatui::style::{Color, Style};
@@ -351,7 +351,7 @@ mod tests {
             is_selected: false,
             is_expanded,
             tool_entry_max_lines: max_lines,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
             paired_status: None,
             is_streaming: false,
             is_waiting_on_subagent: false,
@@ -364,7 +364,7 @@ mod tests {
             is_selected: false,
             is_expanded: false,
             tool_entry_max_lines: 5,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
             paired_status: status,
             is_streaming: false,
             is_waiting_on_subagent: false,
@@ -642,7 +642,7 @@ mod tests {
     fn content_truncated_indicator_uses_accent_color() {
         // Given a tool result with content-level truncation metadata.
         let ctx = render_context(5, false);
-        let theme = crate::feat::theme::default_theme();
+        let theme = jinn_theme::default_theme();
         let meta = sample_truncation_meta();
 
         // When converting to lines.
@@ -857,7 +857,7 @@ mod tests {
     fn success_has_green_background() {
         // Given a tool result paired with a successful result.
         let ctx = render_context_with_status(Some(ToolResultStatus::Success));
-        let theme = crate::feat::theme::default_theme();
+        let theme = jinn_theme::default_theme();
 
         // When converting to lines.
         let lines = to_lines(
@@ -884,7 +884,7 @@ mod tests {
     fn failure_has_red_background() {
         // Given a tool result paired with a failure result.
         let ctx = render_context_with_status(Some(ToolResultStatus::Failure));
-        let theme = crate::feat::theme::default_theme();
+        let theme = jinn_theme::default_theme();
 
         // When converting to lines.
         let lines = to_lines(

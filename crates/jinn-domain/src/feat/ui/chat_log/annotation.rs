@@ -82,7 +82,7 @@ mod tests {
     )]
 
     use super::*;
-    use crate::feat::theme::default_theme;
+    use jinn_theme::default_theme;
 
     fn citation(title: &str, url: &str) -> jinn_provider::UrlCitation {
         jinn_provider::UrlCitation {

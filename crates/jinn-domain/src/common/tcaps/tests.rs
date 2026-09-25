@@ -26,7 +26,7 @@ fn read_returns_full_snapshot() {
     // Then both frontend and session are reachable from the single guard.
     // Reaching distinct sub-structs from one read confirms the snapshot is whole.
     let _: &crate::feat::ui::frontend_state::FrontendState = &guard.frontend;
-    let _: &crate::common::session_map::SessionMap = &guard.session;
+    let _: &jinn_session_state::SessionMap = &guard.session;
 }
 
 #[rstest::rstest]

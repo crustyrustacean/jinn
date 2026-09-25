@@ -2,10 +2,10 @@
 
 use std::ops::Range;
 
-use crate::feat::theme::Theme;
 use jinn_picker::RowCtx;
 use jinn_picker::picker_style::dim_style;
 use jinn_selection_widget::highlight_text_with_bg;
+use jinn_theme::Theme;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};

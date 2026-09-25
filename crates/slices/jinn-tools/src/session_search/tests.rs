@@ -19,10 +19,10 @@ use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::feat::session::session_store::{
     SessionStore, SessionStoreError, SessionStoreService,
 };
-use jinn_domain::feat::session_search::{SearchOutcome, SearchParams, SearchableRole};
 use jinn_domain::protocol::ChatEntryId;
 use jinn_session_state::SessionSnapshot;
 use jinn_session_store_msg::SessionSummary;
+use jinn_session_store_msg::{SearchOutcome, SearchParams, SearchableRole};
 
 /// A stub store with canned summaries and a canned search outcome,
 /// recording the last params it was asked to search.
@@ -159,10 +159,7 @@ impl SessionStore for StubStore {
         _session_id: &SessionId,
         _anchor: &ChatEntryId,
         _context: usize,
-    ) -> Result<
-        Option<jinn_domain::feat::session_search::TranscriptWindow>,
-        Report<SessionStoreError>,
-    > {
+    ) -> Result<Option<jinn_session_store_msg::TranscriptWindow>, Report<SessionStoreError>> {
         Ok(None)
     }
 
@@ -170,10 +167,7 @@ impl SessionStore for StubStore {
         &self,
         _session_id: &SessionId,
         _limit: usize,
-    ) -> Result<
-        Option<jinn_domain::feat::session_search::TranscriptWindow>,
-        Report<SessionStoreError>,
-    > {
+    ) -> Result<Option<jinn_session_store_msg::TranscriptWindow>, Report<SessionStoreError>> {
         Ok(None)
     }
 }
@@ -196,8 +190,8 @@ fn hit(
     role: &str,
     snippet: &str,
     excluded: bool,
-) -> jinn_domain::feat::session_search::SearchHit {
-    jinn_domain::feat::session_search::SearchHit {
+) -> jinn_session_store_msg::SearchHit {
+    jinn_session_store_msg::SearchHit {
         session_id: session_id.to_owned(),
         entry_id: entry_id.to_owned(),
         role: role.to_owned(),

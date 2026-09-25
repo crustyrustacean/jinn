@@ -20,8 +20,8 @@ use jinn_slices::route::ActionCtx;
 use crate::status_actor::ConnectionState;
 use crate::status_actor::discord_connection_slot;
 use jinn_discord_msg::CreateThreadForSession;
-use jinn_domain::common::slices::Slices;
 use jinn_domain::protocol::IntentResult;
+use jinn_slices::Slices;
 
 /// Run the to-thread action (the `gdc` route row).
 ///
@@ -114,9 +114,9 @@ mod tests {
     use crate::ConnectionState;
     use crate::discord_connection_slot;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::slices::Slices;
-    use jinn_domain::common::slices::key_routes::ActionCtx;
     use jinn_domain::protocol::ChatEntryKind;
+    use jinn_slices::Slices;
+    use jinn_slices::route::ActionCtx;
 
     /// Build the state + slices with the happy-path preconditions: a titled
     /// session, discord enabled + connected. (The gateway owns

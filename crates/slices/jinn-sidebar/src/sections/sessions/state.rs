@@ -15,7 +15,7 @@ pub fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
 
 /// Split-borrow variant used by sidebar actors and other slice-owned adapters.
 pub fn sorted_open_sessions_split(
-    session: &jinn_domain::common::session_map::SessionMap,
+    session: &jinn_session_state::SessionMap,
     frontend: &jinn_domain::feat::ui::frontend_state::FrontendState,
 ) -> Vec<SessionEntry> {
     let active_id = session.active_session_id();
@@ -65,7 +65,7 @@ pub fn update_visual_parents_on_removal(
 
 /// Split-borrow variant of [`update_visual_parents_on_removal`].
 pub fn update_visual_parents_on_removal_split(
-    session: &mut jinn_domain::common::session_map::SessionMap,
+    session: &mut jinn_session_state::SessionMap,
     frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState,
     removed_id: &jinn_core_types::SessionId,
 ) {
@@ -99,7 +99,7 @@ pub fn update_visual_parents_on_removal_split(
 
 /// Repairs visual parents after a removed row is no longer in the session map.
 pub fn repair_visual_parents_after_removal(
-    session: &jinn_domain::common::session_map::SessionMap,
+    session: &jinn_session_state::SessionMap,
     frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState,
     removed_id: &jinn_core_types::SessionId,
     removed_parent: Option<&jinn_core_types::SessionId>,

@@ -8,11 +8,11 @@
 //! [`RenderCtx::slices`] instead of reading `FrontendState` fields.
 
 use crate::common::app_state::AppState;
-use crate::common::overlay_views::OverlayViewFn;
-use crate::common::overlay_views::OverlayViews;
 use crate::feat::session::prune_report::prune_report;
 use jinn_picker::PickerRegistry;
 use jinn_slices::AppFact;
+use jinn_slices::OverlayViewFn;
+use jinn_slices::OverlayViews;
 use jinn_slices::Slices;
 use jinn_slices::render_facts::RenderFacts as SliceFacts;
 
@@ -89,7 +89,7 @@ impl<'a> RenderCtx<'a> {
         // styling and hints); absent facts degrade chrome, never panic.
         let capturing = matches!(
             self.state.frontend.scope(),
-            crate::common::app_state::FocusScope::Dynamic(id)
+            jinn_slices::FocusScope::Dynamic(id)
                 if id == jinn_term_msg::control_scope()
         );
         let toggle_key = self
@@ -150,12 +150,12 @@ mod tests {
 
     use super::RenderCtx;
     use crate::common::app_state::AppState;
-    use crate::common::overlay_views::OverlayViews;
-    use crate::common::slices::Slices;
     use crate::protocol::ChangeSource;
     use crate::protocol::ChatEntry;
     use crate::protocol::ChatEntryId;
     use crate::protocol::ContextOverride;
+    use jinn_slices::OverlayViews;
+    use jinn_slices::Slices;
 
     fn ctx_for<'a>(
         state: &'a AppState,

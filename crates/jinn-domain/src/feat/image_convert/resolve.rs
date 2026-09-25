@@ -18,7 +18,7 @@ use std::path::Path;
 use error_stack::{Report, ResultExt};
 
 use super::ImageConverterService;
-use crate::feat::context::prompt_template::{ImageKind, PendingPath, classify_image_bytes};
+use jinn_context::attachment_path::{ImageKind, PendingPath, classify_image_bytes};
 use jinn_core_types::ResolvedToken;
 use jinn_provider::Attachment;
 

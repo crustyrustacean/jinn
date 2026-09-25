@@ -307,7 +307,7 @@ Entries are added or amended **only with human approval**.
 - (ui) The status hint renders warning-colored on the status bar's second line in place of the model string and clears on the next intent.
 - (ui) The cancel-stream, close-session, and archive-tree confirm prompts live in FrontendState and render near their invocation areas, outside the status bar.
 - (slices) The scope-focus slice is a crate owning the focus-scope stack, TUI signals, and quit latch behind one cell; the IntentHandler writes through a facade on FrontendState.
-- (ui) FocusScope, ScopeStack, and TuiSignals are shared vocabulary defined in jinn-slices and re-exported by the kernel.
+- (slices) FocusScope, ScopeStack, and TuiSignals are shared vocabulary defined in jinn-slices and consumed through jinn-slices' public API.
 - (workflow) `just test` runs the workspace suite once with --no-fail-fast, tees the full cargo output to `target/test-output.log`, and prints a passed/failed summary including failing test names.
 - (workflow) `just test-failures` extracts failing test names from `target/test-output.log` without re-running the suite.
 - (workflow) `just test-one <filter>` runs workspace tests matching a name filter as the sanctioned iterate-on-failure path.

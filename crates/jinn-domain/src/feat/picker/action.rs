@@ -167,10 +167,10 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::common::app_state::FocusScope;
     use crate::feat::skills::skill_entry::SkillEntry;
     use crate::protocol::ChatEntryKind;
     use jinn_picker::SKILL_ID;
+    use jinn_slices::FocusScope;
 
     fn state_with_skill_picker() -> AppState {
         let state = AppState::default_with_scope_focus();

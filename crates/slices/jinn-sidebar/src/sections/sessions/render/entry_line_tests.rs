@@ -47,7 +47,7 @@ fn tree_entry(
     }
 }
 
-fn default_theme() -> jinn_domain::feat::theme::Theme {
+fn default_theme() -> jinn_theme::Theme {
     AppState::default_with_scope_focus().frontend.theme
 }
 

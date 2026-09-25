@@ -139,7 +139,7 @@ pub fn load_theme(
         let guard = state.read();
         guard.frontend.app_state.theme_name.clone()
     };
-    match jinn_domain::feat::theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
+    match jinn_theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
         Ok(theme) => {
             tracing::info!(theme = ?theme_name, "loaded theme");
             state.write(cap).frontend.theme = theme;

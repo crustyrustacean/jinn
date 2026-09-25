@@ -34,14 +34,13 @@ use jinn_core_types::SessionId;
 use jinn_domain::Services;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::feat::session_lifecycle::protocol::event::{
-    SessionCreated, SessionTeardownFinished,
-};
 use jinn_mcp_msg::McpServerConfig;
 use jinn_mcp_msg::{McpEnablementChanged, McpRuntimeState, RestartError, RestartMcpServer};
 use jinn_mcp_msg::{McpServerLog, McpServerStatus};
+use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_msg::SessionArchived;
 use jinn_session_msg::SessionClosed;
+use jinn_session_msg::SessionTeardownFinished;
 use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_slices::TypedCell;
 

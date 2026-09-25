@@ -73,7 +73,7 @@ impl FilePickerState {
 }
 
 /// Resolves a raw `@path` filter (the text after `@`) into an absolute
-/// directory to list, mirroring [`scan_at_paths`](crate::feat::context::prompt_template::scan_at_paths).
+/// directory to list, mirroring [`scan_at_paths`](jinn_context::attachment_path::scan_at_paths).
 ///
 /// - Empty or relative path → `cwd`.
 /// - `~` / `~/...` → home.

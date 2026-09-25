@@ -9,10 +9,8 @@
 //! There is no actor and no route row: the writers are the exempt sync
 //! handler and the render pass, exactly as the migration docs prescribe.
 
-pub mod state;
-
+pub use jinn_chat_log_view_msg::ChatLogViewUi;
 pub use jinn_chat_log_view_msg::chat_log_views_slot;
-pub use state::ChatLogViewUi;
 
 use jinn_slices::SliceHost;
 
@@ -47,8 +45,8 @@ mod activation_tests {
     async fn activate_registers_the_chat_log_views_cell() {
         // Given a host over an empty slice registry.
         let slices = jinn_slices::Slices::new();
-        let mut viewport = jinn_domain::common::slices::view::Viewport::new();
-        let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+        let mut viewport = jinn_slices::view::Viewport::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
         let services = jinn_domain::Services::new_fake().await;
         let mut host = SliceHost::new(
@@ -82,8 +80,8 @@ mod activation_tests {
     async fn per_session_entries_are_isolated() {
         // Given an activated slice with two sessions in the cell.
         let slices = jinn_slices::Slices::new();
-        let mut viewport = jinn_domain::common::slices::view::Viewport::new();
-        let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+        let mut viewport = jinn_slices::view::Viewport::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
         let services = jinn_domain::Services::new_fake().await;
         let mut host = SliceHost::new(

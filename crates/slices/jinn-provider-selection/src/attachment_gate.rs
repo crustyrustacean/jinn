@@ -15,8 +15,8 @@
 use jinn_core_types::SessionId;
 use jinn_domain::common::services::Services;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::provider_infra::{Modality, ModelCache, ModelsDevData};
 use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
+use jinn_provider_config::{Modality, ModelCache, ModelsDevData};
 
 /// Decides whether a user entry with attachments may be dispatched to the model.
 ///
@@ -116,7 +116,7 @@ pub fn evaluate_attachment_gate(
 fn resolve_cached_model_info<'a>(
     model_cache: Option<&'a ModelCache>,
     active_model: &str,
-) -> Option<&'a jinn_domain::feat::provider_infra::ModelInfo> {
+) -> Option<&'a jinn_provider_config::ModelInfo> {
     let cache = model_cache?;
     let (provider_name, model_suffix) = active_model.split_once('/')?;
     cache
@@ -157,37 +157,37 @@ mod tests {
         entry
     }
 
-    fn cache_with_image_modalities() -> jinn_domain::feat::provider_infra::ModelCache {
+    fn cache_with_image_modalities() -> jinn_provider_config::ModelCache {
         let mut entries = std::collections::HashMap::new();
         entries.insert(
             "ollama".to_owned(),
-            vec![jinn_domain::feat::provider_infra::ModelInfo {
+            vec![jinn_provider_config::ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: Some(8192),
                 input_modalities: {
-                    let mut m = jinn_domain::feat::provider_infra::InputModalities::text();
-                    m.insert(jinn_domain::feat::provider_infra::Modality::Image);
+                    let mut m = jinn_provider_config::InputModalities::text();
+                    m.insert(jinn_provider_config::Modality::Image);
                     m
                 },
             }],
         );
-        jinn_domain::feat::provider_infra::ModelCache {
+        jinn_provider_config::ModelCache {
             entries,
             last_updated_at: None,
         }
     }
 
-    fn cache_text_only() -> jinn_domain::feat::provider_infra::ModelCache {
+    fn cache_text_only() -> jinn_provider_config::ModelCache {
         let mut entries = std::collections::HashMap::new();
         entries.insert(
             "ollama".to_owned(),
-            vec![jinn_domain::feat::provider_infra::ModelInfo {
+            vec![jinn_provider_config::ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: Some(8192),
-                input_modalities: jinn_domain::feat::provider_infra::InputModalities::text(),
+                input_modalities: jinn_provider_config::InputModalities::text(),
             }],
         );
-        jinn_domain::feat::provider_infra::ModelCache {
+        jinn_provider_config::ModelCache {
             entries,
             last_updated_at: None,
         }
@@ -262,17 +262,17 @@ mod tests {
         let mut entries = std::collections::HashMap::new();
         entries.insert(
             "llama.cpp".to_owned(),
-            vec![jinn_domain::feat::provider_infra::ModelInfo {
+            vec![jinn_provider_config::ModelInfo {
                 id: "/models/Qwen3-35B.gguf".to_owned(),
                 context_length: Some(32768),
                 input_modalities: {
-                    let mut m = jinn_domain::feat::provider_infra::InputModalities::text();
-                    m.insert(jinn_domain::feat::provider_infra::Modality::Image);
+                    let mut m = jinn_provider_config::InputModalities::text();
+                    m.insert(jinn_provider_config::Modality::Image);
                     m
                 },
             }],
         );
-        let cache = jinn_domain::feat::provider_infra::ModelCache {
+        let cache = jinn_provider_config::ModelCache {
             entries,
             last_updated_at: None,
         };

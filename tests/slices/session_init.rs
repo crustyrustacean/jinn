@@ -175,7 +175,7 @@ async fn environment_loaded_is_no_longer_a_slice_trigger() {
         .core
         .bridge
         .send(Bridge::publish_closure(jinn_boot_msg::EnvironmentLoaded {
-            config: jinn_domain::feat::provider_infra::ProvidersConfig {
+            config: jinn_provider_config::ProvidersConfig {
                 providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,

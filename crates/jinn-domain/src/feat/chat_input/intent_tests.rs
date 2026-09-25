@@ -14,16 +14,16 @@ use jinn_session_msg::PhaseKind;
 
 /// Empty slice registry + route table for handler tests that don't
 /// exercise slices or route rows.
-fn empty_slices() -> crate::common::slices::Slices {
-    crate::common::slices::Slices::new()
+fn empty_slices() -> jinn_slices::Slices {
+    jinn_slices::Slices::new()
 }
 
 fn empty_pickers() -> jinn_picker::PickerRegistry {
     jinn_picker::PickerRegistry::new()
 }
 
-fn empty_routes() -> crate::common::slices::key_routes::KeyRoutes {
-    crate::common::slices::key_routes::KeyRoutes::new()
+fn empty_routes() -> jinn_slices::route::KeyRoutes {
+    jinn_slices::route::KeyRoutes::new()
 }
 
 #[rstest::rstest]
@@ -742,7 +742,7 @@ fn enter_insert_mode_emits_no_commands() {
 #[rstest::rstest]
 fn enter_normal_mode_returns_to_normal_scope() {
     // Given a state in Input mode.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -775,7 +775,7 @@ fn enter_normal_mode_clears_pending_creation() {
 #[rstest::rstest]
 fn enter_normal_mode_from_input_emits_no_commands() {
     // Given a state in Input mode.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -790,8 +790,8 @@ fn enter_normal_mode_from_input_emits_no_commands() {
 #[rstest::rstest]
 fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
     // Given a state in Picker mode with active picker kind.
-    use crate::common::app_state::FocusScope;
     use crate::protocol::PickerKind;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Picker {
@@ -809,8 +809,8 @@ fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
 #[rstest::rstest]
 fn enter_normal_mode_from_picker_emits_no_commands() {
     // Given a state in Picker mode with active picker kind.
-    use crate::common::app_state::FocusScope;
     use crate::protocol::PickerKind;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Picker {
@@ -827,7 +827,7 @@ fn enter_normal_mode_from_picker_emits_no_commands() {
 #[rstest::rstest]
 fn enter_normal_mode_from_input_with_sidebar_returns_to_normal() {
     // Given a state with sidebar and input on the scope stack.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state
@@ -846,7 +846,7 @@ fn enter_normal_mode_from_input_with_sidebar_returns_to_normal() {
 #[rstest::rstest]
 fn enter_normal_mode_from_sidebar_input_emits_no_commands() {
     // Given a state with sidebar and input on the scope stack.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state
@@ -864,7 +864,7 @@ fn enter_normal_mode_from_sidebar_input_emits_no_commands() {
 #[rstest::rstest]
 fn enter_normal_mode_does_not_cancel_stream() {
     // Given a state in Input mode with active stream.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -885,7 +885,7 @@ fn enter_normal_mode_does_not_cancel_stream() {
 #[rstest::rstest]
 fn enter_normal_mode_preserves_streaming_phase() {
     // Given a state in Input mode with active stream.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -904,7 +904,7 @@ fn enter_normal_mode_preserves_streaming_phase() {
 #[rstest::rstest]
 fn enter_normal_mode_does_not_drain_queue() {
     // Given a state in Input mode with active stream and queued messages.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -936,7 +936,7 @@ fn enter_normal_mode_does_not_drain_queue() {
 #[rstest::rstest]
 fn enter_normal_mode_with_queue_emits_no_cancel_stream() {
     // Given a state in Input mode with active stream and queued messages.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -1775,7 +1775,7 @@ fn cursor_right_within_token_keeps_autocomplete_active() {
 #[rstest::rstest]
 fn enter_normal_mode_deactivates_hash_autocomplete() {
     // Given a state in Input scope with hash autocomplete active.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -1797,7 +1797,7 @@ fn enter_normal_mode_deactivates_hash_autocomplete() {
 #[rstest::rstest]
 fn enter_normal_mode_with_hash_autocomplete_stays_in_input_scope() {
     // Given a state in Input scope with hash autocomplete active.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -1817,7 +1817,7 @@ fn enter_normal_mode_with_hash_autocomplete_stays_in_input_scope() {
 #[rstest::rstest]
 fn enter_normal_mode_deactivates_slash_autocomplete() {
     // Given a state in Input scope with slash autocomplete active.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -1839,7 +1839,7 @@ fn enter_normal_mode_deactivates_slash_autocomplete() {
 #[rstest::rstest]
 fn enter_normal_mode_with_slash_autocomplete_stays_in_input_scope() {
     // Given a state in Input scope with slash autocomplete active.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -1859,7 +1859,7 @@ fn enter_normal_mode_with_slash_autocomplete_stays_in_input_scope() {
 #[rstest::rstest]
 fn enter_normal_mode_without_autocomplete_switches_to_normal() {
     // Given a state in Input scope with no autocomplete.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -1878,7 +1878,7 @@ fn enter_normal_mode_without_autocomplete_switches_to_normal() {
 #[rstest::rstest]
 fn enter_normal_mode_dismissing_autocomplete_emits_no_commands() {
     // Given a state in Input scope with hash autocomplete active.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -1895,7 +1895,7 @@ fn enter_normal_mode_dismissing_autocomplete_emits_no_commands() {
 fn hash_autocomplete_populates_matches_from_template_store() {
     // Given a state with a template in the store.
     use crate::PromptTemplate;
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -1932,7 +1932,7 @@ fn hash_autocomplete_populates_matches_from_template_store() {
 #[rstest::rstest]
 fn slash_autocomplete_populates_matches_from_slash_commands() {
     // Given a state in Input mode.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -1957,9 +1957,9 @@ fn slash_autocomplete_populates_matches_from_slash_commands() {
 #[rstest::rstest]
 fn ctrl_clear_input_empties_chat_input_via_handler() {
     // Given a state in Input scope with text in the buffer.
-    use crate::common::app_state::FocusScope;
     use crate::feat::intent::handler::IntentHandler;
     use crate::protocol::KernelIntent;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -2013,9 +2013,9 @@ fn ctrl_clear_input_empties_chat_input_via_handler() {
 #[rstest::rstest]
 fn ctrl_clear_input_empty_is_noop_via_handler() {
     // Given a state in Input scope with empty buffer.
-    use crate::common::app_state::FocusScope;
     use crate::feat::intent::handler::IntentHandler;
     use crate::protocol::KernelIntent;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);

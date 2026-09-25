@@ -88,7 +88,7 @@ mod tests {
     )]
 
     use super::*;
-    use crate::feat::theme::default_theme;
+    use jinn_theme::default_theme;
 
     fn render_ctx(is_expanded: bool) -> RenderContext {
         RenderContext {

@@ -10,13 +10,8 @@
 //! the agent's identity, behavioral guidelines, and any other system
 //! prompt content.
 
-#[expect(
-    clippy::module_inception,
-    reason = "persona/mod.rs is the public API, persona/ is implementation"
-)]
-mod persona;
 mod persona_entry;
 
-pub use persona::Persona;
+pub use jinn_persona_msg::Persona;
 pub use persona_entry::PersonaEntry;
 pub use persona_entry::persona_row;

@@ -15,6 +15,7 @@ contracts come from `jinn-session-state`.
 jinn-domain = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-provider = { workspace = true }
+jinn-provider-config = { workspace = true }
 jinn-common = { workspace = true }
 jinn-session-schema = { workspace = true }
 jinn-session-msg = { workspace = true }

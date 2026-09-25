@@ -16,13 +16,13 @@ use jinn_picker::PickerSpec;
 
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::app_state::ArgInputState;
-use jinn_domain::common::app_state::FocusScope;
-use jinn_domain::common::line_input::LineInput;
 use jinn_domain::feat::session_lifecycle::command_template::CommandTemplate;
 use jinn_domain::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
 use jinn_domain::feat::session_lifecycle::picker_entry::lifecycle_row;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_preferences_config::schemas::LifecycleCommand;
+use jinn_slices::FocusScope;
+use jinn_slices::LineInput;
 
 /// Builds the session-lifecycle picker's spec.
 #[must_use]
@@ -189,11 +189,11 @@ mod tests {
     use super::*;
     use jinn_domain::PickerKind;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
     use jinn_picker::SESSION_LIFECYCLE_ID;
     use jinn_preferences_config::schemas::LifecycleCommand;
     use jinn_preferences_config::schemas::SessionLifecycle;
+    use jinn_slices::FocusScope;
 
     /// State with an active origin session and the given configured
     /// lifecycles (name, description, setup-with-args).

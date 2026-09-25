@@ -17,7 +17,7 @@
 //! depending on each other. The picker entry lives here so the kernel
 //! spec and this crate share one vocabulary without a kernel dependency.
 
-pub use jinn_core_types::reasoning::ReasoningEffort;
+use jinn_core_types::ReasoningEffort;
 
 mod picker_entry;
 

@@ -147,10 +147,10 @@ impl ActorSystemBuilder {
             interactive_term: std::sync::Arc::new(std::sync::OnceLock::new()),
             request_dump: jinn_domain::common::request_dump::RequestDumpService::new(dump_requests),
             task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
-            slices: jinn_domain::common::slices::Slices::new(),
-            key_routes: jinn_domain::common::slices::key_routes::KeyRoutes::new(),
-            viewport: jinn_domain::common::slices::view::Viewport::new(),
-            overlay_views: jinn_domain::common::overlay_views::OverlayViews::new(),
+            slices: jinn_slices::Slices::new(),
+            key_routes: jinn_slices::route::KeyRoutes::new(),
+            viewport: jinn_slices::view::Viewport::new(),
+            overlay_views: jinn_slices::OverlayViews::new(),
             picker_registry: jinn_picker_specs::build_picker_registry(),
         };
 

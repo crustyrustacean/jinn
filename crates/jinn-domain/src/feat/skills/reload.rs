@@ -2,9 +2,9 @@
 //!
 //! Rebuilds the skill picker entries from the active session's `discovered_skills`,
 //! preserving the session's disabled-skills set and the picker's filter text.
-use crate::feat::skills::Skill;
 use crate::feat::ui::frontend_state::FrontendState;
 use crate::feat::ui::picker_states::PickerExt;
+use jinn_skills::Skill;
 use std::collections::HashSet;
 
 /// Reloads skill picker entries from the active session's discovered skills.
@@ -21,7 +21,7 @@ pub fn reload_skill_picker_entries(
     frontend: &mut FrontendState,
     discovered: &[Skill],
     disabled: &HashSet<String>,
-    theme: &crate::feat::theme::Theme,
+    theme: &jinn_theme::Theme,
 ) {
     let mut entries: Vec<crate::feat::skills::skill_entry::SkillEntry> = discovered
         .iter()
@@ -66,9 +66,9 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::feat::theme::default_theme;
     use jinn_selection_widget::PreviewContent;
     use jinn_selection_widget::TreeItem;
+    use jinn_theme::default_theme;
 
     fn skill(name: &str, description: &str, body: &str) -> Skill {
         Skill {
@@ -77,7 +77,7 @@ mod tests {
             body: body.to_owned(),
             file_path: std::path::PathBuf::from(format!("/tmp/{name}/SKILL.md")),
             base_dir: std::path::PathBuf::from(format!("/tmp/{name}")),
-            source: crate::feat::skills::SkillSource::Global,
+            source: jinn_skills::SkillSource::Global,
         }
     }
 

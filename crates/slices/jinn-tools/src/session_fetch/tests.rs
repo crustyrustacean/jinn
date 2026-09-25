@@ -19,9 +19,9 @@ use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::feat::session::session_store::{
     SessionStore, SessionStoreError, SessionStoreService,
 };
-use jinn_domain::feat::session_search::{TranscriptEntry, TranscriptWindow};
 use jinn_domain::protocol::{ChatEntry, ChatEntryId};
 use jinn_session_state::SessionSnapshot;
+use jinn_session_store_msg::{TranscriptEntry, TranscriptWindow};
 
 /// A stub store serving one canned transcript window, recording the last
 /// read it was asked for.
@@ -123,9 +123,9 @@ impl SessionStore for StubStore {
 
     async fn search(
         &self,
-        _params: jinn_domain::feat::session_search::SearchParams,
-    ) -> Result<jinn_domain::feat::session_search::SearchOutcome, Report<SessionStoreError>> {
-        Ok(jinn_domain::feat::session_search::SearchOutcome {
+        _params: jinn_session_store_msg::SearchParams,
+    ) -> Result<jinn_session_store_msg::SearchOutcome, Report<SessionStoreError>> {
+        Ok(jinn_session_store_msg::SearchOutcome {
             total_matches: 0,
             per_session: Vec::new(),
             hits: Vec::new(),

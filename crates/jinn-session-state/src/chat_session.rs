@@ -36,13 +36,14 @@ use jinn_session_store_msg::SessionState;
 use jinn_skills::parse_loaded_skill_name;
 use jinn_token_count_msg::TokenRecord;
 
+use jinn_chat_log_view_msg::SavedHistoryPosition;
+use jinn_session_lifecycle_msg::LifecycleScriptState;
+use jinn_session_msg::SessionOrigin;
+
 use crate::core::SessionCore;
 use crate::fields::SessionProfile;
 use crate::runtime::SessionUi;
 use crate::steering_buffer::SteeringBuffer;
-
-pub use jinn_chat_log_view_msg::SavedHistoryPosition;
-pub use jinn_session_lifecycle_msg::LifecycleScriptState;
 
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
@@ -63,11 +64,6 @@ pub enum StreamingError {
     #[error("token ledger is empty")]
     EmptyLedger,
 }
-
-/// How a session came into being. Identity, not structure: a session's
-/// place in the tree is [`SessionCore::parent_session`]; its kind is
-/// this enum.
-pub use jinn_session_msg::SessionOrigin;
 
 /// The state of a single chat session.
 ///

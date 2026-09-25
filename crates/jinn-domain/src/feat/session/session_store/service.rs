@@ -7,11 +7,11 @@ use std::sync::Arc;
 
 use error_stack::Report;
 
-use crate::feat::session_search::{SearchOutcome, SearchParams, TranscriptWindow};
 use crate::protocol::ChatEntryId;
 use jinn_core_types::SessionId;
 use jinn_session_state::SessionSnapshot;
 use jinn_session_store_msg::SessionSummary;
+use jinn_session_store_msg::{SearchOutcome, SearchParams, TranscriptWindow};
 
 use super::{SessionStore, SessionStoreError};
 

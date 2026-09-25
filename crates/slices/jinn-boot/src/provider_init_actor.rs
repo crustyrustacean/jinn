@@ -11,7 +11,7 @@ use jinn_boot_msg::EnvironmentLoaded;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::provider_infra::{ModelCache, ProviderRegistry};
+use jinn_provider_config::{ModelCache, ProviderRegistry};
 use jinn_provider_selection_msg::ModelCacheLoaded;
 use jinn_provider_selection_msg::ProviderSwitch;
 use jinn_session_history_msg::PushChatEntry;
@@ -110,10 +110,7 @@ impl BusPublish for ProviderInitActor {
 
 impl ProviderInitActor {
     /// Builds registry, merges cache, resolves `last_model`.
-    async fn on_environment_loaded(
-        &self,
-        config: &jinn_domain::feat::provider_infra::ProvidersConfig,
-    ) {
+    async fn on_environment_loaded(&self, config: &jinn_provider_config::ProvidersConfig) {
         // Build registry from config and replace the empty one.
         let registry = match ProviderRegistry::from_config(config.clone()) {
             Ok(r) => r,
@@ -163,7 +160,7 @@ impl ProviderInitActor {
             && let Some(ref selection) = app_state.last_model
         {
             let model_str = selection.display_str();
-            let id = jinn_domain::feat::provider_infra::ProviderId::new(model_str.to_owned());
+            let id = jinn_provider_config::ProviderId::new(model_str.to_owned());
             let is_available = {
                 let api_keys = self.deps.services.api_keys.read();
                 self.deps
@@ -204,7 +201,7 @@ mod tests {
     use jinn_domain::common::services::Services;
     use jinn_domain::common::services::bus_service::BusAudit;
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::provider_infra::ProviderEntry;
+    use jinn_provider_config::ProviderEntry;
     use jinn_provider_selection_msg::ModelCacheLoaded;
     use jinn_provider_selection_msg::ProviderSwitch;
     use jinn_session_history_msg::PushChatEntry;
@@ -235,8 +232,8 @@ mod tests {
         (actor, audit, services, state)
     }
 
-    fn sample_config() -> jinn_domain::feat::provider_infra::ProvidersConfig {
-        jinn_domain::feat::provider_infra::ProvidersConfig {
+    fn sample_config() -> jinn_provider_config::ProvidersConfig {
+        jinn_provider_config::ProvidersConfig {
             providers: BTreeMap::from([(
                 "sample".to_owned(),
                 ProviderEntry {
@@ -367,13 +364,13 @@ mod tests {
         // Given a provider init actor with a cache file on disk.
         let (actor, audit, services, _state) = create_actor().await;
 
-        let mut cache = jinn_domain::feat::provider_infra::ModelCache::new();
+        let mut cache = jinn_provider_config::ModelCache::new();
         cache.entries.insert(
             "ollama".to_owned(),
-            vec![jinn_domain::feat::provider_infra::ModelInfo {
+            vec![jinn_provider_config::ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: None,
-                input_modalities: jinn_domain::feat::provider_infra::InputModalities::text(),
+                input_modalities: jinn_provider_config::InputModalities::text(),
             }],
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());

@@ -11,9 +11,9 @@
 //! the legitimate multi-actor interface. The cap's job is to make those the
 //! _only_ write path.
 
-use crate::common::session_map::SessionMap;
 use crate::common::state::State;
 use crate::feat::ui::frontend_state::FrontendState;
+use jinn_session_state::SessionMap;
 
 // ── The cap ──────────────────────────────────────────────────────────────────
 

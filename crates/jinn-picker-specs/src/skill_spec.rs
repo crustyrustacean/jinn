@@ -336,7 +336,6 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
     use jinn_domain::feat::skills::SkillSource;
     use jinn_domain::protocol::ChatEntryKind;
@@ -347,6 +346,7 @@ mod tests {
     use jinn_picker::SKILL_ID;
     use jinn_selection_widget::SelectionState;
     use jinn_session_state::ChatSessionState;
+    use jinn_slices::FocusScope;
 
     /// A discovered skill with a small markdown body.
     fn skill(name: &str, description: &str, body: &str) -> jinn_domain::feat::skills::Skill {
@@ -898,10 +898,10 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn escape_through_the_intent_handler_closes_the_skill_picker() {
-        use jinn_domain::common::slices::Slices;
-        use jinn_domain::common::slices::key_routes::KeyRoutes;
         use jinn_domain::feat::intent::handler::IntentHandler;
         use jinn_domain::protocol::KernelIntent;
+        use jinn_slices::Slices;
+        use jinn_slices::route::KeyRoutes;
 
         // Given an open skill picker (real registry, real handler) with a
         // toggled disable staged on top of the snapshot.
@@ -968,11 +968,12 @@ mod render_cache_tests {
         clippy::uninlined_format_args,
         reason = "test code"
     )]
-    use jinn_domain::common::app_state::{AppState, FocusScope};
+    use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::render_ctx::RenderCtx;
     use jinn_domain::feat::skills::reload::reload_skill_picker_entries;
     use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_domain::protocol::PickerKind;
+    use jinn_slices::FocusScope;
     use ratatui::Frame;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -1030,7 +1031,7 @@ mod render_cache_tests {
             terminal
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
-                    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                    let overlay_views = jinn_slices::OverlayViews::new();
                     let ctx = RenderCtx::new(state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
@@ -1091,7 +1092,7 @@ mod render_cache_tests {
             terminal
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
-                    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                    let overlay_views = jinn_slices::OverlayViews::new();
                     let ctx = RenderCtx::new(&state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
@@ -1149,7 +1150,7 @@ mod render_cache_tests {
             terminal
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
-                    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                    let overlay_views = jinn_slices::OverlayViews::new();
                     let ctx = RenderCtx::new(state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
@@ -1215,7 +1216,7 @@ mod render_cache_tests {
             terminal
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
-                    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                    let overlay_views = jinn_slices::OverlayViews::new();
                     let ctx = RenderCtx::new(state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
@@ -1276,7 +1277,7 @@ mod render_cache_tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views)
                     .with_pickers(&crate::build_picker_registry());
                 let area = Rect::new(0, 0, 100, 30);

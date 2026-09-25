@@ -8,7 +8,6 @@
 
 use jinn_domain::common::services::Services;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::theme;
 use jinn_preferences_config::app_state_file::AppStateFile;
 use jinn_preferences_config::protocol::app_state_command::UpdateAppState;
 use trouper::actor::MsgHandler;
@@ -154,10 +153,8 @@ impl MsgHandler<UpdateAppState> for AppStateActor {
     clippy::option_option,
     reason = "None = cell absent, Some(None) = name unresolved; the distinction is unused but the signature mirrors the reader API"
 )]
-fn resolve_cached_theme(
-    resolved: Option<Option<jinn_domain::feat::theme::Theme>>,
-) -> jinn_domain::feat::theme::Theme {
-    resolved.flatten().unwrap_or_else(theme::default_theme)
+fn resolve_cached_theme(resolved: Option<Option<jinn_theme::Theme>>) -> jinn_theme::Theme {
+    resolved.flatten().unwrap_or_else(jinn_theme::default_theme)
 }
 
 #[cfg(test)]
@@ -361,7 +358,7 @@ mod tests {
     async fn sync_state_applies_contributed_theme_from_cache() {
         // Given an app-state actor whose theme cell holds a scanned theme.
         let (actor, _services) = create_actor().await;
-        let mut contributed = jinn_domain::feat::theme::default_theme();
+        let mut contributed = jinn_theme::default_theme();
         contributed.focus_accent = ratatui::style::Color::Red;
         actor
             .services
@@ -406,9 +403,6 @@ mod tests {
 
         // Then the frontend keeps the embedded default theme.
         let applied = actor.state.read().frontend.theme.focus_accent;
-        assert_eq!(
-            applied,
-            jinn_domain::feat::theme::default_theme().focus_accent
-        );
+        assert_eq!(applied, jinn_theme::default_theme().focus_accent);
     }
 }

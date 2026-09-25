@@ -927,7 +927,7 @@ mod tests {
         env.run(false);
 
         // When scanning the skills destination.
-        let skills = crate::feat::skills::scan_skills(&env.destinations.skills);
+        let skills = jinn_skills::scan_skills(&env.destinations.skills);
 
         // Then jinn-usage is discovered by name with a usable description.
         let usage = skills

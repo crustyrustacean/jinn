@@ -3,15 +3,14 @@
 use jinn_sidebar_msg::SidebarScopeExt;
 use parking_lot::RwLock;
 
-use crate::common::focus::FocusScope;
-use crate::common::tui_signals::TuiSignals;
 use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
 use jinn_preferences_config::UserPreferences;
 use jinn_preferences_config::app_state_file::AppStateFile;
 use jinn_sidebar_msg::SidebarSectionId;
+use jinn_slices::FocusScope;
+use jinn_slices::TuiSignals;
 
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
-use crate::feat::theme::Theme;
 use crate::feat::ui::picker_states::PickerStates;
 pub use jinn_sidebar_msg::McpServersSectionState;
 pub use jinn_sidebar_msg::PersonaSectionState;
@@ -19,6 +18,7 @@ pub use jinn_sidebar_msg::PinsState;
 pub use jinn_sidebar_msg::SessionsSectionState;
 pub use jinn_sidebar_msg::SidebarSections;
 pub use jinn_sidebar_msg::TaskListSectionState;
+use jinn_theme::Theme;
 
 /// Theme-sensitive caches owned by the frontend.
 ///
@@ -159,7 +159,7 @@ impl Default for FrontendState {
             scope_focus: std::sync::OnceLock::new(),
             preferences: UserPreferences::default(),
             app_state: AppStateFile::default(),
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
             caches: FrontendCaches::default(),
             cancel_stream_prompt: false,
             audit_popup_visible: false,

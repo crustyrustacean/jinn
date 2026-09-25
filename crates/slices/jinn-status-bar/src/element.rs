@@ -5,15 +5,15 @@
 //! The model shows `({provider})/{model}` when set, or "no model selected" otherwise.
 
 use jinn_core_types::model_selection::ModelSelection;
+use jinn_cwd_msg::shorten_path;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::path_display::shorten_path;
 use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_domain::common::ui_element::UiElement;
-use jinn_domain::feat::provider_infra::InputModalities;
-use jinn_domain::feat::provider_infra::ModelCache;
-use jinn_domain::feat::provider_infra::ModelInfo;
 use jinn_domain::feat::session::aggregate_tree_stats;
 use jinn_domain::resolve_effort;
+use jinn_provider_config::InputModalities;
+use jinn_provider_config::ModelCache;
+use jinn_provider_config::ModelInfo;
 use jinn_theme::Theme;
 use jinn_token_count_msg::TokenStats;
 use ratatui::Frame;

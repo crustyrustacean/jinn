@@ -12,7 +12,6 @@
 //! falls back to the model display when the slice is not activated.
 
 pub mod element;
-pub mod state;
 pub mod turn_counter;
 
 #[cfg(test)]
@@ -22,8 +21,8 @@ use jinn_domain::common::ui_registry::UiRegistry;
 use jinn_slices::SliceHost;
 
 pub use element::StatusBarElement;
-pub use state::StatusBarState;
-pub use state::status_bar_slot;
+pub use jinn_status_bar_msg::StatusBarState;
+pub use jinn_status_bar_msg::status_bar_slot;
 
 /// Activates the status bar slice: registers the hint cell.
 ///
@@ -71,8 +70,8 @@ mod activation_tests {
     async fn activate_registers_the_status_bar_cell() {
         // Given a host over an empty slice registry.
         let slices = jinn_slices::Slices::new();
-        let mut viewport = jinn_domain::common::slices::view::Viewport::new();
-        let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+        let mut viewport = jinn_slices::view::Viewport::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
         let services = jinn_domain::Services::new_fake().await;
         let mut host = SliceHost::new(

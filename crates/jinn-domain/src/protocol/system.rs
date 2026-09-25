@@ -3,8 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::common::bus::BusMessage;
-use crate::protocol::Mode;
-use crate::protocol::key::KeyEvent;
+use jinn_slices::{KeyEvent, Mode};
 
 /// A key was pressed down.
 #[derive(Debug, Clone, Serialize, Deserialize)]

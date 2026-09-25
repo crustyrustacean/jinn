@@ -4,7 +4,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::feat::theme::Theme;
+use jinn_theme::Theme;
 
 /// Context needed to style gutter lines for an entry.
 pub(crate) struct GutterStyle<'a> {

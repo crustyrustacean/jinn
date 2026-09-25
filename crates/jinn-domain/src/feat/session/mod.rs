@@ -41,7 +41,7 @@ pub use token_stats::{AggregatedTokenStats, TokenRecord, TokenStats, aggregate_s
 /// `providers.toml` for reference. Uses [`crate::protocol::ChatEntry::info`]
 /// so the message is excluded from LLM context.
 pub fn no_api_keys_msg() -> crate::protocol::ChatEntry {
-    let config_path = crate::feat::provider_infra::config_path()
+    let config_path = jinn_provider_config::config_path()
         .to_string_lossy()
         .into_owned();
 

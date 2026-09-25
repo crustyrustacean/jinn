@@ -225,7 +225,7 @@ pub enum KernelIntent {
     /// A dynamically-registered slice's action.
     ///
     /// Dispatched exclusively through the feature route table
-    /// ([`KeyRoutes`](crate::common::slices::key_routes::KeyRoutes)):
+    /// ([`KeyRoutes`](jinn_slices::route::KeyRoutes)):
     /// a slice that never registered a row for this intent is inert by
     /// construction. Carries its identity as data, so slices never edit
     /// this enum.

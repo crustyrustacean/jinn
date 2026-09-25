@@ -135,14 +135,12 @@ async fn quake_app() -> jinn_tui::TuiApp {
         .state
         .write_test_no_cap()
         .frontend
-        .scope_swap_base(jinn_domain::FocusScope::Dynamic(quake_scope()));
+        .scope_swap_base(jinn_slices::FocusScope::Dynamic(quake_scope()));
     app
 }
 
 /// The quake cell for a wired app.
-fn quake_cell(
-    app: &jinn_tui::TuiApp,
-) -> jinn_domain::common::slices::TypedCell<jinn_quake_bar::QuakeBarState> {
+fn quake_cell(app: &jinn_tui::TuiApp) -> jinn_slices::TypedCell<jinn_quake_bar::QuakeBarState> {
     app.services
         .slices
         .reader(&jinn_quake_bar::quake_bar_slot())

@@ -8,9 +8,8 @@
 use std::sync::Arc;
 
 use error_stack::Report;
+use jinn_provider::{LlmService, LlmServiceError, LlmServiceFactory};
 use parking_lot::RwLock;
-
-use super::service::{LlmService, LlmServiceError, LlmServiceFactory};
 
 /// Swappable service wrapper for the LLM service factory.
 ///
@@ -123,7 +122,7 @@ mod tests {
         assert_eq!(service.name(), "FakeLlm");
 
         // When swapping the factory on one clone.
-        let factory_b = crate::sample::SampleLlmServiceFactory;
+        let factory_b = jinn_provider::SampleLlmServiceFactory;
         clone.swap(Arc::new(factory_b));
 
         // Then both clones see the new factory.

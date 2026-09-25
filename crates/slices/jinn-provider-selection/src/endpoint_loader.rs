@@ -11,7 +11,7 @@ use jinn_core_types::ModelSelection;
 use jinn_provider_selection_msg::endpoint::EndpointEntry;
 
 use jinn_domain::Services;
-use jinn_domain::feat::provider_infra as infra;
+use jinn_provider_config as infra;
 
 /// The credentials + model id needed to query OpenRouter's `/endpoints`.
 ///
@@ -97,7 +97,7 @@ pub(crate) async fn fetch_endpoints(
 /// so both the fresh-fetch path and the cache-hit path reuse it.
 pub(crate) fn build_endpoint_entries(
     endpoints: &[jinn_provider::EndpointInfo],
-    theme: &jinn_domain::feat::theme::Theme,
+    theme: &jinn_theme::Theme,
     pinned: Option<&Endpoint>,
 ) -> Vec<EndpointEntry> {
     let mut entries = Vec::with_capacity(endpoints.len() + 1);
@@ -123,7 +123,7 @@ pub(crate) fn build_endpoint_entries(
 /// OpenRouter (or is an alloy). The row is an inert explanatory placeholder;
 /// its empty `tag` means confirming it clears any pin.
 pub(crate) fn unavailable_endpoint_entries(
-    theme: jinn_domain::feat::theme::Theme,
+    theme: jinn_theme::Theme,
     pinned: Option<&Endpoint>,
 ) -> Vec<EndpointEntry> {
     vec![EndpointEntry::auto_route(pinned.is_none(), theme)]
@@ -139,7 +139,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_domain::feat::theme::default_theme;
+    use jinn_theme::default_theme;
 
     #[rstest::rstest]
     fn build_endpoint_entries_prepends_sentinel_and_marks_pinned_active() {

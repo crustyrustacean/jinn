@@ -28,7 +28,7 @@ pub(crate) fn load_provider_picker_items(
     services: &Services,
     picker: &mut SelectionState<PickerEntry<ProviderPickerEntry>>,
     model_cache: Option<&ModelCache>,
-    theme: &jinn_domain::feat::theme::Theme,
+    theme: &jinn_theme::Theme,
     model_selection: &ModelSelection,
     alloy_mode: bool,
 ) {

@@ -18,7 +18,7 @@ const ARG_POPUP_MIN_WIDTH: u16 = 40;
 /// Currently returns `theme.accent_action` for all params. To add
 /// per-argument gradient or rainbow colors in the future, change only
 /// this function to return different colors based on `param_index`.
-fn param_color(theme: &crate::feat::theme::Theme, _param_index: usize) -> Color {
+fn param_color(theme: &jinn_theme::Theme, _param_index: usize) -> Color {
     theme.accent_action
 }
 
@@ -233,7 +233,7 @@ mod tests {
             lifecycle_name: lifecycle_name.to_owned(),
             template_display: String::new(),
             text: {
-                let mut li = crate::common::line_input::LineInput::new();
+                let mut li = jinn_slices::LineInput::new();
                 li.input = input.to_owned();
                 li.cursor_pos = cursor_pos;
                 li
@@ -266,7 +266,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
@@ -304,7 +304,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
@@ -342,7 +342,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
@@ -388,7 +388,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
@@ -434,7 +434,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
@@ -469,7 +469,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
@@ -519,7 +519,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
@@ -527,7 +527,7 @@ mod tests {
 
         // Then the substituted value "my-feature" has accent_action color.
         let buffer = terminal.backend().buffer().clone();
-        let theme = crate::feat::theme::default_theme();
+        let theme = jinn_theme::default_theme();
         let expected_color = theme.accent_action;
 
         let input_args: Vec<String> = split_preserving_quotes("my-feature");
@@ -568,7 +568,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
@@ -607,7 +607,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_arg_input(frame, area, &ctx);
             })
@@ -615,7 +615,7 @@ mod tests {
 
         // Then unfilled placeholders are shown in accent_action color.
         let buffer = terminal.backend().buffer().clone();
-        let theme = crate::feat::theme::default_theme();
+        let theme = jinn_theme::default_theme();
         let expected_color = theme.accent_action;
 
         let input_args: Vec<String> = split_preserving_quotes("");

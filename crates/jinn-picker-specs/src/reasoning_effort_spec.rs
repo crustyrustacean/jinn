@@ -17,10 +17,10 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
+use jinn_core_types::ReasoningEffort;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_picker::picker_style::dim_style;
-use jinn_provider_selection_msg::reasoning::ReasoningEffort;
 use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
 use jinn_provider_selection_msg::reasoning::resolve_effort;
 
@@ -239,10 +239,10 @@ mod tests {
     )]
     use super::*;
     use jinn_domain::PickerKind;
-    use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
     use jinn_picker::REASONING_EFFORT_ID;
     use jinn_session_state::ChatSessionState;
+    use jinn_slices::FocusScope;
 
     /// State with an active origin session (the default map's session).
     fn state_with_session() -> AppState {

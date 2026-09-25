@@ -322,12 +322,12 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
 
     async fn search(
         &self,
-        _params: jinn_domain::feat::session_search::SearchParams,
+        _params: jinn_session_store_msg::SearchParams,
     ) -> Result<
-        jinn_domain::feat::session_search::SearchOutcome,
+        jinn_session_store_msg::SearchOutcome,
         error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
     > {
-        Ok(jinn_domain::feat::session_search::SearchOutcome {
+        Ok(jinn_session_store_msg::SearchOutcome {
             total_matches: 0,
             per_session: Vec::new(),
             hits: Vec::new(),
@@ -340,7 +340,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         _anchor: &jinn_core_types::ChatEntryId,
         _context: usize,
     ) -> Result<
-        Option<jinn_domain::feat::session_search::TranscriptWindow>,
+        Option<jinn_session_store_msg::TranscriptWindow>,
         error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
     > {
         Ok(None)
@@ -351,7 +351,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         _session_id: &jinn_core_types::SessionId,
         _limit: usize,
     ) -> Result<
-        Option<jinn_domain::feat::session_search::TranscriptWindow>,
+        Option<jinn_session_store_msg::TranscriptWindow>,
         error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
     > {
         Ok(None)

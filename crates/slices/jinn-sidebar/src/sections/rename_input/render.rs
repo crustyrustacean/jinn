@@ -99,7 +99,8 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_domain::common::app_state::{AppState, FocusScope, RenameSessionInputState};
+    use jinn_domain::common::app_state::{AppState, RenameSessionInputState};
+    use jinn_slices::FocusScope;
     use jinn_testutil::setup_term;
 
     #[rstest::rstest]
@@ -109,7 +110,7 @@ mod tests {
         state.frontend.scope_push(FocusScope::RenameSessionInput);
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "My Session".to_owned(),
                     cursor_pos: 10,
                 },
@@ -121,7 +122,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_rename_session_input(frame, area, &ctx);
             })
@@ -156,7 +157,7 @@ mod tests {
         state.frontend.scope_push(FocusScope::RenameSessionInput);
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hello World".to_owned(),
                     cursor_pos: 11,
                 },
@@ -168,7 +169,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_rename_session_input(frame, area, &ctx);
             })
@@ -197,7 +198,7 @@ mod tests {
         state.frontend.scope_push(FocusScope::RenameSessionInput);
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Test".to_owned(),
                     cursor_pos: 4,
                 },
@@ -209,7 +210,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_rename_session_input(frame, area, &ctx);
             })

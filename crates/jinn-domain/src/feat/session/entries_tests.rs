@@ -15,9 +15,9 @@
 
 use crate::feat::session::entries::sort_entries_tree_aware;
 use crate::feat::session::picker_entry::SessionTreeEntry;
-use crate::feat::theme::default_theme;
 use jinn_core_types::SessionId;
 use jinn_session_store_msg::SessionState;
+use jinn_theme::default_theme;
 
 /// Deterministically maps a mnemonic tag (e.g. "a", "child") to a valid
 /// `SessionId`. Session IDs are `Uuid` newtypes, so opaque test tags must

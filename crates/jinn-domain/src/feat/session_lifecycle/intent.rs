@@ -164,9 +164,7 @@ pub fn handle_session_lifecycle_setup(
     state.session.insert(new_session);
     state.session.set_active(new_id.clone());
     state.frontend.scope_clear_overlays();
-    state
-        .frontend
-        .scope_push(crate::common::app_state::FocusScope::Input);
+    state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
     // Build the session-created event.
     let created_event = SessionCreated {
@@ -633,11 +631,9 @@ mod tests {
     fn session_lifecycle_setup_clears_overlays_and_pushes_input() {
         // Given a state with a picker overlay.
         let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .scope_push(crate::common::app_state::FocusScope::Picker {
-                kind: crate::protocol::PickerKind::Provider,
-            });
+        state.frontend.scope_push(jinn_slices::FocusScope::Picker {
+            kind: crate::protocol::PickerKind::Provider,
+        });
 
         // When handling SessionLifecycleSetup.
         let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
@@ -645,7 +641,7 @@ mod tests {
         // Then overlays are cleared and Input scope is pushed.
         assert!(matches!(
             state.frontend.scope(),
-            crate::common::app_state::FocusScope::Input
+            jinn_slices::FocusScope::Input
         ));
     }
 

@@ -3,9 +3,9 @@
 use jinn_selection_widget::PickerItem;
 use ratatui::text::{Line, Span};
 
-use crate::common::path_display::shorten_path;
-use crate::feat::theme::Theme;
+use jinn_cwd_msg::shorten_path;
 use jinn_picker::picker_style::{active_marker, selected_style};
+use jinn_theme::Theme;
 
 /// A curated project directory shown in the project picker.
 ///
@@ -133,7 +133,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::feat::theme::default_theme;
+    use jinn_theme::default_theme;
 
     #[rstest::rstest]
     fn display_label_is_tilde_compressed_path() {

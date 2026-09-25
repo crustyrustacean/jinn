@@ -32,10 +32,13 @@ use std::sync::Arc;
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
-use crate::feat::theme::Theme;
 use crate::protocol::ToolResultStatus;
 use crate::protocol::{ChatEntry, ChatEntryKind};
+use jinn_chat_log_view_msg::{
+    DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
+};
 use jinn_session_msg::PhaseKind;
+use jinn_theme::Theme;
 use jinn_tools_msg::TASK_TOOL_NAME;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -45,9 +48,6 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
-use super::visual_item::{
-    DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
-};
 use super::{
     actor, annotation, assistant, compaction, error_entry, system, thinking, tool_call,
     tool_result, transient, user,
@@ -472,10 +472,8 @@ impl<'a> HistoryRender<'a> {
     #[expect(clippy::expect_used, reason = "infallible")]
     fn render_visible_entries(&mut self) {
         let viewport_top = self.scroll.clamped;
-        let chat_log_active = matches!(
-            self.state.frontend.scope(),
-            crate::common::app_state::FocusScope::Normal
-        );
+        let chat_log_active =
+            matches!(self.state.frontend.scope(), jinn_slices::FocusScope::Normal);
         let cursor_color = self.theme.focus_accent;
 
         for &vi_idx in &self.visible_indices {

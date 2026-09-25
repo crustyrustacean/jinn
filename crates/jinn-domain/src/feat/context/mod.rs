@@ -28,12 +28,9 @@
 //! This module defines the compaction assembly logic and supporting types.
 //! Also contains the **ContextActor** (prompt assembly, pinning, templates).
 
-pub mod env_context;
-
 #[cfg(test)]
 pub(crate) mod assembly_test_bridge;
 
-pub mod prompt_template;
 pub mod protocol;
 pub mod snapshot;
 pub mod strategy;

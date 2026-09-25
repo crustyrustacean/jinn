@@ -9,8 +9,6 @@
 //! code review. Each group struct carries `/// OWNER:` documentation on the struct
 //! and on each field.
 
-pub use crate::common::focus::{FocusScope, ScopeStack};
-pub use crate::common::session_map::SessionLoadGuard;
 pub use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
 pub use jinn_sidebar_msg::sidebar_sections::RenameSessionInputState;
 
@@ -20,10 +18,10 @@ pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
 use crate::protocol::{ChatEntryId, PickerKind, PinPosition};
 use jinn_core_types::SessionId;
 
-use crate::common::session_map::SessionMap;
 pub use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_session_state::ChatSessionState;
+use jinn_session_state::SessionMap;
 
 /// Shared session registry and active-session state. Callers mutate it through
 /// [`SessionMap`] operations so session reads and snapshot capture stay coherent.

@@ -20,9 +20,9 @@ use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::InputMode;
 use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use crate::feat::chat_input::slash_command::SlashCommand;
-use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::file_lister::ListDirectory;
 use crate::protocol::{ChatEntry, IntentResult};
+use jinn_chat_input_msg::AutocompleteState;
 use jinn_context::PromptTemplateStore;
 use jinn_core_types::SessionId;
 use jinn_session_msg::MarkSessionInteracted;
@@ -629,7 +629,7 @@ pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
 
 /// Handles `EnterInsertMode` - pushes Input onto the scope stack.
 pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     // The pin cursor jump is only for pin → Normal, not pin → Insert.
     if state.active_session().has_saved_history_position() {

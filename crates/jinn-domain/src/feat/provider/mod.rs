@@ -9,7 +9,6 @@
 
 pub mod entries_to_messages;
 pub mod indicator;
-pub mod llm_message;
 
 #[cfg(test)]
 mod entries_to_messages_tests;

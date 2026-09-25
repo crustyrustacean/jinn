@@ -1,7 +1,7 @@
 //! A single-line text input with grapheme-aware cursor editing.
 //!
 //! Shared by all single-line popup inputs ([`crate::feat::session_lifecycle`]
-//! arg input, [`crate::feat::rename_session_input`], and the CWD input popup).
+//! arg input, the sidebar's rename-session popup, and the CWD input popup).
 //!
 //! The cursor is a **byte** offset into [`LineInput::input`], always landed on a
 //! grapheme boundary. This matches the contract previously duplicated across

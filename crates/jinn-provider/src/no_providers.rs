@@ -3,9 +3,9 @@
 //! Used as the initial factory when no provider is available at startup.
 //! The streamed message explains how to configure providers.
 
-use crate::llm_message::LlmMessage;
 use error_stack::Report;
 use futures::stream;
+use jinn_core_types::llm_message::LlmMessage;
 
 use crate::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory};
 

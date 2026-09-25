@@ -9,6 +9,7 @@ test-harness = ["jinn-domain/test-harness"]
 
 [dependencies]
 jinn-domain = { workspace = true }
+jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-context-assembly = { workspace = true }
 jinn-persona-msg = { workspace = true }

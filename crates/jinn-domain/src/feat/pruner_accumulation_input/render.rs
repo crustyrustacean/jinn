@@ -94,10 +94,11 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::common::app_state::{AppState, FocusScope};
-    use crate::common::line_input::LineInput;
+    use crate::common::app_state::AppState;
     use crate::common::render_ctx::RenderCtx;
     use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
+    use jinn_slices::FocusScope;
+    use jinn_slices::LineInput;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
@@ -123,7 +124,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 render_pruner_accumulation_input(frame, area, &ctx);
             })

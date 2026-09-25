@@ -24,7 +24,6 @@ pub(crate) mod tool_call;
 pub(crate) mod tool_result;
 pub(crate) mod transient;
 pub(crate) mod user;
-pub mod visual_item;
 
 pub use audit_popup::format_audit_lines;
 pub use history::ChatLogElement;

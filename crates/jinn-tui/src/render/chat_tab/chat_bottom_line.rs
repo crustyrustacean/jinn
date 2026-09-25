@@ -14,7 +14,7 @@ pub(super) fn render_chat_bottom_line(frame: &mut Frame<'_>, content_area: Rect,
     let theme = &ctx.state.frontend.theme;
 
     let line_y = content_area.y + content_area.height.saturating_sub(1);
-    let chat_line_color = if matches!(focus_scope, jinn_domain::FocusScope::Normal) {
+    let chat_line_color = if matches!(focus_scope, jinn_slices::FocusScope::Normal) {
         theme.focus_accent
     } else {
         theme.border_unfocused
@@ -35,7 +35,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code, panics are acceptable"
     )]
-    use jinn_domain::FocusScope;
+    use jinn_slices::FocusScope;
     use jinn_testutil::setup_term;
     use ratatui::layout::Rect;
     use ratatui::style::Color;

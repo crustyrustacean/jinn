@@ -11,8 +11,8 @@
 
 use crate::common::{composed_keymap, test_app, wait_for, wait_for_bounded};
 use jinn_dashboard::dashboard_scope;
-use jinn_domain::common::slices::TypedCell;
 use jinn_domain::{Bridge, KernelIntent, Key, KeyEvent, Modifiers};
+use jinn_slices::TypedCell;
 use jinn_tui::Scope;
 
 /// The composed keymap carries the terminal-overlay toggle in the
@@ -84,7 +84,7 @@ async fn j_keypress_routes_to_dashboard_actor_and_moves_selection() {
         .state
         .write_test_no_cap()
         .frontend
-        .scope_swap_base(jinn_domain::FocusScope::Dynamic(
+        .scope_swap_base(jinn_slices::FocusScope::Dynamic(
             jinn_dashboard::dashboard_scope(),
         ));
     let slot = jinn_dashboard::dashboard_slot();
@@ -158,7 +158,7 @@ async fn dashboard_app() -> jinn_tui::TuiApp {
         .state
         .write_test_no_cap()
         .frontend
-        .scope_swap_base(jinn_domain::FocusScope::Dynamic(
+        .scope_swap_base(jinn_slices::FocusScope::Dynamic(
             jinn_dashboard::dashboard_scope(),
         ));
     app
@@ -204,7 +204,7 @@ async fn registered_tab_stays_highlighted_when_another_overlay_opens() {
         .state
         .write_test_no_cap()
         .frontend
-        .scope_push(jinn_domain::FocusScope::Dynamic(
+        .scope_push(jinn_slices::FocusScope::Dynamic(
             jinn_slices::SliceScopeId::new("quake-bar", "bar"),
         ));
     let (mut terminal, _area) = jinn_testutil::setup_term(80, 24);

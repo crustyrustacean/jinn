@@ -25,8 +25,8 @@ use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::services::test_services::TestServices;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::provider_infra::{FakeLlmServiceFactory, LlmServiceFactoryService};
 use jinn_preferences_config::schemas::CompactionConfig;
+use jinn_provider_config::{FakeLlmServiceFactory, LlmServiceFactoryService};
 use jinn_session_state::ChatSessionState;
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -673,8 +673,8 @@ fn threshold_uses_fresh_history_not_stale_context_size() {
 // method which delegates to evaluate_history.
 
 use crate::worker::HistoryWorker;
-use jinn_domain::feat::provider_infra::ModelCache;
 use jinn_provider::{InputModalities, ModelInfo};
+use jinn_provider_config::ModelCache;
 
 /// Builder for constructing a test environment with full control over
 /// context_size, model cache, compaction config, and history.

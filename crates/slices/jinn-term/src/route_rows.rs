@@ -39,8 +39,9 @@
 //! optimistic-write + authoritative-write pattern: the synchronous key
 //! path flips it immediately so a settle poll cannot miss the takeover.
 
-use jinn_domain::common::app_state::{AppState, FocusScope};
+use jinn_domain::common::app_state::AppState;
 use jinn_domain::protocol::IntentResult;
+use jinn_slices::FocusScope;
 use jinn_slices::route::{ActionCtx, ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
 use jinn_slices::{DynamicIntent, KeyRoutes, SliceScopeId};
 use jinn_term_msg::command::ControlHolder;
@@ -511,7 +512,7 @@ mod tests {
     use super::push_screen_text;
     use super::view_scope;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
     use jinn_slices::Slices;
     use jinn_slices::route::ActionCtx;
     use jinn_slices::route::KeyRoutes;

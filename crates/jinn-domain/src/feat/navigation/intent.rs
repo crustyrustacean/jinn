@@ -1,8 +1,8 @@
 //! Navigation intent handlers - scroll, tab, and editor.
 
 use crate::common::app_state::AppState;
-use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::IntentResult;
+use jinn_chat_log_view_msg::VisualItem;
 
 /// Number of lines to scroll per mouse wheel tick.
 const MOUSE_SCROLL_STEP: u16 = 3;

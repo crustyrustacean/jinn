@@ -244,13 +244,13 @@ pub async fn test_app() -> TuiApp {
 /// Panics if the detached quake cell cannot be minted (a fresh
 /// `Slices` never has it registered, so this is unreachable).
 #[must_use]
-pub fn composition_routes() -> jinn_domain::common::slices::key_routes::KeyRoutes {
-    let routes = jinn_domain::common::slices::key_routes::KeyRoutes::new();
+pub fn composition_routes() -> jinn_slices::route::KeyRoutes {
+    let routes = jinn_slices::route::KeyRoutes::new();
     jinn_dashboard::attach_dashboard_rows(&routes);
     // The quake rows' submit/scroll actions capture a cell handle; the
     // seam mints a detached one (never registered into a live `Slices`)
     // since only row *shape* matters for keymap tests.
-    let slices = jinn_domain::common::slices::Slices::new();
+    let slices = jinn_slices::Slices::new();
     #[expect(
         clippy::expect_used,
         reason = "test seam: a fresh Slices never has the quake cell registered"
@@ -694,7 +694,7 @@ mod term_keybinds_spot_check {
     #[test]
     fn session_terminal_row_publishes_the_term_toggle_for_selected_intent() {
         // Given the sidebar's session-terminal row dispatching in its scope.
-        let routes = jinn_domain::common::slices::key_routes::KeyRoutes::new();
+        let routes = jinn_slices::route::KeyRoutes::new();
         jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
         let sessions = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
         let mut state = jinn_domain::AppState::default();
@@ -703,9 +703,9 @@ mod term_keybinds_spot_check {
         let result = routes
             .action_for(
                 &jinn_slices::DynamicIntent::new(sessions, "session-terminal", "toggle terminal"),
-                jinn_domain::common::slices::key_routes::ActionCtx {
+                jinn_slices::route::ActionCtx {
                     state: &mut state,
-                    slices: &jinn_domain::common::slices::Slices::new(),
+                    slices: &jinn_slices::Slices::new(),
                     key_bytes: Vec::new(),
                 },
             )

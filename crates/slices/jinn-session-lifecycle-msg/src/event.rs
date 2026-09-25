@@ -11,9 +11,6 @@ use serde::{Deserialize, Serialize};
 use jinn_core_types::SessionId;
 use jinn_slices::BusMessage;
 
-pub use jinn_session_msg::SessionSetupCompleted;
-pub use jinn_session_msg::SessionTeardownFinished;
-
 /// A new chat session was created.
 ///
 /// Emitted by the intent handler when `handle_session_lifecycle_setup()` inserts

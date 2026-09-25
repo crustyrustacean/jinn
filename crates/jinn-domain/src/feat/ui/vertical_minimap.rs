@@ -15,13 +15,11 @@ use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthStr;
 
 use crate::common::app_state::AppState;
-use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{ChatEntry, ChatEntryKind};
+use jinn_chat_log_view_msg::VisualItem;
 
 #[cfg(test)]
-use crate::feat::ui::chat_log::visual_item::{
-    DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
-};
+use jinn_chat_log_view_msg::{DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items};
 
 /// Full block character for minimap entries.
 const FULL_BLOCK: &str = "\u{2588}";
@@ -475,8 +473,8 @@ mod tests {
     )]
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::feat::theme::default_theme;
     use crate::protocol::ChatEntry;
+    use jinn_theme::default_theme;
 
     #[rstest::rstest]
     fn find_block_index_returns_position_for_existing_entry() {

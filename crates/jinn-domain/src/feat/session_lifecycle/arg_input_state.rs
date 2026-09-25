@@ -1,6 +1,6 @@
 //! State for the arg input popup - collecting positional args for a lifecycle command.
 
-use crate::common::line_input::LineInput;
+use jinn_slices::LineInput;
 
 /// State for the arg input popup - collecting positional args for a lifecycle command.
 ///

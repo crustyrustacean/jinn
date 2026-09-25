@@ -8,10 +8,10 @@ use crate::ModelInfo;
 use crate::google::models;
 use crate::google::request;
 use crate::google::response::GeminiStreamParser;
-use crate::llm_message::LlmMessage;
 use crate::openai_compat::sse::{SseEvent, SseParser};
 use crate::service::{ChatStream, LlmService, LlmServiceError, ToolStream};
 use crate::stream_event::StreamEvent;
+use jinn_core_types::llm_message::LlmMessage;
 use jinn_core_types::tool_types::ToolDefinition;
 
 const PROVIDER_NAME: &str = "Google";

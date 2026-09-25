@@ -1,6 +1,6 @@
 //! State for the pruner accumulation threshold input popup.
 
-use crate::common::line_input::LineInput;
+use jinn_slices::LineInput;
 
 /// State for the pruner accumulation threshold input popup — editing a number.
 ///

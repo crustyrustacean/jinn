@@ -4,10 +4,11 @@
 //! accepted. On confirm the parsed value is pushed to the `PreferencesActor`
 //! via `UpdatePreferences` so it is persisted to `jinn.toml` and broadcast.
 
-use crate::common::app_state::{AppState, FocusScope, PrunerAccumulationInputState};
-use crate::common::line_input::LineInput;
+use crate::common::app_state::{AppState, PrunerAccumulationInputState};
 use crate::protocol::IntentResult;
 use jinn_preferences_config::protocol::command::{PreferenceUpdate, UpdatePreferences};
+use jinn_slices::FocusScope;
+use jinn_slices::LineInput;
 
 /// Opens the pruner accumulation threshold input popup.
 ///
@@ -138,7 +139,8 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::{AppState, FocusScope};
+    use crate::common::app_state::AppState;
+    use jinn_slices::FocusScope;
 
     use super::*;
 
