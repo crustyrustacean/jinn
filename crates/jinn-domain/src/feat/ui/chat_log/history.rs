@@ -479,7 +479,7 @@ impl<'a> HistoryRender<'a> {
         let cursor_color = self.theme.focus_accent;
 
         for &vi_idx in &self.visible_indices {
-            let (entry_start, _entry_end) = self
+            let (entry_start, entry_end) = self
                 .entry_line_ranges
                 .get(vi_idx)
                 .copied()
@@ -532,6 +532,9 @@ impl<'a> HistoryRender<'a> {
                         is_selected,
                         chat_log_active,
                         content_width: self.content_width,
+                        // Pass 1 already measured how many rows this entry
+                        // wraps to at this width.
+                        wrapped_count: u32::from(entry_end - entry_start),
                         theme: &self.theme,
                         cursor_color,
                         is_included_in_context,
