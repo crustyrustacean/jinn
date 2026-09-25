@@ -3,7 +3,6 @@
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use jinn_session_msg::SessionSeed;
-use jinn_session_state::SessionSnapshot;
 use jinn_session_store_msg::{SessionLoadCompleted, SessionSummary};
 
 use crate::session_store_actor::SessionStoreActor;
@@ -74,6 +73,8 @@ impl SessionStoreActor {
     /// Returns `false` when the store's summary read fails, preserving the
     /// existing startup path's early exit before `UpdateAppState`.
     async fn load_unarchived_sessions(&self) -> bool {
+        self.state
+            .with_session(|view| view.session.map().begin_startup_hydration());
         let summaries = match self
             .services
             .session_store
@@ -86,24 +87,19 @@ impl SessionStoreActor {
                     ?error,
                     "session-actor failed to load unarchived summaries on startup"
                 );
+                self.finish_startup_hydration();
                 return false;
             }
         };
         if summaries.is_empty() {
+            self.finish_startup_hydration();
             return true;
         }
 
-        let loaded = self.load_summaries_in_recency_order(summaries).await;
-        if loaded.is_empty() {
+        let loaded_any = self.hydrate_unarchived_summaries(summaries).await;
+        self.finish_startup_hydration();
+        if !loaded_any {
             return true;
-        }
-        for snapshot in loaded {
-            let session_id = self.insert_loaded_session({
-                let mut session = snapshot.restore_live();
-                session.mark_interacted();
-                session
-            });
-            self.publish(SessionLoadCompleted { session_id }).await;
         }
 
         self.hydrate_all_tree_frozen_nodes(&self.services.session_store)
@@ -111,23 +107,46 @@ impl SessionStoreActor {
         true
     }
 
-    /// Loads the complete sessions, newest summary first, outside the state lock.
-    async fn load_summaries_in_recency_order(
-        &self,
-        mut summaries: Vec<SessionSummary>,
-    ) -> Vec<SessionSnapshot> {
+    fn finish_startup_hydration(&self) {
+        self.state
+            .with_session(|view| view.session.map().finish_startup_hydration());
+    }
+
+    async fn hydrate_unarchived_summaries(&self, mut summaries: Vec<SessionSummary>) -> bool {
         summaries.sort_by_key(|summary| std::cmp::Reverse(summary.updated_at));
-        let mut loaded = Vec::new();
+        let mut loaded_any = false;
         for summary in &summaries {
-            if let Ok(Some(session)) = self
+            let snapshot = match self
                 .services
                 .session_store
                 .load_session(&summary.session_id)
                 .await
             {
-                loaded.push(session);
-            }
+                Ok(Some(snapshot)) => snapshot,
+                Ok(None) => {
+                    tracing::warn!(
+                        session_id = ?summary.session_id,
+                        "session snapshot missing during startup hydration"
+                    );
+                    continue;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        ?error,
+                        session_id = ?summary.session_id,
+                        "failed to load session snapshot during startup hydration"
+                    );
+                    continue;
+                }
+            };
+            loaded_any = true;
+            let session_id = self.insert_loaded_session({
+                let mut session = snapshot.restore_live();
+                session.mark_interacted();
+                session
+            });
+            self.publish(SessionLoadCompleted { session_id }).await;
         }
-        loaded
+        loaded_any
     }
 }

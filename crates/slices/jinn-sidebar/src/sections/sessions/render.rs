@@ -65,6 +65,22 @@ impl SessionsSection {
             self.last_animation_step = Instant::now();
         }
     }
+
+    #[expect(
+        clippy::expect_used,
+        reason = "idx modulo symbol count is always in bounds"
+    )]
+    fn current_throbber_symbol(&self) -> &'static str {
+        let symbols = &throbber_widgets_tui::ASCII.symbols;
+        let len = symbols.len() as i8;
+        let mut index = self.throbber_state.index() % len;
+        if index < 0 {
+            index += len;
+        }
+        symbols
+            .get(index as usize)
+            .expect("index modulo throbber symbol count")
+    }
 }
 
 impl SidebarSection for SessionsSection {
@@ -75,6 +91,7 @@ impl SidebarSection for SessionsSection {
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         let state = ctx.state;
         let sessions = sorted_open_sessions(state);
+        let is_startup_hydrating = state.session.is_startup_hydrating();
         let theme = &state.frontend.theme;
         let sidebar_focused = state.frontend.is_sidebar();
         let section_focused = sidebar_focused
@@ -113,9 +130,6 @@ impl SidebarSection for SessionsSection {
                 ));
             }
 
-            // Advance animation only when enough time has elapsed.
-            self.maybe_advance_animation();
-
             // Scroll indicators.
             let lines_above = scroll_offset;
             let lines_below = sessions
@@ -142,15 +156,22 @@ impl SidebarSection for SessionsSection {
             }
         }
 
+        if !sessions.is_empty() || is_startup_hydrating {
+            self.maybe_advance_animation();
+        }
+
         // Footer: ╰─── Sessions ───╯ (with highlighted S)
+        let is_startup_hydrating = state.session.is_startup_hydrating();
         let label = " Sessions ";
         let width = area.width as usize;
-        let label_len = label.len();
+        // The spinner claims one glyph plus its separating space.
+        let label_len = label.len() + 2 * usize::from(is_startup_hydrating);
         let dash_budget = width.saturating_sub(2).saturating_sub(label_len);
         let left_dashes = dash_budget / 2;
         let right_dashes = dash_budget - left_dashes;
         let before_s = format!("\u{2570}{}\u{0020}", "\u{2500}".repeat(left_dashes));
-        let after_s = format!("essions {}\u{256F}", "\u{2500}".repeat(right_dashes));
+        let after_s = "essions ";
+        let right_dashes = format!("{}\u{256F}", "\u{2500}".repeat(right_dashes));
 
         let footer_color = if section_focused {
             theme.focus_accent
@@ -158,11 +179,19 @@ impl SidebarSection for SessionsSection {
             theme.border_unfocused
         };
 
-        lines.push(Line::from(vec![
-            Span::styled(before_s, Style::default().fg(footer_color)),
+        let mut footer = vec![Span::styled(before_s, Style::default().fg(footer_color))];
+        if is_startup_hydrating {
+            footer.push(Span::styled(
+                format!("{} ", self.current_throbber_symbol()),
+                Style::default().fg(theme.streaming),
+            ));
+        }
+        footer.extend([
             Span::styled("S".to_owned(), Style::default().fg(theme.accent_action)),
             Span::styled(after_s, Style::default().fg(footer_color)),
-        ]));
+            Span::styled(right_dashes, Style::default().fg(footer_color)),
+        ]);
+        lines.push(Line::from(footer));
 
         let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
         frame.render_widget(widget, area);
