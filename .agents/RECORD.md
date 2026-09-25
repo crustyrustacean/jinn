@@ -226,3 +226,4 @@ Entries are added or amended **only with human approval**.
 - (session) SQLite session persistence commits metadata, history, attachments, and token-ledger changes in one transaction.
 - (ui) The chat log's initial layout pass runs off the main thread, and the session loading indication stays up until it completes.
 - (ui) The session loading indication is an animated spinner rather than static text.
+- (ui) Activating a sidebar session measures its chat log off the main thread when it has no cached line counts, and otherwise switches immediately.

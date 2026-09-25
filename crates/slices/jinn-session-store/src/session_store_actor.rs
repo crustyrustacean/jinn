@@ -120,7 +120,7 @@ impl MsgHandler<SessionLoadRequested> for SessionStoreActor {
 
 impl MsgHandler<ChatLogMeasureRequested> for SessionStoreActor {
     async fn handle(&mut self, msg: &ChatLogMeasureRequested, ctx: &mut MsgCtx<'_>) {
-        self.on_measure_requested(ctx, msg).await;
+        self.on_measure_requested(ctx, msg);
     }
 }
 

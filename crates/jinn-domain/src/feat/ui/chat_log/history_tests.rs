@@ -2527,7 +2527,7 @@ fn a_loading_indication_is_centered_horizontally() {
     );
     // And it stays clear of the right edge rather than being clipped.
     assert!(
-        row[start..].contains("Loading session..."),
+        row.contains("Loading session..."),
         "the whole label must fit, got {row:?}"
     );
 }
@@ -2707,7 +2707,10 @@ fn a_session_measured_at_one_width_is_not_covered_at_another() {
     let covered = coverage_at(&state, content_width_for(62) + 1);
 
     // Then it is not covered, because those counts are wrong at this width.
-    assert!(!covered, "counts measured at one width cannot serve another");
+    assert!(
+        !covered,
+        "counts measured at one width cannot serve another"
+    );
 }
 
 #[rstest::rstest]
@@ -2751,13 +2754,17 @@ fn coverage_agrees_with_what_the_render_pass_does() {
     state
         .active_session_mut()
         .push_entry(ChatEntry::tool_call("id-1", "grep", "{}"));
-    state.active_session_mut().push_entry(ChatEntry::tool_result(
-        "id-1",
-        "grep",
-        "found it",
-        ToolResultStatus::Success,
-    ));
-    state.active_session_mut().push_entry(ChatEntry::user("thanks"));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_result(
+            "id-1",
+            "grep",
+            "found it",
+            ToolResultStatus::Success,
+        ));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::user("thanks"));
 
     // When a frame measures it and coverage is then checked.
     measure_by_rendering(&state, 62, 20);

@@ -345,11 +345,7 @@ struct CoverageProbe<'a> {
 
 impl<'a> CoverageProbe<'a> {
     /// Resolves the same inputs [`HistoryRender::compute_line_ranges`] resolves.
-    fn new(
-        state: &'a AppState,
-        session: &'a ChatSessionState,
-        content_width: u16,
-    ) -> Self {
+    fn new(state: &'a AppState, session: &'a ChatSessionState, content_width: u16) -> Self {
         let preferences = &state.frontend.preferences;
         Self {
             history: session.history(),
@@ -403,11 +399,7 @@ impl<'a> CoverageProbe<'a> {
         render_variant(
             paired_status_for(entry, &self.tool_result_statuses),
             is_streaming_tool_call(entry, &self.streaming_tool_call_ids),
-            is_task_waiting(
-                entry,
-                &self.tool_result_statuses,
-                &self.running_children,
-            ),
+            is_task_waiting(entry, &self.tool_result_statuses, &self.running_children),
         )
     }
 }
@@ -428,9 +420,7 @@ fn running_session_ids(state: &AppState) -> HashSet<SessionId> {
     state
         .session
         .iter()
-        .filter(|(_, child)| {
-            matches!(child.phase(), PhaseKind::Sending | PhaseKind::Streaming)
-        })
+        .filter(|(_, child)| matches!(child.phase(), PhaseKind::Sending | PhaseKind::Streaming))
         .map(|(id, _)| id.clone())
         .collect()
 }
@@ -737,11 +727,7 @@ impl<'a> HistoryRender<'a> {
     ///
     /// Drives the "Waiting for subagent session to complete" render line.
     fn is_task_waiting(&self, entry: &ChatEntry) -> bool {
-        is_task_waiting(
-            entry,
-            &self.tool_result_statuses,
-            &self.running_children,
-        )
+        is_task_waiting(entry, &self.tool_result_statuses, &self.running_children)
     }
 
     // -----------------------------------------------------------------------

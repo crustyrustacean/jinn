@@ -86,7 +86,7 @@ impl SessionStoreActor {
         // Dispatched only now that the session is active, so the completion
         // actor's active-session check sees it and the workers measure the
         // session that is actually on screen.
-        self.dispatch_layout(ctx, &session_id, layout_inputs);
+        Self::dispatch_layout(ctx, &session_id, layout_inputs);
 
         let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
         if !cwd_exists {
@@ -107,7 +107,7 @@ impl SessionStoreActor {
     /// only the measurement — not the disk read a [`SessionLoadRequested`]
     /// would perform. The layout hand-off is otherwise identical to a freshly
     /// loaded session's, so it goes through the same dispatch.
-    pub(crate) async fn on_measure_requested(
+    pub(crate) fn on_measure_requested(
         &self,
         ctx: &mut MsgCtx<'_>,
         payload: &ChatLogMeasureRequested,
@@ -131,7 +131,7 @@ impl SessionStoreActor {
         self.state.with_session(|view| {
             view.session.map().set_active(session_id.clone());
         });
-        self.dispatch_layout(ctx, &session_id, layout_inputs);
+        Self::dispatch_layout(ctx, &session_id, layout_inputs);
     }
 
     /// Hands a session's chat log to the layout workers and arms its deadline.
@@ -140,7 +140,6 @@ impl SessionStoreActor {
     /// a spinner: when it expires the supervisor clears the load guard and the
     /// next frame measures inline instead.
     fn dispatch_layout(
-        &self,
         ctx: &mut MsgCtx<'_>,
         session_id: &SessionId,
         layout_inputs: LayoutChatSession,

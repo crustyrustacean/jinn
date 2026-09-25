@@ -10,9 +10,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use error_stack::Report;
 use jinn_boot_msg::EnvironmentLoaded;
+use jinn_chat_log_view_msg::LayoutChatSession;
 use jinn_core_types::SessionId;
 use jinn_domain::common::app_state::AppState;
-use jinn_chat_log_view_msg::LayoutChatSession;
 use jinn_domain::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
 use jinn_domain::common::state::State;
 use jinn_domain::feat::session::{SessionStore, SessionStoreError, SessionStoreService};
@@ -953,7 +953,10 @@ async fn a_layout_job_from_a_measurement_makes_the_session_active() {
 
     // Then the completion actor will find it on screen.
     let state = fixture.state.read();
-    assert_ne!(before, target_id, "the fixture must start on another session");
+    assert_ne!(
+        before, target_id,
+        "the fixture must start on another session"
+    );
     assert_eq!(state.session.active_session_id(), &target_id);
 }
 
@@ -1007,12 +1010,7 @@ async fn measuring_an_in_memory_session_never_reads_it_from_the_store() {
 
     // Then the store was never asked for it — the whole point of measuring an
     // in-memory session rather than routing through a load.
-    let stored = fixture
-        .store
-        .load_session(&target_id)
-        .await
-        .ok()
-        .flatten();
+    let stored = fixture.store.load_session(&target_id).await.ok().flatten();
     assert!(
         stored.is_none(),
         "the session was never persisted, so no disk read could have served it"

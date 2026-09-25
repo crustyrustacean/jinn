@@ -90,7 +90,9 @@ fn activate_selected(state: &mut AppState, enter_input: bool) -> IntentResult {
     }
 
     if needs_measurement {
-        IntentResult::new_message(ChatLogMeasureRequested { session_id: target_id })
+        IntentResult::new_message(ChatLogMeasureRequested {
+            session_id: target_id,
+        })
     } else {
         IntentResult::empty()
     }
