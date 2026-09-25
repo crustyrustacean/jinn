@@ -185,10 +185,6 @@ subagent; on expiry the subagent is cancelled and a failure is returned.
                     "type": "string",
                     "description": "Optional model id for the subagent. Defaults to this session's model."
                 },
-                "max_duration_secs": {
-                    "type": "number",
-                    "description": "Maximum duration in seconds to wait for the subagent. Unlimited by default; 0 also means unlimited. On expiry the subagent session is cancelled and a failure is returned."
-                }
             },
             "required": ["prompt"]
         }),
