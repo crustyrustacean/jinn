@@ -583,7 +583,8 @@ impl ToolOrchestratorActor {
         let timeout = std::time::Duration::from_secs(prefs.tool_default_timeout_secs);
         let command_policy = {
             use jinn_tools_msg::CompiledCommandPolicy;
-            let rules = crate::command_policy::resolve_project_rules(
+            let rules = crate::command_policy::resolve_rules(
+                &prefs.global_command_policy,
                 &prefs.projects,
                 &cwd,
                 self.services.paths.home_dir(),
