@@ -19,6 +19,9 @@ use crate::common::app_state::AppState;
 use crate::common::state::State;
 use crate::feat::ui::chat_log::layout_complete::LayoutCompletionActorDeps;
 use crate::feat::ui::chat_log::layout_complete::{LayoutApplied, LayoutCompletionActor};
+use crate::feat::ui::chat_log::layout_supervisor::{
+    LayoutSupervisorActor, LayoutSupervisorActorDeps,
+};
 use crate::feat::ui::chat_log::layout_worker::measure;
 
 /// State with `count` user entries in its active session, measured at
@@ -289,4 +292,57 @@ fn computed(
             })
             .collect(),
     }
+}
+
+/// State with a session that is mid-load, and a supervisor watching it.
+fn loading_state_with_supervisor() -> (State, SessionId, LayoutSupervisorActor) {
+    let (state, session_id) = state_with_entries(2, 60);
+    {
+        let mut guard = state.write();
+        guard.session.begin_load(session_id.clone());
+    }
+    let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
+    let supervisor = LayoutSupervisorActor::spawnless(LayoutSupervisorActorDeps {
+        state: state.clone(),
+        system,
+    });
+    (state, session_id, supervisor)
+}
+
+#[rstest::rstest]
+fn an_expired_layout_deadline_ends_the_loading_indicator() {
+    // Given a session that is still loading.
+    let (state, session_id, supervisor) = loading_state_with_supervisor();
+    assert!(state.read().session.is_loading());
+
+    // When the layout deadline expires.
+    supervisor.release_guard(&session_id, "layout deadline expired");
+
+    // Then the loading indicator is released.
+    assert!(
+        !state.read().session.is_loading(),
+        "an abandoned measurement must not strand the user behind a spinner"
+    );
+}
+
+#[rstest::rstest]
+fn an_expired_layout_deadline_writes_nothing_into_the_conversation() {
+    // Given a session that is still loading.
+    let (state, session_id, supervisor) = loading_state_with_supervisor();
+
+    // When the layout deadline expires.
+    supervisor.release_guard(&session_id, "layout deadline expired");
+
+    // Then no entry was added — a measurement that could not be taken off
+    // the main thread is not a conversation event.
+    assert_eq!(
+        state
+            .read()
+            .session
+            .get(&session_id)
+            .expect("active session")
+            .history()
+            .len(),
+        2
+    );
 }

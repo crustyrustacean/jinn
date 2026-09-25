@@ -24,6 +24,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
@@ -43,6 +44,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse};
 
 use jinn_chat_log_view::chat_log::EntryLineCache;
 use jinn_chat_log_view::chat_log::{
@@ -53,6 +55,10 @@ use jinn_chat_log_view::chat_log::{
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
+
+/// Minimum time between loading-indicator animation frames.
+const LOADING_ANIMATION_INTERVAL: Duration = Duration::from_millis(80);
+
 // alternatives: |❚┃╏⣿𜺏░▒▓
 const GUTTER_STR: &str = "𜺏 ";
 
@@ -158,14 +164,39 @@ impl LayoutInputs {
 }
 
 /// Display element for the full conversation history.
-#[derive(Debug, Default)]
-pub struct ChatLogElement;
+#[derive(Debug)]
+pub struct ChatLogElement {
+    /// Visual-only state for the loading throbber's animation step.
+    throbber_state: ThrobberState,
+    /// Timestamp of the last animation frame advance.
+    last_animation_step: Instant,
+}
 
 impl ChatLogElement {
     /// Create a new chat log element.
     #[must_use]
     pub fn new() -> Self {
-        Self
+        Self {
+            throbber_state: ThrobberState::default(),
+            last_animation_step: Instant::now(),
+        }
+    }
+
+    /// Advances the loading animation if enough time has elapsed.
+    ///
+    /// A session load on a large session is long enough that a static label
+    /// reads as a hang, so the indication has to visibly move.
+    fn maybe_advance_animation(&mut self) {
+        if self.last_animation_step.elapsed() >= LOADING_ANIMATION_INTERVAL {
+            self.throbber_state.calc_next();
+            self.last_animation_step = Instant::now();
+        }
+    }
+}
+
+impl Default for ChatLogElement {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -181,7 +212,10 @@ impl UiElement for ChatLogElement {
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         let state = ctx.state;
         if state.session.is_loading() {
-            render_loading(frame, area, &state.frontend.theme);
+            render_loading_animated(frame, area, &state.frontend.theme, &mut self.throbber_state);
+            // Advanced after drawing, so the painted glyph is the one this
+            // frame's state describes.
+            self.maybe_advance_animation();
             return;
         }
 
@@ -218,13 +252,25 @@ impl UiElement for ChatLogElement {
 // Loading indicator
 // ---------------------------------------------------------------------------
 
-/// Render a centered "Loading session..." message while a session loads.
-fn render_loading(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-    let loading = Paragraph::new("Loading session...")
-        .alignment(ratatui::layout::Alignment::Center)
+/// Draws the animated loading indication for a session that is being read from
+/// disk and measured.
+///
+/// The label is centred, the spinner rides along beside it, and the animation
+/// advances only after the frame is drawn so the drawn glyph is always the one
+/// the state describes.
+fn render_loading_animated(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    theme: &Theme,
+    throbber_state: &mut ThrobberState,
+) {
+    let throbber = Throbber::default()
+        .label(" Loading session...")
         .style(Style::default().fg(theme.muted_text))
-        .block(Block::default().borders(Borders::NONE));
-    frame.render_widget(loading, area);
+        .throbber_style(Style::default().fg(theme.streaming))
+        .throbber_set(throbber_widgets_tui::ASCII)
+        .use_type(WhichUse::Spin);
+    frame.render_stateful_widget(throbber, area, throbber_state);
 }
 
 // ---------------------------------------------------------------------------

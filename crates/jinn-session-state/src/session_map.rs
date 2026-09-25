@@ -13,19 +13,24 @@ use jinn_session_store_msg::FrozenTreeNode;
 
 use crate::chat_session::ChatSessionState;
 
-/// Session lifecycle state - owned by the session-actor.
-///
-/// Tracks an in-progress session load from disk.
+/// Tracks an in-progress session load.
 ///
 /// Only one session can be loaded at a time. The guard is set by the
-/// IntentHandler when the user confirms a session load, and cleared by
-/// the session-actor on completion (or the TUI tick on timeout).
+/// IntentHandler when the user confirms a session load, and spans both halves
+/// of a load: reading the session from disk *and* measuring its chat log. The
+/// chat log's loading indication is driven by this guard, so clearing it the
+/// moment the session is in memory would make the next frame lay out the whole
+/// history, which is the freeze the hand-off to the layout workers avoids.
+///
+/// It is cleared in three places, one per way a load can end:
+/// - the layout completion actor, once the line counts are measured;
+/// - the session store actor, on a load that failed (no measurement is
+///   dispatched, so there is nothing left to wait for);
+/// - the layout supervisor, on an expired deadline or a worker that died.
 #[derive(Debug)]
 pub struct SessionLoadGuard {
     /// Which session is being loaded.
     pub session_id: SessionId,
-    /// When the load started - used for timeout detection.
-    pub started_at: std::time::Instant,
 }
 
 /// A non-empty map of sessions. The active session is always present.
@@ -394,12 +399,9 @@ impl SessionMap {
         self.session_load_guard.is_some()
     }
 
-    /// Begin loading a session. Sets the guard with the current timestamp.
+    /// Begin loading a session. Sets the guard.
     pub fn begin_load(&mut self, session_id: SessionId) {
-        self.session_load_guard = Some(SessionLoadGuard {
-            session_id,
-            started_at: std::time::Instant::now(),
-        });
+        self.session_load_guard = Some(SessionLoadGuard { session_id });
     }
 
     /// Clear the loading guard (called on completion or timeout).

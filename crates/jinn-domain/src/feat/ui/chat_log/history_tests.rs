@@ -2382,3 +2382,107 @@ fn unchanged_frame_rewrites_no_line_ranges() {
         "an unchanged frame must reuse the stored line ranges"
     );
 }
+
+#[rstest::rstest]
+fn a_loading_session_shows_the_loading_indication() {
+    // Given a chat log whose session is still loading.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.active_session_mut().push_entry(ChatEntry::user("hello"));
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the conversation's own text is not drawn — the indication replaces it.
+    let drawn = row_text(terminal.backend().buffer(), area);
+    assert!(
+        !drawn.contains("hello"),
+        "a loading session must not show its history"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_indication_animates_over_time() {
+    // Given a chat log whose session is still loading.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When frames are drawn over time.
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        seen.push(draw_loading_frame(
+            &mut element,
+            &state,
+            &mut terminal,
+            area,
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(120));
+    }
+
+    // Then the drawn glyphs are not all the same.
+    //
+    // The assertion is over the whole window rather than a single pair of
+    // frames: the animation advances after each frame is painted, so the first
+    // two frames legitimately paint the same glyph. What matters is that the
+    // indication keeps moving instead of sitting still for the whole load.
+    let first = &seen[0];
+    assert!(
+        seen.iter().any(|frame| frame != first),
+        "a long load must animate, not sit on one static glyph, saw {seen:?}"
+    );
+    // And the label itself is always there, so the movement is around a
+    // meaningful message rather than an empty widget.
+    assert!(
+        seen.iter().all(|frame| frame.contains("Loading session")),
+        "every loading frame must say what it is doing, saw {seen:?}"
+    );
+}
+
+/// Draws one frame of a loading chat log and returns the text it painted.
+fn draw_loading_frame(
+    element: &mut ChatLogElement,
+    state: &AppState,
+    terminal: &mut ratatui::Terminal<ratatui::backend::TestBackend>,
+    area: ratatui::layout::Rect,
+) -> String {
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    row_text(terminal.backend().buffer(), area)
+}
+
+/// The text of the buffer's rows, joined.
+fn row_text(buffer: &ratatui::buffer::Buffer, area: ratatui::layout::Rect) -> String {
+    (area.y..area.y + area.height)
+        .map(|row| {
+            (area.x..area.x + area.width)
+                .map(|col| buffer.cell((col, row)).map_or("", |c| c.symbol()))
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}

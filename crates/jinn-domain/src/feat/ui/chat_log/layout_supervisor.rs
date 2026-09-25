@@ -119,12 +119,35 @@ impl LayoutSupervisorActor {
         path
     }
 
+    /// Builds the supervisor directly, without an actor system.
+    ///
+    /// Releasing the guard is pure state work, so the deadline and escalation
+    /// paths can be exercised without a fabric or a wall-clock wait.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn spawnless(deps: LayoutSupervisorActorDeps) -> Self {
+        Self {
+            state: deps.state,
+            system: deps.system,
+        }
+    }
+
     /// Releases the load guard, leaving a warning behind.
     ///
     /// The chat log falls back to measuring inline, so nothing is written
     /// into the conversation: a measurement that could not be taken off-thread
     /// is not a conversation event.
-    fn release_guard(&self, session_id: &jinn_core_types::SessionId, reason: &str) {
+    #[cfg(test)]
+    pub(crate) fn release_guard(&self, session_id: &jinn_core_types::SessionId, reason: &str) {
+        self.do_release_guard(session_id, reason);
+    }
+
+    /// Releases the load guard, leaving a warning behind.
+    ///
+    /// The chat log falls back to measuring inline, so nothing is written
+    /// into the conversation: a measurement that could not be taken off-thread
+    /// is not a conversation event.
+    fn do_release_guard(&self, session_id: &jinn_core_types::SessionId, reason: &str) {
         tracing::warn!(
             session_id = %session_id,
             reason,
@@ -185,7 +208,7 @@ impl MsgHandler<ArmLayoutDeadline> for LayoutSupervisorActor {
 
 impl MsgHandler<LayoutDeadlineExpired> for LayoutSupervisorActor {
     async fn handle(&mut self, msg: &LayoutDeadlineExpired, _ctx: &mut MsgCtx<'_>) {
-        self.release_guard(&msg.session_id, "layout deadline expired");
+        self.do_release_guard(&msg.session_id, "layout deadline expired");
     }
 }
 
@@ -208,6 +231,6 @@ impl MsgHandler<Escalated> for LayoutSupervisorActor {
             );
             return;
         };
-        self.release_guard(&session_id, "layout worker retired");
+        self.do_release_guard(&session_id, "layout worker retired");
     }
 }
