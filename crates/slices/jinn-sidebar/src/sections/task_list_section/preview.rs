@@ -18,8 +18,6 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use crate::sections::persona_section::persona_section_content_height;
-use crate::sections::pins::pins_section_content_height;
 use crate::sections::task_list_section::clamp_scroll;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
@@ -130,12 +128,14 @@ fn previewed_phase(state: &AppState) -> Option<&Phase> {
 ///
 /// The popup is anchored to the area left of the sidebar:
 /// - **Right edge** touches the sidebar's left edge (`popup.x + width == sidebar.x`).
-/// - **Top edge** aligns with the top of the task list section (persona + pins
-///   heights below the frame/sidebar top).
+/// - **Top edge** aligns with the selected phase's row in the sidebar, so the
+///   popup always describes the row the cursor is on. When the popup would not
+///   fit below that row, the whole box shifts upward by the shortfall instead
+///   of overflowing the frame.
 /// - **Width** is 60% of the frame, floored at 30, capped to the space left of
 ///   the sidebar.
 /// - **Height** is the natural content height (borders + content lines), capped
-///   to the space from the top down to the status bar.
+///   to the space from the frame top down to the status bar.
 ///
 /// Returns `None` when there is no room to draw (width or available height below
 /// the floor).
@@ -150,18 +150,42 @@ pub(crate) fn task_list_preview_popup_rect(
         return None;
     }
 
-    // Top edge: frame top + persona height + pins height.
-    let above = persona_section_content_height(state) + pins_section_content_height(state);
-    let popup_y = frame_area.y.saturating_add(above);
+    // The status bar owns the last two rows; the popup may not enter them.
+    let bottom_bound = frame_area
+        .y
+        .saturating_add(frame_area.height.saturating_sub(2));
 
-    // Natural content height + borders (2).
+    // Top edge: the selected phase's own row, resolved through the same
+    // document layout the sidebar renders with so the two stay aligned.
+    let phase_row = crate::sections::layout::frame_row_of(
+        sidebar_rect,
+        state,
+        jinn_sidebar_msg::SidebarSectionId::TaskList,
+        crate::sections::layout::cursor_row_in_section(
+            state,
+            jinn_sidebar_msg::SidebarSectionId::TaskList,
+        )
+        .unwrap_or(0),
+    );
+
+    // Hang below the phase row when the popup fits there, so the box always
+    // describes the row the cursor is on. Otherwise slide it up to end at the
+    // status bar — never below the frame, never into the status bar.
+    let room_below = bottom_bound.saturating_sub(phase_row);
+    // Natural content height + borders (2), with a floor so the popup always
+    // has room for its borders and at least one content row.
     let desired_height = content_line_count.saturating_add(2) as u16;
-    // Cap to the space from the top down to the status bar (2 rows).
-    let available_height = frame_area.height.saturating_sub(above).saturating_sub(2);
-    if available_height < MIN_POPUP_HEIGHT {
-        return None;
-    }
-    let popup_height = desired_height.min(available_height).max(MIN_POPUP_HEIGHT);
+    let (popup_y, popup_height) = if room_below >= MIN_POPUP_HEIGHT {
+        let height = desired_height.min(room_below).max(MIN_POPUP_HEIGHT);
+        (phase_row, height)
+    } else {
+        let max_height = bottom_bound.saturating_sub(frame_area.y);
+        if max_height < MIN_POPUP_HEIGHT {
+            return None;
+        }
+        let height = desired_height.min(max_height).max(MIN_POPUP_HEIGHT);
+        (bottom_bound.saturating_sub(height), height)
+    };
 
     // Right edge touches the sidebar's left edge.
     let popup_x = sidebar_rect.x.saturating_sub(popup_width);
@@ -362,18 +386,82 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn rect_top_aligns_with_persona_plus_pins() {
-        // Given a focused task list (persona=4, pins=0 by default).
+    fn rect_slides_up_so_a_tall_popup_stays_above_the_status_bar() {
+        // Given a popup taller than the space below the phase row.
         let app = setup_two_phases_focused_on(0);
-        let expected_top = frame_area().y
-            + persona_section_content_height(&app)
-            + pins_section_content_height(&app);
+        let frame = Rect::new(0, 0, 120, 40);
+        let sidebar = Rect::new(90, 0, 30, 40);
 
-        // When computing the popup rect.
-        let rect = task_list_preview_popup_rect(&app, frame_area(), sidebar_rect(), 5).unwrap();
+        // When resolving the rect for a 60-line popup.
+        let rect = task_list_preview_popup_rect(&app, frame, sidebar, 60).unwrap();
 
-        // Then the popup top equals the task list section top.
-        assert_eq!(rect.y, expected_top);
+        // Then it is capped to the frame and ends above the status bar.
+        let bottom_bound = frame.y + frame.height - 2;
+        assert_eq!(rect.height, bottom_bound - frame.y);
+        assert_eq!(rect.y + rect.height, bottom_bound);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn rect_is_anchored_to_the_phase_row_and_stays_inside_the_frame() {
+        // Given a focused task list in a normal frame.
+        let app = setup_two_phases_focused_on(0);
+        let frame = Rect::new(0, 0, 120, 40);
+        let sidebar = Rect::new(90, 0, 30, 40);
+
+        // When resolving the popup rect.
+        let rect = task_list_preview_popup_rect(&app, frame, sidebar, 2).unwrap();
+
+        // Then the popup never overlaps the phase row and never leaves the
+        // space above the status bar.
+        let phase_row = crate::sections::layout::frame_row_of(
+            sidebar,
+            &app,
+            jinn_sidebar_msg::SidebarSectionId::TaskList,
+            crate::sections::layout::cursor_row_in_section(
+                &app,
+                jinn_sidebar_msg::SidebarSectionId::TaskList,
+            )
+            .unwrap_or(0),
+        );
+        // And it starts at the phase row when there is room, otherwise it
+        // slides up so its bottom still lands exactly on the status bar.
+        let bottom_bound = frame.y + frame.height - 2;
+        let expected_y = if bottom_bound.saturating_sub(phase_row) >= MIN_POPUP_HEIGHT {
+            phase_row
+        } else {
+            bottom_bound - rect.height
+        };
+        assert_eq!(
+            rect.y, expected_y,
+            "popup should hang from the phase row at {phase_row}, or slide up to the status bar"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn rect_shifts_up_when_the_phase_row_is_low() {
+        // Given a focused task list with a deep cursor in a short frame, where
+        // a top-anchored popup would not fit below the phase row.
+        let mut app = setup_two_phases_focused_on(0);
+        app.frontend
+            .update_sections(|s| s.task_list.selected_phase_index = Some(1));
+        let frame = Rect::new(0, 0, 120, 12);
+        let sidebar = Rect::new(90, 0, 30, 12);
+
+        // When computing the popup rect for a popup that would overflow.
+        let rect = task_list_preview_popup_rect(&app, frame, sidebar, 40).unwrap();
+
+        // Then the popup is pushed up so it ends above the status bar.
+        let bottom_bound = frame.y + frame.height - 2;
+        assert!(
+            rect.y + rect.height <= bottom_bound,
+            "popup must not overflow the status bar: y={} h={} bound={bottom_bound}",
+            rect.y,
+            rect.height
+        );
+        // And it never rises above the frame.
+        assert!(rect.y >= frame.y, "popup must stay inside the frame");
     }
 
     #[rstest::rstest]

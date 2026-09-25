@@ -1071,3 +1071,186 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
         "chat log cursor should match the retained pin after jump back"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Scroll behaviour
+// ---------------------------------------------------------------------------
+
+/// Renders the sidebar into a `width` x `height` area and returns the buffer
+/// as text rows.
+fn render_sidebar_rows(
+    sidebar: &mut Sidebar,
+    state: &AppState,
+    width: u16,
+    height: u16,
+) -> Vec<String> {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..height)
+        .map(|y| {
+            (0..width)
+                .map(|x| {
+                    buffer
+                        .cell((x, y))
+                        .map_or(" ", ratatui::buffer::Cell::symbol)
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The row index of the reversed (selected) entry line, if the sidebar drew one.
+fn selected_row(terminal: &Terminal<TestBackend>, width: u16, height: u16) -> Option<u16> {
+    let buffer = terminal.backend().buffer();
+    (0..height).find(|&y| {
+        (0..width).any(|x| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.modifier.contains(ratatui::style::Modifier::REVERSED))
+        })
+    })
+}
+
+/// Renders and returns the terminal so both text rows and cell styles can be
+/// inspected.
+fn render_sidebar_terminal(
+    sidebar: &mut Sidebar,
+    state: &AppState,
+    width: u16,
+    height: u16,
+) -> Terminal<TestBackend> {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+    terminal
+}
+
+/// A state focused on the pins section with `count` pins and the cursor on the
+/// pin at `selected`.
+fn state_focused_on_pin(count: usize, selected: usize) -> AppState {
+    let state = state_with_pinned(count);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Pins.focus_scope());
+    let sorted_ids = state.sorted_pinned_ids();
+    let id = sorted_ids[selected].clone();
+    state.frontend.update_sections(|s| {
+        s.pins.select_by_id(id);
+    });
+    state
+}
+
+#[rstest::rstest]
+fn highlighted_row_stays_visible_with_40_pins_in_20_row_column() {
+    // Given 40 pins in a 20-row column, with the cursor on the last pin.
+    let mut sidebar = sidebar_with_all_sections();
+    let state = state_focused_on_pin(40, 39);
+
+    // When rendering.
+    let width = 30u16;
+    let height = 20u16;
+    let terminal = render_sidebar_terminal(&mut sidebar, &state, width, height);
+
+    // Then the highlighted row was drawn inside the column.
+    let row = selected_row(&terminal, width, height);
+    assert!(
+        row.is_some_and(|row| row < height),
+        "the selected pin must be drawn within the 20-row column, got {row:?}"
+    );
+}
+
+#[rstest::rstest]
+fn highlighted_row_stays_visible_with_30_phase_task_list() {
+    // Given 30 single-line phases in a 20-row column, cursor on the last phase.
+    let mut sidebar = sidebar_with_all_sections();
+    let mut state = AppState::default_with_scope_focus();
+    let inputs: Vec<jinn_tools_msg::PhaseInput> = (0..30)
+        .map(|i| jinn_tools_msg::PhaseInput {
+            description: format!("Phase {i}"),
+            tasks: vec![("task".to_owned(), jinn_tools_msg::TaskStatus::Pending)],
+        })
+        .collect();
+    state
+        .active_session_mut()
+        .task_list_mut()
+        .set_from_inputs(&inputs);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::TaskList.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.task_list.selected_phase_index = Some(29));
+
+    // When rendering.
+    let width = 60u16;
+    let height = 20u16;
+    let terminal = render_sidebar_terminal(&mut sidebar, &state, width, height);
+
+    // Then the highlighted phase row was drawn inside the column.
+    let row = selected_row(&terminal, width, height);
+    assert!(
+        row.is_some_and(|row| row < height),
+        "the selected phase must be drawn within the 20-row column, got {row:?}"
+    );
+}
+
+#[rstest::rstest]
+fn cursor_row_is_middle_of_viewport_when_the_document_has_slack() {
+    // Given 40 pins in a 40-row column with the cursor on pin 20.
+    let mut sidebar = sidebar_with_all_sections();
+    let state = state_focused_on_pin(40, 20);
+
+    // When rendering.
+    let width = 30u16;
+    let height = 40u16;
+    let terminal = render_sidebar_terminal(&mut sidebar, &state, width, height);
+
+    // Then the cursor lands on the middle row of the column.
+    let row = selected_row(&terminal, width, height).expect("a row is highlighted");
+    assert!(
+        (row as i32 - height as i32 / 2).abs() <= 1,
+        "cursor should sit near the vertical middle ({height}/2), got row {row}"
+    );
+}
+
+#[rstest::rstest]
+fn the_selected_pin_is_the_one_drawn() {
+    // Given 40 pins with the cursor on pin 30, in a column tall enough to show
+    // the whole document.
+    let selected = 30;
+    let mut sidebar = sidebar_with_all_sections();
+    let state = state_focused_on_pin(40, selected);
+
+    // When rendering into a column that fits the whole document.
+    let width = 30u16;
+    let height = 60u16;
+    let rows = render_sidebar_rows(&mut sidebar, &state, width, height);
+
+    // Then the pin under the cursor is the highlighted one.
+    // Then the pin under the cursor is the highlighted one.
+    let expected = format!("entry {selected}");
+    let highlighted: Vec<usize> = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.contains(&expected))
+        .map(|(i, _)| i)
+        .collect();
+    assert!(
+        highlighted.len() == 1,
+        "the selected pin should be drawn exactly once, got rows {highlighted:?}"
+    );
+}

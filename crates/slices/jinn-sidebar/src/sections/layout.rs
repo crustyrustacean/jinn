@@ -402,6 +402,29 @@ pub fn visible_rect(
     Some((rect, skip_rows))
 }
 
+/// Resolves a (section, row) pair to an absolute row in the frame.
+///
+/// Applies the same scroll offset and bottom slack the `Sidebar` container
+/// renders with, so overlays anchored to a row stay attached to it while the
+/// column scrolls. The result is clamped inside the column.
+#[must_use]
+pub fn frame_row_of(sidebar_rect: Rect, state: &AppState, id: SidebarSectionId, row: u16) -> u16 {
+    let document = document_with_cursor(state);
+    let offset = document.offset(sidebar_rect.height);
+    let slack = document.bottom_slack(sidebar_rect.height);
+    let top = document.span_or_empty(id).top_in_view(offset);
+    sidebar_rect
+        .y
+        .saturating_add(slack)
+        .saturating_add(top)
+        .saturating_add(row)
+        .min(
+            sidebar_rect
+                .y
+                .saturating_add(sidebar_rect.height.saturating_sub(1)),
+        )
+}
+
 /// Draws the column's scroll indicators, if the document overflows the window.
 ///
 /// One pair for the whole column rather than one per section, since there is

@@ -29,6 +29,11 @@ const PREVIEW_ENTRY_COUNT: usize = 5;
 const PREVIEW_MAX_LINES: usize = 20;
 /// Default max lines for tool entries when no preference is set.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
+/// Rows between the popup and the cursor row it describes.
+///
+/// Two rows leaves a one-row gap, so the popup reads as a separate surface
+/// rather than colliding with the highlighted session row.
+const POPUP_GAP: u16 = 2;
 
 /// Renders the session preview popup when the sidebar sessions section is focused.
 ///
@@ -69,18 +74,12 @@ pub fn render_session_preview_for_state(
 
     // Anchor the popup to the cursor through the same document layout the
     // sidebar renders with, so it stays attached while the column scrolls.
-    let document = crate::sections::layout::document_with_cursor(state);
-    let offset = document.offset(sidebar_rect.height);
-    let span = document.span_or_empty(jinn_sidebar_msg::SidebarSectionId::Sessions);
-    let cursor_y = sidebar_rect
-        .y
-        .saturating_add(span.top_in_view(offset))
-        .saturating_add(u16::try_from(idx).unwrap_or(u16::MAX))
-        .min(
-            sidebar_rect
-                .y
-                .saturating_add(sidebar_rect.height.saturating_sub(1)),
-        );
+    let cursor_y = crate::sections::layout::frame_row_of(
+        sidebar_rect,
+        state,
+        jinn_sidebar_msg::SidebarSectionId::Sessions,
+        u16::try_from(idx).unwrap_or(u16::MAX),
+    );
 
     // Compute content line count for height estimation.
     let mut cache = state.frontend.caches.session_preview_cache.write();
@@ -401,13 +400,17 @@ pub fn session_preview_popup_rect(
     // Total height: content + footer (3) + top border (1) + bottom border (1).
     let desired_height = (content_line_count + 3 + 2) as u16;
     // Cap to available space above the cursor (with 1-row gap).
-    let max_height = cursor_y.saturating_sub(frame_area.y).saturating_sub(1);
+    let max_height = cursor_y
+        .saturating_sub(frame_area.y)
+        .saturating_sub(POPUP_GAP);
     let popup_height = desired_height.min(max_height).max(5);
 
     // Right-align: right edge = frame right edge.
     let popup_x = frame_area.x + frame_area.width.saturating_sub(popup_width);
     // Bottom edge sits 1 row above the cursor.
-    let popup_y = cursor_y.saturating_sub(popup_height).saturating_sub(1);
+    let popup_y = cursor_y
+        .saturating_sub(popup_height)
+        .saturating_sub(POPUP_GAP);
 
     Rect::new(popup_x, popup_y, popup_width, popup_height)
 }
