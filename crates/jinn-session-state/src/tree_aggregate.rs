@@ -10,11 +10,10 @@
 use std::collections::{HashMap, HashSet};
 
 use jinn_core_types::SessionId;
-use jinn_session_state::ChatSessionState;
-use jinn_session_state::compute_turn_count;
 use jinn_token_count_msg::{TokenStats, TreeAggregateStats};
 
-pub use jinn_session_state::{snapshot_frozen_node, snapshot_frozen_node_from_snapshot};
+use crate::{ChatSessionState, compute_turn_count};
+pub use crate::{snapshot_frozen_node, snapshot_frozen_node_from_snapshot};
 pub use jinn_session_store_msg::FrozenTreeNode;
 
 /// Find the root of the session tree containing `session_id`.

@@ -111,6 +111,35 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 
 
 # ---------------------------------------------------------------------------
+# Global command policy
+# ---------------------------------------------------------------------------
+# A `command_policy` that applies to every session, in every directory — even
+# outside every project listed above. Same shape as a project's
+# `command_policy`: each rule pairs a regex `pattern` (matched against the full
+# command string) with the corrective `message` returned to the agent when it
+# matches. The command never runs.
+#
+# Global rules are evaluated *before* the matching project's rules and the
+# first match wins, so a project policy can only add blocks — it cannot lift a
+# global one. Use this for mistakes that are never correct anywhere; keep
+# repo-specific habits in the project's own `command_policy`.
+#
+# Use single-quoted strings so regex metacharacters survive without escape
+# processing. A pattern the regex engine cannot compile is inert (logged, no
+# block) and the engine has no lookaround, so `(?<!...)` and `(?=...)` will
+# not work.
+#
+# The rule below guards a real footgun: ripgrep is recursive already, so `-r`
+# takes a replacement value and `rg -rn` silently rewrites every match to
+# `n` — and exits 0.
+#
+# (uncomment below to activate)
+# [[global_command_policy]]
+# pattern = 'rg -rn'
+# message = 'ripgrep is already recursive and `-r` takes a replacement value, so `rg -rn` rewrites every match to `n` and still exits 0 — use `-n` alone for line numbers.'
+
+
+# ---------------------------------------------------------------------------
 # MCP servers (Model Context Protocol)
 # ---------------------------------------------------------------------------
 # jinn acts as an MCP *client*: each entry below declares a server it can

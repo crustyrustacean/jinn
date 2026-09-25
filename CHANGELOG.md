@@ -27,6 +27,7 @@
   - Updated instructions to encourage concurrent sessions and discourage individual sessions.
   - Todo list no longer longer propagates subagent sessions.
   - `max_duration_seconds` is no longer presented to the model, but will still be accepted and applied if provided. This change was made because its not always clear how long a subagent task will take, and ending it prematurely throws away all the work.
+- Active sessions are now progressively loaded and a spinner was added to the sidebar to indicate when sessions are loading.
 
 - These plugins were move into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them. Please see the next section on plugin-related TOML configuration changes.
   - Deleted `persona-loader`

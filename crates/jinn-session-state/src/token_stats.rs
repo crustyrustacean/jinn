@@ -1,14 +1,14 @@
-//! Live-session adapter for recursive token aggregation.
+//! Recursive token aggregation for a session's descendants.
 //!
-//! Shared ledger values and pure aggregation live in `jinn-token-count-msg`.
-//! This module bridges the still-live kernel session map.
+//! Shared ledger values live in `jinn-token-count-msg`. This module aggregates
+//! them across a session map keyed by [`SessionId`].
 
 use std::collections::HashMap;
 
 use jinn_core_types::SessionId;
 use jinn_token_count_msg::{AggregatedTokenStats, TokenStats};
 
-use jinn_session_state::ChatSessionState;
+use crate::ChatSessionState;
 
 /// Aggregates token statistics for a session and all descendants.
 pub fn aggregate_session_stats<S>(

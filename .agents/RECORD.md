@@ -301,8 +301,10 @@ Entries are added or amended **only with human approval**.
 - (pickers) The reasoning-effort picker builds its seven effort entries inline at open and on confirm sets the session's reasoning override, emits MarkSessionInteracted, and seeds the global default via UpdateAppState.
 - (config) The compaction model is configured only by [compaction] model in jinn.toml; the compaction-model picker was removed.
 - (preferences) A `[[projects]]` entry in `jinn.toml` may carry a command policy of user-authored regex patterns with corrective messages, applied to tool commands whose cwd falls inside the project path.
-- (tools) The bash tool evaluates commands against the resolved project command policy before spawn; a match returns a failed tool result carrying the rule's message and the command never runs.
+- (tools) The bash tool evaluates commands against the global and resolved project command policies before spawn; a match returns a failed tool result carrying the rule's message and the command never runs.
 - (tools) Project command policy is resolved by cwd prefix match at tool-call time with the longest configured project path winning.
+- (preferences) jinn.toml carries a top-level `global_command_policy` of user-authored regex patterns with corrective messages.
+- (tools) Global command policy rules are evaluated before project command policy rules, so a global rule preempts a project rule for the same command.
 - (tools) Command policy guards only the bash tool; interactive terminals and MCP-provided tools are unguarded.
 - (slices) The status-bar slice is a crate owning the status bar element and the status-hint cell; the IntentHandler writes the hint and the element renders it.
 - (ui) The status hint renders warning-colored on the status bar's second line in place of the model string and clears on the next intent.
@@ -418,3 +420,7 @@ Entries are added or amended **only with human approval**.
 - (popups) The session rename popup currently uses a dynamic sidebar scope and stores its input state in the sidebar sections cell.
 - (keybinds) Input-capturing slice popups currently handle Escape, Enter, Ctrl-C, bracketed paste, Home, and End through slice-owned route rows or input hooks.
 - (pickers) Picker outcomes currently express picker closure and an optional destination scope transition, which picker dispatch applies in order.
+- (session) Session and tree-wide token aggregation live in the jinn-session-state crate, which owns ChatSessionState and depends on neither jinn-domain nor any activation slice.
+- (project) The project scope resolver lives in the jinn-project slice, which depends on jinn-domain.
+- (input) The slash-command vocabulary and registry live in jinn-chat-input-msg.
+- (chat-log) The chat-log geometry helpers (gutter, viewport, scroll indicator) live in the jinn-chat-log-view slice alongside the entry-to-lines adapters; the kernel retains only the ChatLogElement UiElement impl.
