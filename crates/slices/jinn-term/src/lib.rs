@@ -19,7 +19,6 @@ pub mod pty_session;
 pub mod query_responder;
 pub mod route_rows;
 pub mod screen_task;
-pub mod settle;
 
 /// Activates the term slice over the kernel's services: registers the
 /// `term/tabs` cell (idempotent), attaches the keybind rows and the

@@ -15,7 +15,11 @@ pub fn from_crossterm(event: crossterm::event::KeyEvent) -> Option<KeyEvent> {
         crossterm::event::KeyCode::Char(c) => (Key::Char(c), true),
         crossterm::event::KeyCode::Enter => (Key::Enter, false),
         crossterm::event::KeyCode::Esc => (Key::Esc, false),
-        crossterm::event::KeyCode::Tab => (Key::Tab, false),
+        // crossterm reports Shift+Tab as its own code rather than as
+        // `Tab + SHIFT`. There is no separate `Key::BackTab`: the shift
+        // lives in the modifiers, so `<s-tab>` bindings, the which-key
+        // display and the pty encoder all reuse the existing modifier path.
+        crossterm::event::KeyCode::Tab | crossterm::event::KeyCode::BackTab => (Key::Tab, false),
         crossterm::event::KeyCode::Backspace => (Key::Backspace, false),
         crossterm::event::KeyCode::Up => (Key::Up, false),
         crossterm::event::KeyCode::Down => (Key::Down, false),
@@ -32,7 +36,12 @@ pub fn from_crossterm(event: crossterm::event::KeyEvent) -> Option<KeyEvent> {
 
     let has_shift = event
         .modifiers
-        .contains(crossterm::event::KeyModifiers::SHIFT);
+        .contains(crossterm::event::KeyModifiers::SHIFT)
+        // BackTab *is* Shift+Tab, so the modifier is implied by the code
+        // itself. Deriving it from the code rather than trusting the
+        // modifier keeps a terminal that reports BackTab without SHIFT from
+        // collapsing the keystroke into a plain Tab.
+        || matches!(event.code, crossterm::event::KeyCode::BackTab);
 
     // Normalize: terminals differ in how they represent Shift + letter keys.
     // Some send Char('g') + SHIFT, others send Char('G') + SHIFT.
@@ -247,6 +256,62 @@ mod tests {
         // Then returns Key::Enter with no modifiers.
         let key_event = result.expect("should convert");
         assert_eq!(key_event.key, Key::Enter);
+        assert!(key_event.modifiers.is_none());
+    }
+
+    /// crossterm reports Shift+Tab as `KeyCode::BackTab`, not as
+    /// `Tab + SHIFT`. Without an arm for it the event fell through to the
+    /// `_ => return None` arm and the keystroke was discarded outright.
+    #[rstest::rstest]
+    fn convert_back_tab_becomes_tab_with_shift() {
+        // Given crossterm BackTab with SHIFT.
+        let event = crossterm_key_with_mod(
+            crossterm::event::KeyCode::BackTab,
+            crossterm::event::KeyModifiers::SHIFT,
+        );
+
+        // When converting.
+        let result = from_crossterm(event);
+
+        // Then returns Key::Tab with shift=true.
+        let key_event = result.expect("should convert");
+        assert_eq!(key_event.key, Key::Tab);
+        assert!(key_event.modifiers.shift);
+        // And no other modifier is set.
+        assert!(!key_event.modifiers.ctrl);
+        assert!(!key_event.modifiers.alt);
+    }
+
+    /// BackTab implies shift by definition, so the conversion derives it from
+    /// the key code rather than trusting the modifier bits. A terminal that
+    /// reports BackTab without SHIFT must still not collapse into a plain Tab,
+    /// which would be sent to the child as a horizontal tab.
+    #[rstest::rstest]
+    fn convert_back_tab_without_shift_modifier_still_preserves_shift() {
+        // Given crossterm BackTab with no modifiers set.
+        let event = crossterm_key(crossterm::event::KeyCode::BackTab);
+
+        // When converting.
+        let result = from_crossterm(event);
+
+        // Then returns Key::Tab with shift=true.
+        let key_event = result.expect("should convert");
+        assert_eq!(key_event.key, Key::Tab);
+        assert!(key_event.modifiers.shift);
+    }
+
+    #[rstest::rstest]
+    fn convert_plain_tab_has_no_shift() {
+        // Given crossterm Tab with no modifiers.
+        let event = crossterm_key(crossterm::event::KeyCode::Tab);
+
+        // When converting.
+        let result = from_crossterm(event);
+
+        // Then returns Key::Tab with no shift — the BackTab implication must
+        // not bleed into a genuine Tab.
+        let key_event = result.expect("should convert");
+        assert_eq!(key_event.key, Key::Tab);
         assert!(key_event.modifiers.is_none());
     }
 
