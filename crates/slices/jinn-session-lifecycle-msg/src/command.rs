@@ -10,7 +10,7 @@ use jinn_slices::BusMessage;
 /// Request to run a lifecycle setup command asynchronously.
 ///
 /// Sent by the `IntentHandler` when the user creates a session from a lifecycle
-/// that has a `setup_command`. The session-persistence actor receives this,
+/// that has a `setup_command`. The session-lifecycle actor receives this,
 /// runs the command via `run_lifecycle_command`, and updates the session state.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Run a session's setup lifecycle command.")]
@@ -32,7 +32,7 @@ impl BusMessage for RunSessionSetup {}
 /// Request to run a lifecycle teardown command asynchronously.
 ///
 /// Sent by the sidebar teardown handler when the user triggers teardown-only
-/// mode (`t` key). The session-persistence actor receives this, runs the command,
+/// mode (`t` key). The session-lifecycle actor receives this, runs the command,
 /// advances `lifecycle_script_state` to `TeardownRan`, persists, and emits
 /// `SessionTeardownFinished`. The session is NOT removed from memory.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
@@ -98,12 +98,10 @@ mod tests {
     }
 }
 
-pub use jinn_session_store_msg::PersistSession;
-
 /// Request to set a session's working directory.
 ///
 /// Sent by the CWD input popup and CWD selector instead of mutating state
-/// directly. The session-persistence actor applies the cwd and emits
+/// directly. The session-lifecycle actor applies the cwd and emits
 /// `SessionCwdChanged`, which triggers re-discovery of skills, prompts, and
 /// context files for the new cwd.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]

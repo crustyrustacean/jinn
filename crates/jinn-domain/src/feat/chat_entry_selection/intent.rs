@@ -3,11 +3,11 @@
 use crate::ChatEntry;
 use crate::ChatEntryKind;
 use crate::common::app_state::AppState;
-use jinn_session_state::ChatSessionState;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{IntentResult, PinPosition};
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
+use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::SessionForkRequested;
 
 use super::validator;

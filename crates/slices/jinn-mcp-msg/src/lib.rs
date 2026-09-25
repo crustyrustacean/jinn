@@ -7,6 +7,4 @@ pub use config::{
     referenced_header_variables,
 };
 pub use mcp_contracts::*;
-pub use runtime_state::{
-    McpRuntimeState, McpSessionRuntimeState, mcp_runtime_slot,
-};
+pub use runtime_state::{McpRuntimeState, McpSessionRuntimeState, mcp_runtime_slot};

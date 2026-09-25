@@ -13,10 +13,10 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
+use crate::inputs::build_assembly_inputs;
 use jinn_domain::common::state::State;
 use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
 use jinn_domain::feat::context::snapshot::assemble_via_service;
-use crate::inputs::build_assembly_inputs;
 use jinn_domain::protocol::system::ActiveSessionChanged;
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::HistoryAppended;
@@ -172,8 +172,8 @@ mod tests {
 
     use super::*;
     use jinn_domain::common::app_state::AppState;
-    use jinn_session_state::ChatSessionState;
     use jinn_domain::protocol::ChatEntry;
+    use jinn_session_state::ChatSessionState;
 
     async fn test_actor() -> ContextSizeActor {
         let services = jinn_domain::Services::new_fake().await;

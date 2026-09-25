@@ -220,8 +220,8 @@ mod tests {
         reason = "test code"
     )]
     use crate::session_actor::helpers::test_actor_recording;
-    use jinn_domain::protocol::{ChangeSource, ChatEntry};
     use jinn_core_types::SessionId;
+    use jinn_domain::protocol::{ChangeSource, ChatEntry};
 
     #[rstest::rstest]
     #[tokio::test]
@@ -243,18 +243,16 @@ mod tests {
 
         // When submitting a single sub-threshold ForcedExclude override.
         actor
-            .handle_submit_history_mutations(
-                &jinn_session_history_msg::SubmitHistoryMutations {
-                    session_id: session_id.clone(),
-                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                        entry_id: entry_id.clone(),
-                        value: jinn_core_types::ContextOverride::ForcedExclude,
-                        source: ChangeSource::Internal {
-                            label: "test".to_owned(),
-                        },
-                    }],
-                },
-            )
+            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: jinn_core_types::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Internal {
+                        label: "test".to_owned(),
+                    },
+                }],
+            })
             .await;
 
         // Then the override is buffered (not applied) and no pending batch exists.
@@ -281,12 +279,10 @@ mod tests {
         };
 
         actor
-            .handle_submit_history_mutations(
-                &jinn_session_history_msg::SubmitHistoryMutations {
-                    session_id: session_id.clone(),
-                    mutations: vec![],
-                },
-            )
+            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![],
+            })
             .await;
 
         let state = actor.state.read();
@@ -301,18 +297,16 @@ mod tests {
         let new_session_id = SessionId::new();
 
         actor
-            .handle_submit_history_mutations(
-                &jinn_session_history_msg::SubmitHistoryMutations {
-                    session_id: new_session_id.clone(),
-                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                        entry_id: jinn_core_types::ChatEntryId::new(),
-                        value: jinn_core_types::ContextOverride::ForcedExclude,
-                        source: ChangeSource::Internal {
-                            label: "test".to_owned(),
-                        },
-                    }],
-                },
-            )
+            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
+                session_id: new_session_id.clone(),
+                mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
+                    entry_id: jinn_core_types::ChatEntryId::new(),
+                    value: jinn_core_types::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Internal {
+                        label: "test".to_owned(),
+                    },
+                }],
+            })
             .await;
 
         let state = actor.state.read();
@@ -349,32 +343,28 @@ mod tests {
         // When submitting a sub-threshold ForcedExclude (prune) for entry 1
         // and a ForcedInclude (worker protection) for entry 2.
         actor
-            .handle_submit_history_mutations(
-                &jinn_session_history_msg::SubmitHistoryMutations {
-                    session_id: session_id.clone(),
-                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                        entry_id: entry_id_1,
-                        value: jinn_core_types::ContextOverride::ForcedExclude,
-                        source: ChangeSource::Internal {
-                            label: "test".to_owned(),
-                        },
-                    }],
-                },
-            )
+            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id_1,
+                    value: jinn_core_types::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Internal {
+                        label: "test".to_owned(),
+                    },
+                }],
+            })
             .await;
         actor
-            .handle_submit_history_mutations(
-                &jinn_session_history_msg::SubmitHistoryMutations {
-                    session_id: session_id.clone(),
-                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                        entry_id: entry_id_2,
-                        value: jinn_core_types::ContextOverride::ForcedInclude,
-                        source: ChangeSource::Internal {
-                            label: "test".to_owned(),
-                        },
-                    }],
-                },
-            )
+            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id_2,
+                    value: jinn_core_types::ContextOverride::ForcedInclude,
+                    source: ChangeSource::Internal {
+                        label: "test".to_owned(),
+                    },
+                }],
+            })
             .await;
 
         // Then the ForcedExclude is buffered (entry 1 still Default) and the
@@ -415,18 +405,16 @@ mod tests {
         };
 
         actor
-            .handle_submit_history_mutations(
-                &jinn_session_history_msg::SubmitHistoryMutations {
-                    session_id: session_id.clone(),
-                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                        entry_id: entry_id.clone(),
-                        value: jinn_core_types::ContextOverride::ForcedExclude,
-                        source: ChangeSource::Worker {
-                            name: "compaction".to_owned(),
-                        },
-                    }],
-                },
-            )
+            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: jinn_core_types::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: "compaction".to_owned(),
+                    },
+                }],
+            })
             .await;
 
         assert!(
@@ -447,7 +435,7 @@ mod tests {
             session.set_entry_context_override_at(
                 0,
                 jinn_core_types::ContextOverride::ForcedExclude,
-                ChangeSource::Internal {
+                &ChangeSource::Internal {
                     label: "setup".to_owned(),
                 },
             );
@@ -461,18 +449,16 @@ mod tests {
         };
 
         actor
-            .handle_submit_history_mutations(
-                &jinn_session_history_msg::SubmitHistoryMutations {
-                    session_id: session_id.clone(),
-                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                        entry_id: entry_id.clone(),
-                        value: jinn_core_types::ContextOverride::ForcedExclude,
-                        source: ChangeSource::Worker {
-                            name: "test_worker".to_owned(),
-                        },
-                    }],
-                },
-            )
+            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: jinn_core_types::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: "test_worker".to_owned(),
+                    },
+                }],
+            })
             .await;
 
         assert!(
@@ -504,18 +490,16 @@ mod tests {
 
         // When submitting a worker ForcedInclude override (protection, never a prune).
         actor
-            .handle_submit_history_mutations(
-                &jinn_session_history_msg::SubmitHistoryMutations {
-                    session_id: session_id.clone(),
-                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                        entry_id: entry_id.clone(),
-                        value: jinn_core_types::ContextOverride::ForcedInclude,
-                        source: ChangeSource::Worker {
-                            name: "auto-prune-todo".to_owned(),
-                        },
-                    }],
-                },
-            )
+            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: jinn_core_types::ContextOverride::ForcedInclude,
+                    source: ChangeSource::Worker {
+                        name: "auto-prune-todo".to_owned(),
+                    },
+                }],
+            })
             .await;
 
         // Then the override applied immediately (no buffering) because worker
@@ -549,18 +533,16 @@ mod tests {
 
         // When submitting a compaction ForcedExclude override.
         actor
-            .handle_submit_history_mutations(
-                &jinn_session_history_msg::SubmitHistoryMutations {
-                    session_id: session_id.clone(),
-                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                        entry_id: entry_id.clone(),
-                        value: jinn_core_types::ContextOverride::ForcedExclude,
-                        source: ChangeSource::Worker {
-                            name: "compaction".to_owned(),
-                        },
-                    }],
-                },
-            )
+            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: jinn_core_types::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: "compaction".to_owned(),
+                    },
+                }],
+            })
             .await;
 
         // Then the override applied immediately and did not enter the buffer.

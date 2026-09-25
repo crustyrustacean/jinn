@@ -14,9 +14,7 @@ use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_domain::feat::theme::Theme;
 use jinn_domain::feat::ui::chat_log::strip_ansi;
 use jinn_domain::protocol::ToolResultStatus;
-use jinn_domain::protocol::{
-    ChatEntryId, ChatEntryKind, IntentResult, PickerKind, PinPosition,
-};
+use jinn_domain::protocol::{ChatEntryId, ChatEntryKind, IntentResult, PickerKind, PinPosition};
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 use jinn_skills::loaded_skill_summary_label;
 use ratatui::Frame;

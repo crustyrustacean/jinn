@@ -17,8 +17,8 @@ use std::path::Path;
 
 use error_stack::{Report, ResultExt};
 
-use crate::feat::context::prompt_template::{ImageKind, PendingPath, classify_image_bytes};
 use super::ImageConverterService;
+use crate::feat::context::prompt_template::{ImageKind, PendingPath, classify_image_bytes};
 use jinn_core_types::ResolvedToken;
 use jinn_provider::Attachment;
 
@@ -62,6 +62,10 @@ pub struct ResolveOutcome {
 /// since the user clearly intended an image attachment there.
 ///
 /// This is a blocking function — callers must run it inside `spawn_blocking`.
+///
+/// # Errors
+///
+/// Returns an error when a recognizable image cannot be converted.
 pub fn resolve_attachments_blocking(
     paths: &[PendingPath],
     converter: &ImageConverterService,

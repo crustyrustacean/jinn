@@ -338,7 +338,6 @@ mod tests {
     use super::*;
     use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
-    use jinn_session_state::ChatSessionState;
     use jinn_domain::feat::skills::SkillSource;
     use jinn_domain::protocol::ChatEntryKind;
     use jinn_domain::protocol::PickerKind;
@@ -347,6 +346,7 @@ mod tests {
     use jinn_picker::RowCtx;
     use jinn_picker::SKILL_ID;
     use jinn_selection_widget::SelectionState;
+    use jinn_session_state::ChatSessionState;
 
     /// A discovered skill with a small markdown body.
     fn skill(name: &str, description: &str, body: &str) -> jinn_domain::feat::skills::Skill {

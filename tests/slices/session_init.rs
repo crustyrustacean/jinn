@@ -11,10 +11,10 @@
 
 use std::time::Duration;
 
+use jinn_core_types::SessionId;
 use jinn_domain::common::bridge::Bridge;
 use jinn_domain::common::bus::test_harness::{Recorder, await_recorded};
 use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
-use jinn_core_types::SessionId;
 use jinn_session_state::ChatSessionState;
 use jinn_tui::TuiApp;
 

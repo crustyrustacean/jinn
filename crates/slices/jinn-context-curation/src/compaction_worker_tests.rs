@@ -26,8 +26,8 @@ use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::services::test_services::TestServices;
 use jinn_domain::common::state::State;
 use jinn_domain::feat::provider_infra::{FakeLlmServiceFactory, LlmServiceFactoryService};
-use jinn_session_state::ChatSessionState;
 use jinn_preferences_config::schemas::CompactionConfig;
+use jinn_session_state::ChatSessionState;
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 

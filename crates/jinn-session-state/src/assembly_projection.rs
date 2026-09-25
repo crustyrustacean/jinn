@@ -42,10 +42,7 @@ pub struct AssemblySessionProjection {
 impl AssemblySessionProjection {
     /// Captures all session-owned assembly fields from the authoritative aggregate.
     #[must_use]
-    pub fn capture(
-        session_id: &SessionId,
-        session: &ChatSessionState,
-    ) -> Self {
+    pub fn capture(session_id: &SessionId, session: &ChatSessionState) -> Self {
         Self {
             session_id: session_id.clone(),
             cwd: session.cwd().to_path_buf(),

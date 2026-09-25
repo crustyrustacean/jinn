@@ -13,6 +13,7 @@ use error_stack::Report;
 
 use crate::session_fetch::{definition, execute};
 use crate::tool_types::ToolContext;
+use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
 use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::feat::session::session_store::{
@@ -20,7 +21,6 @@ use jinn_domain::feat::session::session_store::{
 };
 use jinn_domain::feat::session_search::{TranscriptEntry, TranscriptWindow};
 use jinn_domain::protocol::{ChatEntry, ChatEntryId};
-use jinn_core_types::SessionId;
 use jinn_session_state::SessionSnapshot;
 
 /// A stub store serving one canned transcript window, recording the last

@@ -11,20 +11,22 @@ use jinn_core_types::SessionId;
 /// visual override for that parent or for the removed session is used. Both
 /// direct children and transitive overrides pointing at the removed session are
 /// rewritten to the resolved ancestor, or removed when no ancestor remains.
-pub fn repair_visual_parents_on_removal(
+pub fn repair_visual_parents_on_removal<I>(
     visual_parents: &mut HashMap<SessionId, SessionId>,
     removed_id: &SessionId,
     removed_parent: Option<&SessionId>,
     loaded_ids: &HashSet<SessionId>,
-    direct_child_ids: impl IntoIterator<Item = SessionId>,
-) {
-    let effective_ancestor = resolve_effective_ancestor(
+    direct_child_ids: I,
+) where
+    I: IntoIterator<Item = SessionId>,
+{
+    let effective_ancestor =
+        resolve_effective_ancestor(visual_parents, removed_id, removed_parent, loaded_ids);
+    rewrite_mapping(
         visual_parents,
-        removed_id,
-        removed_parent,
-        loaded_ids,
+        direct_child_ids,
+        effective_ancestor.as_ref(),
     );
-    rewrite_mapping(visual_parents, direct_child_ids, effective_ancestor.as_ref());
     rewrite_transitive_overrides(visual_parents, removed_id, effective_ancestor.as_ref());
 }
 
@@ -51,16 +53,19 @@ fn rewrite_transitive_overrides(
 ) {
     let keys = visual_parents
         .iter()
-        .filter_map(|(id, parent)| (parent == removed_id).then(|| id.clone()))
+        .filter(|(_, parent)| *parent == removed_id)
+        .map(|(id, _)| id.clone())
         .collect::<Vec<_>>();
     rewrite_mapping(visual_parents, keys, effective_ancestor);
 }
 
-fn rewrite_mapping(
+fn rewrite_mapping<I>(
     visual_parents: &mut HashMap<SessionId, SessionId>,
-    ids: impl IntoIterator<Item = SessionId>,
+    ids: I,
     effective_ancestor: Option<&SessionId>,
-) {
+) where
+    I: IntoIterator<Item = SessionId>,
+{
     for id in ids {
         match effective_ancestor {
             Some(ancestor) => {
@@ -139,10 +144,8 @@ mod tests {
         // Given one override keyed by the loaded session and one pointing to it.
         let loaded = SessionId::new();
         let hidden = SessionId::new();
-        let visual_parents = &mut HashMap::from([
-            (loaded.clone(), hidden),
-            (SessionId::new(), loaded.clone()),
-        ]);
+        let visual_parents =
+            &mut HashMap::from([(loaded.clone(), hidden), (SessionId::new(), loaded.clone())]);
 
         // When invalidating bypasses after load.
         clear_visual_parents_on_load(visual_parents, &loaded);

@@ -6,10 +6,9 @@ description = """
 The session-store slice: session persistence/restoration actor, SQLite backend,
 and background FTS search-index maintenance actor.
 
-Kernel dependency (see Cargo.toml): transitional and justified — the crate
-implements the `SessionStore` trait whose seam (`SessionStoreService`)
-lives in `jinn-domain`'s `Services` container, and its reindex work reads
-the session state vocabulary (`ChatSessionState`, entries, token ledger).
+Kernel dependency: the shared `SessionStore` service seam, `State`, and
+capabilities live in `jinn-domain`; session snapshots and reconstruction
+contracts come from `jinn-session-state`.
 """
 
 [dependencies]

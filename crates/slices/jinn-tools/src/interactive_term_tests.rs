@@ -24,9 +24,9 @@ use super::interactive_term::execute;
 use crate::interactive_term_kill;
 use crate::interactive_term_send;
 use crate::tool_types::ToolContext;
+use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
 use jinn_domain::common::app_paths::AppPaths;
-use jinn_core_types::SessionId;
 use std::path::PathBuf;
 
 fn call(command: &str) -> ToolCall {

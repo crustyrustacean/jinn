@@ -6,9 +6,9 @@
 
 pub mod activate;
 pub mod archive;
-pub mod r#continue;
 pub mod archive_tree;
 pub mod close;
+pub mod r#continue;
 pub mod load_subagent;
 pub mod navigate;
 pub mod preview;
@@ -30,7 +30,6 @@ use std::time::Duration;
 
 pub use activate::{handle_session_activate, handle_session_activate_insert};
 pub use archive::handle_session_archive;
-pub use r#continue::handle_session_continue;
 pub use archive_tree::{
     ArchiveTreeError, handle_session_tree_action_arm, handle_session_tree_action_confirm,
 };
@@ -38,6 +37,7 @@ pub use close::{
     SessionCloseError, handle_session_close_arm, handle_session_close_with_lifecycle,
     validate_session_close,
 };
+pub use r#continue::handle_session_continue;
 pub use jinn_sidebar_msg::{ArchiveTreePrompt, TreePromptAction};
 pub use load_subagent::{
     LoadSubagentError, handle_load_subagent_session, validate_load_subagent_session,

@@ -1,5 +1,5 @@
-//! End-to-end crossing test for the sidebar slice: kernel publishes
-//! `SessionClosed` on the kernel topic → route rule → `jinn.sidebar`
+//! End-to-end crossing test for the sidebar slice: the session store publishes
+//! `SessionRemoved` on the kernel topic → route rule → `jinn.sidebar`
 //! topic → the slice's trouper state actor → sidebar cursor clamped.
 //!
 //! The cursor is observable through the sidebar sections cell — the same
@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 use jinn_domain::common::bridge::Bridge;
-use jinn_session_msg::SessionClosed;
+use jinn_session_msg::SessionRemoved;
 use jinn_session_state::ChatSessionState;
 
 use crate::common::test_app;
@@ -61,10 +61,14 @@ async fn session_closed_crosses_to_sidebar_and_clamps_cursor() {
         id3
     };
 
-    // When the kernel publishes `SessionClosed` on the bus.
-    let _ = app.core.bridge.send(Bridge::publish_closure(SessionClosed {
-        session_id: removed_id,
-    }));
+    // When the session store publishes `SessionRemoved` on the bus.
+    let _ = app
+        .core
+        .bridge
+        .send(Bridge::publish_closure(SessionRemoved {
+            session_id: removed_id,
+            removed_parent: None,
+        }));
 
     // Then the sidebar cursor is clamped to 1 (max valid index).
     let clamped = await_condition(Duration::from_secs(5), || {

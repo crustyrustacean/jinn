@@ -14,6 +14,10 @@ use crate::fields::{
 use crate::runtime::SessionCoreEphemeral;
 
 /// Coherent session aggregate stored behind one live-state lock.
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "durable group fields form the snapshot adapter while the revision counter remains private"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCore {
     /// Identity and tree metadata.
@@ -36,7 +40,7 @@ pub struct SessionCore {
     pub ephemeral: SessionCoreEphemeral,
     /// Monotonic capture sequence shared by clones of this authoritative core.
     #[serde(skip)]
-    pub(crate) capture_counter: Arc<AtomicU64>,
+    capture_counter: Arc<AtomicU64>,
 }
 
 impl SessionCore {

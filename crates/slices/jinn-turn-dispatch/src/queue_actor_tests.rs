@@ -26,17 +26,17 @@
 )]
 
 use super::QueueActor;
+use jinn_core_types::SessionId;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusAudit;
 use jinn_domain::common::state::State;
 use jinn_domain::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use jinn_domain::feat::session_lifecycle::protocol::command::PersistSession;
 use jinn_domain::protocol::ChatEntry;
-use jinn_core_types::SessionId;
 use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
+use jinn_session_store_msg::PersistSession;
 use jinn_turn_dispatch_msg::DispatchTurn;
 use jinn_turn_dispatch_msg::QueueItem;
 

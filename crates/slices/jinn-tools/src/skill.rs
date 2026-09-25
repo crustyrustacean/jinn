@@ -237,9 +237,9 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_error_for_nonexistent_skill() {
+        use jinn_core_types::SessionId;
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::state::State;
-        use jinn_core_types::SessionId;
 
         // Given a call for a skill that was never discovered for this session.
         let state = State::new(AppState::default());
@@ -288,9 +288,9 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_loads_project_local_skill_from_discovered_file_path() {
+        use jinn_core_types::SessionId;
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::state::State;
-        use jinn_core_types::SessionId;
         use jinn_skills::{Skill, SkillSource};
 
         // Given a project-local skill whose file_path is NOT under the global
@@ -376,9 +376,9 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_result_header_carries_base_dir() {
+        use jinn_core_types::SessionId;
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::state::State;
-        use jinn_core_types::SessionId;
         use jinn_skills::{Skill, SkillSource};
 
         // Given a project-local skill seeded with a distinct base_dir.
@@ -490,9 +490,9 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_skill_body_in_tool_result() {
+        use jinn_core_types::SessionId;
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::state::State;
-        use jinn_core_types::SessionId;
 
         // Given a skill file in the real skills dir (best-effort).
         let state = State::new(AppState::default());
@@ -554,9 +554,9 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_already_loaded_for_duplicate_load() {
+        use jinn_core_types::SessionId;
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::state::State;
-        use jinn_core_types::SessionId;
         use jinn_domain::protocol::ToolResultStatus;
         use jinn_domain::protocol::{ChatEntry, PinPosition};
 
@@ -625,9 +625,9 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_loads_different_skill_when_other_already_loaded() {
+        use jinn_core_types::SessionId;
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::state::State;
-        use jinn_core_types::SessionId;
         use jinn_domain::protocol::ToolResultStatus;
         use jinn_domain::protocol::{ChatEntry, PinPosition};
 
@@ -697,9 +697,9 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_error_for_disabled_skill() {
+        use jinn_core_types::SessionId;
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::state::State;
-        use jinn_core_types::SessionId;
         use std::collections::HashSet;
 
         // Given a session with "web-coder" disabled.

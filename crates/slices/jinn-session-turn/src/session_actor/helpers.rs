@@ -1,6 +1,6 @@
+use jinn_core_types::SessionId;
 use jinn_domain::BusService;
 use jinn_session_history_msg::HistoryAppended;
-use jinn_core_types::SessionId;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
 
@@ -105,7 +105,7 @@ pub(crate) struct PopulatedFakeStore {
 
 #[cfg(test)]
 impl PopulatedFakeStore {
-    pub(super) fn new(sessions: Vec<jinn_session_state::ChatSessionState>) -> Self {
+    pub(super) fn new(sessions: &[jinn_session_state::ChatSessionState]) -> Self {
         let summaries = sessions
             .iter()
             .map(|s| jinn_session_store_msg::SessionSummary {
@@ -123,7 +123,7 @@ impl PopulatedFakeStore {
             sessions: Mutex::new(
                 sessions
                     .iter()
-                    .map(|session| session.capture_snapshot())
+                    .map(jinn_session_state::ChatSessionState::capture_snapshot)
                     .collect(),
             ),
             archived: Mutex::new(Vec::new()),
@@ -304,15 +304,19 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         &self,
         _session_id: &jinn_core_types::SessionId,
         _max_entries: usize,
-    ) -> Result<bool, error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>>
-    {
+    ) -> Result<
+        bool,
+        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
+    > {
         Ok(true)
     }
 
     async fn pending_dirty_count(
         &self,
-    ) -> Result<usize, error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>>
-    {
+    ) -> Result<
+        usize,
+        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
+    > {
         Ok(0)
     }
 
@@ -362,7 +366,7 @@ pub(crate) async fn test_actor_with_store_recording(
     std::sync::Arc<PopulatedFakeStore>,
     jinn_domain::common::services::BusAudit,
 ) {
-    let store = std::sync::Arc::new(PopulatedFakeStore::new(sessions));
+    let store = std::sync::Arc::new(PopulatedFakeStore::new(&sessions));
     let (bus, audit) = jinn_domain::common::services::BusService::new_recording();
     let services = jinn_domain::TestServices::builder()
         .session_store(jinn_domain::feat::session::SessionStoreService::new(
@@ -372,11 +376,14 @@ pub(crate) async fn test_actor_with_store_recording(
         .build();
     (
         super::SessionPersistenceActor {
-            state: jinn_domain::common::state::State::new(jinn_domain::common::app_state::AppState::default()),
+            state: jinn_domain::common::state::State::new(
+                jinn_domain::common::app_state::AppState::default(),
+            ),
             cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
             services,
-            counter: jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
+            counter:
+                jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
             token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
             image_converter: test_image_converter(),
         },

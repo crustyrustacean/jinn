@@ -8,14 +8,14 @@ pub mod arg_input_state;
 pub mod intent;
 pub mod render;
 
-// The contracts and the kernel-consumed leaf vocabulary now live in the
-// lifecycle family msg crate. Re-exported here so existing kernel paths
-// continue to resolve while the actor itself moves to the lifecycle slice.
+// The contracts and the kernel-consumed leaf vocabulary live in the lifecycle
+// family msg crate. Re-exported here for the kernel's synchronous lifecycle
+// intent and rendering path.
 pub use jinn_session_lifecycle_msg::{builtin, command_template, picker_entry};
 pub mod protocol {
     pub use jinn_session_lifecycle_msg::command::{
-        CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, PersistSession,
-        RunSessionSetup, RunSessionTeardown, SetSessionCwd, TeardownFollowUp,
+        CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
+        RunSessionTeardown, SetSessionCwd, TeardownFollowUp,
     };
     pub use jinn_session_lifecycle_msg::event::{
         SessionCreated, SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,

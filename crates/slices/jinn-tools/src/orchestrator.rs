@@ -20,8 +20,8 @@ use std::pin::Pin;
 
 use crate::tool_types::ToolContext;
 use jiff::Timestamp;
-use jinn_core_types::{ServerToolType, SessionId};
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use jinn_core_types::{ServerToolType, SessionId};
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusService;
@@ -1414,11 +1414,11 @@ mod mcp_dispatch_gate_tests {
     )]
     use std::time::Duration;
 
+    use jinn_core_types::SessionId;
     use jinn_core_types::tool_types::{ToolCall, ToolDefinition};
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
     use jinn_domain::common::state::State;
-    use jinn_core_types::SessionId;
     use jinn_mcp_msg::McpConnectionStatus;
     use jinn_session_msg::SessionClosed;
     use jinn_tools_msg::{ExecuteTool, ExecuteToolBatch, RegisterTools};
@@ -1430,10 +1430,7 @@ mod mcp_dispatch_gate_tests {
 
     async fn spawn_orchestrator(
         state: &State,
-    ) -> (
-        TestHarness,
-        jinn_domain::common::services::Services,
-    ) {
+    ) -> (TestHarness, jinn_domain::common::services::Services) {
         let harness = TestHarness::new().await;
         let services = harness.services().await;
         let _runtime = services

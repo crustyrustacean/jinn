@@ -442,8 +442,7 @@ fn receive_cursor_from_bottom_positions_at_last_index() {
 fn receive_cursor_noop_when_empty() {
     // Given state with no sessions (manually clear default).
     let mut state = AppState::default_with_scope_focus();
-    let ids: Vec<jinn_core_types::SessionId> =
-        state.session.sessions().keys().cloned().collect();
+    let ids: Vec<jinn_core_types::SessionId> = state.session.sessions().keys().cloned().collect();
     for id in ids {
         state.session.remove_without_replacement(&id);
     }

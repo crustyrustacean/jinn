@@ -8,11 +8,11 @@
     clippy::indexing_slicing,
     reason = "test code"
 )]
-use jinn_session_state::ChatSessionState;
 use crate::protocol::{ChangeSource, ChatEntry, ChatEntryId, ContextOverride};
 use crate::protocol::{PinPosition, ToolResultStatus};
 use jinn_core_types::llm_message::LlmMessage;
 use jinn_core_types::{ChatEntryKind, HistoryMutation};
+use jinn_session_state::ChatSessionState;
 
 /// A complete loop: empty assistant, one call, one result.
 fn simple_loop() -> Vec<ChatEntry> {

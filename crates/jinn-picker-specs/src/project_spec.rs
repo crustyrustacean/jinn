@@ -171,9 +171,9 @@ mod tests {
     use jinn_domain::PickerKind;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::app_state::FocusScope;
-    use jinn_session_state::ChatSessionState;
     use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_picker::PROJECT_ID;
+    use jinn_session_state::ChatSessionState;
 
     /// State with an active origin session (cwd distinct from the project
     /// dirs), the project picker open, and the given curated projects.

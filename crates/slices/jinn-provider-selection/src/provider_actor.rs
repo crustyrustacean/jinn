@@ -100,10 +100,6 @@ impl ServiceActor for ProviderActor {
 }
 
 /// Builds the transient transcript message for a model refresh.
-#[expect(
-    clippy::else_if_without_else,
-    reason = "no-op on fallthrough is intentional"
-)]
 fn models_refresh_transcript(event: &ModelsRefreshed) -> String {
     if event.results.is_empty() && event.errors.is_empty() {
         return "Models refreshed: no providers found".to_owned();
@@ -131,12 +127,12 @@ fn models_refresh_transcript(event: &ModelsRefreshed) -> String {
         })
         .collect::<Vec<_>>();
 
-    format!(
-        "| Provider | Models | Status |\n|----------|--------|--------|\n{}",
-        rows.into_iter()
-            .map(|row| format!("{row}\n"))
-            .collect::<String>()
-    )
+    let mut body = String::new();
+    for row in rows {
+        body.push_str(&row);
+        body.push('\n');
+    }
+    format!("| Provider | Models | Status |\n|----------|--------|--------|\n{body}")
 }
 
 /// Static path the provider actor spawns at (one instance per process).

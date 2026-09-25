@@ -36,9 +36,7 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
         .with_sections(|sections| sections.sessions.selected_index, || None)
         .ok_or(SessionCloseError::NoSelection)?;
     let entries = sorted_open_sessions(state);
-    let entry = entries
-        .get(index)
-        .ok_or(SessionCloseError::NoSelection)?;
+    let entry = entries.get(index).ok_or(SessionCloseError::NoSelection)?;
     let session = state
         .session
         .get(&entry.id)

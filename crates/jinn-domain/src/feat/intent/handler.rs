@@ -340,24 +340,32 @@ impl IntentHandler {
                 crate::protocol::IntentResult::empty()
             }
 
-
-
-            KernelIntent::InsertChar { ch } => feat::chat_input::intent::handle_insert_char(*ch, state),
+            KernelIntent::InsertChar { ch } => {
+                feat::chat_input::intent::handle_insert_char(*ch, state)
+            }
             KernelIntent::DeleteGrapheme => feat::chat_input::intent::handle_delete_grapheme(state),
             KernelIntent::DeleteGraphemeForward => {
                 feat::chat_input::intent::handle_delete_grapheme_forward(state)
             }
             KernelIntent::SubmitMessage => feat::chat_input::intent::handle_submit_message(state),
-            KernelIntent::ToggleInputMode => feat::chat_input::intent::handle_toggle_input_mode(state),
+            KernelIntent::ToggleInputMode => {
+                feat::chat_input::intent::handle_toggle_input_mode(state)
+            }
             KernelIntent::AutocompleteConfirm => {
                 feat::chat_input::intent::handle_autocomplete_confirm(state)
             }
-            KernelIntent::MoveCursorLeft => feat::chat_input::intent::handle_move_cursor_left(state),
-            KernelIntent::MoveCursorRight => feat::chat_input::intent::handle_move_cursor_right(state),
+            KernelIntent::MoveCursorLeft => {
+                feat::chat_input::intent::handle_move_cursor_left(state)
+            }
+            KernelIntent::MoveCursorRight => {
+                feat::chat_input::intent::handle_move_cursor_right(state)
+            }
             KernelIntent::MoveCursorToStart => {
                 feat::chat_input::intent::handle_move_cursor_to_start(state)
             }
-            KernelIntent::MoveCursorToEnd => feat::chat_input::intent::handle_move_cursor_to_end(state),
+            KernelIntent::MoveCursorToEnd => {
+                feat::chat_input::intent::handle_move_cursor_to_end(state)
+            }
             KernelIntent::MoveCursorWordLeft => {
                 feat::chat_input::intent::handle_move_cursor_word_left(state)
             }
@@ -365,7 +373,9 @@ impl IntentHandler {
                 feat::chat_input::intent::handle_move_cursor_word_right(state)
             }
             KernelIntent::MoveCursorUp => feat::chat_input::intent::handle_move_cursor_up(state),
-            KernelIntent::MoveCursorDown => feat::chat_input::intent::handle_move_cursor_down(state),
+            KernelIntent::MoveCursorDown => {
+                feat::chat_input::intent::handle_move_cursor_down(state)
+            }
 
             KernelIntent::PasteText { text } => match state.frontend.scope() {
                 crate::common::app_state::FocusScope::Input => {
@@ -382,9 +392,13 @@ impl IntentHandler {
             KernelIntent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
             KernelIntent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
             KernelIntent::MouseScrollUp => feat::navigation::intent::handle_mouse_scroll_up(state),
-            KernelIntent::MouseScrollDown => feat::navigation::intent::handle_mouse_scroll_down(state),
+            KernelIntent::MouseScrollDown => {
+                feat::navigation::intent::handle_mouse_scroll_down(state)
+            }
             KernelIntent::ScrollToTop => feat::navigation::intent::handle_scroll_to_top(state),
-            KernelIntent::ScrollToBottom => feat::navigation::intent::handle_scroll_to_bottom(state),
+            KernelIntent::ScrollToBottom => {
+                feat::navigation::intent::handle_scroll_to_bottom(state)
+            }
 
             KernelIntent::EditInput => feat::navigation::intent::handle_edit_input(state),
 
@@ -392,12 +406,16 @@ impl IntentHandler {
             KernelIntent::Interrupt { session_id } => {
                 feat::global::intent::handle_interrupt(state, session_id.as_ref())
             }
-            KernelIntent::EnterInsertMode => feat::chat_input::intent::handle_enter_insert_mode(state),
+            KernelIntent::EnterInsertMode => {
+                feat::chat_input::intent::handle_enter_insert_mode(state)
+            }
             KernelIntent::EnterNormalMode => {
                 feat::chat_input::intent::handle_enter_normal_mode_with_pickers(state, pickers)
             }
             KernelIntent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
-            KernelIntent::ToggleAuditPopup => feat::global::intent::handle_toggle_audit_popup(state),
+            KernelIntent::ToggleAuditPopup => {
+                feat::global::intent::handle_toggle_audit_popup(state)
+            }
             KernelIntent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
             KernelIntent::NoOp => IntentResult::empty(),
 
@@ -407,7 +425,9 @@ impl IntentHandler {
             KernelIntent::PickerAction { picker, action } => {
                 crate::feat::picker::action::run_action(state, pickers, picker, action)
             }
-            KernelIntent::PickerInsertChar { ch } => crate::feat::picker::intent::handle_insert_char(state, *ch),
+            KernelIntent::PickerInsertChar { ch } => {
+                crate::feat::picker::intent::handle_insert_char(state, *ch)
+            }
             KernelIntent::PickerBackspace => crate::feat::picker::intent::handle_backspace(state),
             KernelIntent::PickerConfirm => {
                 let (result, maybe_intent) =
@@ -428,23 +448,37 @@ impl IntentHandler {
                     result
                 }
             }
-            KernelIntent::PickerMoveUp => crate::feat::picker::intent::handle_move_up(state, pickers),
-            KernelIntent::PickerMoveDown => crate::feat::picker::intent::handle_move_down(state, pickers),
-            KernelIntent::PickerPageUp => crate::feat::picker::intent::handle_page_up(state, pickers),
-            KernelIntent::PickerPageDown => crate::feat::picker::intent::handle_page_down(state, pickers),
-            KernelIntent::PickerMoveCursorLeft => crate::feat::picker::intent::handle_move_cursor_left(state),
-            KernelIntent::PickerMoveCursorRight => crate::feat::picker::intent::handle_move_cursor_right(state),
+            KernelIntent::PickerMoveUp => {
+                crate::feat::picker::intent::handle_move_up(state, pickers)
+            }
+            KernelIntent::PickerMoveDown => {
+                crate::feat::picker::intent::handle_move_down(state, pickers)
+            }
+            KernelIntent::PickerPageUp => {
+                crate::feat::picker::intent::handle_page_up(state, pickers)
+            }
+            KernelIntent::PickerPageDown => {
+                crate::feat::picker::intent::handle_page_down(state, pickers)
+            }
+            KernelIntent::PickerMoveCursorLeft => {
+                crate::feat::picker::intent::handle_move_cursor_left(state)
+            }
+            KernelIntent::PickerMoveCursorRight => {
+                crate::feat::picker::intent::handle_move_cursor_right(state)
+            }
             KernelIntent::SessionNew => feat::session::intent::handle_session_new(state),
             KernelIntent::RefreshModels => feat::session::intent::handle_refresh_models(state),
             KernelIntent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)
             }
 
-            KernelIntent::SessionNewWithLifecycle => crate::feat::picker::intent::handle_open_picker(
-                state,
-                PickerKind::SessionLifecycle,
-                pickers,
-            ),
+            KernelIntent::SessionNewWithLifecycle => {
+                crate::feat::picker::intent::handle_open_picker(
+                    state,
+                    PickerKind::SessionLifecycle,
+                    pickers,
+                )
+            }
 
             KernelIntent::ChatEntrySelectNext => {
                 feat::chat_entry_selection::intent::handle_select_next(state)
@@ -529,11 +563,12 @@ impl IntentHandler {
                 args,
                 None,
             ),
-            KernelIntent::SessionClose => feat::session_lifecycle::intent::handle_session_close(state),
+            KernelIntent::SessionClose => {
+                feat::session_lifecycle::intent::handle_session_close(state)
+            }
             KernelIntent::ArgInputConfirm => {
                 feat::session_lifecycle::intent::handle_arg_input_confirm(state)
             }
-
 
             KernelIntent::OpenPrunerAccumulationInput => {
                 feat::pruner_accumulation_input::intent::handle_enter(state)
@@ -559,8 +594,6 @@ impl IntentHandler {
             KernelIntent::PrunerAccumulationDeleteForward => {
                 feat::pruner_accumulation_input::intent::handle_delete_forward(state)
             }
-
-
 
             KernelIntent::Dynamic(_) => {
                 // Unregistered dynamic intents are inert by construction:
@@ -1456,9 +1489,9 @@ mod tests {
     #[rstest::rstest]
     fn active_session_switch_closes_terminal_overlay() {
         // Given a state with two sessions, the overlay open over the first.
-        use jinn_session_state::ChatSessionState;
         use crate::protocol::ChatEntryKind;
         use jinn_core_types::SessionId;
+        use jinn_session_state::ChatSessionState;
         use jinn_tools_msg::TASK_TOOL_NAME;
         let mut state = AppState::default_with_scope_focus();
         let slices = status_bar_slices();
@@ -1520,9 +1553,9 @@ mod tests {
     fn active_session_switch_releases_user_control() {
         // Given a state with a linked child session, the overlay open in
         // control mode (user holds the previous session's terminal).
-        use jinn_session_state::ChatSessionState;
         use crate::protocol::ChatEntryKind;
         use jinn_core_types::SessionId;
+        use jinn_session_state::ChatSessionState;
         use jinn_term_msg::command::ControlHolder;
         use jinn_tools_msg::TASK_TOOL_NAME;
         let mut state = AppState::default_with_scope_focus();
@@ -1690,6 +1723,4 @@ mod tests {
             crate::protocol::ChatEntryKind::User { .. }
         ));
     }
-
-
 }

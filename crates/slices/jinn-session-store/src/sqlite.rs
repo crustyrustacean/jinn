@@ -25,15 +25,15 @@ use daow::Param;
 use jinn_core_types::SessionProfile;
 use jinn_core_types::{ChatEntry, ChatEntryKind};
 use jinn_core_types::{ChatEntryId, ContextOverride, EntryTiming, SessionId};
+use jinn_provider::Attachment;
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
-use jinn_provider::Attachment;
 use jinn_session_state::{SessionRevision, SessionSnapshot, SessionSnapshotMetadata};
-use jinn_session_store_msg::{SessionState, SessionSummary};
 use jinn_session_store_msg::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, TranscriptEntry, TranscriptWindow,
     entry_ts_key, extract_searchable,
 };
+use jinn_session_store_msg::{SessionState, SessionSummary};
 use jinn_token_count_msg::TokenRecord;
 
 use super::migrator;
@@ -687,6 +687,10 @@ impl TryFrom<SessionLoadContext> for SessionSnapshot {
 ///
 /// The returned context is converted into a `SessionSnapshot` only after the
 /// read transaction commits, so no partially assembled live state is visible.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one read transaction is the coherence boundary for metadata, entries, attachments, and ledger"
+)]
 fn load_context_in_transaction(
     conn: &mut rusqlite::Connection,
     session_id: &str,

@@ -21,8 +21,8 @@ use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_domain::feat::theme::Theme;
 use jinn_domain::feat::ui::chat_log::RenderContext;
-use jinn_session_state::ChatSessionState;
 use jinn_domain::feat::ui::chat_log::entry_to_lines;
+use jinn_session_state::ChatSessionState;
 use jinn_sidebar_msg::SessionPreviewCache;
 
 /// Number of history entries to show in the preview.

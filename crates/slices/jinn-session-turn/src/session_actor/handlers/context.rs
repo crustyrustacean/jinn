@@ -7,11 +7,11 @@
 //! Relocated from `PromptAssemblyActor` - these concerns are session-related
 //! mutations of `AppState`, not part of prompt assembly.
 
+use jinn_core_types::DEFAULT_PERSONA_NAME;
 use jinn_domain::PromptTemplatesLoaded;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::context::protocol::command::LoadPersonaPickerEntries;
 use jinn_domain::feat::persona::PersonaEntry;
-use jinn_core_types::DEFAULT_PERSONA_NAME;
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 
@@ -23,8 +23,8 @@ use super::super::SessionPersistenceActor;
 fn sorted_pinned_ids_from_session(
     session: &jinn_session_state::ChatSessionState,
 ) -> Vec<jinn_core_types::ChatEntryId> {
-    use jinn_domain::common::app_state::pin_sort_key;
     use jinn_core_types::ChatEntryId;
+    use jinn_domain::common::app_state::pin_sort_key;
     let mut pinned = session.pinned_entries();
     pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
     pinned
@@ -40,10 +40,7 @@ impl SessionPersistenceActor {
     /// pin (and the entry it anchors) reaches the store — a pin on a
     /// brand-new, never-sent-to session would otherwise be silently dropped
     /// by the `is_persistable` guard.
-    pub(in crate::session_actor) async fn handle_pin_chat_entry(
-        &self,
-        payload: &PinChatEntry,
-    ) {
+    pub(in crate::session_actor) async fn handle_pin_chat_entry(&self, payload: &PinChatEntry) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             session.pin_entry(&payload.entry_id, payload.position);
@@ -59,10 +56,7 @@ impl SessionPersistenceActor {
     ///
     /// Like pinning, unpinning is an interaction and marks the session
     /// interacted so the removal persists.
-    pub(in crate::session_actor) async fn handle_unpin_chat_entry(
-        &self,
-        payload: &UnpinChatEntry,
-    ) {
+    pub(in crate::session_actor) async fn handle_unpin_chat_entry(&self, payload: &UnpinChatEntry) {
         {
             self.state
                 .with_session_pins(&self.cap, &self.frontend_cap, |view| {
@@ -215,6 +209,7 @@ mod tests {
 
     use super::super::super::helpers::test_actor_with_store_recording;
     use super::*;
+    use jinn_core_types::SessionId;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::services::BusAudit;
     use jinn_domain::common::state::State;
@@ -222,7 +217,6 @@ mod tests {
     use jinn_domain::feat::persona::Persona;
     use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_domain::protocol::{ChatEntryId, PinPosition};
-    use jinn_core_types::SessionId;
 
     fn make_persona(name: &str) -> Persona {
         Persona {

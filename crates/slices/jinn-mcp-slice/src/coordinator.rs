@@ -30,20 +30,20 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
 use crate::connection::{McpActor, McpActorDeps, McpConnectionStateProbe, McpConnectionStateReply};
+use jinn_core_types::SessionId;
 use jinn_domain::Services;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionTeardownFinished,
 };
-use jinn_core_types::SessionId;
 use jinn_mcp_msg::McpServerConfig;
 use jinn_mcp_msg::{McpEnablementChanged, McpRuntimeState, RestartError, RestartMcpServer};
 use jinn_mcp_msg::{McpServerLog, McpServerStatus};
-use jinn_slices::TypedCell;
 use jinn_session_msg::SessionArchived;
 use jinn_session_msg::SessionClosed;
 use jinn_session_store_msg::SessionLoadCompleted;
+use jinn_slices::TypedCell;
 
 /// Key into the spawned-actor map: one `McpActor` per (session × server).
 type SpawnKey = (SessionId, String);
@@ -154,7 +154,8 @@ impl BusPublish for McpCoordinatorActor {
 impl McpCoordinatorActor {
     /// Clears all runtime-only status and stderr for one session.
     fn clear_runtime_for_session(&self, session_id: &SessionId) {
-        self.runtime.update(|runtime| runtime.clear_session(session_id));
+        self.runtime
+            .update(|runtime| runtime.clear_session(session_id));
     }
 
     /// Reconciles the spawned-actor map for one session against a desired set.
@@ -503,9 +504,9 @@ mod lifecycle_tests {
 
     use std::collections::BTreeSet;
 
+    use jinn_core_types::SessionId;
     use jinn_domain::common::actor_deps::ActorDeps;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
-    use jinn_core_types::SessionId;
     use jinn_mcp_msg::McpServerConfig;
     use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
     use jinn_preferences_config::user_preferences::UserPreferences;
@@ -954,14 +955,12 @@ mod lifecycle_tests {
 mod status_tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
+    use jinn_core_types::SessionId;
     use jinn_domain::common::actor_deps::ActorDeps;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::bus::test_harness::TestHarness;
     use jinn_domain::common::state::State;
-    use jinn_core_types::SessionId;
-    use jinn_mcp_msg::{
-        McpConnectionStatus, McpRuntimeState, McpServerLog, McpServerStatus,
-    };
+    use jinn_mcp_msg::{McpConnectionStatus, McpRuntimeState, McpServerLog, McpServerStatus};
     use jinn_preferences_config::user_preferences::UserPreferences;
     use jinn_session_msg::{SessionArchived, SessionClosed, SessionTeardownFinished};
     use jinn_session_store_msg::SessionLoadCompleted;
@@ -971,9 +970,7 @@ mod status_tests {
     use crate::coordinator::McpCoordinatorActorDeps;
 
     /// Spawns a coordinator with a dedicated MCP runtime cell.
-    async fn spawn_with_session(
-        harness: &TestHarness,
-    ) -> (TypedCell<McpRuntimeState>, SessionId) {
+    async fn spawn_with_session(harness: &TestHarness) -> (TypedCell<McpRuntimeState>, SessionId) {
         let services = harness.services().await;
         services
             .user_preferences_storage

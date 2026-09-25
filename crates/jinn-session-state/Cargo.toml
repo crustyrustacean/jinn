@@ -10,7 +10,6 @@ jinn-chat-input-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
-jinn-mcp-msg = { workspace = true }
 jinn-session-history = { workspace = true }
 jinn-skills = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }

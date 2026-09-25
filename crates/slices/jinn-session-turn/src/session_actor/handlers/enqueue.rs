@@ -20,8 +20,8 @@ use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
 use jinn_session_history_msg::PushChatEntry;
 
 use super::super::SessionPersistenceActor;
-use jinn_domain::feat::image_convert::ResolveOutcome;
 use jinn_domain::feat::context::prompt_template::PendingPath;
+use jinn_domain::feat::image_convert::ResolveOutcome;
 use jinn_session_msg::PhaseKind;
 use jinn_turn_dispatch_msg::DispatchTurn;
 
@@ -258,13 +258,13 @@ impl SessionPersistenceActor {
                     // degraded `@path` tokens. Set unconditionally — an empty
                     // (but non-default) marker keeps re-expansion idempotent for
                     // fully-attached messages.
-                    *entry_outcome = jinn_domain::protocol::AttachmentOutcome { attached, degraded };
+                    *entry_outcome =
+                        jinn_domain::protocol::AttachmentOutcome { attached, degraded };
                 }
                 true
             }
             Ok(Err(report)) => {
-                let message =
-                    jinn_domain::feat::image_convert::format_attachment_error(&report);
+                let message = jinn_domain::feat::image_convert::format_attachment_error(&report);
                 self.push_entry_and_block(session_id, entry.clone(), message)
                     .await;
                 false
@@ -386,10 +386,7 @@ impl SessionPersistenceActor {
 
     /// PushChatEntry: push entry to session history, emit ChatEntrySubmitted event,
     /// and persist the session to disk.
-    pub(in crate::session_actor) async fn handle_push_chat_entry(
-        &self,
-        payload: &PushChatEntry,
-    ) {
+    pub(in crate::session_actor) async fn handle_push_chat_entry(&self, payload: &PushChatEntry) {
         tracing::debug!(
             session_id = %payload.session_id,
             kind = %payload.entry.kind_str(),
@@ -424,10 +421,10 @@ mod tests {
         reason = "test code"
     )]
 
+    use jinn_core_types::model_selection::ModelSelection;
     use jinn_domain::common::services::BusAudit;
     use jinn_domain::feat::chat_input::protocol::command::{EnqueueResumeTurn, EnqueueUserMessage};
     use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
-    use jinn_core_types::model_selection::ModelSelection;
     use jinn_session_history_msg::PushChatEntry;
     use jinn_session_msg::PhaseKind;
 
@@ -436,7 +433,9 @@ mod tests {
         jinn_domain::common::state::State,
         BusAudit,
     ) {
-        let state = jinn_domain::common::state::State::new(jinn_domain::common::app_state::AppState::default());
+        let state = jinn_domain::common::state::State::new(
+            jinn_domain::common::app_state::AppState::default(),
+        );
         let (actor, audit) = super::super::super::helpers::test_actor_recording().await;
         let actor = super::super::super::SessionPersistenceActor {
             state: state.clone(),
@@ -940,9 +939,7 @@ mod tests {
     }
 
     /// Extracts the `expanded` text of the most recent `User` entry in history.
-    fn last_user_expanded(
-        session: &jinn_session_state::ChatSessionState,
-    ) -> Option<String> {
+    fn last_user_expanded(session: &jinn_session_state::ChatSessionState) -> Option<String> {
         session.history().iter().rev().find_map(|e| match &e.kind {
             ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
             _ => None,

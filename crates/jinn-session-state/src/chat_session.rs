@@ -8,14 +8,6 @@
 //! and [`SessionUi`] (IntentHandler) sub-structs to make cross-boundary
 //! writes visually obvious during code review.
 
-#![expect(
-    clippy::partial_pub_fields,
-    clippy::field_scoped_visibility_modifiers,
-    reason = "ChatSessionState uses scoped visibility on `core` to enforce the capsule wall: \
-        the field is private to the session subtree so cross-actor reach-throughs cannot compile, \
-        while `ui` stays pub for IntentHandler. Mixed pub/scoped visibility is intentional."
-)]
-
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::atomic::Ordering;
@@ -45,9 +37,7 @@ use jinn_skills::parse_loaded_skill_name;
 use jinn_token_count_msg::TokenRecord;
 
 use crate::core::SessionCore;
-use crate::fields::{
-    SessionIdentityMetadataFields, SessionIntegrationFields, SessionProfile, SessionStorageFields,
-};
+use crate::fields::SessionProfile;
 use crate::runtime::SessionUi;
 use crate::steering_buffer::SteeringBuffer;
 
@@ -89,6 +79,10 @@ pub use jinn_session_msg::SessionOrigin;
 /// Fields are grouped into [`SessionCore`] (session-actor / context-actor)
 /// and [`SessionUi`] (IntentHandler) sub-structs to make cross-boundary
 /// writes visually obvious during code review.
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "UI state remains explicitly public while the authoritative core stays private"
+)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatSessionState {
     /// Core domain state managed by session-actor and context-actor.
@@ -361,14 +355,10 @@ impl ChatSessionState {
     /// Create a new session with a specific profile (model + strategy).
     #[must_use]
     pub fn new_with_profile(profile: SessionProfile) -> Self {
+        let mut core = SessionCore::default();
+        core.integrations.profile = profile;
         Self {
-            core: SessionCore {
-                integrations: SessionIntegrationFields {
-                    profile,
-                    ..SessionIntegrationFields::default()
-                },
-                ..SessionCore::default()
-            },
+            core,
             ui: SessionUi::default(),
             slices: std::sync::OnceLock::new(),
             view_fallback: parking_lot::RwLock::new(
@@ -389,18 +379,10 @@ impl ChatSessionState {
     /// the session that spawned them.
     #[must_use]
     pub fn new_child(parent_session_id: &SessionId, persist: bool) -> Self {
-        let core = SessionCore {
-            identity: SessionIdentityMetadataFields {
-                parent_session: Some(parent_session_id.clone()),
-                origin: SessionOrigin::Subagent,
-                ..SessionIdentityMetadataFields::default()
-            },
-            storage: SessionStorageFields {
-                persist,
-                ..SessionStorageFields::default()
-            },
-            ..SessionCore::default()
-        };
+        let mut core = SessionCore::default();
+        core.identity.parent_session = Some(parent_session_id.clone());
+        core.identity.origin = SessionOrigin::Subagent;
+        core.storage.persist = persist;
         Self {
             core,
             ui: SessionUi::default(),
@@ -1604,45 +1586,6 @@ impl ChatSessionState {
     /// Used by the MCP picker to commit toggle state.
     pub fn set_enabled_mcp_servers(&mut self, servers: std::collections::BTreeSet<String>) {
         self.core.integrations.enabled_mcp_servers = servers;
-    }
-
-    /// Read-only access to this session's live MCP server connection statuses.
-    #[must_use]
-    pub fn mcp_server_status(
-        &self,
-    ) -> &std::collections::BTreeMap<String, jinn_mcp_msg::McpConnectionStatus> {
-        &self.core.integrations.mcp_server_status
-    }
-
-    /// Sets the live connection status for one MCP server in this session.
-    ///
-    /// Owned by `McpCoordinatorActor`, driven by `McpServerStatus` events.
-    pub fn set_mcp_server_status(
-        &mut self,
-        server: &str,
-        status: jinn_mcp_msg::McpConnectionStatus,
-    ) {
-        self.core
-            .integrations
-            .mcp_server_status
-            .insert(server.to_owned(), status);
-    }
-
-    /// Returns the latest captured stderr tail per MCP server for this session.
-    ///
-    /// Owned by `McpCoordinatorActor`, driven by `McpServerLog` events.
-    pub fn mcp_server_stderr(&self) -> &std::collections::BTreeMap<String, String> {
-        &self.core.integrations.mcp_server_stderr
-    }
-
-    /// Sets the captured stderr tail for one MCP server in this session.
-    ///
-    /// Owned by `McpCoordinatorActor`, driven by `McpServerLog` events.
-    pub fn set_mcp_server_stderr(&mut self, server: &str, tail: String) {
-        self.core
-            .integrations
-            .mcp_server_stderr
-            .insert(server.to_owned(), tail);
     }
 
     /// Returns `true` if the skill is enabled for this session.
@@ -3182,7 +3125,7 @@ impl ChatSessionState {
         &mut self,
         index: usize,
         value: ContextOverride,
-        source: ChangeSource,
+        source: &ChangeSource,
     ) -> bool {
         self.edit_history()
             .with_entry_at_mut(index, |entry| {

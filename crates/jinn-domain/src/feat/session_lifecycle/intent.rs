@@ -7,7 +7,6 @@
 use wherror::Error;
 
 use crate::common::app_state::AppState;
-use jinn_session_state::ChatSessionState;
 use crate::feat::session::profile::{DEFAULT_PERSONA_NAME, SessionProfile};
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
 use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
@@ -17,6 +16,7 @@ use jinn_core_types::SessionId;
 use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::setup_running_msg;
+use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::PersistSession;
 
 /// Errors that can occur when validating arg input.

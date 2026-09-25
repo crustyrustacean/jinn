@@ -416,10 +416,10 @@ mod tests {
     use jinn_domain::PickerKind;
     use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
-    use jinn_session_state::ChatSessionState;
     use jinn_mcp_msg::McpConnectionStatus;
     use jinn_picker::MCP_SERVER_ID;
     use jinn_picker::SpecHandle;
+    use jinn_session_state::ChatSessionState;
     use jinn_theme::default_theme;
 
     /// A configured MCP server: command + args become the picker description.

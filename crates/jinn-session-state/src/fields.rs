@@ -3,12 +3,11 @@
 //! Every group is flattened into `SessionCore`, preserving the established flat
 //! persisted schema while keeping the live values under one authoritative lock.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
 use jiff::Timestamp;
 use jinn_core_types::{ChatHistory, SessionId};
-use jinn_mcp_msg::McpConnectionStatus;
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
 use jinn_session_store_msg::SessionState;
@@ -129,7 +128,7 @@ pub struct SessionHistoryWorkFields {
     pub task_list: jinn_tools_msg::TaskList,
 }
 
-/// Provider policy, durable integration configuration, and runtime MCP state.
+/// Provider policy, durable integration configuration, and compatibility data.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionIntegrationFields {
     /// Per-session provider and context strategy.
@@ -140,12 +139,6 @@ pub struct SessionIntegrationFields {
     /// Persisted MCP server enablement.
     #[serde(default)]
     pub enabled_mcp_servers: BTreeSet<String>,
-    /// Runtime MCP connection status.
-    #[serde(skip)]
-    pub mcp_server_status: BTreeMap<String, McpConnectionStatus>,
-    /// Runtime MCP stderr tail.
-    #[serde(skip)]
-    pub mcp_server_stderr: BTreeMap<String, String>,
 }
 
 /// Loaded/archived state and persistence policy.

@@ -12,10 +12,10 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use crate::tool_types::ToolContext;
+use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_domain::common::process_kill::kill_process_tree;
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_core_types::SessionId;
 use jinn_tools_msg::{ToolExecutionOutput, ToolExecutionStarted, ToolOutputKind};
 
 use jinn_tools_msg::truncation::{

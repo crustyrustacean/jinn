@@ -392,8 +392,8 @@ mod tests {
     use jinn_domain::PickerKind;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
     use jinn_domain::feat::picker::intent::handle_open_picker;
-    use jinn_session_state::ChatSessionState;
     use jinn_domain::protocol::IntentResult;
+    use jinn_session_state::ChatSessionState;
     use jinn_theme::default_theme;
 
     /// A raw provider entry builder for tests.

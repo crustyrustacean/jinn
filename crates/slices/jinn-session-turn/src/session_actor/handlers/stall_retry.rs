@@ -30,10 +30,7 @@ impl SessionPersistenceActor {
     /// A second dispatch for the same session simply overwrites the guard:
     /// newest generation wins (the LLM actor aborts the superseded task),
     /// matching the stale-completion drop semantics.
-    pub(in crate::session_actor) fn on_send_to_llm_provider(
-        &self,
-        payload: &SendToLlmProvider,
-    ) {
+    pub(in crate::session_actor) fn on_send_to_llm_provider(&self, payload: &SendToLlmProvider) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             session.arm_stream(payload.dispatched_at);

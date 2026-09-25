@@ -3,9 +3,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use jinn_core_types::SessionId;
+use jinn_core_types::SessionProfile;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::session::profile::SessionSeed;
-use jinn_core_types::SessionProfile;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node};
 use jinn_session_store_msg::SessionState;
 use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
@@ -17,7 +17,8 @@ use crate::session_store_actor::SessionStoreActor;
 impl SessionStoreActor {
     /// Archives a session without running a teardown script.
     pub(crate) async fn handle_archive_session(&self, payload: &ArchiveSession) {
-        self.archive_members(&[payload.session_id.clone()]).await;
+        self.archive_members(std::slice::from_ref(&payload.session_id))
+            .await;
     }
 
     /// Archives a session and all descendants, all-or-nothing.
@@ -150,7 +151,9 @@ impl SessionStoreActor {
                     }
                 };
             }
-            let mut snapshot = snapshot.expect("archive snapshot resolved above");
+            let Some(mut snapshot) = snapshot else {
+                continue;
+            };
             if snapshot.revision.get() == 0 {
                 snapshot.revision = jinn_session_state::SessionRevision::new(1);
             }
@@ -206,11 +209,17 @@ impl SessionStoreActor {
             (fresh, enablement)
         };
 
-        let removed_parent = self.state.read().session.get(session_id).and_then(|session| session.parent_session().clone());
-        self.state
-            .with_session(&self.session_cap, |view| {
-                view.session.map().remove_and_replace(session_id, fresh_session);
-            });
+        let removed_parent = self
+            .state
+            .read()
+            .session
+            .get(session_id)
+            .and_then(|session| session.parent_session().clone());
+        self.state.with_session(&self.session_cap, |view| {
+            view.session
+                .map()
+                .remove_and_replace(session_id, fresh_session);
+        });
         (removed_parent, enablement)
     }
 }

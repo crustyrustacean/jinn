@@ -126,11 +126,10 @@ pub fn selected_sessions_sidebar_target(state: &AppState) -> Option<jinn_core_ty
             parent_id: session.parent_session().clone(),
         })
         .collect();
-    let visual_parents = state
-        .frontend
-        .with_sections(|sections| sections.sessions.visual_parents.clone(), || {
-            std::collections::HashMap::new()
-        });
+    let visual_parents = state.frontend.with_sections(
+        |sections| sections.sessions.visual_parents.clone(),
+        std::collections::HashMap::new,
+    );
     jinn_session_list::visible_session_at(nodes, &visual_parents, index)
 }
 

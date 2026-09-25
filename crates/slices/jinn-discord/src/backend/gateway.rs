@@ -23,9 +23,9 @@ use crate::{
 };
 use derive_more::Debug;
 use error_stack::Report;
+use jinn_core_types::{ChatEntry, SessionId};
 use jinn_discord_msg::DiscordStatusUpdate;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
-use jinn_core_types::{ChatEntry, SessionId};
 use jinn_domain::{Bridge, State};
 use jinn_session_state::SessionReadProjection;
 use jinn_session_store_msg::SessionLoadRequested;
@@ -335,7 +335,11 @@ async fn handle_create_thread(
 }
 
 /// Publish a `DiscordThreadCreateFailed` event for the session.
-fn report_failure(bridge: &Bridge, session_id: jinn_core_types::SessionId, reason: CreateThreadReason) {
+fn report_failure(
+    bridge: &Bridge,
+    session_id: jinn_core_types::SessionId,
+    reason: CreateThreadReason,
+) {
     publish(bridge, DiscordThreadCreateFailed { session_id, reason });
 }
 

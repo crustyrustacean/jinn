@@ -2923,7 +2923,6 @@ dependencies = [
  "jinn-chat-log-view-msg",
  "jinn-context",
  "jinn-core-types",
- "jinn-mcp-msg",
  "jinn-session-history",
  "jinn-session-lifecycle-msg",
  "jinn-session-msg",

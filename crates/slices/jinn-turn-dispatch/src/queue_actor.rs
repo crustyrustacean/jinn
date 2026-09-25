@@ -55,6 +55,7 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
+use jinn_context_assembly::inputs::build_assembly_inputs;
 use jinn_core_types::{ChatEntry, ChatEntryKind, ReasoningEffort, SessionId};
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::Services;
@@ -62,11 +63,10 @@ use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
 use jinn_domain::common::tcaps::SessionCap;
 use jinn_domain::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use jinn_context_assembly::inputs::build_assembly_inputs;
 use jinn_domain::feat::context::snapshot::assemble_via_service;
+use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
 use jinn_provider_selection::attachment_gate::evaluate_attachment_gate;
 use jinn_provider_selection_msg::resolve_effort;
-use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
 use jinn_session_history_msg::HistoryAppended;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
@@ -442,8 +442,7 @@ impl QueueActor {
         let (provider_id, model_used, reasoning_effort, endpoint_tag, old_phase, new_phase) = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
-                let reasoning_effort =
-                    resolve_effort(session.profile().reasoning_effort);
+                let reasoning_effort = resolve_effort(session.profile().reasoning_effort);
                 // Snapshot the endpoint tag immutably before mutating the
                 // model (alloy round-robin mutates index during
                 // resolve_model).

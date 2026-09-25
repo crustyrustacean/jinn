@@ -6,8 +6,8 @@
 //! (live state), never addresses.
 
 use crate::tool_types::ToolContext;
-use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_core_types::SessionId;
+use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_session_store_msg::TranscriptWindow;
 
 use std::fmt::Write as _;

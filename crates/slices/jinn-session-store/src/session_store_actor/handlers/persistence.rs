@@ -30,7 +30,7 @@ impl SessionStoreActor {
                 .session
                 .get(&requested_id)
                 .filter(|session| session.is_persistable())
-                .map(|session| session.capture_snapshot())
+                .map(jinn_session_state::ChatSessionState::capture_snapshot)
         })
         .await
         .unwrap_or_else(|error| {

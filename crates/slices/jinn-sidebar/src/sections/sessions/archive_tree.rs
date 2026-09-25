@@ -42,9 +42,7 @@ pub fn archive_tree_members(state: &AppState) -> Result<Vec<SessionId>, ArchiveT
         .with_sections(|sections| sections.sessions.selected_index, || None)
         .ok_or(ArchiveTreeError::NoSelection)?;
     let entries = sorted_open_sessions(state);
-    let root = entries
-        .get(index)
-        .ok_or(ArchiveTreeError::NoSelection)?;
+    let root = entries.get(index).ok_or(ArchiveTreeError::NoSelection)?;
     if root.kind != SessionEntryKind::Session {
         return Err(ArchiveTreeError::NotASession);
     }
@@ -78,9 +76,33 @@ pub fn handle_session_tree_action_arm(
                 Err(_) => IntentResult::empty(),
             }
         }
-        Some(_) => {
+        Some(ArchiveTreePrompt::Confirm { .. }) => {
             state.frontend.archive_tree_prompt = None;
-            IntentResult::empty()
+            match archive_tree_members(state) {
+                Ok(members) => {
+                    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Confirm {
+                        count: members.len(),
+                        action,
+                    });
+                    IntentResult::empty()
+                }
+                Err(ArchiveTreeError::SubtreeBusy) => {
+                    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
+                    IntentResult::empty()
+                }
+                Err(_) => IntentResult::empty(),
+            }
+        }
+        Some(ArchiveTreePrompt::Busy) => {
+            state.frontend.archive_tree_prompt = None;
+            match archive_tree_members(state) {
+                Ok(members) => command_for(action, members[0].clone()),
+                Err(ArchiveTreeError::SubtreeBusy) => {
+                    state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
+                    IntentResult::empty()
+                }
+                Err(_) => IntentResult::empty(),
+            }
         }
         None => match archive_tree_members(state) {
             Ok(members) => {

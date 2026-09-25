@@ -16,8 +16,8 @@ mod runtime;
 pub mod session_map;
 pub mod snapshot;
 pub mod steering_buffer;
-pub mod turn_count;
 mod tree_projection;
+pub mod turn_count;
 
 pub use assembly_projection::AssemblySessionProjection;
 pub use chat_session::{ChatSessionState, StreamingError};
@@ -31,5 +31,5 @@ pub use read_projection::SessionReadProjection;
 pub use runtime::{SessionCoreEphemeral, SessionUi};
 pub use session_map::{SessionLoadGuard, SessionMap};
 pub use snapshot::{SessionRevision, SessionSnapshot, SessionSnapshotMetadata};
-pub use turn_count::compute_turn_count;
 pub use tree_projection::{snapshot_frozen_node, snapshot_frozen_node_from_snapshot};
+pub use turn_count::compute_turn_count;

@@ -4,9 +4,9 @@ use std::collections::{HashMap, HashSet};
 
 use jinn_core_types::{ChatEntry, SessionId};
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_domain::feat::session::SessionStoreService;
 use jinn_domain::protocol::system::ActiveSessionChanged;
+use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_session_store_msg::SessionForkRequested;
 use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested};
 

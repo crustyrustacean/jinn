@@ -176,21 +176,18 @@ fn refresh_mcp_inspector_snapshot(
     };
     let session_id = state.active_session().session_id().clone();
     let (status, stderr_tail, tools) = {
-        let runtime = slices
-            .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot());
-        let (status, stderr_tail) = runtime
-            .as_ref()
-            .map(|runtime| {
-                let runtime = runtime.read();
-                (
-                    runtime.status(&session_id, &server_name),
-                    runtime
-                        .stderr(&session_id, &server_name)
-                        .map(str::to_owned)
-                        .unwrap_or_default(),
-                )
-            })
-            .unwrap_or((None, String::new()));
+        let runtime =
+            slices.reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot());
+        let (status, stderr_tail) = runtime.as_ref().map_or((None, String::new()), |runtime| {
+            let runtime = runtime.read();
+            (
+                runtime.status(&session_id, &server_name),
+                runtime
+                    .stderr(&session_id, &server_name)
+                    .map(str::to_owned)
+                    .unwrap_or_default(),
+            )
+        });
         let defs = state
             .tool_registry()
             .map(|cell| cell.read().tools_for_session(&session_id))

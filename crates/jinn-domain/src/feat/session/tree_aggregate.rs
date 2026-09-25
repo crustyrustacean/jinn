@@ -9,9 +9,9 @@
 
 use std::collections::{HashMap, HashSet};
 
+use jinn_core_types::SessionId;
 use jinn_session_state::ChatSessionState;
 use jinn_session_state::compute_turn_count;
-use jinn_core_types::SessionId;
 use jinn_token_count_msg::TokenStats;
 
 pub use jinn_session_state::{snapshot_frozen_node, snapshot_frozen_node_from_snapshot};

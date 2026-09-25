@@ -1926,10 +1926,7 @@ async fn legacy_blob_without_origin_loads_as_user() {
     let metadata: jinn_session_state::SessionSnapshotMetadata = persistable.into();
 
     // Then the legacy blob loads as User.
-    assert_eq!(
-        metadata.origin,
-        jinn_session_msg::SessionOrigin::User
-    );
+    assert_eq!(metadata.origin, jinn_session_msg::SessionOrigin::User);
 }
 
 #[rstest::rstest]
@@ -1980,10 +1977,7 @@ async fn subagent_origin_roundtrips_through_store() {
         .expect("should exist");
 
     // Then the subagent origin survives persistence.
-    assert_eq!(
-        loaded.origin(),
-        jinn_session_msg::SessionOrigin::Subagent
-    );
+    assert_eq!(loaded.origin(), jinn_session_msg::SessionOrigin::Subagent);
 }
 
 #[rstest::rstest]
@@ -2013,10 +2007,7 @@ async fn forked_session_persists_fork_origin() {
         .await
         .expect("load forked")
         .expect("should exist");
-    assert_eq!(
-        forked.origin(),
-        jinn_session_msg::SessionOrigin::Fork
-    );
+    assert_eq!(forked.origin(), jinn_session_msg::SessionOrigin::Fork);
     // And the fork still carries the parent link.
     assert_eq!(forked.parent_session(), &Some(source_id.clone()));
 }

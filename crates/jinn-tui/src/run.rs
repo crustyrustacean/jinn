@@ -522,7 +522,8 @@ mod tests {
             std::fs::write(&file_path, b"contents").expect("write file");
 
             // When applying a file path.
-            let published = apply_selected_cwd(&bridge, jinn_core_types::SessionId::new(), &file_path);
+            let published =
+                apply_selected_cwd(&bridge, jinn_core_types::SessionId::new(), &file_path);
 
             // Then nothing is published and the helper returns false.
             assert!(!published, "file path should not publish");

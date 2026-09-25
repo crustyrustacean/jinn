@@ -311,14 +311,14 @@ mod tests {
     use super::*;
     use jinn_context::env_context::ContextFile;
     use jinn_core_types::ServerToolType;
+    use jinn_core_types::SessionId;
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_core_types::tool_types::ToolDefinition;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::state::State;
     use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
-    use jinn_domain::protocol::ToolResultStatus;
     use jinn_domain::protocol::ChatEntry;
-    use jinn_core_types::SessionId;
+    use jinn_domain::protocol::ToolResultStatus;
     use jinn_skills::Skill;
     use jinn_tools_msg::TASK_TOOL_NAME;
 
@@ -1144,9 +1144,7 @@ mod tests {
                 r.global
                     .insert(TASK_TOOL_NAME.to_owned(), make_tool(TASK_TOOL_NAME));
             });
-            let child = jinn_session_state::ChatSessionState::new_child(
-                &parent_id, true,
-            );
+            let child = jinn_session_state::ChatSessionState::new_child(&parent_id, true);
             child_id = child.session_id().clone();
             let mut guard = state.write_test_no_cap();
             guard.session.insert(child);

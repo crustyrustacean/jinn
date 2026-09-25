@@ -7,11 +7,9 @@
 //! rollup counts — no pagination; refine the query instead of paging.
 
 use crate::tool_types::ToolContext;
-use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_core_types::SessionId;
-use jinn_session_store_msg::{
-    SearchOutcome, SearchParams, SearchableRole, SessionSummary,
-};
+use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use jinn_session_store_msg::{SearchOutcome, SearchParams, SearchableRole, SessionSummary};
 
 use std::fmt::Write as _;
 
@@ -327,11 +325,7 @@ async fn resolve_sessions(
 }
 
 /// Builds the successful [`ToolResult`] from a search outcome.
-fn outcome_to_result(
-    outcome: &SearchOutcome,
-    sessions: &ResolvedSessions,
-    query: &str,
-) -> String {
+fn outcome_to_result(outcome: &SearchOutcome, sessions: &ResolvedSessions, query: &str) -> String {
     let mut out = String::new();
 
     if outcome.total_matches == 0 {

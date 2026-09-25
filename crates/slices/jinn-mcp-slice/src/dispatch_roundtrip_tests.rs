@@ -23,10 +23,10 @@ use std::time::Duration;
 use jinn_mcp::server_testkit::{spawn_stub_client, spawn_stub_client_with_killer};
 
 use crate::connection::{McpActor, McpActorDeps};
+use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
-use jinn_core_types::SessionId;
 use jinn_mcp_msg::McpServerConfig;
 use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
 use jinn_tools_msg::ExecuteTool;
@@ -481,12 +481,10 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
         .get_mut(&session_id)
         .expect("session")
         .enable_mcp_server("stub");
-    state
-        .write_test_no_cap()
-        .session
-        .get_mut(&session_id)
-        .expect("session")
-        .set_mcp_server_status("stub", McpConnectionStatus::Running);
+    let runtime = crate::activate_runtime(&services.slices).expect("MCP runtime cell");
+    runtime.update(|runtime| {
+        runtime.set_status(&session_id, "stub", McpConnectionStatus::Running);
+    });
 
     let client = spawn_stub_client().await;
     let actor = McpActor::spawn(

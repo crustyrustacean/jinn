@@ -314,10 +314,10 @@ impl ActorSystemBuilder {
         // holds `Services` for the assembly ask.
         jinn_context_assembly::install_actors(&services.trouper_system, state.clone(), &services);
         // ── Session store + lifecycle slices ──────────────────────────
-        // Three session actors split the former whale: this kernel actor keeps
-        // turn progression and context state; the store actor owns load, fork,
-        // archive, and persist; the lifecycle actor owns setup, teardown, close,
-        // and working-directory changes. Each contract has exactly one owner.
+        // Three session actors split the former whale: the session-turn actor
+        // keeps turn progression and context folds; the store actor owns load,
+        // fork, archive, and persist; the lifecycle actor owns setup, teardown,
+        // close, and working-directory changes. Each contract has exactly one owner.
         jinn_session_store::activate(&services, state.clone());
         jinn_session_lifecycle::activate(
             &services,

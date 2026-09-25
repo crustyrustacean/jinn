@@ -338,9 +338,9 @@ fn reason_message(reason: &CreateThreadReason) -> String {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
+    use jinn_core_types::SessionId;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::protocol::ChatEntryKind;
-    use jinn_core_types::SessionId;
 
     /// Build a bridge subscriber with one seeded session, plus its session id.
     ///

@@ -15,10 +15,10 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use jinn_core_types::SessionId;
 use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::state::State;
-use jinn_core_types::SessionId;
 
 use jinn_session_init::commands::{RescanPrompts, RunDiscovery};
 use jinn_session_init::worker::SETTLE_BUDGET_ARG;

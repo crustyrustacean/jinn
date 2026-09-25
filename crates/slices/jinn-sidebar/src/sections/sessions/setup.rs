@@ -58,7 +58,9 @@ fn selected_idle_session(state: &AppState) -> Option<jinn_core_types::SessionId>
     let index = state
         .frontend
         .with_sections(|sections| sections.sessions.selected_index, || None)?;
-    sorted_open_sessions(state).get(index).map(|entry| entry.id.clone())
+    sorted_open_sessions(state)
+        .get(index)
+        .map(|entry| entry.id.clone())
 }
 
 fn render_setup(setup: &LifecycleCommand, args: &[String]) -> String {
@@ -71,11 +73,7 @@ fn render_setup(setup: &LifecycleCommand, args: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        reason = "test code"
-    )]
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
     use jinn_preferences_config::schemas::SessionLifecycle;
 
@@ -119,12 +117,16 @@ mod tests {
     fn rerun_setup_emits_status_entry_and_lifecycle_command() {
         // Given a selected session with a configured setup command.
         let mut state = state_with_selected_session();
-        state.frontend.preferences.session_lifecycles.push(SessionLifecycle {
-            name: "release".to_owned(),
-            description: None,
-            setup: Some(LifecycleCommand::Shell("deploy".to_owned())),
-            teardown: None,
-        });
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "release".to_owned(),
+                description: None,
+                setup: Some(LifecycleCommand::Shell("deploy".to_owned())),
+                teardown: None,
+            });
         state
             .active_session_mut()
             .set_lifecycle_name(Some("release".to_owned()));

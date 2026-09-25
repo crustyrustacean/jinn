@@ -1,15 +1,12 @@
 //! The session-store slice — session persistence, restoration, archiving, and
 //! the FTS search index.
 //!
-//! Owns the SQLite-backed [`SqliteSessionStore`] (the production
-//! [`jinn_domain::SessionStore`](jinn_domain::feat::session::SessionStore)
-//! implementation), the schema migrator, the store-owned session actor, and
-//! the background search-index maintenance actor that drains the durable
-//! `fts_dirty` marker table into the `session_fts` index.
-//!
-//! Kernel dependency (see Cargo.toml): transitional and justified — the
-//! trait seam (`SessionStoreService`) and the session state vocabulary the
-//! store persists live in `jinn-domain` for now.
+//! Owns the SQLite-backed [`SqliteSessionStore`] implementation, the schema
+//! migrator, the store-owned session actor, and the background search-index
+//! maintenance actor that drains the durable `fts_dirty` marker table into the
+//! `session_fts` index. Live reconstruction and snapshots come from
+//! `jinn-session-state`; the shared `SessionStore` service seam remains in the
+//! kernel services layer.
 
 pub mod migrator;
 pub mod search_index_actor;

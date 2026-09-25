@@ -22,10 +22,10 @@
 
 use std::time::Duration;
 
+use jinn_core_types::SessionId;
 use jinn_domain::AppCore;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
-use jinn_core_types::SessionId;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_preferences_config::StallWatchdogConfig;
 use jinn_tui::TuiApp;

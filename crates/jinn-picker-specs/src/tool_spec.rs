@@ -534,8 +534,7 @@ mod tests {
         // Given a subagent (child) session whose spawn stamp disables task.
         let mut state = AppState::default_with_scope_focus();
         let parent_id = jinn_core_types::SessionId::new();
-        let child =
-            jinn_session_state::ChatSessionState::new_child(&parent_id, true);
+        let child = jinn_session_state::ChatSessionState::new_child(&parent_id, true);
         state.session.insert(child);
         state
             .session

@@ -3,12 +3,12 @@
 //! Handles the full tool call lifecycle: creation via streaming, argument assembly,
 //! execution tracking, result collection, and batch completion routing.
 
-use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
 use jinn_context_assembly::inputs::build_assembly_inputs;
-use jinn_domain::feat::context::snapshot::assemble_via_service;
 use jinn_core_types::PinPosition;
 use jinn_core_types::model_selection::ModelSelection;
+use jinn_domain::common::actor_deps::BusPublish;
+use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
+use jinn_domain::feat::context::snapshot::assemble_via_service;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_session_msg::PhaseKind;
 use jinn_token_count_msg::TokenRecord;
@@ -21,10 +21,7 @@ use super::super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
     /// Begins tracking a streaming tool call.
-    pub(in crate::session_actor) fn on_tool_use_started(
-        &self,
-        event: &ToolUseStarted,
-    ) {
+    pub(in crate::session_actor) fn on_tool_use_started(&self, event: &ToolUseStarted) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&event.session_id);
             session.begin_tool_call(event.index, &event.id, &event.name, event.dispatched_at);
@@ -34,10 +31,7 @@ impl SessionPersistenceActor {
     ///
     /// The placeholder entry was created by `on_tool_use_started`. This updates
     /// it in place with the full arguments string, avoiding a duplicate entry.
-    pub(in crate::session_actor) fn on_tool_call_received(
-        &self,
-        event: &ToolCallReceived,
-    ) {
+    pub(in crate::session_actor) fn on_tool_call_received(&self, event: &ToolCallReceived) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&event.session_id);
             session.finalize_tool_call(
@@ -49,10 +43,7 @@ impl SessionPersistenceActor {
     }
 
     /// Appends a partial JSON delta to a streaming tool call.
-    pub(in crate::session_actor) fn on_tool_call_streaming(
-        &self,
-        event: &ToolCallStreaming,
-    ) {
+    pub(in crate::session_actor) fn on_tool_call_streaming(&self, event: &ToolCallStreaming) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&event.session_id);
             if let Err(e) = session.append_tool_call_delta(event.index, &event.partial_json) {
@@ -101,20 +92,14 @@ impl SessionPersistenceActor {
     }
 
     /// Creates a pending ToolResult entry when a streaming tool starts executing.
-    pub(in crate::session_actor) fn on_tool_execution_started(
-        &self,
-        event: &ToolExecutionStarted,
-    ) {
+    pub(in crate::session_actor) fn on_tool_execution_started(&self, event: &ToolExecutionStarted) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&event.session_id);
             session.begin_tool_result(&event.tool_call_id, &event.name, event.dispatched_at);
         });
     }
     /// Appends incremental output to a pending ToolResult entry.
-    pub(in crate::session_actor) fn on_tool_execution_output(
-        &self,
-        event: &ToolExecutionOutput,
-    ) {
+    pub(in crate::session_actor) fn on_tool_execution_output(&self, event: &ToolExecutionOutput) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&event.session_id);
             session.append_tool_result_output(&event.tool_call_id, &event.output, event.kind);
@@ -376,8 +361,8 @@ mod tests {
     )]
     use super::super::super::helpers::{ensure_context_assembly, test_actor, test_actor_recording};
     use jinn_core_types::ToolResultStatus;
-    use jinn_domain::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
     use jinn_core_types::tool_types::{ToolCall, ToolResult};
+    use jinn_domain::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
     use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
     use jinn_session_msg::PhaseKind;
     use jinn_token_count_msg::TokenRecord;
@@ -426,13 +411,11 @@ mod tests {
     #[tokio::test]
     async fn tool_batch_completed_via_bus_emits_continuation() {
         // Given a spawned session actor with a tool-call entry in its history.
+        use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
         use jinn_domain::common::state::State;
         use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
-        use crate::session_actor::{
-            SessionPersistenceActor, SessionPersistenceActorDeps,
-        };
         use jinn_inference_msg::SendToLlmProvider;
         use std::time::Duration;
 
@@ -463,7 +446,8 @@ mod tests {
                 frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 counter: TiktokenCounter::o200k_base(),
                 token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-                image_converter: jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
+                image_converter:
+                    jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
             },
         );
 
@@ -496,15 +480,13 @@ mod tests {
         // Given a spawned session actor with a streaming session whose tool
         // batch has already landed (the buffered-batch pre-cancel state: history
         // holds the tool call, phase is Streaming).
+        use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
+        use jinn_core_types::ChatEntry;
+        use jinn_core_types::tool_types::ToolResult;
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
         use jinn_domain::common::state::State;
         use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
-        use crate::session_actor::{
-            SessionPersistenceActor, SessionPersistenceActorDeps,
-        };
-        use jinn_core_types::ChatEntry;
-        use jinn_core_types::tool_types::ToolResult;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
         use jinn_session_msg::PhaseKind;
@@ -540,7 +522,8 @@ mod tests {
                 frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 counter: TiktokenCounter::o200k_base(),
                 token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-                image_converter: jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
+                image_converter:
+                    jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
             },
         );
 
@@ -653,13 +636,11 @@ mod tests {
         // against switching the bus itself to Guaranteed). The drop race itself is
         // timing-dependent and not deterministically reproducible here; this guard
         // ensures the wiring stays correct and the burst path stays livelock-free.
+        use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
         use jinn_domain::common::state::State;
         use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
-        use crate::session_actor::{
-            SessionPersistenceActor, SessionPersistenceActorDeps,
-        };
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::StreamToken;
         use std::time::Duration;
@@ -702,7 +683,8 @@ mod tests {
                 frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 counter: TiktokenCounter::o200k_base(),
                 token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-                image_converter: jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
+                image_converter:
+                    jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
             },
         );
 

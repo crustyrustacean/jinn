@@ -6,16 +6,16 @@
 
 use std::collections::VecDeque;
 
+use jinn_core_types::SessionId;
+use jinn_core_types::tool_types::ToolCall;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
 use jinn_domain::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
-use jinn_session_state::ChatSessionState;
-use jinn_session_history_msg::CitationsReceived;
 use jinn_domain::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
-use jinn_core_types::tool_types::ToolCall;
-use jinn_core_types::SessionId;
 use jinn_inference_msg::{StreamCompleted, StreamCompletedReason, StreamToken};
+use jinn_session_history_msg::CitationsReceived;
 use jinn_session_msg::SessionPhaseChanged;
+use jinn_session_state::ChatSessionState;
 use jinn_turn_dispatch_msg::QueueItem;
 
 use super::super::SessionPersistenceActor;
@@ -68,10 +68,7 @@ impl SessionPersistenceActor {
     /// handler reads as a step-by-step recipe. See [`Self::apply_stream_completion`]
     /// for the under-lock state transitions and [`resolve_output_tokens`] for the
     /// token-accounting policy.
-    pub(in crate::session_actor) async fn on_stream_completed(
-        &self,
-        event: &StreamCompleted,
-    ) {
+    pub(in crate::session_actor) async fn on_stream_completed(&self, event: &StreamCompleted) {
         let should_save = matches!(
             event.reason,
             StreamCompletedReason::Finished
@@ -160,10 +157,7 @@ impl SessionPersistenceActor {
 
     /// Handles `CitationsReceived`: appends a single display-only `Annotation`
     /// entry recording the turn's `url_citation` sources, then persists.
-    pub(in crate::session_actor) async fn on_citations_received(
-        &self,
-        event: &CitationsReceived,
-    ) {
+    pub(in crate::session_actor) async fn on_citations_received(&self, event: &CitationsReceived) {
         if event.citations.is_empty() {
             return;
         }
@@ -437,9 +431,9 @@ mod tests {
     use super::super::super::helpers::{
         test_actor, test_actor_recording, test_actor_with_store_recording,
     };
-    use jinn_session_history_msg::CitationsReceived;
     use jinn_domain::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
     use jinn_inference_msg::{StreamCompleted, StreamCompletedReason, StreamToken};
+    use jinn_session_history_msg::CitationsReceived;
     use jinn_session_msg::PhaseKind;
     use jinn_session_msg::SessionPhaseChanged;
     use jinn_token_count_msg::TokenRecord;

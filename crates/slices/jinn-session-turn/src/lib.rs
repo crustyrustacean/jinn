@@ -2,9 +2,8 @@
 //!
 //! This slice owns the one coordinated reducer that advances session turns:
 //! enqueue, streaming, tool continuation, retry, context mutation, and
-//! turn-path persistence. During the crate move, [`activate`] forwards to the
-//! existing kernel actor so composition can migrate before handler ownership
-//! moves. The forwarding seam is transitional and is not a second owner.
+//! turn-path persistence. The implementation is activated on the shared actor
+//! system at the established `session` path.
 
 pub mod session_actor;
 

@@ -16,8 +16,7 @@ pub mod picker_entry;
 pub use builtin::{BuiltinHandler, BuiltinHandlerError, BuiltinRegistry};
 pub use command::{
     CancelLifecycleCommand, CloseSession, FinishSessionSetup, FinishSessionTeardown,
-    PersistSession, RunSessionSetup, RunSessionTeardown, SetSessionCwd, TeardownFollowUp,
-    TeardownSessionTree,
+    RunSessionSetup, RunSessionTeardown, SetSessionCwd, TeardownFollowUp, TeardownSessionTree,
 };
 pub use command_template::CommandTemplate;
 pub use event::{

@@ -8,10 +8,10 @@ use std::time::Duration;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_domain::common::state::State;
-use jinn_session_store_msg::ArchiveSession;
 use jinn_domain::feat::session::{SessionStore, SessionStoreService};
-use jinn_session_state::ChatSessionState;
 use jinn_session_msg::{SessionArchived, SessionClosed};
+use jinn_session_state::ChatSessionState;
+use jinn_session_store_msg::ArchiveSession;
 use jinn_session_store_msg::{PersistSession, SessionLoadCompleted, SessionLoadRequested};
 
 use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};

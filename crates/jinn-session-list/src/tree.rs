@@ -85,13 +85,8 @@ fn effective_parent(
     }
 }
 
-fn sort_roots(
-    roots: &mut [SessionId],
-    entries: &HashMap<SessionId, SessionEntry>,
-) {
-    roots.sort_by(|left, right| {
-        created_at(entries, right).cmp(&created_at(entries, left))
-    });
+fn sort_roots(roots: &mut [SessionId], entries: &HashMap<SessionId, SessionEntry>) {
+    roots.sort_by_key(|id| std::cmp::Reverse(created_at(entries, id)));
 }
 
 fn sort_children(
@@ -99,14 +94,11 @@ fn sort_children(
     entries: &HashMap<SessionId, SessionEntry>,
 ) {
     for ids in children.values_mut() {
-        ids.sort_by(|left, right| created_at(entries, left).cmp(&created_at(entries, right)));
+        ids.sort_by_key(|id| created_at(entries, id));
     }
 }
 
-fn created_at(
-    entries: &HashMap<SessionId, SessionEntry>,
-    id: &SessionId,
-) -> jiff::Timestamp {
+fn created_at(entries: &HashMap<SessionId, SessionEntry>, id: &SessionId) -> jiff::Timestamp {
     entries
         .get(id)
         .map(|entry| entry.created_at)
@@ -146,14 +138,7 @@ fn push_root(
     root.is_last_child = is_last;
     let root_id = root.id.clone();
     flattened.push(root);
-    push_children(
-        tree,
-        &root_id,
-        vec![],
-        is_last,
-        flattened,
-        visited,
-    );
+    push_children(tree, &root_id, vec![], is_last, flattened, visited);
 }
 
 fn push_children(
@@ -229,9 +214,21 @@ mod tests {
         let newer_child = SessionId::new();
         let entries = vec![
             entry(old_root.clone(), jiff::Timestamp::UNIX_EPOCH, None),
-            entry(new_root.clone(), jiff::Timestamp::UNIX_EPOCH + jiff::Span::new().seconds(2), None),
-            entry(older_child.clone(), jiff::Timestamp::UNIX_EPOCH, Some(old_root.clone())),
-            entry(newer_child.clone(), jiff::Timestamp::UNIX_EPOCH + jiff::Span::new().seconds(1), Some(old_root.clone())),
+            entry(
+                new_root.clone(),
+                jiff::Timestamp::UNIX_EPOCH + jiff::Span::new().seconds(2),
+                None,
+            ),
+            entry(
+                older_child.clone(),
+                jiff::Timestamp::UNIX_EPOCH,
+                Some(old_root.clone()),
+            ),
+            entry(
+                newer_child.clone(),
+                jiff::Timestamp::UNIX_EPOCH + jiff::Span::new().seconds(1),
+                Some(old_root.clone()),
+            ),
         ];
 
         // When building the visible tree.
@@ -252,7 +249,11 @@ mod tests {
         let child = SessionId::new();
         let entries = vec![
             entry(visible_parent.clone(), jiff::Timestamp::UNIX_EPOCH, None),
-            entry(child.clone(), jiff::Timestamp::UNIX_EPOCH, Some(hidden.clone())),
+            entry(
+                child.clone(),
+                jiff::Timestamp::UNIX_EPOCH,
+                Some(hidden.clone()),
+            ),
         ];
         let visual_parents = HashMap::from([(hidden, visible_parent.clone())]);
 
@@ -260,8 +261,11 @@ mod tests {
         let visible = visible_session_tree(entries, &visual_parents);
 
         // Then the child is nested under the replacement parent.
-        assert_eq!(visible[1].parent_id, Some(visible_parent));
-        assert_eq!(visible[1].depth, 1);
+        assert!(matches!(
+            visible.as_slice(),
+            [_, child_entry]
+                if child_entry.parent_id == Some(visible_parent) && child_entry.depth == 1
+        ));
     }
 
     #[rstest::rstest]
@@ -270,8 +274,16 @@ mod tests {
         let left = SessionId::new();
         let right = SessionId::new();
         let entries = vec![
-            entry(left.clone(), jiff::Timestamp::UNIX_EPOCH, Some(right.clone())),
-            entry(right.clone(), jiff::Timestamp::UNIX_EPOCH, Some(left.clone())),
+            entry(
+                left.clone(),
+                jiff::Timestamp::UNIX_EPOCH,
+                Some(right.clone()),
+            ),
+            entry(
+                right.clone(),
+                jiff::Timestamp::UNIX_EPOCH,
+                Some(left.clone()),
+            ),
         ];
 
         // When building the visible tree.

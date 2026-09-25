@@ -22,8 +22,8 @@ use jinn_core_types::SessionId;
 
 use crate::common::session_map::SessionMap;
 pub use crate::feat::chat_input::ChatInputBoxState;
-use jinn_session_state::ChatSessionState;
 use crate::feat::ui::picker_states::PickerExt;
+use jinn_session_state::ChatSessionState;
 
 /// Written to exclusively by `SessionPersistenceActor` and `IntentHandler`.
 /// No other actor should mutate these fields.

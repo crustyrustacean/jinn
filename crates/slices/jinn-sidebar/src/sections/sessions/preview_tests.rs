@@ -10,9 +10,9 @@
 
 use crate::sections::sessions::preview::{render_session_preview, session_preview_popup_rect};
 use jinn_core_types::model_selection::ModelSelection;
-use jinn_session_state::ChatSessionState;
 use jinn_domain::feat::theme::default_theme;
 use jinn_domain::protocol::ChatEntry;
+use jinn_session_state::ChatSessionState;
 use jinn_sidebar_msg::SessionPreviewCache;
 use jinn_testutil::{buffer_row, setup_term};
 use jinn_tools_msg::{PhaseInput, TaskStatus};

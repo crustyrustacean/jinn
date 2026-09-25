@@ -395,8 +395,14 @@ Entries are added or amended **only with human approval**.
 - (picker) jinn-domain must not depend on jinn-picker-specs even as a dev-dependency: Cargo would build two copies of jinn-domain in one test binary, so the specs' state_any downcasts would target the wrong AppState. The kernel's dispatch tests use the metadata-only feat/picker/test_registry.rs; spec behavior is tested in jinn-picker-specs.
 - (picker) PickerStates remains in FrontendState; moving the typed selection storage to a cell requires reshaping PickerHost, which still lends selection state as &dyn Any from &AppState.
 - (picker) Each picker spec's state_any downcast is a temporary bridge; every picker is still hosted by the jinn-picker-specs crate rather than its owning slice, and feat/file_lister (the @-popup autocomplete) is a separate family, untouched.
-- (session) SessionCore remains the kernel-owned atomic persistence unit.
+- (session) Live session state is owned by the `jinn-session-state` crate, which preserves the authoritative atomic session aggregate and runtime turn state.
+- (session) Durable session persistence uses a complete `SessionSnapshot` containing session metadata, history, task state, and token accounting.
+- (session) The session turn reducer is owned by `jinn-session-turn` and coordinates history, phase, streaming, tools, retries, and persistence.
+- (session) `SessionStoreActor` persists and reconstructs complete `SessionSnapshot` values through SQLite.
+- (session) SQLite session persistence commits metadata, history, attachments, and token-ledger changes in one transaction.
+- (mcp) MCP runtime status and stderr are stored in an MCP-owned live cell, while persisted MCP enablement remains part of the session snapshot.
+- (arch) `jinn-domain` retains shared application state, capabilities, service seams, and frontend orchestration rather than the complete session-domain implementation.
 - (session) Session leaf vocabulary is split by facet across jinn-session-lifecycle-msg, jinn-session-store-msg, and jinn-session-msg.
 - (session) SessionStoreActor and SessionLifecycleActor own storage and lifecycle contracts in their respective slices.
-- (session) SessionPersistenceActor is the kernel actor for turn progression, context work, and sanctioned history folds.
+- (session) SessionPersistenceActor is the jinn-session-turn actor for coordinated turn progression, context work, and sanctioned history folds.
 - (migration) The actor-migration documentation suite presents current-state design and rationale in migration.md, slices.md, cleanup.md, and catalog.md.

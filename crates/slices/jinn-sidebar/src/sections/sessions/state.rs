@@ -21,7 +21,9 @@ pub fn sorted_open_sessions_split(
     let active_id = session.active_session_id();
     let entries = session
         .iter()
-        .filter(|(_, session)| session.session_state() == jinn_session_store_msg::SessionState::Loaded)
+        .filter(|(_, session)| {
+            session.session_state() == jinn_session_store_msg::SessionState::Loaded
+        })
         .map(|(id, session)| SessionEntry {
             kind: SessionEntryKind::Session,
             id: id.clone(),
@@ -29,10 +31,9 @@ pub fn sorted_open_sessions_split(
             is_active: id == active_id,
             created_at: *session.created_at(),
             is_idle: matches!(session.phase(), PhaseKind::Idle) && !session.is_busy(),
-            last_entry_is_error: session
-                .history()
-                .last()
-                .is_some_and(|entry| matches!(&entry.kind, jinn_core_types::ChatEntryKind::Error(..))),
+            last_entry_is_error: session.history().last().is_some_and(|entry| {
+                matches!(&entry.kind, jinn_core_types::ChatEntryKind::Error(..))
+            }),
             parent_id: session.parent_session().clone(),
             depth: 0,
             ancestor_continuations: vec![],
@@ -41,7 +42,8 @@ pub fn sorted_open_sessions_split(
             has_live_term: frontend
                 .slices()
                 .and_then(|slices| {
-                    slices.reader::<jinn_term_msg::TerminalTabState>(&jinn_term_msg::term_tabs_slot())
+                    slices
+                        .reader::<jinn_term_msg::TerminalTabState>(&jinn_term_msg::term_tabs_slot())
                 })
                 .is_some_and(|cell| cell.read().live_terms.contains(id)),
         })
@@ -54,7 +56,10 @@ pub fn sorted_open_sessions_split(
 }
 
 /// Repairs visual parents before a sidebar-owned removal operation.
-pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &jinn_core_types::SessionId) {
+pub fn update_visual_parents_on_removal(
+    state: &mut AppState,
+    removed_id: &jinn_core_types::SessionId,
+) {
     update_visual_parents_on_removal_split(&mut state.session, &mut state.frontend, removed_id);
 }
 
@@ -76,10 +81,8 @@ pub fn update_visual_parents_on_removal_split(
                 .collect::<HashSet<_>>(),
             session
                 .iter()
-                .filter_map(|(id, child)| {
-                    (child.parent_session().as_ref() == Some(removed_id))
-                        .then(|| id.clone())
-                })
+                .filter(|(_, child)| child.parent_session().as_ref() == Some(removed_id))
+                .map(|(id, _)| id.clone())
                 .collect::<Vec<_>>(),
         )
     };
@@ -109,10 +112,8 @@ pub fn repair_visual_parents_after_removal(
                 .collect::<HashSet<_>>(),
             session
                 .iter()
-                .filter_map(|(id, child)| {
-                    (child.parent_session().as_ref() == Some(removed_id))
-                        .then(|| id.clone())
-                })
+                .filter(|(_, child)| child.parent_session().as_ref() == Some(removed_id))
+                .map(|(id, _)| id.clone())
                 .collect::<Vec<_>>(),
         )
     };
@@ -128,10 +129,7 @@ pub fn repair_visual_parents_after_removal(
 }
 
 /// Clears visual-parent bypasses after a session becomes visible again.
-pub fn clear_visual_parents_on_load(
-    state: &mut AppState,
-    loaded_id: &jinn_core_types::SessionId,
-) {
+pub fn clear_visual_parents_on_load(state: &mut AppState, loaded_id: &jinn_core_types::SessionId) {
     clear_visual_parents_on_load_split(&mut state.frontend, loaded_id);
 }
 

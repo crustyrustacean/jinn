@@ -74,7 +74,7 @@ pub struct SessionPhaseChanged {
 
 /// Setup command completed (success or failure).
 ///
-/// Emitted by the session-persistence actor after running a lifecycle
+/// Emitted by the session-lifecycle actor after running a lifecycle
 /// setup command. On success, `cwd` is the directory reported by the
 /// command. On failure, `cwd` is the default CWD and `error` contains
 /// the failure details.
@@ -91,7 +91,7 @@ pub struct SessionSetupCompleted {
 
 /// Teardown command finished (success or failure).
 ///
-/// Emitted by the session-persistence actor after running a lifecycle
+/// Emitted by the session-lifecycle actor after running a lifecycle
 /// teardown command. On success, the session has already been removed
 /// from the sessions map. On failure, the session is still open and
 /// `error` describes the problem.
@@ -106,9 +106,9 @@ pub struct SessionTeardownFinished {
 
 /// Session archived in persistent storage.
 ///
-/// Emitted by the session-persistence actor after marking a session as
-/// archived in SQLite. Emitted before the session-closed event so
-/// consumers can distinguish archived closes from empty-session closes.
+/// Emitted by the session-store actor after marking a session as archived in
+/// SQLite. Emitted before the session-closed event so consumers can distinguish
+/// archived closes from empty-session closes.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
 #[schema(description = "A session was archived in persistent storage.")]
 pub struct SessionArchived {
