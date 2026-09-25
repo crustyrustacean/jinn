@@ -31,8 +31,13 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     apply_pre_render_mutation(app, area);
 
     let state = app.core.state.read();
-    let ctx = RenderCtx::new(&state, &app.services.slices, &app.services.overlay_views)
-        .with_pickers(&app.services.picker_registry);
+    let ctx = RenderCtx::new(
+        &state,
+        &app.services.slices,
+        &app.services.overlay_views,
+        &app.services.config,
+    )
+    .with_pickers(&app.services.picker_registry);
 
     // Layout kind comes from the base scope's registration: a dynamic
     // tab scope renders full-width (no chat chrome); everything else is

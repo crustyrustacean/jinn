@@ -345,7 +345,8 @@ mod tests {
                 .expect("rule is a table")
                 .clone();
             for (key, value) in table {
-                document.push_str(&format!("{key} = {value}\n"));
+                use std::fmt::Write as _;
+                let _ = writeln!(document, "{key} = {value}");
             }
         }
         RegexAutoPruneWorker::new(crate::worker::test_layer(&document))
@@ -363,7 +364,8 @@ mod tests {
                 .expect("rule is a table")
                 .clone();
             for (key, value) in table {
-                document.push_str(&format!("{key} = {value}\n"));
+                use std::fmt::Write as _;
+                let _ = writeln!(document, "{key} = {value}");
             }
         }
         RegexAutoPruneWorker::new(crate::worker::test_layer(&document))

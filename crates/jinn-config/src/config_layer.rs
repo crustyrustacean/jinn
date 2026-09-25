@@ -297,6 +297,19 @@ impl ConfigLayer {
         T::from_table(&table)
     }
 
+    /// Reads the live value of `T`'s section, falling back to
+    /// `T::default()` when the section is absent or malformed.
+    ///
+    /// For a reader that has no sensible reaction to a bad file. A
+    /// malformed section is a launch-time error caught by
+    /// [`Self::validate`] — by the time a render frame or a tool call
+    /// reads, the user has a running app and is better served by the
+    /// documented default than by a blank pane. Use [`Self::get`] where
+    /// the failure should surface.
+    pub fn read<T: Configurable>(&self) -> T {
+        self.get::<T>().unwrap_or_default()
+    }
+
     /// Writes `value` over `T`'s section and persists the document.
     ///
     /// A key the section's new value no longer declares is removed from
@@ -1288,5 +1301,61 @@ mod tests {
         // Then the other handle sees it without reloading.
         let value = second.get::<WatchdogCfg>().expect("section reads");
         assert_eq!(value.timeout_secs, 88, "handles share one snapshot");
+    }
+}
+
+#[cfg(test)]
+mod read_tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
+    use super::ConfigLayer;
+    use crate::configurable::Configurable;
+    use serde::{Deserialize, Serialize};
+    use std::sync::Arc;
+
+    #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+    struct Watchdog {
+        #[serde(default)]
+        timeout_secs: u32,
+    }
+
+    impl Configurable for Watchdog {
+        const KEY: &'static str = "watchdog.stall";
+    }
+
+    fn layer(document: &str) -> ConfigLayer {
+        let parsed = document.parse().expect("test TOML parses");
+        ConfigLayer::load(Arc::new(crate::InMemoryConfigStorage::new(parsed))).expect("layer loads")
+    }
+
+    /// `read` is the defaulting face a render frame or a tool call wants:
+    /// a value with no sensible reaction to a bad file.
+    #[rstest::rstest]
+    #[test]
+    fn read_returns_the_section_value() {
+        // Given a layer carrying the section.
+        let config = layer("[watchdog.stall]\ntimeout_secs = 42\n");
+
+        // When reading it through the defaulting face.
+        let read = config.read::<Watchdog>();
+
+        // Then it is the document's value.
+        assert_eq!(read, Watchdog { timeout_secs: 42 });
+    }
+
+    /// A malformed section is a launch-time error caught by `validate`;
+    /// a running frame is better served by the documented default than by
+    /// a blank pane.
+    #[rstest::rstest]
+    #[test]
+    fn read_falls_back_to_the_default_for_a_malformed_section() {
+        // Given a layer whose section has a wrong-typed field.
+        let config = layer("[watchdog.stall]\ntimeout_secs = \"soon\"\n");
+
+        // When reading it through the defaulting face.
+        let read = config.read::<Watchdog>();
+
+        // Then the default comes back rather than an error.
+        assert_eq!(read, Watchdog::default());
     }
 }

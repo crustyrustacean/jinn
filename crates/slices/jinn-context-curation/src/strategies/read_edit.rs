@@ -114,12 +114,11 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
     ) -> Vec<HistoryMutation> {
         // Live read: this strategy's own subsection, switched off or
         // unreadable means a no-op pass rather than an absent worker.
-        let config = match super::super::worker::strategy_section(&self.layer, |auto| {
+        let Some(config) = super::super::worker::strategy_section(&self.layer, |auto| {
             let section = &auto.read_edit;
             section.enabled.then(|| section.clone())
-        }) {
-            Some(config) => config,
-            None => return Vec::new(),
+        }) else {
+            return Vec::new();
         };
         let config = &config;
 
@@ -251,7 +250,7 @@ mod tests {
                 "read_edit",
                 format!("min_age = {min_age}\n"),
             ),
-            config: Default::default(),
+            config: ReadEditAutoPruneConfig::default(),
         }
     }
 
@@ -262,7 +261,7 @@ mod tests {
                 "read_edit",
                 format!("threshold = {threshold}\nmin_age = 0\n"),
             ),
-            config: Default::default(),
+            config: ReadEditAutoPruneConfig::default(),
         }
     }
 

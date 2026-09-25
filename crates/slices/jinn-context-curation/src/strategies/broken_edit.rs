@@ -98,12 +98,11 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
         // enablement switch, so the whole point of the read is to honour
         // that switch. Off or unreadable means a no-op pass, not an
         // absent worker.
-        let config = match super::super::worker::strategy_section(&self.layer, |auto| {
+        let Some(config) = super::super::worker::strategy_section(&self.layer, |auto| {
             let section = &auto.broken_edit;
             section.enabled.then(|| section.clone())
-        }) {
-            Some(config) => config,
-            None => return Vec::new(),
+        }) else {
+            return Vec::new();
         };
         let config = &config;
 
@@ -226,7 +225,7 @@ mod tests {
                 "broken_edit",
                 format!("min_age = {min_age}\n"),
             ),
-            config: Default::default(),
+            config: BrokenEditAutoPruneConfig::default(),
         }
     }
 

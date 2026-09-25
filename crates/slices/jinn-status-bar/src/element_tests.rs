@@ -30,7 +30,7 @@ fn render_shows_no_model_selected_when_unset() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -64,7 +64,7 @@ fn render_shows_status_hint_instead_of_model_when_set() {
     terminal
         .draw(|frame| {
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -87,7 +87,7 @@ fn render_defaults_to_model_when_cell_absent() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -109,7 +109,7 @@ fn render_shows_provider_and_model() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -144,7 +144,7 @@ fn render_single_model_ignores_stale_ledger_model_used() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -174,7 +174,7 @@ fn render_right_aligns_text() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -198,7 +198,7 @@ fn render_shows_provider_with_slash_in_model() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -218,7 +218,7 @@ fn render_shows_token_counts_with_zero_values() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -253,7 +253,7 @@ fn render_shows_token_counts_with_values() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -289,7 +289,7 @@ fn render_shows_cache_percent_when_cached_tokens_present() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -351,7 +351,7 @@ fn render_info_line_cache_segment_is_error_below_90_percent(
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -386,7 +386,7 @@ fn render_info_line_cache_segment_is_success_at_or_above_95_percent(
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -421,7 +421,7 @@ fn render_info_line_cache_segment_is_warning_between_90_and_94_percent(
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -460,7 +460,7 @@ fn render_hides_cache_glyph_when_no_cached_tokens() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -504,7 +504,7 @@ fn render_cache_percent_uses_measured_turns_only() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -538,7 +538,7 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -558,7 +558,7 @@ fn render_shows_zero_percent_max_when_no_context_size() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -583,7 +583,7 @@ fn render_shows_zero_turns_when_no_history() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -618,7 +618,7 @@ fn render_shows_turn_count_with_history() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -657,7 +657,7 @@ fn render_turn_count_skips_tool_loop_intermediates() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -677,7 +677,7 @@ fn render_shows_cwd_on_first_line() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -703,7 +703,7 @@ fn render_shows_absolute_path_for_non_home_cwd() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -731,7 +731,7 @@ fn render_shows_tilde_for_home_cwd() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -761,7 +761,7 @@ fn render_shows_tilde_substitution_for_path_under_home() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -819,7 +819,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -874,7 +874,7 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -918,7 +918,7 @@ fn render_falls_back_when_no_model_cache() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -965,7 +965,7 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1010,7 +1010,7 @@ fn render_shows_used_over_unknown_when_no_context_length() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1030,7 +1030,7 @@ fn render_always_shows_cost_even_when_zero() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1066,7 +1066,7 @@ fn render_shows_cost_with_non_zero_value() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1120,7 +1120,7 @@ fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1184,7 +1184,7 @@ fn render_tree_cache_segment_keeps_muted_neighbors() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1235,7 +1235,7 @@ fn render_shows_cost_before_turns_indicator() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1265,7 +1265,7 @@ fn render_hides_tree_aggregate_for_single_session() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1322,7 +1322,7 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1372,7 +1372,7 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1400,7 +1400,7 @@ fn render_single_model_shows_provider_and_model_without_alloy_prefix() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1447,7 +1447,7 @@ fn render_alloy_with_token_records_shows_prefix_and_last_dispatched_model() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1480,7 +1480,7 @@ fn render_alloy_with_no_token_records_falls_back_to_first_model() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1510,7 +1510,7 @@ fn render_alloy_with_one_model_shows_alloy_1() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1541,7 +1541,7 @@ fn render_appends_resolved_reasoning_effort_after_model() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1574,7 +1574,7 @@ fn render_session_override_beats_global_reasoning_effort() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1607,7 +1607,7 @@ fn render_omits_reasoning_effort_bracket_when_unresolved() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();
@@ -1649,7 +1649,7 @@ fn render_model_row(state: &AppState) -> String {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
         .unwrap();

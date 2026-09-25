@@ -59,7 +59,7 @@ fn render_clears_area_with_sidebar_background() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, 30, 10), &ctx);
         })
         .unwrap();
@@ -519,7 +519,7 @@ fn sessions_header_anchored_to_bottom() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -560,7 +560,7 @@ fn sessions_header_below_persona_when_sidebar_is_short() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -598,7 +598,7 @@ fn sessions_footer_highlights_s_in_accent_action() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -656,7 +656,7 @@ fn sessions_title_shows_spinner_during_startup_hydration() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -688,7 +688,7 @@ fn sessions_title_spinner_uses_streaming_color() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -722,7 +722,7 @@ fn sessions_title_hides_spinner_after_startup_hydration() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -754,7 +754,7 @@ fn sessions_title_spinner_precedes_the_label() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -799,7 +799,7 @@ fn sessions_hydration_spinner_animates_without_session_rows() {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
                 sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
             })
             .unwrap();
@@ -852,7 +852,7 @@ fn sessions_hydration_spinner_preserves_footer_position() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();

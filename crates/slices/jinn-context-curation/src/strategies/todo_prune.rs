@@ -447,7 +447,7 @@ mod tests {
                 "todo",
                 format!("protect_latest = {protect_latest}\nmin_age = 0\n"),
             ),
-            config: Default::default(),
+            config: TodoAutoPruneConfig::default(),
         }
     }
 
@@ -870,7 +870,7 @@ mod tests {
     fn evaluate_with_min_age(history: Vec<ChatEntry>, min_age: usize) -> Vec<HistoryMutation> {
         let w = TodoAutoPruneWorker {
             layer: crate::worker::layer_with_strategy("todo", format!("min_age = {min_age}\n")),
-            config: Default::default(),
+            config: TodoAutoPruneConfig::default(),
         };
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         rt.block_on(async { w.evaluate(&SessionId::new(), Arc::from(history)).await })

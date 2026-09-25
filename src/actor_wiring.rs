@@ -391,22 +391,7 @@ impl ActorSystemBuilder {
                     bus: services.bus.clone(),
                     controls: term_controls.clone(),
                     state: state.clone(),
-                    settle_quiet: std::time::Duration::from_millis(
-                        state
-                            .read()
-                            .frontend
-                            .preferences
-                            .interactive_term
-                            .settle_quiet_ms,
-                    ),
-                    settle_cap: std::time::Duration::from_millis(
-                        state
-                            .read()
-                            .frontend
-                            .preferences
-                            .interactive_term
-                            .settle_max_wait_ms,
-                    ),
+                    config: services.config.clone(),
                 },
             )
             .await;

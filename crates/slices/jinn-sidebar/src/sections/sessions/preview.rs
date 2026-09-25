@@ -8,6 +8,7 @@
 //! A footer at the bottom shows keybinds across two lines and the session's
 //! active cwd and provider/model on the same line.
 
+use jinn_preferences_config::schemas::ChatLogConfig;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
@@ -79,7 +80,7 @@ pub fn render_session_preview_for_state(
         return;
     };
     let theme = &state.frontend.theme;
-    let tool_max = state.frontend.preferences.tool_entry_max_lines;
+    let tool_max = ctx.config.read::<ChatLogConfig>().tool_entry_max_lines;
 
     // Compute the sessions section top Y (it's the last section, bottom-anchored).
     let sessions_height = sessions_section_content_height(state);

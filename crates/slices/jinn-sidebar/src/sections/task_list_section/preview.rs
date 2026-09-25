@@ -421,7 +421,7 @@ mod tests {
             .draw(|f| {
                 let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(app, &slices, &overlay_views);
+                let ctx = RenderCtx::new_with_default_config(app, &slices, &overlay_views);
                 render_task_list_preview_for_state(f, sidebar_rect(), frame_area(), &ctx);
             })
             .unwrap();

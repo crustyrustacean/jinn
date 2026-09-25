@@ -1032,7 +1032,7 @@ mod render_cache_tests {
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
                     let overlay_views = jinn_slices::OverlayViews::new();
-                    let ctx = RenderCtx::new(state, &slices, &overlay_views)
+                    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
@@ -1093,7 +1093,7 @@ mod render_cache_tests {
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
                     let overlay_views = jinn_slices::OverlayViews::new();
-                    let ctx = RenderCtx::new(&state, &slices, &overlay_views)
+                    let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
@@ -1151,7 +1151,7 @@ mod render_cache_tests {
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
                     let overlay_views = jinn_slices::OverlayViews::new();
-                    let ctx = RenderCtx::new(state, &slices, &overlay_views)
+                    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
@@ -1217,7 +1217,7 @@ mod render_cache_tests {
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
                     let overlay_views = jinn_slices::OverlayViews::new();
-                    let ctx = RenderCtx::new(state, &slices, &overlay_views)
+                    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
@@ -1278,7 +1278,7 @@ mod render_cache_tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(&state, &slices, &overlay_views)
+                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views)
                     .with_pickers(&crate::build_picker_registry());
                 let area = Rect::new(0, 0, 100, 30);
                 render_skill_picker(frame, area, &ctx);

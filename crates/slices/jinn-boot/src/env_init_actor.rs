@@ -189,7 +189,6 @@ mod tests {
     use std::sync::Arc;
 
     use jinn_mcp_msg::McpServerConfig;
-    use jinn_mcp_msg::config::McpServersConfig;
 
     /// Unique env-var names so parallel test runs never collide.
     const SET_VAR: &str = "JINN_TEST_MCP_HEADER_RESOLVED";
@@ -213,10 +212,11 @@ mod tests {
             .as_table()
             .expect("server is a table")
             .clone();
-        let body: String = table
-            .iter()
-            .map(|(key, value)| format!("{key} = {value}\n"))
-            .collect();
+        let body = table.iter().fold(String::new(), |mut acc, (key, value)| {
+            use std::fmt::Write as _;
+            let _ = writeln!(acc, "{key} = {value}");
+            acc
+        });
         // The section is the map: one sub-table per server, directly
         // under the `mcp` umbrella.
         format!("[mcp.header-probe]\n{body}")

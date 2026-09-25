@@ -99,8 +99,8 @@ mod tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let views = jinn_slices::OverlayViews::new();
-                let ctx =
-                    jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
+                let ctx = jinn_domain::RenderCtx::new_with_default_config(&state, &slices, &views)
+                    .with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
             })
             .expect("draw");
@@ -157,8 +157,8 @@ mod tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let views = jinn_slices::OverlayViews::new();
-                let ctx =
-                    jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
+                let ctx = jinn_domain::RenderCtx::new_with_default_config(&state, &slices, &views)
+                    .with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
             })
             .expect("draw");
@@ -202,8 +202,8 @@ mod tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let views = jinn_slices::OverlayViews::new();
-                let ctx =
-                    jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
+                let ctx = jinn_domain::RenderCtx::new_with_default_config(&state, &slices, &views)
+                    .with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
             })
             .expect("draw");
@@ -247,8 +247,8 @@ mod tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let views = jinn_slices::OverlayViews::new();
-                let ctx =
-                    jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
+                let ctx = jinn_domain::RenderCtx::new_with_default_config(&state, &slices, &views)
+                    .with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
             })
             .expect("draw");
@@ -311,8 +311,8 @@ mod tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let views = jinn_slices::OverlayViews::new();
-                let ctx =
-                    jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
+                let ctx = jinn_domain::RenderCtx::new_with_default_config(&state, &slices, &views)
+                    .with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
             })
             .expect("draw");
@@ -363,8 +363,8 @@ mod tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let views = jinn_slices::OverlayViews::new();
-                let ctx =
-                    jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
+                let ctx = jinn_domain::RenderCtx::new_with_default_config(&state, &slices, &views)
+                    .with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
             })
             .expect("draw");

@@ -717,10 +717,10 @@ impl ThresholdTestEnv {
     /// Set the compaction config through the configuration layer — the
     /// same path production reads, so a test that seeds here is exercising
     /// the real resolution rather than a state mirror of it.
-    fn set_compaction_config(&self, config: CompactionConfig) {
+    fn set_compaction_config(&self, config: &CompactionConfig) {
         self.services
             .config
-            .put::<CompactionConfig>(&config)
+            .put::<CompactionConfig>(config)
             .expect("layer writes the compaction section");
     }
 
@@ -793,7 +793,7 @@ fn gate_skips_when_context_size_is_none() {
     let env = ThresholdTestEnv::new();
     // context_size defaults to None - don't set it.
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -812,7 +812,7 @@ fn gate_skips_when_context_size_is_zero() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(0));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -831,7 +831,7 @@ fn gate_skips_when_below_threshold() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(100_000)); // 100k/200k = 50% < 70%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -850,7 +850,7 @@ fn gate_triggers_when_above_threshold() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(150_000)); // 150k/200k = 75% > 70%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -870,7 +870,7 @@ fn gate_triggers_when_exactly_at_threshold() {
     // 140_000 / 200_000 = 0.7 exactly
     env.set_context_size(Some(140_000));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -890,7 +890,7 @@ fn gate_skips_just_below_threshold() {
     // 139_999 / 200_000 = 0.69999... < 0.7
     env.set_context_size(Some(139_999));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -910,7 +910,7 @@ fn gate_uses_fallback_when_no_model_cache() {
     // No model cache at all - should use fallback.
     env.set_context_size(Some(120_000)); // 120k/150k = 80% > 70%
     // Don't set model cache.
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -930,7 +930,7 @@ fn gate_uses_fallback_when_model_not_in_cache() {
     env.set_context_size(Some(100_000)); // 100k/200k = 50% < 70%
     // Cache has a different provider - "provider/model-200k" won't match.
     env.set_model_cache(model_cache_with("other-provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 200_000));
+    env.set_compaction_config(&threshold_config(0.7, 200_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -949,7 +949,7 @@ fn gate_uses_fallback_when_model_context_length_is_none() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(120_000)); // 120k/150k = 80% > 70%
     env.set_model_cache(model_cache_no_context_length("provider", "model-200k"));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -968,7 +968,7 @@ fn gate_skips_when_session_not_found() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(150_000));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     // Use a session ID that doesn't exist.
@@ -990,7 +990,7 @@ fn gate_triggers_at_high_threshold() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(180_000)); // 180k/200k = 90% >= 90%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.9, 150_000));
+    env.set_compaction_config(&threshold_config(0.9, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1009,7 +1009,7 @@ fn gate_skips_at_high_threshold() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(170_000)); // 170k/200k = 85% < 90%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.9, 150_000));
+    env.set_compaction_config(&threshold_config(0.9, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1028,7 +1028,7 @@ fn gate_triggers_at_low_threshold() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(50_000)); // 50k/200k = 25% > 20%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.2, 150_000));
+    env.set_compaction_config(&threshold_config(0.2, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1047,7 +1047,7 @@ fn gate_skips_at_low_threshold() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(30_000)); // 30k/200k = 15% < 20%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.2, 150_000));
+    env.set_compaction_config(&threshold_config(0.2, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1066,7 +1066,7 @@ fn gate_triggers_when_context_size_equals_limit() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(200_000)); // 200k/200k = 100%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1085,7 +1085,7 @@ fn gate_triggers_when_context_size_exceeds_limit() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(250_000)); // 250k/200k = 125% - over budget
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1105,7 +1105,7 @@ fn manual_compact_all_bypasses_threshold_gate() {
     // context_size is 0 - threshold gate would block, but compact_all ignores it.
     env.set_context_size(Some(0));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
@@ -1137,7 +1137,7 @@ fn manual_compact_bypasses_threshold_gate() {
     env.set_context_size(Some(0)); // would block auto-compaction
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     // Use small reserve so evaluate_with_config produces mutations.
-    env.set_compaction_config(CompactionConfig {
+    env.set_compaction_config(&CompactionConfig {
         model: None,
         threshold: 0.7,
         reserve_tokens: 100,
@@ -1176,7 +1176,7 @@ fn gate_splits_provider_model_format() {
     }
     env.set_context_size(Some(150_000)); // 150k/200k = 75% > 70%
     env.set_model_cache(model_cache_with("ollama", "llama3", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1208,7 +1208,7 @@ fn gate_handles_nested_provider_path() {
         "anthropic/claude-sonnet",
         200_000,
     ));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1275,7 +1275,7 @@ fn gate_ratio_matches_status_bar_math() {
     // 105_000 / 150_000 = 0.7 exactly - same as status bar "70.0%" display
     env.set_context_size(Some(105_000));
     env.set_model_cache(model_cache_with("provider", "model-150k", 150_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1295,7 +1295,7 @@ fn gate_threshold_one_requires_full_context() {
     // 199_999 / 200_000 = 0.99999... < 1.0
     env.set_context_size(Some(199_999));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(1.0, 150_000));
+    env.set_compaction_config(&threshold_config(1.0, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1315,7 +1315,7 @@ fn gate_threshold_zero_always_triggers() {
     // 1 / 200_000 = 0.0005% - but threshold is 0.0 so anything >= 0 triggers
     env.set_context_size(Some(1));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.0, 150_000));
+    env.set_compaction_config(&threshold_config(0.0, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
@@ -1337,7 +1337,7 @@ fn gate_uses_session_model_for_context_lookup() {
     // Compaction config model is "other/model-tiny" (doesn't match and shouldn't be used)
     env.set_context_size(Some(150_000)); // 150k/200k = 75% > 70%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(CompactionConfig {
+    env.set_compaction_config(&CompactionConfig {
         model: Some("other/model-tiny".to_owned()), // compaction model - not used for threshold
         threshold: 0.7,
         reserve_tokens: 100,
@@ -1365,7 +1365,7 @@ fn gate_prevents_double_compaction_after_first() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(150_000)); // 75% > 70%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 150_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
 
@@ -1391,7 +1391,7 @@ fn gate_prevents_double_compaction_after_first() {
 fn gate_re_evaluated_on_subsequent_event() {
     let env = ThresholdTestEnv::new();
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 200_000));
+    env.set_compaction_config(&threshold_config(0.7, 200_000));
 
     // First event: below threshold.
     env.set_context_size(Some(139_999)); // 69.999% < 70%
@@ -1418,7 +1418,7 @@ fn gate_re_evaluated_on_subsequent_event() {
 fn gate_skips_after_compaction_reduces_context_size() {
     let env = ThresholdTestEnv::new();
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
-    env.set_compaction_config(threshold_config(0.7, 200_000));
+    env.set_compaction_config(&threshold_config(0.7, 200_000));
 
     // Before compaction: above threshold.
     env.set_context_size(Some(150_000));

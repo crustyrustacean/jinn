@@ -219,12 +219,11 @@ impl HistoryWorker for TrivialAssistantAutoPruneWorker {
     ) -> Vec<HistoryMutation> {
         // Live read: this strategy's own subsection, switched off or
         // unreadable means a no-op pass rather than an absent worker.
-        let config = match super::super::worker::strategy_section(&self.layer, |auto| {
+        let Some(config) = super::super::worker::strategy_section(&self.layer, |auto| {
             let section = &auto.trivial_assistant;
             section.enabled.then(|| section.clone())
-        }) {
-            Some(config) => config,
-            None => return Vec::new(),
+        }) else {
+            return Vec::new();
         };
         let config = &config;
 
@@ -269,7 +268,7 @@ mod tests {
                 "trivial_assistant",
                 format!("min_age = {min_age}\nmax_tokens = {max_tokens}\n"),
             ),
-            config: Default::default(),
+            config: TrivialAssistantAutoPruneConfig::default(),
             token_cache: HistoryWorkerChatEntryTokenCache::new(),
             counter: TiktokenCounter::o200k_base(),
         }
@@ -817,9 +816,9 @@ mod tests {
         let _trivial = TrivialAssistantAutoPruneWorker {
             layer: crate::worker::layer_with_strategy(
                 "trivial_assistant",
-                format!("min_age = 0\nmax_tokens = 80\n"),
+                "min_age = 0\nmax_tokens = 80\n".to_owned(),
             ),
-            config: Default::default(),
+            config: TrivialAssistantAutoPruneConfig::default(),
             token_cache: shared_cache.clone(),
             counter: TiktokenCounter::o200k_base(),
         };
@@ -827,9 +826,10 @@ mod tests {
         let anchored = AnchoredAssistantAutoPruneWorker {
             layer: crate::worker::layer_with_strategy(
                 "anchored_assistant",
-                format!("radius = 5\nmin_age = 0\n"),
+                "radius = 5\nmin_age = 0\n".to_owned(),
             ),
-            config: Default::default(),
+            config:
+                crate::strategies::anchored_assistant::AnchoredAssistantAutoPruneConfig::default(),
             token_cache: shared_cache.clone(),
             counter: TiktokenCounter::o200k_base(),
         };

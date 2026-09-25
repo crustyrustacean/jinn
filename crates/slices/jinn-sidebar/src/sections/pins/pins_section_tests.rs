@@ -242,7 +242,11 @@ fn content_height_is_zero_when_empty() {
     // When asking for content height.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
+    let height = section.content_height(&RenderCtx::new_with_default_config(
+        &state,
+        &slices,
+        &overlay_views,
+    ));
 
     // Then it returns 0 (section is hidden when empty).
     assert_eq!(height, 0);
@@ -257,7 +261,11 @@ fn content_height_matches_entry_count() {
     // When asking for content height.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
+    let height = section.content_height(&RenderCtx::new_with_default_config(
+        &state,
+        &slices,
+        &overlay_views,
+    ));
 
     // Then it returns header(1) + header-gap(1) + entries(3) + trailing gap(1) = 6.
     assert_eq!(height, 6);
@@ -274,7 +282,7 @@ fn render_rows(
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -350,7 +358,7 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();
@@ -374,7 +382,7 @@ fn render_selected_entry_has_darkgray_marker_when_not_focused() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
         .unwrap();

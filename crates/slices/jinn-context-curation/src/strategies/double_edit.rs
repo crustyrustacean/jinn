@@ -130,12 +130,11 @@ impl HistoryWorker for DoubleEditAutoPruneWorker {
         // enablement switch, so the whole point of the read is to honour
         // that switch. Off or unreadable means a no-op pass, not an
         // absent worker.
-        let config = match super::super::worker::strategy_section(&self.layer, |auto| {
+        let Some(config) = super::super::worker::strategy_section(&self.layer, |auto| {
             let section = &auto.double_edit;
             section.enabled.then(|| section.clone())
-        }) {
-            Some(config) => config,
-            None => return Vec::new(),
+        }) else {
+            return Vec::new();
         };
         let config = &config;
 
@@ -315,7 +314,7 @@ mod tests {
                 "double_edit",
                 format!("max_file_edits = {max}\nmin_age = 0\n"),
             ),
-            config: Default::default(),
+            config: DoubleEditAutoPruneConfig::default(),
         }
     }
 
@@ -325,7 +324,7 @@ mod tests {
                 "double_edit",
                 format!("max_file_edits = {max}\nmin_age = {min_age}\n"),
             ),
-            config: Default::default(),
+            config: DoubleEditAutoPruneConfig::default(),
         }
     }
 

@@ -34,6 +34,14 @@ pub struct RenderCtx<'a> {
     /// the app's registry — spec-driven pickers resolve through it; the
     /// per-kind legacy render arms stay authoritative otherwise.
     pub pickers: PickerRegistry,
+    /// The configuration layer. Render-path consumers read config the
+    /// same way every other consumer does — a live handle, at the point
+    /// of use — rather than through a cache seeded elsewhere.
+    ///
+    /// A cheap cloneable handle, not a borrowed snapshot: a frame that
+    /// straddles a `reload` sees the new value, and holding it costs an
+    /// `Arc` bump rather than a document clone.
+    pub config: &'a jinn_config::ConfigLayer,
 }
 
 impl<'a> RenderCtx<'a> {
@@ -45,13 +53,48 @@ impl<'a> RenderCtx<'a> {
         state: &'a AppState,
         slices: &'a Slices,
         overlay_views: &'a OverlayViews<SliceFacts>,
+        config: &'a jinn_config::ConfigLayer,
     ) -> Self {
         Self {
             state,
             slices,
             overlay_views,
             pickers: PickerRegistry::default(),
+            config,
         }
+    }
+
+    /// A context over an empty configuration layer, for tests and for any
+    /// caller that has no layer at hand.
+    ///
+    /// Every section reads as its default through this, so a test that
+    /// does not care about configuration can build a context without one.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the shared empty layer cannot be constructed. That can
+    /// only fail if an empty document stops parsing, which is a build-time
+    /// invariant of the layer rather than anything a caller can cause.
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "an empty document always parses; failure is a broken invariant, not a caller error"
+    )]
+    pub fn new_with_default_config(
+        state: &'a AppState,
+        slices: &'a Slices,
+        overlay_views: &'a OverlayViews<SliceFacts>,
+    ) -> Self {
+        // A leaked-once, process-lifetime empty layer: constructing one per
+        // call would allocate a document for every test.
+        static EMPTY: std::sync::OnceLock<jinn_config::ConfigLayer> = std::sync::OnceLock::new();
+        let config = EMPTY.get_or_init(|| {
+            jinn_config::ConfigLayer::load(std::sync::Arc::new(
+                jinn_config::InMemoryConfigStorage::default(),
+            ))
+            .expect("an empty document always loads")
+        });
+        Self::new(state, slices, overlay_views, config)
     }
 
     /// Supplies the app's picker registry, consuming and returning self
@@ -93,10 +136,8 @@ impl<'a> RenderCtx<'a> {
                 if id == jinn_term_msg::control_scope()
         );
         let toggle_key = self
-            .state
-            .frontend
-            .preferences
-            .interactive_term
+            .config
+            .read::<jinn_term_msg::prefs::InteractiveTermPrefs>()
             .control_toggle_key
             .clone();
         facts.set_facts([
@@ -162,7 +203,7 @@ mod tests {
         slices: &'a Slices,
         views: &'a OverlayViews<jinn_slices::render_facts::RenderFacts>,
     ) -> RenderCtx<'a> {
-        RenderCtx::new(state, slices, views)
+        RenderCtx::new_with_default_config(state, slices, views)
     }
 
     fn worker_prune(entry: &mut ChatEntry) {

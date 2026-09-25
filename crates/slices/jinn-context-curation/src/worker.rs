@@ -83,6 +83,10 @@ impl_strategy_toggle!(
 
 /// A layer seeded with `document`, for strategy tests.
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test helper: a malformed fixture must fail loudly, not yield a silent default"
+)]
 pub(crate) fn test_layer(document: &str) -> jinn_config::ConfigLayer {
     let parsed = document.parse().expect("test TOML parses");
     jinn_config::ConfigLayer::load(std::sync::Arc::new(
@@ -107,6 +111,8 @@ where
 mod live_read_tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
+    use jinn_preferences_config::schemas::TodoAutoPruneConfig;
+
     use super::{layer_with_strategy, test_layer};
     use std::sync::Arc;
 
@@ -116,10 +122,10 @@ mod live_read_tests {
     #[test]
     fn a_constructed_worker_observes_a_reload_in_both_directions() {
         // Given a worker built while its strategy is switched on.
-        let layer = layer_with_strategy("todo", format!("min_age = 0\n"));
+        let layer = layer_with_strategy("todo", "min_age = 0\n".to_owned());
         let worker = crate::strategies::TodoAutoPruneWorker {
             layer: layer.clone(),
-            config: Default::default(),
+            config: TodoAutoPruneConfig::default(),
         };
         assert!(worker.section().is_some(), "the strategy starts enabled");
 
@@ -135,7 +141,7 @@ mod live_read_tests {
 
         // Then the already-constructed worker sees it off.
         assert!(
-            !worker.section().is_some(),
+            worker.section().is_none(),
             "a reload turns the strategy off for a worker built earlier"
         );
     }
@@ -150,7 +156,7 @@ mod live_read_tests {
         let layer = test_layer("[context_curation.auto_prune.todo]\nenabled = false\n");
         let worker = crate::strategies::TodoAutoPruneWorker {
             layer: layer.clone(),
-            config: Default::default(),
+            config: TodoAutoPruneConfig::default(),
         };
 
         // When the strategy is switched on.

@@ -172,20 +172,7 @@ impl CompactionWorker {
     ) -> Result<Vec<HistoryMutation>, error_stack::Report<CompactionError>> {
         // Read the compaction + retry policy from the configuration layer
         // at the point of use, outside the state lock.
-        let (config, retry_config) = {
-            let config = self
-                .services
-                .config
-                .get::<CompactionConfig>()
-                .unwrap_or_default();
-            let retry_config = self
-                .services
-                .config
-                .get::<RequestRetryConfig>()
-                .map(|retry| jinn_provider_config::request_retry_to_provider_config(&retry))
-                .unwrap_or_default();
-            (config, retry_config)
-        };
+        let (config, retry_config) = self.compaction_policy();
 
         // Write session state (resolve_model advances the alloy round-robin index).
         let (model_name, history) = {
@@ -234,6 +221,19 @@ impl CompactionWorker {
     /// Compacts only when the session's tiktoken-based `context_size()` (the same
     /// value shown in the status bar) exceeds `config.threshold` of the model's
     /// `context_length`.
+    /// The compaction threshold and the provider retry policy, read live
+    /// from the configuration layer.
+    ///
+    /// Read per call rather than held as a field: a user tuning the
+    /// threshold mid-session should see it apply to the next compaction
+    /// check, not the next launch.
+    fn compaction_policy(&self) -> (CompactionConfig, jinn_provider::RetryConfig) {
+        let config = self.services.config.read::<CompactionConfig>();
+        let retry_config = self.services.config.read::<RequestRetryConfig>();
+        let retry_config = jinn_provider_config::request_retry_to_provider_config(&retry_config);
+        (config, retry_config)
+    }
+
     async fn evaluate_history(
         &self,
         session_id: &SessionId,
@@ -255,20 +255,7 @@ impl CompactionWorker {
 
         // Read the compaction + retry policy from the configuration layer
         // at the point of use, outside the state lock.
-        let (config, retry_config) = {
-            let config = self
-                .services
-                .config
-                .get::<CompactionConfig>()
-                .unwrap_or_default();
-            let retry_config = self
-                .services
-                .config
-                .get::<RequestRetryConfig>()
-                .map(|retry| jinn_provider_config::request_retry_to_provider_config(&retry))
-                .unwrap_or_default();
-            (config, retry_config)
-        };
+        let (config, retry_config) = self.compaction_policy();
 
         let (model_name, compaction_prompt, full_history) = {
             let state = self.state.read();
