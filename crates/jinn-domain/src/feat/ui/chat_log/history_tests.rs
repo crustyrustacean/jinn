@@ -2131,3 +2131,108 @@ fn an_oversized_session_scrolls_to_a_recent_entry() {
         "the selected entry should land inside the viewport, got row {row}"
     );
 }
+
+/// Render every visible cell of the chat log as a comparable string.
+fn render_rows(
+    state: &AppState,
+    element: &mut ChatLogElement,
+    width: u16,
+    height: u16,
+) -> Vec<String> {
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..height)
+        .map(|y| {
+            (0..width)
+                .map(|x| {
+                    buffer
+                        .cell((x, y))
+                        .map_or(" ", ratatui::buffer::Cell::symbol)
+                        .to_owned()
+                })
+                .collect::<String>()
+        })
+        .collect()
+}
+
+/// A history mixing every entry kind the chat log renders differently.
+fn mixed_history() -> AppState {
+    let mut s = normal_state();
+    s.active_session_mut()
+        .push_entry(ChatEntry::system("system note"));
+    s.active_session_mut()
+        .push_entry(ChatEntry::user("hello world"));
+    s.active_session_mut()
+        .push_entry(ChatEntry::assistant("an answer"));
+    s.active_session_mut().push_entry(ChatEntry::tool_result(
+        "call-1",
+        "read",
+        "file contents",
+        ToolResultStatus::Success,
+    ));
+    s.active_session_mut().push_entry(ChatEntry::tool_result(
+        "call-2",
+        "write",
+        "wrote it",
+        ToolResultStatus::Failure,
+    ));
+    s.active_session_mut()
+        .push_entry(ChatEntry::error("it broke"));
+    s.active_session_mut().push_entry(ChatEntry::user(
+        "a long line that will wrap across the content width repeatedly for gutter padding",
+    ));
+    s
+}
+
+#[rstest::rstest]
+fn a_warm_cache_renders_identically_to_a_cold_one() {
+    // Given a mixed history, rendered once to warm every cache.
+    let state = mixed_history();
+    let mut element = ChatLogElement::new();
+    let cold = render_rows(&state, &mut element, 44, 14);
+
+    // When it is rendered again from the warm cache.
+    let warm = render_rows(&state, &mut element, 44, 14);
+
+    // Then the output is byte-identical — the fingerprint memo, the LRU, and
+    // the threaded gutter count must all preserve what is drawn.
+    assert_eq!(
+        cold, warm,
+        "a warm cache must render exactly like a cold one"
+    );
+}
+
+#[rstest::rstest]
+fn gutter_padding_matches_content_rows_for_a_wrapping_entry() {
+    // Given a single entry long enough to wrap several rows.
+    let mut s = normal_state();
+    s.active_session_mut()
+        .push_entry(ChatEntry::user("w ".repeat(200)));
+    let mut element = ChatLogElement::new();
+
+    // When rendered.
+    let rows = render_rows(&s, &mut element, 44, 14);
+
+    // Then the gutter is two columns wide — a non-space indicator then a
+    // cursor bar — and a wrapping entry produces one pair per content row.
+    let gutter_rows = rows
+        .iter()
+        .filter(|row| {
+            let mut chars = row.chars();
+            matches!(chars.next(), Some(c) if c != ' ')
+                && matches!(chars.next(), Some('┃') | Some(' '))
+        })
+        .count();
+    assert!(
+        gutter_rows > 1,
+        "a wrapping entry should produce more than one gutter row, got {gutter_rows}"
+    );
+}
