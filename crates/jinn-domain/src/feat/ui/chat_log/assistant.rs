@@ -32,7 +32,7 @@ mod tests {
             is_selected: false,
             is_expanded: false,
             tool_entry_max_lines: 5,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
             paired_status: None,
             is_streaming: false,
             is_waiting_on_subagent: false,

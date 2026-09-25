@@ -18,13 +18,13 @@ use ratatui::text::Line;
 
 use jinn_domain::PickerKind;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::focus::FocusScope;
 use jinn_domain::feat::project::picker_entry::ProjectEntry;
 use jinn_domain::feat::project::picker_entry::render_project_row;
 use jinn_domain::feat::ui::frontend_state::PendingSessionCreation;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_preferences_config::protocol::command::PreferenceUpdate;
 use jinn_preferences_config::protocol::command::UpdatePreferences;
+use jinn_slices::FocusScope;
 
 /// The kernel entry this picker's items wrap in storage.
 pub use jinn_domain::feat::project::picker_entry::ProjectEntry as SpecEntry;
@@ -170,10 +170,10 @@ mod tests {
     use crate::build_picker_registry;
     use jinn_domain::PickerKind;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_picker::PROJECT_ID;
     use jinn_session_state::ChatSessionState;
+    use jinn_slices::FocusScope;
 
     /// State with an active origin session (cwd distinct from the project
     /// dirs), the project picker open, and the given curated projects.

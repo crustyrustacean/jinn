@@ -20,7 +20,7 @@ use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
 use jinn_session_history_msg::PushChatEntry;
 
 use super::super::SessionPersistenceActor;
-use jinn_domain::feat::context::prompt_template::PendingPath;
+use jinn_context::attachment_path::{PathResolveContext, PendingPath};
 use jinn_domain::feat::image_convert::ResolveOutcome;
 use jinn_session_msg::PhaseKind;
 use jinn_turn_dispatch_msg::DispatchTurn;
@@ -182,7 +182,6 @@ impl SessionPersistenceActor {
         session_id: &jinn_core_types::SessionId,
         entry: &mut ChatEntry,
     ) -> Vec<PendingPath> {
-        use jinn_domain::feat::context::prompt_template::PathResolveContext;
         use jinn_session_state::chat_session::expand_user_entry as expand;
         let (store, cwd) = {
             let guard = self.state.read();

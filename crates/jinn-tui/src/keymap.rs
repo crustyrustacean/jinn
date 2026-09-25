@@ -336,7 +336,7 @@ mod tests {
         let keymap = init();
 
         // When mapping the picker's focus scope to a keymap scope.
-        let scope = scope_for_focus(&jinn_domain::FocusScope::Picker { kind });
+        let scope = scope_for_focus(&jinn_slices::FocusScope::Picker { kind });
 
         // Then that scope has at least one binding group with a binding.
         let groups = keymap.bindings_for_scope(scope.clone());
@@ -1198,7 +1198,7 @@ mod leak_check {
 
         // Given the default keymap with the sidebar's route rows bound.
         let mut keymap = init();
-        let routes = jinn_domain::common::slices::key_routes::KeyRoutes::new();
+        let routes = jinn_slices::route::KeyRoutes::new();
         jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
         crate::keymap_gen::bind_route_rows(&routes, &mut keymap);
         let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);

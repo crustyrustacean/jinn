@@ -2,7 +2,6 @@
 
 use std::ops::Range;
 
-use crate::feat::theme::Theme;
 use jinn_core_types::SessionId;
 use jinn_picker::RowCtx;
 use jinn_picker::picker_style::dim_style;
@@ -10,6 +9,7 @@ use jinn_picker::picker_style::selected_style;
 use jinn_selection_widget::TreeItem;
 use jinn_selection_widget::highlight_text_with_bg;
 use jinn_session_store_msg::SessionState;
+use jinn_theme::Theme;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
@@ -231,7 +231,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::feat::theme::default_theme;
+    use jinn_theme::default_theme;
 
     #[rstest::rstest]
     fn archived_entry_renders_with_dimmed_foreground() {
@@ -294,10 +294,8 @@ mod tests {
 
         // Then the title span has contrast-adjusted foreground on selected bg.
         let title_span = &row.spans[4];
-        let expected_fg = crate::feat::theme::contrast::ensure_contrast(
-            theme.muted_text,
-            theme.picker_selected_bg,
-        );
+        let expected_fg =
+            jinn_theme::contrast::ensure_contrast(theme.muted_text, theme.picker_selected_bg);
         assert_eq!(title_span.style.fg, Some(expected_fg));
         assert_eq!(title_span.style.bg, Some(theme.picker_selected_bg));
     }

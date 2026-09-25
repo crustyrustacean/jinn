@@ -1,28 +1,13 @@
-//! Kernel re-exports of the slice keybind routing mechanics.
+//! Kernel glue for the shared slice route mechanics.
 //!
-//! The route table moved to [`jinn_slices::route`] so slice crates can
-//! register rows without depending on the kernel; this module is the
-//! historical import path inside `jinn-domain`. It also provides the
-//! kernel-side glue the mechanics cannot own: the [`Intent`] →
-//! [`EditIntent`] translation and [`AppState`]'s implementation of
-//! [`SliceActionState`].
+//! The route table and vocabulary live in [`jinn_slices::route`]. This module
+//! provides only the kernel-side [`KernelIntent`] → [`EditIntent`] translation
+//! and [`AppState`]'s implementation of [`SliceActionState`].
 
-pub use jinn_slices::route::ActionCtx;
-pub use jinn_slices::route::ActionFn;
-pub use jinn_slices::route::BindSite;
-use jinn_slices::route::EditIntent;
-pub use jinn_slices::route::InputHook;
-pub use jinn_slices::route::KeyRoutes;
-pub use jinn_slices::route::PublishClosure;
-pub use jinn_slices::route::RouteId;
-pub use jinn_slices::route::RouteOutcome;
-pub use jinn_slices::route::RouteResult;
-pub use jinn_slices::route::RouteRow;
-pub use jinn_slices::route::ScopeSignal;
-pub use jinn_slices::route::SliceActionState;
+use jinn_slices::FocusScope;
+use jinn_slices::route::{EditIntent, RouteResult, ScopeSignal, SliceActionState};
 
 use crate::common::app_state::AppState;
-use crate::common::app_state::FocusScope;
 use crate::protocol::intent::IntentResult;
 use crate::protocol::intent::KernelIntent;
 

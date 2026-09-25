@@ -125,8 +125,7 @@ async fn test_llm_actor_with_factory<F: jinn_provider::LlmServiceFactory + 'stat
     factory: F,
 ) -> InferenceActor {
     let mut services = crate::inference_actor::test_services_with_bus(harness.bus()).await;
-    services.llm_service =
-        jinn_domain::feat::provider_infra::LlmServiceFactoryService::new(Arc::new(factory));
+    services.llm_service = jinn_provider_config::LlmServiceFactoryService::new(Arc::new(factory));
     InferenceActor {
         services,
         tasks: HashMap::new(),

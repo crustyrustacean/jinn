@@ -304,7 +304,7 @@ impl TuiApp {
 }
 
 /// Returns the keymap scope corresponding to the given focus scope.
-pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
+pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
     match focus {
         FocusScope::Picker { kind } => match kind {
             PickerKind::Provider | PickerKind::CompactionModel => Scope::PickerProvider,

@@ -9,11 +9,11 @@ use std::path::PathBuf;
 
 use jinn_core_types::SessionId;
 
-use crate::feat::persona::Persona;
-use crate::feat::skills::Skill;
 use crate::protocol::ChatEntry;
 use jinn_context::ContextFile;
 use jinn_core_types::ToolDefinition;
+use jinn_persona_msg::Persona;
+use jinn_skills::Skill;
 
 /// Everything assembly needs, provided by the caller.
 ///

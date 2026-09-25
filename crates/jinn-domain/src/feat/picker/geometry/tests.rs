@@ -47,7 +47,7 @@ fn measure_writes_into_state_field() {
 }
 
 fn state_with_picker(kind: PickerKind) -> AppState {
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
     let state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Picker { kind });
     state

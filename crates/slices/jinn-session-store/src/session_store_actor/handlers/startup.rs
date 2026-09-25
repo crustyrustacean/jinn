@@ -12,7 +12,7 @@ impl SessionStoreActor {
     /// Applies persisted defaults and hydrates unarchived sessions.
     pub(crate) async fn on_environment_loaded(
         &self,
-        _config: &jinn_domain::feat::provider_infra::ProvidersConfig,
+        _config: &jinn_provider_config::ProvidersConfig,
     ) {
         let app_state = self.services.app_state_storage.read();
         let preferences = self.services.user_preferences_storage.read();

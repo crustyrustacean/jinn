@@ -4,8 +4,8 @@ use jinn_picker::RowCtx;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use crate::feat::skills::SkillSource;
-use crate::feat::theme::Theme;
+use jinn_skills::SkillSource;
+use jinn_theme::Theme;
 
 /// A skill entry ready for display in the skill picker.
 #[derive(Debug, Clone)]

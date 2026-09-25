@@ -23,7 +23,7 @@ use crate::sections::pins::pins_section_content_height;
 use crate::sections::task_list_section::clamp_scroll;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::feat::theme::Theme;
+use jinn_theme::Theme;
 use jinn_tools_msg::{Phase, Task, TaskStatus};
 
 /// Minimum popup width in columns (mirrors the session preview floor).
@@ -279,7 +279,7 @@ mod tests {
     )]
     use super::*;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::feat::theme::default_theme;
+    use jinn_theme::default_theme;
     use jinn_tools_msg::{PhaseInput, TaskList, TaskStatus};
     use ratatui::{Terminal, backend::TestBackend};
 
@@ -420,7 +420,7 @@ mod tests {
         terminal
             .draw(|f| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(app, &slices, &overlay_views);
                 render_task_list_preview_for_state(f, sidebar_rect(), frame_area(), &ctx);
             })

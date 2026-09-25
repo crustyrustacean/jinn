@@ -9,7 +9,7 @@ use throbber_widgets_tui::ThrobberState;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::sections::sessions::state::{SessionEntry, SessionEntryKind};
-use jinn_domain::feat::theme::Theme;
+use jinn_theme::Theme;
 
 use super::super::{ACTIVE_PREFIX, INACTIVE_PREFIX};
 use super::truncate::truncate_str;

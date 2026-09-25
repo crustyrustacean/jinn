@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
 use crate::feat::session::picker_entry::SessionTreeEntry;
-use crate::feat::theme::Theme;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_core_types::SessionId;
+use jinn_theme::Theme;
 
 use super::SessionStoreService;
 
@@ -240,13 +240,13 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
     use crate::feat::session::picker_entry::SessionTreeEntry;
-    use crate::feat::theme::default_theme;
     use jinn_core_types::SessionId;
     use jinn_selection_widget::PickerItem;
     use jinn_selection_widget::TreeItem;
     use jinn_session_state::SessionSnapshot;
     use jinn_session_store_msg::SessionState;
     use jinn_session_store_msg::SessionSummary;
+    use jinn_theme::default_theme;
 
     use super::*;
 
@@ -412,12 +412,12 @@ mod tests {
 
         async fn search(
             &self,
-            _params: crate::feat::session_search::SearchParams,
+            _params: jinn_session_store_msg::SearchParams,
         ) -> Result<
-            crate::feat::session_search::SearchOutcome,
+            jinn_session_store_msg::SearchOutcome,
             error_stack::Report<super::super::SessionStoreError>,
         > {
-            Ok(crate::feat::session_search::SearchOutcome {
+            Ok(jinn_session_store_msg::SearchOutcome {
                 total_matches: 0,
                 per_session: Vec::new(),
                 hits: Vec::new(),
@@ -430,7 +430,7 @@ mod tests {
             _anchor: &crate::protocol::ChatEntryId,
             _context: usize,
         ) -> Result<
-            Option<crate::feat::session_search::TranscriptWindow>,
+            Option<jinn_session_store_msg::TranscriptWindow>,
             error_stack::Report<super::super::SessionStoreError>,
         > {
             Ok(None)
@@ -441,7 +441,7 @@ mod tests {
             _session_id: &SessionId,
             _limit: usize,
         ) -> Result<
-            Option<crate::feat::session_search::TranscriptWindow>,
+            Option<jinn_session_store_msg::TranscriptWindow>,
             error_stack::Report<super::super::SessionStoreError>,
         > {
             Ok(None)
@@ -561,12 +561,12 @@ mod tests {
 
         async fn search(
             &self,
-            _params: crate::feat::session_search::SearchParams,
+            _params: jinn_session_store_msg::SearchParams,
         ) -> Result<
-            crate::feat::session_search::SearchOutcome,
+            jinn_session_store_msg::SearchOutcome,
             error_stack::Report<super::super::SessionStoreError>,
         > {
-            Ok(crate::feat::session_search::SearchOutcome {
+            Ok(jinn_session_store_msg::SearchOutcome {
                 total_matches: 0,
                 per_session: Vec::new(),
                 hits: Vec::new(),
@@ -579,7 +579,7 @@ mod tests {
             _anchor: &crate::protocol::ChatEntryId,
             _context: usize,
         ) -> Result<
-            Option<crate::feat::session_search::TranscriptWindow>,
+            Option<jinn_session_store_msg::TranscriptWindow>,
             error_stack::Report<super::super::SessionStoreError>,
         > {
             Ok(None)
@@ -590,7 +590,7 @@ mod tests {
             _session_id: &SessionId,
             _limit: usize,
         ) -> Result<
-            Option<crate::feat::session_search::TranscriptWindow>,
+            Option<jinn_session_store_msg::TranscriptWindow>,
             error_stack::Report<super::super::SessionStoreError>,
         > {
             Ok(None)

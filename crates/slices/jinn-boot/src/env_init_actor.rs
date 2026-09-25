@@ -7,7 +7,7 @@
 //! The `EnvironmentLoaded` event is retained for runtime reloads only.
 
 use error_stack::Report;
-use jinn_domain::feat::provider_infra::ProvidersConfig;
+use jinn_provider_config::ProvidersConfig;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -312,7 +312,7 @@ mod tests {
         // When publishing EnvironmentLoaded manually (runtime reload).
         let bus = harness.bus();
         bus.publish(EnvironmentLoaded {
-            config: jinn_domain::feat::provider_infra::ProvidersConfig {
+            config: jinn_provider_config::ProvidersConfig {
                 providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,

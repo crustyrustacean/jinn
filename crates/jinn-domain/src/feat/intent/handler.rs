@@ -56,7 +56,7 @@ pub struct IntentHandler;
 /// land. Runs before the result's messages publish (see
 /// [`IntentResult::scope_signal`]).
 fn apply_scope_signal(result: &mut IntentResult, state: &mut AppState) {
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
     if let Some(signal) = result.scope_signal.take() {
         match signal {
             ScopeSignal::Push(id) => state.frontend.scope_push(FocusScope::Dynamic(id)),
@@ -79,9 +79,9 @@ fn apply_scope_signal(result: &mut IntentResult, state: &mut AppState) {
 fn try_slice_input_hook(
     intent: &KernelIntent,
     state: &mut AppState,
-    routes: &crate::common::slices::key_routes::KeyRoutes,
+    routes: &jinn_slices::route::KeyRoutes,
 ) -> Option<IntentResult> {
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
     let FocusScope::Dynamic(scope) = &state.frontend.scope() else {
         return None;
     };
@@ -100,11 +100,8 @@ fn try_slice_input_hook(
 /// activation); composition keeps the ordered list on `Slices`. With no
 /// dynamic tab registered, `<Tab>` is a no-op round-trip to Normal —
 /// the chat tab is the only tab.
-fn next_tab_base(
-    state: &AppState,
-    slices: &crate::common::slices::Slices,
-) -> crate::common::app_state::FocusScope {
-    use crate::common::app_state::FocusScope;
+fn next_tab_base(state: &AppState, slices: &jinn_slices::Slices) -> jinn_slices::FocusScope {
+    use jinn_slices::FocusScope;
 
     // The chat tab (Normal) is always first in the cycle, so the walk
     // is: Normal → tab[0] → … → tab[n-1] → Normal.
@@ -132,7 +129,7 @@ fn next_tab_base(
 }
 
 /// The registered tab scope ids, in tab order.
-fn tab_scopes(slices: &crate::common::slices::Slices) -> Vec<jinn_slices::SliceScopeId> {
+fn tab_scopes(slices: &jinn_slices::Slices) -> Vec<jinn_slices::SliceScopeId> {
     slices.tab_scopes()
 }
 
@@ -177,8 +174,8 @@ impl IntentHandler {
     pub fn handle(
         intent: &KernelIntent,
         state: &mut AppState,
-        slices: &crate::common::slices::Slices,
-        routes: &crate::common::slices::key_routes::KeyRoutes,
+        slices: &jinn_slices::Slices,
+        routes: &jinn_slices::route::KeyRoutes,
         pickers: &jinn_picker::PickerRegistry,
     ) -> IntentResult {
         state
@@ -196,7 +193,7 @@ impl IntentHandler {
         // its own switch.
         let terminal_overlay_open = matches!(
             state.frontend.scope(),
-            crate::common::app_state::FocusScope::Dynamic(id)
+            jinn_slices::FocusScope::Dynamic(id)
                 if jinn_term_msg::is_overlay_scope(&id)
         );
 
@@ -231,8 +228,8 @@ impl IntentHandler {
     fn handle_inner(
         intent: &KernelIntent,
         state: &mut AppState,
-        slices: &crate::common::slices::Slices,
-        routes: &crate::common::slices::key_routes::KeyRoutes,
+        slices: &jinn_slices::Slices,
+        routes: &jinn_slices::route::KeyRoutes,
         pickers: &jinn_picker::PickerRegistry,
     ) -> IntentResult {
         // Session prompts live in the sidebar slice, which owns the route
@@ -252,7 +249,7 @@ impl IntentHandler {
         if let KernelIntent::Dynamic(dynamic) = intent
             && let Some(mut result) = routes.action_for(
                 dynamic,
-                crate::common::slices::key_routes::ActionCtx {
+                jinn_slices::route::ActionCtx {
                     state,
                     slices,
                     key_bytes: dynamic.bytes.clone(),
@@ -326,10 +323,10 @@ impl IntentHandler {
             }
 
             KernelIntent::PasteText { text } => match state.frontend.scope() {
-                crate::common::app_state::FocusScope::Input => {
+                jinn_slices::FocusScope::Input => {
                     feat::chat_input::intent::handle_paste_text(text, state)
                 }
-                crate::common::app_state::FocusScope::Picker { .. } => {
+                jinn_slices::FocusScope::Picker { .. } => {
                     crate::feat::picker::intent::handle_picker_paste(state, text)
                 }
                 _ => IntentResult::empty(),
@@ -533,7 +530,7 @@ impl IntentHandler {
                 // holds control, Tab is inert — handback is the only
                 // exit.
                 match state.frontend.scope() {
-                    crate::common::app_state::FocusScope::Dynamic(id)
+                    jinn_slices::FocusScope::Dynamic(id)
                         if jinn_term_msg::is_overlay_scope(&id) =>
                     {
                         // The terminal is an overlay (<M-t>), not a tab.
@@ -646,8 +643,8 @@ mod tests {
 
     /// Empty slice registry + route table for handler tests that don't
     /// exercise slices or route rows.
-    fn empty_slices() -> crate::common::slices::Slices {
-        crate::common::slices::Slices::new()
+    fn empty_slices() -> jinn_slices::Slices {
+        jinn_slices::Slices::new()
     }
 
     fn empty_pickers() -> jinn_picker::PickerRegistry {
@@ -656,8 +653,8 @@ mod tests {
 
     /// `Slices` with the status-bar cell registered (as the slice's
     /// `activate` does), for hint write/read assertions.
-    fn status_bar_slices() -> crate::common::slices::Slices {
-        let slices = crate::common::slices::Slices::new();
+    fn status_bar_slices() -> jinn_slices::Slices {
+        let slices = jinn_slices::Slices::new();
         #[expect(
             clippy::expect_used,
             reason = "test seam: a fresh Slices never has the status-bar cell registered"
@@ -673,16 +670,12 @@ mod tests {
         slices
     }
 
-    fn empty_routes() -> crate::common::slices::key_routes::KeyRoutes {
-        crate::common::slices::key_routes::KeyRoutes::new()
+    fn empty_routes() -> jinn_slices::route::KeyRoutes {
+        jinn_slices::route::KeyRoutes::new()
     }
 
-    fn activate_child_route(
-        child_id: jinn_core_types::SessionId,
-    ) -> crate::common::slices::key_routes::KeyRoutes {
-        use crate::common::slices::key_routes::{
-            ActionFn, BindSite, RouteId, RouteOutcome, RouteRow,
-        };
+    fn activate_child_route(child_id: jinn_core_types::SessionId) -> jinn_slices::route::KeyRoutes {
+        use jinn_slices::route::{ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
 
         let routes = empty_routes();
         routes.attach(RouteRow {
@@ -716,10 +709,11 @@ mod tests {
             "activate child",
         ))
     }
-    use crate::common::app_state::{AppState, FocusScope};
+    use crate::common::app_state::AppState;
     use crate::feat::intent::IntentHandler;
     use crate::protocol::IntentResult;
     use crate::protocol::{ChatEntry, KernelIntent};
+    use jinn_slices::FocusScope;
 
     #[rstest::rstest]
     fn paste_text_ignored_in_normal_scope() {
@@ -751,9 +745,7 @@ mod tests {
     fn paste_text_inserts_in_input_scope() {
         // Given an AppState in Input scope.
         let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .scope_push(crate::common::app_state::FocusScope::Input);
+        state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
         // When handling PasteText.
         let result = IntentHandler::handle(
@@ -780,9 +772,7 @@ mod tests {
     fn input_box_accepts_insert_char() {
         // Given an AppState in Input scope.
         let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .scope_push(crate::common::app_state::FocusScope::Input);
+        state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
         // When handling InsertChar.
         let _result = IntentHandler::handle(
@@ -1156,7 +1146,7 @@ mod tests {
     #[rstest::rstest]
     fn switch_tab_cycles_through_registered_tabs() {
         // Given a slices registry with one dynamic tab registered.
-        let slices = crate::common::slices::Slices::new();
+        let slices = jinn_slices::Slices::new();
         let tab = jinn_slices::SliceScopeId::new("dashboard", "tab");
         slices.register_tab_scope(
             tab.clone(),
@@ -1370,18 +1360,18 @@ mod tests {
             "toggle-for-selected",
             "toggle terminal",
         ));
-        let routes = crate::common::slices::key_routes::KeyRoutes::new();
-        routes.attach(crate::common::slices::key_routes::RouteRow {
-            route_id: crate::common::slices::key_routes::RouteId::new("term:toggle-for-selected"),
+        let routes = jinn_slices::route::KeyRoutes::new();
+        routes.attach(jinn_slices::route::RouteRow {
+            route_id: jinn_slices::route::RouteId::new("term:toggle-for-selected"),
             scope: jinn_term_msg::view_scope(),
             key: "T",
             category: "general",
-            site: crate::common::slices::key_routes::BindSite::OwnScope,
+            site: jinn_slices::route::BindSite::OwnScope,
             feature: "term",
-            outcome: crate::common::slices::key_routes::RouteOutcome::Action {
+            outcome: jinn_slices::route::RouteOutcome::Action {
                 action: "toggle-for-selected",
                 display: "toggle terminal",
-                run: crate::common::slices::key_routes::ActionFn::new(move |ctx| {
+                run: jinn_slices::route::ActionFn::new(move |ctx| {
                     let Some(state) = ctx
                         .state
                         .as_any_mut()

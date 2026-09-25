@@ -9,8 +9,8 @@
 use jinn_provider_config::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
 use std::collections::BTreeMap;
 
-use jinn_domain::feat::theme::default_theme;
 use jinn_selection_widget::PickerItem;
+use jinn_theme::default_theme;
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 

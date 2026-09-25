@@ -186,9 +186,8 @@ impl CompactionWorker {
         let (config, compaction_prompt, retry_config) = {
             let config = prefs.compaction.clone();
             let compaction_prompt = self.compaction_prompt.clone();
-            let retry_config = jinn_domain::feat::provider_infra::request_retry_to_provider_config(
-                &prefs.request_retry,
-            );
+            let retry_config =
+                jinn_provider_config::request_retry_to_provider_config(&prefs.request_retry);
             (config, compaction_prompt, retry_config)
         };
 
@@ -257,9 +256,8 @@ impl CompactionWorker {
             };
             let model_name = session.profile().model.clone();
             let compaction_prompt = self.compaction_prompt.clone();
-            let retry_config = jinn_domain::feat::provider_infra::request_retry_to_provider_config(
-                &prefs.request_retry,
-            );
+            let retry_config =
+                jinn_provider_config::request_retry_to_provider_config(&prefs.request_retry);
 
             // Uses the exact same values displayed in the status bar:
             //   - context_size() = tiktoken count from last prompt assembly
@@ -483,7 +481,7 @@ impl CompactionWorker {
 /// Mirrors the same lookup used by the status bar display so the compaction
 /// threshold gate and the status bar percentage are always consistent.
 fn resolve_context_limit(
-    model_cache: Option<&jinn_domain::feat::provider_infra::ModelCache>,
+    model_cache: Option<&jinn_provider_config::ModelCache>,
     active_model: &str,
 ) -> Option<u32> {
     let cache = model_cache?;
@@ -527,7 +525,7 @@ async fn generate_summary(
     let model_id = config.model.as_deref().unwrap_or(session_model);
 
     // Create LLM service via provider registry.
-    let provider_id = jinn_domain::feat::provider_infra::ProviderId::from(model_id.to_owned());
+    let provider_id = jinn_provider_config::ProviderId::from(model_id.to_owned());
     let service: Box<dyn LlmService> = {
         let api_keys = services.api_keys.read();
         services

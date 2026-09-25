@@ -5,9 +5,9 @@
 //! kernel picker style module). The loader wrapper lives in the slice's
 //! `loader.rs`.
 
-use jinn_domain::feat::theme::Theme;
 use jinn_picker::picker_style::promote_active_to_top;
 use jinn_provider_selection_msg::ProviderPickerEntry;
+use jinn_theme::Theme;
 /// Reorders entries so that available entries appear first (sorted by model name),
 /// followed by unavailable entries (sorted by model name). When `filter` is empty,
 /// the entry matching `active_provider` is promoted to the very top and marked active.

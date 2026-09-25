@@ -1,7 +1,7 @@
 //! Shared rendering helpers for chat log entries.
 
-use crate::feat::theme::Theme;
 use crate::protocol::ToolResultStatus;
+use jinn_theme::Theme;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 

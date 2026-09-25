@@ -26,10 +26,10 @@ mod tests {
         reason = "test code, panics are acceptable"
     )]
     use jinn_domain::AppState;
-    use jinn_domain::FocusScope;
     use jinn_domain::PickerKind;
     use jinn_domain::feat::ui::picker_states::PickerExt as _;
     use jinn_selection_widget::compute_popup_rect;
+    use jinn_slices::FocusScope;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
@@ -98,7 +98,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
@@ -156,7 +156,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
@@ -201,7 +201,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
@@ -246,7 +246,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
@@ -295,7 +295,7 @@ mod tests {
         let wrapped = pickers
             .make_items(
                 jinn_picker::THEME_ID,
-                vec![jinn_domain::feat::theme::ThemeEntry {
+                vec![jinn_theme::ThemeEntry {
                     name: "gruvbox".to_owned(),
                     theme: state.frontend.theme.clone(),
                 }],
@@ -310,7 +310,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
@@ -362,7 +362,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);

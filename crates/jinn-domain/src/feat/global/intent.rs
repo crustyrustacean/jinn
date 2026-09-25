@@ -63,7 +63,7 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
 /// Clears chat input, or clears/closes a picker filter. Input-capturing
 /// slice popups bind their own clear-or-leave actions.
 pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<KernelIntent>) {
-    use crate::common::focus::FocusScope;
+    use jinn_slices::FocusScope;
 
     match state.frontend.scope() {
         FocusScope::Input => {
@@ -99,20 +99,20 @@ mod tests {
 
     /// Empty slice registry + route table for handler tests that don't
     /// exercise slices or route rows.
-    fn empty_slices() -> crate::common::slices::Slices {
-        crate::common::slices::Slices::new()
+    fn empty_slices() -> jinn_slices::Slices {
+        jinn_slices::Slices::new()
     }
 
     fn empty_pickers() -> jinn_picker::PickerRegistry {
         jinn_picker::PickerRegistry::new()
     }
 
-    fn empty_routes() -> crate::common::slices::key_routes::KeyRoutes {
-        crate::common::slices::key_routes::KeyRoutes::new()
+    fn empty_routes() -> jinn_slices::route::KeyRoutes {
+        jinn_slices::route::KeyRoutes::new()
     }
     use super::*;
-    use crate::common::focus::FocusScope;
     use jinn_session_msg::PhaseKind;
+    use jinn_slices::FocusScope;
 
     fn handle_quit(state: &mut AppState) -> IntentResult {
         super::handle_quit(state)
@@ -190,14 +190,12 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state
             .frontend
-            .scope_swap_base(crate::common::focus::FocusScope::Normal);
+            .scope_swap_base(jinn_slices::FocusScope::Normal);
         handle_toggle_audit_popup(&mut state);
         assert!(state.frontend.audit_popup_visible);
 
         // When the user enters Input mode (pushes Input focus scope).
-        state
-            .frontend
-            .scope_push(crate::common::focus::FocusScope::Input);
+        state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
         // Then the popup flag remains on — it lives on FrontendState, not Mode.
         assert!(state.frontend.audit_popup_visible);
@@ -212,11 +210,9 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state
             .frontend
-            .scope_swap_base(crate::common::focus::FocusScope::Normal);
+            .scope_swap_base(jinn_slices::FocusScope::Normal);
         handle_toggle_audit_popup(&mut state);
-        state
-            .frontend
-            .scope_push(crate::common::focus::FocusScope::Input);
+        state.frontend.scope_push(jinn_slices::FocusScope::Input);
         assert!(state.frontend.audit_popup_visible);
 
         // When the user pops back to Normal.

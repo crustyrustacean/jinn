@@ -21,8 +21,8 @@ use jinn_provider_config::ProviderEntry;
 use jinn_provider_config::{ConfigStorageService, InMemoryConfigStorage};
 
 /// A sample single-provider config (the provider-init tests' fixture shape).
-fn sample_config() -> jinn_domain::feat::provider_infra::ProvidersConfig {
-    jinn_domain::feat::provider_infra::ProvidersConfig {
+fn sample_config() -> jinn_provider_config::ProvidersConfig {
+    jinn_provider_config::ProvidersConfig {
         providers: BTreeMap::from([(
             "sample".to_owned(),
             ProviderEntry {
@@ -43,7 +43,7 @@ fn sample_config() -> jinn_domain::feat::provider_infra::ProvidersConfig {
 
 /// A harness whose `Services` carry the given provider config.
 async fn harness_with_config(
-    config: &jinn_domain::feat::provider_infra::ProvidersConfig,
+    config: &jinn_provider_config::ProvidersConfig,
 ) -> (TestHarness, Services) {
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;
@@ -172,7 +172,7 @@ async fn env_config_ask_returns_none_when_storage_errors() {
         fn load(
             &self,
         ) -> Result<
-            jinn_domain::feat::provider_infra::ProvidersConfig,
+            jinn_provider_config::ProvidersConfig,
             error_stack::Report<jinn_provider_config::ConfigError>,
         > {
             Err(
@@ -182,7 +182,7 @@ async fn env_config_ask_returns_none_when_storage_errors() {
         }
         fn save(
             &self,
-            _config: &jinn_domain::feat::provider_infra::ProvidersConfig,
+            _config: &jinn_provider_config::ProvidersConfig,
         ) -> Result<(), error_stack::Report<jinn_provider_config::ConfigError>> {
             Ok(())
         }

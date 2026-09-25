@@ -3,13 +3,13 @@
 use std::pin::Pin;
 use std::time::Duration;
 
-use crate::llm_message::LlmMessage;
 use crate::stream_event::StopReason;
 use crate::stream_event::StreamEvent;
 use error_stack::Report;
 use futures::StreamExt as _;
 use futures::stream;
 use futures::stream::Stream;
+use jinn_core_types::llm_message::LlmMessage;
 use jinn_core_types::tool_types::ToolDefinition;
 use wherror::Error;
 

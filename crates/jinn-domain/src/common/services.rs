@@ -21,12 +21,12 @@ use jinn_preferences_config::{
     UserPreferencesStorageService,
 };
 
-pub use crate::feat::provider_infra;
-use crate::feat::provider_infra::{
+use crate::feat::session::SessionStoreService;
+pub use jinn_provider_config;
+use jinn_provider_config::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use crate::feat::session::SessionStoreService;
 use tokio::runtime::Handle;
 
 use crate::common::request_dump::RequestDumpService;
@@ -107,26 +107,26 @@ pub struct Services {
     /// `register` mints the one write handle for a slice; the renderer
     /// and intent router hold read handles only. Shared by all clones.
     #[debug(skip)]
-    pub slices: crate::common::slices::Slices,
+    pub slices: jinn_slices::Slices,
 
     /// Feature-registered keybind routes (intent → message).
     ///
     /// The intent handler consults this table before its own arms; rows
     /// attach after startup wiring as features register.
     #[debug(skip)]
-    pub key_routes: crate::common::slices::key_routes::KeyRoutes,
+    pub key_routes: jinn_slices::route::KeyRoutes,
 
     /// Erased slice views, one per rendered slot. Views pair with their
     /// slice at registration (type-checked at startup); the renderer asks
     /// the viewport for the active slot's view instead of hand-written
     /// tab code.
-    pub viewport: crate::common::slices::view::Viewport,
+    pub viewport: jinn_slices::view::Viewport,
 
     /// Slice-registered overlay renderers for dynamic scopes. Written at
     /// activation; the generic overlay pass resolves the active scope's
     /// renderer.
     #[debug(skip)]
-    pub overlay_views: crate::common::overlay_views::OverlayViews<jinn_slices::RenderFacts>,
+    pub overlay_views: jinn_slices::OverlayViews<jinn_slices::RenderFacts>,
 
     /// Actor-canvas runtime system hosting the ported slice actors
     /// (dashboard, quake-bar). Built once here; slice `activate` functions
@@ -183,7 +183,7 @@ impl Services {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
             handle,
             llm_service: LlmServiceFactoryService::new(Arc::new(
-                crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
+                jinn_provider_config::FakeLlmServiceFactory::new(vec![]),
             )),
             provider_registry: ProviderRegistryService::new(
                 ProviderRegistry::from_config(ProvidersConfig {
@@ -216,7 +216,7 @@ impl Services {
             request_dump: RequestDumpService::default(),
             task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
             slices: {
-                let slices = crate::common::slices::Slices::new();
+                let slices = jinn_slices::Slices::new();
                 let _ = slices.register(
                     jinn_persona_msg::personas_slot(),
                     jinn_persona_msg::Personas::default(),
@@ -231,10 +231,9 @@ impl Services {
                 );
                 slices
             },
-            key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
-            viewport: crate::common::slices::view::Viewport::new(),
-            overlay_views:
-                crate::common::overlay_views::OverlayViews::<jinn_slices::RenderFacts>::new(),
+            key_routes: jinn_slices::route::KeyRoutes::new(),
+            viewport: jinn_slices::view::Viewport::new(),
+            overlay_views: jinn_slices::OverlayViews::<jinn_slices::RenderFacts>::new(),
             // The same fabric the bus publishes through: one `Services`,
             // one trouper system.
             trouper_system,
@@ -269,7 +268,7 @@ impl Services {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
             handle,
             llm_service: LlmServiceFactoryService::new(Arc::new(
-                crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
+                jinn_provider_config::FakeLlmServiceFactory::new(vec![]),
             )),
             provider_registry: ProviderRegistryService::new(
                 ProviderRegistry::from_config(ProvidersConfig {
@@ -302,7 +301,7 @@ impl Services {
             request_dump: RequestDumpService::default(),
             task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
             slices: {
-                let slices = crate::common::slices::Slices::new();
+                let slices = jinn_slices::Slices::new();
                 let _ = slices.register(
                     jinn_persona_msg::personas_slot(),
                     jinn_persona_msg::Personas::default(),
@@ -317,10 +316,9 @@ impl Services {
                 );
                 slices
             },
-            key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
-            viewport: crate::common::slices::view::Viewport::new(),
-            overlay_views:
-                crate::common::overlay_views::OverlayViews::<jinn_slices::RenderFacts>::new(),
+            key_routes: jinn_slices::route::KeyRoutes::new(),
+            viewport: jinn_slices::view::Viewport::new(),
+            overlay_views: jinn_slices::OverlayViews::<jinn_slices::RenderFacts>::new(),
             // The same fabric the bus publishes through: one `Services`,
             // one trouper system.
             trouper_system,

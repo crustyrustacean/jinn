@@ -13,7 +13,7 @@ use jinn_core_types::SessionId;
 #[schema(description = "Persona directory scan completed.")]
 pub struct PersonasLoaded {
     /// The loaded persona files.
-    pub personas: Vec<crate::feat::persona::Persona>,
+    pub personas: Vec<jinn_persona_msg::Persona>,
     /// Error message if scanning failed, `None` on success.
     pub error: Option<String>,
 }

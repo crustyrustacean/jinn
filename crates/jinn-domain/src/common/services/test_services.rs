@@ -5,15 +5,15 @@ use async_trait::async_trait;
 use error_stack::Report;
 use tokio::runtime::{Handle, Runtime};
 
-use crate::feat::provider_infra::{
-    ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, InMemoryConfigStorage,
-    LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
-};
 use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService};
 use jinn_core_types::SessionId;
 use jinn_preferences_config::{
     AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
     UserPreferencesStorageService,
+};
+use jinn_provider_config::{
+    ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, InMemoryConfigStorage,
+    LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 use jinn_session_state::SessionSnapshot;
 use jinn_session_store_msg::SessionSummary;
@@ -122,9 +122,9 @@ impl SessionStore for FakeSessionStore {
 
     async fn search(
         &self,
-        _params: crate::feat::session_search::SearchParams,
-    ) -> Result<crate::feat::session_search::SearchOutcome, Report<SessionStoreError>> {
-        Ok(crate::feat::session_search::SearchOutcome {
+        _params: jinn_session_store_msg::SearchParams,
+    ) -> Result<jinn_session_store_msg::SearchOutcome, Report<SessionStoreError>> {
+        Ok(jinn_session_store_msg::SearchOutcome {
             total_matches: 0,
             per_session: Vec::new(),
             hits: Vec::new(),
@@ -136,8 +136,7 @@ impl SessionStore for FakeSessionStore {
         _session_id: &SessionId,
         _anchor: &crate::protocol::ChatEntryId,
         _context: usize,
-    ) -> Result<Option<crate::feat::session_search::TranscriptWindow>, Report<SessionStoreError>>
-    {
+    ) -> Result<Option<jinn_session_store_msg::TranscriptWindow>, Report<SessionStoreError>> {
         Ok(None)
     }
 
@@ -145,8 +144,7 @@ impl SessionStore for FakeSessionStore {
         &self,
         _session_id: &SessionId,
         _limit: usize,
-    ) -> Result<Option<crate::feat::session_search::TranscriptWindow>, Report<SessionStoreError>>
-    {
+    ) -> Result<Option<jinn_session_store_msg::TranscriptWindow>, Report<SessionStoreError>> {
         Ok(None)
     }
 }
@@ -318,10 +316,10 @@ impl TestServices {
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: crate::common::request_dump::RequestDumpService::default(),
             task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
-            slices: crate::common::slices::Slices::new(),
-            key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
-            viewport: crate::common::slices::view::Viewport::new(),
-            overlay_views: crate::common::overlay_views::OverlayViews::new(),
+            slices: jinn_slices::Slices::new(),
+            key_routes: jinn_slices::route::KeyRoutes::new(),
+            viewport: jinn_slices::view::Viewport::new(),
+            overlay_views: jinn_slices::OverlayViews::new(),
             trouper_system: trouper::system::ActorSystem::new(
                 trouper::system::SystemConfig::production(),
             ),

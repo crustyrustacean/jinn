@@ -15,11 +15,11 @@
 
 use jinn_core_types::SessionId;
 use jinn_domain::AppState;
-use jinn_domain::common::app_state::FocusScope;
 use jinn_domain::feat::session::picker_entry::SessionTreeEntry;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::SessionState;
+use jinn_slices::FocusScope;
 use jinn_slices::picker_kind::PickerKind;
 
 /// A state with two sessions inserted, so the picker has something to switch

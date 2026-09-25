@@ -13,7 +13,7 @@ async fn activation_registers_argument_popup_surfaces() {
     // Given fresh shared slice registries and lifecycle state.
     let slices = jinn_slices::Slices::new();
     let mut viewport = Viewport::new();
-    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
     let routes = jinn_slices::KeyRoutes::new();
     let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
     let services = jinn_domain::Services::new_fake().await;

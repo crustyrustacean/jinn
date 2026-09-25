@@ -24,7 +24,6 @@ mod intent_phase2_tests;
 mod intent_tests;
 pub mod protocol;
 pub mod slash_command;
-pub mod state;
 pub mod validator;
 
 // Re-export state types for convenience.

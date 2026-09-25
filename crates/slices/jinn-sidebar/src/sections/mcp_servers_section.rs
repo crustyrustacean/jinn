@@ -305,7 +305,7 @@ mod tests {
         let (mut terminal, area) = setup_term(width, height);
         terminal
             .draw(|frame| {
-                let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(state, slices, &overlay_views);
                 section.render(frame, area, &ctx);
             })
@@ -471,7 +471,7 @@ mod tests {
 
         // When computing the content height.
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
         let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
 
         // Then the section collapses to zero height (hidden).
@@ -492,7 +492,7 @@ mod tests {
 
         // When computing the content height.
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
         let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
 
         // Then it counts only the enabled servers:

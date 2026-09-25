@@ -4,9 +4,10 @@ use jinn_domain::IntentResult;
 use jinn_domain::common::app_state::AppState;
 use jinn_preferences_config::schemas::LifecycleCommand;
 use jinn_session_history_msg::PushChatEntry;
-use jinn_session_lifecycle_msg::command::RunSessionSetup;
-use jinn_session_lifecycle_msg::{command_template::CommandTemplate, setup_running_msg};
-use jinn_session_state::chat_session::LifecycleScriptState;
+use jinn_session_lifecycle_msg::{
+    LifecycleScriptState, command::RunSessionSetup, command_template::CommandTemplate,
+    setup_running_msg,
+};
 
 use super::close::validate_session_close;
 use super::state::sorted_open_sessions;

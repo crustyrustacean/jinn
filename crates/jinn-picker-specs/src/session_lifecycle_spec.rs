@@ -181,12 +181,12 @@ mod tests {
     use super::*;
     use jinn_domain::PickerKind;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
     use jinn_picker::SESSION_LIFECYCLE_ID;
     use jinn_preferences_config::schemas::LifecycleCommand;
     use jinn_preferences_config::schemas::SessionLifecycle;
     use jinn_session_lifecycle_msg::arg_input_slot;
+    use jinn_slices::FocusScope;
 
     /// State with an active origin session and the given configured
     /// lifecycles (name, description, setup-with-args).

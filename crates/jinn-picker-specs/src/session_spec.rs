@@ -156,11 +156,9 @@ mod tests {
                 .expect("session spec registered");
             state.frontend.session_picker_mut().set_items(items);
         }
-        state
-            .frontend
-            .scope_push(jinn_domain::common::app_state::FocusScope::Picker {
-                kind: PickerKind::Session,
-            });
+        state.frontend.scope_push(jinn_slices::FocusScope::Picker {
+            kind: PickerKind::Session,
+        });
         let session_id = {
             state.frontend.session_picker().items()[0]
                 .entry()

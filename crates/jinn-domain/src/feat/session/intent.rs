@@ -79,11 +79,9 @@ mod tests {
     fn session_new_closes_picker_and_creates_session() {
         // Given a state with an active picker.
         let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .scope_push(crate::common::app_state::FocusScope::Picker {
-                kind: PickerKind::Provider,
-            });
+        state.frontend.scope_push(jinn_slices::FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
         let old_id = state.session.active_session_id().clone();
 
         // When handling SessionNew.

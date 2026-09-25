@@ -145,7 +145,7 @@ mod tests {
     use jinn_domain::KernelIntent;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::render_ctx::RenderCtx;
-    use jinn_domain::feat::persona::Persona;
+    use jinn_persona_msg::Persona;
 
     #[rstest::rstest]
     fn section_id_is_persona() {
@@ -176,7 +176,7 @@ mod tests {
 
         // When asking for content height.
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
         let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
 
         // Then it returns 4 (header + blank + entry + trailing gap).
@@ -191,7 +191,7 @@ mod tests {
 
         // When asking for content height.
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
         let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
 
         // Then it returns 4 (consistent layout).
@@ -261,7 +261,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(state, &slices, &overlay_views);
                 section.render(frame, area, &ctx);
             })

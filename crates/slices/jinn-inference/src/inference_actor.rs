@@ -10,9 +10,6 @@ use jinn_core_types::tool_types::ToolCall;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::feat::provider_infra::LlmServiceFactoryService;
-use jinn_domain::feat::provider_infra::StopReason;
-use jinn_domain::feat::provider_infra::StreamEvent;
 use jinn_domain::protocol::ChatEntry;
 use jinn_inference_msg::{
     CancelStream, SendToLlmProvider, StreamCompleted, StreamCompletedReason, StreamOrigin,
@@ -22,6 +19,9 @@ use jinn_preferences_config::schemas::RequestRetryConfig;
 use jinn_provider::{
     LlmMessage, LlmService, LlmServiceError, OnRetry, RetryingLlmService, ToolDefinition,
 };
+use jinn_provider_config::LlmServiceFactoryService;
+use jinn_provider_config::StopReason;
+use jinn_provider_config::StreamEvent;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_slices::SystemPrompt;
 use jinn_tools_msg::CancelToolBatch;
@@ -643,7 +643,7 @@ impl InferenceActor {
         payload: &SendToLlmProvider,
     ) -> Result<LlmServiceFactoryService, String> {
         if let Some(pid) = payload.provider_id.clone() {
-            let id = jinn_domain::feat::provider_infra::ProviderId::new(pid.clone());
+            let id = jinn_provider_config::ProviderId::new(pid.clone());
             let api_keys = self.services.api_keys.read();
             match self.services.provider_registry.create_factory(
                 &id,
@@ -805,7 +805,7 @@ fn build_streaming_service(
     })?;
     Ok(RetryingLlmService::new(
         service,
-        jinn_domain::feat::provider_infra::request_retry_to_provider_config(retry_config),
+        jinn_provider_config::request_retry_to_provider_config(retry_config),
         Box::new(PushEntryOnRetry::new(bus.clone(), sid.clone())),
     ))
 }

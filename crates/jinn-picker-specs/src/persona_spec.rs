@@ -118,12 +118,12 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use jinn_domain::common::app_state::FocusScope;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
     use jinn_domain::protocol::PickerKind;
     use jinn_picker::ActionCtx;
     use jinn_picker::PERSONA_ID;
     use jinn_session_state::ChatSessionState;
+    use jinn_slices::FocusScope;
     /// Seeds the persona cell attached to the state (persona slice).
     fn seed_personas(state: &AppState, entries: Vec<jinn_persona_msg::Persona>) {
         let cell = state
@@ -168,8 +168,8 @@ mod tests {
         state
     }
 
-    fn persona(name: &str) -> jinn_domain::feat::persona::Persona {
-        jinn_domain::feat::persona::Persona {
+    fn persona(name: &str) -> jinn_persona_msg::Persona {
+        jinn_persona_msg::Persona {
             name: name.to_owned(),
             description: String::new(),
             body: String::new(),

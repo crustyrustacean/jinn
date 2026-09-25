@@ -11,7 +11,7 @@ use crate::common::app_state::AppState;
 #[rstest::rstest]
 fn hash_trigger_valid_after_space() {
     // Given an input with "hello #".
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -42,7 +42,7 @@ fn hash_trigger_valid_after_space() {
 #[rstest::rstest]
 fn hash_trigger_valid_after_newline() {
     // Given an input with "\n#".
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -71,7 +71,7 @@ fn hash_trigger_valid_after_newline() {
 #[rstest::rstest]
 fn hash_trigger_invalid_after_letter() {
     // Given an input with "abc#".
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -102,7 +102,7 @@ fn hash_trigger_invalid_after_letter() {
 #[rstest::rstest]
 fn slash_trigger_only_at_position_zero() {
     // Given an input with text then "/".
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -131,7 +131,7 @@ fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
     // Simpler approach: verify that deleting the last char of "#t" deactivates
     // and then reactivation occurs. The observable difference is that the
     // autocomplete filter is empty (not "t") after reactivation.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -189,7 +189,7 @@ fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
 #[rstest::rstest]
 fn delete_forward_deactivates_when_cursor_at_token_start() {
     // Given "#t" with cursor moved to position 0 (the '#' position).
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -225,7 +225,7 @@ fn delete_forward_deactivates_when_cursor_at_token_start() {
 fn cursor_move_left_deactivates_when_cursor_before_token() {
     // Given "a #test" - cursor at the 'a' position is BEFORE the '#' token.
     // Moving left from within the token to before it should deactivate permanently.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -282,7 +282,7 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
 #[rstest::rstest]
 fn reactivating_hash_autocomplete_within_token() {
     // Given "#test" with autocomplete deactivated, cursor within token.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -327,7 +327,7 @@ fn reactivating_hash_autocomplete_within_token() {
 #[rstest::rstest]
 fn reactivating_slash_autocomplete_within_command() {
     // Given "/help" with autocomplete deactivated, cursor within command.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -375,7 +375,7 @@ fn scroll_indicators_show_at_exact_boundary() {
     // the element renders without panic when content exactly fills the viewport.
     // (Indirect test - the real assertion is that the element doesn't crash
     // and produces output at the exact boundary.)
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
     let state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     // Just verify the element can be registered and doesn't panic.
@@ -387,7 +387,7 @@ fn scroll_indicators_show_at_exact_boundary() {
 #[rstest::rstest]
 fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {
     // Given a state in Input scope with hash autocomplete active.
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);

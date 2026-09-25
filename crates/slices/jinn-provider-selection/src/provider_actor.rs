@@ -414,7 +414,7 @@ impl ProviderActor {
 fn build_provider_picker(
     services: &jinn_domain::Services,
     model_cache: Option<&ModelCache>,
-    theme: &jinn_domain::feat::theme::Theme,
+    theme: &jinn_theme::Theme,
     model_selection: &jinn_core_types::ModelSelection,
     alloy_mode: bool,
 ) -> jinn_selection_widget::SelectionState<

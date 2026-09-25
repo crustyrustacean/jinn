@@ -1,9 +1,9 @@
 //! Preferences slice-composition tests.
 
-use jinn_domain::common::overlay_views::OverlayViews;
 use jinn_domain::common::state::State;
 use jinn_preferences::pruner_accumulation_scope;
 use jinn_preferences::pruner_accumulation_slot;
+use jinn_slices::OverlayViews;
 use jinn_slices::SliceHost;
 use jinn_slices::view::Viewport;
 use ratatui_which_key::NodeResult;

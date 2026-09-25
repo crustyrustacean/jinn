@@ -5,5 +5,4 @@
 
 pub mod picker_entry;
 
-pub use jinn_core_types::Endpoint;
 pub use picker_entry::EndpointEntry;

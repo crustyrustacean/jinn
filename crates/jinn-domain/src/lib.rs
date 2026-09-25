@@ -37,15 +37,15 @@ pub use common::actor::{ActorCounter, ActorName};
 // Re-export component types (state, UI)
 pub use common::app_paths::{AppPaths, BrowserProfileMode};
 pub use common::app_state::pin_sort_key;
-pub use common::app_state::{AppState, FocusScope, FrontendState, ScopeStack, SessionState};
+pub use common::app_state::{AppState, FrontendState, SessionState};
 pub use common::bridge::{Bridge, BridgeClosure};
 pub use common::bus::BusMessage;
 pub use common::render_ctx::RenderCtx;
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
-pub use common::tui_signals::TuiSignals;
 pub use common::{AppUiRegistry, register_all_ui_elements};
-pub use feat::context::prompt_template::PromptTemplateStore;
+pub use jinn_context::PromptTemplateStore;
 pub use jinn_core_types::NO_PROVIDER_ID;
+pub use jinn_slices::{FocusScope, ScopeStack, TuiSignals};
 
 // Re-export services types
 pub use common::services::Services;
@@ -59,14 +59,12 @@ pub use common::core::{AppCore, SHUTDOWN_TIMEOUT, STARTUP_TIMEOUT, wait_for_syst
 pub use feat::intent::IntentHandler;
 
 // Re-export providers types
-pub use feat::provider_infra::TOOL_LOOP_TRIGGER;
-pub use feat::provider_infra::cache_path;
-pub use feat::provider_infra::{
+pub use jinn_provider_config::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, FilesystemConfigStorage,
     InMemoryConfigStorage, InitProvidersOutcome, LlmServiceFactoryService, ModelCache,
     NoProvidersAvailableFactory, ProviderEntry, ProviderId, ProviderRegistry,
-    ProviderRegistryService, ProvidersConfig, ScriptedResponse, config_path,
-    init_default_providers_to,
+    ProviderRegistryService, ProvidersConfig, ScriptedResponse, TOOL_LOOP_TRIGGER, cache_path,
+    config_path, init_default_providers_to,
 };
 // Re-export context types
 
@@ -107,7 +105,7 @@ pub use common::actor::protocol::command::ProceedWithShutdown;
 pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 pub use feat::chat_input::protocol::command::EnqueueUserMessage;
 pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
-pub use feat::provider::llm_message::LlmMessage;
+pub use jinn_provider::LlmMessage;
 pub use jinn_session_history_msg::PushChatEntry;
 pub use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 // The curation contracts are owned by the context-curation slice's msg

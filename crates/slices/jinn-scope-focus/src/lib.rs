@@ -8,10 +8,8 @@
 //! route row: the only writer is the exempt sync IntentHandler, and
 //! the state is not a rendered element.
 
-pub mod state;
-
+pub use jinn_slices::ScopeFocusState;
 pub use jinn_slices::scope_focus_slot;
-pub use state::ScopeFocusState;
 
 use jinn_slices::SliceHost;
 

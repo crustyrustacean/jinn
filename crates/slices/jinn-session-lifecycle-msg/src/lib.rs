@@ -21,9 +21,8 @@ pub use command::{
     RunSessionSetup, RunSessionTeardown, SetSessionCwd, TeardownFollowUp, TeardownSessionTree,
 };
 pub use command_template::CommandTemplate;
-pub use event::{
-    SessionCreated, SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
-};
+pub use event::{SessionCreated, SessionCwdChanged};
+pub use jinn_session_msg::{SessionSetupCompleted, SessionTeardownFinished};
 pub use lifecycle_script_state::LifecycleScriptState;
 pub use picker_entry::{SessionLifecycleEntry, lifecycle_row};
 

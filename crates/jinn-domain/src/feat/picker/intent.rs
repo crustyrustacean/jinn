@@ -7,8 +7,8 @@
 //! dependency.
 
 use crate::common::app_state::AppState;
-use crate::common::app_state::FocusScope;
 use jinn_core_types::model_selection::ModelSelection;
+use jinn_slices::FocusScope;
 
 use crate::protocol::{IntentResult, KernelIntent, PickerKind};
 

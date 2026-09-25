@@ -13,8 +13,8 @@ use crate::sections::section_trait::{
 };
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::feat::theme::Theme;
 use jinn_domain::protocol::IntentResult;
+use jinn_theme::Theme;
 use jinn_tools_msg::{Phase, PhaseId, TaskList};
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -426,7 +426,7 @@ mod tests {
         let app = AppState::default_with_scope_focus();
         let section = TaskListSection;
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
         assert_eq!(
             section.content_height(&RenderCtx::new(&app, &slices, &overlay_views)),
             0
@@ -439,7 +439,7 @@ mod tests {
         let app = setup_with_tasks();
         let section = TaskListSection;
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
         let height = section.content_height(&RenderCtx::new(&app, &slices, &overlay_views));
         assert!(height > 0, "expected non-zero height, got {height}");
     }
@@ -477,7 +477,7 @@ mod tests {
 
         // When computing the height and the render line count.
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
         let height = section.content_height(&RenderCtx::new(&app, &slices, &overlay_views));
         let line_count = build_render_lines(&list, &app).len() as u16;
 

@@ -11,11 +11,11 @@
 
 use jinn_domain::Key;
 use jinn_domain::KeyEvent;
-use jinn_domain::common::slices::key_routes::BindSite;
-use jinn_domain::common::slices::key_routes::KeyRoutes;
-use jinn_domain::common::slices::key_routes::RouteOutcome;
-use jinn_domain::common::slices::key_routes::RouteRow;
 use jinn_slices::SliceScopeId;
+use jinn_slices::route::BindSite;
+use jinn_slices::route::KeyRoutes;
+use jinn_slices::route::RouteOutcome;
+use jinn_slices::route::RouteRow;
 use ratatui_which_key::Keymap;
 use ratatui_which_key::parse_key_sequence;
 
@@ -395,14 +395,14 @@ mod tests {
     use crate::scope::Scope;
     use jinn_domain::KernelIntent;
     use jinn_domain::KeyEvent;
-    use jinn_domain::common::slices::key_routes::ActionFn;
-    use jinn_domain::common::slices::key_routes::BindSite;
-    use jinn_domain::common::slices::key_routes::KeyRoutes;
-    use jinn_domain::common::slices::key_routes::RouteId;
-    use jinn_domain::common::slices::key_routes::RouteOutcome;
-    use jinn_domain::common::slices::key_routes::RouteRow;
     use jinn_domain::protocol::IntentResult;
     use jinn_slices::SliceScopeId;
+    use jinn_slices::route::ActionFn;
+    use jinn_slices::route::BindSite;
+    use jinn_slices::route::KeyRoutes;
+    use jinn_slices::route::RouteId;
+    use jinn_slices::route::RouteOutcome;
+    use jinn_slices::route::RouteRow;
     use ratatui_which_key::Keymap;
 
     fn quake_open_row() -> RouteRow {

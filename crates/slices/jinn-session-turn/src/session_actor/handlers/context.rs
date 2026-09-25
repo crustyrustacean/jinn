@@ -212,9 +212,9 @@ mod tests {
     use jinn_domain::common::services::BusAudit;
     use jinn_domain::common::state::State;
     use jinn_domain::feat::context::protocol::event::PersonasLoaded;
-    use jinn_domain::feat::persona::Persona;
     use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_domain::protocol::{ChatEntryId, PinPosition};
+    use jinn_persona_msg::Persona;
 
     fn make_persona(name: &str) -> Persona {
         Persona {

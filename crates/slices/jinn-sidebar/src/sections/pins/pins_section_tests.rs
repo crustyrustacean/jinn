@@ -241,7 +241,7 @@ fn content_height_is_zero_when_empty() {
 
     // When asking for content height.
     let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
     let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
 
     // Then it returns 0 (section is hidden when empty).
@@ -256,7 +256,7 @@ fn content_height_matches_entry_count() {
 
     // When asking for content height.
     let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
     let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
 
     // Then it returns header(1) + header-gap(1) + entries(3) + trailing gap(1) = 6.
@@ -273,7 +273,7 @@ fn render_rows(
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
@@ -349,7 +349,7 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
@@ -373,7 +373,7 @@ fn render_selected_entry_has_darkgray_marker_when_not_focused() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_domain::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             section.render(frame, area, &ctx);
         })
@@ -501,9 +501,7 @@ fn session_new_works_when_not_in_sidebar() {
 fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
     // Given a session with ignored entries (causing visual-item index != history index)
     // and a pinned entry deep in history.
-    use jinn_domain::feat::ui::chat_log::visual_item::{
-        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
-    };
+    use jinn_chat_log_view_msg::{DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items};
 
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().push_entry(ChatEntry::user("a")); // hist 0
@@ -649,16 +647,16 @@ use jinn_domain::protocol::ToolResultStatus;
 
 /// Empty slice registry + route table for handler tests that don't
 /// exercise slices or route rows.
-fn empty_slices() -> jinn_domain::common::slices::Slices {
-    jinn_domain::common::slices::Slices::new()
+fn empty_slices() -> jinn_slices::Slices {
+    jinn_slices::Slices::new()
 }
 
 fn empty_pickers() -> jinn_picker::PickerRegistry {
     jinn_picker::PickerRegistry::new()
 }
 
-fn empty_routes() -> jinn_domain::common::slices::key_routes::KeyRoutes {
-    jinn_domain::common::slices::key_routes::KeyRoutes::new()
+fn empty_routes() -> jinn_slices::route::KeyRoutes {
+    jinn_slices::route::KeyRoutes::new()
 }
 
 /// Build an AppState with one pinned tool-result entry.

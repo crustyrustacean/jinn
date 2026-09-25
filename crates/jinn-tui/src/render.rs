@@ -50,7 +50,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     let sidebar_focused = state.frontend.is_sidebar();
     let active_scope = state.frontend.with_scope(
         |s| s.stack.current().clone(),
-        || jinn_domain::FocusScope::Input,
+        || jinn_slices::FocusScope::Input,
     );
     let active_scope_ref = &active_scope;
 
@@ -109,7 +109,7 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
     // every frame while open; deduped by the mirror, sent through the bridge.
     if matches!(
         wstate.frontend.scope(),
-        jinn_domain::FocusScope::Dynamic(id) if jinn_term_msg::is_overlay_scope(&id)
+        jinn_slices::FocusScope::Dynamic(id) if jinn_term_msg::is_overlay_scope(&id)
     ) {
         let inner = jinn_term_msg::geometry::terminal_overlay_inner_rect(area);
         let (rows, cols) = (inner.height, inner.width);
@@ -156,11 +156,8 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
 
 /// Refreshes the selected MCP server picker entry's live runtime projection.
 /// No-op unless the MCP server inspector is the active overlay.
-fn refresh_mcp_inspector_snapshot(
-    state: &mut jinn_domain::AppState,
-    slices: &jinn_domain::common::slices::Slices,
-) {
-    use jinn_domain::FocusScope;
+fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState, slices: &jinn_slices::Slices) {
+    use jinn_slices::FocusScope;
     let is_mcp_picker = matches!(
         &state.frontend.scope(),
         FocusScope::Picker {
@@ -220,8 +217,8 @@ fn refresh_mcp_inspector_snapshot(
     reason = "all inputs are single-use render pass params"
 )]
 fn render_base_layers(
-    slices: &jinn_domain::common::slices::Slices,
-    viewport: &mut jinn_domain::common::slices::view::Viewport,
+    slices: &jinn_slices::Slices,
+    viewport: &mut jinn_slices::view::Viewport,
     sidebar: &mut Sidebar,
     ui_registry: &mut AppUiRegistry,
     frame: &mut Frame<'_>,
@@ -242,7 +239,7 @@ fn render_base_layers(
             if let FocusScope::Dynamic(ref id) = base
                 && let Some(slot) = slices.tab_slot(id)
             {
-                let cx = jinn_domain::common::slices::ViewCx {
+                let cx = jinn_slices::ViewCx {
                     theme: &ctx.state.frontend.theme,
                 };
                 viewport.render_slot(frame, dash.content, &slot, &cx, slices);

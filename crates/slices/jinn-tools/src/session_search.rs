@@ -1,7 +1,7 @@
 //! `session_search` built-in tool — full-text search across persisted sessions.
 //!
 //! Searches the FTS index over all persisted session entries (see
-//! [`jinn_domain::feat::session_search`]). Queries are passed to FTS5 `MATCH`
+//! [`jinn_session_store_msg`]). Queries are passed to FTS5 `MATCH`
 //! unmodified; SQLite syntax errors are surfaced verbatim so the caller can
 //! self-correct. Results are a flat, bm25-ranked top-N with per-session
 //! rollup counts — no pagination; refine the query instead of paging.

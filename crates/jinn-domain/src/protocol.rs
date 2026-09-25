@@ -4,16 +4,13 @@
 //!
 //!
 //! - **[`intent`]** - `Intent` (user-initiated action) and `IntentResult`
-//! - **[`key`]** - `Key`, `KeyEvent`, `Modifiers` (keyboard input types)
-//! - **[`mode`]** - `Mode` (application interaction mode)
 //! - **[`system`]** - `KeyDown`, `KeyUp`, `ModeChanged`
+//! - Shared `Key`, `KeyEvent`, `Modifiers`, and `Mode` vocabulary from `jinn-slices`
 //!
 //! Domain-specific types (session, provider, context, tools, chat input, etc.) live
 //! in their feature modules under `feat/` and are re-exported here for convenience.
 
 pub mod intent;
-pub mod key;
-pub mod mode;
 pub mod system;
 
 // Re-export primary types
@@ -22,14 +19,13 @@ pub use intent::CwdRoot;
 pub use intent::IntentResult;
 pub use intent::KernelIntent;
 pub use intent::ScopeSignal;
-pub use key::{Key, KeyEvent, Modifiers};
-pub use mode::Mode;
+pub use jinn_slices::{Key, KeyEvent, Mode, Modifiers};
 
 // Re-export domain types that are widely used as cross-cutting protocol concerns
 pub use crate::common::actor::actor_name::ActorName;
 pub use jinn_session_init_msg::PromptTemplate;
 
-pub use crate::feat::provider::llm_message::LlmMessage;
+pub use jinn_provider::LlmMessage;
 pub use jinn_slices::picker_kind::PickerKind;
 
 // Re-export domain types used by the picker and UI

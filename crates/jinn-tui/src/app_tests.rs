@@ -21,12 +21,12 @@ async fn test_app() -> TuiApp {
 }
 
 #[rstest::rstest]
-#[case::normal_chat(jinn_domain::FocusScope::Normal, Scope::Normal)]
+#[case::normal_chat(jinn_slices::FocusScope::Normal, Scope::Normal)]
 #[case::sidebar(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope(), Scope::Dynamic(jinn_slices::SliceScopeId::navigation("sidebar", "persona")))]
-#[case::input(jinn_domain::FocusScope::Input, Scope::Input)]
-#[case::picker_provider(jinn_domain::FocusScope::Picker { kind: jinn_domain::PickerKind::Provider }, Scope::PickerProvider)]
-#[case::picker_task_list(jinn_domain::FocusScope::Picker { kind: jinn_domain::PickerKind::TaskList }, Scope::PickerTaskList)]
-fn scope_for_focus_maps_correctly(#[case] focus: jinn_domain::FocusScope, #[case] expected: Scope) {
+#[case::input(jinn_slices::FocusScope::Input, Scope::Input)]
+#[case::picker_provider(jinn_slices::FocusScope::Picker { kind: jinn_domain::PickerKind::Provider }, Scope::PickerProvider)]
+#[case::picker_task_list(jinn_slices::FocusScope::Picker { kind: jinn_domain::PickerKind::TaskList }, Scope::PickerTaskList)]
+fn scope_for_focus_maps_correctly(#[case] focus: jinn_slices::FocusScope, #[case] expected: Scope) {
     // Given a focus scope.
     // When mapping to a keymap scope.
     // Then the expected scope is returned.

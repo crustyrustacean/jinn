@@ -13,12 +13,12 @@ pub fn render_border(frame: &mut Frame<'_>, border: Rect, ctx: &RenderCtx) {
     let theme = &ctx.state.frontend.theme;
 
     let border_color = match focus_scope {
-        jinn_domain::FocusScope::Dynamic(id)
+        jinn_slices::FocusScope::Dynamic(id)
             if id.slice() == "sidebar" && id.name() == "resize" =>
         {
             theme.sidebar_resize_accent
         }
-        jinn_domain::FocusScope::Dynamic(id) if id.slice() == "sidebar" => theme.focus_accent,
+        jinn_slices::FocusScope::Dynamic(id) if id.slice() == "sidebar" => theme.focus_accent,
         _ => theme.border_unfocused,
     };
     let border_style = Style::default().fg(border_color);
@@ -108,7 +108,7 @@ mod tests {
             .state
             .write()
             .frontend
-            .scope_push(jinn_domain::FocusScope::Dynamic(
+            .scope_push(jinn_slices::FocusScope::Dynamic(
                 jinn_sidebar_msg::SidebarSectionId::resize_scope_id(),
             ));
         let (mut terminal, _area) = setup_term(80, 24);

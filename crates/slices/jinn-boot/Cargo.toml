@@ -22,6 +22,7 @@ jinn-mcp-msg = { workspace = true }
 # threaded in here) + the provider contracts (ProviderSwitch,
 # ModelCacheLoaded) that migrate with that slice.
 jinn-provider-selection-msg = { workspace = true }
+jinn-provider-config = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-preferences-config = { workspace = true }

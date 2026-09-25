@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use error_stack::Report;
 
-use crate::llm_message::LlmMessage;
 use crate::service::{ChatStream, LlmService, LlmServiceError, ToolStream};
+use jinn_core_types::llm_message::LlmMessage;
 use jinn_core_types::tool_types::ToolDefinition;
 
 /// Callback invoked when a retry is about to happen.

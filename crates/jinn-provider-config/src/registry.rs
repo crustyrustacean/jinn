@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt as _};
-use jinn_provider::{Backend, ReasoningEffort};
+use jinn_provider::{Backend, LlmService, LlmServiceError, LlmServiceFactory, ReasoningEffort};
 
 use super::SampleLlmServiceFactory;
 use super::api_keys::ApiKeys;
@@ -22,7 +22,6 @@ use super::config::{AliasEntry, ConfigError, ProviderEntry, ProvidersConfig};
 use super::generic_factory::GenericLlmServiceFactory;
 use super::provider_id::ProviderId;
 use super::resolved_provider::ResolvedProvider;
-use super::service::{LlmService, LlmServiceError, LlmServiceFactory};
 
 /// Registry of configured providers.
 ///

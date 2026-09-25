@@ -12,8 +12,8 @@
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
-use crate::feat::chat_input::state::WrappedLine;
 use crate::protocol::Mode;
+use jinn_chat_input_msg::{InputMode, WrappedLine};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -53,7 +53,6 @@ impl UiElement for ChatInputBoxElement {
         };
 
         let badge_line = {
-            use crate::feat::chat_input::state::InputMode;
             let mode = state.active_session().with_input(
                 jinn_chat_input_msg::ChatInputBoxState::input_mode,
                 Default::default,

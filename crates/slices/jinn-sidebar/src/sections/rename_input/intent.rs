@@ -42,7 +42,7 @@ pub fn handle_rename_session_enter(state: &mut AppState) -> IntentResult {
 
     state.frontend.update_sections(|s| {
         s.rename_input = RenameSessionInputState {
-            text: jinn_domain::common::line_input::LineInput {
+            text: jinn_slices::LineInput {
                 input: title,
                 cursor_pos,
             },
@@ -217,7 +217,8 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use jinn_domain::common::app_state::{AppState, FocusScope};
+    use jinn_domain::common::app_state::AppState;
+    use jinn_slices::FocusScope;
 
     fn state_with_sessions(count: usize) -> AppState {
         let mut state = AppState::default_with_scope_focus();
@@ -321,7 +322,7 @@ mod tests {
             .update_sections(|s| s.sessions.selected_index = Some(0));
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "New Title".to_owned(),
                     cursor_pos: 9,
                 },
@@ -364,7 +365,7 @@ mod tests {
             .update_sections(|s| s.sessions.selected_index = Some(0));
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: String::new(),
                     cursor_pos: 0,
                 },
@@ -407,7 +408,7 @@ mod tests {
             .update_sections(|s| s.sessions.selected_index = Some(0));
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Fresh Title".to_owned(),
                     cursor_pos: 11,
                 },
@@ -491,7 +492,7 @@ mod tests {
             .scope_push(FocusScope::Dynamic(rename_scope()));
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Changed".to_owned(),
                     cursor_pos: 7,
                 },
@@ -524,7 +525,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hello".to_owned(),
                     cursor_pos: 5,
                 },
@@ -555,7 +556,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hello".to_owned(),
                     cursor_pos: 5,
                 },
@@ -586,7 +587,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hello".to_owned(),
                     cursor_pos: 1,
                 },
@@ -617,7 +618,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hi".to_owned(),
                     cursor_pos: 2,
                 },
@@ -642,7 +643,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hi".to_owned(),
                     cursor_pos: 0,
                 },
@@ -667,7 +668,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hello".to_owned(),
                     cursor_pos: 0,
                 },
@@ -698,7 +699,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hello".to_owned(),
                     cursor_pos: 5,
                 },
@@ -729,7 +730,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hello".to_owned(),
                     cursor_pos: 0,
                 },
@@ -754,7 +755,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hello".to_owned(),
                     cursor_pos: 5,
                 },
@@ -779,7 +780,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hello".to_owned(),
                     cursor_pos: 2,
                 },
@@ -810,7 +811,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
-                text: jinn_domain::common::line_input::LineInput {
+                text: jinn_slices::LineInput {
                     input: "Hello".to_owned(),
                     cursor_pos: 2,
                 },

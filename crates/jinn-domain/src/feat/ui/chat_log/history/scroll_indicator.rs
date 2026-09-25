@@ -6,7 +6,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::feat::theme::Theme;
+use jinn_theme::Theme;
 
 /// Render the scroll indicator widget if the viewport is not at the bottom.
 ///

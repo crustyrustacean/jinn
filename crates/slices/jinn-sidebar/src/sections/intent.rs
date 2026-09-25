@@ -66,7 +66,7 @@ pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
     state.active_session_mut().scroll_to_selected();
     state
         .frontend
-        .scope_swap_base(jinn_domain::common::app_state::FocusScope::Normal);
+        .scope_swap_base(jinn_slices::FocusScope::Normal);
     IntentResult::empty()
 }
 
@@ -124,7 +124,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_domain::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     #[rstest::rstest]
     fn sidebar_focus_pushes_sidebar_scope() {

@@ -7,8 +7,8 @@
 //! It tracks the cursor live as the user navigates.
 
 use jinn_domain::RenderCtx;
-use jinn_domain::common::focus::FocusScope;
 use jinn_domain::feat::ui::chat_log::audit_popup::{audit_popup_rect, format_audit_lines};
+use jinn_slices::FocusScope;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -114,10 +114,10 @@ mod tests {
     //!
     //! Together they pin the contract that the popup paints at the computed
     //! rect with the expected text and is registered as a selectable region.
-    use jinn_domain::FocusScope;
     use jinn_domain::RenderCtx;
     use jinn_domain::feat::ui::chat_log::audit_popup::AUDIT_POPUP_WIDTH;
     use jinn_domain::protocol::{ChangeSource, ChatEntry, ContextOverride};
+    use jinn_slices::FocusScope;
     use jinn_testutil::setup_term;
     use ratatui::layout::Rect;
 
@@ -190,7 +190,7 @@ mod tests {
             .draw(|frame| {
                 let guard = app.core.state.read();
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&guard, &slices, &views);
                 render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
             })
@@ -294,7 +294,7 @@ mod tests {
             .draw(|frame| {
                 let guard = app.core.state.read();
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&guard, &slices, &views);
                 render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
             })

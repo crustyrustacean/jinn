@@ -3,9 +3,9 @@
 //! The projections expose the existing narrow session operation wrappers while
 //! keeping each mutation closure inside one application-state write lock.
 
-use crate::common::session_map::SessionMap;
 use crate::common::state::State;
 use crate::feat::ui::frontend_state::FrontendState;
+use jinn_session_state::SessionMap;
 
 /// Narrow write handle to the session collection.
 pub struct SessionOps<'a>(&'a mut SessionMap);

@@ -6,9 +6,10 @@
     reason = "test code"
 )]
 
-use crate::common::app_state::*;
+use crate::common::app_state::AppState;
 use crate::protocol::{ChatEntry, Mode, PickerKind};
 use jinn_core_types::SessionId;
+use jinn_slices::{FocusScope, ScopeStack};
 
 #[rstest::rstest]
 fn push_entry_adds_to_history() {

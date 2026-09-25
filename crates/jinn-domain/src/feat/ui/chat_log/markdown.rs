@@ -11,7 +11,7 @@ use ratatui_markdown::highlight::{HighlightHooks, TreeSitterHighlighter};
 use ratatui_markdown::markdown::{MarkdownRenderer, RenderHooks};
 use ratatui_markdown::theme::{Generation, RichTextTheme};
 
-use crate::feat::theme::Theme;
+use jinn_theme::Theme;
 
 /// Render markdown text into styled lines for display in the chat log.
 ///
@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn curated_language_fenced_block_receives_highlight_styling() {
         // Given a python fenced block (a curated grammar).
-        let theme = crate::feat::theme::default_theme();
+        let theme = jinn_theme::default_theme();
 
         // When rendering.
         let lines = render_code_block(
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn excluded_language_fenced_block_renders_plain_without_panic() {
         // Given an ocaml fenced block (a grammar not in the curated set).
-        let theme = crate::feat::theme::default_theme();
+        let theme = jinn_theme::default_theme();
 
         // When rendering.
         let lines = render_code_block("ocaml", "let x = 1 in print_int x", &theme);

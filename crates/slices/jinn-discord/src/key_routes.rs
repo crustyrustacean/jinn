@@ -16,17 +16,17 @@
 use jinn_slices::SliceScopeId;
 
 use super::to_thread_intent;
-use jinn_domain::common::slices::key_routes::ActionFn;
-use jinn_domain::common::slices::key_routes::BindSite;
-use jinn_domain::common::slices::key_routes::KeyRoutes;
-use jinn_domain::common::slices::key_routes::RouteOutcome;
-use jinn_domain::common::slices::key_routes::RouteRow;
 use jinn_domain::protocol::KernelIntent;
+use jinn_slices::route::ActionFn;
+use jinn_slices::route::BindSite;
+use jinn_slices::route::KeyRoutes;
+use jinn_slices::route::RouteOutcome;
+use jinn_slices::route::RouteRow;
 
 /// Route ids for the discord slice's rows (composition resolution +
 /// diagnostics).
 pub mod route_ids {
-    use jinn_domain::common::slices::key_routes::RouteId;
+    use jinn_slices::route::RouteId;
 
     /// Lift the active session into a Discord forum thread (`gdc`).
     pub const TO_THREAD: RouteId = RouteId::new("discord:to-thread");
@@ -56,7 +56,7 @@ pub fn to_thread_intent_action() -> KernelIntent {
 
 /// Attaches the discord slice's route rows. Called once from the
 /// slice's `activate()`; the action needs no captures — it receives
-/// the handler's borrows ([`ActionCtx`](jinn_domain::common::slices::key_routes::ActionCtx))
+/// the handler's borrows ([`ActionCtx`](jinn_slices::route::ActionCtx))
 /// at dispatch time.
 pub fn attach_discord_rows(routes: &KeyRoutes) {
     routes.attach(RouteRow {
@@ -86,12 +86,12 @@ mod tests {
     use super::to_thread_intent_action;
     use crate::ConnectionState;
     use crate::discord_connection_slot;
-    use jinn_domain::common::slices::key_routes::ActionCtx;
-    use jinn_domain::common::slices::key_routes::BindSite;
-    use jinn_domain::common::slices::key_routes::KeyRoutes;
-    use jinn_domain::common::slices::key_routes::RouteOutcome;
     use jinn_domain::protocol::ChatEntryKind;
     use jinn_domain::protocol::KernelIntent;
+    use jinn_slices::route::ActionCtx;
+    use jinn_slices::route::BindSite;
+    use jinn_slices::route::KeyRoutes;
+    use jinn_slices::route::RouteOutcome;
 
     fn routed() -> KeyRoutes {
         let routes = KeyRoutes::new();
@@ -139,7 +139,7 @@ mod tests {
         // Given a route table and a default state: no title, bot disabled.
         let routes = routed();
         let mut state = jinn_domain::common::app_state::AppState::default();
-        let slices = jinn_domain::common::slices::Slices::new();
+        let slices = jinn_slices::Slices::new();
 
         // When dispatching the to-thread dynamic intent.
         let result = routes
@@ -178,7 +178,7 @@ mod tests {
         state
             .active_session_mut()
             .set_title("My session".to_owned());
-        let slices = jinn_domain::common::slices::Slices::new();
+        let slices = jinn_slices::Slices::new();
         slices.set_flag("discord", true);
         let cell = slices
             .register(
@@ -222,7 +222,7 @@ mod tests {
             &to_thread_dynamic(),
             ActionCtx {
                 state: &mut jinn_domain::common::app_state::AppState::default(),
-                slices: &jinn_domain::common::slices::Slices::new(),
+                slices: &jinn_slices::Slices::new(),
                 key_bytes: Vec::new(),
             },
         );

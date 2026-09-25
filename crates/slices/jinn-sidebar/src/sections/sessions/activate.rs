@@ -15,7 +15,7 @@ use jinn_domain::protocol::IntentResult;
 ///   are ephemeral and persist across activation changes, and were
 ///   hydrated when the session was created/loaded.
 pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
-    use jinn_domain::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     if !matches!(
         state.frontend.sidebar_section(),
@@ -49,7 +49,7 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
 /// - For session entries: activates the session, swaps to Normal as the
 ///   base, then pushes Input.
 pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
-    use jinn_domain::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     if !matches!(
         state.frontend.sidebar_section(),

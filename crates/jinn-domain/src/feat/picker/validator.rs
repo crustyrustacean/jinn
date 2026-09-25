@@ -128,7 +128,7 @@ mod tests {
     )]
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     #[rstest::rstest]
     fn validate_picker_confirm_rejects_no_active_picker() {
