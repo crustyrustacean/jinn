@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use error_stack::{Report, ResultExt as _};
 use jinn_common::app_info::{APP_NAME, PREFS_FILE_NAME};
 use jinn_common::toml_patch::DocumentPatcher;
+use jinn_tools_msg::CommandPolicyRule;
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
@@ -155,6 +156,22 @@ pub struct UserPreferences {
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
 
+    /// Blocked-command rules the bash tool enforces for every session,
+    /// serialized as `[[global_command_policy]]` in `jinn.toml`.
+    ///
+    /// These are a floor: the bash tool evaluates them ahead of the
+    /// cwd-matched project's `command_policy`, and first match wins, so a
+    /// project policy can add blocks but never lift a global one. They apply
+    /// even when no configured project contains the session's cwd.
+    ///
+    /// `pattern` is a `regex`-crate regex matched against the full command
+    /// string; use single-quoted TOML strings so metacharacters survive
+    /// without escape processing. A pattern the `regex` crate cannot compile
+    /// is inert (warned at compile, siblings still enforce) — the crate has
+    /// no lookaround, so `(?<!...)` and `(?=...)` will not work.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub global_command_policy: Vec<CommandPolicyRule>,
+
     /// Configured MCP servers, keyed by name — `[mcp_server.<name>]` in
     /// `jinn.toml`. Each entry declares a server jinn connects to (over stdio,
     /// local_http, or remote_http — see
@@ -243,6 +260,7 @@ impl Default for UserPreferences {
                 },
             ],
             projects: vec![],
+            global_command_policy: vec![],
             mcp_server: std::collections::BTreeMap::new(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
@@ -502,6 +520,7 @@ where
         patcher.register_array_key(["session_lifecycle"], "name");
         patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
         patcher.register_array_key(["projects"], "path");
+        patcher.register_array_key(["global_command_policy"], "pattern");
         // `mcp_server` is a map-keyed table (`[mcp_server.<name>]`), not an
         // array — the table name is the identity, no key registration needed.
 
@@ -722,6 +741,10 @@ pub(crate) mod tests {
             projects: vec![ProjectConfig {
                 path: "/tmp/fixture-project".into(),
                 command_policy: Vec::new(),
+            }],
+            global_command_policy: vec![CommandPolicyRule {
+                pattern: "fixture-global".to_owned(),
+                message: "fixture global message".to_owned(),
             }],
             mcp_server: [(
                 "fixture-server".to_owned(),
@@ -1630,6 +1653,59 @@ path = "~/code/legacy"
         assert!(
             written.contains("# blocks slow builds"),
             "policy comment lost: {written}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn save_preserves_comments_when_global_command_policy_written() {
+        // Given a jinn.toml whose [[global_command_policy]] entry carries a
+        // hand-written comment beside the rule.
+        let original = concat!(
+            "# my banner\n",
+            "# blocks a silent footgun\n",
+            "[[global_command_policy]]\n",
+            "pattern = 'rg -rn'\n",
+            "message = 'use -n alone'\n",
+        );
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, changing nothing, and saving back.
+        let prefs = load_preferences_from(&path).expect("load");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the rule survives the patch intact.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("[[global_command_policy]]"), "{written}");
+        assert!(written.contains("rg -rn"), "pattern lost: {written}");
+        assert!(written.contains("use -n alone"), "message lost: {written}");
+        // And the user's comment on the rule survives.
+        assert!(
+            written.contains("# blocks a silent footgun"),
+            "rule comment lost: {written}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn save_with_empty_global_policy_writes_no_key() {
+        // Given a jinn.toml with no global command policy configured.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, "# my banner\n").expect("write");
+
+        // When loading and saving back.
+        let prefs = load_preferences_from(&path).expect("load");
+        assert!(prefs.global_command_policy.is_empty());
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the written file carries no `global_command_policy` key (the
+        // empty policy is skipped in serialization, so a save never
+        // introduces the key to existing config).
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            !written.contains("global_command_policy"),
+            "empty global policy must not materialize on save: {written}"
         );
     }
 

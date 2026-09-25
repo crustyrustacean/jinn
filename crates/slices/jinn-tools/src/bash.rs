@@ -705,6 +705,41 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn global_rg_rn_rule_blocks_the_command_and_spawns_nothing() {
+        // Given a context carrying the documented global `rg -rn` rule and a
+        // sentinel path the command would create if it ran.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let sentinel = dir.path().join("sentinel");
+        let ctx = ctx_with_policy(
+            dir.path(),
+            CompiledCommandPolicy::compile(&[jinn_tools_msg::CommandPolicyRule {
+                pattern: "rg -rn".to_owned(),
+                message: "ripgrep `-r` takes a replacement value — use `-n` alone.".to_owned(),
+            }]),
+        );
+
+        // When executing the footgun the rule exists to stop.
+        let result = execute(
+            policy_call(&format!("rg -rn 'needle' . ; touch {}", sentinel.display())),
+            ctx,
+        )
+        .await;
+
+        // Then the call fails with the rule's corrective message.
+        assert!(!result.success);
+        assert!(
+            result
+                .content
+                .contains("ripgrep `-r` takes a replacement value"),
+            "missing rule message: {}",
+            result.content
+        );
+        // And the command never spawned.
+        assert!(!sentinel.exists(), "command executed despite policy block");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn execute_returns_stdout() {
         // Given a bash tool call that echoes text.
         let call = ToolCall {
