@@ -2669,6 +2669,7 @@ dependencies = [
  "jinn-persona-msg",
  "jinn-picker-specs",
  "jinn-preferences-config",
+ "jinn-skills-msg",
  "jinn-slices",
  "jinn-theme",
  "jinn-theme-msg",

@@ -43,8 +43,6 @@ pub enum Scope {
     PickerEndpoint,
     /// Picker - Tool toggle selection.
     PickerTool,
-    /// Picker - Skill toggle selection.
-    PickerSkill,
     /// Picker - Read-only task list browser.
     PickerTaskList,
     /// Picker - Curated project directory selection.
@@ -74,7 +72,6 @@ impl std::fmt::Display for Scope {
             Self::PickerReasoningEffort => write!(f, "Picker(reasoning-effort)"),
             Self::PickerEndpoint => write!(f, "Picker(endpoint)"),
             Self::PickerTool => write!(f, "Picker(tool)"),
-            Self::PickerSkill => write!(f, "Picker(skill)"),
             Self::PickerTaskList => write!(f, "Picker(task-list)"),
             Self::PickerProject => write!(f, "Picker(project)"),
             Self::PickerMcpServer => write!(f, "Picker(mcp-server)"),
@@ -105,7 +102,6 @@ impl std::str::FromStr for Scope {
             "Picker(reasoning-effort)" => Ok(Self::PickerReasoningEffort),
             "Picker(endpoint)" => Ok(Self::PickerEndpoint),
             "Picker(tool)" => Ok(Self::PickerTool),
-            "Picker(skill)" => Ok(Self::PickerSkill),
             "Picker(task-list)" => Ok(Self::PickerTaskList),
             "Picker(project)" => Ok(Self::PickerProject),
             "Picker(mcp-server)" => Ok(Self::PickerMcpServer),

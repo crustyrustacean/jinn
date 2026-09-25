@@ -86,6 +86,16 @@ impl SessionPreviewCache {
         self.entries.get(&(session_id.clone(), history_len, width))
     }
 
+    /// How many cached entries the cache holds.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the cache holds no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     /// Drops all cached entries.
     pub fn clear(&mut self) {
         self.entries.clear();

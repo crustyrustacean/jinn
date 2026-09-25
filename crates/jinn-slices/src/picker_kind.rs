@@ -24,8 +24,6 @@ pub enum PickerKind {
     ReasoningEffort,
     /// Tool picker - toggle which tools are enabled for the session.
     Tool,
-    /// Skill picker - toggle which skills are enabled for the session.
-    Skill,
     /// Task list browser - read-only zoom view of the active session's task list.
     TaskList,
     /// Project picker - curated project directories; create a new session rooted
@@ -53,7 +51,6 @@ impl std::fmt::Display for PickerKind {
             Self::ReasoningEffort => write!(f, "reasoning effort"),
 
             Self::Tool => write!(f, "tools"),
-            Self::Skill => write!(f, "skills"),
             Self::TaskList => write!(f, "task list"),
             Self::Project => write!(f, "projects"),
             Self::McpServer => write!(f, "mcp servers"),

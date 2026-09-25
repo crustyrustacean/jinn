@@ -16,8 +16,7 @@ fn registry() -> jinn_picker::PickerRegistry {
 }
 
 /// Frame area used by the standard popup-fit scenarios below. Large enough
-/// that the popup hits its max-height cap and is wide enough to exercise the
-/// skill picker's vertical split.
+/// that the popup hits its max-height cap.
 const LARGE_FRAME: Rect = Rect::new(0, 0, 120, 50);
 
 #[rstest::rstest]
@@ -83,39 +82,7 @@ fn measure_persona_picker_reserves_two_bottom_rows() {
 
 #[rstest::rstest]
 #[test]
-fn measure_skill_picker_uses_vertical_split_when_wide() {
-    // Given a Skill picker active on a wide frame.
-    let state = state_with_picker(PickerKind::Skill);
-
-    // When measuring at a frame wide enough for the vertical split
-    // (popup width = frame*0.8 must be >= VERTICAL_SPLIT_MIN_WIDTH=101,
-    // so frame width >= 127).
-    let wide = Rect::new(0, 0, 140, 50);
-    let height = measure_active_picker_results_height(&state, wide, &registry());
-
-    // Then height is content minus skill list chrome (inner - 2 footers -
-    // 2 chrome): the migrated skill spec draws a status line above its
-    // keybind line. Popup inner height is 39; 39 - 2 - 2 = 35.
-    assert_eq!(height, 35);
-}
-
-#[rstest::rstest]
-#[test]
-fn measure_skill_picker_uses_horizontal_split_when_narrow() {
-    // Given a Skill picker active on a narrow frame.
-    let state = state_with_picker(PickerKind::Skill);
-
-    // When measuring at a narrow frame (width < VERTICAL_SPLIT_MIN_WIDTH).
-    let narrow = Rect::new(0, 0, 40, 50);
-    let height = measure_active_picker_results_height(&state, narrow, &registry());
-
-    // Then height is fixed at HORIZONTAL_LIST_ROWS.
-    assert_eq!(height, jinn_selection_widget::HORIZONTAL_LIST_ROWS);
-}
-
-#[rstest::rstest]
-#[test]
-fn measure_never_returns_zero_on_tiny_terminal() {
+fn measure_tiny_frame_never_returns_zero() {
     // Given a Persona picker active on a tiny frame.
     let state = state_with_picker(PickerKind::Persona);
 

@@ -7,7 +7,6 @@
 
 use std::collections::HashSet;
 
-use crate::feat::skills::skill_entry::SkillEntry;
 use jinn_mcp_msg::McpServerEntry;
 use jinn_persona_msg::PersonaEntry;
 use jinn_project_msg::ProjectEntry;
@@ -51,14 +50,6 @@ pub struct PickerStates {
     /// Snapshot of disabled tools before picker opens - restored on ESC.
     /// OWNER: IntentHandler (set on tool picker open, consumed on confirm/cancel).
     pub tool_picker_snapshot: Option<HashSet<String>>,
-
-    /// Skill picker state - shows all discovered skills with toggle state.
-    /// OWNER: IntentHandler (populated on skill picker open).
-    pub skill_picker: jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SkillEntry>>,
-
-    /// Snapshot of disabled skills before picker opens - restored on ESC.
-    /// OWNER: IntentHandler (set on skill picker open, consumed on confirm/cancel).
-    pub skill_picker_snapshot: Option<HashSet<String>>,
 
     /// Preview pane scroll offsets for spec-driven pickers, keyed by
     /// picker id.
@@ -168,18 +159,6 @@ pub trait PickerExt {
     /// Mutable access to the disabled tools snapshot.
     fn tool_picker_snapshot_mut(&mut self) -> &mut Option<HashSet<String>>;
 
-    /// Read-only access to the skill picker state.
-    fn skill_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SkillEntry>>;
-    /// Mutable access to the skill picker state.
-    fn skill_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SkillEntry>>;
-    /// Read-only access to the disabled skills snapshot.
-    fn skill_picker_snapshot(&self) -> &Option<HashSet<String>>;
-    /// Mutable access to the disabled skills snapshot.
-    fn skill_picker_snapshot_mut(&mut self) -> &mut Option<HashSet<String>>;
     /// Read-only access to the enabled MCP servers snapshot.
     fn mcp_server_picker_snapshot(&self) -> &Option<std::collections::BTreeSet<String>>;
     /// Mutable access to the enabled MCP servers snapshot.
@@ -309,26 +288,6 @@ impl PickerExt for super::frontend_state::FrontendState {
 
     fn tool_picker_snapshot_mut(&mut self) -> &mut Option<HashSet<String>> {
         &mut self.pickers.tool_picker_snapshot
-    }
-
-    fn skill_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SkillEntry>> {
-        &self.pickers.skill_picker
-    }
-
-    fn skill_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SkillEntry>> {
-        &mut self.pickers.skill_picker
-    }
-
-    fn skill_picker_snapshot(&self) -> &Option<HashSet<String>> {
-        &self.pickers.skill_picker_snapshot
-    }
-
-    fn skill_picker_snapshot_mut(&mut self) -> &mut Option<HashSet<String>> {
-        &mut self.pickers.skill_picker_snapshot
     }
 
     fn mcp_server_picker_snapshot(&self) -> &Option<std::collections::BTreeSet<String>> {

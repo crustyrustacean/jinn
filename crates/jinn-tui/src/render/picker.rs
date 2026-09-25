@@ -91,7 +91,6 @@ mod tests {
     #[case::reasoning_effort(PickerKind::ReasoningEffort)]
     #[case::endpoint(PickerKind::Endpoint)]
     #[case::tool(PickerKind::Tool)]
-    #[case::skill(PickerKind::Skill)]
     #[case::task_list(PickerKind::TaskList)]
     #[case::project(PickerKind::Project)]
     #[case::mcp_server(PickerKind::McpServer)]

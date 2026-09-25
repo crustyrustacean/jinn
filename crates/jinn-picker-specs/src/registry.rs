@@ -18,7 +18,6 @@ use jinn_picker::PickerRegistry;
 pub fn build_picker_registry() -> PickerRegistry {
     let mut registry = PickerRegistry::new();
     registry.register(crate::persona_spec::persona_spec());
-    registry.register(crate::skill_spec::skill_spec());
     registry.register(crate::theme_spec::theme_spec());
     registry.register(crate::tool_spec::tool_spec());
     registry.register(crate::mcp_server_spec::mcp_server_spec());
@@ -108,7 +107,6 @@ mod tests {
         let registry = build_picker_registry();
         let migrated = [
             PickerKind::Persona,
-            PickerKind::Skill,
             PickerKind::Theme,
             PickerKind::Tool,
             PickerKind::McpServer,

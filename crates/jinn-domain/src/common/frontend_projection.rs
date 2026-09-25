@@ -3,22 +3,15 @@
 //! Each projection keeps a mutation closure inside one application-state write
 //! lock while exposing the existing operation wrappers for its domain.
 
-use std::collections::HashSet;
-
 use crate::common::state::State;
 use crate::feat::ui::frontend_state::FrontendState;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_chat_input_msg::FilePickerState;
 use jinn_persona_msg::{PersonaEntry, persona_row};
 use jinn_preferences_config::app_state_file::AppStateFile;
-use jinn_skills_msg::Skill;
-use jinn_theme::Theme;
 
 /// Narrow write handle to frontend preferences.
 pub struct PreferencesOps<'a>(&'a mut FrontendState);
-
-/// Narrow write handle to the skills picker and preview cache.
-pub struct SkillPickerOps<'a>(&'a mut FrontendState);
 
 /// Narrow write handle to the persona picker.
 pub struct PersonaPickerOps<'a>(&'a mut FrontendState);
@@ -33,20 +26,6 @@ impl PreferencesOps<'_> {
     /// Mutably access the whole frontend state.
     pub fn frontend(&mut self) -> &mut FrontendState {
         self.0
-    }
-}
-
-impl SkillPickerOps<'_> {
-    /// Reload the skills picker entries from the discovered and disabled sets.
-    pub fn reload_picker(
-        &mut self,
-        discovered: &[Skill],
-        disabled: &HashSet<String>,
-        theme: &Theme,
-    ) {
-        crate::feat::skills::reload::reload_skill_picker_entries(
-            self.0, discovered, disabled, theme,
-        );
     }
 }
 
@@ -86,16 +65,6 @@ impl State {
         let mut guard = self.write_lock();
         let app = &mut *guard;
         f(&mut PreferencesOps(&mut app.frontend))
-    }
-
-    /// Mutate skills picker state through [`SkillPickerOps`].
-    pub fn with_skills_frontend<R, F>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut SkillPickerOps<'_>) -> R,
-    {
-        let mut guard = self.write_lock();
-        let app = &mut *guard;
-        f(&mut SkillPickerOps(&mut app.frontend))
     }
 
     /// Mutate persona picker state through [`PersonaPickerOps`].

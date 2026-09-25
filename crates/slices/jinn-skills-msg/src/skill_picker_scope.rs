@@ -13,13 +13,18 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! The skill picker's scope handle, re-exported from the vocabulary crate.
+//! The skills picker's identity, in the vocabulary crate.
 //!
-//! The skills picker's scope is a dynamic slice scope, so the kernel has no
-//! `Scope::PickerSkill` variant to keep in sync: the picker is a scope the
-//! slice mints for itself.
-//!
-//! The accessor itself lives in [`jinn_skills_msg`] so that any slice can ask
-//! "is the skills picker open?" without depending on this implementation crate.
+//! Lives here rather than in the `jinn-skills` implementation crate so any
+//! slice can ask "is the skills picker open?" without depending on that crate
+//! for a one-line accessor. The scope is the picker's public handle: a slice
+//! that wants to react to the menu being open matches this id against the
+//! current focus scope, and needs no other knowledge of the picker.
 
-pub use jinn_skills_msg::skill_picker_scope;
+use jinn_slices::SliceScopeId;
+
+/// The skills picker's dynamic scope (input-capturing: the filter is text).
+#[must_use]
+pub fn skill_picker_scope() -> SliceScopeId {
+    SliceScopeId::new("skills", "picker")
+}

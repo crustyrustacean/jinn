@@ -130,6 +130,19 @@ impl AppStateActor {
                 });
             }
         }
+
+        // The skills picker caches its preview lines already rendered in the
+        // old theme's colors, so a theme switch must drop them or the open
+        // menu keeps showing stale text. The cache lives in the skills slice's
+        // cell now, so the clear happens there rather than in the kernel's
+        // `invalidate_all` — a slice owns its own cached rendering.
+        if let Some(cell) = self
+            .services
+            .slices
+            .reader::<jinn_skills_msg::SkillPickerState>(&jinn_skills_msg::skill_picker_slot())
+        {
+            cell.update(|picker| picker.preview_cache.clear());
+        }
     }
 }
 

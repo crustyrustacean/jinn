@@ -17,7 +17,7 @@
 //! `jinn-picker-specs`, where the specs and this crate's public API are both
 //! available.
 
-use jinn_picker::{PickerId, PickerRegistry, PickerSpec, PickerWidget, PreviewSpec};
+use jinn_picker::{PickerId, PickerRegistry, PickerSpec, PickerWidget};
 
 /// A registry carrying one spec per picker id, mirroring each real spec's
 /// widget flavor and status-row presence — the two properties geometry and
@@ -37,16 +37,10 @@ pub(crate) fn test_registry() -> PickerRegistry {
 
 /// The `(id, widget, has status row)` table, mirroring the real specs.
 /// `project` and `session-lifecycle` declare no status; every other spec does.
-fn specs() -> [(&'static str, PickerWidget, bool); 12] {
-    use PickerWidget::{List, Preview, Tree};
-    let skill_preview = || {
-        Preview(PreviewSpec {
-            reset_scroll_on_selection_change: true,
-        })
-    };
+fn specs() -> [(&'static str, PickerWidget, bool); 11] {
+    use PickerWidget::{List, Tree};
     [
         (jinn_picker::PERSONA_ID, List, true),
-        (jinn_picker::SKILL_ID, skill_preview(), true),
         (jinn_picker::THEME_ID, List, true),
         (jinn_picker::TOOL_ID, List, true),
         (jinn_picker::MCP_SERVER_ID, List, true),

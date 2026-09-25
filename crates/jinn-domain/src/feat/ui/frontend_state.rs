@@ -32,10 +32,6 @@ use jinn_theme::Theme;
 pub struct FrontendCaches {
     /// Cached wrapped line counts and rendered lines per chat entry.
     pub entry_line_cache: RwLock<jinn_chat_log_view::chat_log::EntryLineCache>,
-    /// Cached rendered lines for skill-preview popups. An `Arc` handle so
-    /// the skill picker's host lens can lend it to the spec's render path.
-    pub skill_preview_cache:
-        std::sync::Arc<crate::feat::skills::skill_preview_cache::SkillPreviewCache>,
     /// Cached rendered lines for session preview popups.
     pub session_preview_cache: RwLock<jinn_sidebar_msg::SessionPreviewCache>,
 }
@@ -45,7 +41,6 @@ impl FrontendCaches {
     pub fn invalidate_all(&self) {
         self.entry_line_cache.write().clear();
         self.session_preview_cache.write().clear();
-        self.skill_preview_cache.clear();
     }
 }
 
@@ -417,32 +412,6 @@ mod tests {
     )]
 
     use super::*;
-    use jinn_selection_widget::PreviewCache;
-    use ratatui::text::Line;
-
-    /// `invalidate_all` (called on theme change) must clear the skill preview cache
-    /// so stale theme-colored lines are never displayed after a theme switch.
-    #[rstest::rstest]
-    #[test]
-    fn invalidate_all_clears_skill_preview_cache() {
-        // Given a populated skill preview cache.
-        let caches = FrontendCaches::default();
-        caches.skill_preview_cache.insert(
-            crate::feat::skills::skill_entry::body_signature("## body"),
-            80,
-            vec![Line::raw("old-theme")].into(),
-        );
-        assert_eq!(caches.skill_preview_cache.len(), 1);
-
-        // When the theme changes and all caches are invalidated.
-        caches.invalidate_all();
-
-        // Then the skill preview cache is empty (the AC under test).
-        assert!(
-            caches.skill_preview_cache.is_empty(),
-            "theme change must clear skill preview cache via invalidate_all"
-        );
-    }
 
     #[rstest::rstest]
     #[test]

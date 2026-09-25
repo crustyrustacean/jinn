@@ -170,41 +170,42 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::feat::skills::skill_entry::SkillEntry;
     use crate::protocol::ChatEntryKind;
-    use jinn_picker::SKILL_ID;
+    use jinn_picker::PERSONA_ID;
     use jinn_slices::FocusScope;
     use jinn_slices::ScopeSignal;
     use jinn_slices::SliceScopeId;
 
-    fn state_with_skill_picker() -> AppState {
+    fn state_with_persona_picker() -> AppState {
         let state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker {
-            kind: crate::PickerKind::Skill,
+            kind: crate::PickerKind::Persona,
         });
         state
     }
 
-    /// A test spec under the skill id with one `<tab>` bind that pushes a
+    /// A test spec under the persona id with one `<tab>` bind that pushes a
     /// transient entry, and one `<esc>` bind that closes the picker.
     ///
     /// Built here rather than imported from `jinn_picker_specs`: these tests
     /// exercise dispatch, and the kernel cannot depend on the specs crate.
-    fn registry_with_test_skill_spec() -> jinn_picker::PickerRegistry {
-        let spec = jinn_picker::PickerSpec::<SkillEntry>::new(jinn_picker::PickerId::new(SKILL_ID))
-            .bind("<tab>", "test", |ctx: &mut ActionCtx<'_>| {
-                let state = ctx
-                    .state_any()
-                    .downcast_mut::<AppState>()
-                    .expect("domain host lends AppState");
-                state
-                    .active_session_mut()
-                    .push_entry(crate::protocol::ChatEntry::transient("test bind ran"));
-                jinn_picker::PickerOutcome::empty()
-            })
-            .bind("<esc>", "close", |_ctx: &mut ActionCtx<'_>| {
-                jinn_picker::PickerOutcome::empty().close()
-            });
+    fn registry_with_test_persona_spec() -> jinn_picker::PickerRegistry {
+        let spec = jinn_picker::PickerSpec::<super::super::test_registry::Entry>::new(
+            jinn_picker::PickerId::new(PERSONA_ID),
+        )
+        .bind("<tab>", "test", |ctx: &mut ActionCtx<'_>| {
+            let state = ctx
+                .state_any()
+                .downcast_mut::<AppState>()
+                .expect("domain host lends AppState");
+            state
+                .active_session_mut()
+                .push_entry(crate::protocol::ChatEntry::transient("test bind ran"));
+            jinn_picker::PickerOutcome::empty()
+        })
+        .bind("<esc>", "close", |_ctx: &mut ActionCtx<'_>| {
+            jinn_picker::PickerOutcome::empty().close()
+        });
         let mut registry = jinn_picker::PickerRegistry::new();
         registry.register(spec);
         registry
@@ -213,8 +214,8 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn picker_action_unknown_id_is_a_no_op() {
-        // Given an open skill picker and the domain registry.
-        let mut state = state_with_skill_picker();
+        // Given an open persona picker and the domain registry.
+        let mut state = state_with_persona_picker();
         let registry = crate::feat::picker::test_registry::test_registry();
 
         // When running an action naming a picker id that doesn't exist.
@@ -228,12 +229,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn picker_action_with_wrong_active_picker_is_ignored() {
-        // Given an open skill picker.
-        let mut state = state_with_skill_picker();
+        // Given an open persona picker.
+        let mut state = state_with_persona_picker();
         let registry = crate::feat::picker::test_registry::test_registry();
 
         // When running an action addressed to a different picker.
-        let result = run_action(&mut state, &registry, "persona", "<tab>");
+        let result = run_action(&mut state, &registry, "theme", "<tab>");
 
         // Then nothing is emitted (stale intents are dropped).
         assert!(result.messages.is_empty());
@@ -242,13 +243,13 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn picker_action_resolves_the_row_and_runs_it() {
-        // Given an open skill picker whose test spec declares a `<tab>` row
+        // Given an open persona picker whose test spec declares a `<tab>` row
         // that pushes a transient entry.
-        let mut state = state_with_skill_picker();
-        let registry = registry_with_test_skill_spec();
+        let mut state = state_with_persona_picker();
+        let registry = registry_with_test_persona_spec();
 
         // When running the `<tab>` action.
-        let _ = run_action(&mut state, &registry, SKILL_ID, "<tab>");
+        let _ = run_action(&mut state, &registry, PERSONA_ID, "<tab>");
 
         // Then the action ran (transient entry pushed).
         let history = state.active_session().history();
@@ -264,12 +265,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn picker_action_close_outcome_pops_the_scope() {
-        // Given an open skill picker.
-        let mut state = state_with_skill_picker();
-        let registry = registry_with_test_skill_spec();
+        // Given an open persona picker.
+        let mut state = state_with_persona_picker();
+        let registry = registry_with_test_persona_spec();
 
         // When running an action whose outcome closes the picker.
-        let _ = run_action(&mut state, &registry, SKILL_ID, "<esc>");
+        let _ = run_action(&mut state, &registry, PERSONA_ID, "<esc>");
 
         // Then the picker scope is popped.
         assert!(
@@ -282,7 +283,7 @@ mod tests {
     #[test]
     fn picker_close_is_applied_before_destination_push() {
         // Given an open picker and a destination scope.
-        let mut state = state_with_skill_picker();
+        let mut state = state_with_persona_picker();
         let destination = SliceScopeId::new("picker-test", "destination");
 
         // When folding an outcome that closes the picker and pushes the destination.

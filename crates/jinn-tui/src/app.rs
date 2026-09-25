@@ -317,7 +317,6 @@ pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
             PickerKind::ReasoningEffort => Scope::PickerReasoningEffort,
             PickerKind::Endpoint => Scope::PickerEndpoint,
             PickerKind::Tool => Scope::PickerTool,
-            PickerKind::Skill => Scope::PickerSkill,
             PickerKind::TaskList => Scope::PickerTaskList,
             PickerKind::Project => Scope::PickerProject,
             PickerKind::McpServer => Scope::PickerMcpServer,

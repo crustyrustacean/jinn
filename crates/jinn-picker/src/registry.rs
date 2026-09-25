@@ -32,8 +32,6 @@ use crate::widget::WidgetKind;
 
 /// The id of the persona picker's spec.
 pub const PERSONA_ID: &str = "persona";
-/// The id of the skill picker's spec.
-pub const SKILL_ID: &str = "skill";
 /// The id of the theme picker's spec.
 pub const THEME_ID: &str = "theme";
 /// The id of the tool picker's spec.
@@ -63,7 +61,6 @@ pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&
 
     match kind {
         PickerKind::Persona => Some(PERSONA_ID),
-        PickerKind::Skill => Some(SKILL_ID),
         PickerKind::Theme => Some(THEME_ID),
         PickerKind::Tool => Some(TOOL_ID),
         PickerKind::McpServer => Some(MCP_SERVER_ID),

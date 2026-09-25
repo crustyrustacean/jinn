@@ -210,7 +210,6 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_selection_widget::PreviewCache as _;
 
     fn state_with_themes(contributed: &[(&str, jinn_theme::Theme)]) -> AppState {
         let state = AppState::default_with_scope_focus();
@@ -325,12 +324,13 @@ mod tests {
         other.focus_accent = ratatui::style::Color::Red;
         let mut state = state_with_themes(&[("other", other)]);
         open(&mut state);
-        state
-            .frontend
-            .caches
-            .skill_preview_cache
-            .insert("12345".to_owned(), 80, Vec::new().into());
-        assert_eq!(state.frontend.caches.skill_preview_cache.len(), 1);
+        state.frontend.caches.session_preview_cache.write().insert(
+            jinn_core_types::SessionId::new(),
+            0,
+            80,
+            Vec::new(),
+        );
+        assert_eq!(state.frontend.caches.session_preview_cache.read().len(), 1);
         let registry = crate::build_picker_registry();
         let picker_id = PickerId::new(jinn_picker::THEME_ID);
         let spec = registry
@@ -353,7 +353,7 @@ mod tests {
         );
         // And the theme-sensitive caches were invalidated.
         assert_eq!(
-            state.frontend.caches.skill_preview_cache.len(),
+            state.frontend.caches.session_preview_cache.read().len(),
             0,
             "selection change must invalidate theme caches"
         );

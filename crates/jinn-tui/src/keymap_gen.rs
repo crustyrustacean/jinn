@@ -77,7 +77,6 @@ pub fn bind_picker_spec_rows(
 fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
     match id.as_str() {
         "persona" => Some(Scope::PickerPersona),
-        "skill" => Some(Scope::PickerSkill),
         "theme" => Some(Scope::PickerTheme),
         "tool" => Some(Scope::PickerTool),
         "mcp-server" => Some(Scope::PickerMcpServer),
@@ -142,7 +141,6 @@ fn scopes_for_row<'a>(
                 Scope::PickerReasoningEffort,
                 Scope::PickerEndpoint,
                 Scope::PickerTool,
-                Scope::PickerSkill,
                 Scope::PickerTaskList,
                 Scope::PickerProject,
                 Scope::PickerMcpServer,
@@ -845,7 +843,6 @@ mod tests {
     #[case("Picker(reasoning-effort)")]
     #[case("Picker(endpoint)")]
     #[case("Picker(tool)")]
-    #[case("Picker(skill)")]
     #[case("Picker(task-list)")]
     #[case("Picker(project)")]
     #[case("Picker(mcp-server)")]
@@ -1150,9 +1147,9 @@ mod picker_spec_row_tests {
         // navigation bind, under a throwaway id mapped to a static scope.
         let mut registry = jinn_picker::PickerRegistry::new();
         registry.register(
-            jinn_picker::PickerSpec::<jinn_picker_specs::skill_spec::SkillEntry>::new(
-                jinn_picker::PickerId::new("skill"),
-            )
+            jinn_picker::PickerSpec::<jinn_tools_msg::ToolEntry>::new(jinn_picker::PickerId::new(
+                "tool",
+            ))
             .bind("<tab>", "toggle", |_| jinn_picker::PickerOutcome::empty())
             .bind_navigation("<c-u>", "page up", |_| jinn_picker::PickerOutcome::empty()),
         );
@@ -1160,7 +1157,7 @@ mod picker_spec_row_tests {
         // When binding the spec rows into a keymap.
         let mut keymap = init();
         bind_picker_spec_rows(&registry, &mut keymap);
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTool);
 
         // Then Tab resolves to the spec's picker action.
         let tab = KeyEvent {
@@ -1172,7 +1169,7 @@ mod picker_spec_row_tests {
             matches!(
                 &intent,
                 Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "skill" && action == "<tab>"
+                    if picker == "tool" && action == "<tab>"
             ),
             "<Tab> must land as the spec's picker action; got {intent:?}",
         );
@@ -1184,16 +1181,16 @@ mod picker_spec_row_tests {
         // Given a registry with a navigation-hinted bind.
         let mut registry = jinn_picker::PickerRegistry::new();
         registry.register(
-            jinn_picker::PickerSpec::<jinn_picker_specs::skill_spec::SkillEntry>::new(
-                jinn_picker::PickerId::new("skill"),
-            )
+            jinn_picker::PickerSpec::<jinn_tools_msg::ToolEntry>::new(jinn_picker::PickerId::new(
+                "tool",
+            ))
             .bind_navigation("<c-u>", "page up", |_| jinn_picker::PickerOutcome::empty()),
         );
 
         // When binding spec rows over the base keymap.
         let mut keymap = init();
         bind_picker_spec_rows(&registry, &mut keymap);
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTool);
 
         // Then the <c-u> binding resolves to the spec action.
         let c_u = KeyEvent {
@@ -1205,7 +1202,7 @@ mod picker_spec_row_tests {
             matches!(
                 &intent,
                 Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "skill" && action == "<c-u>"
+                    if picker == "tool" && action == "<c-u>"
             ),
             "<c-u> must land as the spec's navigation action; got {intent:?}",
         );

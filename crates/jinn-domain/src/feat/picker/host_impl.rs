@@ -21,7 +21,6 @@ use jinn_picker::PROVIDER_ID;
 use jinn_picker::REASONING_EFFORT_ID;
 use jinn_picker::SESSION_ID;
 use jinn_picker::SESSION_LIFECYCLE_ID;
-use jinn_picker::SKILL_ID;
 use jinn_picker::TASK_LIST_ID;
 use jinn_picker::THEME_ID;
 use jinn_picker::TOOL_ID;
@@ -32,7 +31,7 @@ use jinn_picker::TOOL_ID;
 /// This is the single kind→field table for navigation. Both the host lenses
 /// ([`AppStatePickerHost::active_ops`] and
 /// [`AppStateRenderHost::active_ops_ref`]) and the kernel-side intent
-/// handlers delegate here, so the twelve arms cannot drift apart.
+/// handlers delegate here, so the eleven arms cannot drift apart.
 #[must_use]
 pub fn active_picker_ops(
     state: &mut AppState,
@@ -46,7 +45,6 @@ pub fn active_picker_ops(
         PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker_mut(),
         PickerKind::ReasoningEffort => state.frontend.reasoning_effort_picker_mut(),
         PickerKind::Tool => state.frontend.tool_picker_mut(),
-        PickerKind::Skill => state.frontend.skill_picker_mut(),
         PickerKind::TaskList => state.frontend.task_list_picker_mut(),
         PickerKind::Project => state.frontend.project_picker_mut(),
         PickerKind::McpServer => state.frontend.mcp_server_picker_mut(),
@@ -69,7 +67,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
         PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker(),
         PickerKind::ReasoningEffort => state.frontend.reasoning_effort_picker(),
         PickerKind::Tool => state.frontend.tool_picker(),
-        PickerKind::Skill => state.frontend.skill_picker(),
         PickerKind::TaskList => state.frontend.task_list_picker(),
         PickerKind::Project => state.frontend.project_picker(),
         PickerKind::McpServer => state.frontend.mcp_server_picker(),
@@ -91,7 +88,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
 pub fn selection_state_ref(state: &AppState, id: PickerId) -> Option<&dyn std::any::Any> {
     match id.as_str() {
         PERSONA_ID => Some(state.frontend.persona_picker() as &dyn std::any::Any),
-        SKILL_ID => Some(state.frontend.skill_picker() as &dyn std::any::Any),
         THEME_ID => Some(state.frontend.theme_picker() as &dyn std::any::Any),
         TOOL_ID => Some(state.frontend.tool_picker() as &dyn std::any::Any),
         MCP_SERVER_ID => Some(state.frontend.mcp_server_picker() as &dyn std::any::Any),
@@ -126,7 +122,6 @@ impl PickerHost for AppStatePickerHost<'_> {
     fn selection_state(&mut self, id: PickerId) -> Option<&mut dyn std::any::Any> {
         match id.as_str() {
             PERSONA_ID => Some(self.state.frontend.persona_picker_mut() as &mut dyn std::any::Any),
-            SKILL_ID => Some(self.state.frontend.skill_picker_mut() as &mut dyn std::any::Any),
             THEME_ID => Some(self.state.frontend.theme_picker_mut() as &mut dyn std::any::Any),
             TOOL_ID => Some(self.state.frontend.tool_picker_mut() as &mut dyn std::any::Any),
             MCP_SERVER_ID => {
@@ -199,14 +194,10 @@ impl PickerHost for AppStatePickerHost<'_> {
         self.state.frontend.pickers.pickers_scrolls.reset(id);
     }
 
-    fn preview_cache(&self, id: PickerId) -> Option<jinn_picker::SharedPreviewCache> {
-        match id.as_str() {
-            SKILL_ID => Some(
-                std::sync::Arc::clone(&self.state.frontend.caches.skill_preview_cache)
-                    as jinn_picker::SharedPreviewCache,
-            ),
-            _ => None,
-        }
+    fn preview_cache(&self, _id: PickerId) -> Option<jinn_picker::SharedPreviewCache> {
+        // No kernel-side picker owns a preview cache; caches travel with
+        // their slice.
+        None
     }
 
     fn active_ops(&mut self) -> Option<&mut dyn jinn_selection_widget::PickerOps> {
@@ -287,14 +278,10 @@ impl PickerHost for AppStateRenderHost<'_> {
         // Read-only lens: render never clears scrolls.
     }
 
-    fn preview_cache(&self, id: PickerId) -> Option<jinn_picker::SharedPreviewCache> {
-        match id.as_str() {
-            SKILL_ID => Some(
-                std::sync::Arc::clone(&self.state.frontend.caches.skill_preview_cache)
-                    as jinn_picker::SharedPreviewCache,
-            ),
-            _ => None,
-        }
+    fn preview_cache(&self, _id: PickerId) -> Option<jinn_picker::SharedPreviewCache> {
+        // No kernel-side picker owns a preview cache; caches travel with
+        // their slice.
+        None
     }
 
     #[expect(
@@ -315,7 +302,6 @@ impl PickerHost for AppStateRenderHost<'_> {
             PickerKind::SessionLifecycle => self.state.frontend.session_lifecycle_picker(),
             PickerKind::ReasoningEffort => self.state.frontend.reasoning_effort_picker(),
             PickerKind::Tool => self.state.frontend.tool_picker(),
-            PickerKind::Skill => self.state.frontend.skill_picker(),
             PickerKind::TaskList => self.state.frontend.task_list_picker(),
             PickerKind::Project => self.state.frontend.project_picker(),
             PickerKind::McpServer => self.state.frontend.mcp_server_picker(),
@@ -394,7 +380,6 @@ mod tests {
         // table above.
         let ids = [
             jinn_picker::PERSONA_ID,
-            jinn_picker::SKILL_ID,
             jinn_picker::THEME_ID,
             jinn_picker::TOOL_ID,
             jinn_picker::MCP_SERVER_ID,
@@ -459,23 +444,23 @@ mod tests {
     fn preview_scrolls_are_stored_per_picker_id() {
         // Given a host state.
         let mut state = AppState::default_with_scope_focus();
-        let skill = PickerId::new(SKILL_ID);
+        let first = PickerId::new(PERSONA_ID);
         let other = PickerId::new("other");
 
-        // When setting preview scrolls for the skill id and another id.
-        let (skill_scroll, other_scroll, stored) = {
+        // When setting preview scrolls for one picker id and another id.
+        let (first_scroll, other_scroll, stored) = {
             let mut host = AppStatePickerHost::new(&mut state);
-            host.set_preview_scroll(skill, 7);
+            host.set_preview_scroll(first, 7);
             host.set_preview_scroll(other, 3);
             (
-                PickerHost::preview_scroll(&host, skill),
+                PickerHost::preview_scroll(&host, first),
                 PickerHost::preview_scroll(&host, other),
-                state.frontend.pickers.pickers_scrolls.get(skill),
+                state.frontend.pickers.pickers_scrolls.get(first),
             )
         };
 
         // Then both scrolls live in the shared map, keyed by picker id.
-        assert_eq!(skill_scroll, 7);
+        assert_eq!(first_scroll, 7);
         assert_eq!(stored, 7);
         assert_eq!(other_scroll, 3);
     }

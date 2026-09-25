@@ -107,7 +107,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("<leader>ss", KernelIntent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
             .bind("<leader>se", KernelIntent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
             .bind("<leader>st", KernelIntent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
-            .bind("<leader>sk", KernelIntent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
             .bind("<leader>sM", KernelIntent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
             .bind("<leader>sh", KernelIntent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             .bind("<leader>sr", KernelIntent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
@@ -269,11 +268,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             // bind_picker_spec_rows.
             add_picker_base(b);
         })
-        .scope(Scope::PickerSkill, |b| {
-            // Skill spec rows (TAB toggle, CTRL+L load, CTRL+U/D preview
-            // paging, CTRL+R refresh) land here via bind_picker_spec_rows.
-            add_picker_base(b);
-        })
         .scope(Scope::PickerTaskList, |b| {
             add_picker_base(b);
         })
@@ -322,7 +316,6 @@ mod tests {
             PickerKind::SessionLifecycle,
             PickerKind::ReasoningEffort,
             PickerKind::Tool,
-            PickerKind::Skill,
             PickerKind::TaskList,
             PickerKind::Project,
             PickerKind::McpServer,
@@ -917,35 +910,6 @@ mod leak_check {
 
     #[rstest::rstest]
     #[test]
-    fn skill_scope_pgup_fires_picker_page_up_not_preview_scroll() {
-        // Given a keymap queried in the skill picker scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
-
-        // When pressing PageUp.
-        let pgup = KeyEvent {
-            key: Key::PageUp,
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(pgup);
-
-        // Then it resolves to PickerPageUp (list paging), not a picker action.
-        let intent = intent.expect("PageUp in PickerSkill must fire an intent");
-        assert!(
-            matches!(intent, jinn_domain::KernelIntent::PickerPageUp),
-            "PageUp in PickerSkill must route to list paging; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
     fn tool_scope_tab_fires_the_spec_toggle_action() {
         // Given a keymap with the domain's tool spec rows bound.
         use crate::app::WhichKeyInstance;
@@ -1119,71 +1083,6 @@ mod leak_check {
                     if picker == "mcp-server" && action == "<c-t>"
             ),
             "Ctrl+T in PickerMcpServer must fire the spec logs/tools action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn skill_scope_ctrl_u_fires_the_spec_paging_action() {
-        // Given a keymap with the domain's skill spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
-
-        // When pressing Ctrl+U.
-        let c_u = KeyEvent {
-            key: Key::Char('u'),
-            modifiers: Modifiers::ctrl(),
-        };
-        let intent = wk.handle_key(c_u);
-
-        // Then it resolves to the skill spec's paging action.
-        let intent = intent.expect("Ctrl+U in PickerSkill must fire an intent");
-        assert!(
-            matches!(
-                &intent,
-                jinn_domain::KernelIntent::PickerAction { picker, action }
-                    if picker == "skill" && action == "<c-u>"
-            ),
-            "Ctrl+U in PickerSkill must fire the spec paging action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn skill_scope_ctrl_l_fires_the_spec_load_action() {
-        // Given a keymap with the domain's skill spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
-
-        // When pressing Ctrl+L.
-        let c_l = KeyEvent {
-            key: Key::Char('l'),
-            modifiers: Modifiers::ctrl(),
-        };
-        let intent = wk.handle_key(c_l);
-
-        // Then it resolves to the skill spec's load action.
-        assert!(
-            matches!(
-                &intent,
-                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "skill" && action == "<c-l>"
-            ),
-            "Ctrl+L in PickerSkill should fire the spec load action; got {intent:?}",
         );
     }
 

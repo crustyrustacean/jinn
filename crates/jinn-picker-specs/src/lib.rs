@@ -1,6 +1,6 @@
 //! Picker specs and the `AppState` host lens — the kernel's picker adapter.
 //!
-//! The twelve feature specs live here rather than in the kernel. They are the
+//! The eleven feature specs live here rather than in the kernel. They are the
 //! composition side of [`jinn_picker`]: each spec authors one picker's row
 //! rendering, search, preview, keybinds, and lifecycle in one place, and
 //! `build_picker_registry` registers them all.
@@ -33,7 +33,6 @@ pub mod provider_spec;
 pub mod reasoning_effort_spec;
 pub mod session_lifecycle_spec;
 pub mod session_spec;
-pub mod skill_spec;
 pub mod task_list_spec;
 pub mod theme_spec;
 pub mod tool_spec;
