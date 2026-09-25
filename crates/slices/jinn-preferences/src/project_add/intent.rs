@@ -237,8 +237,9 @@ pub(super) fn leave_project_add(cell: &ProjectAddCell) {
 pub(super) fn clear_or_leave_project_add(cell: &ProjectAddCell) -> IntentResult {
     let had_text = !cell.read().text.input.is_empty();
     leave_project_add(cell);
-    match had_text {
-        true => IntentResult::empty(),
-        false => IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(project_add_scope())),
+    if had_text {
+        IntentResult::empty()
+    } else {
+        IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(project_add_scope()))
     }
 }

@@ -1,11 +1,12 @@
 //! Rename session input intent handlers - enter, confirm, leave, and text editing.
 
-use jinn_domain::common::app_state::{AppState, RenameSessionInputState};
+use jinn_domain::common::app_state::AppState;
+use jinn_sidebar_msg::sidebar_sections::RenameSessionInputState;
 
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_domain::protocol::IntentResult;
-use jinn_slices::ScopeSignal;
 use jinn_session_store_msg::PersistSession;
+use jinn_slices::ScopeSignal;
 use jinn_slices::SliceScopeId;
 
 /// The rename popup's dynamic scope (input-capturing).
@@ -112,11 +113,10 @@ pub fn handle_rename_session_clear_or_leave(state: &mut AppState) -> IntentResul
     state
         .frontend
         .update_sections(|s| s.rename_input = RenameSessionInputState::default());
-    match had_text {
-        true => IntentResult::empty(),
-        false => {
-            IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(rename_scope()))
-        }
+    if had_text {
+        IntentResult::empty()
+    } else {
+        IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(rename_scope()))
     }
 }
 
@@ -246,10 +246,7 @@ mod tests {
         let result = handle_rename_session_enter(&mut state);
 
         // Then the rename scope is requested while the sessions scope remains current.
-        assert_eq!(
-            result.scope_signal,
-            Some(ScopeSignal::Push(rename_scope()))
-        );
+        assert_eq!(result.scope_signal, Some(ScopeSignal::Push(rename_scope())));
         assert_eq!(
             state.frontend.scope(),
             jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope()
@@ -441,7 +438,9 @@ mod tests {
     fn clear_or_leave_with_text_clears_and_stays_open() {
         // Given state in rename scope with a nonempty title.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Dynamic(rename_scope()));
+        state
+            .frontend
+            .scope_push(FocusScope::Dynamic(rename_scope()));
         state.frontend.update_sections(|s| {
             s.rename_input.text.set("Changed".to_owned());
         });
@@ -462,7 +461,9 @@ mod tests {
     fn clear_or_leave_with_empty_text_clears_and_leaves() {
         // Given state in rename scope with empty input.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Dynamic(rename_scope()));
+        state
+            .frontend
+            .scope_push(FocusScope::Dynamic(rename_scope()));
 
         // When Ctrl-C is requested.
         let result = handle_rename_session_clear_or_leave(&mut state);

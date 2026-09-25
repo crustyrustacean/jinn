@@ -4,7 +4,6 @@
 //! computes the centered rect, and the view draws into it reading the
 //! in-progress text from the sections cell and the theme from the facts.
 
-use crate::sections::rename_input::render::rename_session_popup_rect;
 use jinn_sidebar_msg::{SidebarSections, sidebar_sections_slot};
 use jinn_slices::RenderFacts;
 use jinn_slices::cell::TypedCell;
@@ -15,12 +14,32 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use unicode_segmentation::UnicodeSegmentation;
 
+/// Horizontal padding fraction for the rename popup (20% each side).
+const POPUP_H_PAD_FRAC: f32 = 0.20;
+/// Minimum popup width in cells.
+const POPUP_MIN_WIDTH: u16 = 30;
+
+/// Computes the centered rename popup rectangle.
+fn rename_popup_rect(area: Rect) -> Rect {
+    let popup_width = ((f32::from(area.width) * (1.0 - 2.0 * POPUP_H_PAD_FRAC)).ceil() as u16)
+        .max(POPUP_MIN_WIDTH)
+        .min(area.width);
+    let popup_height = 3u16.min(area.height);
+
+    #[expect(clippy::integer_division, reason = "cell positions are integers")]
+    let popup_x = area.width.saturating_sub(popup_width) / 2;
+    #[expect(clippy::integer_division, reason = "cell positions are integers")]
+    let popup_y = area.height.saturating_sub(popup_height) / 3;
+
+    Rect::new(popup_x, popup_y, popup_width, popup_height)
+}
+
 /// The overlay-rect function registered on the slice host: the centered
 /// rename popup rect.
 // The `&Rect` parameter and the `Option` return follow the overlay
 // registry's `OverlayFn` contract (geometry may reject too-small frames).
 pub fn rename_overlay_rect(area: &Rect) -> Option<Rect> {
-    Some(rename_session_popup_rect(*area))
+    Some(rename_popup_rect(*area))
 }
 
 /// The overlay view: draws the rename popup into `area` (the geometry

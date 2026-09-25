@@ -406,3 +406,8 @@ Entries are added or amended **only with human approval**.
 - (session) SessionStoreActor and SessionLifecycleActor own storage and lifecycle contracts in their respective slices.
 - (session) SessionPersistenceActor is the jinn-session-turn actor for coordinated turn progression, context work, and sanctioned history folds.
 - (migration) The actor-migration documentation suite presents current-state design and rationale in migration.md, slices.md, cleanup.md, and catalog.md.
+- (popups) The session-lifecycle argument popup currently uses a dynamic slice scope and stores its input state in a lifecycle-owned cell.
+- (popups) The pruner accumulation threshold popup currently uses a dynamic slice scope and stores its input state in a preferences-owned cell.
+- (popups) The session rename popup currently uses a dynamic sidebar scope and stores its input state in the sidebar sections cell.
+- (keybinds) Input-capturing slice popups currently handle Escape, Enter, Ctrl-C, bracketed paste, Home, and End through slice-owned route rows or input hooks.
+- (pickers) Picker outcomes currently express picker closure and an optional destination scope transition, which picker dispatch applies in order.

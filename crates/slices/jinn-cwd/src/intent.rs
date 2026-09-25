@@ -203,9 +203,10 @@ fn leave_cwd_input(cell: &CwdCell) {
 fn clear_or_leave_cwd_input(cell: &CwdCell) -> IntentResult {
     let had_text = !cell.read().text.input.is_empty();
     leave_cwd_input(cell);
-    match had_text {
-        true => IntentResult::empty(),
-        false => IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(cwd_scope())),
+    if had_text {
+        IntentResult::empty()
+    } else {
+        IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(cwd_scope()))
     }
 }
 
@@ -405,10 +406,7 @@ mod tests {
         let result = clear_or_leave_cwd_input(&cell);
 
         // Then the popup requests its own conditional pop.
-        assert_eq!(
-            result.scope_signal,
-            Some(ScopeSignal::PopIf(cwd_scope()))
-        );
+        assert_eq!(result.scope_signal, Some(ScopeSignal::PopIf(cwd_scope())));
         assert!(cell.read().text.input.is_empty());
     }
 

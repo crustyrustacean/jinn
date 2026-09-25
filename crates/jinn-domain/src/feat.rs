@@ -14,7 +14,6 @@ pub mod picker;
 pub mod project;
 pub mod provider;
 pub use jinn_provider_config as provider_infra;
-pub mod pruner_accumulation_input;
 pub mod session;
 pub mod session_lifecycle;
 // The search/transcript data model is owned by the session-store family msg

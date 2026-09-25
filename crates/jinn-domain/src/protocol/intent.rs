@@ -193,28 +193,6 @@ pub enum KernelIntent {
     },
     /// Close the active session, running teardown if applicable.
     SessionClose,
-    /// Confirm the arg input and trigger lifecycle setup.
-    ArgInputConfirm,
-
-    /// Open the pruner accumulation threshold input popup.
-    OpenPrunerAccumulationInput,
-    /// Confirm the pruner accumulation input and persist.
-    PrunerAccumulationConfirm,
-    /// Cancel the pruner accumulation input popup.
-    PrunerAccumulationLeave,
-    /// Insert a character into the pruner accumulation input.
-    PrunerAccumulationInsertChar {
-        /// The character to insert.
-        ch: char,
-    },
-    /// Move cursor left in the pruner accumulation input.
-    PrunerAccumulationCursorLeft,
-    /// Move cursor right in the pruner accumulation input.
-    PrunerAccumulationCursorRight,
-    /// Delete the grapheme before the cursor in pruner accumulation input.
-    PrunerAccumulationDeleteGrapheme,
-    /// Delete the grapheme after the cursor in pruner accumulation input.
-    PrunerAccumulationDeleteForward,
 
     /// Change the session's working directory via an external picker.
     ChangeCwd {
@@ -269,10 +247,6 @@ impl trouper::envelope::PayloadValue for KernelIntent {
     }
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "one arm per intent variant; splitting hides the mapping"
-)]
 impl std::fmt::Display for KernelIntent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -356,27 +330,6 @@ impl std::fmt::Display for KernelIntent {
                 write!(f, "session lifecycle setup: {lifecycle_name}")
             }
             KernelIntent::SessionClose => write!(f, "session close"),
-            KernelIntent::ArgInputConfirm => write!(f, "arg input confirm"),
-            KernelIntent::OpenPrunerAccumulationInput => {
-                write!(f, "set pruner accumulation threshold")
-            }
-            KernelIntent::PrunerAccumulationConfirm => write!(f, "pruner accumulation confirm"),
-            KernelIntent::PrunerAccumulationLeave => write!(f, "pruner accumulation leave"),
-            KernelIntent::PrunerAccumulationInsertChar { ch } => {
-                write!(f, "pruner accumulation insert '{ch}'")
-            }
-            KernelIntent::PrunerAccumulationCursorLeft => {
-                write!(f, "pruner accumulation cursor left")
-            }
-            KernelIntent::PrunerAccumulationCursorRight => {
-                write!(f, "pruner accumulation cursor right")
-            }
-            KernelIntent::PrunerAccumulationDeleteGrapheme => {
-                write!(f, "pruner accumulation delete")
-            }
-            KernelIntent::PrunerAccumulationDeleteForward => {
-                write!(f, "pruner accumulation forward delete")
-            }
 
             KernelIntent::ChangeCwd { root } => write!(f, "change cwd from '{root}'"),
 

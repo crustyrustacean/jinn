@@ -139,7 +139,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("G", KernelIntent::ScrollToBottom, KeyCategory::Navigation)
             .bind("gmr", KernelIntent::RefreshModels, KeyCategory::Model)
             .bind("gcr", KernelIntent::RescanPromptTemplates, KeyCategory::Context)
-            .bind("gcp", KernelIntent::OpenPrunerAccumulationInput, KeyCategory::Context)
             // Isolate selected entry: force-include its tool loop, force-exclude the rest
             .bind("gci", KernelIntent::ChatEntryIsolateSelected, KeyCategory::Context)
             // Minimap navigation
@@ -288,48 +287,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             // logs/tools) land here via bind_picker_spec_rows.
             add_picker_base(b);
         });
-
-    // ArgInput scope - typing positional args for a lifecycle command.
-    keymap.scope(Scope::ArgInput, |b| {
-        // The <M-t> toggle lands here via the slice GlobalToggle spread
-        // (composition); no slice openers: `<M-`>` is a shell character
-        // and this scope has an InsertChar guard — an unresolved key
-        // would mutate arg text.
-        b.bind("<esc>", KernelIntent::EnterNormalMode, KeyCategory::General)
-        .bind("<enter>", KernelIntent::ArgInputConfirm, KeyCategory::Input)
-        .bind("<left>", KernelIntent::MoveCursorLeft, KeyCategory::Input)
-        .bind("<right>", KernelIntent::MoveCursorRight, KeyCategory::Input)
-        .bind("<backspace>", KernelIntent::DeleteGrapheme, KeyCategory::Input)
-        .bind("<delete>", KernelIntent::DeleteGraphemeForward, KeyCategory::Input)
-        .bind("<c-j>", KernelIntent::InsertChar { ch: '\n' }, KeyCategory::Input)
-        .bind("<c-c>", KernelIntent::CtrlClear, KeyCategory::General)
-        .catch_all(|key: KeyEvent| {
-            if let Key::Char(c) = key.key {
-                Some(KernelIntent::InsertChar { ch: c })
-            } else {
-                None
-            }
-        });
-    });
-
-    // PrunerAccumulationInput scope — numeric-only threshold input.
-    keymap.scope(Scope::PrunerAccumulationInput, |b| {
-        b
-        .bind("<esc>", KernelIntent::PrunerAccumulationLeave, KeyCategory::General)
-        .bind("<enter>", KernelIntent::PrunerAccumulationConfirm, KeyCategory::Input)
-        .bind("<left>", KernelIntent::PrunerAccumulationCursorLeft, KeyCategory::Input)
-        .bind("<right>", KernelIntent::PrunerAccumulationCursorRight, KeyCategory::Input)
-        .bind("<backspace>", KernelIntent::PrunerAccumulationDeleteGrapheme, KeyCategory::Input)
-        .bind("<delete>", KernelIntent::PrunerAccumulationDeleteForward, KeyCategory::Input)
-        .bind("<c-c>", KernelIntent::CtrlClear, KeyCategory::General)
-        .catch_all(|key: KeyEvent| {
-            if let Key::Char(c) = key.key {
-                Some(KernelIntent::PrunerAccumulationInsertChar { ch: c })
-            } else {
-                None
-            }
-        });
-    });
 
     // No global bindings by design: globals survive every scope's catch-all
     // and would pierce slice capture-mode hooks (stranding the control flag
