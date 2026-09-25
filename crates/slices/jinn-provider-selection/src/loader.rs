@@ -1,9 +1,8 @@
 //! Provider picker loader — builds provider picker entries into the
 //! picker's `SelectionState`.
 //!
-//! Re-homed from the kernel `feat/provider/loader.rs`; the
-//! `ProviderView`-taking signature dissolved into explicit parameters
-//! (cell model-cache snapshot + theme + session model snapshot), and the
+//! Re-homed from the kernel `feat/provider/loader.rs`; its inputs are
+//! explicit (cell model-cache snapshot + theme + session model snapshot), and
 //! `set_endpoint_picker_items` helper moved to
 //! [`crate::endpoint_loader`] as actor methods.
 

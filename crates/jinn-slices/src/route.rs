@@ -425,8 +425,7 @@ fn short_type_name<M: 'static>() -> &'static str {
 ///
 /// A closure, not a bare `fn` pointer: actions may capture the slice's
 /// cell handle (e.g. submit reads and clears the input buffer). The
-/// captured handle is the one registered at slice activation — closure
-/// capture does not mint a second write capability. State outside the
+/// captured handle is the one registered at slice activation. State outside the
 /// slice's cells is reached through [`ActionCtx`], lent by the handler
 /// at dispatch time.
 #[derive(Clone)]

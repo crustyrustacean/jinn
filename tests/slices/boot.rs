@@ -262,8 +262,7 @@ async fn provider_init_writes_the_disk_cache_through_the_provider_cell() {
         .await;
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Then the boot actor's cache write went through the cell (the
-    // ProviderCap this used to require is dissolved).
+    // Then the boot actor's cache write went through the provider cell.
     // With no disk cache seeded, the write lands as `None` — the
     // observable proof the actor reached the cell at all is that the
     // provider registry is now built from the loaded config.

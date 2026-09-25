@@ -2,8 +2,8 @@
 //!
 //! Open seeds the popup from the active session's cwd and pushes the popup's
 //! dynamic scope; confirm resolves the typed path with the shared resolver
-//! and publishes the kernel's `SetSessionCwd` through the
-//! [`SliceActionState`] capability; leave discards. Editing lands in the
+//! and returns a publish closure for the kernel's `SetSessionCwd` through
+//! [`SliceActionState`]; leave discards. Editing lands in the
 //! cell through a route-table input hook — the same pattern as the rename
 //! popup.
 
@@ -171,7 +171,7 @@ fn open_cwd_input(state: &mut dyn jinn_slices::SliceActionState, cell: &CwdCell)
 }
 
 /// Confirms the popup: resolves the typed path against the active session
-/// cwd; on success publishes `SetSessionCwd` (via the capability) and pops
+/// cwd; on success returns `SetSessionCwd` and pops
 /// the scope, clearing the cell. On failure stays open (the render footer
 /// shows the inline error) and consumes the key.
 fn confirm_cwd_input(ctx: &mut ActionCtx<'_>, cell: &CwdCell) -> IntentResult {
