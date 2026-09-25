@@ -25,8 +25,8 @@ pub use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_session_state::ChatSessionState;
 
-/// Written to exclusively by `SessionPersistenceActor` and `IntentHandler`.
-/// No other actor should mutate these fields.
+/// Shared session registry and active-session state. Callers mutate it through
+/// [`SessionMap`] operations so session reads and snapshot capture stay coherent.
 ///
 /// See [`SessionMap`] for the full API.
 pub type SessionState = SessionMap;
