@@ -9,7 +9,6 @@
 
 pub mod intent;
 pub mod render;
-pub mod state;
 
 /// The render fact carrying the active session's cwd (the seeding base and
 /// the relative-path anchor for the validation footer). The kernel's

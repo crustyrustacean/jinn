@@ -1,0 +1,10 @@
+[package]
+name = "jinn-project-msg"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+jinn-slices = { workspace = true }
+
+[lints]
+workspace = true
