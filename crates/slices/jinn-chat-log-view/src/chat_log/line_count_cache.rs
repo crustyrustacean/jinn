@@ -21,6 +21,14 @@ use ratatui::text::Line;
 
 use jinn_core_types::{ChatEntry, ChatEntryId};
 
+/// How many entries may hold pre-rendered lines at once.
+///
+/// The wrapped line count is retained for every entry regardless — it is tiny,
+/// and keeping it is what makes the layout pass cheap. Only the rendered
+/// `Line` payload is bounded, so memory stops growing with session length.
+/// Roughly the last few thousand lines of scrollback.
+pub const MAX_CACHED_RENDERED_ENTRIES: usize = 4_000;
+
 /// Cached wrapped line count and rendered lines for a single entry.
 #[derive(Debug, Clone)]
 pub struct CachedEntryCount {
@@ -45,6 +53,11 @@ pub struct CachedEntryCount {
         reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
     )]
     pub lines: Option<Arc<Vec<Line<'static>>>>,
+    /// The `touch_counter` value when this entry's lines were last used.
+    ///
+    /// Only the painting pass bumps this, so it tracks "scrolled to", not
+    /// "walked past during layout".
+    pub last_touched: u64,
 }
 
 /// Result of a successful cache hit.
@@ -107,6 +120,10 @@ pub struct EntryLineCache {
     /// It is an atomic so a hash can be counted while a cached entry is still
     /// borrowed, and so the cache stays `Sync` under its `RwLock`.
     fingerprint_computations: AtomicU64,
+    /// Monotonic clock for LRU recency, bumped on every touch.
+    touch_counter: u64,
+    /// How many rendered-line payloads have been dropped by eviction.
+    evictions: u64,
 }
 
 impl Clone for EntryLineCache {
@@ -117,6 +134,8 @@ impl Clone for EntryLineCache {
             // A clone starts its own tally rather than inheriting a count
             // that says nothing about the entries it now owns.
             fingerprint_computations: AtomicU64::new(0),
+            touch_counter: self.touch_counter,
+            evictions: self.evictions,
         }
     }
 }
@@ -158,7 +177,7 @@ impl EntryLineCache {
     ) -> CacheProbe {
         // If content width changed, clear everything.
         if self.content_width != Some(content_width) {
-            self.entries.clear();
+            self.reset_entries();
             self.content_width = Some(content_width);
             return CacheProbe {
                 hit: None,
@@ -223,6 +242,55 @@ impl EntryLineCache {
         self.fingerprint_computations.load(Ordering::Relaxed)
     }
 
+    /// Mark an entry's rendered lines as recently used.
+    ///
+    /// Call this from the painting pass only. Layout walks every entry on every
+    /// frame, so touching there would make every entry equally recent and the
+    /// LRU would degenerate to insertion order.
+    pub fn touch(&mut self, id: &ChatEntryId) {
+        if let Some(cached) = self.entries.get_mut(id) {
+            self.touch_counter = self.touch_counter.wrapping_add(1);
+            cached.last_touched = self.touch_counter;
+        }
+    }
+
+    /// How many rendered-line payloads eviction has dropped.
+    #[must_use]
+    pub fn evictions(&self) -> u64 {
+        self.evictions
+    }
+
+    /// Drop rendered lines beyond [`MAX_CACHED_RENDERED_ENTRIES`], least
+    /// recently used first.
+    ///
+    /// Only the `lines` payload is dropped: the wrapped count always survives,
+    /// so eviction never costs a re-layout.
+    pub fn evict_if_needed(&mut self) {
+        while self.rendered_entry_count() > MAX_CACHED_RENDERED_ENTRIES {
+            let Some(victim) = self.least_recently_touched() else {
+                break;
+            };
+            if let Some(cached) = self.entries.get_mut(&victim) {
+                cached.lines = None;
+            }
+            self.evictions += 1;
+        }
+    }
+
+    /// Number of entries currently holding rendered lines.
+    fn rendered_entry_count(&self) -> usize {
+        self.entries.values().filter(|c| c.lines.is_some()).count()
+    }
+
+    /// The id of the entry holding lines that were used longest ago.
+    fn least_recently_touched(&self) -> Option<ChatEntryId> {
+        self.entries
+            .iter()
+            .filter(|(_, c)| c.lines.is_some())
+            .min_by_key(|(_, c)| c.last_touched)
+            .map(|(id, _)| id.clone())
+    }
+
     /// Store a wrapped line count for an entry (without rendered lines).
     pub fn insert(
         &mut self,
@@ -243,6 +311,7 @@ impl EntryLineCache {
                 variant,
                 wrapped_count,
                 lines: None,
+                last_touched: self.touch_counter,
             },
         );
     }
@@ -268,6 +337,7 @@ impl EntryLineCache {
                 variant,
                 wrapped_count,
                 lines: Some(lines),
+                last_touched: self.touch_counter,
             },
         );
     }
@@ -275,9 +345,16 @@ impl EntryLineCache {
     /// Synchronize invalidation state: clear cache if content width has changed.
     fn sync_invalidation(&mut self, content_width: u16) {
         if self.content_width != Some(content_width) {
-            self.entries.clear();
+            self.reset_entries();
             self.content_width = Some(content_width);
         }
+    }
+
+    /// Drop every entry and the LRU bookkeeping that described them.
+    fn reset_entries(&mut self) {
+        self.entries.clear();
+        self.touch_counter = 0;
+        self.evictions = 0;
     }
 
     /// Remove a specific entry from the cache.
@@ -289,6 +366,8 @@ impl EntryLineCache {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.content_width = None;
+        self.touch_counter = 0;
+        self.evictions = 0;
     }
 
     /// Number of entries currently cached.
@@ -666,5 +745,171 @@ mod tests {
         let hit = hit.expect("should be a cache hit");
         assert_eq!(hit.wrapped_count, 1);
         assert_eq!(*hit.lines.expect("should have lines"), *lines);
+    }
+    /// Fill the cache with `n` entries holding rendered lines, touching each
+    /// in insertion order so recency matches insertion order.
+    fn fill_with_lines(cache: &mut EntryLineCache, n: usize) -> Vec<ChatEntry> {
+        (0..n)
+            .map(|i| {
+                let entry = ChatEntry::assistant(format!("entry {i}"));
+                insert_with_lines(
+                    &entry,
+                    cache,
+                    false,
+                    0,
+                    80,
+                    1,
+                    Arc::new(vec![Line::from(format!("entry {i}"))]),
+                );
+                cache.touch(&entry.id);
+                entry
+            })
+            .collect()
+    }
+
+    #[rstest::rstest]
+    fn eviction_drops_the_least_recently_touched_lines() {
+        // Given more entries with lines than the cache retains.
+        let mut cache = EntryLineCache::new();
+        let entries = fill_with_lines(&mut cache, MAX_CACHED_RENDERED_ENTRIES + 5);
+
+        // When eviction runs.
+        cache.evict_if_needed();
+
+        // Then the oldest entries lose their lines but keep their counts.
+        for entry in &entries[..5] {
+            let hit = cache
+                .get(entry, false, 0, 80)
+                .expect("count should survive");
+            assert!(
+                hit.lines.is_none(),
+                "the least recently used entry should have lost its lines"
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    fn eviction_keeps_the_most_recently_touched_lines() {
+        // Given a cache one entry over its limit.
+        let mut cache = EntryLineCache::new();
+        let entries = fill_with_lines(&mut cache, MAX_CACHED_RENDERED_ENTRIES + 1);
+        let newest = entries.last().expect("entries were just created");
+
+        // When eviction runs.
+        cache.evict_if_needed();
+
+        // Then the newest entry still has its lines.
+        let hit = cache
+            .get(newest, false, 0, 80)
+            .expect("count should survive");
+        assert!(
+            hit.lines.is_some(),
+            "the most recently used entry should keep its lines"
+        );
+    }
+
+    #[rstest::rstest]
+    fn eviction_never_drops_a_wrapped_count() {
+        // Given more entries with lines than the cache retains.
+        let mut cache = EntryLineCache::new();
+        let entries = fill_with_lines(&mut cache, MAX_CACHED_RENDERED_ENTRIES + 10);
+
+        // When eviction runs.
+        cache.evict_if_needed();
+
+        // Then every entry still reports its wrapped count, evicted or not.
+        for entry in &entries {
+            assert_eq!(
+                cache
+                    .get(entry, false, 0, 80)
+                    .expect("every entry keeps a count")
+                    .wrapped_count,
+                1,
+                "eviction must never cost a re-layout"
+            );
+        }
+        assert!(cache.evictions() > 0, "eviction should have run");
+    }
+
+    #[rstest::rstest]
+    fn touching_an_entry_protects_it_from_eviction() {
+        // Given a cache at its limit, then re-using the oldest entry.
+        let mut cache = EntryLineCache::new();
+        let entries = fill_with_lines(&mut cache, MAX_CACHED_RENDERED_ENTRIES);
+        let oldest = entries.first().expect("entries were just created");
+        cache.touch(&oldest.id);
+
+        // When one more entry pushes the cache over the limit.
+        let newcomer = ChatEntry::assistant("newcomer");
+        insert_with_lines(
+            &newcomer,
+            &mut cache,
+            false,
+            0,
+            80,
+            1,
+            Arc::new(vec![Line::from("newcomer")]),
+        );
+        cache.touch(&newcomer.id);
+        cache.evict_if_needed();
+
+        // Then the re-used entry survived, because a scrolled-to entry is
+        // what the user is actually looking at.
+        let hit = cache
+            .get(oldest, false, 0, 80)
+            .expect("count should survive");
+        assert!(
+            hit.lines.is_some(),
+            "a recently scrolled-to entry should not be evicted"
+        );
+    }
+
+    #[rstest::rstest]
+    fn width_change_clears_entries_and_lru_counters() {
+        // Given a cache holding entries and having evicted at least once.
+        let mut cache = EntryLineCache::new();
+        fill_with_lines(&mut cache, MAX_CACHED_RENDERED_ENTRIES + 1);
+        cache.evict_if_needed();
+
+        // When the content width changes.
+        let entry = ChatEntry::assistant("hello");
+        let result = cache.get(&entry, false, 0, 100);
+
+        // Then the cache is empty and its counters are reset.
+        assert!(result.is_none());
+        assert!(cache.is_empty());
+        assert_eq!(
+            cache.evictions(),
+            0,
+            "evictions should reset with the cache"
+        );
+    }
+
+    #[rstest::rstest]
+    fn an_evicted_entry_repopulates_when_rendered_again() {
+        // Given a cache whose entry has had its lines evicted.
+        let mut cache = EntryLineCache::new();
+        let entry = ChatEntry::assistant("repopulated content");
+        insert_with_lines(
+            &entry,
+            &mut cache,
+            false,
+            0,
+            80,
+            1,
+            Arc::new(vec![Line::from("repopulated content")]),
+        );
+        if let Some(cached) = cache.entries.get_mut(&entry.id) {
+            cached.lines = None;
+        }
+
+        // When the entry is looked up.
+        let hit = cache
+            .get(&entry, false, 0, 80)
+            .expect("count survives eviction");
+
+        // Then the count is still served and the caller can re-render.
+        assert_eq!(hit.wrapped_count, 1);
+        assert!(hit.lines.is_none(), "lines were evicted, so it re-renders");
     }
 }

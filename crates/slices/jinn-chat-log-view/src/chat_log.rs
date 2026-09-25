@@ -38,7 +38,7 @@ pub use gutter::{
     GutterStyle, build_blank_gutter_lines, build_collapsed_block_gutter_line,
     build_entry_gutter_lines,
 };
-pub use line_count_cache::EntryLineCache;
+pub use line_count_cache::{EntryLineCache, MAX_CACHED_RENDERED_ENTRIES};
 pub use markdown::render_markdown;
 pub use scroll_indicator::render_scroll_indicator;
 pub use shared::{GUTTER_WIDTH, RenderContext, strip_ansi};

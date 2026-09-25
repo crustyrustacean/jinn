@@ -104,21 +104,21 @@ impl UiElement for ChatLogElement {
         {
             let mut cache = state.frontend.caches.entry_line_cache.write();
             render.compute_line_ranges(&mut cache);
-        }
-        render.compute_scroll();
+            render.compute_scroll();
 
-        {
-            let session = state.active_session();
-            session.set_last_max_offset(render.scroll.max_offset);
-            session.set_entry_line_ranges(render.entry_line_ranges.clone());
-            session.set_viewport_height(area.height);
-            session.set_blank_count(render.scroll.blank_count as u16);
-            session.set_rendered_scroll_offset(render.scroll.clamped);
-        }
+            {
+                let session = state.active_session();
+                session.set_last_max_offset(render.scroll.max_offset);
+                session.set_entry_line_ranges(render.entry_line_ranges.clone());
+                session.set_viewport_height(area.height);
+                session.set_blank_count(render.scroll.blank_count as u16);
+                session.set_rendered_scroll_offset(render.scroll.clamped);
+            }
 
-        render.find_visible_indices();
-        render.build_blank_lines();
-        render.render_visible_entries();
+            render.find_visible_indices();
+            render.build_blank_lines();
+            render.render_visible_entries(&mut cache);
+        }
         render.paint(frame);
     }
 }
@@ -374,6 +374,7 @@ impl<'a> HistoryRender<'a> {
         }
 
         self.total_wrapped = wrapped_cursor;
+        cache.evict_if_needed();
     }
 
     /// Look up the paired tool result status for an entry (if applicable).
@@ -470,9 +471,41 @@ impl<'a> HistoryRender<'a> {
     // Step 6: Pass 2 - render visible entries
     // -----------------------------------------------------------------------
 
+    /// Store freshly painted lines for an entry and mark them as recently used.
+    ///
+    /// The wrapped count is read back from the range Pass 1 computed, so the
+    /// cache never disagrees with the layout that was just used to paint.
+    fn cache_lines(
+        &self,
+        cache: &mut EntryLineCache,
+        entry: &ChatEntry,
+        vi_idx: usize,
+        is_expanded: bool,
+        variant: u64,
+        lines: Vec<Line<'static>>,
+    ) {
+        let wrapped_count = self
+            .entry_line_ranges
+            .get(vi_idx)
+            .map_or(0, |(start, end)| end - start);
+        let content = cache
+            .probe(entry, is_expanded, variant, self.content_width)
+            .content;
+        cache.insert_with_lines(
+            entry,
+            content,
+            is_expanded,
+            variant,
+            self.content_width,
+            wrapped_count,
+            Arc::new(lines),
+        );
+        cache.touch(&entry.id);
+    }
+
     /// Build content and gutter lines for all visible entries.
     #[expect(clippy::expect_used, reason = "infallible")]
-    fn render_visible_entries(&mut self) {
+    fn render_visible_entries(&mut self, cache: &mut EntryLineCache) {
         let viewport_top = self.scroll.clamped;
         let chat_log_active =
             matches!(self.state.frontend.scope(), jinn_slices::FocusScope::Normal);
@@ -500,14 +533,25 @@ impl<'a> HistoryRender<'a> {
                         .preferences
                         .tool_entry_max_lines
                         .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
+                    let variant = render_variant(
+                        self.paired_status_for_entry(entry),
+                        self.is_streaming_tool_call(entry),
+                        self.is_task_waiting(entry),
+                    );
 
                     // Get content lines - cached lines → miss lines → render fresh.
                     let entry_content_lines = if let Some(lines) = self.cached_lines.remove(&vi_idx)
                     {
+                        // Painted from the cache, so this entry counts as used.
+                        cache.touch(&entry.id);
                         Arc::unwrap_or_clone(lines)
                     } else if let Some(lines) = self.miss_lines.remove(&vi_idx) {
+                        // Freshly rendered during layout this frame; store it so
+                        // a scroll away and back can reuse it.
+                        self.cache_lines(cache, entry, vi_idx, is_expanded, variant, lines.clone());
                         lines
                     } else {
+                        // Nothing available: render, then cache for the next frame.
                         let paired_status = self.paired_status_for_entry(entry);
                         let is_streaming = self.is_streaming_tool_call(entry);
                         let is_waiting_on_subagent = self.is_task_waiting(entry);
@@ -521,7 +565,9 @@ impl<'a> HistoryRender<'a> {
                             is_streaming,
                             is_waiting_on_subagent,
                         };
-                        entry_to_lines(entry, &ctx)
+                        let lines = entry_to_lines(entry, &ctx);
+                        self.cache_lines(cache, entry, vi_idx, is_expanded, variant, lines.clone());
+                        lines
                     };
 
                     // Build gutter lines for this entry.
