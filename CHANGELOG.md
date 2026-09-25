@@ -28,6 +28,16 @@
   - Todo list no longer longer propagates subagent sessions.
   - `max_duration_seconds` is no longer presented to the model, but will still be accepted and applied if provided. This change was made because its not always clear how long a subagent task will take, and ending it prematurely throws away all the work.
 - Active sessions are now progressively loaded and a spinner was added to the sidebar to indicate when sessions are loading.
+- Arrows keys + a few non-printable keys now work properly in interactive terms.
+  - `jinn` used codes that didn't match TERMINFO, so some applications wouldn't properly register non-printable keys.
+- Overall performance improvement on Markdown rendering. Chat log, session previews, and skill picker rendering should be faster and use less memory.
+- Add new `global_command_policy` TOML config to block commands across all projects. Recommend adding the below to your `jinn.toml` (it ships by default with a fresh config):
+
+```toml
+[[global_command_policy]]
+pattern = 'rg -rn'
+message = 'ripgrep is already recursive and `-r` takes a replacement value, so `rg -rn` rewrites every match to `n` and still exit s 0 — use `-n` alone for line numbers.'
+```
 
 - These plugins were move into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them. Please see the next section on plugin-related TOML configuration changes.
   - Deleted `persona-loader`
@@ -36,7 +46,7 @@
   - Deleted `tool-call-watchdog`
   - Deleted `url-citations`
 
-## TOML Configuration Changes
+### TOML plugin configuration changes
 
 **theme-loader** is now always active. The TOML configuration is now ignored and should be deleted:
 
