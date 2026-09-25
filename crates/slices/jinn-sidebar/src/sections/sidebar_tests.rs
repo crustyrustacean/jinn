@@ -6,6 +6,8 @@
     reason = "test code"
 )]
 
+use std::time::Duration;
+
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::style::Color;
@@ -636,6 +638,186 @@ fn sessions_footer_highlights_s_in_accent_action() {
         found_unfocused_dash,
         "should find a dash cell with border_unfocused foreground in Sessions footer row"
     );
+}
+
+#[rstest::rstest]
+fn sessions_title_shows_throbber_during_startup_hydration() {
+    // Given a sidebar with startup hydration active.
+    let mut sidebar = sidebar_with_all_sections();
+    let mut state = AppState::default_with_scope_focus();
+    state.session.begin_startup_hydration();
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering the sidebar.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+
+    // Then the Sessions title includes a Braille throbber.
+    let buf = terminal.backend().buffer();
+    let sessions_row = find_row_containing(buf, width, height, "Sessions").expect("Sessions row");
+    let symbols = throbber_widgets_tui::symbols::throbber::BRAILLE_EIGHT;
+    let found = (0..width).any(|x| {
+        buf.cell((x, sessions_row))
+            .map_or(false, |cell| symbols.symbols.contains(&cell.symbol()))
+    });
+    assert!(found, "Sessions title should include a throbber");
+}
+
+#[rstest::rstest]
+fn sessions_title_throbber_uses_streaming_color() {
+    // Given a sidebar with startup hydration active.
+    let mut sidebar = sidebar_with_all_sections();
+    let mut state = AppState::default_with_scope_focus();
+    state.session.begin_startup_hydration();
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering the sidebar.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+
+    // Then the title throbber uses the streaming foreground color.
+    let buf = terminal.backend().buffer();
+    let sessions_row = find_row_containing(buf, width, height, "Sessions").expect("Sessions row");
+    let symbols = throbber_widgets_tui::symbols::throbber::BRAILLE_EIGHT;
+    let found = (0..width).any(|x| {
+        buf.cell((x, sessions_row)).is_some_and(|cell| {
+            symbols.symbols.contains(&cell.symbol()) && cell.fg == state.frontend.theme.streaming
+        })
+    });
+    assert!(found, "Sessions throbber should use theme.streaming");
+}
+
+#[rstest::rstest]
+fn sessions_title_hides_throbber_after_startup_hydration() {
+    // Given a sidebar whose startup hydration has completed.
+    let mut sidebar = sidebar_with_all_sections();
+    let mut state = AppState::default_with_scope_focus();
+    state.session.begin_startup_hydration();
+    state.session.finish_startup_hydration();
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering the sidebar.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+
+    // Then the Sessions title has no throbber.
+    let buf = terminal.backend().buffer();
+    let sessions_row = find_row_containing(buf, width, height, "Sessions").expect("Sessions row");
+    let symbols = throbber_widgets_tui::symbols::throbber::BRAILLE_EIGHT;
+    let found = (0..width).any(|x| {
+        buf.cell((x, sessions_row))
+            .map_or(false, |cell| symbols.symbols.contains(&cell.symbol()))
+    });
+    assert!(!found, "Sessions title should hide the throbber");
+}
+
+#[rstest::rstest]
+fn sessions_hydration_spinner_animates_without_session_rows() {
+    // Given an empty sessions list with startup hydration active.
+    let mut sidebar = sidebar_with_all_sections();
+    let mut state = AppState::default_with_scope_focus();
+    state
+        .active_session_mut()
+        .set_session_state(jinn_session_store_msg::SessionState::Archived);
+    state.session.begin_startup_hydration();
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut render = |terminal: &mut Terminal<TestBackend>| {
+        terminal
+            .draw(|frame| {
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+                sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+            })
+            .unwrap();
+    };
+
+    // When rendering repeatedly after the animation interval.
+    render(&mut terminal);
+    let first = terminal.backend().buffer().clone();
+    let first_session_row =
+        find_row_containing(&first, width, height, "Sessions").expect("Sessions row");
+    let first_spinner = (0..width)
+        .find_map(|x| {
+            first
+                .cell((x, first_session_row))
+                .filter(|cell| cell.fg == state.frontend.theme.streaming)
+                .map(|cell| cell.symbol().to_owned())
+        })
+        .expect("initial spinner");
+    std::thread::sleep(Duration::from_millis(100));
+    render(&mut terminal);
+
+    // Then the visible title throbber advances.
+    let second = terminal.backend().buffer().clone();
+    let second_session_row =
+        find_row_containing(&second, width, height, "Sessions").expect("Sessions row");
+    let second_spinner = (0..width)
+        .find_map(|x| {
+            second
+                .cell((x, second_session_row))
+                .filter(|cell| cell.fg == state.frontend.theme.streaming)
+                .map(|cell| cell.symbol().to_owned())
+        })
+        .expect("animated spinner");
+    assert_ne!(first_spinner, second_spinner);
+}
+
+#[rstest::rstest]
+fn sessions_hydration_spinner_preserves_footer_position() {
+    // Given a sidebar with startup hydration active.
+    let mut sidebar = sidebar_with_all_sections();
+    let mut state = AppState::default_with_scope_focus();
+    state.session.begin_startup_hydration();
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering the sidebar.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+
+    // Then the spinner keeps the Sessions footer at the same bottom row.
+    let buf = terminal.backend().buffer();
+    let sessions_row = find_row_containing(buf, width, height, "Sessions").expect("Sessions row");
+    assert_eq!(sessions_row, 39);
 }
 
 // ---------------------------------------------------------------------------
