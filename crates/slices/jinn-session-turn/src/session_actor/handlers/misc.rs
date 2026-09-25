@@ -1,19 +1,17 @@
 //! Miscellaneous handlers - skills refresh display and history mutation intake.
 
 use super::super::SessionPersistenceActor;
+use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
 use jinn_session_history_msg::SubmitHistoryMutations;
 use jinn_session_msg::PhaseKind;
+use jinn_skills_msg::{Skill, SkillsLoaded};
 
 use jinn_domain::protocol::{ChatEntry, PickerKind};
 
 impl SessionPersistenceActor {
     /// Pushes a transient entry listing discovered skills.
-    pub(in crate::session_actor) fn on_skills_loaded(
-        &self,
-        event: &jinn_domain::feat::skills::SkillsLoaded,
-    ) {
+    pub(in crate::session_actor) fn on_skills_loaded(&self, event: &SkillsLoaded) {
         // Only show a message when the skill picker is active (manual refresh).
         // Startup scans arrive while no picker is open.
         let is_picker_active = {
@@ -199,7 +197,7 @@ fn is_compaction_source(source: &jinn_domain::protocol::ChangeSource) -> bool {
     matches!(source, jinn_domain::protocol::ChangeSource::Worker { name } if name == "compaction")
 }
 /// Builds a markdown message listing discovered skills.
-fn build_skills_refresh_message(skills: &[jinn_domain::feat::skills::Skill]) -> String {
+fn build_skills_refresh_message(skills: &[Skill]) -> String {
     let mut msg = format!("Skills refreshed: {} found\n\n", skills.len());
     for skill in skills {
         msg.push_str("- ");

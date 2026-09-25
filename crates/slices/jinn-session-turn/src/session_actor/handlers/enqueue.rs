@@ -11,11 +11,10 @@
 //! actor (trouper) assembles the prompt and publishes
 //! `SendToLlmProvider`.
 
-use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::chat_input::protocol::command::{
-    EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage,
+use jinn_chat_input_msg::{
+    ChatEntrySubmitted, EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage,
 };
-use jinn_domain::feat::chat_input::protocol::event::ChatEntrySubmitted;
+use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
 use jinn_session_history_msg::PushChatEntry;
 
@@ -420,9 +419,9 @@ mod tests {
         reason = "test code"
     )]
 
+    use jinn_chat_input_msg::{EnqueueResumeTurn, EnqueueUserMessage};
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_domain::common::services::BusAudit;
-    use jinn_domain::feat::chat_input::protocol::command::{EnqueueResumeTurn, EnqueueUserMessage};
     use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
     use jinn_session_history_msg::PushChatEntry;
     use jinn_session_msg::PhaseKind;

@@ -16,6 +16,7 @@ jinn-chat-input-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-cwd-msg = { workspace = true }
 jinn-persona-msg = { workspace = true }
+jinn-project-msg = { workspace = true }
 jinn-sidebar-msg = { workspace = true }
 jinn-status-bar-msg = { workspace = true }
 jinn-theme-msg = { workspace = true }
@@ -35,6 +36,7 @@ jinn-core-types = { workspace = true }
 jinn-session-history = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-context-curation-msg = { workspace = true }
+jinn-context-assembly-msg = { workspace = true }
 jinn-skills = { workspace = true }
 jinn-skills-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
@@ -44,7 +46,6 @@ jinn-preferences-config = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-state = { workspace = true }
 jinn-provider-config = { workspace = true }
-jinn-mcp = { workspace = true }
 jinn-selection-widget = { workspace = true }
 jinn-picker = { workspace = true }
 

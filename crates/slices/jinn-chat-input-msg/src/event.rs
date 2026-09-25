@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::ChatEntry;
-use jinn_core_types::SessionId;
+use jinn_core_types::{ChatEntry, SessionId};
+use jinn_slices::BusMessage;
 
 /// A chat entry was added to the conversation history.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
@@ -15,4 +15,4 @@ pub struct ChatEntrySubmitted {
     pub entry: ChatEntry,
 }
 
-impl crate::common::bus::BusMessage for ChatEntrySubmitted {}
+impl BusMessage for ChatEntrySubmitted {}

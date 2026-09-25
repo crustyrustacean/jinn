@@ -9,7 +9,6 @@ pub mod image_convert;
 pub mod install;
 pub mod intent;
 pub mod navigation;
-pub mod persona;
 pub mod picker;
 pub mod project;
 pub mod provider;

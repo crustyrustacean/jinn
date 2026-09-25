@@ -146,6 +146,7 @@ jinn-discord = { workspace = true }
 jinn-boot-msg = { workspace = true }
 jinn-session-init = { workspace = true }
 jinn-session-init-msg = { workspace = true }
+jinn-skills-msg = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 jinn-provider-selection = { workspace = true }
 jinn-core-types = { workspace = true }
@@ -257,6 +258,7 @@ jinn-citations = { path = "crates/slices/jinn-citations" }
 jinn-context-curation-msg = { path = "crates/slices/jinn-context-curation-msg" }
 jinn-context-curation = { path = "crates/slices/jinn-context-curation" }
 jinn-mcp-msg = { path = "crates/slices/jinn-mcp-msg" }
+jinn-context-assembly-msg = { path = "crates/slices/jinn-context-assembly-msg" }
 jinn-context-assembly = { path = "crates/slices/jinn-context-assembly" }
 wasm-encoder = "=0.252.0"
 wasmparser = "=0.252.0"

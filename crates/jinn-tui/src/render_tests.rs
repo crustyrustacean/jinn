@@ -325,9 +325,9 @@ async fn mcp_inspector_renders_server_list_and_logs_pane() {
     // Given the MCP server inspector open with one server selected + running.
     let mut app = render_test_app().await;
     {
-        use jinn_domain::feat::picker::mcp_picker_entry::McpServerEntry;
         use jinn_domain::feat::ui::picker_states::PickerExt;
         use jinn_mcp_msg::McpConnectionStatus;
+        use jinn_mcp_msg::McpServerEntry;
         use jinn_theme::default_theme;
         let runtime = app
             .services
@@ -395,8 +395,8 @@ async fn mcp_inspector_tools_pane_renders_tool_names() {
     // Given the MCP inspector open in Tools mode with one advertised tool.
     let mut app = render_test_app().await;
     {
-        use jinn_domain::feat::picker::mcp_picker_entry::{McpPreviewMode, McpServerEntry};
         use jinn_domain::feat::ui::picker_states::PickerExt;
+        use jinn_mcp_msg::{McpPreviewMode, McpServerEntry};
         use jinn_theme::default_theme;
         let registry_cell = app
             .services

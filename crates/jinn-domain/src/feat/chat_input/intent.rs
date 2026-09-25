@@ -18,11 +18,11 @@ use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::AutocompleteTrigger;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::InputMode;
-use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use crate::feat::chat_input::slash_command::SlashCommand;
-use crate::feat::file_lister::ListDirectory;
 use crate::protocol::{ChatEntry, IntentResult};
-use jinn_chat_input_msg::AutocompleteState;
+use jinn_chat_input_msg::{
+    AutocompleteState, EnqueueUserMessage, ListDirectory, SubmitSteeringMessage, resolve_list_dir,
+};
 use jinn_context::PromptTemplateStore;
 use jinn_core_types::SessionId;
 use jinn_session_msg::MarkSessionInteracted;
@@ -1020,7 +1020,7 @@ fn emit_list_directory(state: &mut AppState, filter: &str) -> ListDirectory {
     let session = state.active_session();
     let cwd = session.cwd().to_path_buf();
     let home = home_dir();
-    let dir = crate::feat::file_lister::resolve_list_dir(filter, &cwd, &home);
+    let dir = resolve_list_dir(filter, &cwd, &home);
     // Bump the expected request id so stale replies are dropped.
     let request_id = state
         .frontend

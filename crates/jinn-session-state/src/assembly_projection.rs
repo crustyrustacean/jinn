@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use jinn_context::ContextFile;
 use jinn_core_types::{ChatEntry, SessionId};
-use jinn_skills::Skill;
+use jinn_skills_msg::Skill;
 
 use crate::ChatSessionState;
 

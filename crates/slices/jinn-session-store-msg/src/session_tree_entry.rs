@@ -2,13 +2,13 @@
 
 use std::ops::Range;
 
+use crate::SessionState;
 use jinn_core_types::SessionId;
 use jinn_picker::RowCtx;
 use jinn_picker::picker_style::dim_style;
 use jinn_picker::picker_style::selected_style;
 use jinn_selection_widget::TreeItem;
 use jinn_selection_widget::highlight_text_with_bg;
-use jinn_session_store_msg::SessionState;
 use jinn_theme::Theme;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};

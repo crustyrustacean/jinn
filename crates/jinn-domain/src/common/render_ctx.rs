@@ -8,7 +8,7 @@
 //! [`RenderCtx::slices`] instead of reading `FrontendState` fields.
 
 use crate::common::app_state::AppState;
-use crate::feat::session::prune_report::prune_report;
+use jinn_context_curation_msg::prune_report;
 use jinn_picker::PickerRegistry;
 use jinn_slices::AppFact;
 use jinn_slices::OverlayViewFn;

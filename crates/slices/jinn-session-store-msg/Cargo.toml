@@ -6,7 +6,12 @@ description = "Session-store crossing contracts: the search and transcript-windo
 
 [dependencies]
 jinn-core-types = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-selection-widget = { workspace = true }
 jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
+unicode-width = { workspace = true }
 jiff = { workspace = true }
 serde = { workspace = true }
 trouper = { workspace = true }

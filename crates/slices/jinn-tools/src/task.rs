@@ -48,9 +48,9 @@ use crate::BoxedToolFuture;
 use crate::task_phase_listener_actor::{TaskPhaseListenerActor, TaskPhaseListenerDeps};
 use crate::task_settle_listener_actor::{TaskSettleListenerActor, TaskSettleListenerDeps};
 use crate::tool_types::ToolContext;
+use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_core_types::{ChatEntry, ChatEntryKind, ModelSelection, SessionId};
-use jinn_domain::feat::chat_input::protocol::command::EnqueueUserMessage;
 use jinn_inference_msg::CancelStream;
 use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_state::ChatSessionState;
@@ -183,7 +183,7 @@ subagent; on expiry the subagent is cancelled and a failure is returned.
                 },
                 "model": {
                     "type": "string",
-                    "description": "Optional model id for the subagent. Defaults to this session's model."
+                    "description": "Optional model override for the subagent. Defaults to this session's model. Omit field to inherit current session model. Do not provide empty strings or use 'inherit' as the model. This field is only when you need to explicitly set the model (you almost never need to do this)."
                 },
             },
             "required": ["prompt"]

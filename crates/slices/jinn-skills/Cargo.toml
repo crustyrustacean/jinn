@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The skills slice: skill data model, frontmatter parsing, scanning, and prompt formatting."
 
 [dependencies]
+jinn-skills-msg = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]

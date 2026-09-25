@@ -434,7 +434,7 @@ async fn collect_lifecycle_args(
     lifecycle: String,
 ) -> Result<Option<(String, Vec<String>)>, BotError> {
     use crate::backend::feat::discord::lifecycle_inputs::resolve_lifecycle_inputs;
-    use jinn_domain::feat::session_lifecycle::command_template::parse_quoted_args;
+    use jinn_session_lifecycle_msg::command_template::parse_quoted_args;
 
     // Resolve how many positional args the lifecycle needs and the prompt text
     // to show for them. Reading preferences under a short-lived read guard so it

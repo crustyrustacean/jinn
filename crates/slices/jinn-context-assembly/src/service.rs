@@ -9,7 +9,7 @@ use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
-use jinn_domain::feat::context::protocol::inputs::{AssembleContext, AssembledResponse};
+use jinn_context_assembly_msg::{AssembleContext, AssembledResponse};
 
 use crate::assemble::assemble;
 
@@ -68,9 +68,9 @@ pub fn ensure_spawned(system: &trouper::system::ActorSystem) -> Option<ActorPath
 mod tests {
     use super::*;
     use crate::inputs::build_assembly_inputs;
+    use jinn_context_assembly_msg::AssembleContext;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::context::protocol::inputs::AssembleContext;
     use jinn_domain::protocol::ChatEntry;
 
     #[rstest::rstest]

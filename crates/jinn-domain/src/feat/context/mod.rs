@@ -31,7 +31,6 @@
 #[cfg(test)]
 pub(crate) mod assembly_test_bridge;
 
-pub mod protocol;
 pub mod snapshot;
 pub mod strategy;
 pub mod tool_prompt;

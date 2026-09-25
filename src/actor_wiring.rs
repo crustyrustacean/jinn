@@ -489,12 +489,10 @@ impl ActorSystemBuilder {
             // now that every actor (the session actor subscribes to
             // `PersonasLoaded`) is spawned.
             if !persona_entries.entries.is_empty() {
-                bus.publish(
-                    jinn_domain::feat::context::protocol::event::PersonasLoaded {
-                        personas: persona_entries.entries.clone(),
-                        error: None,
-                    },
-                )
+                bus.publish(jinn_persona_msg::PersonasLoaded {
+                    personas: persona_entries.entries.clone(),
+                    error: None,
+                })
                 .await;
             }
 
@@ -537,12 +535,10 @@ impl ActorSystemBuilder {
             // supervisor routes from payloads, not shared state. This publish
             // triggers the initial session's discovery through the same
             // payload path as every other session.
-            bus.publish(
-                jinn_domain::feat::session_lifecycle::protocol::event::SessionCwdChanged {
-                    session_id: initial_session_id,
-                    cwd: initial_cwd,
-                },
-            )
+            bus.publish(jinn_session_lifecycle_msg::SessionCwdChanged {
+                session_id: initial_session_id,
+                cwd: initial_cwd,
+            })
             .await;
         }
 

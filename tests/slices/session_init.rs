@@ -14,7 +14,8 @@ use std::time::Duration;
 use jinn_core_types::SessionId;
 use jinn_domain::common::bridge::Bridge;
 use jinn_domain::common::bus::test_harness::{Recorder, await_recorded};
-use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
+use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
+use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_state::ChatSessionState;
 use jinn_tui::TuiApp;
 
@@ -79,10 +80,9 @@ async fn session_created_triggers_discovery_and_loaded_events_land_on_slice_topi
     // Given a composed app with a real project tree, a resolved cwd,
     // and recorders on the bus for the three kernel event types.
     let (app, project, session_id) = composed_app_with_project().await;
-    let skills_recorder = recorder_for::<jinn_domain::feat::skills::SkillsLoaded>(&app).await;
-    let prompts_recorder = recorder_for::<jinn_session_init_msg::PromptTemplatesLoaded>(&app).await;
-    let context_recorder =
-        recorder_for::<jinn_domain::feat::context::protocol::event::ContextFilesLoaded>(&app).await;
+    let skills_recorder = recorder_for::<jinn_skills_msg::SkillsLoaded>(&app).await;
+    let prompts_recorder = recorder_for::<PromptTemplatesLoaded>(&app).await;
+    let context_recorder = recorder_for::<ContextFilesLoaded>(&app).await;
 
     // When the kernel publishes `SessionCreated` (the lifecycle event
     // that drives discovery): supervisor → keyed worker → Loaded
@@ -136,14 +136,14 @@ async fn boot_cwd_changed_triggers_initial_discovery() {
     // cwd — exactly like boot, where only the composition tail knows
     // the initial session's cwd.
     let (app, project, session_id) = composed_app_with_project().await;
-    let skills_recorder = recorder_for::<jinn_domain::feat::skills::SkillsLoaded>(&app).await;
+    let skills_recorder = recorder_for::<jinn_skills_msg::SkillsLoaded>(&app).await;
 
     // When the kernel publishes `SessionCwdChanged` for the boot
     // session (the tail's publish beside `EnvironmentLoaded`): forward
     // relay → supervisor → keyed worker → Loaded events → reverse
     // relays → this bus.
     let _ = app.core.bridge.send(Bridge::publish_closure(
-        jinn_domain::feat::session_lifecycle::protocol::event::SessionCwdChanged {
+        jinn_session_lifecycle_msg::SessionCwdChanged {
             session_id: session_id.clone(),
             cwd: project.clone(),
         },
@@ -166,7 +166,7 @@ async fn environment_loaded_is_no_longer_a_slice_trigger() {
     // Given a composed app with a resolved project tree; the slice's
     // forward relays no longer include `EnvironmentLoaded`.
     let (app, _project, session_id) = composed_app_with_project().await;
-    let skills_recorder = recorder_for::<jinn_domain::feat::skills::SkillsLoaded>(&app).await;
+    let skills_recorder = recorder_for::<jinn_skills_msg::SkillsLoaded>(&app).await;
 
     // When the kernel publishes `EnvironmentLoaded` (still a live event:
     // the provider init, browser scan, and session-actor seed flows
@@ -214,16 +214,17 @@ async fn manual_scan_reaches_only_the_addressed_session() {
         app.core.state.write().session.insert(session);
         id
     };
-    let skills_recorder = recorder_for::<jinn_domain::feat::skills::SkillsLoaded>(&app).await;
+    let skills_recorder = recorder_for::<jinn_skills_msg::SkillsLoaded>(&app).await;
 
     // When the kernel publishes the manual `ScanSkills` command (the
     // intent handler's publish path) addressed to the FIRST session.
-    let _ = app.core.bridge.send(Bridge::publish_closure(
-        jinn_domain::feat::skills::ScanSkills {
+    let _ = app
+        .core
+        .bridge
+        .send(Bridge::publish_closure(jinn_skills_msg::ScanSkills {
             session_id: first.clone(),
             cwd: project,
-        },
-    ));
+        }));
 
     // Then exactly the addressed session's event crosses.
     let skills = await_recorded(&skills_recorder, 1, Duration::from_secs(15)).await;

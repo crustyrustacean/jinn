@@ -5,12 +5,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use jinn_core_types::SessionId;
 use jinn_core_types::SessionProfile;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::session::profile::SessionSeed;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node};
 use jinn_session_store_msg::SessionState;
 use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
 
-use jinn_session_msg::{SessionArchived, SessionClosed, SessionRemoved};
+use jinn_session_msg::{SessionArchived, SessionClosed, SessionRemoved, SessionSeed};
 
 use crate::session_store_actor::SessionStoreActor;
 

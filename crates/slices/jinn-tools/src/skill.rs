@@ -5,8 +5,8 @@
 
 use crate::tool_types::ToolContext;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult, ToolResultPinPosition};
-use jinn_skills::Skill;
 use jinn_skills::frontmatter::strip_frontmatter;
+use jinn_skills_msg::Skill;
 
 use super::BoxedToolFuture;
 
@@ -289,7 +289,7 @@ mod tests {
         use jinn_core_types::SessionId;
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::state::State;
-        use jinn_skills::{Skill, SkillSource};
+        use jinn_skills_msg::{Skill, SkillSource};
 
         // Given a project-local skill whose file_path is NOT under the global
         // skills dir. Pre-fix, execute() would re-derive the path from the global
@@ -376,7 +376,7 @@ mod tests {
         use jinn_core_types::SessionId;
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::state::State;
-        use jinn_skills::{Skill, SkillSource};
+        use jinn_skills_msg::{Skill, SkillSource};
 
         // Given a project-local skill seeded with a distinct base_dir.
         let tmp = tempfile::tempdir().expect("create temp dir");

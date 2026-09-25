@@ -11,12 +11,10 @@ use jinn_picker::PickerOutcome;
 use jinn_picker::PickerSpec;
 
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
-use jinn_domain::feat::session_lifecycle::picker_entry::lifecycle_row;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_preferences_config::schemas::LifecycleCommand;
-use jinn_session_lifecycle_msg::ArgInputState;
-use jinn_session_lifecycle_msg::CommandTemplate;
+use jinn_session_lifecycle_msg::picker_entry::{SessionLifecycleEntry, lifecycle_row};
+use jinn_session_lifecycle_msg::{ArgInputState, CommandTemplate};
 use jinn_slices::ScopeSignal;
 
 /// Builds the session-lifecycle picker's spec.

@@ -4,14 +4,7 @@
 //! Uses a minimal hand-rolled parser instead of a full YAML library -
 //! we only need `name` and `description` string fields.
 
-/// Parsed frontmatter fields from a SKILL.md file.
-#[derive(Debug, Clone)]
-pub struct SkillFrontmatter {
-    /// The skill name (must match parent directory).
-    pub name: Option<String>,
-    /// The skill description.
-    pub description: Option<String>,
-}
+pub use jinn_skills_msg::SkillFrontmatter;
 
 /// Extracts and parses YAML frontmatter from a markdown file.
 ///

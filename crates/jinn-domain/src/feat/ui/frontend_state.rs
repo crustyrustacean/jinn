@@ -1,5 +1,6 @@
 //! Frontend / UI state.
 
+use jinn_chat_input_msg::FilePickerState;
 use jinn_sidebar_msg::SidebarScopeExt;
 use parking_lot::RwLock;
 
@@ -128,7 +129,7 @@ pub struct FrontendState {
 
     /// `@path` file popup state.
     /// OWNER: DirectoryListerActor (entries, loading, expected_request_id).
-    pub file_picker: crate::feat::file_lister::FilePickerState,
+    pub file_picker: FilePickerState,
 
     /// Late-attached handle to the slice registry, carrying the
     /// scope-focus cell (the focus stack, TUI signals, and quit latch).
@@ -158,7 +159,7 @@ impl Default for FrontendState {
             pending_creation: None,
 
             sidebar_width: 30,
-            file_picker: crate::feat::file_lister::FilePickerState::default(),
+            file_picker: FilePickerState::default(),
         }
     }
 }

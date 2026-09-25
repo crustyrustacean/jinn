@@ -4,7 +4,7 @@
 //! preserving the session's disabled-skills set and the picker's filter text.
 use crate::feat::ui::frontend_state::FrontendState;
 use crate::feat::ui::picker_states::PickerExt;
-use jinn_skills::Skill;
+use jinn_skills_msg::Skill;
 use std::collections::HashSet;
 
 /// Reloads skill picker entries from the active session's discovered skills.
@@ -77,7 +77,7 @@ mod tests {
             body: body.to_owned(),
             file_path: std::path::PathBuf::from(format!("/tmp/{name}/SKILL.md")),
             base_dir: std::path::PathBuf::from(format!("/tmp/{name}")),
-            source: jinn_skills::SkillSource::Global,
+            source: jinn_skills_msg::SkillSource::Global,
         }
     }
 

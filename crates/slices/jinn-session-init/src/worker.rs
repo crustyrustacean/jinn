@@ -45,7 +45,8 @@ use jinn_context::PromptTemplateStore;
 use jinn_context::env_context::ContextFile;
 use jinn_core_types::SessionId;
 use jinn_domain::common::state::State;
-use jinn_skills::Skill;
+use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
+use jinn_skills_msg::Skill;
 
 use crate::commands::{RescanContext, RescanPrompts, RescanSkills, RunDiscovery};
 use crate::contracts::{DiscoverySnapshot, SessionDiscoverySettled};
@@ -350,7 +351,7 @@ impl SessionDiscoveryWorker {
                     write_prompts(&state, &session_id, &store);
                     publish(
                         &system,
-                        jinn_session_init_msg::PromptTemplatesLoaded {
+                        PromptTemplatesLoaded {
                             session_id: session_id.clone(),
                             templates: store.templates().to_vec(),
                             error: None,
@@ -363,7 +364,7 @@ impl SessionDiscoveryWorker {
                     tracing::warn!("failed to rescan prompt templates: {error:?}");
                     publish(
                         &system,
-                        jinn_session_init_msg::PromptTemplatesLoaded {
+                        PromptTemplatesLoaded {
                             session_id: session_id.clone(),
                             templates: vec![],
                             error: Some(error.clone()),
@@ -377,7 +378,7 @@ impl SessionDiscoveryWorker {
                     let error = format!("rescan task failed: {join_error}");
                     publish(
                         &system,
-                        jinn_session_init_msg::PromptTemplatesLoaded {
+                        PromptTemplatesLoaded {
                             session_id: session_id.clone(),
                             templates: vec![],
                             error: Some(error.clone()),
@@ -412,7 +413,7 @@ impl SessionDiscoveryWorker {
                     write_context(&state, &session_id, &files);
                     publish(
                         &system,
-                        jinn_domain::feat::context::protocol::event::ContextFilesLoaded {
+                        ContextFilesLoaded {
                             session_id: session_id.clone(),
                             files: files.clone(),
                             error: None,
@@ -426,7 +427,7 @@ impl SessionDiscoveryWorker {
                     let error = format!("context-files scan task failed: {join_error}");
                     publish(
                         &system,
-                        jinn_domain::feat::context::protocol::event::ContextFilesLoaded {
+                        ContextFilesLoaded {
                             session_id: session_id.clone(),
                             files: vec![],
                             error: Some(error.clone()),

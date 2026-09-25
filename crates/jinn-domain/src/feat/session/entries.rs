@@ -1,16 +1,15 @@
 //! Session entries - loading and formatting for the tree-structured picker.
 //!
-//! Contains loader functions for session picker entries.
-//! The [`SessionTreeEntry`] struct and [`TreeItem`] implementation live
-//! in `picker_entry.rs`.
+//! Contains loader and sorting functions for canonical
+//! [`jinn_session_store_msg::SessionTreeEntry`] values.
 
 use std::collections::HashMap;
 
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
-use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_core_types::SessionId;
+use jinn_session_store_msg::SessionTreeEntry;
 use jinn_theme::Theme;
 
 use super::SessionStoreService;
@@ -148,7 +147,7 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
             // Tree-aware sort: whole trees move as a unit, positioned by
             // the most recent updated_at in the tree. Loaded first.
             sort_entries_tree_aware(&mut entries);
-            crate::feat::session::picker_entry::apply_project_column_width(&mut entries);
+            jinn_session_store_msg::apply_project_column_width(&mut entries);
             entries
         }
         Err(e) => {
@@ -166,7 +165,7 @@ pub(crate) fn wrap_session_entries(
     jinn_picker::make_items_with_hooks(
         entries,
         jinn_picker::PickerItemHooks::new()
-            .row(crate::feat::session::picker_entry::session_row)
+            .row(jinn_session_store_msg::session_row)
             .search(|entry: &SessionTreeEntry| entry.title.clone()),
     )
 }
@@ -208,7 +207,7 @@ pub async fn load_session_entries_from_store(
             // Tree-aware sort: whole trees move as a unit, positioned by
             // the most recent updated_at in the tree. Loaded first.
             sort_entries_tree_aware(&mut entries);
-            crate::feat::session::picker_entry::apply_project_column_width(&mut entries);
+            jinn_session_store_msg::apply_project_column_width(&mut entries);
             entries
         }
         Err(e) => {
@@ -239,13 +238,13 @@ mod tests {
     )]
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
-    use crate::feat::session::picker_entry::SessionTreeEntry;
     use jinn_core_types::SessionId;
     use jinn_selection_widget::PickerItem;
     use jinn_selection_widget::TreeItem;
     use jinn_session_state::SessionSnapshot;
     use jinn_session_store_msg::SessionState;
     use jinn_session_store_msg::SessionSummary;
+    use jinn_session_store_msg::SessionTreeEntry;
     use jinn_theme::default_theme;
 
     use super::*;

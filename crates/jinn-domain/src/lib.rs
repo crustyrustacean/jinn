@@ -3,12 +3,12 @@
 //! This crate consolidates the application's domain logic:
 //!
 //! - **Protocol types** (`protocol/`) - cross-cutting value types shared across
-//!   feature boundaries: `Intent`, `Key`, `Mode`, and system events. Each
-//!   feature also defines its own per-type messages in a `protocol/` directory
-//!   under its feature module; the actor bus routes by `TypeId` via the marker
-//!   trait `BusMessage` (in `common/bus.rs`) rather than a central enum.
+//!   feature boundaries: `Intent`, `Key`, `Mode`, and system events. Slice-owned
+//!   commands and events live in their canonical `*-msg` crates; the actor bus
+//!   routes by `TypeId` via the marker trait `BusMessage` (in `common/bus.rs`)
+//!   rather than a central enum.
 //! - **Domain slices** (`feat/`) - vertical slices where each feature colocates
-//!   its actors, intents, UI elements, state, and messages together.
+//!   its actors, intents, UI elements, and state implementation.
 //! - **Common** (`common/`) - shared infrastructure (bus, services, app paths,
 //!   TOML patching), most of which is re-exported from the `jinn-common` crate.
 //!
@@ -87,9 +87,6 @@ pub use feat::install::{
     Destinations, InstallError, InstallOutcome, InstallReport, JinnTomlOutcome, install_defaults_to,
 };
 
-// Re-export persona types
-pub use feat::persona::{Persona, PersonaEntry};
-
 // Re-export services submodules
 
 // Re-export protocol types at crate root
@@ -103,8 +100,6 @@ pub use protocol::{
 // Re-export domain types from their canonical locations
 pub use common::actor::protocol::command::ProceedWithShutdown;
 pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
-pub use feat::chat_input::protocol::command::EnqueueUserMessage;
-pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
 pub use jinn_provider::LlmMessage;
 pub use jinn_session_history_msg::PushChatEntry;
 pub use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
@@ -131,4 +126,3 @@ pub use jinn_inference_msg::{
     StreamToken,
 };
 pub use jinn_session_init_msg::{PromptTemplate, PromptTemplatesLoaded, RescanPromptTemplates};
-pub use jinn_slices::AssembledPrompt;

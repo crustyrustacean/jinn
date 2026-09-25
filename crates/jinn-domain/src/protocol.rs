@@ -7,8 +7,9 @@
 //! - **[`system`]** - `KeyDown`, `KeyUp`, `ModeChanged`
 //! - Shared `Key`, `KeyEvent`, `Modifiers`, and `Mode` vocabulary from `jinn-slices`
 //!
-//! Domain-specific types (session, provider, context, tools, chat input, etc.) live
-//! in their feature modules under `feat/` and are re-exported here for convenience.
+//! Kernel protocol vocabulary and shared core/slice values live here; commands
+//! and events owned by a slice are defined directly in that slice's canonical
+//! `*-msg` crate.
 
 pub mod intent;
 pub mod system;
@@ -30,7 +31,6 @@ pub use jinn_slices::picker_kind::PickerKind;
 
 // Re-export domain types used by the picker and UI
 pub use crate::feat::provider::entries_to_messages::entries_to_messages;
-pub use crate::feat::session::picker_entry::SessionTreeEntry;
 pub use jinn_provider_selection_msg::ProviderPickerEntry;
 // The `ChatEntry` vocabulary is promoted to `jinn-core-types` (serde-only
 // value types); these re-exports keep the long-standing `jinn_domain::…`

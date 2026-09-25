@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The session-lifecycle slice: the actor that runs session setup, teardown, close, and working-directory changes."
 
 [dependencies]
+jinn-chat-input-msg = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-common = { workspace = true }

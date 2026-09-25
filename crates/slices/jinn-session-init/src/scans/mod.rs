@@ -1,9 +1,9 @@
 //! The session-init slice's scans — the pure filesystem logic the
 //! discovery worker runs on blocking threads.
 //!
-//! The scan kernels (`feat::discovery` bounded walk, `feat::skills::scan`)
-//! live in the kernel crates. Portable prompt/context values come from
-//! `jinn-context`; the skill model and YAML frontmatter remain in `jinn-skills`.
+//! The scan kernels live in their behavior crates. Portable prompt/context
+//! values come from `jinn-context`; portable skill values come from
+//! `jinn-skills-msg`.
 //!
 //! - [`vcs`] — marker-based VCS-root detection.
 //! - [`walk`] — the bounded cwd→ancestor walk (exclusive `$HOME`,
@@ -37,7 +37,7 @@ pub const CONTEXT_FILE_CANDIDATES: &[&str] = &["AGENTS.md", "AGENTS.MD", "CLAUDE
 /// carried in the resource's `Loaded` event, not here.
 pub struct ScanOutputs {
     /// The merged discovered skills.
-    pub skills: Vec<jinn_skills::Skill>,
+    pub skills: Vec<jinn_skills_msg::Skill>,
     /// The merged prompt-template store.
     pub prompts: Result<PromptTemplateStore, String>,
     /// The bounded-walk context files with contents read.

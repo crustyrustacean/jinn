@@ -249,10 +249,11 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
+    use jinn_persona_msg::{PersonaEntry, persona_row};
     use jinn_picker::PERSONA_ID;
 
-    fn test_persona(name: &str) -> crate::feat::persona::PersonaEntry {
-        crate::feat::persona::PersonaEntry {
+    fn test_persona(name: &str) -> PersonaEntry {
+        PersonaEntry {
             name: name.to_owned(),
             description: String::new(),
             is_active: false,
@@ -268,7 +269,7 @@ mod tests {
         let items = jinn_picker::make_items_with_hooks(
             vec![test_persona("a")],
             jinn_picker::PickerItemHooks::new()
-                .row(crate::feat::persona::persona_row)
+                .row(persona_row)
                 .search(|entry| entry.name.clone()),
         );
         state.frontend.persona_picker_mut().set_items(items);
@@ -279,7 +280,7 @@ mod tests {
             host.selection_state(PickerId::new(PERSONA_ID))
                 .expect("persona is mapped")
                 .downcast_ref::<jinn_selection_widget::SelectionState<
-                    jinn_picker::PickerEntry<crate::feat::persona::PersonaEntry>,
+                    jinn_picker::PickerEntry<PersonaEntry>,
                 >>()
                 .is_some()
         };

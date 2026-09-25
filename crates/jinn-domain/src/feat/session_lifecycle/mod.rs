@@ -1,27 +1,10 @@
-//! Session lifecycle management - setup/teardown command templates for sessions.
+//! Session lifecycle setup and teardown intent handling.
 //!
-//! Provides [`CommandTemplate`] for parsing and rendering shell command strings
-//! that contain positional parameters (`$1`, `$2`, `$@`). Used by session
-//! lifecycle recipes to bootstrap and tear down working directories.
+//! The lifecycle command, event, and shared vocabulary contracts live in
+//! `jinn-session-lifecycle-msg`. This module owns only the synchronous
+//! kernel behavior that prepares sessions and renders lifecycle commands.
 
 pub mod intent;
-
-// The contracts and the kernel-consumed leaf vocabulary live in the lifecycle
-// family msg crate. Re-exported here for the kernel's synchronous lifecycle
-// intent and rendering path.
-pub use jinn_session_lifecycle_msg::{builtin, command_template, picker_entry};
-pub mod protocol {
-    pub use jinn_session_lifecycle_msg::command::{
-        CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
-        RunSessionTeardown, SetSessionCwd, TeardownFollowUp,
-    };
-    pub use jinn_session_lifecycle_msg::event::{SessionCreated, SessionCwdChanged};
-    pub use jinn_session_lifecycle_msg::{
-        SessionSetupCompleted, SessionTeardownFinished, command, event,
-    };
-}
-
-pub use jinn_preferences_config::schemas::{BuiltinId, LifecycleCommand, SessionLifecycle};
 
 #[cfg(test)]
 mod tests {
@@ -33,8 +16,8 @@ mod tests {
     )]
     use tempfile::TempDir;
 
-    use super::SessionLifecycle;
     use crate::common::app_info::PREFS_FILE_NAME;
+    use jinn_preferences_config::schemas::SessionLifecycle;
     use jinn_preferences_config::user_preferences::{load_preferences_from, save_preferences_to};
 
     #[rstest::rstest]

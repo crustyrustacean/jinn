@@ -39,7 +39,6 @@ Entries are added or amended **only with human approval**.
 - (slices) Slice activation crates and their paired `-msg` contract crates live under `crates/slices/`; shared and kernel-adjacent crates live under `crates/`.
 - (slices) Slices read their `jinn.toml` section through read-only typed or dynamic config-section views; defaults are supplied by the slice.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
-- (arch) `jinn-tui` compiles with zero slice-crate dependencies: tui tests use synthetic slice-shaped inputs, and tests composing real slice rows, cells, or activation live in the root crate's `tests/` integration targets with a `tests/common` harness.
 - (arch) Test fixtures and integration tests that span crates live in the root crate's `tests/` directory so `just check` and IDE analysis never compile them; unit tests inside a crate may only use that crate's dependencies.
 - (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
 - (arch) `AppState` is the shared state; the frontend writes user input, domain actors write their owned fields, and the TUI renderer reads it on each tick.
@@ -398,7 +397,7 @@ Entries are added or amended **only with human approval**.
 - (picker) The picker framework (spec/registry/hooks, the twelve id constants, spec_id_for_kind, the style helpers, and the full-hook make_items_with_hooks wrapping seam) lives in the kernel-free jinn-picker crate; the twelve feature specs plus build_picker_registry live in jinn-picker-specs, which depends on jinn-domain. The generic dispatch layer (intents, validation, action routing, both host lenses, geometry, the row types) deliberately stays kernel-resident because feat/intent/handler.rs calls into it.
 - (picker) jinn-domain must not depend on jinn-picker-specs even as a dev-dependency: Cargo would build two copies of jinn-domain in one test binary, so the specs' state_any downcasts would target the wrong AppState. The kernel's dispatch tests use the metadata-only feat/picker/test_registry.rs; spec behavior is tested in jinn-picker-specs.
 - (picker) PickerStates remains in FrontendState; moving the typed selection storage to a cell requires reshaping PickerHost, which still lends selection state as &dyn Any from &AppState.
-- (picker) Each picker spec's state_any downcast is a temporary bridge; every picker is still hosted by the jinn-picker-specs crate rather than its owning slice, and feat/file_lister (the @-popup autocomplete) is a separate family, untouched.
+- (picker) Each picker spec's state_any downcast is a temporary bridge; every picker is still hosted by the jinn-picker-specs crate rather than its owning slice.
 - (session) Live session state is owned by the `jinn-session-state` crate, which preserves the authoritative atomic session aggregate and runtime turn state.
 - (session) Durable session persistence uses a complete `SessionSnapshot` containing session metadata, history, task state, and token accounting.
 - (session) The session turn reducer is owned by `jinn-session-turn` and coordinates history, phase, streaming, tools, retries, and persistence.

@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use crate::frontmatter::{parse_frontmatter, strip_frontmatter};
-use crate::skill::{Skill, SkillSource};
+use jinn_skills_msg::{Skill, SkillSource};
 
 /// Scans a directory for agent skills.
 ///

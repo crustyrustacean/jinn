@@ -2,7 +2,7 @@
 name = "jinn-session-init-msg"
 version.workspace = true
 edition.workspace = true
-description = "Session-init crossing contracts: the prompt-template rescan command, loaded event, and the PromptTemplate noun."
+description = "Session-init crossing contracts: resource discovery commands, loaded events, and the PromptTemplate noun."
 
 [dependencies]
 jinn-context = { workspace = true }

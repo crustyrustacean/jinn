@@ -29,6 +29,7 @@ wherror = { workspace = true }
 error-stack = { workspace = true }
 
 jinn-session-init-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
 
 [dev-dependencies]
 jinn-testutil = { workspace = true }

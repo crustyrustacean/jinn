@@ -22,11 +22,11 @@ use ratatui::text::Span;
 use jinn_core_types::{ChatEntry, ChatEntryId, PinPosition, ToolResultStatus};
 use jinn_domain::RescanPromptTemplates;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::context::protocol::command::ScanContextFiles;
-use jinn_domain::feat::skills::ScanSkills;
 use jinn_domain::feat::skills::skill_entry::{body_hash_key, render_skill_preview, skill_row};
 use jinn_domain::feat::ui::picker_states::PickerExt;
+use jinn_session_init_msg::ScanContextFiles;
 use jinn_session_msg::MarkSessionInteracted;
+use jinn_skills_msg::ScanSkills;
 
 /// The kernel entry this picker's items wrap in storage.
 pub use jinn_domain::feat::skills::SkillEntry;
@@ -337,7 +337,6 @@ mod tests {
     )]
     use super::*;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
-    use jinn_domain::feat::skills::SkillSource;
     use jinn_domain::protocol::ChatEntryKind;
     use jinn_domain::protocol::PickerKind;
     use jinn_picker::PickerEntry;
@@ -346,11 +345,12 @@ mod tests {
     use jinn_picker::SKILL_ID;
     use jinn_selection_widget::SelectionState;
     use jinn_session_state::ChatSessionState;
+    use jinn_skills_msg::SkillSource;
     use jinn_slices::FocusScope;
 
     /// A discovered skill with a small markdown body.
-    fn skill(name: &str, description: &str, body: &str) -> jinn_domain::feat::skills::Skill {
-        jinn_domain::feat::skills::Skill {
+    fn skill(name: &str, description: &str, body: &str) -> jinn_skills_msg::Skill {
+        jinn_skills_msg::Skill {
             name: name.to_owned(),
             description: description.to_owned(),
             body: body.to_owned(),
@@ -1003,13 +1003,13 @@ mod render_cache_tests {
         // Given a picker holding two same-named skills with different bodies
         // (as two sessions' shadowing would produce).
         let mut state = AppState::default_with_scope_focus();
-        let skill = |body: &str| jinn_domain::feat::skills::Skill {
+        let skill = |body: &str| jinn_skills_msg::Skill {
             name: "shared".to_owned(),
             description: "shadowed".to_owned(),
             body: body.to_owned(),
             file_path: std::path::PathBuf::from("/tmp/shared/SKILL.md"),
             base_dir: std::path::PathBuf::from("/tmp/shared"),
-            source: jinn_domain::feat::skills::SkillSource::Global,
+            source: jinn_skills_msg::SkillSource::Global,
         };
         state
             .active_session_mut()
@@ -1064,13 +1064,13 @@ mod render_cache_tests {
         let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
-            .set_discovered_skills(vec![jinn_domain::feat::skills::Skill {
+            .set_discovered_skills(vec![jinn_skills_msg::Skill {
                 name: "web-coder".to_owned(),
                 description: "Web coder".to_owned(),
                 body: "## Body text that renders".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/web-coder"),
-                source: jinn_domain::feat::skills::SkillSource::Global,
+                source: jinn_skills_msg::SkillSource::Global,
             }]);
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Skill,
@@ -1116,21 +1116,21 @@ mod render_cache_tests {
         // Given a picker with two skills, selection on the first.
         let mut state = AppState::default_with_scope_focus();
         state.active_session_mut().set_discovered_skills(vec![
-            jinn_domain::feat::skills::Skill {
+            jinn_skills_msg::Skill {
                 name: "web-coder".to_owned(),
                 description: "Web coder".to_owned(),
                 body: "## Web body".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/web-coder"),
-                source: jinn_domain::feat::skills::SkillSource::Global,
+                source: jinn_skills_msg::SkillSource::Global,
             },
-            jinn_domain::feat::skills::Skill {
+            jinn_skills_msg::Skill {
                 name: "rust".to_owned(),
                 description: "Rust".to_owned(),
                 body: "## Rust body".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/rust/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/rust"),
-                source: jinn_domain::feat::skills::SkillSource::Global,
+                source: jinn_skills_msg::SkillSource::Global,
             },
         ]);
         state.frontend.scope_push(FocusScope::Picker {
@@ -1191,13 +1191,13 @@ mod render_cache_tests {
         let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
-            .set_discovered_skills(vec![jinn_domain::feat::skills::Skill {
+            .set_discovered_skills(vec![jinn_skills_msg::Skill {
                 name: "web-coder".to_owned(),
                 description: "Web coder".to_owned(),
                 body: "## Body text".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/web-coder"),
-                source: jinn_domain::feat::skills::SkillSource::Global,
+                source: jinn_skills_msg::SkillSource::Global,
             }]);
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Skill,
@@ -1253,13 +1253,13 @@ mod render_cache_tests {
         let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
-            .set_discovered_skills(vec![jinn_domain::feat::skills::Skill {
+            .set_discovered_skills(vec![jinn_skills_msg::Skill {
                 name: "web-coder".to_owned(),
                 description: "Web coder".to_owned(),
                 body: "## Body text".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/web-coder"),
-                source: jinn_domain::feat::skills::SkillSource::Global,
+                source: jinn_skills_msg::SkillSource::Global,
             }]);
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Skill,

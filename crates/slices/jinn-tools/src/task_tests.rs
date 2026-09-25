@@ -18,16 +18,17 @@ use std::time::Duration;
 
 use crate::task::execute;
 use crate::tool_types::ToolContext;
+use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
 use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_domain::common::state::State;
-use jinn_domain::feat::chat_input::protocol::command::EnqueueUserMessage;
-use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
 use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
 use jinn_inference_msg::CancelStream;
+use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
+use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
 use jinn_tools_msg::{PhaseInput, TaskStatus};
@@ -163,13 +164,11 @@ async fn settle_child_discovery(
     child_id: &SessionId,
     servers: &BTreeSet<String>,
 ) {
-    bus.publish(
-        jinn_domain::feat::context::protocol::event::ContextFilesLoaded {
-            session_id: child_id.clone(),
-            files: vec![],
-            error: None,
-        },
-    )
+    bus.publish(ContextFilesLoaded {
+        session_id: child_id.clone(),
+        files: vec![],
+        error: None,
+    })
     .await;
     bus.publish(jinn_skills_msg::SkillsLoaded {
         session_id: child_id.clone(),
@@ -177,7 +176,7 @@ async fn settle_child_discovery(
         error: None,
     })
     .await;
-    bus.publish(jinn_session_init_msg::PromptTemplatesLoaded {
+    bus.publish(PromptTemplatesLoaded {
         session_id: child_id.clone(),
         templates: vec![],
         error: None,
@@ -887,13 +886,11 @@ async fn settle_waiter_counts_error_events_as_settled() {
 
     // When the three scan events arrive carrying errors (failed scans).
     harness
-        .publish(
-            jinn_domain::feat::context::protocol::event::ContextFilesLoaded {
-                session_id: child_id.clone(),
-                files: vec![],
-                error: Some("scan failed".to_owned()),
-            },
-        )
+        .publish(ContextFilesLoaded {
+            session_id: child_id.clone(),
+            files: vec![],
+            error: Some("scan failed".to_owned()),
+        })
         .await;
     harness
         .publish(jinn_skills_msg::SkillsLoaded {
@@ -903,7 +900,7 @@ async fn settle_waiter_counts_error_events_as_settled() {
         })
         .await;
     harness
-        .publish(jinn_session_init_msg::PromptTemplatesLoaded {
+        .publish(PromptTemplatesLoaded {
             session_id: child_id.clone(),
             templates: vec![],
             error: Some("scan failed".to_owned()),

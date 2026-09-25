@@ -14,6 +14,7 @@ pub mod which_key;
 pub use app_layout::{AppFrameLayout, AppLayout, MIN_HEIGHT, MIN_WIDTH, TabLayout};
 
 use jinn_domain::{AppUiRegistry, FocusScope, Mode, RenderCtx, feat::ui::picker_states::PickerExt};
+use jinn_mcp::provider_prefix;
 use jinn_sidebar::sections::Sidebar;
 use ratatui::{Frame, layout::Rect};
 
@@ -189,12 +190,7 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState, slices: &ji
             .tool_registry()
             .map(|cell| cell.read().tools_for_session(&session_id))
             .unwrap_or_default();
-        jinn_domain::feat::picker::mcp_picker_entry::refresh_snapshot(
-            &server_name,
-            status,
-            &stderr_tail,
-            &defs,
-        )
+        refresh_snapshot(&server_name, status, &stderr_tail, &defs)
     };
     state
         .frontend
@@ -205,6 +201,36 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState, slices: &ji
             entry.stderr_tail = stderr_tail;
             entry.tools = tools;
         });
+}
+
+/// Computes the selected MCP server's live inspector snapshot.
+#[must_use]
+fn refresh_snapshot(
+    server_name: &str,
+    status: Option<jinn_mcp_msg::McpConnectionStatus>,
+    stderr_tail: &str,
+    defs: &[jinn_core_types::ToolDefinition],
+) -> (
+    Option<jinn_mcp_msg::McpConnectionStatus>,
+    String,
+    Vec<(String, String)>,
+) {
+    let prefix = provider_prefix(server_name);
+    let tools = defs
+        .iter()
+        .filter(|definition| definition.name.starts_with(&prefix))
+        .map(|definition| {
+            (
+                definition
+                    .name
+                    .strip_prefix(prefix.as_str())
+                    .unwrap_or(&definition.name)
+                    .to_owned(),
+                definition.description.clone(),
+            )
+        })
+        .collect();
+    (status, stderr_tail.to_owned(), tools)
 }
 
 /// Renders the base layers for the active tab. In Chat mode: tab bar, border,
@@ -323,5 +349,73 @@ fn is_full_width_tab(slices: &jinn_slices::Slices, scope: &FocusScope) -> bool {
     match scope {
         FocusScope::Dynamic(id) => slices.tab_scopes().contains(id),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod mcp_snapshot_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use super::*;
+
+    fn tool_def(name: &str, description: &str) -> jinn_core_types::ToolDefinition {
+        jinn_core_types::ToolDefinition {
+            name: name.to_owned(),
+            description: description.to_owned(),
+            parameters: serde_json::Value::Object(serde_json::Map::new()),
+            prompt_snippet: None,
+            prompt_guidelines: Vec::new(),
+            server_tool_type: None,
+        }
+    }
+
+    #[rstest::rstest]
+    fn refresh_snapshot_filters_and_strips_prefix() {
+        // Given tool definitions from this server, another server, and a builtin.
+        let definitions = vec![
+            tool_def("mcp__excalimate__create_scene", "Create a scene"),
+            tool_def("mcp__excalimate__auto_animate", "Auto-animate"),
+            tool_def("mcp__other__create_scene", "Other server"),
+            tool_def("file_read", "A builtin"),
+        ];
+
+        // When refreshing the snapshot for "excalimate".
+        let (_status, _stderr, tools) = refresh_snapshot("excalimate", None, "", &definitions);
+
+        // Then only excalimate's tools are collected, with prefixes stripped.
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].0, "create_scene");
+        assert_eq!(tools[0].1, "Create a scene");
+        assert_eq!(tools[1].0, "auto_animate");
+    }
+
+    #[rstest::rstest]
+    fn refresh_snapshot_passes_status_and_stderr_through() {
+        // Given a status and stderr tail.
+        let status = jinn_mcp_msg::McpConnectionStatus::Dead;
+
+        // When refreshing.
+        let (actual_status, stderr, _tools) = refresh_snapshot("srv", Some(status), "boom", &[]);
+
+        // Then they pass through unchanged.
+        assert_eq!(actual_status, Some(status));
+        assert_eq!(stderr, "boom");
+    }
+
+    #[rstest::rstest]
+    fn refresh_snapshot_no_matching_tools_returns_empty() {
+        // Given definitions with no matching prefix.
+        let definitions = vec![tool_def("file_read", "builtin")];
+
+        // When refreshing for an unknown server.
+        let (_status, _stderr, tools) = refresh_snapshot("ghost", None, "", &definitions);
+
+        // Then no tools are collected.
+        assert!(tools.is_empty());
     }
 }

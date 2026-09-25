@@ -14,9 +14,6 @@ mod entries_tests;
 #[path = "history_editor_tests.rs"]
 mod history_editor_tests;
 pub mod intent;
-pub mod picker_entry;
-pub mod profile;
-pub mod prune_report;
 pub mod token_stats;
 pub mod tree_aggregate;
 
@@ -26,14 +23,14 @@ mod token_stats_tests;
 mod tree_aggregate_tests;
 
 pub use tree_aggregate::{
-    FrozenTreeNode, TreeAggregateStats, aggregate_tree_stats, find_tree_root, snapshot_frozen_node,
+    FrozenTreeNode, aggregate_tree_stats, find_tree_root, snapshot_frozen_node,
     snapshot_frozen_node_from_snapshot,
 };
 pub mod validator;
 
 pub use jinn_core_types::SessionProfile;
 pub use session_store::{SessionStore, SessionStoreError, SessionStoreService};
-pub use token_stats::{AggregatedTokenStats, TokenRecord, TokenStats, aggregate_session_stats};
+pub use token_stats::aggregate_session_stats;
 
 /// Returns a guidance message for when no API keys are found.
 ///

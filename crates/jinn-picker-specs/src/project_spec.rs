@@ -18,16 +18,13 @@ use ratatui::text::Line;
 
 use jinn_domain::PickerKind;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::project::picker_entry::ProjectEntry;
-use jinn_domain::feat::project::picker_entry::render_project_row;
 use jinn_domain::feat::ui::frontend_state::PendingSessionCreation;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_preferences_config::protocol::command::PreferenceUpdate;
 use jinn_preferences_config::protocol::command::UpdatePreferences;
+use jinn_project_msg::ProjectEntry;
+use jinn_project_msg::render_project_row;
 use jinn_slices::FocusScope;
-
-/// The kernel entry this picker's items wrap in storage.
-pub use jinn_domain::feat::project::picker_entry::ProjectEntry as SpecEntry;
 
 /// Renders one project row — the same tilde-compressed line trunk drew via
 /// `ProjectEntry: PickerItem`, now routed through the spec.
@@ -57,10 +54,8 @@ where
 /// display strings precomputed (tilde-compressed) and sorted by display.
 pub fn load_project_entries(frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState) {
     let theme = frontend.theme.clone();
-    let entries: Vec<ProjectEntry> = jinn_domain::feat::project::picker_entry::project_entries(
-        &frontend.preferences.projects,
-        &theme,
-    );
+    let entries: Vec<ProjectEntry> =
+        jinn_project_msg::project_entries(&frontend.preferences.projects, &theme);
     let wrapped = crate::build_picker_registry()
         .make_items(jinn_picker::PROJECT_ID, entries)
         .unwrap_or_default();
@@ -172,6 +167,7 @@ mod tests {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_picker::PROJECT_ID;
+    use jinn_preferences_config::schemas::ProjectConfig;
     use jinn_session_state::ChatSessionState;
     use jinn_slices::FocusScope;
 
@@ -192,7 +188,7 @@ mod tests {
         });
         state.frontend.preferences.projects = paths
             .iter()
-            .map(|p| jinn_domain::feat::project::ProjectConfig {
+            .map(|p| ProjectConfig {
                 path: std::path::PathBuf::from(p),
                 command_policy: Vec::new(),
             })

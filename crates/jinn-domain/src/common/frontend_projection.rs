@@ -6,12 +6,12 @@
 use std::collections::HashSet;
 
 use crate::common::state::State;
-use crate::feat::file_lister::FilePickerState;
-use crate::feat::persona::PersonaEntry;
-use crate::feat::skills::Skill;
 use crate::feat::ui::frontend_state::FrontendState;
 use crate::feat::ui::picker_states::PickerExt;
+use jinn_chat_input_msg::FilePickerState;
+use jinn_persona_msg::{PersonaEntry, persona_row};
 use jinn_preferences_config::app_state_file::AppStateFile;
+use jinn_skills_msg::Skill;
 use jinn_theme::Theme;
 
 /// Narrow write handle to frontend preferences.
@@ -56,7 +56,7 @@ impl PersonaPickerOps<'_> {
         let wrapped = jinn_picker::make_items_with_hooks(
             items,
             jinn_picker::PickerItemHooks::new()
-                .row(crate::feat::persona::persona_row)
+                .row(persona_row)
                 .search(|entry: &PersonaEntry| entry.name.clone()),
         );
         self.0.persona_picker_mut().set_items(wrapped);
@@ -147,7 +147,6 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::feat::persona::PersonaEntry;
     use jinn_selection_widget::TreeItem;
 
     fn persona(name: &str) -> PersonaEntry {

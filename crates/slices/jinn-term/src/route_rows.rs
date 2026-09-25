@@ -44,6 +44,7 @@ use jinn_domain::protocol::IntentResult;
 use jinn_slices::FocusScope;
 use jinn_slices::route::{ActionCtx, ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
 use jinn_slices::{DynamicIntent, KeyRoutes, SliceScopeId};
+use jinn_status_bar_msg::{StatusBarState, status_bar_slot};
 use jinn_term_msg::command::ControlHolder;
 use jinn_term_msg::{control_scope, is_overlay_scope, view_scope};
 
@@ -162,14 +163,14 @@ pub fn handle_toggle_overlay(state: &mut AppState, slices: &jinn_slices::Slices)
         .map(|cell| cell.read().live_terms.contains(&target))
         .unwrap_or(false);
     if !live {
-        jinn_domain::feat::ui::status_hint::set_hint(
-            state,
-            slices,
-            Some(
-                "that session has no live terminal — ask the agent to run `interactive_term`"
-                    .to_owned(),
-            ),
-        );
+        if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+            status.update(|state| {
+                state.hint = Some(
+                    "that session has no live terminal — ask the agent to run `interactive_term`"
+                        .to_owned(),
+                );
+            });
+        }
         return;
     }
     // If a different popup holds the top of the stack, it is replaced: the
@@ -223,7 +224,9 @@ pub fn handle_handback(state: &mut AppState, slices: &jinn_slices::Slices) {
         registry.set(state.session.active_session_id(), ControlHolder::Agent);
     }
     state.frontend.scope_pop();
-    jinn_domain::feat::ui::status_hint::set_hint(state, slices, Some(HANDLED_HINT.to_owned()));
+    if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+        status.update(|state| state.hint = Some(HANDLED_HINT.to_owned()));
+    }
 }
 
 /// The status hint shown after exiting capture mode: releasing control sends
@@ -262,22 +265,24 @@ pub fn handle_yank(state: &mut AppState, slices: &jinn_slices::Slices) {
         return;
     }
     let Some(screen) = active_screen(state) else {
-        jinn_domain::feat::ui::status_hint::set_hint(
-            state,
-            slices,
-            Some("no live terminal to yank — ask the agent to run `interactive_term`".to_owned()),
-        );
+        if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+            status.update(|state| {
+                state.hint = Some(
+                    "no live terminal to yank — ask the agent to run `interactive_term`".to_owned(),
+                );
+            });
+        }
         return;
     };
     let lines = screen.lines().count();
     state
         .frontend
         .update_scope(|s| s.signals.yank_text = Some(screen));
-    jinn_domain::feat::ui::status_hint::set_hint(
-        state,
-        slices,
-        Some(format!("yanked {lines} terminal lines to the clipboard")),
-    );
+    if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+        status.update(|state| {
+            state.hint = Some(format!("yanked {lines} terminal lines to the clipboard"));
+        });
+    }
 }
 
 /// Handles the `push-screen` action (`I` in `term:view`).
@@ -292,41 +297,38 @@ pub fn handle_push_screen(state: &mut AppState, slices: &jinn_slices::Slices) ->
         return IntentResult::empty();
     }
     let Some(screen) = active_screen(state) else {
-        jinn_domain::feat::ui::status_hint::set_hint(
-            state,
-            slices,
-            Some("no live terminal to share — ask the agent to run `interactive_term`".to_owned()),
-        );
+        if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+            status.update(|state| {
+                state.hint = Some(
+                    "no live terminal to share — ask the agent to run `interactive_term`"
+                        .to_owned(),
+                );
+            });
+        }
         return IntentResult::empty();
     };
     let lines = screen.lines().count();
     state
         .frontend
         .update_scope(|s| s.signals.yank_text = Some(screen.clone()));
-    jinn_domain::feat::ui::status_hint::set_hint(
-        state,
-        slices,
-        Some(format!(
-            "yanked {lines} terminal lines and sent the screen to the agent"
-        )),
-    );
+    if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+        status.update(|state| {
+            state.hint = Some(format!(
+                "yanked {lines} terminal lines and sent the screen to the agent"
+            ));
+        });
+    }
 
     let text = push_screen_text(&screen);
     let session_id = state.session.active_session_id().clone();
     if state.active_session().phase() == jinn_session_msg::PhaseKind::Idle {
-        IntentResult::empty().with_message(
-            jinn_domain::feat::chat_input::protocol::command::EnqueueUserMessage {
-                session_id,
-                entry: jinn_domain::protocol::ChatEntry::user(text),
-            },
-        )
+        IntentResult::empty().with_message(jinn_chat_input_msg::EnqueueUserMessage {
+            session_id,
+            entry: jinn_domain::protocol::ChatEntry::user(text),
+        })
     } else {
-        IntentResult::empty().with_message(
-            jinn_domain::feat::chat_input::protocol::command::SubmitSteeringMessage {
-                session_id,
-                text,
-            },
-        )
+        IntentResult::empty()
+            .with_message(jinn_chat_input_msg::SubmitSteeringMessage { session_id, text })
     }
 }
 
@@ -517,6 +519,7 @@ mod tests {
     use jinn_slices::route::ActionCtx;
     use jinn_slices::route::KeyRoutes;
     use jinn_slices::route::RouteResult;
+    use jinn_status_bar_msg::{StatusBarState, status_bar_slot};
     use jinn_term_msg::cells::ScreenCells;
     use jinn_term_msg::command::ControlHolder;
 
@@ -539,6 +542,14 @@ mod tests {
             )
             .expect("fresh Slices never has the status-bar cell registered");
         slices
+    }
+
+    fn status_hint(slices: &Slices) -> Option<String> {
+        slices
+            .reader::<StatusBarState>(&status_bar_slot())?
+            .read()
+            .hint
+            .clone()
     }
 
     /// Marks the given session as having a live terminal.
@@ -629,7 +640,7 @@ mod tests {
         // Then no overlay opened.
         assert_eq!(state.frontend.scope(), FocusScope::Input);
         // And a status hint explains the inert press.
-        let hint = jinn_domain::feat::ui::status_hint::hint(&slices);
+        let hint = status_hint(&slices);
         assert!(
             hint.as_deref()
                 .is_some_and(|h| h.contains("no live terminal")),
@@ -754,7 +765,7 @@ mod tests {
         // And no message is published (release is silent; `I` pushes).
         assert!(RouteResult::empty().messages.is_empty());
         // And the status hint advertises the push key.
-        let hint = jinn_domain::feat::ui::status_hint::hint(&slices);
+        let hint = status_hint(&slices);
         assert!(
             hint.as_deref().is_some_and(|h| h.contains('I')),
             "handback hint must advertise I; got {hint:?}"
@@ -813,7 +824,7 @@ mod tests {
             Some("line one\nline two\nline three")
         );
         // And the status hint reports the copied line count.
-        let hint = jinn_domain::feat::ui::status_hint::hint(&slices);
+        let hint = status_hint(&slices);
         assert!(
             hint.as_deref().is_some_and(|h| h.contains('3')),
             "yank hint must report the line count; got {hint:?}"
@@ -835,7 +846,7 @@ mod tests {
         // Then nothing was staged for the clipboard.
         assert!(state.frontend.signals_snapshot().yank_text.is_none());
         // And a status hint explains the inert press.
-        let hint = jinn_domain::feat::ui::status_hint::hint(&slices);
+        let hint = status_hint(&slices);
         assert!(
             hint.as_deref()
                 .is_some_and(|h| h.contains("no live terminal")),

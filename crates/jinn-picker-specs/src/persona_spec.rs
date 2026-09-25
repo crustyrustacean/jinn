@@ -15,15 +15,11 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::context::protocol::command::LoadPersonaPickerEntries;
-use jinn_domain::feat::persona::persona_row;
 use jinn_domain::feat::ui::picker_states::PickerExt;
+use jinn_persona_msg::{LoadPersonaPickerEntries, PersonaEntry, persona_row};
 
 use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use jinn_session_msg::MarkSessionInteracted;
-
-/// The kernel entry this picker's items wrap in storage.
-pub use jinn_domain::feat::persona::PersonaEntry;
 
 /// Builds the persona picker's spec.
 #[must_use]

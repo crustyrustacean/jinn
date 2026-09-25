@@ -1,8 +1,8 @@
 //! Task list tree entry type and rendering for the read-only task list picker.
 //!
 //! Implements [`TreeItem`] for the picker overlay opened via `s` from the
-//! the sidebar task-list scope. Entries are flattened from
-//! [`TaskList`](super::TaskList) into a two-level tree: phases are roots,
+//! sidebar task-list scope. Entries are flattened from
+//! [`crate::todo_list::TaskList`] into a two-level tree: phases are roots, and
 //! tasks are children of their owning phase. Postponed tasks are filtered
 //! out by the loader, not by this type.
 
@@ -13,7 +13,8 @@ use ratatui::{style::Style, symbols};
 
 use jinn_picker::picker_style::{dim_style, selected_style};
 use jinn_theme::Theme;
-use jinn_tools_msg::TaskStatus;
+
+use crate::TaskStatus;
 
 use jinn_selection_widget::TreeItem;
 use jinn_selection_widget::highlight_text_with_bg;

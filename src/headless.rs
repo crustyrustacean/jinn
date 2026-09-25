@@ -4,7 +4,7 @@
 //! It receives commands, submits them to the core, and shuts down gracefully.
 
 use error_stack::{Report, ResultExt};
-use jinn_domain::EnqueueUserMessage;
+use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_domain::IntentHandler;
 use jinn_domain::common::services::Services;
 use jinn_domain::{AppCore, Bridge, ChatEntry};

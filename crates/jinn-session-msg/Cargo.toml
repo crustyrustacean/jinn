@@ -6,12 +6,14 @@ publish.workspace = true
 
 [dependencies]
 jinn-core-types = { workspace = true }
+jinn-preferences-config = { workspace = true }
 jinn-slices = { workspace = true }
 serde = { workspace = true }
 trouper = { workspace = true }
 wherror = { workspace = true }
 
 [dev-dependencies]
+jinn-mcp-msg = { workspace = true }
 rstest = { workspace = true }
 serde_json = { workspace = true }
 

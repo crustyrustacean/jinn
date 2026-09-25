@@ -21,9 +21,12 @@ jinn-mcp-msg = { workspace = true }
 jinn-theme-msg = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-state = { workspace = true }
+jinn-session-init-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-persona-msg = { workspace = true }
+jinn-project-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }
+jinn-skills-msg = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-preferences-config = { workspace = true }

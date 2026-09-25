@@ -345,7 +345,7 @@ mod tests {
         let wrapped = pickers
             .make_items(
                 jinn_picker::PERSONA_ID,
-                vec![jinn_domain::feat::persona::PersonaEntry {
+                vec![jinn_persona_msg::PersonaEntry {
                     name: "coder".to_owned(),
                     description: "code helper".to_owned(),
                     is_active: false,

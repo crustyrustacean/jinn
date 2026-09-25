@@ -1,8 +1,8 @@
 //! State capture for the stateless context-assembly service.
 
+use jinn_context_assembly_msg::AssemblyInputs;
 use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionId};
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::context::protocol::inputs::AssemblyInputs;
 use jinn_session_state::AssemblySessionProjection;
 
 /// Builds a coherent assembly request from the current application state.

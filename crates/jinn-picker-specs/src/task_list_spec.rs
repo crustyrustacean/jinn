@@ -16,10 +16,10 @@ use ratatui::text::Span;
 use jinn_domain::common::app_state::AppState;
 use jinn_selection_widget::TreeItem;
 
-use jinn_domain::feat::picker::task_list_picker_entry::TaskListTreeEntry;
-use jinn_domain::feat::picker::task_list_picker_entry::render_task_list_row;
 use jinn_domain::feat::ui::picker_states::PickerExt;
+use jinn_tools_msg::TaskListTreeEntry;
 use jinn_tools_msg::TaskStatus;
+use jinn_tools_msg::render_task_list_row;
 
 /// Builds the task-list picker's spec.
 #[must_use]
