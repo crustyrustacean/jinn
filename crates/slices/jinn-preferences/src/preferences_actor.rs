@@ -60,11 +60,7 @@ impl PreferencesActor {
     /// Spawns the actor at its static path, declaring `UpdatePreferences`
     /// as handled — the declaration registers the command's route (its
     /// sole handler), so bridge-published commands deliver here.
-    pub fn spawn(
-        system: &ActorSystem,
-        services: Services,
-        state: State,
-    ) -> ActorPath {
+    pub fn spawn(system: &ActorSystem, services: Services, state: State) -> ActorPath {
         spawn_service_builder::<Self>(system)
             .at(ActorPath::new(PREFERENCES_ACTOR_PATH))
             .start_with({

@@ -85,8 +85,8 @@ impl std::error::Error for SlotTaken {}
 ///
 /// Cheap to clone: every clone shares the same cells, so a handle
 /// obtained before cloning still observes updates made through the
-/// clone's registry (and vice versa). Cloning a `Slices` does **not**
-/// mint new write capabilities — [`TypedCell`]s are minted only by
+/// clone's registry (and vice versa). Cloning a `Slices` does not
+/// register a new slot; [`TypedCell`] handles are returned by
 /// [`register`](Self::register).
 #[derive(Clone, Debug, Default)]
 pub struct Slices {

@@ -273,7 +273,7 @@ async fn provider_init_writes_the_disk_cache_through_the_provider_cell() {
                 "sample/sample".to_owned()
             ))
             .is_some(),
-        "provider-init built the registry from the loaded config (cap dissolved)"
+        "provider-init built the registry from the loaded config"
     );
     drop(registry);
     assert!(

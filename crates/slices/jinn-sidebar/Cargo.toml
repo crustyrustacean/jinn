@@ -19,9 +19,8 @@ jinn-theme = { workspace = true }
 trouper = { workspace = true }
 # Slice → kernel edge (established by jinn-dashboard): the sidebar's
 # trouper actor folds kernel session events into state through the
-# kernel's shared `State` handle and capability plumbing, and the route
-# actions reuse kernel feature helpers. The kernel never depends back on
-# this crate.
+# kernel's shared `State` handle, and the route actions reuse kernel
+# feature helpers. The kernel never depends back on this crate.
 jinn-core-types = { workspace = true }
 jinn-skills-msg = { workspace = true }
 jinn-skills = { workspace = true }

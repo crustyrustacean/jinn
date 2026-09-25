@@ -58,33 +58,32 @@ impl SessionPersistenceActor {
     /// interacted so the removal persists.
     pub(in crate::session_actor) async fn handle_unpin_chat_entry(&self, payload: &UnpinChatEntry) {
         {
-            self.state
-                .with_session_pins(|view| {
-                    let is_active = view.session.map().active_session_id() == &payload.session_id;
-                    let old_index = if is_active {
-                        view.frontend.with_sections(
-                            |s| {
-                                s.pins.selection_index(&sorted_pinned_ids_from_session(
-                                    view.session.map().active_session(),
-                                ))
-                            },
-                            || 0,
-                        )
-                    } else {
-                        0
-                    };
+            self.state.with_session_pins(|view| {
+                let is_active = view.session.map().active_session_id() == &payload.session_id;
+                let old_index = if is_active {
+                    view.frontend.with_sections(
+                        |s| {
+                            s.pins.selection_index(&sorted_pinned_ids_from_session(
+                                view.session.map().active_session(),
+                            ))
+                        },
+                        || 0,
+                    )
+                } else {
+                    0
+                };
 
-                    let session = view.session.map().get_or_create(&payload.session_id);
-                    session.unpin_entry(&payload.entry_id);
-                    session.mark_interacted();
+                let session = view.session.map().get_or_create(&payload.session_id);
+                session.unpin_entry(&payload.entry_id);
+                session.mark_interacted();
 
-                    if is_active {
-                        let new_sorted =
-                            sorted_pinned_ids_from_session(view.session.map().active_session());
-                        view.frontend
-                            .update_sections(|s| s.pins.clamp_to_nearest(&new_sorted, old_index));
-                    }
-                });
+                if is_active {
+                    let new_sorted =
+                        sorted_pinned_ids_from_session(view.session.map().active_session());
+                    view.frontend
+                        .update_sections(|s| s.pins.clamp_to_nearest(&new_sorted, old_index));
+                }
+            });
         }
         self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
@@ -190,10 +189,9 @@ impl SessionPersistenceActor {
 
         entries.sort_by_key(|e| e.name.to_lowercase());
 
-        self.state
-            .with_persona_picker(|picker| {
-                picker.set_items(entries);
-            });
+        self.state.with_persona_picker(|picker| {
+            picker.set_items(entries);
+        });
     }
 }
 

@@ -169,7 +169,11 @@ mod tests {
 
         // Then the stored item renders through the spec's row hook.
         let row = frontend.persona_picker().items()[0].render_row(false);
-        let text: String = row.spans.iter().map(|span| span.content.to_string()).collect();
+        let text: String = row
+            .spans
+            .iter()
+            .map(|span| span.content.to_string())
+            .collect();
         assert_eq!(text, "  coder  desc");
     }
 }

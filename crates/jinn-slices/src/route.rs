@@ -150,11 +150,10 @@ pub enum RouteOutcome {
 /// The handler context a row action runs in.
 ///
 /// Actions that touch app state write through `state` — the same
-/// guard the intent handler already holds, so an action never mints a
-/// second write capability and never takes a second lock. Actions that
-/// resolve slice cells take `slices`; cell handles captured at attach
-/// time remain the preferred form (the ctx is for state a cell cannot
-/// carry).
+/// guard the intent handler already holds, so an action never takes a
+/// second lock. Actions that resolve slice cells take `slices`; cell
+/// handles captured at attach time remain the preferred form. The context
+/// carries state a cell cannot.
 ///
 /// `key_bytes` carries the dispatching intent's byte payload to
 /// key-hook actions (the terminal capture's PTY encoding); it is empty

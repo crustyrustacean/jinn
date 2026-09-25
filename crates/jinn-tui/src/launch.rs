@@ -53,11 +53,7 @@ pub fn launch(
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
     load_compaction_prompt(&paths.prompts_dir(), &paths.system_prompts_dir())?;
-    load_theme(
-        &core.state,
-        &paths.themes_dir(),
-        &paths.system_themes_dir(),
-    );
+    load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
     // Resolve mouse-selection config from environment.
     let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");

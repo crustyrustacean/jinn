@@ -55,11 +55,7 @@ impl AppStateActor {
     /// Spawns the actor at its static path, declaring `UpdateAppState`
     /// as handled — the declaration registers the command's route (its
     /// sole handler), so bridge-published commands deliver here.
-    pub fn spawn(
-        system: &ActorSystem,
-        services: Services,
-        state: State,
-    ) -> ActorPath {
+    pub fn spawn(system: &ActorSystem, services: Services, state: State) -> ActorPath {
         spawn_service_builder::<Self>(system)
             .at(ActorPath::new(APP_STATE_ACTOR_PATH))
             .start_with({

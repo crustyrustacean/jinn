@@ -125,9 +125,7 @@ impl QueueActor {
                 move || {
                     let state = state.clone();
                     let services = services.clone();
-                    Box::pin(async move {
-                        Ok(Self { state, services })
-                    })
+                    Box::pin(async move { Ok(Self { state, services }) })
                 }
             })
             .handles::<SessionPhaseChanged>()

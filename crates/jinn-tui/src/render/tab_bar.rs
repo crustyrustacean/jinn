@@ -105,11 +105,7 @@ mod tests {
 
     async fn build_app_with_scope(scope: FocusScope) -> crate::TuiApp {
         let app = crate::TuiApp::test_builder().build().await;
-        app.core
-            .state
-            .write()
-            .frontend
-            .scope_swap_base(scope);
+        app.core.state.write().frontend.scope_swap_base(scope);
         app
     }
 

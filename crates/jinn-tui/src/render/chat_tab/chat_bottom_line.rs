@@ -51,11 +51,7 @@ mod tests {
     async fn chat_bottom_line_is_yellow_when_normal_scope() {
         // Given a TuiApp rendered with Normal scope.
         let mut app = crate::TuiApp::test_builder().build().await;
-        app.core
-            .state
-            .write()
-            .frontend
-            .scope_clear_overlays();
+        app.core.state.write().frontend.scope_clear_overlays();
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.
