@@ -1,9 +1,9 @@
 // Tool-level tests for the `task` tool's spawn and await behavior.
 //
 // These tests exercise `execute()` directly against a real bus (via
-// `TestHarness`), a shared `State`, and a minted session cap — the same
-// wiring the tool orchestrator provides in production. No session actor is
-// spawned: the tests stand in for the child session's own actor by driving
+// `TestHarness`) and the same shared `State` wiring the tool orchestrator
+// provides in production. No session actor is spawned: the tests stand in for
+// the child session's own actor by driving
 // phase transitions and pushing entries, which is exactly what the actor
 // does in production on stream events.
 
@@ -45,8 +45,8 @@ fn task_call(arguments: &str) -> ToolCall {
     }
 }
 
-/// Builds a tool context wired to the harness bus, shared state, and a minted
-/// session cap — the production wiring minus the MCP coordinator.
+/// Builds a tool context wired to the harness bus, shared state, and runtime
+/// services — the production wiring minus the MCP coordinator.
 async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -> ToolContext {
     let services = harness.services().await;
     ToolContext {

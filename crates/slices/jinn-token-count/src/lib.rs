@@ -8,8 +8,8 @@
 //! actor's accumulation gate and the prune workers hold clones of the same
 //! cache for their reads.
 //!
-//! Kernel dependency (see Cargo.toml): both actors write through tcaps
-//! (State + SessionCap), granted at activation.
+//! Kernel dependency: the count actor fills token counts through the
+//! session mutation projection on shared [`jinn_domain::common::state::State`].
 
 pub mod count_actor;
 pub mod eviction_actor;

@@ -13,11 +13,9 @@ jinn-token-count-msg = { workspace = true }
 jinn-preferences-config = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }
-# Kernel dep (token-count precedent): the compaction worker reads shared
-# state (session lookups under brief read locks), writes through tcaps
-# (State + SessionCap granted at activation), and consumes the kernel
-# token_estimator (its ToolDefinition inputs are kernel-bound until the
-# session-family migration).
+# Kernel dep: the compaction worker reads and writes shared state through
+# the `State` API and consumes the kernel token estimator. Tool-definition
+# inputs remain kernel-bound until the session-family migration.
 jinn-domain = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }

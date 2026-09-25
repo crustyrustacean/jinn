@@ -1,13 +1,9 @@
 //! Slice vocabulary — typed cells, views, and the slots that name them.
 //!
-//! Today jinn's render state is one `AppState` guarded by a single
-//! `RwLock`, with ~25 actors writing through TCaps tokens that gate
-//! *where* in the struct an actor may write. [`Slices`] replaces that
-//! convention with structure: each slice of render state (dashboard
-//! status, quake bar, terminal screen, …) lives in its own typed cell,
-//! `register` mints **exactly one** write handle for it, and everyone
-//! else holds read handles. "Who can write this slice" becomes
-//! grep-provable — find the handle, find the writer.
+//! Shared application state is guarded by a single `RwLock` while
+//! independently owned render data migrates into typed cells. [`Slices`]
+//! gives each extracted slice its own named cell and typed handles for
+//! accessing it, making its data flow explicit at call sites.
 //!
 //! Keys are dynamic strings ([`SlotKey`]), not an enum of known features,
 //! so a feature can register a cell under its own namespace without

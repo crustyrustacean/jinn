@@ -6,11 +6,9 @@
 //! set. Both actors moved here verbatim from the kernel's
 //! `feat/{mcp_actor,mcp_coordinator_actor}` modules.
 //!
-//! Kernel dep (Cargo.toml): the coordinator writes
-//! `ChatSession.mcp_server_status` through a `SessionCap` and consumes
-//! session lifecycle events (`SessionCreated`, `SessionClosed`, …) — the
-//! sync `SliceActionState` capability pattern does not fit async actor
-//! actors (sidebar precedent).
+//! Kernel dependency: the coordinator consumes shared application state
+//! and session lifecycle events (`SessionCreated`, `SessionClosed`, …);
+//! the asynchronous actor path is independent of synchronous slice actions.
 //!
 //! The wire contracts live in `jinn-slices::mcp_contracts` (single
 //! definition — trouper dispatches by schema id); the kernel reaches the

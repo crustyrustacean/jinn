@@ -126,9 +126,7 @@ lint-testattr:
    import re
    import sys
 
-   ALLOWLIST = {
-       os.path.normpath("crates/jinn-domain/tests/tcaps_compile_fail.rs"),
-   }
+   ALLOWLIST = set()
    SKIP_DIRS = {"target", "vendor"}
 
    def is_test_attr(s):

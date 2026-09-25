@@ -27,7 +27,6 @@ pub mod session_projection;
 pub mod slices;
 pub mod state;
 pub mod system_resource;
-pub mod tcaps;
 pub mod tui_signals;
 pub mod ui_element;
 pub mod ui_element_fake;

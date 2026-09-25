@@ -117,7 +117,7 @@ async fn session_created_triggers_discovery_and_loaded_events_land_on_slice_topi
         "ContextFilesLoaded for the session: {context:?}"
     );
 
-    // And the worker's state writes landed through the slice's caps.
+    // And the worker's state writes landed through the slice projections.
     let guard = app.core.state.read();
     assert!(
         guard

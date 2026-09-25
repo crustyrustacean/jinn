@@ -12,8 +12,7 @@
 //! the kernel topic.
 //!
 //! Kernel dependency (see Cargo.toml): the queue actor uses shared
-//! [`jinn_domain::common::state::State`] and consumes session vocabulary,
-//! granted at activation.
+//! [`jinn_domain::common::state::State`] and consumes session vocabulary.
 
 pub mod queue_actor;
 

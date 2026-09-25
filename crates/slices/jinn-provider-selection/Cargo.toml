@@ -12,10 +12,10 @@ jinn-provider-selection-msg = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }
 # Kernel dep (turn-dispatch/watchdog precedent): the provider actor
-# writes AppState (State + the minted SessionCap for the switch write +
-# the minted FrontendCap for the picker render surface), loads entries
+# writes AppState through named `State` projections for session model
+# changes and picker render state, loads entries
 # through the kernel picker registry's spec hooks, and reads services
-# (registry, api keys, paths) — granted at slice activation. The kernel
+# (registry, api keys, paths). The kernel
 # re-exports the slice's contracts so the long-standing jinn_domain::X
 # paths keep resolving.
 jinn-domain = { workspace = true }

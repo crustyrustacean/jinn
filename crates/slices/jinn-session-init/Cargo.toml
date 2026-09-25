@@ -15,9 +15,8 @@ jinn-skills = { workspace = true }
 jinn-slices = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas, partition sets.
 trouper = { workspace = true }
-# The kernel seam, per the recorded §7.1(4) exception: State + the caps
-# mint (activation grants actors their write handles), the trouper
-# bridge relay spawn functions, scan_cwd_for_session's gate, and the
+# The kernel seam: shared `State`, the trouper bridge relay spawn functions,
+# `scan_cwd_for_session`'s gate, and
 # kernel event types this slice translates and returns via relays.
 jinn-domain = { workspace = true, features = ["test-harness"] }
 jinn-session-msg = { workspace = true }
