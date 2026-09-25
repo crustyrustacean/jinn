@@ -15,6 +15,8 @@ pub mod history;
 mod history_tests;
 pub mod layout_complete;
 pub mod layout_supervisor;
+#[cfg(test)]
+mod layout_tests;
 pub(crate) mod layout_worker;
 
 pub use history::ChatLogElement;

@@ -156,7 +156,7 @@ impl MsgHandler<LayoutChatSession> for LayoutWorkerActor {
 /// projection, the same tool result pairing, the same wrap counting. The
 /// rendered lines are discarded as soon as they are counted, so a measurement
 /// costs no lasting memory beyond the counts themselves.
-fn measure(msg: &LayoutChatSession, inputs: &LayoutInputs) -> Vec<MeasuredLineCount> {
+pub(crate) fn measure(msg: &LayoutChatSession, inputs: &LayoutInputs) -> Vec<MeasuredLineCount> {
     let visual_items = jinn_chat_log_view_msg::build_visual_items(
         &msg.entries,
         &msg.shown_ignored_blocks,

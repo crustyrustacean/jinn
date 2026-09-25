@@ -97,6 +97,16 @@ impl LayoutCompletionActor {
         path
     }
 
+    /// Builds the actor directly, without an actor system.
+    ///
+    /// Applying a result is pure state work — the only reason the actor exists
+    /// is to route the message — so tests exercise it without a fabric.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn spawnless(deps: LayoutCompletionActorDeps) -> Self {
+        Self { state: deps.state }
+    }
+
     /// Stores a result and clears the guard if it belongs to the active session.
     pub(crate) fn apply(&self, computed: &ChatLogLayoutComputed) -> LayoutApplied {
         let outcome = {
