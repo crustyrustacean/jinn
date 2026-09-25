@@ -301,8 +301,10 @@ Entries are added or amended **only with human approval**.
 - (pickers) The reasoning-effort picker builds its seven effort entries inline at open and on confirm sets the session's reasoning override, emits MarkSessionInteracted, and seeds the global default via UpdateAppState.
 - (config) The compaction model is configured only by [compaction] model in jinn.toml; the compaction-model picker was removed.
 - (preferences) A `[[projects]]` entry in `jinn.toml` may carry a command policy of user-authored regex patterns with corrective messages, applied to tool commands whose cwd falls inside the project path.
-- (tools) The bash tool evaluates commands against the resolved project command policy before spawn; a match returns a failed tool result carrying the rule's message and the command never runs.
+- (tools) The bash tool evaluates commands against the global and resolved project command policies before spawn; a match returns a failed tool result carrying the rule's message and the command never runs.
 - (tools) Project command policy is resolved by cwd prefix match at tool-call time with the longest configured project path winning.
+- (preferences) jinn.toml carries a top-level `global_command_policy` of user-authored regex patterns with corrective messages.
+- (tools) Global command policy rules are evaluated before project command policy rules, so a global rule preempts a project rule for the same command.
 - (tools) Command policy guards only the bash tool; interactive terminals and MCP-provided tools are unguarded.
 - (slices) The status-bar slice is a crate owning the status bar element and the status-hint cell; the IntentHandler writes the hint and the element renders it.
 - (ui) The status hint renders warning-colored on the status bar's second line in place of the model string and clears on the next intent.
@@ -360,6 +362,10 @@ Entries are added or amended **only with human approval**.
 - (slices) The term slice is a crate owning the PTY actor family, the per-session terminal tab state cell, and the terminal control registry; the tools ask it through a TermHandle trait and the TUI renders the terminal overlay from jinn-term-msg types.
 - (term) The terminal control toggle is a per-session ownership flip between the user and the agent, resolved through the control registry the term slice mints at spawn.
 - (term) The previous session's terminal control holder is released when the active session changes while the overlay is open.
+- (term) Keys forwarded to a child pty encode to the byte sequences of the `xterm-256color` identity jinn advertises, rather than the alternate CSI forms a real xterm also accepts.
+- (term) The terminal key encoder is a compiled-in table with no runtime terminfo lookup, so a child receives identical key bytes on every platform.
+- (term) Shift+Tab reaches a child pty as `ESC[Z`, carried as Tab with the shift modifier.
+- (keybinds) Shift+Tab is represented as `Key::Tab` with the shift modifier rather than a distinct key variant, so `<s-tab>` notation and display work through the existing modifier path.
 - (tools) The jinn-tools slice owns the tool orchestrator, the built-in and todo tools, the task subagent machinery, and the tool protocol contracts in jinn-tools-msg; tool nouns (ToolDefinition/ToolCall/ToolResult) live in jinn-core-types.
 - (slices) Kernel feature extraction follows the absorb model: each slice family absorbs its feat/ modules, leaving jinn-domain as shared multi-slice vocabulary.
 - (slices) The turn-dispatch slice is a crate owning the queue ServiceActor and the enqueue dispatch path; its wire contracts live in jinn-turn-dispatch-msg.
