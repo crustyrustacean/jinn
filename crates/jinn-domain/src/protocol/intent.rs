@@ -108,9 +108,9 @@ pub enum KernelIntent {
     PickerConfirm,
     /// Run a spec-driven picker's declared bind action.
     ///
-    /// One data-carried intent replaces per-picker variants as pickers
-    /// migrate: `picker` is the spec's registry id, `action` the bind
-    /// row's notation. Resolved through the picker's own bind table.
+    /// One data-carried intent covers every picker's binds: `picker` is the
+    /// spec's registry id, `action` the bind row's notation. Resolved
+    /// through the picker's own bind table.
     PickerAction {
         /// The picker spec's registry id (e.g. `"skill"`).
         picker: String,

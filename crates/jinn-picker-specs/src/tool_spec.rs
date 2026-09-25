@@ -156,7 +156,7 @@ fn tool_toggle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
 
 /// Enter on the tool picker: collect the disabled tool names from all
 /// entries and write them to the session profile. No bus message — the
-/// profile is the in-memory session's source of truth (legacy parity).
+/// profile is the in-memory session's source of truth.
 fn confirm_tool(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     let state = state_of(ctx);
     let disabled: HashSet<String> = state
@@ -397,9 +397,9 @@ mod tests {
                 let spec = registry.get(TOOL_ID).expect("tool spec registered");
                 spec.run_confirm(&mut ctx)
             };
-            // Then the confirm closes the picker and emits nothing (legacy
-            // parity: the disabled set goes straight to the session
-            // profile, no bus message).
+            // Then the confirm closes the picker and emits nothing (the
+            // disabled set goes straight to the session profile, no bus
+            // message).
             assert!(outcome.close, "confirm must close the picker");
             assert!(outcome.message_names.is_empty());
         }

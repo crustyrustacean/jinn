@@ -54,8 +54,8 @@ pub const ENDPOINT_ID: &str = "endpoint";
 /// The id of the project picker's spec.
 pub const PROJECT_ID: &str = "project";
 
-/// Maps a picker kind onto its spec id. The compaction-model picker remains on
-/// its legacy path and has no spec id.
+/// Maps a picker kind onto its spec id. The retired `CompactionModel` kind has
+/// no spec.
 #[must_use]
 pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&'static str> {
     use jinn_slices::picker_kind::PickerKind;
@@ -176,9 +176,7 @@ pub trait ErasedPickerSpec: Send + Sync {
     /// The erased render driver: dispatches on the widget kind and drives
     /// the corresponding selection widget with the spec's title, footers,
     /// colors, preview scroll, and preview cache. Returns `false` when the
-    /// host lent no compatible storage (e.g. the kind is mapped but its
-    /// storage has not been wrapped yet) — callers fall back to the
-    /// legacy renderer.
+    /// host lent no compatible storage — the caller draws nothing.
     fn render(&self, frame: &mut Frame<'_>, area: Rect, host: &dyn PickerHost) -> bool;
 
     /// Downcast seam for the registry's typed window: the spec back as an
@@ -369,9 +367,9 @@ impl std::ops::Deref for SpecHandle {
 /// All registered picker specs, keyed by [`PickerId::as_str`].
 ///
 /// Clone follows the `Services`-container rule: specs register once at
-/// composition, clones share the same table. The interior lock exists so a
-/// late registration (spec migration in progress) stays sound against
-/// concurrent lookup; it is never contended in normal operation.
+/// composition, clones share the same table. The interior lock keeps
+/// registration sound against concurrent lookup; it is never contended in
+/// normal operation.
 #[derive(Clone, Default)]
 pub struct PickerRegistry {
     specs: std::sync::Arc<std::sync::RwLock<HashMap<&'static str, Arc<dyn ErasedPickerSpec>>>>,

@@ -9,7 +9,7 @@
 //! draft through the same accessors, and the session actor pours drained
 //! queue text back into the box on stream error/cancel. There is no actor
 //! and no route row: the writers are the exempt sync handler, the render
-//! pass, and the session actor, exactly as the migration docs prescribe.
+//! pass, and the session actor.
 
 pub use jinn_chat_input_msg::chat_inputs_slot;
 

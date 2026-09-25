@@ -1,7 +1,6 @@
 //! Backend discriminator for LLM providers.
 //!
-//! Replaces `llm::builder::LLMBackend` with our own enum that maps to
-//! provider configuration strings.
+//! Maps to provider configuration strings.
 
 use wherror::Error;
 

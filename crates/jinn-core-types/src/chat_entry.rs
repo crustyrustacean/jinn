@@ -740,10 +740,9 @@ impl ChatEntry {
         }
     }
 
-    /// Compatibility accessor: whether this entry has been forced out of context.
+    /// Whether this entry has been forced out of context.
     ///
-    /// Equivalent to `context_override == ForcedExclude`. Used during migration
-    /// from `ignored: bool` to `context_override: ContextOverride`.
+    /// Equivalent to `context_override == ForcedExclude`.
     ///
     /// Prefer `is_in_context()` or `context_override` directly.
     #[must_use]

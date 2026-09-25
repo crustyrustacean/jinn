@@ -1,9 +1,8 @@
 //! Smoke test: verify `[[auto_prune.regex.rules]]` round-trips through
 //! `RegexAutoPruneConfig`.
 //!
-//! Pairs with the `toml_edit` round-trip smoke test that now lives in the
-//! `jinn-provider-config` crate (the comment-preserving fixture moved there
-//! when provider config was extracted).
+//! Pairs with the `toml_edit` round-trip smoke test in the
+//! `jinn-provider-config` crate.
 
 #![allow(
     clippy::expect_used,

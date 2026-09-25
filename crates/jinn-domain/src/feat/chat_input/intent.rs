@@ -104,9 +104,9 @@ fn handle_insert_while_autocomplete_active(ch: char, state: &mut AppState) -> In
 
     // `@` file popup.
     if trigger == Some(AutocompleteTrigger::At) {
-        // `@@` seam: typing `@` while an `At` popup is active forms `@@`,
-        // which is the reserved trigger for the future multi-file picker.
-        // Deactivate the `@` popup so `@@` stays literal with no handler.
+        // `@@` seam: typing `@` while an `At` popup is active forms `@@`.
+        // No handler is wired for it, so deactivate the popup and let it
+        // stay literal.
         if ch == '@' {
             state.update_active_input(ChatInputBoxState::deactivate_autocomplete);
             return IntentResult::empty();
@@ -644,8 +644,8 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
 ///
 /// Simply switches out of the current mode. Does NOT cancel streams or drain
 /// queues - the cancel confirmation prompt handles that via `NormalEscape`.
-/// Registry-less variant for internal callers that can only reach
-/// unmigrated pickers (the session-lifecycle chain); spec-driven
+/// Registry-less variant for internal callers that need no picker registry
+/// (the session-lifecycle chain); spec-driven
 /// close hooks need the app's registry via
 /// [`handle_enter_normal_mode_with_pickers`].
 pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
@@ -654,8 +654,8 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
 
 /// Handles `EnterNormalMode` with the picker registry: spec-driven
 /// pickers run their `on_close` hook (snapshot revert) before the
-/// legacy per-kind restores. The intent handler passes the app's
-/// registry so migrated pickers revert correctly.
+/// per-kind restores. The intent handler passes the app's registry so
+/// spec-driven pickers revert correctly.
 pub fn handle_enter_normal_mode_with_pickers(
     state: &mut AppState,
     pickers: &jinn_picker::PickerRegistry,
@@ -718,8 +718,7 @@ fn is_valid_slash_trigger_position(input: &ChatInputBoxState) -> bool {
 ///
 /// Mirrors the hash rule: start-of-buffer, or preceded by a space/newline.
 /// Additionally reserves the `@@` seam: if the grapheme before this `@` is
-/// another `@`, this returns false so `@@` stays literal (the future
-/// `AtAt` picker is not yet wired).
+/// another `@`, this returns false so `@@` stays literal.
 fn is_valid_at_trigger_position(input: &ChatInputBoxState) -> bool {
     let at_pos = input.cursor_pos() - 1;
     if at_pos == 0 {

@@ -3,9 +3,6 @@
 //! Handles entry pinning (PinChatEntry/UnpinChatEntry), prompt template
 //! caching (PromptTemplatesLoaded), persona selection (PersonasLoaded), and
 //! persona picker population (LoadPersonaPickerEntries).
-//!
-//! Relocated from `PromptAssemblyActor` - these concerns are session-related
-//! mutations of `AppState`, not part of prompt assembly.
 
 use jinn_core_types::DEFAULT_PERSONA_NAME;
 use jinn_domain::PromptTemplatesLoaded;

@@ -434,7 +434,7 @@ where
     /// Applies one override value to a fixed list of member ids.
     ///
     /// A `ForcedInclude` member is never overwritten by `ForcedExclude` — the
-    /// include sticks (the legacy executor's guard, preserved chunk-wide).
+    /// include sticks, chunk-wide.
     fn apply_override_members(
         &mut self,
         members: &[ChatEntryId],
@@ -518,7 +518,7 @@ where
     /// Resolves the insertion index for `after` at a chunk boundary.
     ///
     /// `None` when `after` names an entry that does not exist (the insert is
-    /// skipped, matching the legacy executor's behavior).
+    /// skipped).
     fn resolve_boundary(&self, after: Option<&ChatEntryId>) -> Option<usize> {
         let Some(id) = after else {
             return Some(0);

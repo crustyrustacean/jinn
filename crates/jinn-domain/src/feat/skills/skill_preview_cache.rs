@@ -92,7 +92,6 @@ impl PreviewCache for SkillPreviewCache {
         self.entries.lock().get(&(signature, width)).map(Arc::clone)
     }
 
-    /// NOTE: currently using unbounded memory. Revisit if memory consumption becomes a problem.
     fn insert(&self, key: String, width: usize, lines: SharedPreviewLines) {
         // The key is the decimal body byte length produced by
         // `SkillEntry::cache_key`.

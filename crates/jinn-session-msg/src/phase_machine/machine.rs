@@ -91,16 +91,8 @@ impl SessionPhaseMachine {
         self.phase.kind()
     }
 
-    // ── Escape hatches (Phase 1 bridge) ──────────────────────────────
+    // ── Tool-loop suppression ────────────────────────────────────────
 
-    /// Force the machine to Idle regardless of current state.
-    ///
-    /// Used during Phase 1 migration to support legacy methods that bypass
-    /// the normal transition graph (e.g., `finish_sending` which does
-    /// `Sending → Idle` - not a valid machine transition).
-    ///
-    /// Will be removed once all callers go through proper transitions.
-    ///
     /// Disable the tool loop for this session's current turn.
     ///
     /// After the current tool batch completes, `on_tool_batch_completed`

@@ -16,7 +16,9 @@ pub enum PickerKind {
     Theme,
     /// Session lifecycle picker - select a lifecycle recipe for new session creation.
     SessionLifecycle,
-    /// Compaction model picker - select a model for context compaction summarization.
+    /// Retired: the compaction model is configured only by `[compaction] model`
+    /// in `jinn.toml`. Retained so persisted state still deserializes; it is
+    /// never pushed as a scope and has no picker state.
     CompactionModel,
     /// Reasoning effort picker - select reasoning effort for reasoning-capable models.
     ReasoningEffort,
@@ -92,7 +94,7 @@ impl PickerKind {
     /// viewport from drifting from what is actually drawn.
     ///
     /// - `Provider`: two footer lines (refresh status + alloy mode).
-    /// - `CompactionModel`: no footer.
+    /// - `CompactionModel` (retired): no footer.
     /// - All others: exactly one footer line.
     #[must_use]
     pub const fn footer_rows(self) -> u16 {

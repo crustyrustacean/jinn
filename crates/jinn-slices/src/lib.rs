@@ -1,7 +1,7 @@
 //! Slice vocabulary — typed cells, views, and the slots that name them.
 //!
 //! Shared application state is guarded by a single `RwLock` while
-//! independently owned render data migrates into typed cells. [`Slices`]
+//! independently owned render data lives in typed cells. [`Slices`]
 //! gives each extracted slice its own named cell and typed handles for
 //! accessing it, making its data flow explicit at call sites.
 //!
@@ -11,7 +11,7 @@
 //!
 //! Read access is not scarce; write access is.
 //!
-//! This crate is the future extraction seam for slice *features*: it
+//! This crate is the extraction seam for slice *features*: it
 //! depends only on `jinn-theme` and `ratatui` (for the view layer) —
 //! never on `jinn-domain`.
 

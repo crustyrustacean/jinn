@@ -86,8 +86,8 @@ where
         let Some(tree_state) = host.selection_state_ref(id).and_then(|any| {
             any.downcast_ref::<jinn_selection_widget::TreePickerState<crate::entry::PickerEntry<T>>>()
         }) else {
-            // No compatible tree storage lent — the caller falls back to
-            // legacy. (A Tree spec must not silently render as a flat list.)
+            // No compatible tree storage lent — draw nothing. (A Tree spec
+            // must not silently render as a flat list.)
             return false;
         };
         let status_line = {
@@ -112,7 +112,7 @@ where
     let Some(selection) = host.selection_state_ref(id).and_then(|any| {
         any.downcast_ref::<jinn_selection_widget::SelectionState<crate::entry::PickerEntry<T>>>()
     }) else {
-        // No compatible storage lent — the caller falls back to legacy.
+        // No compatible storage lent — draw nothing.
         return false;
     };
 
@@ -498,7 +498,7 @@ mod tree_tests {
             .expect("draw");
 
         // Then the render call reports no compatible storage (false), the
-        // documented fall-back-to-legacy signal.
+        // documented draw-nothing signal.
         assert!(
             !drew,
             "Tree spec with flat storage must signal incompatibility"

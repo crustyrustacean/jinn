@@ -1199,10 +1199,10 @@ fn pin_entry_propagates_shown_to_forward_sub_block() {
     //   forward sub-block: [ignored-C, ignored-D] (rep=ignored-C, must be auto-shown)
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("before"));
-    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1 - block rep
-    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2 - will pin
-    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3 - forward sub-block start
-    session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4 - forward sub-block
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true));
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true));
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true));
+    session.push_entry(ChatEntry::assistant("d").with_ignored(true));
     session.push_entry(ChatEntry::user("after"));
 
     // Expand the ignored block.
@@ -1296,11 +1296,11 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
     // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [ignored-D] [user]
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("before"));
-    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
-    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2 - pin target
-    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
-    session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
-    session.push_entry(ChatEntry::user("after")); // idx 5
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true));
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true));
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true));
+    session.push_entry(ChatEntry::assistant("d").with_ignored(true));
+    session.push_entry(ChatEntry::user("after"));
 
     // Expand the ignored block.
     let rep_id = session.history()[1].id.clone();
@@ -4341,9 +4341,9 @@ fn scroll_to_selected_noop_when_no_selection() {
 fn scroll_to_selected_entry_fits_in_viewport_above() {
     // Given a session where the selected entry is above the viewport.
     let mut session = ChatSessionState::new();
-    session.push_entry(ChatEntry::user("a")); // idx 0, lines 0..2
-    session.push_entry(ChatEntry::user("b")); // idx 1, lines 2..4
-    session.push_entry(ChatEntry::user("c")); // idx 2, lines 4..6
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
     session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
     session.set_viewport_height(3);
     session.set_blank_count(0);
@@ -4364,9 +4364,9 @@ fn scroll_to_selected_entry_fits_in_viewport_above() {
 fn scroll_to_selected_entry_fits_in_viewport_below() {
     // Given a session where the selected entry is below the viewport.
     let mut session = ChatSessionState::new();
-    session.push_entry(ChatEntry::user("a")); // idx 0, lines 0..2
-    session.push_entry(ChatEntry::user("b")); // idx 1, lines 2..4
-    session.push_entry(ChatEntry::user("c")); // idx 2, lines 4..6
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
     session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
     session.set_viewport_height(3);
     session.set_blank_count(0);
@@ -4387,9 +4387,9 @@ fn scroll_to_selected_entry_fits_in_viewport_below() {
 fn scroll_to_selected_entry_already_visible() {
     // Given a session where the selected entry is already visible.
     let mut session = ChatSessionState::new();
-    session.push_entry(ChatEntry::user("a")); // idx 0, lines 0..2
-    session.push_entry(ChatEntry::user("b")); // idx 1, lines 2..4
-    session.push_entry(ChatEntry::user("c")); // idx 2, lines 4..6
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
     session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
     session.set_viewport_height(6);
     session.set_blank_count(0);
@@ -4410,8 +4410,8 @@ fn scroll_to_selected_entry_already_visible() {
 fn scroll_to_selected_taller_than_viewport_above() {
     // Given an entry taller than the viewport, positioned above the viewport.
     let mut session = ChatSessionState::new();
-    session.push_entry(ChatEntry::user("a")); // idx 0, lines 0..10 (tall)
-    session.push_entry(ChatEntry::user("b")); // idx 1, lines 10..12
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
     session.set_entry_line_ranges(vec![(0, 10), (10, 12)]);
     session.set_viewport_height(4);
     session.set_blank_count(0);
@@ -4432,8 +4432,8 @@ fn scroll_to_selected_taller_than_viewport_above() {
 fn scroll_to_selected_taller_than_viewport_below() {
     // Given an entry taller than the viewport, positioned below the viewport.
     let mut session = ChatSessionState::new();
-    session.push_entry(ChatEntry::user("a")); // idx 0, lines 0..2
-    session.push_entry(ChatEntry::user("b")); // idx 1, lines 2..12 (tall)
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
     session.set_entry_line_ranges(vec![(0, 2), (2, 12)]);
     session.set_viewport_height(4);
     session.set_blank_count(0);

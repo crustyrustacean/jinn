@@ -170,8 +170,8 @@ impl MsgHandler<DiscordThreadCreateFailed> for DiscordBridgeSubscriber {
 }
 
 impl DiscordBridgeSubscriber {
-    /// Constructs a subscriber instance directly (for tests that call
-    /// the fold helpers; added in the Phase 4 test port).
+    /// Constructs a subscriber instance directly, for tests that call
+    /// the fold helpers.
     #[cfg(test)]
     pub(crate) fn new(tx: kanal::Sender<BridgeEvent>, state: State) -> Self {
         let (gateway_tx, _gateway_rx) = kanal::bounded(1);

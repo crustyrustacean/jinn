@@ -45,8 +45,8 @@ use jinn_picker::picker_style::split_match_indices;
 pub fn mcp_server_spec() -> PickerSpec<McpServerEntry> {
     PickerSpec::new(PickerId::new(jinn_picker::MCP_SERVER_ID))
         .title(" MCP Servers ")
-        // The legacy inspector has no preview-scroll mechanism; the pane
-        // stays put across cursor moves.
+        // This picker's preview pane has no scroll mechanism; the pane stays
+        // put across cursor moves.
         .widget(PickerWidget::Preview(PreviewSpec {
             reset_scroll_on_selection_change: false,
         }))
