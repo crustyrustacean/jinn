@@ -299,22 +299,6 @@ fn render_active_overlay(
             picker::render_picker(frame, area, ctx);
             Some(jinn_selection_widget::compute_popup_rect(area))
         }
-        FocusScope::ArgInput => {
-            picker::render_arg_input(frame, area, ctx);
-            Some(jinn_domain::feat::session_lifecycle::render::arg_input_popup_rect(area, ctx))
-        }
-        FocusScope::RenameSessionInput => {
-            jinn_sidebar::sections::rename_input::render::render_rename_session_input(
-                frame, area, ctx,
-            );
-            Some(jinn_sidebar::sections::rename_input::render::rename_session_popup_rect(area))
-        }
-        FocusScope::PrunerAccumulationInput => {
-            jinn_domain::feat::pruner_accumulation_input::render::render_pruner_accumulation_input(
-                frame, area, ctx,
-            );
-            Some(jinn_domain::feat::pruner_accumulation_input::render::pruner_accumulation_popup_rect(area))
-        }
         FocusScope::Dynamic(id) => {
             // Slice overlays: consult the geometry fn + renderer the
             // scope's slice registered at activation. A dynamic scope

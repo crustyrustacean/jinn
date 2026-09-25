@@ -3,14 +3,12 @@
 use jinn_sidebar_msg::SidebarScopeExt;
 use parking_lot::RwLock;
 
-use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
 use jinn_preferences_config::UserPreferences;
 use jinn_preferences_config::app_state_file::AppStateFile;
 use jinn_sidebar_msg::SidebarSectionId;
 use jinn_slices::FocusScope;
 use jinn_slices::TuiSignals;
 
-use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 use crate::feat::ui::picker_states::PickerStates;
 pub use jinn_sidebar_msg::McpServersSectionState;
 pub use jinn_sidebar_msg::PersonaSectionState;
@@ -117,15 +115,6 @@ pub struct FrontendState {
     /// Use [`PickerExt`](super::picker_states::PickerExt) to access picker fields.
     pub pickers: PickerStates,
 
-    /// Arg input popup state - active when `FocusScope::ArgInput` is on the scope stack.
-    /// OWNER: IntentHandler (arg input editing, confirmation).
-    pub arg_input: ArgInputState,
-
-    /// Pruner accumulation threshold input popup state - active when
-    /// `FocusScope::PrunerAccumulationInput` is on the scope stack.
-    /// OWNER: IntentHandler (threshold input editing, confirmation).
-    pub pruner_accumulation_input: PrunerAccumulationInputState,
-
     /// Creation stash for the next session from the projects UI.
     ///
     /// Set by the project picker (`<enter>`/`<c-enter>`) so a new session can
@@ -166,8 +155,6 @@ impl Default for FrontendState {
             close_session_prompt: false,
             archive_tree_prompt: None,
             pickers: PickerStates::default(),
-            arg_input: ArgInputState::default(),
-            pruner_accumulation_input: PrunerAccumulationInputState::default(),
             pending_creation: None,
 
             sidebar_width: 30,

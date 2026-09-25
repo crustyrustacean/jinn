@@ -285,40 +285,6 @@ impl IntentHandler {
         }
 
         match intent {
-            KernelIntent::InsertChar { ch }
-                if matches!(state.frontend.scope(), jinn_slices::FocusScope::ArgInput) =>
-            {
-                feat::session_lifecycle::intent::handle_arg_input_insert_char(state, *ch)
-            }
-            KernelIntent::DeleteGrapheme
-                if matches!(state.frontend.scope(), jinn_slices::FocusScope::ArgInput) =>
-            {
-                feat::session_lifecycle::intent::handle_arg_input_delete(state)
-            }
-            KernelIntent::MoveCursorLeft
-                if matches!(state.frontend.scope(), jinn_slices::FocusScope::ArgInput) =>
-            {
-                feat::session_lifecycle::intent::handle_arg_input_cursor_left(state)
-            }
-            KernelIntent::MoveCursorRight
-                if matches!(state.frontend.scope(), jinn_slices::FocusScope::ArgInput) =>
-            {
-                feat::session_lifecycle::intent::handle_arg_input_cursor_right(state)
-            }
-            KernelIntent::DeleteGraphemeForward
-                if matches!(state.frontend.scope(), jinn_slices::FocusScope::ArgInput) =>
-            {
-                feat::session_lifecycle::intent::handle_arg_input_delete_forward(state)
-            }
-            KernelIntent::EnterNormalMode
-                if matches!(state.frontend.scope(), jinn_slices::FocusScope::ArgInput) =>
-            {
-                // ESC cancels arg input - pop scope, clear state.
-                state.frontend.scope_pop();
-                state.frontend.arg_input = crate::common::app_state::ArgInputState::default();
-                crate::protocol::IntentResult::empty()
-            }
-
             KernelIntent::InsertChar { ch } => {
                 feat::chat_input::intent::handle_insert_char(*ch, state)
             }
@@ -362,9 +328,6 @@ impl IntentHandler {
                 }
                 jinn_slices::FocusScope::Picker { .. } => {
                     crate::feat::picker::intent::handle_picker_paste(state, text)
-                }
-                jinn_slices::FocusScope::ArgInput => {
-                    feat::session_lifecycle::intent::handle_arg_input_paste(state, text)
                 }
                 _ => IntentResult::empty(),
             },
@@ -545,35 +508,6 @@ impl IntentHandler {
             KernelIntent::SessionClose => {
                 feat::session_lifecycle::intent::handle_session_close(state)
             }
-            KernelIntent::ArgInputConfirm => {
-                feat::session_lifecycle::intent::handle_arg_input_confirm(state)
-            }
-
-            KernelIntent::OpenPrunerAccumulationInput => {
-                feat::pruner_accumulation_input::intent::handle_enter(state)
-            }
-            KernelIntent::PrunerAccumulationConfirm => {
-                feat::pruner_accumulation_input::intent::handle_confirm(state)
-            }
-            KernelIntent::PrunerAccumulationLeave => {
-                feat::pruner_accumulation_input::intent::handle_leave(state)
-            }
-            KernelIntent::PrunerAccumulationInsertChar { ch } => {
-                feat::pruner_accumulation_input::intent::handle_insert_char(state, *ch)
-            }
-            KernelIntent::PrunerAccumulationCursorLeft => {
-                feat::pruner_accumulation_input::intent::handle_cursor_left(state)
-            }
-            KernelIntent::PrunerAccumulationCursorRight => {
-                feat::pruner_accumulation_input::intent::handle_cursor_right(state)
-            }
-            KernelIntent::PrunerAccumulationDeleteGrapheme => {
-                feat::pruner_accumulation_input::intent::handle_delete(state)
-            }
-            KernelIntent::PrunerAccumulationDeleteForward => {
-                feat::pruner_accumulation_input::intent::handle_delete_forward(state)
-            }
-
             KernelIntent::Dynamic(_) => {
                 // Unregistered dynamic intents are inert by construction:
                 // a slice that never attached a route row for this action
@@ -859,45 +793,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[rstest::rstest]
-    #[rstest::rstest]
-    #[rstest::rstest]
-    #[rstest::rstest]
-    #[rstest::rstest]
-    #[test]
-    fn insert_char_routes_to_arg_input_when_scope_is_arg_input() {
-        // Given ArgInput scope is active.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: jinn_slices::LineInput {
-                input: "hel".to_owned(),
-                cursor_pos: 3,
-            },
-        };
-
-        // When handling InsertChar.
-        let _result = IntentHandler::handle(
-            &KernelIntent::InsertChar { ch: 'o' },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then arg_input received the char, not the chat input.
-        assert_eq!(state.frontend.arg_input.text.input, "helo");
-        assert!(
-            state
-                .active_session()
-                .with_input(jinn_chat_input_msg::ChatInputBoxState::is_empty, || true),
-            "chat input should be empty"
-        );
-    }
-
-    #[rstest::rstest]
     #[test]
     fn insert_char_routes_to_chat_input_when_scope_is_normal() {
         // Given Normal scope (default) with Input overlay.
@@ -920,151 +815,6 @@ mod tests {
                 .with_input(|i| i.text().to_owned(), String::new),
             "x"
         );
-        assert!(
-            state.frontend.arg_input.text.input.is_empty(),
-            "arg input should be empty"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn delete_grapheme_routes_to_arg_input_when_scope_is_arg_input() {
-        // Given ArgInput scope with some text.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: jinn_slices::LineInput {
-                input: "abc".to_owned(),
-                cursor_pos: 3,
-            },
-        };
-
-        // When handling DeleteGrapheme.
-        let _result = IntentHandler::handle(
-            &KernelIntent::DeleteGrapheme,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then arg_input had a char deleted.
-        assert_eq!(state.frontend.arg_input.text.input, "ab");
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn move_cursor_left_routes_to_arg_input_when_scope_is_arg_input() {
-        // Given ArgInput scope with cursor at end.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: jinn_slices::LineInput {
-                input: "ab".to_owned(),
-                cursor_pos: 2,
-            },
-        };
-
-        // When handling MoveCursorLeft.
-        let _result = IntentHandler::handle(
-            &KernelIntent::MoveCursorLeft,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then arg_input cursor moved.
-        assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn move_cursor_right_routes_to_arg_input_when_scope_is_arg_input() {
-        // Given ArgInput scope with cursor at start.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: jinn_slices::LineInput {
-                input: "ab".to_owned(),
-                cursor_pos: 0,
-            },
-        };
-
-        // When handling MoveCursorRight.
-        let _result = IntentHandler::handle(
-            &KernelIntent::MoveCursorRight,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then arg_input cursor moved.
-        assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn delete_forward_routes_to_arg_input_when_scope_is_arg_input() {
-        // Given ArgInput scope with cursor at start.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: jinn_slices::LineInput {
-                input: "abc".to_owned(),
-                cursor_pos: 1,
-            },
-        };
-
-        // When handling DeleteGraphemeForward.
-        let _result = IntentHandler::handle(
-            &KernelIntent::DeleteGraphemeForward,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then the char after cursor was deleted from arg_input.
-        assert_eq!(state.frontend.arg_input.text.input, "ac");
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn enter_normal_mode_pops_arg_input_scope() {
-        // Given ArgInput scope is active.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: jinn_slices::LineInput {
-                input: "partial".to_owned(),
-                cursor_pos: 7,
-            },
-        };
-
-        // When handling EnterNormalMode.
-        let _result = IntentHandler::handle(
-            &KernelIntent::EnterNormalMode,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then ArgInput scope is popped and state cleared.
-        assert!(!matches!(state.frontend.scope(), FocusScope::ArgInput));
-        assert!(state.frontend.arg_input.text.input.is_empty());
     }
 
     #[rstest::rstest]

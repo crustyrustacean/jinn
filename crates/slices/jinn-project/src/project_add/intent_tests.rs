@@ -9,9 +9,9 @@
 
 use super::intent::{
     attach_project_add_rows, confirm_project_add, leave_project_add, open_project_add,
-    project_add_scope, project_add_slot, register_project_add_input_hook,
+    project_add_scope, register_project_add_input_hook,
 };
-use super::state::ProjectAddInputState;
+use jinn_project_msg::{ProjectAddInputState, project_add_slot};
 use jinn_slices::KeyRoutes;
 use jinn_slices::PublishClosure;
 use jinn_slices::SliceActionState;

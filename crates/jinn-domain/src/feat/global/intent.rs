@@ -60,15 +60,9 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
 
 /// Handles the `CtrlClear` intent (universal `<c-c>` clear-or-leave).
 ///
-/// Behavior is scope-aware:
-/// - `Input`               -> clear chat input (empty input is a no-op).
-/// - `Picker { .. }`       -> empty filter, or if already empty, redispatch `EnterNormalMode` to close the picker.
-/// - `ArgInput`            -> clear input, or if already empty, pop the scope + reset state.
-/// - `RenameSessionInput`  -> clear input, or if already empty, redispatch `RenameSessionLeave`.
-///
-/// Returns `(IntentResult, Option<Intent>)` matching the `PickerConfirm` redispatch pattern.
+/// Clears chat input, or clears/closes a picker filter. Input-capturing
+/// slice popups bind their own clear-or-leave actions.
 pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<KernelIntent>) {
-    use crate::common::app_state::ArgInputState;
     use jinn_slices::FocusScope;
 
     match state.frontend.scope() {
@@ -88,34 +82,6 @@ pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<KernelIn
                 (IntentResult::empty(), None)
             }
         }
-        FocusScope::ArgInput => {
-            if state.frontend.arg_input.text.input.is_empty() {
-                state.frontend.scope_pop();
-                state.frontend.arg_input = ArgInputState::default();
-            } else {
-                state.frontend.arg_input.text.set(String::new());
-            }
-            (IntentResult::empty(), None)
-        }
-        FocusScope::Dynamic(scope) if scope.slice() == "sidebar" && scope.name() == "rename" => {
-            // The rename popup's text lives in the sections cell now.
-            // <c-c> clears the in-progress text; once the buffer is empty,
-            // a second <c-c> closes the popup (mirroring the ArgInput arm).
-            let text_empty = state
-                .frontend
-                .with_sections(|s| s.rename_input.text.input.is_empty(), || true);
-            if text_empty {
-                state.frontend.scope_pop();
-                (IntentResult::empty(), None)
-            } else {
-                state.frontend.update_sections(|s| {
-                    s.rename_input.text.input.clear();
-                    s.rename_input.text.cursor_pos = 0;
-                });
-                (IntentResult::empty(), None)
-            }
-        }
-        // Sidebar / Normal / sidebar-resize / sidebar sections: <c-c> remains bound to Quit.
         _ => (IntentResult::empty(), None),
     }
 }
@@ -435,59 +401,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn ctrl_clear_arg_input_nonempty_clears_input() {
-        // Given a state in ArgInput scope with text in the input.
-        use crate::common::app_state::ArgInputState;
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.arg_input = ArgInputState {
-            text: jinn_slices::LineInput {
-                input: "some arg".to_owned(),
-                cursor_pos: 8,
-            },
-            lifecycle_name: "abc".to_owned(),
-            template_display: String::new(),
-        };
-        state.frontend.scope_push(FocusScope::ArgInput);
-
-        // When handling CtrlClear.
-        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
-
-        // Then the input is cleared and scope is unchanged.
-        assert!(state.frontend.arg_input.text.input.is_empty());
-        assert_eq!(state.frontend.arg_input.text.cursor_pos, 0);
-        assert_eq!(state.frontend.scope(), FocusScope::ArgInput);
-        assert!(result.message_names.is_empty());
-        assert!(maybe_intent.is_none());
-    }
-
-    #[rstest::rstest]
-    fn ctrl_clear_arg_input_empty_closes_scope() {
-        // Given a state in ArgInput scope with empty input.
-        use crate::common::app_state::ArgInputState;
-        let lifecycle = "abc".to_owned();
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.arg_input = ArgInputState {
-            text: jinn_slices::LineInput {
-                input: String::new(),
-                cursor_pos: 0,
-            },
-            lifecycle_name: lifecycle,
-            template_display: String::new(),
-        };
-        state.frontend.scope_push(FocusScope::ArgInput);
-
-        // When handling CtrlClear.
-        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
-
-        // Then scope is popped and arg_input is reset to default.
-        assert_eq!(state.frontend.scope(), FocusScope::Input);
-        // Default ArgInputState has empty lifecycle_name.
-        assert_eq!(state.frontend.arg_input.lifecycle_name, "");
-        assert!(result.message_names.is_empty());
-        assert!(maybe_intent.is_none());
-    }
-
-    #[rstest::rstest]
     #[rstest::rstest]
     fn ctrl_clear_picker_two_presses_clears_then_closes() {
         // First <c-c> on a populated picker clears the filter;
@@ -533,75 +446,5 @@ mod tests {
         assert!(!state.frontend.is_picker());
         assert_eq!(state.frontend.scope(), FocusScope::Normal);
         assert!(result2.messages.is_empty());
-    }
-
-    // ============================================================
-    // CtrlClear in the rename popup
-    // ============================================================
-
-    fn rename_scope() -> jinn_slices::SliceScopeId {
-        jinn_slices::SliceScopeId::new("sidebar", "rename")
-    }
-
-    /// A state in the rename popup scope with in-progress text.
-    fn state_in_rename_scope_with_text(text: &str) -> AppState {
-        use crate::common::app_state::RenameSessionInputState;
-        let state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-        state
-            .frontend
-            .scope_push(FocusScope::Dynamic(rename_scope()));
-        state.frontend.update_sections(|s| {
-            s.rename_input = RenameSessionInputState {
-                text: jinn_slices::LineInput {
-                    input: text.to_owned(),
-                    cursor_pos: text.len(),
-                },
-            };
-        });
-        state
-    }
-
-    #[rstest::rstest]
-    fn ctrl_clear_rename_with_text_clears_and_stays_open() {
-        // Given the rename popup open with in-progress text.
-        let mut state = state_in_rename_scope_with_text("draft title");
-
-        // When handling CtrlClear.
-        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
-
-        // Then the text is cleared.
-        assert!(
-            state
-                .frontend
-                .with_sections(|s| s.rename_input.text.input.is_empty(), || true),
-            "ctrl-clear must clear the rename buffer"
-        );
-        // And the popup stays open.
-        assert_eq!(state.frontend.scope(), FocusScope::Dynamic(rename_scope()));
-        // And nothing is emitted or redispatched.
-        assert!(result.message_names.is_empty());
-        assert!(maybe_intent.is_none());
-    }
-
-    #[rstest::rstest]
-    fn ctrl_clear_rename_with_empty_text_closes_the_popup() {
-        // Given the rename popup open with empty text.
-        let mut state = state_in_rename_scope_with_text("");
-
-        // When handling CtrlClear.
-        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
-
-        // Then the popup closes (scope popped back to the sessions section).
-        assert_eq!(
-            state.frontend.sidebar_section(),
-            Some(jinn_sidebar_msg::SidebarSectionId::Sessions),
-            "ctrl-clear on an empty rename buffer must close the popup"
-        );
-        // And nothing is emitted or redispatched.
-        assert!(result.message_names.is_empty());
-        assert!(maybe_intent.is_none());
     }
 }

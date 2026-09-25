@@ -3,8 +3,8 @@
 //! Open (bound in the static `Picker(project)` scope) seeds the popup from
 //! the active session's cwd and pushes the popup's dynamic scope; confirm
 //! resolves the typed path with the shared resolver, writes the optimistic
-//! `projects` append into the kernel state (downcast through
-//! [`SliceActionState::as_any_mut`] — the sidebar pattern), and emits
+//! `projects` append into the app state through
+//! [`jinn_slices::SliceActionState::as_any_mut`], and emits
 //! `UpdatePreferences { AddProject }` so the actor persists and broadcasts;
 //! leave discards. Editing lands in the cell through a route-table input
 //! hook — the same pattern as the cwd popup.
@@ -12,6 +12,7 @@
 use jinn_cwd_msg::{CwdResolution, resolve_cwd_input};
 use jinn_preferences_config::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use jinn_preferences_config::schemas::ProjectConfig;
+use jinn_project_msg::ProjectAddInputState;
 use jinn_slices::RouteResult as IntentResult;
 use jinn_slices::SliceScopeId;
 use jinn_slices::cell::TypedCell;
@@ -20,20 +21,12 @@ use jinn_slices::route::{
 };
 use std::sync::Arc;
 
-use super::state::ProjectAddInputState;
-
 /// The project-add popup's dynamic scope (input-capturing).
 ///
 /// Also the popup's identity in the which-key/which-scope surfaces.
 #[must_use]
 pub fn project_add_scope() -> SliceScopeId {
-    SliceScopeId::new("preferences", "project_add")
-}
-
-/// The cell slot key holding the popup's [`ProjectAddInputState`].
-#[must_use]
-pub fn project_add_slot() -> jinn_slices::SlotKey {
-    jinn_slices::SlotKey::builtin("preferences", "project_add")
+    SliceScopeId::new("project", "project_add")
 }
 
 /// The state the actions and hook touch: the popup's single cell.
@@ -65,7 +58,7 @@ fn row(
         key,
         category,
         site: BindSite::OwnScope,
-        feature: "preferences",
+        feature: "project",
         outcome: jinn_slices::route::RouteOutcome::Action {
             action: action_name,
             display,
@@ -86,7 +79,7 @@ pub fn attach_project_add_rows(routes: &jinn_slices::KeyRoutes, cell: &ProjectAd
         key: "<c-n>",
         category: "project",
         site: BindSite::StaticScopes(&["Picker(project)"]),
-        feature: "preferences",
+        feature: "project",
         outcome: jinn_slices::route::RouteOutcome::Action {
             action: "open-project-add",
             display: "add dir",
@@ -183,12 +176,12 @@ pub(super) fn confirm_project_add(ctx: &mut ActionCtx<'_>, cell: &ProjectAddCell
     let current_cwd = ctx.state.active_session_cwd();
     match resolve_cwd_input(&raw, &current_cwd) {
         CwdResolution::Ok(path) => {
-            // Optimistic write into the kernel state: the sidebar
+            // Optimistic write into the app state: the sidebar
             // established the `as_any_mut` downcast as the sanctioned
-            // pattern for slices that must drive concrete kernel
-            // behavior. `frontend.preferences` is authoritative-written
-            // by the preferences actor; this write mirrors the actor's
-            // own apply so an open picker reflects the add immediately.
+            // pattern for slices that must drive concrete behavior.
+            // `frontend.preferences` is authoritative-written by the
+            // preferences actor; this write mirrors the actor's own apply so an
+            // open picker reflects the add immediately.
             let optimistic = ctx.state.as_any_mut().and_then(|any| {
                 any.downcast_mut::<jinn_domain::AppState>().map(|state| {
                     state.frontend.preferences.projects.push(ProjectConfig {

@@ -6,6 +6,7 @@
 //! code still consumes them. The lifecycle slice itself depends on this crate;
 //! the kernel depends on this crate. Neither direction forms a cycle.
 
+pub mod arg_input;
 pub mod builtin;
 pub mod command;
 pub mod command_template;
@@ -13,6 +14,7 @@ pub mod event;
 pub mod lifecycle_script_state;
 pub mod picker_entry;
 
+pub use arg_input::{ArgInputState, arg_input_scope, arg_input_slot};
 pub use builtin::{BuiltinHandler, BuiltinHandlerError, BuiltinRegistry};
 pub use command::{
     CancelLifecycleCommand, CloseSession, FinishSessionSetup, FinishSessionTeardown,

@@ -198,6 +198,7 @@ impl ActorSystemBuilder {
         jinn_chat_log_view_activate(&mut services, &state);
         jinn_chat_input_activate(&mut services);
         jinn_cwd_activate(&mut services);
+        jinn_project_activate(&mut services);
         jinn_preferences_activate(&mut services, state.clone()).await;
         jinn_sidebar_activate(&mut services, state.clone());
         jinn_theme_activate(&mut services);
@@ -319,8 +320,8 @@ impl ActorSystemBuilder {
         // fork, archive, and persist; the lifecycle actor owns setup, teardown,
         // close, and working-directory changes. Each contract has exactly one owner.
         jinn_session_store::activate(&services, state.clone());
-        jinn_session_lifecycle::activate(
-            &services,
+        jinn_session_lifecycle_activate(
+            &mut services,
             state.clone(),
             jinn_session_lifecycle_msg::BuiltinRegistry::new(),
             std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
@@ -625,6 +626,36 @@ fn jinn_sidebar_activate(services: &mut Services, state: jinn_domain::common::st
     }
 }
 
+#[expect(
+    clippy::panic,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+fn jinn_session_lifecycle_activate(
+    services: &mut Services,
+    state: jinn_domain::common::state::State,
+    builtin_registry: jinn_session_lifecycle_msg::BuiltinRegistry,
+    shell: String,
+) {
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_session_lifecycle::activate(
+        &mut host,
+        &services_snapshot,
+        state,
+        builtin_registry,
+        shell,
+    );
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("session-lifecycle slice finalize failed: {error}");
+    }
+}
+
 fn jinn_cwd_activate(services: &mut Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
@@ -636,6 +667,21 @@ fn jinn_cwd_activate(services: &mut Services) {
     jinn_cwd::activate(&mut host);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("cwd slice finalize failed: {error}");
+    }
+}
+
+/// Activates the project slice's project-add popup over the kernel registries.
+fn jinn_project_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_project::activate(&mut host);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("project slice finalize failed: {error}");
     }
 }
 

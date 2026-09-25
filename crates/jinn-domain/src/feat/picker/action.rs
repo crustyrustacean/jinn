@@ -4,7 +4,7 @@
 //! they resolve the active picker's spec through the [`PickerRegistry`],
 //! build the [`ActionCtx`] over the domain [`PickerHost`] impl, run the
 //! hook, and fold the [`PickerOutcome`] into an [`IntentResult`] (messages
-//! drained; `close` pops the picker scope).
+//! drained; optional picker closure precedes the requested scope transition).
 //!
 //! Every function is a no-op returning an empty result when the active
 //! picker has no spec (unmigrated kinds fall through to legacy arms) or
@@ -15,21 +15,26 @@ use jinn_picker::PickerOutcome;
 use jinn_picker::PickerRegistry;
 
 use crate::common::app_state::AppState;
+use crate::common::slices::key_routes::apply_scope_signal;
 use crate::feat::picker::host_impl::AppStatePickerHost;
 use crate::protocol::intent::IntentResult;
 
-/// Folds a picker outcome into an intent result; `close` clears the
-/// overlay scopes back to Normal — the same landing spot trunk's ESC from
-/// a picker produced (`clear_overlays`), so a picker opened from Input
-/// (e.g. the model picker) doesn't strand the user in a stale Input scope.
+/// Folds a picker outcome into an intent result.
+///
+/// When requested, `close` clears overlay scopes back to the current base
+/// before `scope_signal` is applied. A picker opened from Input (for
+/// example, the model picker) therefore cannot strand the user in a stale
+/// Input scope, while a destination pushed by the outcome survives closure.
 fn fold(state: &mut AppState, outcome: PickerOutcome) -> IntentResult {
-    let close = outcome.close;
-    let mut result = IntentResult::empty();
-    result.messages = outcome.messages;
-    result.message_names = outcome.message_names;
-    if close {
+    let mut result = IntentResult {
+        messages: outcome.messages,
+        message_names: outcome.message_names,
+        scope_signal: outcome.scope_signal,
+    };
+    if outcome.close {
         state.frontend.scope_clear_overlays();
     }
+    apply_scope_signal(&mut result, state);
     result
 }
 
@@ -171,6 +176,8 @@ mod tests {
     use crate::protocol::ChatEntryKind;
     use jinn_picker::SKILL_ID;
     use jinn_slices::FocusScope;
+    use jinn_slices::ScopeSignal;
+    use jinn_slices::SliceScopeId;
 
     fn state_with_skill_picker() -> AppState {
         let state = AppState::default_with_scope_focus();
@@ -271,5 +278,32 @@ mod tests {
             state.frontend.picker_kind().is_none(),
             "close outcome must pop the picker scope"
         );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn picker_close_is_applied_before_destination_push() {
+        // Given an open picker and a destination scope.
+        let mut state = state_with_skill_picker();
+        let destination = SliceScopeId::new("picker-test", "destination");
+
+        // When folding an outcome that closes the picker and pushes the destination.
+        let result = fold(
+            &mut state,
+            PickerOutcome::empty()
+                .close()
+                .with_scope_signal(ScopeSignal::Push(destination.clone())),
+        );
+
+        // Then the destination is the sole overlay above the base scope.
+        assert_eq!(
+            result.scope_signal, None,
+            "the applied signal should be consumed"
+        );
+        assert!(state.frontend.picker_kind().is_none());
+        assert!(matches!(
+            state.frontend.scope(),
+            FocusScope::Dynamic(scope) if scope == destination
+        ));
     }
 }

@@ -2,12 +2,8 @@
 //!
 //! Open loads the implicit "blank" lifecycle plus every configured lifecycle
 //! from `jinn.toml`, flagging those whose setup command takes `$`-parameters.
-//! Enter either starts the session immediately (no-args lifecycles) or hands
-//! off to the arg-input popup so the user can fill the parameters first. The
-//! confirm hooks own all scope transitions — neither sets the close flag,
-//! because the no-args path manages scopes itself (clear overlays, push the
-//! input scope) and the has-args path replaces the picker scope with the
-//! arg-input scope in place.
+//! Enter either starts the session immediately (no-args lifecycles) or seeds
+//! the lifecycle argument cell and returns a close-plus-push transition.
 
 use jinn_picker::ActionCtx;
 use jinn_picker::PickerId;
@@ -15,14 +11,13 @@ use jinn_picker::PickerOutcome;
 use jinn_picker::PickerSpec;
 
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::app_state::ArgInputState;
-use jinn_domain::feat::session_lifecycle::command_template::CommandTemplate;
 use jinn_domain::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
 use jinn_domain::feat::session_lifecycle::picker_entry::lifecycle_row;
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_preferences_config::schemas::LifecycleCommand;
-use jinn_slices::FocusScope;
-use jinn_slices::LineInput;
+use jinn_session_lifecycle_msg::ArgInputState;
+use jinn_session_lifecycle_msg::CommandTemplate;
+use jinn_slices::ScopeSignal;
 
 /// Builds the session-lifecycle picker's spec.
 #[must_use]
@@ -70,13 +65,8 @@ fn open_lifecycle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     PickerOutcome::empty()
 }
 
-/// Enter on the lifecycle picker: start the session, or hand off to the
-/// arg-input popup when the lifecycle's setup command needs parameters.
-///
-/// Neither path sets the close flag. The no-args path delegates to
-/// [`handle_session_lifecycle_setup`], which itself clears overlays and
-/// pushes the input scope — a `close` would wipe that push afterwards. The
-/// has-args path swaps the picker scope for the arg-input scope directly.
+/// Enter on the lifecycle picker: start the session, or seed and open the
+/// dynamic argument popup when the lifecycle's setup command needs parameters.
 fn confirm_lifecycle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     let Some(selected) = state_of(ctx)
         .frontend
@@ -92,31 +82,33 @@ fn confirm_lifecycle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
     let (lifecycle_name, has_args) = selected;
     let state = state_of(ctx);
 
-    state.frontend.scope_pop();
-
     if has_args {
-        // Save context and open the arg input popup.
-        let template_display = state
+        let Some(template) = state
             .frontend
             .preferences
             .session_lifecycles
             .iter()
-            .find(|l| l.name == lifecycle_name)
-            .and_then(|l| l.setup.as_ref())
-            .and_then(|cmd| match cmd {
-                LifecycleCommand::Shell(s) => Some(s.as_str()),
+            .find(|lifecycle| lifecycle.name == lifecycle_name)
+            .and_then(|lifecycle| lifecycle.setup.as_ref())
+            .and_then(|command| match command {
+                LifecycleCommand::Shell(shell) => Some(CommandTemplate::parse(shell)),
                 LifecycleCommand::Builtin(_) => None,
             })
-            .map(|cmd| CommandTemplate::parse(cmd).display())
-            .unwrap_or_default();
-
-        state.frontend.arg_input = ArgInputState {
-            lifecycle_name,
-            template_display,
-            text: LineInput::new(),
+        else {
+            return PickerOutcome::empty();
         };
-        state.frontend.scope_push(FocusScope::ArgInput);
-        return PickerOutcome::empty();
+        let Some(cell) = state.frontend.slices().and_then(|slices| {
+            slices.reader::<ArgInputState>(&jinn_session_lifecycle_msg::arg_input_slot())
+        }) else {
+            return PickerOutcome::empty();
+        };
+        let popup = ArgInputState::new(lifecycle_name, template);
+        cell.update(|state| *state = popup);
+        return PickerOutcome::empty()
+            .close()
+            .with_scope_signal(ScopeSignal::Push(
+                jinn_session_lifecycle_msg::arg_input_scope(),
+            ));
     }
 
     // No args - proceed directly. The setup function owns the scope
@@ -193,12 +185,18 @@ mod tests {
     use jinn_picker::SESSION_LIFECYCLE_ID;
     use jinn_preferences_config::schemas::LifecycleCommand;
     use jinn_preferences_config::schemas::SessionLifecycle;
+    use jinn_session_lifecycle_msg::arg_input_slot;
     use jinn_slices::FocusScope;
 
     /// State with an active origin session and the given configured
     /// lifecycles (name, description, setup-with-args).
     fn state_with_lifecycles(lifecycles: &[(&str, Option<&str>, Option<&str>)]) -> AppState {
         let mut state = AppState::default_with_scope_focus();
+        let slices = jinn_slices::Slices::new();
+        slices
+            .register(arg_input_slot(), ArgInputState::empty())
+            .expect("fresh state registry has the lifecycle argument slot free");
+        state.frontend.attach_slices(slices);
         state.frontend.preferences.session_lifecycles = lifecycles
             .iter()
             .map(|(name, description, setup)| SessionLifecycle {
@@ -343,7 +341,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn confirm_with_args_opens_the_arg_input_popup() {
+    fn confirm_with_args_seeds_popup_and_signals_destination() {
         // Given an open picker with a `$1` lifecycle selected.
         let mut state = state_with_lifecycles(&[
             ("project-a", None, Some("cd /a/$1")),
@@ -357,18 +355,29 @@ mod tests {
         // When confirming.
         let outcome = run(&mut state, confirm_lifecycle);
 
-        // Then the arg-input state holds the right lifecycle and template
-        // (the dialectic regression: find() must match the selected one).
-        assert_eq!(state.frontend.arg_input.lifecycle_name, "project-b");
-        assert!(
-            state.frontend.arg_input.template_display.contains("/b/"),
-            "template_display should come from project-b's setup, got: {}",
-            state.frontend.arg_input.template_display,
+        // Then the registered cell holds the selected lifecycle and parsed template.
+        let cell = state
+            .frontend
+            .slices()
+            .and_then(|slices| slices.reader::<ArgInputState>(&arg_input_slot()))
+            .expect("test state registered the lifecycle argument cell");
+        assert_eq!(cell.read().lifecycle_name, "project-b");
+        assert!(cell.read().template.display().contains("/b/"));
+        assert!(cell.read().text.input.is_empty());
+        // And the outcome requests close-then-push without mutating scope directly.
+        assert!(outcome.close);
+        assert_eq!(
+            outcome.scope_signal,
+            Some(ScopeSignal::Push(
+                jinn_session_lifecycle_msg::arg_input_scope()
+            ))
         );
-        // And the picker scope was replaced by the arg-input scope.
-        assert_eq!(state.frontend.scope(), FocusScope::ArgInput);
-        // And no close signal (the hook manages scopes itself).
-        assert!(!outcome.close);
+        assert_eq!(
+            state.frontend.scope(),
+            FocusScope::Picker {
+                kind: PickerKind::SessionLifecycle
+            }
+        );
         assert!(outcome.messages.is_empty());
     }
 }

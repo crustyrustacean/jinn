@@ -13,7 +13,6 @@ pub mod persona;
 pub mod picker;
 pub mod project;
 pub mod provider;
-pub mod pruner_accumulation_input;
 pub mod session;
 pub mod session_lifecycle;
 pub mod skills;

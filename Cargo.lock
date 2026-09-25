@@ -1944,6 +1944,7 @@ dependencies = [
  "jinn-picker-specs",
  "jinn-preferences",
  "jinn-preferences-config",
+ "jinn-project",
  "jinn-provider",
  "jinn-provider-config",
  "jinn-provider-selection",
@@ -1969,6 +1970,7 @@ dependencies = [
  "jinn-term",
  "jinn-term-msg",
  "jinn-testutil",
+ "jinn-theme",
  "jinn-theme-msg",
  "jinn-theme-slice",
  "jinn-token-count",
@@ -2288,7 +2290,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-discord"
-version = "0.0.0"
+version = "0.118.0"
 dependencies = [
  "async-trait",
  "daow",
@@ -2574,6 +2576,7 @@ dependencies = [
  "jinn-preferences-config",
  "jinn-provider-selection-msg",
  "jinn-selection-widget",
+ "jinn-session-lifecycle-msg",
  "jinn-session-msg",
  "jinn-session-state",
  "jinn-session-store-msg",
@@ -2596,7 +2599,6 @@ dependencies = [
  "dirs",
  "error-stack",
  "jinn-core-types",
- "jinn-cwd-msg",
  "jinn-domain",
  "jinn-persona-msg",
  "jinn-picker-specs",
@@ -2611,7 +2613,6 @@ dependencies = [
  "tokio",
  "tracing",
  "trouper",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -2636,6 +2637,31 @@ dependencies = [
  "tracing",
  "trouper",
  "wherror",
+]
+
+[[package]]
+name = "jinn-project"
+version = "0.118.0"
+dependencies = [
+ "jinn-core-types",
+ "jinn-cwd-msg",
+ "jinn-domain",
+ "jinn-preferences-config",
+ "jinn-project-msg",
+ "jinn-slices",
+ "jinn-theme",
+ "ratatui",
+ "rstest",
+ "tempfile",
+ "tracing",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "jinn-project-msg"
+version = "0.118.0"
+dependencies = [
+ "jinn-slices",
 ]
 
 [[package]]
@@ -2844,7 +2870,11 @@ dependencies = [
  "jinn-session-lifecycle-msg",
  "jinn-session-msg",
  "jinn-session-store-msg",
+ "jinn-slices",
+ "jinn-testutil",
+ "jinn-theme",
  "kill_tree",
+ "ratatui",
  "rstest",
  "serde",
  "strip-ansi-escapes",

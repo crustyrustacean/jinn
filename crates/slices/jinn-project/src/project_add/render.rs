@@ -13,9 +13,8 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use unicode_segmentation::UnicodeSegmentation;
 
 use jinn_cwd_msg::{CwdResolution, resolve_cwd_input};
+use jinn_project_msg::ProjectAddInputState;
 use jinn_slices::RenderFacts;
-
-use super::state::ProjectAddInputState;
 
 /// Horizontal padding fraction for the popup (20% each side).
 const POPUP_H_PAD_FRAC: f32 = 0.20;
@@ -85,7 +84,7 @@ pub fn render_project_add_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderF
     // popup rect) — draw into it directly.
     let cell: jinn_slices::TypedCell<ProjectAddInputState> = ctx
         .slices
-        .reader(&super::intent::project_add_slot())
+        .reader(&jinn_project_msg::project_add_slot())
         .expect("project-add overlay renders only when its cell is registered");
     let state = cell.read();
     let current_cwd =
