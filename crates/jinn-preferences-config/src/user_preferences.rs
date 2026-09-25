@@ -141,8 +141,11 @@ pub struct UserPreferences {
     /// Named session lifecycle recipes - paired setup/teardown commands.
     /// The implicit "blank" lifecycle (no commands) is always available and
     /// does not need to be listed here.
-    #[serde(default)]
-    #[serde(rename = "session_lifecycle")]
+    ///
+    /// Superseded by the `[session_lifecycle.lifecycle]` section, read
+    /// through the configuration layer. This field only survives to serve
+    /// the pre-umbrella spelling until the whole aggregate is deleted.
+    #[serde(default, rename = "session_lifecycle")]
     pub session_lifecycles: Vec<SessionLifecycle>,
 
     /// Curated project directories shown in the project picker, serialized
@@ -366,7 +369,17 @@ fn load_healed(
         doc.to_string()
     };
 
-    let prefs = toml::from_str(&healed)
+    // Parse a filtered view: the layer-owned keys stay on disk untouched
+    // and stay readable by the layer, they are just hidden from the
+    // aggregate. See `without_layer_owned_keys`.
+    let filtered = {
+        let doc: toml_edit::DocumentMut = healed
+            .parse()
+            .change_context(UserPreferencesError::Parse)
+            .attach("failed to parse user preferences after removing legacy keys")?;
+        without_layer_owned_keys(&doc)
+    };
+    let prefs = toml::from_str(&filtered)
         .change_context(UserPreferencesError::Parse)
         .attach("failed to parse user preferences after removing legacy keys")?;
 
@@ -381,10 +394,14 @@ fn load_healed(
 ///
 /// Creates parent directories as needed.
 ///
+/// Writes the template as bytes. It deliberately does not round-trip
+/// through [`UserPreferences`]: the template is documentation, and
+/// serializing a struct would strip every comment it ships with.
+///
 /// # Errors
 ///
 /// Returns [`UserPreferencesError::Io`] if directory creation or file writing fails.
-pub(crate) fn create_default_preferences_to<P>(path: P) -> Result<(), Report<UserPreferencesError>>
+pub fn create_default_preferences_to<P>(path: P) -> Result<(), Report<UserPreferencesError>>
 where
     P: AsRef<Path>,
 {
@@ -590,6 +607,45 @@ pub fn normalize_legacy_keys(root: &mut toml_edit::Table) -> Option<String> {
     }
     salvaged
 }
+
+/// Returns a copy of `root` with the keys the configuration layer owns
+/// removed, so the legacy aggregate deserializes alongside them.
+///
+/// This is a deserialization filter only — the document on disk is never
+/// rewritten, so the layer still reads every one of these sections. It
+/// exists solely for the overlap window where both readers are live: the
+/// aggregate binds `session_lifecycle` as a sequence, while the document
+/// now spells it `[session_lifecycle.lifecycle]`, a table, and the two
+/// cannot both deserialize the same key.
+///
+/// Once the aggregate is deleted this function goes with it.
+fn without_layer_owned_keys(doc: &toml_edit::DocumentMut) -> String {
+    let mut doc = doc.clone();
+    let root = doc.as_table_mut();
+    for key in LAYER_OWNED_KEYS {
+        root.remove(key);
+    }
+    // The project and mcp umbrellas are tables wrapping their lists, so
+    // the aggregate cannot see the sequence it binds at all; the whole
+    // umbrella goes.
+    root.remove("project");
+    root.remove("mcp");
+    doc.to_string()
+}
+
+/// Top-level keys the configuration layer owns. See
+/// [`without_layer_owned_keys`].
+const LAYER_OWNED_KEYS: &[&str] = &[
+    "context_curation",
+    "session_lifecycle",
+    "watchdog",
+    "ui",
+    "provider",
+    "tools",
+    "skills",
+    "chat_log",
+    "term",
+];
 
 /// Reads the leading comment carried by an item without mutating it: the
 /// first AoT element's decor for array-of-tables (`# c\n[[k]]`), the
@@ -843,31 +899,18 @@ binary = "auto"
 
     #[rstest::rstest]
     #[test]
-    fn load_returns_defaults_and_creates_file_when_missing() {
+    fn create_writes_the_template_verbatim_when_missing() {
         // Given a path to a nonexistent file.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
 
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
+        // When creating it.
+        create_default_preferences_to(&path).expect("create");
 
-        // Then defaults are returned.
-
-        assert!(prefs.tool_entry_max_lines.is_none());
-        // And the file is created.
+        // Then the file exists and its bytes are exactly the embedded
+        // template — comments included, since it is written as bytes
+        // rather than round-tripped through a struct.
         assert!(path.exists());
-    }
-
-    #[rstest::rstest]
-    fn load_creates_file_with_template_bytes_when_missing() {
-        // Given a path to a nonexistent file.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-
-        // When loading.
-        load_preferences_from(&path).expect("load");
-
-        // Then the file's bytes are exactly the embedded template.
         let on_disk = std::fs::read_to_string(&path).expect("read");
         assert_eq!(on_disk, DEFAULT_CONFIG);
     }

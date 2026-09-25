@@ -1,6 +1,6 @@
 //! Session lifecycle configuration schema — the `jinn.toml`
-//! `[[session_lifecycle]]` entries plus the [`LifecycleCommand`] serde
-//! shell-or-builtin encoding.
+//! `[[session_lifecycle.lifecycle]]` entries plus the
+//! [`LifecycleCommand`] serde shell-or-builtin encoding.
 //!
 //! Pure serde data: the *handler registry* ([`BuiltinRegistry`] in the
 //! kernel) that resolves [`BuiltinId`] at run time stays in the kernel's
@@ -178,6 +178,11 @@ pub struct SessionLifecycle {
     /// See [`LifecycleCommand`] for details.
     #[serde(rename = "teardown_command", default)]
     pub teardown: Option<LifecycleCommand>,
+}
+
+impl jinn_config::ConfigList for SessionLifecycle {
+    const KEY: &'static str = "session_lifecycle.lifecycle";
+    const ENTRY_KEY: &'static str = "name";
 }
 
 #[cfg(test)]

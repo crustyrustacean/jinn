@@ -118,6 +118,36 @@ impl EntryKey {
     }
 }
 
+/// A section of `jinn.toml` that is a bare array of tables at its key,
+/// e.g. `[[project.projects]]`.
+///
+/// This is the companion to [`Configurable`] for the one shape a plain
+/// table cannot express. A wrapper struct holding `Vec<T>` would read
+/// and write correctly, but it would move the list *inside* a table:
+/// `[[project]]` with a nested `projects = [...]` array instead of
+/// `[[project.projects]]`, which is not the shape a user expects and
+/// loses the per-entry comment the entry key exists to preserve.
+///
+/// # At most one list-of-tables
+///
+/// This is again singular for the same reason [`Configurable::ENTRY_KEY`]
+/// is: a section that owned two lists would have the second rewritten
+/// positionally, silently reattaching a user's per-entry comment onto a
+/// different entry on the next save.
+pub trait ConfigList: Serialize + DeserializeOwned + Send + Sync + 'static {
+    /// The dotted `jinn.toml` path this list occupies.
+    const KEY: &'static str;
+
+    /// The field identifying an entry. Always present here: a
+    /// list-of-tables with no identity field is the exact case the entry
+    /// key exists for.
+    ///
+    /// An element type need not be `Default`: a list section's absent
+    /// state is the empty list, so there is no "default entry" for the
+    /// bound to supply.
+    const ENTRY_KEY: &'static str;
+}
+
 /// Layers `overlay` onto `base`: tables merge key-wise, every other value
 /// replaces wholesale.
 ///

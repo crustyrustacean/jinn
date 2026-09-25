@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 # Internal deps (kernel-free: no jinn-domain)
+jinn-config = { workspace = true }
 jinn-common = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-mcp-msg = { workspace = true }

@@ -588,3 +588,11 @@ impl Default for AutoPruneConfig {
         }
     }
 }
+
+impl jinn_config::Configurable for AutoPruneConfig {
+    // The regex rules list lives two sub-tables below the section key,
+    // hence the dotted path.
+    const KEY: &'static str = "context_curation.auto_prune";
+    const ENTRY_KEY: Option<jinn_config::EntryKey> =
+        Some(jinn_config::EntryKey::new("regex.rules", "pattern"));
+}

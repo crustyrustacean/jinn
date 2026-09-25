@@ -13,4 +13,4 @@ pub mod configurable;
 pub use config_layer::{
     ConfigDocumentStorage, ConfigError, ConfigLayer, FilesystemConfigStorage, InMemoryConfigStorage,
 };
-pub use configurable::{ConfigSectionError, Configurable, EntryKey};
+pub use configurable::{ConfigList, ConfigSectionError, Configurable, EntryKey};

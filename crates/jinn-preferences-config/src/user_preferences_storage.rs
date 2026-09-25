@@ -263,6 +263,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use crate::user_preferences::DEFAULT_CONFIG;
     use jinn_common::app_info::PREFS_FILE_NAME;
 
     #[rstest::rstest]
@@ -274,7 +275,10 @@ mod tests {
         let prefs = storage.reload().expect("reload");
 
         // Then defaults are returned.
-        assert!(prefs.tool_entry_max_lines.is_none());
+        // The aggregate is all-defaults: the shipped template carries no
+        // active top-level scalar under the umbrella layout, so every
+        // unmodelled key is simply absent rather than a zero value.
+        assert!(prefs.projects.is_empty());
     }
 
     #[rstest::rstest]
@@ -292,8 +296,15 @@ mod tests {
         assert_eq!(reloaded, prefs);
     }
 
+    /// The first-run auto-create writes the template, verbatim.
+    ///
+    /// The legacy aggregate's field-level defaults are no longer the
+    /// contract here — the section layer's are, and the template test
+    /// suite covers those. What this guards is the auto-create itself: a
+    /// user with no `jinn.toml` gets a comment-rich starter file whose
+    /// comments survive.
     #[rstest::rstest]
-    fn filesystem_load_returns_default_when_missing() {
+    fn filesystem_load_creates_the_template_verbatim_when_missing() {
         // Given a temp directory with no file.
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
@@ -301,17 +312,16 @@ mod tests {
 
         assert!(!path.exists());
 
-        // When loading.
-        let prefs = storage.reload().expect("reload");
+        // When loading, which auto-creates.
+        storage.reload().expect("reload");
 
-        // Then defaults are returned AND the file is auto-created with the
-        // canonical template (so users get a comment-rich starter config on
-        // first run).
-        assert!(prefs.tool_entry_max_lines.is_none());
+        // Then the file exists, holding the template's bytes exactly.
         assert!(
             path.exists(),
             "first-run load should auto-create the config file"
         );
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
     }
 
     #[rstest::rstest]

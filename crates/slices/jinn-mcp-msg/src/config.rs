@@ -46,9 +46,27 @@ pub enum TransportKind {
     RemoteHttp,
 }
 
+/// The `[mcp]` umbrella — the configured MCP servers.
+///
+/// A map of tables keyed by server name, wrapped as a section table so
+/// the configuration layer has one table to patch. The map key *is* the
+/// server's identity (there is no `name` field to drift out of sync
+/// with the key), which is also why this section declares no entry key:
+/// a map's key already matches entries by identity.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpServersConfig {
+    /// The configured servers, keyed by name.
+    #[serde(default)]
+    pub server: std::collections::BTreeMap<String, McpServerConfig>,
+}
+
+impl jinn_config::Configurable for McpServersConfig {
+    const KEY: &'static str = "mcp.server";
+}
+
 /// One configured MCP server.
 ///
-/// Declared in `jinn.toml` under `[mcp_server.<name>]` — the table name IS
+/// Declared in `jinn.toml` under `[mcp.server.<name>]` — the table name IS
 /// the server's identity (the per-session enablement identifier stored in
 /// `SessionCore::enabled_mcp_servers` and the tool-namespace segment
 /// `mcp__<name>__<tool>`); there is no `name` field to drift out of sync

@@ -2346,6 +2346,7 @@ dependencies = [
  "derive_more",
  "error-stack",
  "jinn-chat-input-msg",
+ "jinn-config",
  "jinn-context",
  "jinn-core-types",
  "jinn-discord-msg",
@@ -2554,6 +2555,7 @@ version = "0.118.0"
 dependencies = [
  "async-trait",
  "error-stack",
+ "jinn-config",
  "jinn-core-types",
  "jinn-selection-widget",
  "jinn-slices",
@@ -2705,6 +2707,7 @@ dependencies = [
  "dirs",
  "error-stack",
  "jinn-common",
+ "jinn-config",
  "jinn-core-types",
  "jinn-mcp-msg",
  "jinn-slices",
@@ -3332,6 +3335,7 @@ name = "jinn-term-msg"
 version = "0.118.0"
 dependencies = [
  "async-trait",
+ "jinn-config",
  "jinn-core-types",
  "jinn-slices",
  "parking_lot",
@@ -3478,6 +3482,7 @@ name = "jinn-tools-msg"
 version = "0.118.0"
 dependencies = [
  "jiff",
+ "jinn-config",
  "jinn-core-types",
  "jinn-picker",
  "jinn-selection-widget",

@@ -22,7 +22,7 @@ use jinn_common::toml_patch::{DocumentPatcher, PatchError};
 use parking_lot::RwLock;
 use toml_edit::{DocumentMut, Item, Table};
 
-use crate::configurable::{ConfigSectionError, Configurable};
+use crate::configurable::{ConfigList, ConfigSectionError, Configurable};
 
 /// The configuration layer: a live, typed, read+write view of the
 /// configuration document.
@@ -340,6 +340,80 @@ impl ConfigLayer {
         Ok(())
     }
 
+    /// Reads the live value of a [`ConfigList`] section.
+    ///
+    /// The counterpart of [`Self::get`] for a section that is a bare
+    /// array of tables. An absent list is not an error — it reads
+    /// `Vec::default()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigSectionError::NotATable`] when a path segment is
+    /// not a table, and [`ConfigSectionError::Malformed`] when an entry
+    /// does not deserialize into `T`.
+    pub fn get_list<T: ConfigList>(&self) -> Result<Vec<T>, ConfigSectionError> {
+        let doc = self.inner.doc.read().clone();
+        let Some(arrays) = section_arrays(&doc, T::KEY)? else {
+            return Ok(Vec::default());
+        };
+        deserialize_entries(T::KEY, arrays)
+    }
+
+    /// Writes `value` over a [`ConfigList`] section and persists the
+    /// document.
+    ///
+    /// Entries are matched by [`ConfigList::ENTRY_KEY`], so rewriting one
+    /// entry leaves its siblings — and their per-entry comments —
+    /// untouched.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::Serialize`] when the value cannot be
+    /// serialized, [`ConfigError::Patch`] when the patcher cannot apply
+    /// it, and [`ConfigError::Storage`] when the write fails.
+    pub fn put_list<T: ConfigList>(&self, value: &[T]) -> Result<(), Report<ConfigError>> {
+        let serialized = toml::Value::try_from(value).change_context(ConfigError::Serialize {
+            detail: format!("section [{}] did not serialize", T::KEY),
+        })?;
+        let toml::Value::Array(entries) = serialized else {
+            return Err(Report::new(ConfigError::NotATable { key: T::KEY }));
+        };
+
+        let mut doc = self.inner.doc.read().clone();
+        let mut patcher = DocumentPatcher::new();
+        patcher.register_array_key(T::KEY.split('.').collect::<Vec<_>>(), T::ENTRY_KEY);
+
+        // Resolve the list's parent table, then hand the patcher a table
+        // carrying the entries under the list's own leaf key. That is the
+        // same shape `put` uses, so the array-key registry sees the
+        // registered path and matches entries by `ENTRY_KEY`.
+        let (leaf, parent_path): (String, Vec<&str>) = match T::KEY.rsplit_once('.') {
+            Some((head, leaf)) => (leaf.to_owned(), head.split('.').collect()),
+            None => (T::KEY.to_owned(), Vec::new()),
+        };
+        let parent = ensure_table(&mut doc, &parent_path)
+            .change_context(PatchError::Generic)
+            .change_context(ConfigError::Patch {
+                detail: format!("section [{}] did not apply", T::KEY),
+            })?;
+        let mut list_value = toml::value::Table::new();
+        list_value.insert(leaf, toml::Value::Array(entries));
+        patcher
+            .apply(&list_value, parent)
+            .change_context(PatchError::Generic)
+            .change_context(ConfigError::Patch {
+                detail: format!("section [{}] did not apply", T::KEY),
+            })?;
+
+        // The patcher matches by entry key rather than replacing the
+        // array, so an entry the caller dropped must go explicitly.
+        drop_unmatched_entries(&mut doc, T::KEY, T::ENTRY_KEY, value);
+
+        self.inner.storage.write(&doc)?;
+        *self.inner.doc.write() = doc;
+        Ok(())
+    }
+
     /// Walks every registered section, failing on the first malformed
     /// one in registration order.
     ///
@@ -415,6 +489,125 @@ fn section_table(
             segment: key.to_owned(),
         }),
     }
+}
+
+/// Resolves a section's entries by its dotted key, for a
+/// [`ConfigList`] section.
+///
+/// `Ok(None)` means the list is absent, which reads as empty. A segment
+/// that is not a table is a shape disagreement and is reported as such.
+fn section_arrays(
+    doc: &DocumentMut,
+    key: &'static str,
+) -> Result<Option<Vec<toml::Table>>, ConfigSectionError> {
+    let mut cursor = doc.as_table();
+    let mut segments: Vec<&str> = key.split('.').collect();
+    let Some(leaf) = segments.pop() else {
+        return Ok(None);
+    };
+    for segment in &segments {
+        let Some(item) = cursor.get(segment) else {
+            return Ok(None);
+        };
+        cursor = item
+            .as_table()
+            .ok_or_else(|| ConfigSectionError::NotATable {
+                key,
+                segment: (*segment).to_owned(),
+            })?;
+    }
+    let Some(item) = cursor.get(leaf) else {
+        return Ok(None);
+    };
+    let toml::Value::Array(entries) = item_to_value(item) else {
+        return Err(ConfigSectionError::NotATable {
+            key,
+            segment: leaf.to_owned(),
+        });
+    };
+    let tables = entries
+        .into_iter()
+        .map(|entry| match entry {
+            toml::Value::Table(table) => Ok(table),
+            _ => Err(ConfigSectionError::NotATable {
+                key,
+                segment: leaf.to_owned(),
+            }),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(tables))
+}
+
+/// Deserializes a list section's entries into `T`.
+fn deserialize_entries<T: ConfigList>(
+    key: &'static str,
+    tables: Vec<toml::Table>,
+) -> Result<Vec<T>, ConfigSectionError> {
+    tables
+        .into_iter()
+        .map(|table| {
+            T::deserialize(table).map_err(|err| ConfigSectionError::Malformed {
+                key,
+                detail: err.message().to_owned(),
+            })
+        })
+        .collect()
+}
+
+/// Walks (creating as needed) to the table at `path` in `doc`.
+///
+/// A missing intermediate table is created with no decor, so the patcher
+/// inserts the child in header form and no comment is stranded.
+fn ensure_table<'d>(
+    doc: &'d mut DocumentMut,
+    path: &[&str],
+) -> Result<&'d mut toml_edit::Table, PatchError> {
+    let mut cursor = doc.as_table_mut();
+    for segment in path {
+        let entry = cursor
+            .entry(segment)
+            .or_insert(Item::Table(toml_edit::Table::new()));
+        cursor = entry.as_table_mut().ok_or(PatchError::Generic)?;
+    }
+    Ok(cursor)
+}
+
+/// Removes array-of-tables entries at `key` whose `entry_field` value is
+/// not present in `keep`.
+///
+/// The patcher matches a registered array by its entry key and leaves
+/// unmatched entries alone, which is what preserves a sibling's comment.
+/// The flip side is that an entry the caller *deleted* would survive
+/// forever, so removal is explicit here.
+fn drop_unmatched_entries<T: ConfigList>(
+    doc: &mut DocumentMut,
+    key: &str,
+    entry_field: &str,
+    keep: &[T],
+) {
+    let wanted: Vec<toml::Value> = keep
+        .iter()
+        .filter_map(|entry| toml::Value::try_from(entry).ok())
+        .filter_map(|entry| {
+            let table = entry.as_table()?;
+            table.get(entry_field).cloned()
+        })
+        .collect();
+    let Some((leaf, head)) = key.rsplit_once('.') else {
+        return;
+    };
+    let Some(parent) = resolve_table_mut(doc.as_table_mut(), &head.split('.').collect::<Vec<_>>())
+    else {
+        return;
+    };
+    let Some(Item::ArrayOfTables(array)) = parent.get_mut(leaf) else {
+        return;
+    };
+    array.retain(|entry| {
+        entry
+            .get(entry_field)
+            .is_some_and(|value| wanted.iter().any(|want| item_to_value(value) == *want))
+    });
 }
 
 /// Converts a `toml_edit` item into the data-only `toml` value.

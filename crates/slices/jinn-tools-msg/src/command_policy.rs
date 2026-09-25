@@ -68,6 +68,14 @@ impl CompiledCommandPolicy {
     }
 }
 
+/// The `jinn.toml` key the global (non-project-specific) rules live at.
+pub const GLOBAL_COMMAND_POLICY_KEY: &str = "project.global_command_policy";
+
+impl jinn_config::ConfigList for CommandPolicyRule {
+    const KEY: &'static str = GLOBAL_COMMAND_POLICY_KEY;
+    const ENTRY_KEY: &'static str = "pattern";
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(

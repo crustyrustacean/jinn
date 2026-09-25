@@ -219,7 +219,7 @@ impl App {
                 app_paths.prompts_dir(),
                 app_paths.skills_dir(),
             );
-            match install_defaults_to(&destinations, *force, storage.path(), &storage) {
+            match install_defaults_to(&destinations, *force, storage.path()) {
                 Ok(report) => {
                     let InstallReport {
                         outcomes,

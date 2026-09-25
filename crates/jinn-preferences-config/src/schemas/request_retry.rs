@@ -49,3 +49,7 @@ impl Default for RequestRetryConfig {
         }
     }
 }
+
+impl jinn_config::Configurable for RequestRetryConfig {
+    const KEY: &'static str = "context_curation.request_retry";
+}
