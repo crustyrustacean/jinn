@@ -115,7 +115,7 @@ mod tests {
         // Given a sidebar actor with three sessions and cursor at index 2.
         let actor = test_actor();
         let removed_id = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             // Remove default session so we control exact count.
             let default_id = state.session.active_session_id().clone();
             state.session.remove_without_replacement(&default_id);
@@ -136,7 +136,7 @@ mod tests {
 
         // Simulate the session being removed (as the session actor would do).
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             state.session.remove_without_replacement(&removed_id);
         }
 
@@ -163,7 +163,7 @@ mod tests {
         // Given a sidebar actor with one session and cursor at 0.
         let actor = test_actor();
         let removed_id = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let id = state.session.active_session_id().clone();
             state
                 .frontend
@@ -173,7 +173,7 @@ mod tests {
 
         // Simulate session close + new session creation (as session actor would do).
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             state
                 .session
                 .remove_and_replace(&removed_id, ChatSessionState::new());
@@ -202,7 +202,7 @@ mod tests {
         // Given a sidebar actor with three sessions and cursor at index 0.
         let actor = test_actor();
         let removed_id = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let s1 = ChatSessionState::new();
             let s2 = ChatSessionState::new();
             let s3 = ChatSessionState::new();
@@ -218,7 +218,7 @@ mod tests {
 
         // Simulate removal of the last session (cursor at 0 is still valid).
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             state.session.remove_without_replacement(&removed_id);
         }
 

@@ -128,7 +128,7 @@ async fn persist_reloads_open_project_picker_items() {
     // Given a state with the project picker open and zero entries.
     let (mut actor, state) = create_actor().await;
     {
-        let mut guard = state.write_test_no_cap();
+        let mut guard = state.write();
         load_project_picker_entries(&mut guard.frontend);
         guard.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Project,

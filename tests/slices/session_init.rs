@@ -211,7 +211,7 @@ async fn manual_scan_reaches_only_the_addressed_session() {
         let mut session = ChatSessionState::new();
         session.set_cwd(project.clone());
         let id = session.session_id().clone();
-        app.core.state.write_test_no_cap().session.insert(session);
+        app.core.state.write().session.insert(session);
         id
     };
     let skills_recorder = recorder_for::<jinn_domain::feat::skills::SkillsLoaded>(&app).await;

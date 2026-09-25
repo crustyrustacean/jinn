@@ -107,7 +107,7 @@ mod tests {
         let app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .frontend
             .scope_swap_base(scope);
         app

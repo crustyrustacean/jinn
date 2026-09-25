@@ -62,9 +62,6 @@ pub struct TuiApp {
     pub config: TuiConfig,
     /// Sidebar container with registered sections.
     pub sidebar: Sidebar,
-    /// Capability for God-mode `State::write()` — held by the platform layer,
-    /// passed to IntentHandler::handle and used for render-time frontend mutations.
-    pub intent_handler_cap: jinn_domain::common::tcaps::IntentHandlerCap,
 }
 
 impl TuiApp {
@@ -88,7 +85,7 @@ impl TuiApp {
                         let state = self.core.state.read();
                         state.session.active_session_id().clone()
                     };
-                    let mut state = self.core.state.write(&self.intent_handler_cap);
+                    let mut state = self.core.state.write();
                     state.session.clear_load();
                     let closure = jinn_domain::common::bridge::Bridge::publish_closure(
                         jinn_session_history_msg::PushChatEntry {
@@ -221,7 +218,7 @@ impl TuiApp {
     pub fn route_intent(&mut self, intent: KernelIntent) {
         // Step 1-3: Handle intent, collect results, release lock.
         let (messages, signals) = {
-            let mut state = self.core.state.write(&self.intent_handler_cap);
+            let mut state = self.core.state.write();
 
             let result = IntentHandler::handle(
                 &intent,

@@ -1572,7 +1572,7 @@ mod mcp_dispatch_gate_tests {
         // Given a state with a seeded session, the stub tools registered for it.
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
-        state.write_test_no_cap().session.get_or_create(&session_id);
+        state.write().session.get_or_create(&session_id);
         let (harness, _services) = spawn_orchestrator(&state).await;
         register_stub_tools(&harness, &session_id).await;
 
@@ -1606,7 +1606,7 @@ mod mcp_dispatch_gate_tests {
         // tools still registered (the in-flight-turn race the gate guards).
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
-        state.write_test_no_cap().session.get_or_create(&session_id);
+        state.write().session.get_or_create(&session_id);
         let (harness, _services) = spawn_orchestrator(&state).await;
         register_stub_tools(&harness, &session_id).await;
         let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
@@ -1632,7 +1632,7 @@ mod mcp_dispatch_gate_tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         state
-            .write_test_no_cap()
+            .write()
             .session
             .get_or_create(&session_id)
             .enable_mcp_server("stub");
@@ -1664,7 +1664,7 @@ mod mcp_dispatch_gate_tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         state
-            .write_test_no_cap()
+            .write()
             .session
             .get_or_create(&session_id)
             .enable_mcp_server("stub");

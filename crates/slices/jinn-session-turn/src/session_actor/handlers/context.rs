@@ -388,7 +388,7 @@ mod tests {
         // (the value the store actor's environment handler seeds from state.toml at startup).
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard.frontend.app_state.persona_name = Some("general".to_owned());
         }
         let payload = PersonasLoaded {
@@ -414,7 +414,7 @@ mod tests {
         // Given a session with a user entry.
         let (actor, state, audit) = create_actor().await;
         let entry_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.active_session_mut();
             let entry = jinn_core_types::ChatEntry::user("hello");
             let id = entry.id.clone();
@@ -456,7 +456,7 @@ mod tests {
         // Given a session with a pinned entry.
         let (actor, state, audit) = create_actor().await;
         let entry_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.active_session_mut();
             let mut entry = jinn_core_types::ChatEntry::user("hello");
             entry.pin_position = Some(PinPosition::Top);
@@ -499,7 +499,7 @@ mod tests {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         let entry_id = {
-            let mut guard = actor.state.write_test_no_cap();
+            let mut guard = actor.state.write();
             let session = guard.active_session_mut();
             let entry = jinn_core_types::ChatEntry::user("hello");
             let id = entry.id.clone();
@@ -532,7 +532,7 @@ mod tests {
     /// Pushes `n` pinned entries (all `Top`, so display order = insertion order)
     /// into the active session and returns their IDs in insertion order.
     fn push_pinned_entries(state: &State, n: usize) -> Vec<ChatEntryId> {
-        let mut guard = state.write_test_no_cap();
+        let mut guard = state.write();
         let session = guard.active_session_mut();
         (0..n)
             .map(|i| {
@@ -552,7 +552,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(ids[0].clone());
         });
 
@@ -581,7 +581,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(ids[1].clone());
         });
 
@@ -611,7 +611,7 @@ mod tests {
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
         let selected = ids[1].clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(selected.clone());
         });
 
@@ -640,7 +640,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(ids[2].clone());
         });
 
@@ -669,7 +669,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 1);
         let session_id = state.read().session.active_session_id().clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(ids[0].clone());
         });
 
@@ -697,7 +697,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let selected = ids[1].clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(selected.clone());
         });
 

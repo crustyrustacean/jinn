@@ -82,7 +82,7 @@ async fn picker_popup_rect_is_selectable() {
     // Switch to Picker mode with an active provider picker.
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
         .scope_push(jinn_domain::FocusScope::Picker {
             kind: jinn_domain::PickerKind::Provider,
@@ -116,7 +116,7 @@ async fn content_area_rect_is_selectable() {
     // Switch to Picker mode with an active provider picker.
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
         .scope_push(jinn_domain::FocusScope::Picker {
             kind: jinn_domain::PickerKind::Provider,
@@ -171,12 +171,12 @@ async fn minimap_arrow_is_yellow_when_normal_scope() {
     let mut app = render_test_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
         .scope_clear_overlays();
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .active_session_mut()
         .push_entry(ChatEntry::user("hello"));
     let (mut terminal, _area) = setup_term(80, 24);
@@ -204,12 +204,12 @@ async fn minimap_arrow_is_darkgray_when_input_scope() {
     let mut app = render_test_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
         .scope_push(FocusScope::Input);
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .active_session_mut()
         .push_entry(ChatEntry::user("hello"));
     let (mut terminal, _area) = setup_term(80, 24);
@@ -275,7 +275,7 @@ async fn cwd_input_popup_renders_and_is_selectable() {
     }
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
         .scope_push(FocusScope::Dynamic(jinn_cwd::cwd_scope()));
     let (mut terminal, _area) = setup_term(80, 24);
@@ -346,7 +346,7 @@ async fn mcp_inspector_renders_server_list_and_logs_pane() {
             runtime.set_status(&session_id, "excalimate", McpConnectionStatus::Running);
             runtime.set_stderr(&session_id, "excalimate", "hello from stderr".to_owned());
         });
-        let mut w = app.core.state.write_test_no_cap();
+        let mut w = app.core.state.write();
         let entry = McpServerEntry::new(
             "excalimate".to_owned(),
             "npx @excalimate/mcp-server".to_owned(),
@@ -439,7 +439,7 @@ async fn mcp_inspector_tools_pane_renders_tool_names() {
         let wrapped = jinn_picker_specs::build_picker_registry()
             .make_items(jinn_picker::MCP_SERVER_ID, vec![entry])
             .expect("mcp-server spec registered");
-        let mut w = app.core.state.write_test_no_cap();
+        let mut w = app.core.state.write();
         w.frontend.mcp_server_picker_mut().set_items(wrapped);
         w.frontend.scope_push(jinn_domain::FocusScope::Picker {
             kind: jinn_domain::PickerKind::McpServer,
@@ -476,7 +476,7 @@ async fn which_key_help_renders_above_the_terminal_overlay() {
     let mut app = render_test_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
         .scope_swap_base(jinn_domain::FocusScope::Dynamic(jinn_term_msg::view_scope()));
     app.which_key.active = true;
@@ -539,7 +539,7 @@ async fn model_picker_renders_telescope_layout_with_filter() {
     // Given a provider picker open with entries loaded and filter "ol".
     let mut app = render_test_app_with_provider().await;
     {
-        let mut w = app.core.state.write_test_no_cap();
+        let mut w = app.core.state.write();
         w.frontend.scope_push(jinn_domain::FocusScope::Picker {
             kind: jinn_domain::PickerKind::Provider,
         });
@@ -600,7 +600,7 @@ async fn model_picker_uses_dark_gray_border() {
     // Given a provider picker open with entries loaded.
     let mut app = render_test_app_with_provider().await;
     {
-        let w = app.core.state.write_test_no_cap();
+        let w = app.core.state.write();
         w.frontend.scope_push(jinn_domain::FocusScope::Picker {
             kind: jinn_domain::PickerKind::Provider,
         });
@@ -628,7 +628,7 @@ async fn model_picker_no_active_marker_for_active_model() {
     // Given the active session is on ollama/llama3 with entries loaded.
     let mut app = render_test_app_with_provider().await;
     {
-        let mut w = app.core.state.write_test_no_cap();
+        let mut w = app.core.state.write();
         w.frontend.scope_push(jinn_domain::FocusScope::Picker {
             kind: jinn_domain::PickerKind::Provider,
         });

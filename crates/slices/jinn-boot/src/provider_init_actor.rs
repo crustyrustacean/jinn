@@ -413,7 +413,7 @@ mod tests {
 
         // Set an explicit model on the active session.
         state
-            .write_test_no_cap()
+            .write()
             .active_session_mut()
             .set_model(ModelSelection::Single("bench-model".to_owned()));
 

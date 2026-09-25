@@ -88,7 +88,7 @@ async fn load_completed_is_published_after_session_is_fully_initialized() {
         .await
         .expect("save session");
     {
-        let mut state = fixture.state.write_test_no_cap();
+        let mut state = fixture.state.write();
         state.session.remove(&session_id);
         state.session.begin_load(session_id.clone());
     }
@@ -117,7 +117,7 @@ async fn persist_session_writes_interacted_session_to_store() {
     // Given a running store actor and an interacted session.
     let fixture = actor_fixture().await;
     let session_id = {
-        let mut state = fixture.state.write_test_no_cap();
+        let mut state = fixture.state.write();
         let session = state.active_session_mut();
         session.mark_interacted();
         session.push_entry(jinn_core_types::ChatEntry::user("persist me"));
@@ -155,7 +155,7 @@ async fn archive_session_removes_session_from_state() {
     // Given a running store actor and an active persisted session.
     let fixture = actor_fixture().await;
     let session_id = {
-        let mut state = fixture.state.write_test_no_cap();
+        let mut state = fixture.state.write();
         state.active_session_mut().mark_interacted();
         state.session.active_session_id().clone()
     };
@@ -182,7 +182,7 @@ async fn archive_write_failure_leaves_session_live_and_active() {
     let fixture = actor_fixture().await;
     let archived = fixture.harness.spawn_recorder::<SessionArchived>().await;
     let session_id = {
-        let mut state = fixture.state.write_test_no_cap();
+        let mut state = fixture.state.write();
         state.active_session_mut().mark_interacted();
         state
             .active_session_mut()
@@ -219,7 +219,7 @@ async fn archive_session_publishes_session_archived_event() {
     let fixture = actor_fixture().await;
     let archived = fixture.harness.spawn_recorder::<SessionArchived>().await;
     let session_id = {
-        let mut state = fixture.state.write_test_no_cap();
+        let mut state = fixture.state.write();
         state.active_session_mut().mark_interacted();
         state.session.active_session_id().clone()
     };
@@ -244,7 +244,7 @@ async fn archive_session_publishes_session_closed_event() {
     let fixture = actor_fixture().await;
     let closed = fixture.harness.spawn_recorder::<SessionClosed>().await;
     let session_id = {
-        let mut state = fixture.state.write_test_no_cap();
+        let mut state = fixture.state.write();
         state.active_session_mut().mark_interacted();
         state.session.active_session_id().clone()
     };

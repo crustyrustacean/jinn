@@ -246,7 +246,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         {
-            let mut w = state.write_test_no_cap();
+            let mut w = state.write();
             let session = w.session_mut(&session_id);
             session.task_list_mut().set_from_inputs(&[PhaseInput {
                 description: "Old Phase".to_owned(),

@@ -53,7 +53,7 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .frontend
             .scope_clear_overlays();
         let (mut terminal, _area) = setup_term(80, 24);
@@ -83,7 +83,7 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .frontend
             .scope_push(FocusScope::Input);
         let (mut terminal, _area) = setup_term(80, 24);
@@ -112,7 +112,7 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope());
         let (mut terminal, _area) = setup_term(80, 24);

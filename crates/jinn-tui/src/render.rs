@@ -83,7 +83,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
 /// Sets wrap width and scroll offset before layout, using a write lock.
 fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
-    let mut wstate = app.core.state.write(&app.intent_handler_cap);
+    let mut wstate = app.core.state.write();
 
     // Measure the active picker's results viewport every frame so navigation
     // intents scroll against the real on-screen height instead of a stale

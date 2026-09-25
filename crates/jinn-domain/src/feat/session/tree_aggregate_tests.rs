@@ -791,7 +791,7 @@ fn spawned_child_crosses_tree_display_threshold() {
         snapshot.session.active_session_id().clone()
     };
     {
-        let mut guard = state.write_test_no_cap();
+        let mut guard = state.write();
         let child = ChatSessionState::new_child(&parent_id, true);
         guard.session.insert(child);
     }

@@ -25,20 +25,13 @@ pub struct HeadlessApp {
     core: AppCore,
     /// Services container — holds the root supervisor for shutdown.
     services: Services,
-    /// Capability for God-mode `State::write()`.
-    intent_handler_cap: jinn_domain::common::tcaps::IntentHandlerCap,
 }
 
 impl HeadlessApp {
     /// Creates a new headless app with the given core and services.
     #[must_use]
     pub fn new(core: AppCore, services: Services) -> Self {
-        let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
-        Self {
-            core,
-            services,
-            intent_handler_cap,
-        }
+        Self { core, services }
     }
 
     /// Returns the trouper system handle, for the graceful shutdown
@@ -110,7 +103,7 @@ impl HeadlessApp {
 
                 if let Some(intent) = which_key.handle_key(key) {
                     // Process the intent through the IntentHandler.
-                    let mut state = self.core.state.write(&self.intent_handler_cap);
+                    let mut state = self.core.state.write();
                     let result = IntentHandler::handle(
                         &intent,
                         &mut state,

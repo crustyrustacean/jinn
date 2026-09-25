@@ -22,15 +22,13 @@ pub use daow::Pool as SessionPool;
 /// decided exactly once at activation). When disabled, nothing is
 /// spawned and the parked channels stay untouched.
 ///
-/// `session_pool` backs the thread-map DAO; `intent_handler_cap` grants
-/// the gateway its God-mode state writes.
+/// `session_pool` backs the thread-map DAO.
 pub fn spawn_gateway(
     handle: &tokio::runtime::Handle,
     core: &jinn_domain::AppCore,
     services: &Services,
     session_pool: SessionPool,
     activated: crate::ActivatedDiscord,
-    intent_handler_cap: &jinn_domain::common::tcaps::IntentHandlerCap,
 ) -> Option<JoinHandle<()>> {
     let crate::ActivatedDiscord { parked, config } = activated;
     if !config.enabled {
@@ -41,7 +39,6 @@ pub fn spawn_gateway(
     let services = services.clone();
     let state = core.state.clone();
     let bridge = core.bridge.clone();
-    let intent_handler_cap = *intent_handler_cap;
     let bridge_rx = channels.bridge_rx.clone();
     let gateway_rx = channels.gateway_rx.clone();
     let status_tx = channels.status_tx.clone();
@@ -58,7 +55,6 @@ pub fn spawn_gateway(
                 thread_map: crate::DiscordThreadMap::new(session_pool),
                 config: std::sync::Arc::new(config),
                 services,
-                intent_handler_cap,
             },
             token,
             bridge_rx,
@@ -105,7 +101,6 @@ mod tests {
                 ..crate::DiscordConfig::default()
             },
         };
-        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
 
         // When spawning the gateway.
         let handle = spawn_gateway(
@@ -114,7 +109,6 @@ mod tests {
             &services,
             detached_pool(),
             activated,
-            &cap,
         );
 
         // Then no task was spawned.

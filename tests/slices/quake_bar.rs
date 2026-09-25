@@ -133,7 +133,7 @@ async fn quake_app() -> jinn_tui::TuiApp {
     let app = crate::common::test_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
         .scope_swap_base(jinn_domain::FocusScope::Dynamic(quake_scope()));
     app

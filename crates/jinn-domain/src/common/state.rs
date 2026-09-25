@@ -46,37 +46,17 @@ impl State {
         }
     }
 
-    /// Acquire a write lock on the state. Requires the [`IntentHandlerCap`] —
-    /// the deliberate special-case owner. The IntentHandler is single-threaded
-    /// (runs synchronously on the platform layer's main thread) and delegates
-    /// to ~131 leaf handlers, so it keeps God-mode access. No concurrent actor
-    /// can reach this method because they don't hold the cap.
-    pub fn write(&self, _cap: &crate::common::tcaps::IntentHandlerCap) -> StateWriteGuard<'_> {
+    /// Acquire a write lock on the state.
+    pub fn write(&self) -> StateWriteGuard<'_> {
         StateWriteGuard {
             inner: self.inner.write(),
         }
     }
 
-    /// TEST-ONLY write access — bypasses the cap requirement so tests across
-    /// crates aren't burdened with threading a cap through every call site.
+    /// Acquire a write lock for a named mutation projection.
     ///
-    /// Never call from production code. The name is deliberately grep-obvious
-    /// so misuse is visible in review and `rg`.
-    #[doc(hidden)]
-    pub fn write_test_no_cap(&self) -> StateWriteGuard<'_> {
-        StateWriteGuard {
-            inner: self.inner.write(),
-        }
-    }
-
-    /// Acquire a write lock, returning the raw parking_lot guard.
-    ///
-    /// This is the seam the TCaps projection layer hooks into: `with_*` methods
-    /// call this, then split-borrow disjoint fields of `AppState` for projection.
-    /// It stays scoped to `crate::common` so only the tcaps projection layer (in
-    /// `common/tcaps/`) can reach it. Actors in `feat/` are outside `common/` and
-    /// cannot call it. `inner` itself remains private; this method is the only
-    /// write path for the tcaps projections.
+    /// Sibling projection modules use this seam to split-borrow disjoint fields
+    /// of [`AppState`] while preserving one shared write-lock acquisition.
     pub(in crate::common) fn write_lock(&self) -> parking_lot::RwLockWriteGuard<'_, AppState> {
         self.inner.write()
     }
@@ -148,7 +128,7 @@ mod tests {
 
         // When writing and pushing an entry.
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello"));
@@ -169,7 +149,7 @@ mod tests {
 
         // Then both clones point to the same underlying data.
         {
-            let mut guard = clone.write_test_no_cap();
+            let mut guard = clone.write();
             guard
                 .active_session_mut()
                 .push_entry(ChatEntry::user("shared"));

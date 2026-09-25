@@ -450,7 +450,7 @@ mod tests {
         // Given an idle session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -491,7 +491,7 @@ mod tests {
         // Given a new session with no title.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -516,7 +516,7 @@ mod tests {
         // Given a session in Streaming phase (busy).
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.active_session_mut();
             session.begin_streaming();
             guard.session.active_session_id().clone()
@@ -546,7 +546,7 @@ mod tests {
         // Given a session with default model (NO_PROVIDER_ID).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -575,7 +575,7 @@ mod tests {
         // Given a session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -617,7 +617,7 @@ mod tests {
         // Given an idle session with no attachments.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -667,7 +667,7 @@ mod tests {
         });
         std::fs::write(&path, json.to_string()).expect("write models.dev.json");
         // Set the session's active model to the seeded model id.
-        let mut guard = actor.state.write_test_no_cap();
+        let mut guard = actor.state.write();
         guard
             .active_session_mut()
             .set_model(ModelSelection::Single(model_id.to_owned()));
@@ -679,7 +679,7 @@ mod tests {
         // Given an idle session whose active model is a known text-only model.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -723,7 +723,7 @@ mod tests {
         // Given an idle session whose active model is vision-capable.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -759,13 +759,13 @@ mod tests {
         // Given an idle session whose active model is NOT in models.dev (unknown).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
         // Set a model id but write NO models.dev entry for it.
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .active_session_mut()
                 .set_model(ModelSelection::Single("my-uncatalogued-llama".to_owned()));
@@ -807,12 +807,12 @@ mod tests {
         // Given an idle session whose active model is unknown AND a text-only message.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .active_session_mut()
                 .set_model(ModelSelection::Single("my-uncatalogued-llama".to_owned()));
@@ -844,7 +844,7 @@ mod tests {
         // Given a session already in Streaming phase.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.active_session_mut();
             session.begin_streaming();
             guard.session.active_session_id().clone()
@@ -877,7 +877,7 @@ mod tests {
         // Given an idle session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -930,7 +930,7 @@ mod tests {
     ) {
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };

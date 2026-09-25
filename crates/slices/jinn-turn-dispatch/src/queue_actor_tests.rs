@@ -69,7 +69,7 @@ async fn idle_transition_dispatches_user_message() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
     }
@@ -100,7 +100,7 @@ async fn idle_transition_dispatches_tool_continuation() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.enqueue(QueueItem::ToolContinuation);
     }
@@ -128,7 +128,7 @@ async fn non_idle_transition_does_nothing() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
     }
@@ -171,7 +171,7 @@ async fn idle_with_empty_queue_and_steering_dispatches_steering() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.steering_buffer_mut().push_fragment("stay focused");
     }
@@ -232,7 +232,7 @@ async fn idle_with_both_buffers_dispatches_steering_first_and_keeps_queue() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
             "queued msg",
@@ -295,7 +295,7 @@ async fn queued_item_dispatches_after_steering_turn_completes() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
             "queued msg",
@@ -348,7 +348,7 @@ async fn idle_transition_publishes_idle_to_sending_phase_change() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
     }
@@ -400,7 +400,7 @@ async fn dispatch_user_message_does_not_overwrite_existing_title() {
     let (actor, state, _audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.set_title("original title".to_owned());
     }
@@ -486,7 +486,7 @@ async fn dispatch_user_message_blocks_attachment_to_unknown_model() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.profile_mut().model = jinn_core_types::model_selection::ModelSelection::Single(
             "my-uncatalogued-llama".to_owned(),
@@ -552,7 +552,7 @@ async fn dispatch_user_message_provider_id_is_some_when_model_set() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.profile_mut().model = jinn_core_types::model_selection::ModelSelection::Single(
             "test-provider/test-model".to_owned(),
@@ -580,7 +580,7 @@ async fn dispatch_user_message_does_not_absorb_steering_fragments() {
     let (actor, state, _audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.steering_buffer_mut().push_fragment("system note");
     }
@@ -615,7 +615,7 @@ async fn dispatch_resume_does_not_absorb_steering_fragments() {
     let (actor, state, _audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         state
             .session_mut_or_create(&sid)
             .steering_buffer_mut()
@@ -693,7 +693,7 @@ async fn dispatch_resume_leaves_history_unchanged() {
     let (actor, state, _audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.push_entry(ChatEntry::user("earlier turn"));
     }
@@ -734,7 +734,7 @@ async fn dispatch_turn_publishes_send_to_llm_provider() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.push_entry(ChatEntry::user("already pushed"));
     }
@@ -763,7 +763,7 @@ async fn dispatch_turn_publishes_none_effort_when_session_has_no_own_effort() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         state.session_mut_or_create(&sid);
     }
     {
@@ -802,7 +802,7 @@ async fn dispatch_turn_publishes_sessions_own_reasoning_effort() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.profile_mut().reasoning_effort = Some(jinn_domain::ReasoningEffort::Low);
     }
@@ -843,7 +843,7 @@ async fn dispatch_turn_drains_steering_submitted_after_preparation() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.push_entry(ChatEntry::user("prepared"));
         session.steering_buffer_mut().push_fragment("late note");
@@ -879,7 +879,7 @@ async fn dispatch_turn_transitions_to_streaming_and_records_token_record() {
     let (actor, state, _audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.push_entry(ChatEntry::user("history"));
         session.begin_sending();
@@ -913,7 +913,7 @@ async fn dispatch_turn_publishes_sending_to_streaming_phase_change() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.push_entry(ChatEntry::user("history"));
         session.begin_sending();
@@ -944,7 +944,7 @@ async fn dispatch_turn_preserves_round_robin_index_mutation() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.profile_mut().model = jinn_core_types::model_selection::ModelSelection::Alloy {
             models: vec!["p/a".to_owned(), "p/b".to_owned()],
@@ -987,7 +987,7 @@ async fn dispatch_turn_does_not_drain_stale_queue() {
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
         session.push_entry(ChatEntry::user("prepared"));
         session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
@@ -1029,7 +1029,7 @@ async fn dispatch_turn_with_assembly_failure_publishes_nothing() {
     };
     let sid = session_id();
     {
-        let mut state = state.write_test_no_cap();
+        let mut state = state.write();
         state.session_mut_or_create(&sid).begin_sending();
     }
 

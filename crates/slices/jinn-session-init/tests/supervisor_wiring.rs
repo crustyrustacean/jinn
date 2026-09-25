@@ -178,7 +178,7 @@ async fn manual_rescan_reaches_only_the_addressed_session() {
     write_skill(&wired.home, "only-skill");
     let other = SessionId::new();
     {
-        let mut guard = wired.state.write_test_no_cap();
+        let mut guard = wired.state.write();
         guard.session.get_or_create(&other);
     }
 

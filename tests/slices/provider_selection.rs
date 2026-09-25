@@ -283,7 +283,7 @@ async fn endpoint_load_for_non_openrouter_model_clears_loading_and_shows_one_row
     services.provider_registry.replace(registry);
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let cell = cell_of(&app);

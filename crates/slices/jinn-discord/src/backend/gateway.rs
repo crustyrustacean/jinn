@@ -63,8 +63,6 @@ pub struct BotData {
     /// Runtime services — the intent handler reads the slice registry and
     /// key route table from here.
     pub services: jinn_domain::Services,
-    /// Capability for God-mode `State::write()` — held by the platform layer.
-    pub intent_handler_cap: jinn_domain::common::tcaps::IntentHandlerCap,
 }
 
 /// Runs the Discord gateway: starts poise, registers slash commands, and

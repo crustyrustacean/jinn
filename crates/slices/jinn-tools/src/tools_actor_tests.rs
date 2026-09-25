@@ -89,7 +89,7 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
 
     let state = State::new(jinn_domain::AppState::default());
     {
-        let mut s = state.write_test_no_cap();
+        let mut s = state.write();
         let session = s.active_session_mut();
         session.push_entry(jinn_core_types::ChatEntry::user("list files"));
         session.push_entry(jinn_core_types::ChatEntry::assistant("checking"));

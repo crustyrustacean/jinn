@@ -325,8 +325,6 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let intent_handler_cap =
-                    jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
                 let compaction_prompt = jinn_tui::load_compaction_prompt(
                     &jinn_domain::AppPaths::default().prompts_dir(),
                     &jinn_domain::AppPaths::default().system_prompts_dir(),
@@ -358,7 +356,6 @@ impl App {
                     &services,
                     session_pool.clone(),
                     discord_activated,
-                    &intent_handler_cap,
                 );
 
                 let app = jinn_tui::launch(core, services).change_context(AppError)?;
@@ -367,8 +364,6 @@ impl App {
             }
             #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
-                let intent_handler_cap =
-                    jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
                 let store_for_shutdown = session_store.clone();
                 let compaction_prompt = jinn_tui::load_compaction_prompt(
                     &jinn_domain::AppPaths::default().prompts_dir(),
@@ -397,7 +392,6 @@ impl App {
                     &core.state,
                     &services.paths.themes_dir(),
                     &services.paths.system_themes_dir(),
-                    &intent_handler_cap,
                 );
                 let mut headless = HeadlessApp::new(core, services);
                 match command {
@@ -607,15 +601,14 @@ mod tests {
         let state = State::new(AppState::default());
 
         // Set the theme name in preferences.
-        state.write_test_no_cap().frontend.app_state.theme_name = Some("custom".to_owned());
+        state.write().frontend.app_state.theme_name = Some("custom".to_owned());
 
         // Capture the initial focus_accent color.
         let initial_focus = state.read().frontend.theme.focus_accent;
 
         // When loading the theme.
         let empty = PathBuf::from("/nonexistent");
-        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
-        load_theme(&state, dir.path(), &empty, &cap);
+        load_theme(&state, dir.path(), &empty);
 
         // Then the theme in state was updated (focus_accent changed to magenta).
         // This kills: replace load_theme with ().
@@ -630,14 +623,13 @@ mod tests {
     fn load_theme_falls_back_gracefully_on_missing() {
         // Given a state with a theme name that doesn't exist.
         let state = State::new(AppState::default());
-        state.write_test_no_cap().frontend.app_state.theme_name = Some("nonexistent".to_owned());
+        state.write().frontend.app_state.theme_name = Some("nonexistent".to_owned());
 
         let empty = PathBuf::from("/nonexistent");
 
         // When loading the theme (no matching file).
         // Then it should not panic - the function logs a warning and returns.
-        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
-        load_theme(&state, &empty, &empty, &cap);
+        load_theme(&state, &empty, &empty);
     }
 
     #[rstest::rstest]

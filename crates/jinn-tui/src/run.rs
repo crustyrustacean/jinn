@@ -292,7 +292,7 @@ fn handle_suspend_action(
             if let Some(content) = content {
                 app.core
                     .state
-                    .write(&app.intent_handler_cap)
+                    .write()
                     .active_session()
                     .update_input(|i| i.replace_all(content));
             }

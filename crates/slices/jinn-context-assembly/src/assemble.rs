@@ -388,7 +388,7 @@ mod tests {
     pub(crate) fn state_with_history(entries: Vec<ChatEntry>) -> (State, SessionId) {
         let state = State::new(AppState::default_with_scope_focus());
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.active_session_mut();
             for entry in entries {
                 session.push_entry(entry);
@@ -406,7 +406,7 @@ mod tests {
         let (state, session_id) = {
             let state = State::new(AppState::default_with_scope_focus());
             let session_id = {
-                let mut guard = state.write_test_no_cap();
+                let mut guard = state.write();
                 let session = guard.active_session_mut();
                 for entry in [
                     ChatEntry::user("run it"),
@@ -486,7 +486,7 @@ mod tests {
         let (state, session_id) = {
             let state = State::new(AppState::default_with_scope_focus());
             let session_id = {
-                let mut guard = state.write_test_no_cap();
+                let mut guard = state.write();
                 let session = guard.active_session_mut();
                 for entry in [
                     ChatEntry::user("before"),
@@ -668,7 +668,7 @@ mod tests {
         // Given a state with skills but no history.
         let (state, session_id) = state_with_history(vec![]);
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .active_session_mut()
                 .set_discovered_skills(vec![make_skill("test-skill")]);
@@ -914,7 +914,7 @@ mod tests {
     }
 
     fn set_active_model(state: &State, model: &str) {
-        let mut guard = state.write_test_no_cap();
+        let mut guard = state.write();
         guard
             .active_session_mut()
             .set_model(ModelSelection::Single(model.to_owned()));
@@ -1018,7 +1018,7 @@ mod tests {
         // Given a state with cached context files.
         let (state, session_id) = state_with_history(vec![]);
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .active_session_mut()
                 .set_discovered_context_files(vec![ContextFile {
@@ -1052,7 +1052,7 @@ mod tests {
             cell.update(|r| {
                 r.global.insert("bash".to_owned(), make_tool("bash"));
             });
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .active_session_mut()
                 .set_discovered_skills(vec![make_skill("test-skill")]);
@@ -1092,7 +1092,7 @@ mod tests {
             disabled.insert("bash".to_owned());
             disabled.insert("write".to_owned());
             {
-                let mut guard = state.write_test_no_cap();
+                let mut guard = state.write();
                 guard
                     .session
                     .get_mut(&session_id)
@@ -1146,7 +1146,7 @@ mod tests {
             });
             let child = jinn_session_state::ChatSessionState::new_child(&parent_id, true);
             child_id = child.session_id().clone();
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard.session.insert(child);
         }
 
@@ -1188,7 +1188,7 @@ mod tests {
             // Disable bash.
             let mut disabled = std::collections::HashSet::new();
             disabled.insert("bash".to_owned());
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .session
                 .get_mut(&session_id)
@@ -1218,7 +1218,7 @@ mod tests {
         // Given a session with skills and some disabled.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use skills")]);
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard.active_session_mut().set_discovered_skills(vec![
                 make_skill("phased-task-loop"),
                 make_skill("web-coder"),
@@ -1271,7 +1271,7 @@ mod tests {
                     body: "You are a custom persona.".to_owned(),
                 });
             });
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .session
                 .get_mut(&session_id)
@@ -1310,7 +1310,7 @@ mod tests {
                     body: "You are a coding assistant.".to_owned(),
                 });
             });
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .session
                 .get_mut(&session_id)
@@ -1404,7 +1404,7 @@ mod tests {
                     body: "ORDER-MARK-PERSONA".to_owned(),
                 });
             });
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .session
                 .get_mut(&session_id)

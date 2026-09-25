@@ -131,12 +131,12 @@ mod tests {
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .frontend
             .audit_popup_visible = true;
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .active_session_mut()
             .push_entry(entry);
         app
@@ -176,7 +176,7 @@ mod tests {
         // Pre-populate the line-range cache that render_chat_log normally fills.
         // The selected entry occupies wrapped-line 0..=0 (one line).
         {
-            let mut wstate = app.core.state.write_test_no_cap();
+            let mut wstate = app.core.state.write();
             let session = wstate.active_session_mut();
             session.set_entry_line_ranges(vec![(0, 0)]);
             session.set_rendered_scroll_offset(0);
@@ -283,7 +283,7 @@ mod tests {
         let (mut terminal, _area) = setup_term(100, 24);
 
         {
-            let mut wstate = app.core.state.write_test_no_cap();
+            let mut wstate = app.core.state.write();
             let session = wstate.active_session_mut();
             session.set_entry_line_ranges(vec![(0, 0)]);
             session.set_rendered_scroll_offset(0);
@@ -379,7 +379,7 @@ mod tests {
         // audit_popup_visible stays at default (false)
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .active_session_mut()
             .push_entry(entry);
         let (mut terminal, _area) = setup_term(80, 24);
@@ -420,7 +420,7 @@ mod tests {
         let mut app = app_with_audit_visible().await;
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .frontend
             .scope_push(FocusScope::Picker {
                 kind: jinn_domain::PickerKind::Provider,

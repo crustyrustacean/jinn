@@ -160,7 +160,7 @@ mod tests {
         // on this actor's system (production wiring does this at boot).
         let _ = jinn_context_assembly::service::ensure_spawned(&actor.services.trouper_system);
         let session_id = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
             // A partial assistant entry created via the streaming path so it
@@ -239,7 +239,7 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.clear_stream_generation();
         }
@@ -268,7 +268,7 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.finish_streaming(true, jiff::Timestamp::now());
         }
@@ -295,7 +295,7 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             let now = jiff::Timestamp::now();
             session.begin_tool_call(0, "tc-partial", "bash", now);

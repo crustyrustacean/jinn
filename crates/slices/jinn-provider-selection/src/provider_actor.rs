@@ -1549,7 +1549,7 @@ mod tests {
         ctx.spawn_provider_actor();
 
         ctx.state
-            .write_test_no_cap()
+            .write()
             .active_session_mut()
             .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
         let cell = ctx.cell();

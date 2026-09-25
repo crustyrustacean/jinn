@@ -474,9 +474,9 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
     let state = jinn_domain::common::state::State::new(
         jinn_domain::common::app_state::AppState::default_with_scope_focus(),
     );
-    state.write_test_no_cap().session.get_or_create(&session_id);
+    state.write().session.get_or_create(&session_id);
     state
-        .write_test_no_cap()
+        .write()
         .session
         .get_mut(&session_id)
         .expect("session")
@@ -529,7 +529,7 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
     // session enablement flipped off — the confirm_mcp ordering).
     services.trouper_system.stop(&actor).await;
     state
-        .write_test_no_cap()
+        .write()
         .session
         .get_mut(&session_id)
         .expect("session")
