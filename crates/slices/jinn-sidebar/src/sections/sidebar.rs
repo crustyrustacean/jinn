@@ -57,7 +57,7 @@ impl Sidebar {
         // Pre-compute all section heights so we don't fight the borrow checker.
         let heights: Vec<u16> = self
             .sections
-            .iter()
+            .iter_mut()
             .map(|s| s.content_height(ctx))
             .collect();
         let n = self.sections.len();

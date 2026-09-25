@@ -238,7 +238,7 @@ impl SidebarSection for McpServersSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, ctx: &RenderCtx) -> u16 {
+    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
         // Collapsed to 0 when no servers are enabled for the active session,
         // matching the Pins/TaskList pattern so disabled servers waste no space.
         let enabled = ctx.state.active_session().enabled_mcp_servers();
@@ -467,7 +467,7 @@ mod tests {
     fn content_height_is_zero_when_none_enabled() {
         // Given configured servers, none enabled for the active session.
         let state = state_with_servers(&[server("alpha"), server("beta")]);
-        let section = McpServersSection;
+        let mut section = McpServersSection;
 
         // When computing the content height.
         let slices = jinn_slices::Slices::new();
@@ -488,7 +488,7 @@ mod tests {
         let mut state = state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
         state.active_session_mut().enable_mcp_server("alpha");
         state.active_session_mut().enable_mcp_server("gamma");
-        let section = McpServersSection;
+        let mut section = McpServersSection;
 
         // When computing the content height.
         let slices = jinn_slices::Slices::new();

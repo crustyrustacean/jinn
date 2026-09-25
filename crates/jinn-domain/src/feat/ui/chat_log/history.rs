@@ -22,14 +22,14 @@
 //!
 //! Text wraps within the available space.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::protocol::ToolResultStatus;
-use crate::protocol::{ChatEntry, ChatEntryKind};
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_chat_log_view_msg::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
 };
@@ -104,21 +104,21 @@ impl UiElement for ChatLogElement {
         {
             let mut cache = state.frontend.caches.entry_line_cache.write();
             render.compute_line_ranges(&mut cache);
-        }
-        render.compute_scroll();
+            render.compute_scroll();
 
-        {
-            let session = state.active_session();
-            session.set_last_max_offset(render.scroll.max_offset);
-            session.set_entry_line_ranges(render.entry_line_ranges.clone());
-            session.set_viewport_height(area.height);
-            session.set_blank_count(render.scroll.blank_count as u16);
-            session.set_rendered_scroll_offset(render.scroll.clamped);
-        }
+            {
+                let session = state.active_session();
+                session.set_last_max_offset(render.scroll.max_offset);
+                session.set_entry_line_ranges(render.entry_line_ranges.clone());
+                session.set_viewport_height(area.height);
+                session.set_blank_count(render.scroll.blank_count as u32);
+                session.set_rendered_scroll_offset(render.scroll.clamped);
+            }
 
-        render.find_visible_indices();
-        render.build_blank_lines();
-        render.render_visible_entries();
+            render.find_visible_indices();
+            render.build_blank_lines();
+            render.render_visible_entries(&mut cache);
+        }
         render.paint(frame);
     }
 }
@@ -164,20 +164,25 @@ struct HistoryRender<'a> {
 
     // Built by pipeline steps
     tool_result_statuses: HashMap<String, ToolResultStatus>,
+    /// Ids of the `ToolCall` entries streaming arguments right now.
+    ///
+    /// Snapshotted once per frame so layout can test membership per entry instead of
+    /// scanning the whole history for each tool call.
+    streaming_tool_call_ids: HashSet<ChatEntryId>,
     /// Per-visual-item wrapped line ranges: `entry_line_ranges[vi_idx] = (start, end)`.
-    entry_line_ranges: Vec<(u16, u16)>,
+    entry_line_ranges: Vec<(u32, u32)>,
     miss_lines: HashMap<usize, Vec<Line<'static>>>,
     #[expect(
         clippy::rc_buffer,
         reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
     )]
     cached_lines: HashMap<usize, Arc<Vec<Line<'static>>>>,
-    total_wrapped: u16,
+    total_wrapped: u32,
     scroll: ScrollState,
     visible_indices: Vec<usize>,
     content_lines: Vec<Line<'static>>,
     gutter_lines: Vec<Line<'static>>,
-    lines_before_viewport: u16,
+    lines_before_viewport: u32,
 }
 
 impl<'a> HistoryRender<'a> {
@@ -194,6 +199,7 @@ impl<'a> HistoryRender<'a> {
             width: area.width.saturating_sub(GUTTER_WIDTH),
             height: area.height,
         };
+        let streaming_tool_call_ids = state.active_session().streaming_tool_call_ids();
         Self {
             history: state.active_session().history(),
             selected_idx: state.active_session().selected_entry_index(),
@@ -204,6 +210,7 @@ impl<'a> HistoryRender<'a> {
             gutter_area,
             content_area,
             tool_result_statuses: HashMap::new(),
+            streaming_tool_call_ids,
             entry_line_ranges: Vec::new(),
             miss_lines: HashMap::new(),
             cached_lines: HashMap::new(),
@@ -249,6 +256,12 @@ impl<'a> HistoryRender<'a> {
     // Step 1: Build tool result status map
     // -----------------------------------------------------------------------
 
+    /// Whether `entry` is a `ToolCall` still streaming arguments.
+    fn is_streaming_tool_call(&self, entry: &ChatEntry) -> bool {
+        matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
+            && self.streaming_tool_call_ids.contains(&entry.id)
+    }
+
     /// Pair tool call IDs with their result status for background coloring.
     fn build_tool_result_map(&mut self) {
         self.tool_result_statuses = self
@@ -273,7 +286,7 @@ impl<'a> HistoryRender<'a> {
     /// (via `insert_with_lines`) and `miss_lines`.
     #[expect(clippy::expect_used, reason = "infallible")]
     fn compute_line_ranges(&mut self, cache: &mut EntryLineCache) {
-        let mut wrapped_cursor: u16 = 0;
+        let mut wrapped_cursor: u32 = 0;
 
         for (vi_idx, item) in self.visual_items.iter().enumerate() {
             match item {
@@ -289,14 +302,11 @@ impl<'a> HistoryRender<'a> {
                     // entry's content fingerprint is unchanged.
                     let variant = render_variant(
                         self.paired_status_for_entry(entry),
-                        matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                            && self
-                                .state
-                                .active_session()
-                                .is_tool_call_streaming(&entry.id),
+                        self.is_streaming_tool_call(entry),
                         self.is_task_waiting(entry),
                     );
-                    if let Some(hit) = cache.get(entry, is_expanded, variant, self.content_width) {
+                    let probe = cache.probe(entry, is_expanded, variant, self.content_width);
+                    if let Some(hit) = probe.hit {
                         let start = wrapped_cursor;
                         let end = wrapped_cursor + hit.wrapped_count;
                         self.entry_line_ranges.push((start, end));
@@ -313,11 +323,7 @@ impl<'a> HistoryRender<'a> {
                             .tool_entry_max_lines
                             .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                         let paired_status = self.paired_status_for_entry(entry);
-                        let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                            && self
-                                .state
-                                .active_session()
-                                .is_tool_call_streaming(&entry.id);
+                        let is_streaming = self.is_streaming_tool_call(entry);
                         let is_waiting_on_subagent = self.is_task_waiting(entry);
                         let variant =
                             render_variant(paired_status, is_streaming, is_waiting_on_subagent);
@@ -332,15 +338,16 @@ impl<'a> HistoryRender<'a> {
                             is_waiting_on_subagent,
                         };
                         let lines = entry_to_lines(entry, &ctx);
-                        let wrapped_count: u16 = if self.content_width == 0 {
-                            lines.len() as u16
+                        let wrapped_count: u32 = if self.content_width == 0 {
+                            lines.len() as u32
                         } else {
                             Paragraph::new(lines.clone())
                                 .wrap(Wrap { trim: false })
-                                .line_count(self.content_width) as u16
+                                .line_count(self.content_width) as u32
                         };
                         cache.insert_with_lines(
                             entry,
+                            probe.content,
                             is_expanded,
                             variant,
                             self.content_width,
@@ -367,6 +374,7 @@ impl<'a> HistoryRender<'a> {
         }
 
         self.total_wrapped = wrapped_cursor;
+        cache.evict_if_needed();
     }
 
     /// Look up the paired tool result status for an entry (if applicable).
@@ -446,7 +454,7 @@ impl<'a> HistoryRender<'a> {
         let blank_count = self.scroll.blank_count;
         let viewport_top = self.scroll.clamped;
 
-        if blank_count > 0 && viewport_top < blank_count as u16 {
+        if blank_count > 0 && viewport_top < blank_count as u32 {
             for _ in 0..blank_count {
                 self.content_lines.push(Line::from(""));
             }
@@ -463,21 +471,53 @@ impl<'a> HistoryRender<'a> {
     // Step 6: Pass 2 - render visible entries
     // -----------------------------------------------------------------------
 
+    /// Store freshly painted lines for an entry and mark them as recently used.
+    ///
+    /// The wrapped count is read back from the range Pass 1 computed, so the
+    /// cache never disagrees with the layout that was just used to paint.
+    fn cache_lines(
+        &self,
+        cache: &mut EntryLineCache,
+        entry: &ChatEntry,
+        vi_idx: usize,
+        is_expanded: bool,
+        variant: u64,
+        lines: Vec<Line<'static>>,
+    ) {
+        let wrapped_count = self
+            .entry_line_ranges
+            .get(vi_idx)
+            .map_or(0, |(start, end)| end - start);
+        let content = cache
+            .probe(entry, is_expanded, variant, self.content_width)
+            .content;
+        cache.insert_with_lines(
+            entry,
+            content,
+            is_expanded,
+            variant,
+            self.content_width,
+            wrapped_count,
+            Arc::new(lines),
+        );
+        cache.touch(&entry.id);
+    }
+
     /// Build content and gutter lines for all visible entries.
     #[expect(clippy::expect_used, reason = "infallible")]
-    fn render_visible_entries(&mut self) {
+    fn render_visible_entries(&mut self, cache: &mut EntryLineCache) {
         let viewport_top = self.scroll.clamped;
         let chat_log_active =
             matches!(self.state.frontend.scope(), jinn_slices::FocusScope::Normal);
         let cursor_color = self.theme.focus_accent;
 
         for &vi_idx in &self.visible_indices {
-            let (entry_start, _entry_end) = self
+            let (entry_start, entry_end) = self
                 .entry_line_ranges
                 .get(vi_idx)
                 .copied()
                 .expect("vi_idx from visible_indices");
-            let abs_entry_start = entry_start + self.scroll.blank_count as u16;
+            let abs_entry_start = entry_start + self.scroll.blank_count as u32;
 
             match self.visual_items.get(vi_idx) {
                 Some(VisualItem::Entry(hist_idx)) => {
@@ -493,20 +533,27 @@ impl<'a> HistoryRender<'a> {
                         .preferences
                         .tool_entry_max_lines
                         .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
+                    let variant = render_variant(
+                        self.paired_status_for_entry(entry),
+                        self.is_streaming_tool_call(entry),
+                        self.is_task_waiting(entry),
+                    );
 
                     // Get content lines - cached lines → miss lines → render fresh.
                     let entry_content_lines = if let Some(lines) = self.cached_lines.remove(&vi_idx)
                     {
+                        // Painted from the cache, so this entry counts as used.
+                        cache.touch(&entry.id);
                         Arc::unwrap_or_clone(lines)
                     } else if let Some(lines) = self.miss_lines.remove(&vi_idx) {
+                        // Freshly rendered during layout this frame; store it so
+                        // a scroll away and back can reuse it.
+                        self.cache_lines(cache, entry, vi_idx, is_expanded, variant, lines.clone());
                         lines
                     } else {
+                        // Nothing available: render, then cache for the next frame.
                         let paired_status = self.paired_status_for_entry(entry);
-                        let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                            && self
-                                .state
-                                .active_session()
-                                .is_tool_call_streaming(&entry.id);
+                        let is_streaming = self.is_streaming_tool_call(entry);
                         let is_waiting_on_subagent = self.is_task_waiting(entry);
                         let ctx = RenderContext {
                             content_width: self.content_width,
@@ -518,7 +565,9 @@ impl<'a> HistoryRender<'a> {
                             is_streaming,
                             is_waiting_on_subagent,
                         };
-                        entry_to_lines(entry, &ctx)
+                        let lines = entry_to_lines(entry, &ctx);
+                        self.cache_lines(cache, entry, vi_idx, is_expanded, variant, lines.clone());
+                        lines
                     };
 
                     // Build gutter lines for this entry.
@@ -529,6 +578,9 @@ impl<'a> HistoryRender<'a> {
                         is_selected,
                         chat_log_active,
                         content_width: self.content_width,
+                        // Pass 1 already measured how many rows this entry
+                        // wraps to at this width.
+                        wrapped_count: entry_end - entry_start,
                         theme: &self.theme,
                         cursor_color,
                         is_included_in_context,
@@ -579,7 +631,10 @@ impl<'a> HistoryRender<'a> {
 
     /// Render the final gutter and content paragraph widgets to the frame.
     fn paint(self, frame: &mut Frame<'_>) {
-        let paragraph_scroll = self.lines_before_viewport;
+        // ratatui's `Paragraph::scroll` takes u16, so the u32 line math is
+        // narrowed at this boundary. A session long enough to overflow u16 rows
+        // cannot be scrolled to in one frame anyway.
+        let paragraph_scroll = u16::try_from(self.lines_before_viewport).unwrap_or(u16::MAX);
 
         // Render gutter column.
         let gutter_widget = Paragraph::new(self.gutter_lines)
@@ -595,11 +650,13 @@ impl<'a> HistoryRender<'a> {
         frame.render_widget(chat_widget, self.content_area);
 
         // Render scroll indicator (delegates to the chat-log-view slice).
+        // The indicator is a u16 widget; clamping both values preserves the
+        // `clamped >= max_offset` "at the bottom" check it relies on.
         render_scroll_indicator(
             frame,
             self.area,
-            self.scroll.clamped,
-            self.scroll.max_offset,
+            u16::try_from(self.scroll.clamped).unwrap_or(u16::MAX),
+            u16::try_from(self.scroll.max_offset).unwrap_or(u16::MAX),
             &self.theme,
         );
     }

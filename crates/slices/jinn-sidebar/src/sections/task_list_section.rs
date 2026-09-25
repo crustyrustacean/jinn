@@ -157,7 +157,7 @@ impl SidebarSection for TaskListSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, ctx: &RenderCtx) -> u16 {
+    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
         let state = ctx.state;
         let list = state.active_session().task_list();
         if list.is_empty() {
@@ -424,7 +424,7 @@ mod tests {
     #[test]
     fn content_height_is_zero_when_empty() {
         let app = AppState::default_with_scope_focus();
-        let section = TaskListSection;
+        let mut section = TaskListSection;
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         assert_eq!(
@@ -437,7 +437,7 @@ mod tests {
     #[test]
     fn content_height_is_nonzero_when_has_phases() {
         let app = setup_with_tasks();
-        let section = TaskListSection;
+        let mut section = TaskListSection;
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let height = section.content_height(&RenderCtx::new(&app, &slices, &overlay_views));
@@ -473,7 +473,7 @@ mod tests {
         // Given a non-empty task list.
         let app = setup_with_tasks();
         let list = app.session.active_session().task_list().clone();
-        let section = TaskListSection;
+        let mut section = TaskListSection;
 
         // When computing the height and the render line count.
         let slices = jinn_slices::Slices::new();
@@ -581,7 +581,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn id_returns_task_list() {
-        let section = TaskListSection;
+        let mut section = TaskListSection;
         assert_eq!(section.id(), jinn_sidebar_msg::SidebarSectionId::TaskList);
     }
 

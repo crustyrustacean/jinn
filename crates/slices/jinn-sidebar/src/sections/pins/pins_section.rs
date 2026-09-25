@@ -153,7 +153,7 @@ impl SidebarSection for PinsSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, ctx: &RenderCtx) -> u16 {
+    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
         let state = ctx.state;
         let count = state.active_session().pinned_entries().len();
         // Hide the section entirely when there are no pins.

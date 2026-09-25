@@ -159,8 +159,7 @@ Entries are added or amended **only with human approval**.
 - (skills) Skill supplementals live in spec-standard scripts/, references/, and assets/ directories beside SKILL.md; the `<available_skills>` block and skill tool result each surface the skill's absolute base_dir so the agent can resolve relative links in a skill body without derivation.
 - (skills) The `skill` tool loads a skill's body by name from the discovered set and returns the body in the tool result; loading an already-loaded skill returns "already loaded" instead of reloading.
 - (skills) The `skill` tool loads project-local skills from their discovered file path and refuses disabled or nonexistent skills.
-- (skills) The skill picker's rendered markdown previews are cached in an app-lifetime cache keyed by (body content hash, width); skill rescans and session lifecycle events never invalidate it.
-- (skills) The skill preview cache is cleared only on theme change (via FrontendCaches::invalidate_all); its memory usage is unbounded by design.
+- (skills) The skill picker caches rendered previews, so reopening it and paging between skills is instant.
 - (storage) Sessions and chat history persist to a SQLite database (`sessions.db` under the data dir).
 - (storage) User-editable TOML files (`providers.toml`, `jinn.toml`) are written through a comment-preserving `DocumentPatcher`, never via plain serialization.
 - (storage) `jinn.toml` holds user preferences and is auto-created if missing.
@@ -424,3 +423,8 @@ Entries are added or amended **only with human approval**.
 - (project) The project scope resolver lives in the jinn-project slice, which depends on jinn-domain.
 - (input) The slash-command vocabulary and registry live in jinn-chat-input-msg.
 - (chat-log) The chat-log geometry helpers (gutter, viewport, scroll indicator) live in the jinn-chat-log-view slice alongside the entry-to-lines adapters; the kernel retains only the ChatLogElement UiElement impl.
+- (ui) The chat-log render pass gates the entry content fingerprint behind an O(1) content signature, hashing only when the signature changes.
+- (ui) The chat-log render pass tracks the set of streaming tool-call ids once per frame, so per-entry work is linear in the number of entries.
+- (ui) The chat log's rendered-line cache is LRU-bounded by MAX_CACHED_RENDERED_ENTRIES while wrapped line counts are retained for every entry.
+- (ui) The chat log's line math is u32, so sessions past 65,535 wrapped lines render and scroll without wraparound.
+- (ui) The sidebar's sorted session tree is memoized and rebuilt only when a per-frame validity scan detects a change.

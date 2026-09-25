@@ -236,7 +236,7 @@ fn section_id_is_pins() {
 #[rstest::rstest]
 fn content_height_is_zero_when_empty() {
     // Given a PinsSection and state with no pinned entries.
-    let section = PinsSection;
+    let mut section = PinsSection;
     let state = AppState::default_with_scope_focus();
 
     // When asking for content height.
@@ -251,7 +251,7 @@ fn content_height_is_zero_when_empty() {
 #[rstest::rstest]
 fn content_height_matches_entry_count() {
     // Given a PinsSection and state with 3 pinned entries.
-    let section = PinsSection;
+    let mut section = PinsSection;
     let state = state_with_pinned(3);
 
     // When asking for content height.

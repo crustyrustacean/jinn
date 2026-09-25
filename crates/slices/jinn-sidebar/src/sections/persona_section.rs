@@ -110,7 +110,7 @@ impl SidebarSection for PersonaSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, _ctx: &RenderCtx) -> u16 {
+    fn content_height(&mut self, _ctx: &RenderCtx) -> u16 {
         // Header(1) + blank(1) + entry(1) + trailing gap(1) = 4.
         4
     }
@@ -160,7 +160,7 @@ mod tests {
     #[rstest::rstest]
     fn content_height_is_four_with_active_persona() {
         // Given a PersonaSection and state with an active persona.
-        let section = PersonaSection;
+        let mut section = PersonaSection;
         let state = AppState::default_with_scope_focus();
         state
             .persona_selection()
@@ -186,7 +186,7 @@ mod tests {
     #[rstest::rstest]
     fn content_height_is_four_without_persona() {
         // Given a PersonaSection and state with no active persona.
-        let section = PersonaSection;
+        let mut section = PersonaSection;
         let state = AppState::default_with_scope_focus();
 
         // When asking for content height.

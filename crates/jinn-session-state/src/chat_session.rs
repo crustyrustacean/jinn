@@ -1721,7 +1721,7 @@ impl ChatSessionState {
     ///
     /// Returns `None` when auto-scrolled to the bottom, or `Some(n)` when
     /// the user has manually scrolled to a specific offset.
-    pub fn scroll_offset(&self) -> Option<u16> {
+    pub fn scroll_offset(&self) -> Option<u32> {
         self.with_view(|v| v.scroll_offset, || None)
     }
 
@@ -1738,7 +1738,7 @@ impl ChatSessionState {
     /// arrangements; production scrolls always move relative to the
     /// current offset).
     #[doc(hidden)]
-    pub fn set_scroll_offset(&mut self, offset: Option<u16>) {
+    pub fn set_scroll_offset(&mut self, offset: Option<u32>) {
         self.update_view(|v| v.scroll_offset = offset);
     }
 
@@ -1747,7 +1747,7 @@ impl ChatSessionState {
             let current = v
                 .scroll_offset
                 .unwrap_or(v.last_max_offset.load(Ordering::Relaxed));
-            v.scroll_offset = Some(current.saturating_sub(amount));
+            v.scroll_offset = Some(current.saturating_sub(u32::from(amount)));
         });
     }
 
@@ -1760,7 +1760,7 @@ impl ChatSessionState {
             let current = v
                 .scroll_offset
                 .unwrap_or(v.last_max_offset.load(Ordering::Relaxed));
-            let next = current.saturating_add(amount);
+            let next = current.saturating_add(u32::from(amount));
             if next >= v.last_max_offset.load(Ordering::Relaxed) {
                 v.scroll_offset = None;
             } else {
@@ -1858,8 +1858,17 @@ impl ChatSessionState {
     ///
     /// Called by the chat log element during each render so that
     /// scroll handlers can resolve the "at bottom" state into a concrete offset.
-    pub fn set_last_max_offset(&self, max_offset: u16) {
+    pub fn set_last_max_offset(&self, max_offset: u32) {
         self.update_view(|v| v.last_max_offset.store(max_offset, Ordering::Relaxed));
+    }
+
+    /// The maximum scroll offset recorded by the last render.
+    ///
+    /// Meaningful only after the chat-log render pipeline has run for the
+    /// current frame; it is the bottom of the document in wrapped lines.
+    #[must_use]
+    pub fn rendered_max_offset(&self) -> u32 {
+        self.with_view(|v| v.last_max_offset.load(Ordering::Relaxed), || 0)
     }
 
     /// Returns the screen-space Y coordinate of the top of the currently-selected
@@ -1895,8 +1904,12 @@ impl ChatSessionState {
                 // visible-Y offset within viewport (0 = top of chat-log area)
                 let viewport_offset = abs_start.saturating_sub(viewport_top);
 
-                // absolute screen Y; clamped to chat-log area top
-                Some(chat_log_area_y.saturating_add(viewport_offset))
+                // absolute screen Y; clamped to chat-log area top. A screen row
+                // is u16, so narrow from the u32 line math.
+                Some(
+                    chat_log_area_y
+                        .saturating_add(u16::try_from(viewport_offset).unwrap_or(u16::MAX)),
+                )
             },
             || None,
         )
@@ -1904,7 +1917,7 @@ impl ChatSessionState {
 
     /// Store the rendered scroll offset (actual viewport position after clamping
     /// and scroll-to-selected adjustment). Called by the render pipeline each frame.
-    pub fn set_rendered_scroll_offset(&self, offset: u16) {
+    pub fn set_rendered_scroll_offset(&self, offset: u32) {
         self.update_view(|v| v.rendered_scroll_offset.store(offset, Ordering::Relaxed));
     }
 
@@ -1912,22 +1925,28 @@ impl ChatSessionState {
     ///
     /// `entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line)` in the
     /// wrapped coordinate space. Called each frame by the chat log renderer.
-    pub fn set_entry_line_ranges(&self, ranges: Vec<(u16, u16)>) {
+    pub fn set_entry_line_ranges(&self, ranges: Vec<(u32, u32)>) {
         self.update_view(|v| *v.entry_line_ranges.write() = ranges);
     }
 
     /// Store the viewport height (render area height) from the renderer.
     pub fn set_viewport_height(&self, height: u16) {
-        self.update_view(|v| v.viewport_height.store(height, Ordering::Relaxed));
+        self.update_view(|v| {
+            v.viewport_height
+                .store(u32::from(height), Ordering::Relaxed);
+        });
     }
 
     /// Read the cached viewport height.
     pub fn viewport_height_value(&self) -> u16 {
-        self.with_view(|v| v.viewport_height.load(Ordering::Relaxed), || 0)
+        self.with_view(
+            |v| u16::try_from(v.viewport_height.load(Ordering::Relaxed)).unwrap_or(u16::MAX),
+            || 0,
+        )
     }
 
     /// Store the blank line count prepended for bottom-alignment.
-    pub fn set_blank_count(&self, count: u16) {
+    pub fn set_blank_count(&self, count: u32) {
         self.update_view(|v| v.blank_count.store(count, Ordering::Relaxed));
     }
 
@@ -2647,6 +2666,25 @@ impl ChatSessionState {
             .machine
             .is_tool_call_at_history_index(idx)
     }
+
+    /// The ids of every `ToolCall` entry currently streaming arguments from the LLM.
+    ///
+    /// A single snapshot of the streaming state, so callers that need to test many
+    /// entries (such as the chat log's per-frame layout pass) pay one map walk instead
+    /// of a history scan per entry. Indices with no corresponding history entry are
+    /// skipped, matching [`Self::is_tool_call_streaming`]'s treatment of unknown ids.
+    pub fn streaming_tool_call_ids(&self) -> HashSet<ChatEntryId> {
+        let history: &[ChatEntry] = &self.core.history_work.history;
+        self.core
+            .ephemeral
+            .machine
+            .streaming_tool_call_indices()
+            .values()
+            .filter_map(|&history_index| history.get(history_index))
+            .map(|entry| entry.id.clone())
+            .collect()
+    }
+
     /// Returns this session's working directory for tool execution.
     pub fn cwd(&self) -> &std::path::Path {
         &self.core.lifecycle.cwd

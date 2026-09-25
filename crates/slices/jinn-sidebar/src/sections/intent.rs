@@ -391,7 +391,7 @@ mod tests {
             .pin_entry(&pinned_id, PinPosition::Top);
 
         // Simulate renderer state: each entry is 1 line, viewport height 5.
-        let ranges: Vec<(u16, u16)> = (0..10).map(|i| (i, i + 1)).collect();
+        let ranges: Vec<(u32, u32)> = (0..10u32).map(|i| (i, i + 1)).collect();
         state.active_session().set_entry_line_ranges(ranges);
         state.active_session().set_viewport_height(5);
         state.active_session().set_blank_count(0);

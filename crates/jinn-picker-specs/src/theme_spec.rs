@@ -329,7 +329,7 @@ mod tests {
             .frontend
             .caches
             .skill_preview_cache
-            .insert("12345".to_owned(), 80, Vec::new());
+            .insert("12345".to_owned(), 80, Vec::new().into());
         assert_eq!(state.frontend.caches.skill_preview_cache.len(), 1);
         let registry = crate::build_picker_registry();
         let picker_id = PickerId::new(jinn_picker::THEME_ID);
