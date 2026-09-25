@@ -420,3 +420,8 @@ Entries are added or amended **only with human approval**.
 - (project) The project scope resolver lives in the jinn-project slice, which depends on jinn-domain.
 - (input) The slash-command vocabulary and registry live in jinn-chat-input-msg.
 - (chat-log) The chat-log geometry helpers (gutter, viewport, scroll indicator) live in the jinn-chat-log-view slice alongside the entry-to-lines adapters; the kernel retains only the ChatLogElement UiElement impl.
+- (ui) The chat-log render pass gates the entry content fingerprint behind an O(1) content signature, hashing only when the signature changes.
+- (ui) The chat-log render pass tracks the set of streaming tool-call ids once per frame, so per-entry work is linear in the number of entries.
+- (ui) The chat log's rendered-line cache is LRU-bounded by MAX_CACHED_RENDERED_ENTRIES while wrapped line counts are retained for every entry.
+- (ui) The chat log's line math is u32, so sessions past 65,535 wrapped lines render and scroll without wraparound.
+- (ui) The sidebar's sorted session tree is memoized and rebuilt only when a per-frame validity scan detects a change.
