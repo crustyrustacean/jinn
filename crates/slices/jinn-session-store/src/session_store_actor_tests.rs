@@ -741,9 +741,12 @@ async fn loaded_from_archive_appears_in_the_session_list() {
         .set_archived(&session_id, true)
         .await
         .expect("archive session");
+    // Given the archived session is still present in the live map, as it is
+    // when a previous startup restore brought it back before archiving.
     {
         let mut state = fixture.state.write();
-        state.session.remove(&session_id);
+        let restored = stored.clone();
+        state.session.insert(restored);
     }
 
     // When the session is loaded back.
@@ -753,20 +756,18 @@ async fn loaded_from_archive_appears_in_the_session_list() {
             session_id: session_id.clone(),
         })
         .await;
+    // When the session carries the state the sidebar lists.
     let listed = poll_until(|| async {
-        fixture
-            .state
-            .read()
-            .session
-            .iter()
-            .any(|(id, _)| id == &session_id)
+        fixture.state.read().session.iter().any(|(id, session)| {
+            id == &session_id && session.session_state() == SessionState::Loaded
+        })
     })
     .await;
 
     // Then the sidebar's loaded-session filter includes it.
     assert!(
         listed,
-        "a session loaded from the archive must be listed again"
+        "a session loaded from the archive must be Loaded and listed again"
     );
 }
 

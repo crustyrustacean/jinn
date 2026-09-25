@@ -3161,3 +3161,32 @@ fn a_renamed_session_rebuilds_the_tree() {
         "a same-length rename must still invalidate the memo"
     );
 }
+
+#[rstest::rstest]
+fn session_reloaded_from_the_archive_is_listed() {
+    // Given a session that was archived and has just been loaded back, which
+    // is what the session picker does when the user picks an archived entry.
+    let mut state = AppState::default_with_scope_focus();
+    let session_id = state.session.active_session_id().clone();
+    state
+        .session
+        .get_mut(&session_id)
+        .expect("active session")
+        .set_session_state(jinn_session_store_msg::SessionState::Archived);
+    {
+        // Given the load completes and marks it live again.
+        let mut state = state;
+        state
+            .session
+            .get_mut(&session_id)
+            .expect("active session")
+            .set_session_state(jinn_session_store_msg::SessionState::Loaded);
+
+        // Then the sidebar's session list includes it.
+        let listed = sorted_open_sessions(&state);
+        assert!(
+            listed.iter().any(|entry| entry.id == session_id),
+            "a reloaded session must be listed; got {listed:?}"
+        );
+    }
+}

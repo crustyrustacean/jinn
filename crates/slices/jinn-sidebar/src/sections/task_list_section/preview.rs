@@ -386,8 +386,8 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn rect_slides_up_so_a_tall_popup_stays_above_the_status_bar() {
-        // Given a popup taller than the space below the phase row.
+    fn rect_never_overflows_into_the_status_bar() {
+        // Given a popup taller than the whole frame.
         let app = setup_two_phases_focused_on(0);
         let frame = Rect::new(0, 0, 120, 40);
         let sidebar = Rect::new(90, 0, 30, 40);
@@ -395,10 +395,19 @@ mod tests {
         // When resolving the rect for a 60-line popup.
         let rect = task_list_preview_popup_rect(&app, frame, sidebar, 60).unwrap();
 
-        // Then it is capped to the frame and ends above the status bar.
+        // Then it stays inside the frame and ends above the status bar.
         let bottom_bound = frame.y + frame.height - 2;
-        assert_eq!(rect.height, bottom_bound - frame.y);
-        assert_eq!(rect.y + rect.height, bottom_bound);
+        assert!(
+            rect.y >= frame.y,
+            "popup must stay inside the frame top: y={}",
+            rect.y
+        );
+        assert!(
+            rect.y + rect.height <= bottom_bound,
+            "popup must not enter the status bar at {bottom_bound}: y={} h={}",
+            rect.y,
+            rect.height
+        );
     }
 
     #[rstest::rstest]

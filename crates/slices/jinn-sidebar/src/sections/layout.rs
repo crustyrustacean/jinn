@@ -123,6 +123,15 @@ impl DocumentLayout {
             rows: 0,
         })
     }
+
+    /// Whether `id` is the trailing section of the document.
+    ///
+    /// The trailing section is the one pushed down to the bottom of a column
+    /// that has rows to spare; every other section stays at the top.
+    #[must_use]
+    pub fn is_last(&self, id: SidebarSectionId) -> bool {
+        self.spans.last().is_some_and(|span| span.id == id)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -384,15 +393,18 @@ pub fn visible_rect(
     area: Rect,
     span: SectionSpan,
     offset: u16,
-    viewport_rows: u16,
+    push_down: u16,
 ) -> Option<(Rect, u16)> {
-    let height = span.visible_height(offset, viewport_rows);
+    let height = span.visible_height(offset, area.height);
     if height == 0 {
         return None;
     }
     let rect = Rect {
         x: area.x,
-        y: area.y.saturating_add(span.top_in_view(offset)),
+        y: area
+            .y
+            .saturating_add(span.top_in_view(offset))
+            .saturating_add(push_down),
         width: area.width,
         height,
     };
@@ -413,9 +425,12 @@ pub fn frame_row_of(sidebar_rect: Rect, state: &AppState, id: SidebarSectionId, 
     let offset = document.offset(sidebar_rect.height);
     let slack = document.bottom_slack(sidebar_rect.height);
     let top = document.span_or_empty(id).top_in_view(offset);
+    // Only the trailing section is pushed down by the slack; the leading
+    // sections stay at the top of the column, matching `Sidebar::render`.
+    let push_down = if document.is_last(id) { slack } else { 0 };
     sidebar_rect
         .y
-        .saturating_add(slack)
+        .saturating_add(push_down)
         .saturating_add(top)
         .saturating_add(row)
         .min(

@@ -62,20 +62,24 @@ impl Sidebar {
             layout::with_cursor(layout::document_for(ctx.state, &ids), ctx.state)
         };
         let offset = document.offset(area.height);
-        // When the document is shorter than the column, push it down so the
-        // sessions block — the last section — sits at the bottom of a tall
-        // terminal. Once the document overflows, the slack is zero and the
-        // single scroll offset takes over.
+        // When the document is shorter than the column, leave the unused rows
+        // *between* the last two sections rather than pushing the whole
+        // document down: the leading sections stay at the top of the column,
+        // the trailing block sits at the bottom, and the gap separates them.
+        // Once the document overflows, the slack is zero and the single scroll
+        // offset takes over.
         let slack = document.bottom_slack(area.height);
-        let area = Rect {
-            y: area.y + slack,
-            height: area.height - slack,
-            ..area
-        };
+        let last_index = document.spans.len().saturating_sub(1);
 
-        for (span, section) in document.spans.iter().zip(self.sections.iter_mut()) {
+        for (index, (span, section)) in document
+            .spans
+            .iter()
+            .zip(self.sections.iter_mut())
+            .enumerate()
+        {
+            let push_down = if index == last_index { slack } else { 0 };
             let Some((section_area, skip_rows)) =
-                layout::visible_rect(area, *span, offset, area.height)
+                layout::visible_rect(area, *span, offset, push_down)
             else {
                 continue;
             };

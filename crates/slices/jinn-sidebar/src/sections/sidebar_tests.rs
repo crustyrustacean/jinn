@@ -476,6 +476,13 @@ fn sidebar_with_all_sections() -> Sidebar {
 }
 
 /// Finds the first row in the buffer that contains the given needle text.
+/// The visible text of one row, trimmed of trailing blanks.
+fn row_text(buf: &ratatui::buffer::Buffer, width: u16, y: u16) -> String {
+    (0..width)
+        .map(|x| buf.cell((x, y)).map_or(" ", ratatui::buffer::Cell::symbol))
+        .collect::<String>()
+}
+
 fn find_row_containing(
     buf: &ratatui::buffer::Buffer,
     width: u16,
@@ -529,6 +536,83 @@ fn sessions_header_anchored_to_bottom() {
         sessions_row,
         Some(39),
         "Sessions footer should be at row 39 (bottom-anchored)"
+    );
+}
+
+#[rstest::rstest]
+fn leading_sections_stay_at_the_top_when_the_document_is_short() {
+    // Given a sidebar with content in more than just Persona and Sessions, in
+    // a column tall enough that the document does not fill it.
+    let mut sidebar = sidebar_with_all_sections();
+    let state = state_with_pinned(3);
+
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+
+    // Then Persona is at the very top of the column, not pushed to the bottom
+    // alongside Sessions.
+    let buf = terminal.backend().buffer();
+    let persona_row = find_row_containing(buf, width, height, "Persona");
+    assert_eq!(persona_row, Some(0), "Persona should anchor to row 0");
+}
+
+#[rstest::rstest]
+fn a_blank_gap_separates_the_sessions_block_from_the_sections_above_it() {
+    // Given a short document in a tall column, so the unused rows fall between
+    // the leading sections and the trailing sessions block.
+    let mut sidebar = sidebar_with_all_sections();
+    let state = state_with_pinned(3);
+
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+
+    // Then the Sessions footer is at the bottom of the column, with at least
+    // one blank row between it and the last row of the content above it.
+    let buf = terminal.backend().buffer();
+    let sessions_row = find_row_containing(buf, width, height, "Sessions").expect("Sessions");
+    // The gap rows carry no text at all, so find the last row above the
+    // Sessions block that has content, and assert the rows between are blank.
+    // The last non-blank row *before* the sessions entry row.
+    let sessions_entry = sessions_row.saturating_sub(1);
+    let last_content = (0..sessions_entry)
+        .rev()
+        .find(|y| !row_text(buf, width, *y).trim().is_empty())
+        .expect("some content above the Sessions block");
+    for y in (last_content + 1)..sessions_entry {
+        assert_eq!(
+            row_text(buf, width, y).trim(),
+            "",
+            "row {y} between the content and the Sessions block should be blank"
+        );
+    }
+    assert!(
+        sessions_entry > last_content + 1,
+        "expected a blank gap: last content at {last_content}, \
+         Sessions entry at {sessions_entry}"
     );
 }
 
