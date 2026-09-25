@@ -8,6 +8,7 @@
   - `todo_get_list`: returns the entire todo list
 - Task loop skills reference `todo_*` tools generically instead of by exact name.
 - The `#approve-plan` prompt should produce more detailed todo lists.
+- The `RECORD.md` template has been updated, so records should be more durable across changes. This change shipped in the `#plan` prompt.
 - Added a new `jinn-usage` skill.
   - This enables the agent to answer meta-questions about `jinn` usage and configuration. `jinn` should now be able to edit it's configuration on your behalf.
 - Remove `jinn-plugin` skill. It will need to be manually removed from your `~/.agent/skills` directory.
@@ -30,7 +31,7 @@
 - Active sessions are now progressively loaded and a spinner was added to the sidebar to indicate when sessions are loading.
 - Arrows keys + a few non-printable keys now work properly in interactive terms.
   - `jinn` used codes that didn't match TERMINFO, so some applications wouldn't properly register non-printable keys.
-- Overall performance improvement on Markdown rendering. Chat log, session previews, and skill picker rendering should be faster and use less memory.
+- Overall performance improvement on Markdown rendering. Chat log, session previews, and skill picker rendering should be faster and use significantly less memory.
 - Add new `global_command_policy` TOML config to block commands across all projects. Recommend adding the below to your `jinn.toml` (it ships by default with a fresh config):
 
 ```toml
