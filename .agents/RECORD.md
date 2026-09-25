@@ -224,3 +224,5 @@ Entries are added or amended **only with human approval**.
 - (session) Durable session persistence uses a complete `SessionSnapshot` containing session metadata, history, task state, and token accounting.
 - (session) The session turn reducer is owned by `jinn-session-turn` and coordinates history, phase, streaming, tools, retries, and persistence.
 - (session) SQLite session persistence commits metadata, history, attachments, and token-ledger changes in one transaction.
+- (ui) The chat log's initial layout pass runs off the main thread, and the session loading indication stays up until it completes.
+- (ui) The session loading indication is an animated spinner rather than static text.
