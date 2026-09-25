@@ -11,10 +11,6 @@
 
 pub use crate::common::focus::{FocusScope, ScopeStack};
 pub use crate::common::session_map::SessionLoadGuard;
-pub use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
-pub use jinn_sidebar_msg::sidebar_sections::RenameSessionInputState;
-
-pub use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
 
 use crate::protocol::{ChatEntryId, PickerKind, PinPosition};
@@ -94,6 +90,15 @@ impl AppState {
             .register(
                 jinn_chat_log_view_msg::chat_log_views_slot(),
                 jinn_chat_log_view_msg::ChatLogViews::new(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_session_lifecycle_msg::arg_input_slot(),
+                jinn_session_lifecycle_msg::ArgInputState::empty(),
             )
             .is_err()
         {

@@ -133,10 +133,6 @@ fn scopes_for_row<'a>(
             let mut scopes: Vec<Scope> = [
                 Scope::Normal,
                 Scope::Input,
-                Scope::ArgInput,
-                Scope::TokenBudgetInput,
-                Scope::RenameSessionInput,
-                Scope::PrunerAccumulationInput,
                 Scope::PickerProvider,
                 Scope::PickerSession,
                 Scope::PickerPersona,
@@ -812,10 +808,6 @@ mod tests {
     #[rstest::rstest]
     #[case("Normal")]
     #[case("Input")]
-    #[case("ArgInput")]
-    #[case("TokenBudgetInput")]
-    #[case("RenameSessionInput")]
-    #[case("PrunerAccumulationInput")]
     #[case("Picker(provider)")]
     #[case("Picker(session)")]
     #[case("Picker(persona)")]

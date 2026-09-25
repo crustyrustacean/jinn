@@ -16,13 +16,6 @@ pub enum FocusScope {
     Input,
     /// Picker overlay active - kind distinguishes Provider/Session/Keymap/etc.
     Picker { kind: PickerKind },
-    /// Arg input popup - collecting positional args for a lifecycle command.
-    ArgInput,
-    /// Rename session input popup - editing a session title.
-    RenameSessionInput,
-    /// Pruner accumulation threshold popup - numeric input for the KV-cache gate.
-    PrunerAccumulationInput,
-
     /// A dynamically-registered slice's scope. Carries its identity as
     /// data, so slices never edit this enum. The scope the slice's
     /// `activate()` pushed (or signaled via a route action).
@@ -39,10 +32,7 @@ impl FocusScope {
             // sections) fall through to Normal like the other non-input
             // surfaces (chat, terminal, the base scope).
             Self::Dynamic(id) if id.captures_input() => Mode::Input,
-            Self::Input
-            | Self::ArgInput
-            | Self::RenameSessionInput
-            | Self::PrunerAccumulationInput => Mode::Input,
+            Self::Input => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
             // Normal (capture-mode dynamic scopes route keystrokes to
             // their slice, not the chat input) and navigation-only
@@ -58,9 +48,6 @@ impl std::fmt::Display for FocusScope {
             Self::Normal => write!(f, "Normal"),
             Self::Input => write!(f, "Input"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
-            Self::ArgInput => write!(f, "ArgInput"),
-            Self::RenameSessionInput => write!(f, "RenameSessionInput"),
-            Self::PrunerAccumulationInput => write!(f, "PrunerAccumulationInput"),
             Self::Dynamic(id) => write!(f, "Dynamic({id})"),
         }
     }

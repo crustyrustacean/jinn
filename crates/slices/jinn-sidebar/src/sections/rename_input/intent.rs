@@ -1,10 +1,12 @@
 //! Rename session input intent handlers - enter, confirm, leave, and text editing.
 
-use jinn_domain::common::app_state::{AppState, FocusScope, RenameSessionInputState};
+use jinn_domain::common::app_state::AppState;
+use jinn_sidebar_msg::sidebar_sections::RenameSessionInputState;
 
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_domain::protocol::IntentResult;
 use jinn_session_store_msg::PersistSession;
+use jinn_slices::ScopeSignal;
 use jinn_slices::SliceScopeId;
 
 /// The rename popup's dynamic scope (input-capturing).
@@ -15,9 +17,9 @@ pub fn rename_scope() -> SliceScopeId {
 
 /// Opens the rename session input popup.
 ///
-/// Pushes the rename scope and seeds the input with the
-/// currently selected session's title (or empty if "Untitled Session").
-/// No-op if no session is selected in the sidebar.
+/// Seeds the input with the currently selected session's title (or empty if
+/// "Untitled Session") and requests the rename scope. No-op if no session is
+/// selected in the sidebar.
 pub fn handle_rename_session_enter(state: &mut AppState) -> IntentResult {
     let Some(index) = state
         .frontend
@@ -46,16 +48,13 @@ pub fn handle_rename_session_enter(state: &mut AppState) -> IntentResult {
             },
         };
     });
-    state
-        .frontend
-        .scope_push(FocusScope::Dynamic(rename_scope()));
-    IntentResult::empty()
+    IntentResult::empty().with_scope_signal(ScopeSignal::Push(rename_scope()))
 }
 
 /// Confirms the rename session input.
 ///
-/// Validates the input (non-empty, different from current title),
-/// updates the session title in memory, pops the scope, and clears the input state.
+/// Validates the input, updates the session title in memory, clears the input
+/// state, and requests a conditional pop of the rename scope.
 pub fn handle_rename_session_confirm(state: &mut AppState) -> IntentResult {
     let text = state
         .frontend
@@ -86,24 +85,39 @@ pub fn handle_rename_session_confirm(state: &mut AppState) -> IntentResult {
     state.session_mut(&session_id).touch();
     state.session_mut(&session_id).mark_interacted();
 
-    // Pop scope and clear state.
-    state.frontend.scope_pop();
+    // Clear local input state; the handler applies the requested scope pop.
     state
         .frontend
         .update_sections(|s| s.rename_input = RenameSessionInputState::default());
 
     IntentResult::new_message(PersistSession { session_id })
+        .with_scope_signal(ScopeSignal::PopIf(rename_scope()))
 }
 
 /// Cancels the rename session input popup.
 ///
-/// Pops the scope and discards the input state.
+/// Discards the input state and requests a conditional pop of the rename
+/// scope.
 pub fn handle_rename_session_leave(state: &mut AppState) -> IntentResult {
-    state.frontend.scope_pop();
     state
         .frontend
         .update_sections(|s| s.rename_input = RenameSessionInputState::default());
-    IntentResult::empty()
+    IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(rename_scope()))
+}
+
+/// Clears nonempty input while remaining open, or leaves when already empty.
+pub fn handle_rename_session_clear_or_leave(state: &mut AppState) -> IntentResult {
+    let had_text = !state
+        .frontend
+        .with_sections(|s| s.rename_input.text.input.is_empty(), || true);
+    state
+        .frontend
+        .update_sections(|s| s.rename_input = RenameSessionInputState::default());
+    if had_text {
+        IntentResult::empty()
+    } else {
+        IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(rename_scope()))
+    }
 }
 
 /// Inserts a character at the cursor position.
@@ -179,6 +193,16 @@ pub fn cursor_right(input: &mut RenameSessionInputState) {
     input.text.cursor_right();
 }
 
+/// Moves the cursor to the start of the input (cell-level).
+pub fn cursor_home(input: &mut RenameSessionInputState) {
+    input.text.cursor_home();
+}
+
+/// Moves the cursor to the end of the input (cell-level).
+pub fn cursor_end(input: &mut RenameSessionInputState) {
+    input.text.cursor_end();
+}
+
 /// Bulk-inserts pasted text at the cursor (cell-level).
 pub fn paste(input: &mut RenameSessionInputState, text: &str) {
     input.text.paste(text);
@@ -193,7 +217,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::common::app_state::{AppState, FocusScope};
 
     fn state_with_sessions(count: usize) -> AppState {
         let mut state = AppState::default_with_scope_focus();
@@ -208,7 +232,7 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn enter_pushes_rename_session_input_scope() {
+    fn enter_requests_rename_session_input_scope() {
         // Given a state with a selected session.
         let mut state = state_with_sessions(2);
         state
@@ -221,13 +245,12 @@ mod tests {
         // When handling SidebarRenameSession.
         let result = handle_rename_session_enter(&mut state);
 
-        // Then RenameSessionInput is the current scope.
-        assert!(matches!(
+        // Then the rename scope is requested while the sessions scope remains current.
+        assert_eq!(result.scope_signal, Some(ScopeSignal::Push(rename_scope())));
+        assert_eq!(
             state.frontend.scope(),
-            FocusScope::Dynamic(id) if id ==  rename_scope()
-        ));
-        // And no commands are emitted.
-        assert!(result.message_names.is_empty());
+            jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope()
+        );
     }
 
     #[rstest::rstest]
@@ -310,10 +333,10 @@ mod tests {
 
         // Then the session title is updated.
         assert_eq!(state.session_mut(&session_id).title(), Some("New Title"));
-        // And scope is popped back.
+        // And the handler requests a conditional pop of rename.
         assert_eq!(
-            state.frontend.sidebar_section(),
-            Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
+            result.scope_signal,
+            Some(ScopeSignal::PopIf(rename_scope()))
         );
         // And input state is cleared.
         assert!(
@@ -412,6 +435,47 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn clear_or_leave_with_text_clears_and_stays_open() {
+        // Given state in rename scope with a nonempty title.
+        let mut state = AppState::default_with_scope_focus();
+        state
+            .frontend
+            .scope_push(FocusScope::Dynamic(rename_scope()));
+        state.frontend.update_sections(|s| {
+            s.rename_input.text.set("Changed".to_owned());
+        });
+
+        // When Ctrl-C is requested.
+        let result = handle_rename_session_clear_or_leave(&mut state);
+
+        // Then the input clears without leaving the popup.
+        assert!(result.scope_signal.is_none());
+        assert!(
+            state
+                .frontend
+                .with_sections(|s| s.rename_input.text.input.is_empty(), || false)
+        );
+    }
+
+    #[rstest::rstest]
+    fn clear_or_leave_with_empty_text_clears_and_leaves() {
+        // Given state in rename scope with empty input.
+        let mut state = AppState::default_with_scope_focus();
+        state
+            .frontend
+            .scope_push(FocusScope::Dynamic(rename_scope()));
+
+        // When Ctrl-C is requested.
+        let result = handle_rename_session_clear_or_leave(&mut state);
+
+        // Then the popup requests its own conditional pop.
+        assert_eq!(
+            result.scope_signal,
+            Some(ScopeSignal::PopIf(rename_scope()))
+        );
+    }
+
+    #[rstest::rstest]
     fn leave_discards_changes() {
         // Given state in RenameSessionInput scope.
         let mut state = AppState::default_with_scope_focus();
@@ -437,10 +501,10 @@ mod tests {
         // When handling RenameSessionLeave.
         let result = handle_rename_session_leave(&mut state);
 
-        // Then scope is popped back.
+        // Then the handler requests a conditional pop of rename.
         assert_eq!(
-            state.frontend.sidebar_section(),
-            Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
+            result.scope_signal,
+            Some(ScopeSignal::PopIf(rename_scope()))
         );
         // And input state is cleared.
         assert!(

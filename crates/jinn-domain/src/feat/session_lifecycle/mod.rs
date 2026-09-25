@@ -4,9 +4,7 @@
 //! that contain positional parameters (`$1`, `$2`, `$@`). Used by session
 //! lifecycle recipes to bootstrap and tear down working directories.
 
-pub mod arg_input_state;
 pub mod intent;
-pub mod render;
 
 // The contracts and the kernel-consumed leaf vocabulary live in the lifecycle
 // family msg crate. Re-exported here for the kernel's synchronous lifecycle

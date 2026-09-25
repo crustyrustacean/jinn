@@ -343,7 +343,7 @@ Entries are added or amended **only with human approval**.
 - (slices) The persona slice is a kernel-free crate parsing persona markdown from the configured directory at activation into one cell; composition publishes the kernel's PersonasLoaded event from that scan after actor spawn, and the session actor consumes it unchanged.
 - (persona) Personas parse from disk at boot.
 - (slices) The token-count slice is a crate owning the per-session entry token cache cell and both token actors (count fill, cache eviction); the session actor and the prune workers share the cache from the cell.
-- (slices) The preferences slice owns the PreferencesActor for jinn.toml persistence and the AppStateActor for state.toml persistence.
+- (slices) The preferences slice owns the PreferencesActor for jinn.toml persistence, the AppStateActor for state.toml persistence, and the pruner accumulation threshold popup.
 - (slices) The project slice owns the project-add popup cell, dynamic scope, route rows, input hook, and overlay rendering.
 - (config) The jinn.toml and state.toml schemas, both storage traits with their filesystem and in-memory backends, and the preferences bus protocol live in the kernel-free jinn-preferences-config crate; the jinn.toml patcher preserves user comments and key order.
 - (config) ModelSelection, AlloyStrategy, and ReasoningEffort live in jinn-core-types; they persist across state.toml, SessionCore, and the SQLite legacy schema.
@@ -407,3 +407,8 @@ Entries are added or amended **only with human approval**.
 - (session) SessionStoreActor and SessionLifecycleActor own storage and lifecycle contracts in their respective slices.
 - (session) SessionPersistenceActor is the jinn-session-turn actor for coordinated turn progression, context work, and sanctioned history folds.
 - (migration) The actor-migration documentation suite presents current-state design and rationale in migration.md, slices.md, cleanup.md, and catalog.md.
+- (popups) The session-lifecycle argument popup currently uses a dynamic slice scope and stores its input state in a lifecycle-owned cell.
+- (popups) The pruner accumulation threshold popup currently uses a dynamic slice scope and stores its input state in a preferences-owned cell.
+- (popups) The session rename popup currently uses a dynamic sidebar scope and stores its input state in the sidebar sections cell.
+- (keybinds) Input-capturing slice popups currently handle Escape, Enter, Ctrl-C, bracketed paste, Home, and End through slice-owned route rows or input hooks.
+- (pickers) Picker outcomes currently express picker closure and an optional destination scope transition, which picker dispatch applies in order.

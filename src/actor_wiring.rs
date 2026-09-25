@@ -320,8 +320,8 @@ impl ActorSystemBuilder {
         // fork, archive, and persist; the lifecycle actor owns setup, teardown,
         // close, and working-directory changes. Each contract has exactly one owner.
         jinn_session_store::activate(&services, state.clone());
-        jinn_session_lifecycle::activate(
-            &services,
+        jinn_session_lifecycle_activate(
+            &mut services,
             state.clone(),
             jinn_session_lifecycle_msg::BuiltinRegistry::new(),
             std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
@@ -623,6 +623,36 @@ fn jinn_sidebar_activate(services: &mut Services, state: jinn_domain::common::st
     jinn_sidebar::activate(&mut host, state);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("sidebar slice finalize failed: {error}");
+    }
+}
+
+#[expect(
+    clippy::panic,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+fn jinn_session_lifecycle_activate(
+    services: &mut Services,
+    state: jinn_domain::common::state::State,
+    builtin_registry: jinn_session_lifecycle_msg::BuiltinRegistry,
+    shell: String,
+) {
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_session_lifecycle::activate(
+        &mut host,
+        &services_snapshot,
+        state,
+        builtin_registry,
+        shell,
+    );
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("session-lifecycle slice finalize failed: {error}");
     }
 }
 

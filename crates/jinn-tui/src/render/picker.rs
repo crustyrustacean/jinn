@@ -18,11 +18,6 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
     }
 }
 
-/// Renders the arg input popup (delegates to domain render).
-pub(super) fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-    jinn_domain::feat::session_lifecycle::render::render_arg_input(frame, area, ctx);
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(

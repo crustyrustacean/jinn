@@ -160,6 +160,7 @@ jinn-chat-log-view = { workspace = true }
 jinn-scope-focus = { workspace = true }
 jinn-status-bar = { workspace = true }
 jinn-testutil = { workspace = true }
+jinn-theme = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 

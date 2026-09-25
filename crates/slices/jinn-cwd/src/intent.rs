@@ -61,11 +61,11 @@ fn row(
     }
 }
 
-/// Attaches the popup's route rows: confirm (`<enter>`) and leave (`<esc>`).
-///
-/// The opener row (`<leader>cd` in Normal) is attached here too — it is an
-/// `OwnScope` binding on the *base* scope is not expressible, so it uses the
-/// `StaticScopes` site on `["Normal"]` and pushes the popup scope itself.
+/// Attaches the popup's route rows: confirm (`<enter>`), leave (`<esc>`),
+/// and Ctrl-C clear/leave. The opener row (`<leader>cd` in Normal) is
+/// attached here too — an `OwnScope` binding on the *base* scope is not
+/// expressible, so it uses the `StaticScopes` site on `["Normal"]` and pushes
+/// the popup scope itself.
 pub fn attach_cwd_rows(routes: &jinn_slices::KeyRoutes, cell: &CwdCell) {
     // Opener: seed + push scope. Site: static Normal scope (the popup scope
     // does not exist yet when the key is pressed).
@@ -97,12 +97,15 @@ pub fn attach_cwd_rows(routes: &jinn_slices::KeyRoutes, cell: &CwdCell) {
         "cancel without changing the cwd",
         action(cell, |_ctx, cell| {
             leave_cwd_input(cell);
-            IntentResult {
-                messages: Vec::new(),
-                message_names: Vec::new(),
-                scope_signal: Some(ScopeSignal::PopIf(cwd_scope())),
-            }
+            IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(cwd_scope()))
         }),
+    ));
+    routes.attach(row(
+        "clear-or-leave-cwd-input",
+        "<c-c>",
+        "session",
+        "clear the path, or leave when already empty",
+        action(cell, |_ctx, cell| clear_or_leave_cwd_input(cell)),
     ));
 }
 
@@ -133,11 +136,18 @@ pub fn register_cwd_input_hook(routes: &jinn_slices::KeyRoutes, cell: &CwdCell) 
                 cell.update(|s| s.text.cursor_right());
                 IntentResult::empty()
             }
+            EditIntent::CursorHome => {
+                cell.update(|s| s.text.cursor_home());
+                IntentResult::empty()
+            }
+            EditIntent::CursorEnd => {
+                cell.update(|s| s.text.cursor_end());
+                IntentResult::empty()
+            }
             EditIntent::Paste(text) => {
                 cell.update(|s| s.text.paste(text));
                 IntentResult::empty()
             }
-            EditIntent::CursorHome | EditIntent::CursorEnd => return None,
         };
         Some(result)
     });
@@ -187,6 +197,17 @@ fn confirm_cwd_input(ctx: &mut ActionCtx<'_>, cell: &CwdCell) -> IntentResult {
 /// scope, so it pops explicitly).
 fn leave_cwd_input(cell: &CwdCell) {
     cell.update(|s| *s = CwdInputState::default());
+}
+
+/// Clears nonempty input while remaining open, or leaves when already empty.
+fn clear_or_leave_cwd_input(cell: &CwdCell) -> IntentResult {
+    let had_text = !cell.read().text.input.is_empty();
+    leave_cwd_input(cell);
+    if had_text {
+        IntentResult::empty()
+    } else {
+        IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(cwd_scope()))
+    }
 }
 
 #[cfg(test)]
@@ -363,6 +384,33 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn clear_or_leave_with_text_clears_and_stays_open() {
+        // Given a popup with typed text.
+        let (_slices, cell) = cell();
+        cell.update(|s| s.text.set("/some/path".to_owned()));
+
+        // When Ctrl-C is requested.
+        let result = clear_or_leave_cwd_input(&cell);
+
+        // Then the input clears without leaving the popup.
+        assert!(result.scope_signal.is_none());
+        assert!(cell.read().text.input.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn clear_or_leave_with_empty_text_clears_and_leaves() {
+        // Given an empty popup.
+        let (_slices, cell) = cell();
+
+        // When Ctrl-C is requested.
+        let result = clear_or_leave_cwd_input(&cell);
+
+        // Then the popup requests its own conditional pop.
+        assert_eq!(result.scope_signal, Some(ScopeSignal::PopIf(cwd_scope())));
+        assert!(cell.read().text.input.is_empty());
+    }
+
+    #[rstest::rstest]
     fn leave_clears_the_cell() {
         // Given a popup with typed text.
         let _state = FakeState::default();
@@ -377,7 +425,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn rows_bind_open_confirm_and_leave() {
+    fn rows_bind_open_confirm_leave_and_clear() {
         // Given a route table with the cwd rows attached.
         let routes = KeyRoutes::new();
         let (_slices, cell) = cell();
@@ -387,7 +435,7 @@ mod tests {
         let rows = routes.rows();
 
         // Then the opener binds <leader>cd on the static Normal scopes and
-        // confirm/leave bind <enter>/<esc> in the popup's own scope.
+        // confirm/leave/clear bind in the popup's own scope.
         let open = rows
             .iter()
             .find(|row| row.route_id.as_str() == "cwd:open")
@@ -405,10 +453,15 @@ mod tests {
             .find(|row| row.route_id.as_str() == "leave-cwd-input")
             .expect("leave row");
         assert_eq!(leave.key, "<esc>");
+        let clear = rows
+            .iter()
+            .find(|row| row.route_id.as_str() == "clear-or-leave-cwd-input")
+            .expect("clear row");
+        assert_eq!(clear.key, "<c-c>");
     }
 
     #[rstest::rstest]
-    fn input_hook_edits_the_cell_and_ignores_non_edit_intents() {
+    fn input_hook_edits_the_cell() {
         // Given a route table with the input hook registered.
         let routes = KeyRoutes::new();
         let (_slices, cell) = cell();
@@ -425,8 +478,44 @@ mod tests {
 
         // Then the cell reflects the edits (xab with cursor before b).
         assert_eq!(cell.read().text.input, "axb");
+    }
 
-        // And non-edit intents pass through untouched.
-        assert!(hook(&EditIntent::CursorHome).is_none());
+    #[rstest::rstest]
+    fn input_hook_moves_cursor_home_and_consumes_intent() {
+        // Given a route table with the input hook registered and text.
+        let routes = KeyRoutes::new();
+        let (_slices, cell) = cell();
+        cell.update(|s| s.text.set("hello".to_owned()));
+        register_cwd_input_hook(&routes, &cell);
+        let hook = routes
+            .input_hook(&cwd_scope())
+            .expect("hook registered for the cwd scope");
+
+        // When moving the cursor home.
+        let result = hook(&EditIntent::CursorHome);
+
+        // Then the intent is consumed and the cursor reaches the start.
+        assert!(result.is_some());
+        assert_eq!(cell.read().text.cursor_pos, 0);
+    }
+
+    #[rstest::rstest]
+    fn input_hook_moves_cursor_end_and_consumes_intent() {
+        // Given a route table with the input hook registered and text.
+        let routes = KeyRoutes::new();
+        let (_slices, cell) = cell();
+        cell.update(|s| s.text.set("héllo".to_owned()));
+        cell.update(|s| s.text.cursor_home());
+        register_cwd_input_hook(&routes, &cell);
+        let hook = routes
+            .input_hook(&cwd_scope())
+            .expect("hook registered for the cwd scope");
+
+        // When moving the cursor to the end.
+        let result = hook(&EditIntent::CursorEnd);
+
+        // Then the intent is consumed and the cursor reaches the end.
+        assert!(result.is_some());
+        assert_eq!(cell.read().text.cursor_pos, "héllo".len());
     }
 }
