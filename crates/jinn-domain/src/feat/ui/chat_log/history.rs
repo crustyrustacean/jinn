@@ -59,6 +59,16 @@ const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 /// Minimum time between loading-indicator animation frames.
 const LOADING_ANIMATION_INTERVAL: Duration = Duration::from_millis(80);
 
+/// The text drawn beside the spinner glyph while a session is loading.
+const LOADING_LABEL: &str = " Loading session...";
+
+/// Width of the loading indication, in columns.
+///
+/// `Throbber` has no alignment, so centering is done by handing it a sub-rectangle
+/// this wide. One column is added for the spinner's trailing space, so the label
+/// is not clipped when the indication fits.
+const LOADING_INDICATION_WIDTH: u16 = LOADING_LABEL.len() as u16 + 1;
+
 // alternatives: |❚┃╏⣿𜺏░▒▓
 const GUTTER_STR: &str = "𜺏 ";
 
@@ -255,22 +265,34 @@ impl UiElement for ChatLogElement {
 /// Draws the animated loading indication for a session that is being read from
 /// disk and measured.
 ///
-/// The label is centred, the spinner rides along beside it, and the animation
-/// advances only after the frame is drawn so the drawn glyph is always the one
-/// the state describes.
+/// Centred within the chat log's own area rather than the terminal: the pane is
+/// what the user is looking at while it fills, and a spinner drifting away from
+/// the pane's centre reads as belonging to something else. A zero-sized pane has
+/// no row to centre within and no column to centre across, so it is left blank
+/// rather than having the indication drawn outside it.
 fn render_loading_animated(
     frame: &mut Frame<'_>,
     area: Rect,
     theme: &Theme,
     throbber_state: &mut ThrobberState,
 ) {
+    let width = area.width.min(LOADING_INDICATION_WIDTH);
+    if width == 0 || area.height == 0 {
+        return;
+    }
+    let centered = Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + area.height.saturating_sub(1) / 2,
+        width,
+        height: 1,
+    };
     let throbber = Throbber::default()
-        .label(" Loading session...")
+        .label(LOADING_LABEL)
         .style(Style::default().fg(theme.muted_text))
         .throbber_style(Style::default().fg(theme.streaming))
         .throbber_set(throbber_widgets_tui::ASCII)
         .use_type(WhichUse::Spin);
-    frame.render_stateful_widget(throbber, area, throbber_state);
+    frame.render_stateful_widget(throbber, centered, throbber_state);
 }
 
 // ---------------------------------------------------------------------------

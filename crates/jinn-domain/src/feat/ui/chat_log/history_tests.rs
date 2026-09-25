@@ -15,6 +15,7 @@ use crate::protocol::{ChatEntry, PinPosition};
 use jinn_chat_log_view::chat_log::GUTTER_WIDTH;
 use jinn_slices::FocusScope;
 use jinn_testutil::setup_term;
+use ratatui::layout::Rect;
 use ratatui::style::Color;
 
 const G: u16 = GUTTER_WIDTH; // = 2
@@ -2454,6 +2455,140 @@ fn a_loading_indication_animates_over_time() {
     assert!(
         seen.iter().all(|frame| frame.contains("Loading session")),
         "every loading frame must say what it is doing, saw {seen:?}"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_indication_is_centered_vertically() {
+    // Given a chat log whose session is still loading, in a tall pane.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 11);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the indication sits on the pane's middle row, not the top one.
+    let rows: Vec<String> = (area.y..area.y + area.height)
+        .map(|row| jinn_testutil::buffer_row(terminal.backend().buffer(), row, area.width))
+        .collect();
+    let painted = rows
+        .iter()
+        .position(|row| row.contains("Loading session"))
+        .expect("the indication must be drawn");
+    assert_eq!(
+        painted, 5,
+        "an 11-row pane must show the indication on row 5, got rows {rows:?}"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_indication_is_centered_horizontally() {
+    // Given a chat log whose session is still loading, in a wide pane.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(60, 11);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the label starts near the pane's horizontal centre, not at its edge.
+    let row = jinn_testutil::buffer_row(terminal.backend().buffer(), area.y + 5, area.width);
+    let start = row
+        .find("Loading session")
+        .expect("the label must be drawn");
+    assert!(
+        start > 10,
+        "a 60-column pane must not start the label at column {start}: {row:?}"
+    );
+    // And it stays clear of the right edge rather than being clipped.
+    assert!(
+        row[start..].contains("Loading session..."),
+        "the whole label must fit, got {row:?}"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_indication_tolerates_a_zero_height_pane() {
+    // Given a chat log in a pane with no height, mid-resize.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 3);
+    let collapsed = Rect::new(area.x, area.y, area.width, 0);
+
+    // When rendering into it.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, collapsed, &ctx);
+        })
+        .unwrap();
+
+    // Then nothing is drawn and no panic escapes.
+    assert!(
+        !row_text(terminal.backend().buffer(), area).contains("Loading session"),
+        "a pane with no rows has nowhere to draw the indication"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_indication_tolerates_a_zero_width_pane() {
+    // Given a chat log in a pane with no width, mid-resize.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 3);
+    let collapsed = Rect::new(area.x, area.y, 0, area.height);
+
+    // When rendering into it.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, collapsed, &ctx);
+        })
+        .unwrap();
+
+    // Then nothing is drawn and no panic escapes.
+    assert!(
+        !row_text(terminal.backend().buffer(), area).contains("Loading session"),
+        "a pane with no columns has nowhere to draw the indication"
     );
 }
 
