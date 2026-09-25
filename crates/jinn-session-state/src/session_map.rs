@@ -42,6 +42,7 @@ pub struct SessionMap {
     frozen_nodes: HashMap<SessionId, FrozenTreeNode>,
     active_session: SessionId,
     session_load_guard: Option<SessionLoadGuard>,
+    startup_hydration_active: bool,
     default_cwd: PathBuf,
     /// Late-attached handle to the slice registry, carrying the
     /// slice cells (chat-log-view, chat-input, ...). Attached once at wiring; every
@@ -65,6 +66,7 @@ impl Default for SessionMap {
             frozen_nodes: HashMap::new(),
             active_session: id,
             session_load_guard: None,
+            startup_hydration_active: false,
             default_cwd: PathBuf::from("/"),
             slices: std::sync::OnceLock::new(),
         }
@@ -82,6 +84,7 @@ impl SessionMap {
             frozen_nodes: HashMap::new(),
             active_session: id,
             session_load_guard: None,
+            startup_hydration_active: false,
             default_cwd,
             slices: std::sync::OnceLock::new(),
         }
@@ -368,6 +371,22 @@ impl SessionMap {
     /// Returns the ID of an arbitrary session in the map, or `None` if empty.
     pub fn any_session_id(&self) -> Option<SessionId> {
         self.sessions.keys().next().cloned()
+    }
+
+    /// Mark startup hydration of unarchived sessions as active.
+    pub fn begin_startup_hydration(&mut self) {
+        self.startup_hydration_active = true;
+    }
+
+    /// Mark startup hydration of unarchived sessions as complete.
+    pub fn finish_startup_hydration(&mut self) {
+        self.startup_hydration_active = false;
+    }
+
+    /// Whether startup hydration of unarchived sessions is active.
+    #[must_use]
+    pub fn is_startup_hydrating(&self) -> bool {
+        self.startup_hydration_active
     }
 
     /// Whether a session is currently being loaded from disk.
@@ -687,6 +706,41 @@ mod tests {
         // Then it returns a valid ID.
         assert!(id.is_some());
         assert!(map.contains(&id.unwrap()));
+    }
+
+    #[rstest::rstest]
+    fn startup_hydration_defaults_to_inactive() {
+        // Given a default map.
+        let map = default_map();
+
+        // When checking startup hydration state.
+        // Then hydration is inactive.
+        assert!(!map.is_startup_hydrating());
+    }
+
+    #[rstest::rstest]
+    fn begin_startup_hydration_activates_projection() {
+        // Given a session map.
+        let mut map = default_map();
+
+        // When beginning startup hydration.
+        map.begin_startup_hydration();
+
+        // Then hydration is active.
+        assert!(map.is_startup_hydrating());
+    }
+
+    #[rstest::rstest]
+    fn finish_startup_hydration_clears_projection() {
+        // Given a map with active startup hydration.
+        let mut map = default_map();
+        map.begin_startup_hydration();
+
+        // When finishing startup hydration.
+        map.finish_startup_hydration();
+
+        // Then hydration is inactive.
+        assert!(!map.is_startup_hydrating());
     }
 
     #[rstest::rstest]
