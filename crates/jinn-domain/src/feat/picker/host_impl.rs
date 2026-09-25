@@ -13,6 +13,7 @@ use jinn_picker::PickerId;
 
 use crate::common::app_state::AppState;
 use crate::feat::ui::picker_states::PickerExt;
+use crate::protocol::PickerKind;
 use jinn_picker::ENDPOINT_ID;
 use jinn_picker::MCP_SERVER_ID;
 use jinn_picker::PERSONA_ID;
@@ -25,6 +26,55 @@ use jinn_picker::SKILL_ID;
 use jinn_picker::TASK_LIST_ID;
 use jinn_picker::THEME_ID;
 use jinn_picker::TOOL_ID;
+
+/// The mutable navigation interface for the active picker, or `None` when no
+/// picker is on the focus stack.
+///
+/// This is the single kind→field table for navigation. Both the host lenses
+/// ([`AppStatePickerHost::active_ops`] and
+/// [`AppStateRenderHost::active_ops_ref`]) and the kernel-side intent
+/// handlers delegate here, so the twelve arms cannot drift apart.
+#[must_use]
+pub fn active_picker_ops(
+    state: &mut AppState,
+) -> Option<&mut dyn jinn_selection_widget::PickerOps> {
+    let kind = state.frontend.picker_kind()?;
+    Some(match kind {
+        PickerKind::Provider => &mut state.frontend.pickers.provider_picker,
+        PickerKind::Session => state.frontend.session_picker_mut(),
+        PickerKind::Persona => state.frontend.persona_picker_mut(),
+        PickerKind::Theme => state.frontend.theme_picker_mut(),
+        PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker_mut(),
+        PickerKind::ReasoningEffort => state.frontend.reasoning_effort_picker_mut(),
+        PickerKind::Tool => state.frontend.tool_picker_mut(),
+        PickerKind::Skill => state.frontend.skill_picker_mut(),
+        PickerKind::TaskList => state.frontend.task_list_picker_mut(),
+        PickerKind::Project => state.frontend.project_picker_mut(),
+        PickerKind::McpServer => state.frontend.mcp_server_picker_mut(),
+        PickerKind::Endpoint => state.frontend.endpoint_picker_mut(),
+    })
+}
+
+/// Read-only companion to [`active_picker_ops`], for the filter-emptiness
+/// check behind the universal `CtrlClear` intent.
+#[must_use]
+pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_widget::PickerOps> {
+    let kind = state.frontend.picker_kind()?;
+    Some(match kind {
+        PickerKind::Provider => &state.frontend.pickers.provider_picker,
+        PickerKind::Session => state.frontend.session_picker(),
+        PickerKind::Persona => state.frontend.persona_picker(),
+        PickerKind::Theme => state.frontend.theme_picker(),
+        PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker(),
+        PickerKind::ReasoningEffort => state.frontend.reasoning_effort_picker(),
+        PickerKind::Tool => state.frontend.tool_picker(),
+        PickerKind::Skill => state.frontend.skill_picker(),
+        PickerKind::TaskList => state.frontend.task_list_picker(),
+        PickerKind::Project => state.frontend.project_picker(),
+        PickerKind::McpServer => state.frontend.mcp_server_picker(),
+        PickerKind::Endpoint => state.frontend.endpoint_picker(),
+    })
+}
 
 /// The host lens over the kernel state. Constructed transiently at
 /// dispatch/render with `&mut AppState` — it never outlives the guard.
@@ -141,6 +191,14 @@ impl PickerHost for AppStatePickerHost<'_> {
             _ => None,
         }
     }
+
+    fn active_ops(&mut self) -> Option<&mut dyn jinn_selection_widget::PickerOps> {
+        active_picker_ops(self.state)
+    }
+
+    fn active_ops_ref(&self) -> Option<&dyn jinn_selection_widget::PickerOps> {
+        active_picker_ops_ref(self.state)
+    }
 }
 
 /// Read-only lens over [`AppState`] for the render path, where no mutable
@@ -238,6 +296,32 @@ impl PickerHost for AppStateRenderHost<'_> {
             ),
             _ => None,
         }
+    }
+
+    #[expect(
+        clippy::unreachable,
+        reason = "trait contract: render host is read-only; nothing navigates during a frame"
+    )]
+    fn active_ops(&mut self) -> Option<&mut dyn jinn_selection_widget::PickerOps> {
+        unreachable!("AppStateRenderHost is read-only; render never navigates the active picker")
+    }
+
+    fn active_ops_ref(&self) -> Option<&dyn jinn_selection_widget::PickerOps> {
+        let kind = self.state.frontend.picker_kind()?;
+        Some(match kind {
+            PickerKind::Provider => &self.state.frontend.pickers.provider_picker,
+            PickerKind::Session => self.state.frontend.session_picker(),
+            PickerKind::Persona => self.state.frontend.persona_picker(),
+            PickerKind::Theme => self.state.frontend.theme_picker(),
+            PickerKind::SessionLifecycle => self.state.frontend.session_lifecycle_picker(),
+            PickerKind::ReasoningEffort => self.state.frontend.reasoning_effort_picker(),
+            PickerKind::Tool => self.state.frontend.tool_picker(),
+            PickerKind::Skill => self.state.frontend.skill_picker(),
+            PickerKind::TaskList => self.state.frontend.task_list_picker(),
+            PickerKind::Project => self.state.frontend.project_picker(),
+            PickerKind::McpServer => self.state.frontend.mcp_server_picker(),
+            PickerKind::Endpoint => self.state.frontend.endpoint_picker(),
+        })
     }
 }
 

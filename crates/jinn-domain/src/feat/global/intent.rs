@@ -71,7 +71,7 @@ pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<KernelIn
             (IntentResult::empty(), None)
         }
         FocusScope::Picker { .. } => {
-            if let Some(picker) = state.active_picker_ops() {
+            if let Some(picker) = crate::feat::picker::host_impl::active_picker_ops(state) {
                 if picker.is_filter_empty() {
                     (IntentResult::empty(), Some(KernelIntent::EnterNormalMode))
                 } else {
@@ -358,7 +358,8 @@ mod tests {
             kind: PickerKind::Provider,
         });
         {
-            let picker = state.active_picker_ops().expect("picker active");
+            let picker = crate::feat::picker::host_impl::active_picker_ops(&mut state)
+                .expect("picker active");
             picker.insert_char('a');
             picker.insert_char('b');
             assert!(!picker.is_filter_empty());
@@ -368,7 +369,8 @@ mod tests {
         let (result, maybe_intent) = handle_ctrl_clear(&mut state);
 
         // Then the filter is cleared and no redispatch is requested.
-        let picker = state.active_picker_ops().expect("picker still active");
+        let picker = crate::feat::picker::host_impl::active_picker_ops(&mut state)
+            .expect("picker still active");
         assert!(picker.is_filter_empty());
         assert!(result.message_names.is_empty());
         assert!(maybe_intent.is_none());
@@ -412,7 +414,8 @@ mod tests {
             kind: PickerKind::Provider,
         });
         {
-            let picker = state.active_picker_ops().expect("picker active");
+            let picker = crate::feat::picker::host_impl::active_picker_ops(&mut state)
+                .expect("picker active");
             picker.insert_char('a');
             picker.insert_char('b');
             assert!(!picker.is_filter_empty());
@@ -428,8 +431,7 @@ mod tests {
         );
         assert!(state.frontend.is_picker());
         assert!(
-            state
-                .active_picker_ops()
+            crate::feat::picker::host_impl::active_picker_ops(&mut state)
                 .expect("picker still active")
                 .is_filter_empty()
         );

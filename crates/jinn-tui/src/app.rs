@@ -307,7 +307,7 @@ impl TuiApp {
 pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
     match focus {
         FocusScope::Picker { kind } => match kind {
-            PickerKind::Provider | PickerKind::CompactionModel => Scope::PickerProvider,
+            PickerKind::Provider => Scope::PickerProvider,
             PickerKind::Session => Scope::PickerSession,
             PickerKind::Persona => Scope::PickerPersona,
             PickerKind::Theme => Scope::PickerTheme,
@@ -319,8 +319,6 @@ pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
             PickerKind::TaskList => Scope::PickerTaskList,
             PickerKind::Project => Scope::PickerProject,
             PickerKind::McpServer => Scope::PickerMcpServer,
-            // CompactionModel has no picker state (the kind is retired); it
-            // is never pushed as a scope.
         },
         FocusScope::Input => Scope::Input,
         // Dynamic slice scopes pass their identity through unchanged.

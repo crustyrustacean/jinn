@@ -255,7 +255,7 @@ fn active_picker_ops_returns_some_when_picker_active() {
     });
 
     // When getting active picker ops.
-    let ops = state.active_picker_ops();
+    let ops = crate::feat::picker::host_impl::active_picker_ops(&mut state);
 
     // Then it returns Some (the provider picker).
     assert!(ops.is_some());
@@ -267,7 +267,7 @@ fn active_picker_ops_returns_none_when_no_picker() {
     let mut state = AppState::default_with_scope_focus();
 
     // When getting active picker ops.
-    let ops = state.active_picker_ops();
+    let ops = crate::feat::picker::host_impl::active_picker_ops(&mut state);
 
     // Then it returns None.
     assert!(ops.is_none());

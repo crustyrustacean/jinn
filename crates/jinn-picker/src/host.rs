@@ -1,6 +1,7 @@
 //! The host seam — the crate's sole lens onto the kernel's state.
 
 use jinn_core_types::SessionId;
+use jinn_selection_widget::PickerOps;
 use jinn_selection_widget::PreviewCache;
 use jinn_selection_widget::SelectionColors;
 use ratatui::style::Color;
@@ -85,6 +86,18 @@ pub trait PickerHost {
     /// cached previews. `None` (or a per-entry key being absent) means the
     /// preview renders live.
     fn preview_cache(&self, id: PickerId) -> Option<SharedPreviewCache>;
+
+    /// Mutable navigation interface for the *currently active* picker.
+    ///
+    /// `None` when no picker scope is on the focus stack. This is the one
+    /// place the kernel's picker-kind → typed-field table lives for
+    /// navigation, so the same thirteen arms cannot be duplicated per
+    /// caller.
+    fn active_ops(&mut self) -> Option<&mut dyn PickerOps>;
+
+    /// Read-only companion to [`PickerHost::active_ops`] for the filter
+    /// emptiness check behind the universal `CtrlClear` intent.
+    fn active_ops_ref(&self) -> Option<&dyn PickerOps>;
 }
 
 impl Palette {

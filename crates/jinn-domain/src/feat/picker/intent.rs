@@ -73,7 +73,7 @@ fn reset_preview_scroll(state: &mut AppState, registry: &jinn_picker::PickerRegi
 
 pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
     validator::validate_picker_insert_char(state, ch);
-    if let Some(picker) = state.active_picker_ops() {
+    if let Some(picker) = super::host_impl::active_picker_ops(state) {
         picker.insert_char(ch);
     }
     IntentResult::empty()
@@ -84,7 +84,7 @@ pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
 /// Newlines are stripped by the picker's `insert_text` method since the filter
 /// is a single-line input.
 pub fn handle_picker_paste(state: &mut AppState, text: &str) -> IntentResult {
-    if let Some(picker) = state.active_picker_ops() {
+    if let Some(picker) = super::host_impl::active_picker_ops(state) {
         picker.insert_text(text);
     }
     IntentResult::empty()
@@ -93,7 +93,7 @@ pub fn handle_picker_paste(state: &mut AppState, text: &str) -> IntentResult {
 /// Removes the last character from the active picker's filter.
 pub fn handle_backspace(state: &mut AppState) -> IntentResult {
     validator::validate_picker_backspace(state);
-    if let Some(picker) = state.active_picker_ops() {
+    if let Some(picker) = super::host_impl::active_picker_ops(state) {
         picker.backspace();
     }
     IntentResult::empty()
@@ -131,7 +131,7 @@ pub fn handle_picker_confirm(
 pub fn handle_move_up(state: &mut AppState, pickers: &jinn_picker::PickerRegistry) -> IntentResult {
     validator::validate_picker_move_up(state);
     let viewport = active_viewport(state);
-    if let Some(picker) = state.active_picker_ops() {
+    if let Some(picker) = super::host_impl::active_picker_ops(state) {
         picker.move_up(viewport);
     }
     reset_preview_scroll(state, pickers);
@@ -146,7 +146,7 @@ pub fn handle_move_down(
 ) -> IntentResult {
     validator::validate_picker_move_down(state);
     let viewport = active_viewport(state);
-    if let Some(picker) = state.active_picker_ops() {
+    if let Some(picker) = super::host_impl::active_picker_ops(state) {
         picker.move_down(viewport);
     }
     reset_preview_scroll(state, pickers);
@@ -158,7 +158,7 @@ pub fn handle_move_down(
 pub fn handle_page_up(state: &mut AppState, pickers: &jinn_picker::PickerRegistry) -> IntentResult {
     validator::validate_picker_page_up(state);
     let viewport = active_viewport(state);
-    if let Some(picker) = state.active_picker_ops() {
+    if let Some(picker) = super::host_impl::active_picker_ops(state) {
         picker.page_up(viewport);
     }
     reset_preview_scroll(state, pickers);
@@ -173,7 +173,7 @@ pub fn handle_page_down(
 ) -> IntentResult {
     validator::validate_picker_page_down(state);
     let viewport = active_viewport(state);
-    if let Some(picker) = state.active_picker_ops() {
+    if let Some(picker) = super::host_impl::active_picker_ops(state) {
         picker.page_down(viewport);
     }
     reset_preview_scroll(state, pickers);
@@ -184,7 +184,7 @@ pub fn handle_page_down(
 /// Moves the filter cursor left in the active picker.
 pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_cursor_left(state);
-    if let Some(picker) = state.active_picker_ops() {
+    if let Some(picker) = super::host_impl::active_picker_ops(state) {
         picker.move_cursor_left();
     }
     IntentResult::empty()
@@ -193,7 +193,7 @@ pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
 /// Moves the filter cursor right in the active picker.
 pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_cursor_right(state);
-    if let Some(picker) = state.active_picker_ops() {
+    if let Some(picker) = super::host_impl::active_picker_ops(state) {
         picker.move_cursor_right();
     }
     IntentResult::empty()

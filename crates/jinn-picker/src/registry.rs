@@ -55,8 +55,7 @@ pub const ENDPOINT_ID: &str = "endpoint";
 /// The id of the project picker's spec.
 pub const PROJECT_ID: &str = "project";
 
-/// Maps a picker kind onto its spec id. The compaction-model picker remains on
-/// its legacy path and has no spec id.
+/// Maps a picker kind onto its spec id.
 #[must_use]
 pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&'static str> {
     use jinn_slices::picker_kind::PickerKind;
@@ -74,7 +73,6 @@ pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&
         PickerKind::Provider => Some(PROVIDER_ID),
         PickerKind::Endpoint => Some(ENDPOINT_ID),
         PickerKind::Project => Some(PROJECT_ID),
-        PickerKind::CompactionModel => None,
     }
 }
 
