@@ -667,7 +667,7 @@ fn sessions_title_shows_throbber_during_startup_hydration() {
     let symbols = throbber_widgets_tui::symbols::throbber::BRAILLE_EIGHT;
     let found = (0..width).any(|x| {
         buf.cell((x, sessions_row))
-            .map_or(false, |cell| symbols.symbols.contains(&cell.symbol()))
+            .is_some_and(|cell| symbols.symbols.contains(&cell.symbol()))
     });
     assert!(found, "Sessions title should include a throbber");
 }
@@ -733,7 +733,7 @@ fn sessions_title_hides_throbber_after_startup_hydration() {
     let symbols = throbber_widgets_tui::symbols::throbber::BRAILLE_EIGHT;
     let found = (0..width).any(|x| {
         buf.cell((x, sessions_row))
-            .map_or(false, |cell| symbols.symbols.contains(&cell.symbol()))
+            .is_some_and(|cell| symbols.symbols.contains(&cell.symbol()))
     });
     assert!(!found, "Sessions title should hide the throbber");
 }

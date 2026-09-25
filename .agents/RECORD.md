@@ -202,6 +202,7 @@ Entries are added or amended **only with human approval**.
 - (tools) When the `bash` tool or a built-in tool panics mid-execution, it publishes a failed-execution event rather than crashing the actor.
 - (tools) The bash and grep tools spawn children terminal-isolated: Unix children run in a new session (setsid), Windows children with CREATE_NO_WINDOW, so child output can never write over the TUI.
 - (ui) A section is shown only when non-empty (Pins requires pinned ids, TaskList requires tasks); empty sections are hidden.
+- (ui) The sidebar Sessions title displays a streaming-colored throbber while startup unarchived-session hydration is in progress.
 - (ui) Mouse drag creates a dragging selection state, `finalize` transitions dragging to active, and `cancel` returns to idle.
 - (ui) Paste events are coalesced: empty chunks are harmless, multiple paste chunks within a window merge into one (preserving order), and coalescing stops at the first non-paste event.
 - (ui) Popups scale with terminal size: larger terminals get taller popups, small terminals use ~75% height, and a minimum size is enforced (otherwise the popup reports too-small).
