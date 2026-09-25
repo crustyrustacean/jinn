@@ -5,16 +5,13 @@ use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_session_history_msg::SubmitHistoryMutations;
 use jinn_session_msg::PhaseKind;
-use jinn_skills_msg::Skill;
+use jinn_skills_msg::{Skill, SkillsLoaded};
 
 use jinn_domain::protocol::{ChatEntry, PickerKind};
 
 impl SessionPersistenceActor {
     /// Pushes a transient entry listing discovered skills.
-    pub(in crate::session_actor) fn on_skills_loaded(
-        &self,
-        event: &jinn_domain::feat::skills::SkillsLoaded,
-    ) {
+    pub(in crate::session_actor) fn on_skills_loaded(&self, event: &SkillsLoaded) {
         // Only show a message when the skill picker is active (manual refresh).
         // Startup scans arrive while no picker is open.
         let is_picker_active = {

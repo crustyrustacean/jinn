@@ -1964,6 +1964,7 @@ dependencies = [
  "jinn-session-turn",
  "jinn-sidebar",
  "jinn-sidebar-msg",
+ "jinn-skills-msg",
  "jinn-slices",
  "jinn-status-bar",
  "jinn-status-bar-msg",
@@ -2571,6 +2572,7 @@ dependencies = [
  "jinn-slices",
  "jinn-theme",
  "ratatui",
+ "rstest",
  "serde",
  "trouper",
 ]
@@ -3134,7 +3136,6 @@ dependencies = [
  "jinn-session-store-msg",
  "jinn-sidebar-msg",
  "jinn-skills",
- "jinn-skills-msg",
  "jinn-slices",
  "jinn-term-msg",
  "jinn-testutil",

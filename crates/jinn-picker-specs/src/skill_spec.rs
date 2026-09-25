@@ -22,11 +22,11 @@ use ratatui::text::Span;
 use jinn_core_types::{ChatEntry, ChatEntryId, PinPosition, ToolResultStatus};
 use jinn_domain::RescanPromptTemplates;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::skills::ScanSkills;
 use jinn_domain::feat::skills::skill_entry::{body_hash_key, render_skill_preview, skill_row};
 use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_session_init_msg::ScanContextFiles;
 use jinn_session_msg::MarkSessionInteracted;
+use jinn_skills_msg::ScanSkills;
 
 /// The kernel entry this picker's items wrap in storage.
 pub use jinn_domain::feat::skills::SkillEntry;

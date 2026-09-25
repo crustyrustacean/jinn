@@ -25,7 +25,6 @@ trouper = { workspace = true }
 # kernel's shared `State` handle, and the route actions reuse kernel
 # feature helpers. The kernel never depends back on this crate.
 jinn-core-types = { workspace = true }
-jinn-skills-msg = { workspace = true }
 jinn-skills = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }

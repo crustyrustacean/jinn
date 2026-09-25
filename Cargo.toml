@@ -146,6 +146,7 @@ jinn-discord = { workspace = true }
 jinn-boot-msg = { workspace = true }
 jinn-session-init = { workspace = true }
 jinn-session-init-msg = { workspace = true }
+jinn-skills-msg = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 jinn-provider-selection = { workspace = true }
 jinn-core-types = { workspace = true }

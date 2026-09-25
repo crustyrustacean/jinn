@@ -75,3 +75,27 @@ pub struct ContextOverrideChanged {
 }
 
 impl jinn_slices::BusMessage for ContextOverrideChanged {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use trouper::schema::{Schema, SchemaKind};
+
+    #[rstest::rstest]
+    #[test]
+    fn crossing_schema_contract_is_stable() {
+        // Given the canonical context-assembly crossing contracts.
+        // When reading their schema definitions.
+        let command = <AssembleContext as Schema>::schema_def();
+        let reply = <AssembledResponse as Schema>::schema_def();
+        let event = <ContextOverrideChanged as Schema>::schema_def();
+
+        // Then their names and command/event kinds are stable.
+        assert_eq!(command.name, "AssembleContext");
+        assert!(matches!(command.kind, SchemaKind::Command));
+        assert_eq!(reply.name, "AssembledResponse");
+        assert!(matches!(reply.kind, SchemaKind::Event));
+        assert_eq!(event.name, "ContextOverrideChanged");
+        assert!(matches!(event.kind, SchemaKind::Event));
+    }
+}
