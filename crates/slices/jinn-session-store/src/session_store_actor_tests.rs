@@ -12,7 +12,8 @@ use error_stack::Report;
 use jinn_boot_msg::EnvironmentLoaded;
 use jinn_core_types::SessionId;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+use jinn_chat_log_view_msg::LayoutChatSession;
+use jinn_domain::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
 use jinn_domain::common::state::State;
 use jinn_domain::feat::session::{SessionStore, SessionStoreError, SessionStoreService};
 use jinn_domain::protocol::ChatEntryId;
@@ -20,8 +21,8 @@ use jinn_provider_config::ProvidersConfig;
 use jinn_session_msg::{SessionArchived, SessionClosed};
 use jinn_session_state::{ChatSessionState, SessionSnapshot};
 use jinn_session_store_msg::{
-    ArchiveSession, PersistSession, SearchOutcome, SearchParams, SessionLoadCompleted,
-    SessionLoadRequested, SessionState, SessionSummary, TranscriptWindow,
+    ArchiveSession, ChatLogMeasureRequested, PersistSession, SearchOutcome, SearchParams,
+    SessionLoadCompleted, SessionLoadRequested, SessionState, SessionSummary, TranscriptWindow,
 };
 
 use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};
@@ -860,4 +861,160 @@ async fn archive_session_publishes_session_closed_event() {
     // Then SessionClosed is published for the archived session.
     let closed = await_recorded(&closed, 1, Duration::from_secs(1)).await;
     assert_eq!(closed[0].session_id, session_id);
+}
+
+// ---------------------------------------------------------------------------
+// Chat log measurement of an in-memory session
+// ---------------------------------------------------------------------------
+
+/// A running store actor with a second hydrated session, ready to measure.
+///
+/// The session store actor is given the measurement recorder, so the layout
+/// jobs it dispatches reach it; the workers themselves are not installed, so
+/// the cache stays empty and what the measurement produced is observable.
+async fn measure_fixture() -> (ActorFixture, Recorder<LayoutChatSession>, SessionId) {
+    let fixture = actor_fixture().await;
+    let jobs = fixture.harness.spawn_recorder::<LayoutChatSession>().await;
+    let target_id = SessionId::new();
+    {
+        let mut state = fixture.state.write();
+        let mut target = ChatSessionState::new();
+        target.set_session_id(target_id.clone());
+        target.push_entry(jinn_core_types::ChatEntry::user("from the sidebar"));
+        state.session.insert(target);
+        // The session on screen has a width the next frame will inherit.
+        state.active_session_mut().set_content_width(72);
+        state.session.begin_load(target_id.clone());
+    }
+    (fixture, jobs, target_id)
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn measuring_an_in_memory_session_dispatches_a_layout_job() {
+    // Given a hydrated session waiting to be measured.
+    let (fixture, jobs, target_id) = measure_fixture().await;
+
+    // When the measurement is requested.
+    fixture
+        .harness
+        .publish(ChatLogMeasureRequested {
+            session_id: target_id.clone(),
+        })
+        .await;
+
+    // Then the session's history is handed to the layout workers.
+    let jobs = await_recorded(&jobs, 1, Duration::from_secs(2)).await;
+    assert_eq!(jobs.len(), 1, "one session must produce one layout job");
+    assert_eq!(jobs[0].session_id, target_id);
+    // And the job carries the entries to measure.
+    assert_eq!(jobs[0].entries.len(), 1);
+    assert_eq!(jobs[0].entries[0].text(), "from the sidebar");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_layout_job_from_a_measurement_measures_at_the_width_on_screen() {
+    // Given a hydrated session, and an on-screen session that last rendered
+    // at 72 columns.
+    let (fixture, jobs, target_id) = measure_fixture().await;
+
+    // When the measurement is requested.
+    fixture
+        .harness
+        .publish(ChatLogMeasureRequested {
+            session_id: target_id.clone(),
+        })
+        .await;
+
+    // Then the job is measured at the width the next frame will use.
+    //
+    // The incoming session has never rendered, so its own width is stale;
+    // measuring at that would throw the whole measurement away.
+    let jobs = await_recorded(&jobs, 1, Duration::from_secs(2)).await;
+    assert_eq!(jobs[0].content_width, 72);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_layout_job_from_a_measurement_makes_the_session_active() {
+    // Given a hydrated session that is not yet active.
+    let (fixture, jobs, target_id) = measure_fixture().await;
+    let before = fixture.state.read().session.active_session_id().clone();
+
+    // When the measurement is requested.
+    fixture
+        .harness
+        .publish(ChatLogMeasureRequested {
+            session_id: target_id.clone(),
+        })
+        .await;
+    await_recorded(&jobs, 1, Duration::from_secs(2)).await;
+
+    // Then the completion actor will find it on screen.
+    let state = fixture.state.read();
+    assert_ne!(before, target_id, "the fixture must start on another session");
+    assert_eq!(state.session.active_session_id(), &target_id);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn measuring_an_absent_session_clears_the_load_guard() {
+    // Given a session id that is not in the live map, with the guard held.
+    let fixture = actor_fixture().await;
+    let missing_id = SessionId::new();
+    {
+        let mut state = fixture.state.write();
+        state.session.begin_load(missing_id.clone());
+    }
+    let jobs = fixture.harness.spawn_recorder::<LayoutChatSession>().await;
+
+    // When the measurement is requested for it.
+    fixture
+        .harness
+        .publish(ChatLogMeasureRequested {
+            session_id: missing_id.clone(),
+        })
+        .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Then the guard is cleared, so the user is not stranded on a spinner.
+    assert!(
+        !fixture.state.read().session.is_loading(),
+        "a measurement that can never run must not hold the guard"
+    );
+    // And no work is dispatched for a session that does not exist.
+    assert!(
+        jobs.is_empty(),
+        "an absent session must not produce a layout job"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn measuring_an_in_memory_session_never_reads_it_from_the_store() {
+    // Given a hydrated session that is not persisted.
+    let (fixture, jobs, target_id) = measure_fixture().await;
+
+    // When the measurement is requested.
+    fixture
+        .harness
+        .publish(ChatLogMeasureRequested {
+            session_id: target_id.clone(),
+        })
+        .await;
+    await_recorded(&jobs, 1, Duration::from_secs(2)).await;
+
+    // Then the store was never asked for it — the whole point of measuring an
+    // in-memory session rather than routing through a load.
+    let stored = fixture
+        .store
+        .load_session(&target_id)
+        .await
+        .ok()
+        .flatten();
+    assert!(
+        stored.is_none(),
+        "the session was never persisted, so no disk read could have served it"
+    );
 }

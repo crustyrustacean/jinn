@@ -10,7 +10,7 @@ use jinn_domain::feat::ui::chat_log::layout_supervisor::{LAYOUT_DEADLINE, LAYOUT
 use jinn_domain::protocol::system::ActiveSessionChanged;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_session_store_msg::SessionForkRequested;
-use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested};
+use jinn_session_store_msg::{ChatLogMeasureRequested, SessionLoadCompleted, SessionLoadRequested};
 use trouper::actor::ActorPath;
 use trouper::context::MsgCtx;
 use trouper::envelope::Address;
@@ -86,7 +86,65 @@ impl SessionStoreActor {
         // Dispatched only now that the session is active, so the completion
         // actor's active-session check sees it and the workers measure the
         // session that is actually on screen.
-        //
+        self.dispatch_layout(ctx, &session_id, layout_inputs);
+
+        let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
+        if !cwd_exists {
+            self.restore_missing_cwd(&session_id, &original_cwd);
+        }
+
+        self.publish(ActiveSessionChanged {
+            session_id: session_id.clone(),
+        })
+        .await;
+        self.save_active_session(&session_id).await;
+        self.publish(SessionLoadCompleted { session_id }).await;
+    }
+
+    /// Measures an in-memory session's chat log, without reading it again.
+    ///
+    /// A session switched to from the sidebar is already hydrated, so it needs
+    /// only the measurement — not the disk read a [`SessionLoadRequested`]
+    /// would perform. The layout hand-off is otherwise identical to a freshly
+    /// loaded session's, so it goes through the same dispatch.
+    pub(crate) async fn on_measure_requested(
+        &self,
+        ctx: &mut MsgCtx<'_>,
+        payload: &ChatLogMeasureRequested,
+    ) {
+        let session_id = payload.session_id.clone();
+        // The session is expected to be in the map: the frontend only asks for
+        // a measurement of a session it is about to show, and every live
+        // session is hydrated at startup. If it is not, the load guard this
+        // measurement was meant to clear would stay up forever, so it is
+        // cleared here rather than left for a worker that will never run.
+        let Some(session) = self.state.read().session.get(&session_id).cloned() else {
+            tracing::warn!(
+                session_id = %session_id,
+                "measure requested for a session that is not in memory"
+            );
+            self.clear_load();
+            return;
+        };
+
+        let layout_inputs = self.collect_layout_inputs(&session, &session_id);
+        self.state.with_session(|view| {
+            view.session.map().set_active(session_id.clone());
+        });
+        self.dispatch_layout(ctx, &session_id, layout_inputs);
+    }
+
+    /// Hands a session's chat log to the layout workers and arms its deadline.
+    ///
+    /// The deadline is what stops a pathological job from stranding the user on
+    /// a spinner: when it expires the supervisor clears the load guard and the
+    /// next frame measures inline instead.
+    fn dispatch_layout(
+        &self,
+        ctx: &mut MsgCtx<'_>,
+        session_id: &SessionId,
+        layout_inputs: LayoutChatSession,
+    ) {
         // Typed sends: the history travels as a live value and is never
         // serialized, and the route table hands the job to one worker of the
         // pool.
@@ -102,18 +160,6 @@ impl SessionStoreActor {
             },
             None,
         );
-
-        let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
-        if !cwd_exists {
-            self.restore_missing_cwd(&session_id, &original_cwd);
-        }
-
-        self.publish(ActiveSessionChanged {
-            session_id: session_id.clone(),
-        })
-        .await;
-        self.save_active_session(&session_id).await;
-        self.publish(SessionLoadCompleted { session_id }).await;
     }
 
     /// Everything the layout workers need to measure a freshly loaded session.
