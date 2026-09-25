@@ -9,6 +9,8 @@
 //! There is no actor and no route row: the writers are the exempt sync
 //! handler and the render pass, exactly as the migration docs prescribe.
 
+pub mod chat_log;
+
 pub use jinn_chat_log_view_msg::ChatLogViewUi;
 pub use jinn_chat_log_view_msg::chat_log_views_slot;
 

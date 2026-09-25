@@ -10,7 +10,7 @@ use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::ui::chat_log::history::ChatLogElement;
-use crate::feat::ui::chat_log::shared::GUTTER_WIDTH;
+use jinn_chat_log_view::chat_log::GUTTER_WIDTH;
 use crate::protocol::ToolResultStatus;
 use crate::protocol::{ChatEntry, PinPosition};
 use jinn_slices::FocusScope;

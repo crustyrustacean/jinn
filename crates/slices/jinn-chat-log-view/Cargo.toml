@@ -6,9 +6,19 @@ edition.workspace = true
 [dependencies]
 jinn-chat-log-view-msg = { workspace = true }
 jinn-slices = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-skills = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-provider = { workspace = true }
+jinn-tools-msg = { workspace = true }
+ratatui = { workspace = true }
+ratatui-markdown = { workspace = true }
+jiff = { workspace = true }
+serde_json = { workspace = true }
+strip-ansi-escapes = { workspace = true }
+unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
-jinn-core-types = { workspace = true }
 rstest = { workspace = true }
 tokio = { workspace = true }
 jinn-domain = { workspace = true }

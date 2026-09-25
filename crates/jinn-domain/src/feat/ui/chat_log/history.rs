@@ -46,12 +46,8 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use super::line_count_cache::EntryLineCache;
-use super::shared::{GUTTER_WIDTH, RenderContext};
-use super::{
-    actor, annotation, assistant, compaction, error_entry, system, thinking, tool_call,
-    tool_result, transient, user,
-};
+use jinn_chat_log_view::chat_log::EntryLineCache;
+use jinn_chat_log_view::chat_log::{GUTTER_WIDTH, RenderContext, entry_to_lines};
 use viewport::ScrollState;
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.
@@ -607,53 +603,5 @@ impl<'a> HistoryRender<'a> {
             self.scroll.max_offset,
             &self.theme,
         );
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Entry dispatch
-// ---------------------------------------------------------------------------
-
-/// Convert a chat entry into one or more visual lines, splitting on `\n`.
-///
-/// Each entry type is delegated to its own submodule. Lines returned here are
-/// content-width only - the gutter is rendered as a separate column.
-pub fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'static>> {
-    match &entry.kind {
-        ChatEntryKind::User {
-            display, outcome, ..
-        } => user::to_lines(display, outcome, ctx),
-        ChatEntryKind::System(text) => system::to_lines(text, ctx),
-        ChatEntryKind::Error(text) => error_entry::to_lines(text, ctx),
-        ChatEntryKind::Actor { source, text } => actor::to_lines(source, text, ctx),
-        ChatEntryKind::Assistant(text) => assistant::to_lines(text, ctx),
-        ChatEntryKind::ToolCall {
-            name, arguments, ..
-        } => tool_call::to_lines(name, arguments, ctx),
-        ChatEntryKind::ToolResult {
-            name,
-            content,
-            status,
-            truncation,
-            is_alert,
-            ..
-        } => tool_result::to_lines(name, content, *status, truncation.as_ref(), *is_alert, ctx),
-        ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
-        ChatEntryKind::Annotation { citations } => annotation::to_lines(citations, ctx),
-
-        ChatEntryKind::Transient(text) => transient::to_lines(text, ctx),
-        ChatEntryKind::Compaction {
-            summary,
-            entries_compacted,
-            tokens_before,
-            tokens_after,
-            ..
-        } => compaction::to_lines(
-            summary,
-            *entries_compacted,
-            *tokens_before,
-            *tokens_after,
-            ctx,
-        ),
     }
 }

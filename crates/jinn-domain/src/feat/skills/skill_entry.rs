@@ -108,7 +108,7 @@ pub fn render_skill_preview(
     if entry.body.is_empty() {
         return Vec::new();
     }
-    crate::feat::ui::chat_log::markdown::render_markdown(
+    jinn_chat_log_view::chat_log::render_markdown(
         &entry.body,
         ctx.width as u16,
         &entry.theme,

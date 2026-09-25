@@ -2067,12 +2067,22 @@ dependencies = [
 name = "jinn-chat-log-view"
 version = "0.118.0"
 dependencies = [
+ "jiff",
  "jinn-chat-log-view-msg",
  "jinn-core-types",
  "jinn-domain",
+ "jinn-provider",
+ "jinn-skills",
  "jinn-slices",
+ "jinn-theme",
+ "jinn-tools-msg",
+ "ratatui",
+ "ratatui-markdown",
  "rstest",
+ "serde_json",
+ "strip-ansi-escapes",
  "tokio",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -2371,6 +2381,7 @@ dependencies = [
  "indoc",
  "jiff",
  "jinn-chat-input-msg",
+ "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-common",
  "jinn-context",
@@ -3144,6 +3155,7 @@ dependencies = [
  "error-stack",
  "jiff",
  "jinn-chat-input-msg",
+ "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-core-types",
  "jinn-domain",
@@ -3476,6 +3488,7 @@ dependencies = [
  "error-stack",
  "futures",
  "jinn-chat-input-msg",
+ "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-core-types",
  "jinn-cwd",
