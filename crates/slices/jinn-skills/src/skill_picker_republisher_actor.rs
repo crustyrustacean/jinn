@@ -24,8 +24,8 @@
 //! slice-owned: the kernel publishes a discovery event and knows nothing about
 //! which slice renders the result.
 
-use jinn_slices::cell::TypedCell;
 use jinn_skills_msg::{SkillPickerState, SkillsLoaded};
+use jinn_slices::cell::TypedCell;
 use trouper::actor::{MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -49,6 +49,10 @@ impl SkillPickerRepublisherActor {
 }
 
 impl ServiceActor for SkillPickerRepublisherActor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "ServiceActor::start is async by signature; this impl never awaits"
+    )]
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {

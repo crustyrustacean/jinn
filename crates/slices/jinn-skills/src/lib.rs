@@ -34,7 +34,7 @@ pub use skill_picker_actions::{cancel, confirm, highlighted_name, open, toggle_h
 pub use skill_picker_reload::{build_skill_entries, reload_skill_picker};
 pub use skill_picker_render::{render_skill_picker, skill_picker_overlay_rect};
 pub use skill_picker_routes::{SKILL_PICKER_BINDINGS, attach_skill_picker_rows};
-pub use skill_picker_routes::{republish_from_discovery, register_skill_picker_input_hook};
+pub use skill_picker_routes::{register_skill_picker_input_hook, republish_from_discovery};
 pub use skill_picker_scope::skill_picker_scope;
 pub use skill_preview::render_skill_preview;
 
@@ -87,6 +87,9 @@ pub fn activate(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>)
         },
     );
 }
+
+#[cfg(test)]
+mod skill_picker_behavior_tests;
 
 #[cfg(test)]
 mod activation_tests {

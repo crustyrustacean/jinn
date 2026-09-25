@@ -22,6 +22,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use jinn_core_types::{ChatEntry, ChatEntryId, PinPosition, ToolResultStatus};
+use jinn_skills_msg::{Skill, SkillPickerState};
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
 use jinn_slices::RouteResult as IntentResult;
@@ -29,7 +30,6 @@ use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{
     ActionCtx, ActionFn, BindSite, EditIntent, InputHook, RouteOutcome, RouteRow, ScopeSignal,
 };
-use jinn_skills_msg::{Skill, SkillPickerState};
 
 use crate::skill_picker_actions;
 use crate::skill_picker_scope::skill_picker_scope;
@@ -57,10 +57,7 @@ pub const SKILL_PICKER_BINDINGS: &[(&str, &str)] = &[
 /// Every key the picker binds in its own scope, for the wiring test.
 #[must_use]
 pub fn bound_keys() -> Vec<&'static str> {
-    SKILL_PICKER_BINDINGS
-        .iter()
-        .map(|(key, _)| *key)
-        .collect()
+    SKILL_PICKER_BINDINGS.iter().map(|(key, _)| *key).collect()
 }
 
 /// The kernel's application state behind an [`ActionCtx`].
@@ -71,8 +68,8 @@ pub fn bound_keys() -> Vec<&'static str> {
 /// double), the caller gets `None` and the action declines rather than panicking.
 fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
     ctx.state
-        .as_any_mut()
-        .and_then(|any| any.downcast_mut::<jinn_domain::AppState>())
+        .as_any_mut()?
+        .downcast_mut::<jinn_domain::AppState>()
 }
 
 /// Wraps a picker action in an [`ActionFn`], handing it both the dispatch
@@ -313,7 +310,7 @@ fn open_skill_picker(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> IntentR
     };
 
     cell.update(|picker| {
-        skill_picker_actions::open(picker, &seed.discovered, &seed.disabled, &seed.theme)
+        skill_picker_actions::open(picker, &seed.discovered, &seed.disabled, &seed.theme);
     });
 
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(skill_picker_scope()))
@@ -408,7 +405,9 @@ fn load_highlighted_skill(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> In
     if state.active_session().loaded_skills().contains(&name) {
         state
             .active_session_mut()
-            .push_entry(ChatEntry::transient(format!("Skill '{name}' is already loaded")));
+            .push_entry(ChatEntry::transient(format!(
+                "Skill '{name}' is already loaded"
+            )));
         return IntentResult::empty();
     }
 
