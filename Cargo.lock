@@ -1944,6 +1944,7 @@ dependencies = [
  "jinn-picker-specs",
  "jinn-preferences",
  "jinn-preferences-config",
+ "jinn-project",
  "jinn-provider",
  "jinn-provider-config",
  "jinn-provider-selection",
@@ -2593,7 +2594,6 @@ dependencies = [
  "dirs",
  "error-stack",
  "jinn-core-types",
- "jinn-cwd-msg",
  "jinn-domain",
  "jinn-persona-msg",
  "jinn-picker-specs",
@@ -2608,7 +2608,6 @@ dependencies = [
  "tokio",
  "tracing",
  "trouper",
- "unicode-segmentation",
 ]
 
 [[package]]

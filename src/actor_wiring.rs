@@ -198,6 +198,7 @@ impl ActorSystemBuilder {
         jinn_chat_log_view_activate(&mut services, &state);
         jinn_chat_input_activate(&mut services);
         jinn_cwd_activate(&mut services);
+        jinn_project_activate(&mut services);
         jinn_preferences_activate(&mut services, state.clone()).await;
         jinn_sidebar_activate(&mut services, state.clone());
         jinn_theme_activate(&mut services);
@@ -636,6 +637,21 @@ fn jinn_cwd_activate(services: &mut Services) {
     jinn_cwd::activate(&mut host);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("cwd slice finalize failed: {error}");
+    }
+}
+
+/// Activates the project slice's project-add popup over the kernel registries.
+fn jinn_project_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_project::activate(&mut host);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("project slice finalize failed: {error}");
     }
 }
 

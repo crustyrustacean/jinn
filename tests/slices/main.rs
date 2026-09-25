@@ -34,6 +34,7 @@ mod dashboard;
 mod discord;
 mod picker;
 mod provider_selection;
+mod project;
 mod quake_bar;
 mod session_init;
 mod sidebar;

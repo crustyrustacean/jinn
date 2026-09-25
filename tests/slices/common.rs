@@ -64,6 +64,7 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         activate_scope_focus(&mut services);
         activate_chat_input(&mut services);
         activate_cwd(&mut services);
+        activate_project(&mut services);
         activate_preferences(&mut services);
         activate_sidebar(&mut services, core.state.clone()).await;
         activate_theme(&mut services);
@@ -518,6 +519,21 @@ pub fn activate_cwd(services: &mut jinn_domain::Services) {
     jinn_cwd::activate(&mut host);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("cwd slice finalize failed: {error}");
+    }
+}
+
+/// Activates the project slice on the harness services.
+pub fn activate_project(services: &mut jinn_domain::Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_project::activate(&mut host);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("project slice finalize failed: {error}");
     }
 }
 

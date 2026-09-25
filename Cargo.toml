@@ -87,6 +87,7 @@ jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-preferences = { workspace = true }
+jinn-project = { workspace = true }
 jinn-dashboard = { workspace = true }
 jinn-discord = { workspace = true }
 jinn-discord-msg = { workspace = true }
