@@ -12,6 +12,7 @@ mod frontmatter;
 mod loaded_name;
 mod skill;
 mod skill_picker_state;
+mod skill_preview_cache;
 
 pub use frontmatter::SkillFrontmatter;
 pub use loaded_name::{
@@ -21,6 +22,7 @@ pub use skill::{Skill, SkillSource};
 pub use skill_picker_state::{
     SkillEntry, SkillPickerState, body_hash_key, skill_picker_slot, skill_row,
 };
+pub use skill_preview_cache::SkillPreviewCache;
 
 use serde::{Deserialize, Serialize};
 

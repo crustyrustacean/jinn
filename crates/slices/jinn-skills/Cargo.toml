@@ -8,15 +8,17 @@ description = "The skills slice: skill data model, frontmatter parsing, scanning
 jinn-chat-log-view = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-selection-widget = { workspace = true }
+jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }
-parking_lot = { workspace = true }
 jinn-skills-msg = { workspace = true }
 ratatui = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
+jinn-domain = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
+tokio = { workspace = true }
 
 [lints]
 workspace = true

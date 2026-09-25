@@ -108,11 +108,12 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use crate::skill_picker_state::body_hash_key;
     use ratatui::text::Line;
 
     /// Hashes a body the same way `SkillEntry::cache_key` does, for tests.
     fn body_key(body: &str) -> String {
-        jinn_skills_msg::body_hash_key(body)
+        body_hash_key(body)
     }
 
     fn line(s: &str) -> Line<'static> {

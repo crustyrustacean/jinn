@@ -23,7 +23,7 @@ pub fn skill_picker_slot() -> SlotKey {
 
 /// The skill picker's complete state: what it shows, and the set it restores
 /// to on cancel.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SkillPickerState {
     /// The selection/filter state backing the picker's rows.
     pub selection: jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SkillEntry>>,
@@ -31,14 +31,35 @@ pub struct SkillPickerState {
     /// before the first open. ESC restores it; confirm commits the toggled
     /// set instead.
     pub snapshot: Option<HashSet<String>>,
+    /// The preview pane's scroll offset for the highlighted skill.
+    ///
+    /// Lives beside the selection because the preview follows the cursor:
+    /// highlighting a different skill resets it.
+    pub preview_scroll: usize,
+    /// The picker's rendered-preview cache, shared with the render pass.
+    pub preview_cache: std::sync::Arc<crate::skill_preview_cache::SkillPreviewCache>,
+}
+
+impl Default for SkillPickerState {
+    fn default() -> Self {
+        Self {
+            selection: jinn_selection_widget::SelectionState::new(),
+            snapshot: None,
+            preview_scroll: 0,
+            preview_cache: std::sync::Arc::new(crate::skill_preview_cache::SkillPreviewCache::new()),
+        }
+    }
 }
 
 impl SkillPickerState {
-    /// Clears the filter and selection, ready for a fresh open.
+    /// Clears the filter and preview scroll, ready for a fresh open.
+    ///
+    /// The snapshot survives: it is the set ESC restores to, and a reopen
+    /// re-captures it only once the user confirms.
     pub fn reset(&mut self) {
         self.selection.clear_filter();
         self.selection.move_up(usize::MAX);
-        self.snapshot = None;
+        self.preview_scroll = 0;
     }
 }
 

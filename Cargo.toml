@@ -84,6 +84,7 @@ jinn-chat-log-view = { workspace = true }
 jinn-scope-focus = { workspace = true }
 jinn-sidebar = { workspace = true }
 jinn-cwd = { workspace = true }
+jinn-skills = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }

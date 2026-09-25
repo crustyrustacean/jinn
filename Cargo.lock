@@ -1965,6 +1965,7 @@ dependencies = [
  "jinn-session-turn",
  "jinn-sidebar",
  "jinn-sidebar-msg",
+ "jinn-skills",
  "jinn-skills-msg",
  "jinn-slices",
  "jinn-status-bar",
@@ -3206,15 +3207,17 @@ name = "jinn-skills"
 version = "0.118.0"
 dependencies = [
  "jinn-chat-log-view",
+ "jinn-domain",
  "jinn-picker",
  "jinn-selection-widget",
  "jinn-skills-msg",
+ "jinn-slices",
  "jinn-theme",
- "parking_lot",
  "ratatui",
  "rstest",
  "serde",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -3226,6 +3229,7 @@ dependencies = [
  "jinn-selection-widget",
  "jinn-slices",
  "jinn-theme",
+ "parking_lot",
  "ratatui",
  "rstest",
  "serde",

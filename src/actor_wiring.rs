@@ -197,6 +197,7 @@ impl ActorSystemBuilder {
         jinn_chat_log_view_activate(&mut services, &state);
         jinn_chat_input_activate(&mut services);
         jinn_cwd_activate(&mut services);
+        jinn_skills_activate(&mut services);
         jinn_project_activate(&mut services);
         jinn_preferences_activate(&mut services, state.clone()).await;
         jinn_sidebar_activate(&mut services, state.clone());
@@ -658,6 +659,25 @@ fn jinn_cwd_activate(services: &mut Services) {
     jinn_cwd::activate(&mut host);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("cwd slice finalize failed: {error}");
+    }
+}
+
+/// Activates the skills slice: mints the skill picker's cell and overlay.
+///
+/// The skill picker is the first picker the slice owns outright — its state
+/// lives in a slice cell, its scope is a dynamic `SliceScopeId`, and it
+/// renders from that cell rather than through the kernel's picker host.
+fn jinn_skills_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_skills::activate(&mut host);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("skills slice finalize failed: {error}");
     }
 }
 
