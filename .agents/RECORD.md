@@ -416,3 +416,7 @@ Entries are added or amended **only with human approval**.
 - (popups) The session rename popup currently uses a dynamic sidebar scope and stores its input state in the sidebar sections cell.
 - (keybinds) Input-capturing slice popups currently handle Escape, Enter, Ctrl-C, bracketed paste, Home, and End through slice-owned route rows or input hooks.
 - (pickers) Picker outcomes currently express picker closure and an optional destination scope transition, which picker dispatch applies in order.
+- (session) Session and tree-wide token aggregation live in the jinn-session-state crate, which owns ChatSessionState and depends on neither jinn-domain nor any activation slice.
+- (project) The project scope resolver lives in the jinn-project slice, which depends on jinn-domain.
+- (input) The slash-command vocabulary and registry live in jinn-chat-input-msg.
+- (chat-log) The chat-log geometry helpers (gutter, viewport, scroll indicator) live in the jinn-chat-log-view slice alongside the entry-to-lines adapters; the kernel retains only the ChatLogElement UiElement impl.

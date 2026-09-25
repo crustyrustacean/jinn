@@ -22,10 +22,6 @@
 //!
 //! Text wraps within the available space.
 
-mod gutter;
-mod scroll_indicator;
-mod viewport;
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -47,8 +43,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use jinn_chat_log_view::chat_log::EntryLineCache;
-use jinn_chat_log_view::chat_log::{GUTTER_WIDTH, RenderContext, entry_to_lines};
-use viewport::ScrollState;
+use jinn_chat_log_view::chat_log::{
+    GUTTER_WIDTH, GutterStyle, RenderContext, ScrollState, build_blank_gutter_lines,
+    build_collapsed_block_gutter_line, build_entry_gutter_lines, compute_scroll, entry_to_lines,
+    find_visible_indices, render_scroll_indicator,
+};
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
@@ -412,11 +411,11 @@ impl<'a> HistoryRender<'a> {
     }
 
     // -----------------------------------------------------------------------
-    // Step 3: Scroll math (delegates to viewport submodule)
+    // Step 3: Scroll math (delegates to the chat-log-view slice)
     // -----------------------------------------------------------------------
 
     fn compute_scroll(&mut self) {
-        self.scroll = viewport::compute_scroll(
+        self.scroll = compute_scroll(
             self.area.height,
             self.total_wrapped,
             self.selected_idx,
@@ -426,11 +425,11 @@ impl<'a> HistoryRender<'a> {
     }
 
     // -----------------------------------------------------------------------
-    // Step 4: Find visible entries (delegates to viewport submodule)
+    // Step 4: Find visible entries (delegates to the chat-log-view slice)
     // -----------------------------------------------------------------------
 
     fn find_visible_indices(&mut self) {
-        self.visible_indices = viewport::find_visible_indices(
+        self.visible_indices = find_visible_indices(
             &self.entry_line_ranges,
             self.scroll.blank_count,
             self.scroll.clamped,
@@ -451,7 +450,7 @@ impl<'a> HistoryRender<'a> {
             for _ in 0..blank_count {
                 self.content_lines.push(Line::from(""));
             }
-            self.gutter_lines.extend(gutter::build_blank_gutter_lines(
+            self.gutter_lines.extend(build_blank_gutter_lines(
                 blank_count,
                 &self.theme,
                 GUTTER_STR,
@@ -525,7 +524,7 @@ impl<'a> HistoryRender<'a> {
                     // Build gutter lines for this entry.
                     let is_pinned = entry.pin_position.is_some();
                     let is_included_in_context = entry.is_in_context();
-                    let gutter_ctx = gutter::GutterStyle {
+                    let gutter_ctx = GutterStyle {
                         is_pinned,
                         is_selected,
                         chat_log_active,
@@ -536,7 +535,7 @@ impl<'a> HistoryRender<'a> {
                         gutter_context_color: self.theme.gutter_context_included,
                     };
                     let entry_gutter_lines =
-                        gutter::build_entry_gutter_lines(&entry_content_lines, &gutter_ctx);
+                        build_entry_gutter_lines(&entry_content_lines, &gutter_ctx);
 
                     // Track lines above viewport for scroll calculation.
                     if abs_entry_start < viewport_top {
@@ -556,7 +555,7 @@ impl<'a> HistoryRender<'a> {
                     self.content_lines.push(line);
 
                     // Gutter: gray indicator with optional cursor.
-                    let gutter_line = gutter::build_collapsed_block_gutter_line(
+                    let gutter_line = build_collapsed_block_gutter_line(
                         is_selected,
                         chat_log_active,
                         &self.theme,
@@ -595,8 +594,8 @@ impl<'a> HistoryRender<'a> {
             .scroll((paragraph_scroll, 0));
         frame.render_widget(chat_widget, self.content_area);
 
-        // Render scroll indicator (delegates to scroll_indicator submodule).
-        scroll_indicator::render_scroll_indicator(
+        // Render scroll indicator (delegates to the chat-log-view slice).
+        render_scroll_indicator(
             frame,
             self.area,
             self.scroll.clamped,
