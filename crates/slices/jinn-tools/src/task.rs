@@ -183,7 +183,7 @@ subagent; on expiry the subagent is cancelled and a failure is returned.
                 },
                 "model": {
                     "type": "string",
-                    "description": "Optional model id for the subagent. Defaults to this session's model."
+                    "description": "Optional model override for the subagent. Defaults to this session's model. Omit field to inherit current session model. Do not provide empty strings or use 'inherit' as the model. This field is only when you need to explicitly set the model (you almost never need to do this)."
                 },
             },
             "required": ["prompt"]
