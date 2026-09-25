@@ -2,11 +2,11 @@
 
 use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_session_store_msg::{ArchiveSession, PersistSession};
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::{
     FinishSessionTeardown, SessionTeardownFinished, TeardownFollowUp,
 };
+use jinn_session_store_msg::{ArchiveSession, PersistSession};
 
 use crate::session_lifecycle_actor::SessionLifecycleActor;
 

@@ -16,13 +16,11 @@ fn hash_trigger_valid_after_space() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        jinn_context::PromptTemplateStore::from_vec(vec![
-            crate::PromptTemplate {
-                name: "test".to_owned(),
-                description: "desc".to_owned(),
-                body: "body".to_owned(),
-            },
-        ]),
+        jinn_context::PromptTemplateStore::from_vec(vec![crate::PromptTemplate {
+            name: "test".to_owned(),
+            description: "desc".to_owned(),
+            body: "body".to_owned(),
+        }]),
     );
 
     // When typing "hello #" - the '#' is preceded by a space.
@@ -49,13 +47,11 @@ fn hash_trigger_valid_after_newline() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        jinn_context::PromptTemplateStore::from_vec(vec![
-            crate::PromptTemplate {
-                name: "test".to_owned(),
-                description: "desc".to_owned(),
-                body: "body".to_owned(),
-            },
-        ]),
+        jinn_context::PromptTemplateStore::from_vec(vec![crate::PromptTemplate {
+            name: "test".to_owned(),
+            description: "desc".to_owned(),
+            body: "body".to_owned(),
+        }]),
     );
 
     // When typing "\n#" - the '#' is preceded by newline.
@@ -80,13 +76,11 @@ fn hash_trigger_invalid_after_letter() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        jinn_context::PromptTemplateStore::from_vec(vec![
-            crate::PromptTemplate {
-                name: "test".to_owned(),
-                description: "desc".to_owned(),
-                body: "body".to_owned(),
-            },
-        ]),
+        jinn_context::PromptTemplateStore::from_vec(vec![crate::PromptTemplate {
+            name: "test".to_owned(),
+            description: "desc".to_owned(),
+            body: "body".to_owned(),
+        }]),
     );
 
     // When typing "abc#" - the '#' is preceded by 'c' (not space or newline).
@@ -142,13 +136,11 @@ fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        jinn_context::PromptTemplateStore::from_vec(vec![
-            crate::PromptTemplate {
-                name: "test".to_owned(),
-                description: "desc".to_owned(),
-                body: "body".to_owned(),
-            },
-        ]),
+        jinn_context::PromptTemplateStore::from_vec(vec![crate::PromptTemplate {
+            name: "test".to_owned(),
+            description: "desc".to_owned(),
+            body: "body".to_owned(),
+        }]),
     );
 
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
@@ -202,13 +194,11 @@ fn delete_forward_deactivates_when_cursor_at_token_start() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        jinn_context::PromptTemplateStore::from_vec(vec![
-            crate::PromptTemplate {
-                name: "test".to_owned(),
-                description: "desc".to_owned(),
-                body: "body".to_owned(),
-            },
-        ]),
+        jinn_context::PromptTemplateStore::from_vec(vec![crate::PromptTemplate {
+            name: "test".to_owned(),
+            description: "desc".to_owned(),
+            body: "body".to_owned(),
+        }]),
     );
 
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
@@ -240,13 +230,11 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        jinn_context::PromptTemplateStore::from_vec(vec![
-            crate::PromptTemplate {
-                name: "test".to_owned(),
-                description: "desc".to_owned(),
-                body: "body".to_owned(),
-            },
-        ]),
+        jinn_context::PromptTemplateStore::from_vec(vec![crate::PromptTemplate {
+            name: "test".to_owned(),
+            description: "desc".to_owned(),
+            body: "body".to_owned(),
+        }]),
     );
 
     // Type "a #test" - space before '#', 'a' before that.
@@ -299,13 +287,11 @@ fn reactivating_hash_autocomplete_within_token() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        jinn_context::PromptTemplateStore::from_vec(vec![
-            crate::PromptTemplate {
-                name: "test".to_owned(),
-                description: "desc".to_owned(),
-                body: "body".to_owned(),
-            },
-        ]),
+        jinn_context::PromptTemplateStore::from_vec(vec![crate::PromptTemplate {
+            name: "test".to_owned(),
+            description: "desc".to_owned(),
+            body: "body".to_owned(),
+        }]),
     );
 
     // Type "#test".
@@ -406,13 +392,11 @@ fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        jinn_context::PromptTemplateStore::from_vec(vec![
-            crate::PromptTemplate {
-                name: "test".to_owned(),
-                description: "desc".to_owned(),
-                body: "body".to_owned(),
-            },
-        ]),
+        jinn_context::PromptTemplateStore::from_vec(vec![crate::PromptTemplate {
+            name: "test".to_owned(),
+            description: "desc".to_owned(),
+            body: "body".to_owned(),
+        }]),
     );
 
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);

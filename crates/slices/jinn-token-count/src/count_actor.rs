@@ -23,8 +23,8 @@ use jinn_domain::common::tcaps::session::SessionCap;
 use jinn_domain::feat::context::strategy::token_estimator::{
     TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_content_tokens,
 };
-use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_session_history_msg::HistoryAppended;
+use jinn_session_store_msg::SessionLoadCompleted;
 
 /// The token count actor's static trouper path.
 pub const TOKEN_COUNT_PATH: &str = "token-count";
@@ -119,10 +119,7 @@ impl TokenCountActor {
     /// loaded session's entries that don't have one yet, filling them in
     /// memory. The session was inserted into state before this event was
     /// emitted, so the fill lands on the live session.
-    pub fn handle_session_load_completed(
-        &self,
-        session_id: &jinn_domain::protocol::SessionId,
-    ) {
+    pub fn handle_session_load_completed(&self, session_id: &jinn_domain::protocol::SessionId) {
         let counts = {
             let state = self.state.read();
             let Some(session) = state.try_session(session_id) else {

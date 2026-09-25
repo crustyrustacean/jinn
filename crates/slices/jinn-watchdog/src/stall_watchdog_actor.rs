@@ -42,13 +42,13 @@ use trouper::system::ActorSystem;
 
 use jinn_core_types::SessionId;
 use jinn_domain::Services;
-use jinn_session_msg::RetryStalledSession;
 use jinn_inference_msg::CancelStream;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_inference_msg::StreamCompleted;
 use jinn_inference_msg::StreamCompletedReason;
 use jinn_inference_msg::StreamToken;
 use jinn_session_history_msg::PushChatEntry;
+use jinn_session_msg::RetryStalledSession;
 
 /// Production tick cadence. The stall window is seconds-scale, so a
 /// 1-second heartbeat adds at most that much detection latency.

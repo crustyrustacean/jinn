@@ -33,9 +33,6 @@ use crate::connection::{McpActor, McpActorDeps, McpConnectionStateProbe, McpConn
 use jinn_domain::Services;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_session_msg::SessionArchived;
-use jinn_session_msg::SessionClosed;
-use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_domain::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionTeardownFinished,
 };
@@ -43,6 +40,9 @@ use jinn_domain::protocol::SessionId;
 use jinn_mcp_msg::McpServerConfig;
 use jinn_mcp_msg::{McpEnablementChanged, RestartError, RestartMcpServer};
 use jinn_mcp_msg::{McpServerLog, McpServerStatus};
+use jinn_session_msg::SessionArchived;
+use jinn_session_msg::SessionClosed;
+use jinn_session_store_msg::SessionLoadCompleted;
 
 /// Key into the spawned-actor map: one `McpActor` per (session × server).
 type SpawnKey = (SessionId, String);
@@ -509,9 +509,9 @@ mod lifecycle_tests {
     use jinn_preferences_config::user_preferences::UserPreferences;
 
     use super::{McpCoordinatorActor, McpCoordinatorActorDeps};
+    use jinn_mcp_msg::McpEnablementChanged;
     use jinn_session_msg::SessionClosed;
     use jinn_session_store_msg::SessionLoadCompleted;
-    use jinn_mcp_msg::McpEnablementChanged;
 
     /// A configured MCP server whose command will never spawn successfully,
     /// so the spawned `McpActor` publishes Starting then Dead (never Running).
@@ -827,11 +827,9 @@ mod lifecycle_tests {
 
         // When publishing SessionLoadCompleted for that session.
         harness
-            .publish(
-                SessionLoadCompleted {
-                    session_id: session_id.clone(),
-                },
-            )
+            .publish(SessionLoadCompleted {
+                session_id: session_id.clone(),
+            })
             .await;
 
         // Then an McpActor was spawned for the loaded server (a Starting

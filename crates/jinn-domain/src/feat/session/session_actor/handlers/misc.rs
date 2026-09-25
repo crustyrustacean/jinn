@@ -8,8 +8,8 @@ use super::super::SessionPersistenceActor;
 use crate::ModelsRefreshed;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
-use jinn_session_msg::PhaseKind;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
+use jinn_session_msg::PhaseKind;
 
 use crate::protocol::{ChatEntry, PickerKind};
 

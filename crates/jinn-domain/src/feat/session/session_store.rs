@@ -14,10 +14,10 @@ use async_trait::async_trait;
 use error_stack::Report;
 use wherror::Error;
 
-use crate::feat::session::chat_session::ChatSessionState;
-use jinn_session_store_msg::SessionSummary;
 use crate::feat::session_search::{SearchOutcome, SearchParams, TranscriptWindow};
 use crate::protocol::{ChatEntryId, SessionId};
+use jinn_session_state::SessionSnapshot;
+use jinn_session_store_msg::SessionSummary;
 
 /// Error type for session store operations.
 #[derive(Debug, Error)]
@@ -45,7 +45,26 @@ pub trait SessionStore: Send + Sync + 'static {
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if the write fails.
-    async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>>;
+    async fn save(&self, snapshot: &SessionSnapshot) -> Result<(), Report<SessionStoreError>>;
+
+    /// Archive one or more complete session snapshots.
+    ///
+    /// Implementations that can batch SQLite writes should override this method
+    /// and commit every member atomically. The default preserves compatibility
+    /// for simple test stores by saving snapshots in order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if any archive write fails.
+    async fn archive_snapshots(
+        &self,
+        snapshots: &[SessionSnapshot],
+    ) -> Result<(), Report<SessionStoreError>> {
+        for snapshot in snapshots {
+            self.save(snapshot).await?;
+        }
+        Ok(())
+    }
 
     /// Load lightweight summaries for all sessions.
     ///
@@ -66,7 +85,7 @@ pub trait SessionStore: Send + Sync + 'static {
     async fn load_session(
         &self,
         session_id: &SessionId,
-    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>>;
+    ) -> Result<Option<SessionSnapshot>, Report<SessionStoreError>>;
 
     /// Delete a session and all its data.
     ///

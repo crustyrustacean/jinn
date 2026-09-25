@@ -584,14 +584,8 @@ impl InteractiveTermActor {
     }
 }
 
-impl MsgHandler<jinn_session_msg::SessionClosed>
-    for InteractiveTermActor
-{
-    async fn handle(
-        &mut self,
-        msg: &jinn_session_msg::SessionClosed,
-        _ctx: &mut MsgCtx<'_>,
-    ) {
+impl MsgHandler<jinn_session_msg::SessionClosed> for InteractiveTermActor {
+    async fn handle(&mut self, msg: &jinn_session_msg::SessionClosed, _ctx: &mut MsgCtx<'_>) {
         // `remove_session` clears the live flag before dropping the session
         // (a screen task killed before observing EOF can't clear it itself),
         // drops the pty (killing the process group), and removes the
@@ -1990,11 +1984,9 @@ mod tests {
 
         // When closing session A.
         harness
-            .publish(
-                jinn_session_msg::SessionClosed {
-                    session_id: chat_a.clone(),
-                },
-            )
+            .publish(jinn_session_msg::SessionClosed {
+                session_id: chat_a.clone(),
+            })
             .await;
         tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -2033,11 +2025,9 @@ mod tests {
 
         // When closing session A.
         harness
-            .publish(
-                jinn_session_msg::SessionClosed {
-                    session_id: chat_a.clone(),
-                },
-            )
+            .publish(jinn_session_msg::SessionClosed {
+                session_id: chat_a.clone(),
+            })
             .await;
         tokio::time::sleep(Duration::from_millis(200)).await;
 

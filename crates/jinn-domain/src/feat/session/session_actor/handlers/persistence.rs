@@ -10,12 +10,11 @@ use crate::common::actor_deps::BusPublish;
 use jinn_session_msg::{MarkSessionInteracted, UserInteracted};
 
 impl SessionPersistenceActor {
-    /// Saves the current state of a session to disk.
+    /// Saves a coherent snapshot of a session to disk.
     ///
-    /// Clones the session inside `spawn_blocking` to avoid blocking the
-    /// async runtime with a potentially expensive `ChatSessionState` clone
-    /// (which includes the full `Vec<ChatEntry>` history). The store's
-    /// `save` method does its own `spawn_blocking` internally for SQLite I/O.
+    /// The write lock is held only for the cheap `touch()` mutation. The
+    /// follow-up read lock captures metadata, history, attachments, and token
+    /// accounting as one snapshot before SQLite performs its own transaction.
     /// Errors are logged as warnings - persistence failure must not break
     /// the user experience.
     pub(in crate::feat::session::session_actor) async fn save_active_session(
@@ -30,10 +29,8 @@ impl SessionPersistenceActor {
         let session_id_log = session_id.clone();
 
         // The write lock is held only for the cheap `touch()` mutation, then
-        // dropped before cloning the (potentially large) history. Cloning under
-        // a held write lock would starve every other session's stream handlers,
-        // which wait on `state.write_test_no_cap()` and backpressure the LLM stream consumer.
-        let session = tokio::task::spawn_blocking(move || {
+        // dropped before the potentially large durable snapshot clone.
+        let snapshot = tokio::task::spawn_blocking(move || {
             {
                 state.with_session(&cap, |view| {
                     if let Some(session) = view.session.map().get_mut(&session_id) {
@@ -41,7 +38,12 @@ impl SessionPersistenceActor {
                     }
                 });
             }
-            state.read().session.get(&session_id).cloned()
+            let state = state.read();
+            state
+                .session
+                .get(&session_id)
+                .filter(|session| session.is_persistable())
+                .map(|session| session.capture_snapshot())
         })
         .await
         .unwrap_or_else(|e| {
@@ -49,14 +51,9 @@ impl SessionPersistenceActor {
             None
         });
 
-        let Some(session) = session else { return };
+        let Some(snapshot) = snapshot else { return };
 
-        // Guard: don't persist sessions the user hasn't interacted with.
-        if !session.is_persistable() {
-            return;
-        }
-
-        if let Err(e) = store.save(&session).await {
+        if let Err(e) = store.save(&snapshot).await {
             tracing::warn!(
                 session_id = ?session_id_log,
                 err = ?e,
@@ -189,11 +186,9 @@ mod tests {
 
         // When MarkSessionInteracted is handled.
         actor
-            .handle_mark_session_interacted(
-                &jinn_session_msg::MarkSessionInteracted {
-                    session_id: session_id.clone(),
-                },
-            )
+            .handle_mark_session_interacted(&jinn_session_msg::MarkSessionInteracted {
+                session_id: session_id.clone(),
+            })
             .await;
 
         // Then the session is marked as interacted.
@@ -212,11 +207,9 @@ mod tests {
 
         // When MarkSessionInteracted is handled.
         actor
-            .handle_mark_session_interacted(
-                &jinn_session_msg::MarkSessionInteracted {
-                    session_id: session_id.clone(),
-                },
-            )
+            .handle_mark_session_interacted(&jinn_session_msg::MarkSessionInteracted {
+                session_id: session_id.clone(),
+            })
             .await;
 
         // Then the UserInteracted event is emitted.
@@ -235,11 +228,9 @@ mod tests {
 
         // When MarkSessionInteracted is handled.
         actor
-            .handle_mark_session_interacted(
-                &jinn_session_msg::MarkSessionInteracted {
-                    session_id: session_id.clone(),
-                },
-            )
+            .handle_mark_session_interacted(&jinn_session_msg::MarkSessionInteracted {
+                session_id: session_id.clone(),
+            })
             .await;
 
         // Then the session is persisted.

@@ -9,13 +9,13 @@ use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, InMemoryConfigStorage,
     LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService, SessionSummary};
 use crate::protocol::SessionId;
 use jinn_preferences_config::{
     AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
     UserPreferencesStorageService,
 };
+use jinn_session_state::SessionSnapshot;
 
 use super::Services;
 /// Single shared tokio runtime for the entire test binary.
@@ -54,7 +54,7 @@ impl SessionStore for FakeSessionStore {
         "fake"
     }
 
-    async fn save(&self, _session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
+    async fn save(&self, _snapshot: &SessionSnapshot) -> Result<(), Report<SessionStoreError>> {
         Ok(())
     }
 
@@ -65,7 +65,7 @@ impl SessionStore for FakeSessionStore {
     async fn load_session(
         &self,
         _session_id: &SessionId,
-    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
+    ) -> Result<Option<SessionSnapshot>, Report<SessionStoreError>> {
         Ok(None)
     }
 

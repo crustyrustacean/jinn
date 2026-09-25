@@ -12,10 +12,10 @@ use std::time::Duration;
 
 use crate::authorize;
 use jinn_context::PromptTemplateStore;
-use jinn_session_store_msg::ArchiveSession;
 use jinn_domain::protocol::KernelIntent;
 use jinn_domain::{Bridge, SessionId};
 use jinn_preferences_config::schemas::SessionLifecycle;
+use jinn_session_store_msg::ArchiveSession;
 use poise::serenity_prelude as serenity;
 
 use crate::backend::gateway::{BotContext, BotData, BotError};

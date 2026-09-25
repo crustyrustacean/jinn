@@ -13,9 +13,9 @@ use std::collections::HashMap;
 use crate::common::app_state::AppState;
 use crate::common::state::State;
 use crate::feat::session::chat_session::ChatSessionState;
-use jinn_token_count_msg::TokenRecord;
 use crate::feat::session::{FrozenTreeNode, aggregate_tree_stats, find_tree_root};
 use crate::protocol::{ChatEntry, SessionId};
+use jinn_token_count_msg::TokenRecord;
 
 /// Helper: create an empty session with the given ID.
 fn make_session(id: SessionId) -> ChatSessionState {

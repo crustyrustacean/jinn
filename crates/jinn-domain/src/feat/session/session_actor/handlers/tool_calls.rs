@@ -6,11 +6,11 @@
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::context::snapshot::{assemble_via_service, build_assembly_inputs};
-use jinn_session_msg::PhaseKind;
-use jinn_token_count_msg::TokenRecord;
 use crate::protocol::PinPosition;
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_inference_msg::SendToLlmProvider;
+use jinn_session_msg::PhaseKind;
+use jinn_token_count_msg::TokenRecord;
 use jinn_tools_msg::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
@@ -374,12 +374,12 @@ mod tests {
         reason = "test code"
     )]
     use super::super::super::helpers::{test_actor, test_actor_recording};
-    use jinn_session_msg::PhaseKind;
-    use jinn_token_count_msg::TokenRecord;
     use crate::protocol::ToolResultStatus;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
     use jinn_core_types::tool_types::{ToolCall, ToolResult};
     use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
+    use jinn_session_msg::PhaseKind;
+    use jinn_token_count_msg::TokenRecord;
     use jinn_tools_msg::{
         ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionOutput,
         ToolExecutionStarted, ToolOutputKind, ToolUseStarted,
@@ -501,7 +501,6 @@ mod tests {
         use crate::common::bus::test_harness::{TestHarness, await_recorded};
         use crate::common::state::State;
         use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-        use jinn_session_msg::PhaseKind;
         use crate::feat::session::session_actor::{
             SessionPersistenceActor, SessionPersistenceActorDeps,
         };
@@ -509,6 +508,7 @@ mod tests {
         use jinn_core_types::tool_types::ToolResult;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
+        use jinn_session_msg::PhaseKind;
         use jinn_tools_msg::ToolBatchCompleted;
         use std::time::Duration;
 

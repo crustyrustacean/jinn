@@ -76,11 +76,9 @@ pub fn handle_load_subagent_session(state: &mut AppState) -> IntentResult {
     }
 
     state.session.begin_load(child_id.clone());
-    IntentResult::new_message(
-        jinn_session_store_msg::SessionLoadRequested {
-            session_id: child_id,
-        },
-    )
+    IntentResult::new_message(jinn_session_store_msg::SessionLoadRequested {
+        session_id: child_id,
+    })
 }
 
 #[cfg(test)]

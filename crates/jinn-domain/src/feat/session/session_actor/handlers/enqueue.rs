@@ -300,8 +300,8 @@ impl SessionPersistenceActor {
         &self,
         payload: &EnqueueResumeTurn,
     ) {
-        use jinn_session_msg::SessionPhaseChanged;
         use crate::protocol::ChatEntry;
+        use jinn_session_msg::SessionPhaseChanged;
 
         // Only dispatch from Idle. Busy sessions ignore resume (no queuing).
         let should_dispatch = {
@@ -422,10 +422,10 @@ mod tests {
 
     use crate::common::services::BusAudit;
     use crate::feat::chat_input::protocol::command::{EnqueueResumeTurn, EnqueueUserMessage};
-    use jinn_session_msg::PhaseKind;
     use crate::protocol::{ChatEntry, ChatEntryKind};
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_session_history_msg::PushChatEntry;
+    use jinn_session_msg::PhaseKind;
 
     async fn create_actor() -> (
         super::super::super::SessionPersistenceActor,

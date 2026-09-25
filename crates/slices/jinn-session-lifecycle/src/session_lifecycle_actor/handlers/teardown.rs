@@ -4,15 +4,14 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_session_msg::PhaseKind;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::CommandTemplate;
 use jinn_session_lifecycle_msg::builtin::BuiltinId;
-use jinn_session_store_msg::{ArchiveSessionTree, PersistSession};
 use jinn_session_lifecycle_msg::{
-    FinishSessionTeardown, RunSessionTeardown, SessionTeardownFinished,
-    TeardownFollowUp,
+    FinishSessionTeardown, RunSessionTeardown, SessionTeardownFinished, TeardownFollowUp,
 };
+use jinn_session_msg::PhaseKind;
+use jinn_session_store_msg::{ArchiveSessionTree, PersistSession};
 
 use crate::command_runner::spawn_teardown_command;
 use crate::session_lifecycle_actor::SessionLifecycleActor;
@@ -224,7 +223,8 @@ impl SessionLifecycleActor {
     }
 
     pub(super) async fn publish_archive_tree(&self, root: &SessionId) {
-        self.publish(ArchiveSessionTree { root: root.clone() }).await;
+        self.publish(ArchiveSessionTree { root: root.clone() })
+            .await;
     }
 
     fn lifecycle_teardown(

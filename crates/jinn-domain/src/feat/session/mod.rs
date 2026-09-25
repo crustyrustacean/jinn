@@ -37,6 +37,7 @@ mod tree_aggregate_tests;
 
 pub use tree_aggregate::{
     FrozenTreeNode, TreeAggregateStats, aggregate_tree_stats, find_tree_root, snapshot_frozen_node,
+    snapshot_frozen_node_from_snapshot,
 };
 pub mod validator;
 

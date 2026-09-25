@@ -21,11 +21,11 @@ use crate::feat::chat_input::InputMode;
 use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
-use jinn_context::PromptTemplateStore;
 use crate::feat::file_lister::ListDirectory;
-use jinn_session_msg::PhaseKind;
-use jinn_session_msg::MarkSessionInteracted;
 use crate::protocol::{ChatEntry, IntentResult, SessionId};
+use jinn_context::PromptTemplateStore;
+use jinn_session_msg::MarkSessionInteracted;
+use jinn_session_msg::PhaseKind;
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::validator;

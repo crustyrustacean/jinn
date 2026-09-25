@@ -81,7 +81,12 @@ mod tests {
         // Given one close command and one tree-teardown command.
         let id = SessionId::new();
         let root = SessionId::new();
-        let commands = (CloseSession { session_id: id.clone() }, TeardownSessionTree { root: root.clone() });
+        let commands = (
+            CloseSession {
+                session_id: id.clone(),
+            },
+            TeardownSessionTree { root: root.clone() },
+        );
 
         // When serializing and deserializing the wire tuple.
         let json = serde_json::to_string(&commands).unwrap();

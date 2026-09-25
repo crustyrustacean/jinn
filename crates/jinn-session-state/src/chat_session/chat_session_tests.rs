@@ -23,6 +23,33 @@ use super::*;
 use jinn_core_types::model_selection::ModelSelection;
 
 #[rstest::rstest]
+fn captures_are_coherent_and_strictly_newer() {
+    // Given a session with durable history, metadata, and token accounting.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.set_title("Snapshot".to_owned());
+    session.push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 10,
+        tokens_received: 20,
+        cost: Some(0.5),
+        model_used: Some("test/model".to_owned()),
+        prompt_tokens: Some(8),
+        cached_tokens: Some(2),
+    });
+
+    // When capturing the authoritative session twice.
+    let first = session.capture_snapshot();
+    let second = session.capture_snapshot();
+
+    // Then each capture is coherent and the revision strictly advances.
+    assert_eq!(first.metadata.title.as_deref(), Some("Snapshot"));
+    assert_eq!(first.entries.len(), 1);
+    assert_eq!(first.token_ledger.len(), 1);
+    assert!(second.revision > first.revision);
+}
+
+#[rstest::rstest]
 fn push_entry_adds_to_history() {
     // Given a new ChatSessionState.
     let mut session = ChatSessionState::new();

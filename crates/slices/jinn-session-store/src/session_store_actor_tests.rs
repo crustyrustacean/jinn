@@ -9,8 +9,8 @@ use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_domain::common::state::State;
 use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
-use jinn_session_msg::{SessionArchived, SessionClosed};
 use jinn_domain::feat::session::{ChatSessionState, SessionStore, SessionStoreService};
+use jinn_session_msg::{SessionArchived, SessionClosed};
 use jinn_session_store_msg::{PersistSession, SessionLoadCompleted, SessionLoadRequested};
 
 use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};
@@ -70,7 +70,10 @@ where
 async fn load_completed_is_published_after_session_is_fully_initialized() {
     // Given a session persisted in the store and removed from the live map.
     let fixture = actor_fixture().await;
-    let completed = fixture.harness.spawn_recorder::<SessionLoadCompleted>().await;
+    let completed = fixture
+        .harness
+        .spawn_recorder::<SessionLoadCompleted>()
+        .await;
     let session_id = jinn_core_types::SessionId::new();
     let mut stored = ChatSessionState::new();
     stored.set_session_id(session_id.clone());
@@ -78,7 +81,11 @@ async fn load_completed_is_published_after_session_is_fully_initialized() {
         "ollama/llama3".to_owned(),
     ));
     stored.push_entry(jinn_core_types::ChatEntry::user("loaded"));
-    fixture.store.save(&stored).await.expect("save session");
+    fixture
+        .store
+        .save(&stored.capture_snapshot())
+        .await
+        .expect("save session");
     {
         let mut state = fixture.state.write_test_no_cap();
         state.session.remove(&session_id);
@@ -164,6 +171,44 @@ async fn archive_session_removes_session_from_state() {
     let removed =
         poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
     assert!(removed, "ArchiveSession should remove the archived session");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn archive_write_failure_leaves_session_live_and_active() {
+    // Given an active session and a store whose archive transaction will fail
+    // after the session row and history writes.
+    let fixture = actor_fixture().await;
+    let archived = fixture.harness.spawn_recorder::<SessionArchived>().await;
+    let session_id = {
+        let mut state = fixture.state.write_test_no_cap();
+        state.active_session_mut().mark_interacted();
+        state
+            .active_session_mut()
+            .push_entry(jinn_core_types::ChatEntry::user("keep me"));
+        state.session.active_session_id().clone()
+    };
+    fixture
+        .store
+        .pool()
+        .execute("DROP TABLE token_ledger", vec![])
+        .await
+        .expect("drop token ledger");
+
+    // When archiving the session.
+    fixture
+        .harness
+        .publish(ArchiveSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // Then the failed transaction leaves the session live, active, and unclosed.
+    let state = fixture.state.read();
+    assert!(state.session.contains(&session_id));
+    assert_eq!(state.session.active_session_id(), &session_id);
+    assert!(archived.is_empty());
 }
 
 #[rstest::rstest]

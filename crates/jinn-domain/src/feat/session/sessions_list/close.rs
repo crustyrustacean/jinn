@@ -104,8 +104,7 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
             // the new session owns its own copy from creation onward.
             let reasoning_effort = state.frontend.app_state.reasoning_effort;
 
-            let mut profile =
-                jinn_core_types::SessionProfile::from_model_selection(model);
+            let mut profile = jinn_core_types::SessionProfile::from_model_selection(model);
             profile.reasoning_effort = reasoning_effort;
             {
                 let p = &mut profile;

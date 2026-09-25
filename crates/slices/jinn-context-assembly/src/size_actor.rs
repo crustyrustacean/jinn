@@ -16,10 +16,10 @@ use trouper::system::ActorSystem;
 use jinn_domain::common::state::State;
 use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
 use jinn_domain::feat::context::snapshot::{assemble_via_service, build_assembly_inputs};
-use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_domain::protocol::system::ActiveSessionChanged;
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::HistoryAppended;
+use jinn_session_store_msg::SessionLoadCompleted;
 use tracing::error;
 
 /// The context size actor's static trouper path.

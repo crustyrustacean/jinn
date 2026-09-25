@@ -13,9 +13,7 @@ use crate::feat::session::profile::{DEFAULT_PERSONA_NAME, SessionProfile};
 use crate::feat::session::sessions_list::close::validate_session_close;
 use crate::feat::session::sessions_list::state::sorted_open_sessions;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
-use crate::feat::session_lifecycle::protocol::command::{
-    RunSessionSetup, RunSessionTeardown,
-};
+use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::protocol::{IntentResult, SessionId};
 use jinn_preferences_config::schemas::SessionLifecycle;

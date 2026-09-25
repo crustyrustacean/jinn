@@ -41,13 +41,13 @@ use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::session::protocol::citations_received::CitationsReceived;
-use jinn_session_msg::{MarkSessionInteracted, RetryStalledSession, SessionClosed};
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session::protocol::task_list_updated::TaskListUpdated;
 use crate::feat::skills::SkillsLoaded;
 use crate::{ModelsRefreshed, PromptTemplatesLoaded};
 use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
 use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry, UnpinChatEntry};
+use jinn_session_msg::{MarkSessionInteracted, RetryStalledSession, SessionClosed};
 use jinn_tools_msg::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered, ToolsUnregistered,

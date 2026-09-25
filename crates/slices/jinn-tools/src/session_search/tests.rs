@@ -18,9 +18,10 @@ use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::feat::session::session_store::{
     SessionStore, SessionStoreError, SessionStoreService,
 };
-use jinn_session_store_msg::SessionSummary;
 use jinn_domain::feat::session_search::{SearchOutcome, SearchParams, SearchableRole};
 use jinn_domain::protocol::{ChatEntryId, SessionId};
+use jinn_session_state::SessionSnapshot;
+use jinn_session_store_msg::SessionSummary;
 
 /// A stub store with canned summaries and a canned search outcome,
 /// recording the last params it was asked to search.
@@ -63,10 +64,7 @@ impl SessionStore for StubStore {
         "stub"
     }
 
-    async fn save(
-        &self,
-        _session: &jinn_domain::feat::session::chat_session::ChatSessionState,
-    ) -> Result<(), Report<SessionStoreError>> {
+    async fn save(&self, _snapshot: &SessionSnapshot) -> Result<(), Report<SessionStoreError>> {
         Ok(())
     }
 
@@ -77,10 +75,7 @@ impl SessionStore for StubStore {
     async fn load_session(
         &self,
         _session_id: &SessionId,
-    ) -> Result<
-        Option<jinn_domain::feat::session::chat_session::ChatSessionState>,
-        Report<SessionStoreError>,
-    > {
+    ) -> Result<Option<SessionSnapshot>, Report<SessionStoreError>> {
         Ok(None)
     }
 

@@ -4,11 +4,11 @@ use crate::ChatEntry;
 use crate::ChatEntryKind;
 use crate::common::app_state::AppState;
 use crate::feat::session::ChatSessionState;
-use jinn_session_store_msg::SessionForkRequested;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{IntentResult, PinPosition};
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
+use jinn_session_store_msg::SessionForkRequested;
 
 use super::validator;
 
@@ -476,9 +476,9 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 /// validation (e.g. collapsed ignored block).
 pub fn handle_reset_selected(state: &mut AppState) -> IntentResult {
     use crate::feat::context::protocol::event::ContextOverrideChanged;
-    use jinn_session_store_msg::PersistSession;
     use crate::protocol::ChatEntry;
     use crate::protocol::ContextOverride;
+    use jinn_session_store_msg::PersistSession;
 
     // Skip past obstacles before validation, mirroring the x-sweep
     // (ignore_sweep.rs): pinned entries and collapsed blocks are passed

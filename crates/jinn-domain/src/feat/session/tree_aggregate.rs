@@ -11,8 +11,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::compute_turn_count;
-use jinn_token_count_msg::TokenStats;
 use crate::protocol::SessionId;
+use jinn_session_state::SessionSnapshot;
+use jinn_token_count_msg::TokenStats;
 
 pub use jinn_session_store_msg::FrozenTreeNode;
 
@@ -54,6 +55,26 @@ pub fn snapshot_frozen_node(session: &ChatSessionState) -> FrozenTreeNode {
         total_received: token_stats.total_received,
         total_cost: TokenStats::total_cost(session.token_ledger()),
         total_turns: compute_turn_count(session.history(), session.fork_ordinal()),
+        effective_sent: token_stats.effective_sent,
+        measured_sent: token_stats.measured_sent,
+        cached_total: token_stats.cached_total,
+    }
+}
+
+/// Create a frozen tree node from a complete session snapshot.
+#[must_use]
+pub fn snapshot_frozen_node_from_snapshot(snapshot: &SessionSnapshot) -> FrozenTreeNode {
+    let token_stats = TokenStats::from_ledger(&snapshot.token_ledger);
+    FrozenTreeNode {
+        session_id: snapshot.metadata.session_id.clone(),
+        parent_session_id: snapshot.metadata.parent_session.clone(),
+        total_sent: token_stats.total_sent,
+        total_received: token_stats.total_received,
+        total_cost: TokenStats::total_cost(&snapshot.token_ledger),
+        total_turns: crate::feat::session::compute_turn_count(
+            &snapshot.entries,
+            snapshot.metadata.fork_ordinal,
+        ),
         effective_sent: token_stats.effective_sent,
         measured_sent: token_stats.measured_sent,
         cached_total: token_stats.cached_total,

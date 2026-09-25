@@ -1,10 +1,10 @@
 //! Startup session hydration and persisted-default seeding.
 
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::session::chat_session::ChatSessionState;
 use jinn_domain::feat::session::profile::SessionSeed;
-use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
+use jinn_session_state::SessionSnapshot;
+use jinn_session_store_msg::SessionLoadCompleted;
 
 use crate::session_store_actor::SessionStoreActor;
 
@@ -97,11 +97,13 @@ impl SessionStoreActor {
         if loaded.is_empty() {
             return true;
         }
-        for mut session in loaded {
-            session.mark_interacted();
-            let session_id = self.insert_loaded_session(session);
-            self.publish(SessionLoadCompleted { session_id })
-                .await;
+        for snapshot in loaded {
+            let session_id = self.insert_loaded_session({
+                let mut session = snapshot.restore_live();
+                session.mark_interacted();
+                session
+            });
+            self.publish(SessionLoadCompleted { session_id }).await;
         }
 
         self.hydrate_all_tree_frozen_nodes(&self.services.session_store)
@@ -113,7 +115,7 @@ impl SessionStoreActor {
     async fn load_summaries_in_recency_order(
         &self,
         mut summaries: Vec<jinn_domain::feat::session::SessionSummary>,
-    ) -> Vec<ChatSessionState> {
+    ) -> Vec<SessionSnapshot> {
         summaries.sort_by_key(|summary| std::cmp::Reverse(summary.updated_at));
         let mut loaded = Vec::new();
         for summary in &summaries {

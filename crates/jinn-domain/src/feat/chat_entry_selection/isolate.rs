@@ -14,9 +14,9 @@
 use super::validator;
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
-use jinn_session_store_msg::PersistSession;
 use crate::protocol::{ChatEntryId, ContextOverride, IntentResult};
 use jinn_session_history::history_editor::tool_group_end;
+use jinn_session_store_msg::PersistSession;
 
 /// Walk the history chunk by chunk and set each chunk's context override:
 /// [`ContextOverride::ForcedInclude`] for the chunk containing

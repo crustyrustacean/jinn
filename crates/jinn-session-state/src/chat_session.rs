@@ -663,8 +663,17 @@ impl ChatSessionState {
         self.update_view(|v| v.ignore_sweep = Some((instant, target)));
     }
 
-    /// The persistable core of this session, for the persistence layer.
+    /// Captures all durable state from this authoritative session revision.
     ///
+    /// Call under the application state read lock. The revision and payload are
+    /// derived from the same core reference, so metadata, persisted history,
+    /// and token accounting cannot come from separate application versions.
+    #[must_use]
+    pub fn capture_snapshot(&self) -> crate::snapshot::SessionSnapshot {
+        let revision = self.core.next_capture_revision();
+        crate::snapshot::SessionSnapshot::from((revision, &self.core))
+    }
+
     /// The store crate (`jinn-session-store`) serializes this into the
     /// session row's metadata blob. Returns a clone so the live session is
     /// never mutably borrowed by persistence.

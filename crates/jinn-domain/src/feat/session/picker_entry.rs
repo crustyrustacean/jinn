@@ -2,7 +2,6 @@
 
 use std::ops::Range;
 
-use jinn_session_store_msg::SessionState;
 use crate::feat::theme::Theme;
 use crate::protocol::SessionId;
 use jinn_picker::RowCtx;
@@ -10,6 +9,7 @@ use jinn_picker::picker_style::dim_style;
 use jinn_picker::picker_style::selected_style;
 use jinn_selection_widget::TreeItem;
 use jinn_selection_widget::highlight_text_with_bg;
+use jinn_session_store_msg::SessionState;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;

@@ -1,8 +1,8 @@
 use crate::BusService;
-use jinn_session_msg::PhaseKind;
 use crate::feat::session::protocol::history_appended::HistoryAppended;
-use jinn_session_msg::SessionPhaseChanged;
 use crate::protocol::SessionId;
+use jinn_session_msg::PhaseKind;
+use jinn_session_msg::SessionPhaseChanged;
 
 /// Emit a `SessionPhaseChanged` event if the phase actually changed.
 ///
@@ -95,9 +95,9 @@ use parking_lot::Mutex;
 /// A fake session store that returns pre-loaded sessions for testing.
 pub(crate) struct PopulatedFakeStore {
     summaries: parking_lot::Mutex<Vec<jinn_session_store_msg::SessionSummary>>,
-    sessions: parking_lot::Mutex<Vec<crate::feat::session::chat_session::ChatSessionState>>,
+    sessions: parking_lot::Mutex<Vec<jinn_session_state::SessionSnapshot>>,
     archived: parking_lot::Mutex<Vec<crate::protocol::SessionId>>,
-    saved: parking_lot::Mutex<Vec<crate::feat::session::chat_session::ChatSessionState>>,
+    saved: parking_lot::Mutex<Vec<jinn_session_state::SessionSnapshot>>,
     fail_load_summaries: parking_lot::Mutex<bool>,
 }
 
@@ -118,7 +118,12 @@ impl PopulatedFakeStore {
             .collect();
         Self {
             summaries: Mutex::new(summaries),
-            sessions: Mutex::new(sessions),
+            sessions: Mutex::new(
+                sessions
+                    .iter()
+                    .map(|session| session.capture_snapshot())
+                    .collect(),
+            ),
             archived: Mutex::new(Vec::new()),
             saved: Mutex::new(Vec::new()),
             fail_load_summaries: Mutex::new(false),
@@ -128,7 +133,7 @@ impl PopulatedFakeStore {
     pub(super) fn last_saved_session(
         &self,
         id: &crate::protocol::SessionId,
-    ) -> Option<crate::feat::session::chat_session::ChatSessionState> {
+    ) -> Option<jinn_session_state::SessionSnapshot> {
         self.saved
             .lock()
             .iter()
@@ -147,19 +152,19 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
 
     async fn save(
         &self,
-        session: &crate::feat::session::chat_session::ChatSessionState,
+        snapshot: &jinn_session_state::SessionSnapshot,
     ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
     {
-        self.saved.lock().push(session.clone());
+        self.saved.lock().push(snapshot.clone());
         // Upsert into the readable sessions vec (the real store persists the
         // session so later reads — fork, load — see it).
         let mut sessions = self.sessions.lock();
         match sessions
             .iter_mut()
-            .find(|s| s.session_id() == session.session_id())
+            .find(|stored| stored.session_id() == snapshot.session_id())
         {
-            Some(existing) => *existing = session.clone(),
-            None => sessions.push(session.clone()),
+            Some(existing) => *existing = snapshot.clone(),
+            None => sessions.push(snapshot.clone()),
         }
         Ok(())
     }
@@ -182,7 +187,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
         &self,
         session_id: &crate::protocol::SessionId,
     ) -> Result<
-        Option<crate::feat::session::chat_session::ChatSessionState>,
+        Option<jinn_session_state::SessionSnapshot>,
         error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
     > {
         Ok(self
@@ -233,6 +238,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
         for entry in source.history().iter().take(at_ordinal + 1) {
             forked.push_entry(entry.clone());
         }
+        let forked = forked.capture_snapshot();
         self.sessions.lock().push(forked);
         // Keep summaries in sync so follow-up loads see the fork.
         self.summaries
@@ -240,11 +246,11 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
             .push(jinn_session_store_msg::SessionSummary {
                 session_id: new_id.clone(),
                 title: source.title().unwrap_or("Untitled Session").to_owned(),
-                updated_at: *source.updated_at(),
-                created_at: *source.created_at(),
+                updated_at: source.metadata.updated_at,
+                created_at: source.metadata.created_at,
                 session_state: jinn_session_store_msg::SessionState::Loaded,
                 parent_session: Some(source_session_id.clone()),
-                project: source.project().map(std::path::Path::to_path_buf),
+                project: source.metadata.project.clone(),
             });
         Ok(new_id)
     }

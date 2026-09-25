@@ -3,8 +3,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::common::app_state::AppState;
-use jinn_session_msg::PhaseKind;
 use crate::protocol::SessionId;
+use jinn_session_msg::PhaseKind;
 
 pub use jinn_sidebar_msg::{SessionEntry, SessionEntryKind, SessionsSectionState};
 

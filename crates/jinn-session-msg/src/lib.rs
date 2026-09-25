@@ -258,15 +258,23 @@ mod tests {
         // Given one of each promoted session command and event.
         let id = jinn_core_types::SessionId::new();
         let contracts = (
-            MarkSessionInteracted { session_id: id.clone() },
-            UserInteracted { session_id: id.clone() },
+            MarkSessionInteracted {
+                session_id: id.clone(),
+            },
+            UserInteracted {
+                session_id: id.clone(),
+            },
             RetryStalledSession {
                 session_id: id.clone(),
                 attempt: 2,
                 max_restarts: 5,
             },
-            SessionClosed { session_id: id.clone() },
-            SessionRemoved { session_id: id.clone() },
+            SessionClosed {
+                session_id: id.clone(),
+            },
+            SessionRemoved {
+                session_id: id.clone(),
+            },
         );
 
         // When serializing and deserializing the wire tuple.

@@ -6,11 +6,10 @@ use jinn_session_store_msg::PersistSession;
 use crate::session_store_actor::SessionStoreActor;
 
 impl SessionStoreActor {
-    /// Saves the current state of a session to the store.
+    /// Saves a coherent snapshot of the current session to the store.
     ///
     /// The write lock is held only for the cheap timestamp mutation. The
-    /// potentially large history clone runs after releasing it, then store I/O
-    /// runs without any state lock held.
+    /// follow-up read lock captures durable state before store I/O runs.
     pub(crate) async fn save_active_session(&self, session_id: &SessionId) {
         let services = self.services.clone();
         let state = self.state.clone();
@@ -18,7 +17,7 @@ impl SessionStoreActor {
         let requested_id = session_id.clone();
         let logged_id = session_id.clone();
 
-        let session = tokio::task::spawn_blocking(move || {
+        let snapshot = tokio::task::spawn_blocking(move || {
             {
                 state.with_session(&cap, |view| {
                     if let Some(session) = view.session.map().get_mut(&requested_id) {
@@ -26,7 +25,12 @@ impl SessionStoreActor {
                     }
                 });
             }
-            state.read().session.get(&requested_id).cloned()
+            let state = state.read();
+            state
+                .session
+                .get(&requested_id)
+                .filter(|session| session.is_persistable())
+                .map(|session| session.capture_snapshot())
         })
         .await
         .unwrap_or_else(|error| {
@@ -34,12 +38,9 @@ impl SessionStoreActor {
             None
         });
 
-        let Some(session) = session else { return };
-        if !session.is_persistable() {
-            return;
-        }
+        let Some(snapshot) = snapshot else { return };
 
-        if let Err(error) = services.session_store.save(&session).await {
+        if let Err(error) = services.session_store.save(&snapshot).await {
             tracing::warn!(
                 session_id = ?logged_id,
                 ?error,

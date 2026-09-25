@@ -18,9 +18,9 @@ use ratatui::text::Span;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::feat::session::picker_entry::SessionTreeEntry;
 use jinn_domain::feat::session::picker_entry::session_row;
+use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_session_store_msg::LoadSessionPickerEntries;
 use jinn_session_store_msg::SessionLoadRequested;
-use jinn_domain::feat::ui::picker_states::PickerExt;
 
 /// Builds the session picker's spec.
 #[must_use]

@@ -5,21 +5,22 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::session::ChatSessionState;
-use jinn_session_store_msg::SessionState;
 use jinn_domain::feat::session::profile::{SessionProfile, SessionSeed};
+use jinn_session_state::SessionSnapshot;
+use jinn_session_store_msg::SessionState;
 use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
 
-use jinn_session_msg::{SessionArchived, SessionClosed, SessionRemoved};
 use jinn_domain::feat::session::sessions_list::reconcile::reconcile_split;
 use jinn_domain::feat::session::sessions_list::state::update_visual_parents_on_removal_split;
 use jinn_domain::feat::session::snapshot_frozen_node;
+use jinn_session_msg::{SessionArchived, SessionClosed, SessionRemoved};
 
 use crate::session_store_actor::SessionStoreActor;
 
 impl SessionStoreActor {
     /// Archives a session without running a teardown script.
     pub(crate) async fn handle_archive_session(&self, payload: &ArchiveSession) {
-        self.archive_live_member(&payload.session_id).await;
+        self.archive_members(&[payload.session_id.clone()]).await;
     }
 
     /// Archives a session and all descendants, all-or-nothing.
@@ -27,26 +28,7 @@ impl SessionStoreActor {
         let Some(members) = self.guarded_tree_closure(&payload.root).await else {
             return;
         };
-
-        for member_id in &members {
-            if !self.state.read().session.contains(member_id) {
-                continue;
-            }
-            self.archive_live_member(member_id).await;
-        }
-
-        if let Err(error) = self
-            .services
-            .session_store
-            .set_archived_many(&members, true)
-            .await
-        {
-            tracing::warn!(
-                root = %payload.root,
-                ?error,
-                "archive tree store writeback failed (memory state is consistent)"
-            );
-        }
+        self.archive_members(&members).await;
     }
 
     /// Resolves the tree and aborts before any side effect when a member is busy.
@@ -55,11 +37,7 @@ impl SessionStoreActor {
         let state = self.state.read();
         let busy = members.iter().any(|id| {
             state.session.get(id).is_some_and(|session| {
-                session.is_busy()
-                    || !matches!(
-                        session.phase(),
-                        jinn_session_msg::PhaseKind::Idle
-                    )
+                session.is_busy() || !matches!(session.phase(), jinn_session_msg::PhaseKind::Idle)
             })
         });
         drop(state);
@@ -102,34 +80,86 @@ impl SessionStoreActor {
             .collect()
     }
 
-    /// Archives and removes one loaded member, publishing its close events.
-    async fn archive_live_member(&self, session_id: &SessionId) {
+    /// Archives all requested members durably before changing live state.
+    async fn archive_members(&self, members: &[SessionId]) {
+        let Some(snapshots) = self.archive_snapshots(members).await else {
+            return;
+        };
+        if let Err(error) = self
+            .services
+            .session_store
+            .archive_snapshots(&snapshots)
+            .await
         {
-            self.state.with_session(&self.session_cap, |view| {
-                if let Some(session) = view.session.map().get_mut(session_id) {
-                    session.set_session_state(SessionState::Archived);
-                }
-            });
+            tracing::warn!(
+                ?error,
+                member_count = members.len(),
+                "archive write failed; live sessions remain intact"
+            );
+            return;
         }
-        self.save_active_session(session_id).await;
-        self.snapshot_before_removal(session_id);
-        let mcp_enablement = self.remove_and_replace(session_id);
 
-        self.publish(SessionRemoved {
-            session_id: session_id.clone(),
-        })
-        .await;
-        self.publish(SessionArchived {
-            session_id: session_id.clone(),
-        })
-        .await;
-        self.publish(SessionClosed {
-            session_id: session_id.clone(),
-        })
-        .await;
-        if let Some(enablement) = mcp_enablement {
-            self.publish(enablement).await;
+        for session_id in members {
+            if !self.state.read().session.contains(session_id) {
+                continue;
+            }
+            self.snapshot_before_removal(session_id);
+            let mcp_enablement = self.remove_and_replace(session_id);
+            self.publish(SessionRemoved {
+                session_id: session_id.clone(),
+            })
+            .await;
+            self.publish(SessionArchived {
+                session_id: session_id.clone(),
+            })
+            .await;
+            self.publish(SessionClosed {
+                session_id: session_id.clone(),
+            })
+            .await;
+            if let Some(enablement) = mcp_enablement {
+                self.publish(enablement).await;
+            }
         }
+    }
+
+    /// Captures one complete archived snapshot for each requested member.
+    ///
+    /// A member that is live uses the authoritative in-memory state. A member
+    /// that is not live is loaded from the store so an archive tree can update
+    /// persisted descendants without making them live first.
+    async fn archive_snapshots(&self, members: &[SessionId]) -> Option<Vec<SessionSnapshot>> {
+        let mut snapshots = Vec::with_capacity(members.len());
+        for session_id in members {
+            let mut snapshot = {
+                let state = self.state.read();
+                state
+                    .session
+                    .get(session_id)
+                    .map(ChatSessionState::capture_snapshot)
+            };
+            if snapshot.is_none() {
+                snapshot = match self.services.session_store.load_session(session_id).await {
+                    Ok(Some(snapshot)) => Some(snapshot),
+                    Ok(None) => continue,
+                    Err(error) => {
+                        tracing::warn!(
+                            ?error,
+                            session_id = %session_id,
+                            "could not load member for archive; leaving live state intact"
+                        );
+                        return None;
+                    }
+                };
+            }
+            let mut snapshot = snapshot.expect("archive snapshot resolved above");
+            if snapshot.revision.get() == 0 {
+                snapshot.revision = jinn_session_state::SessionRevision::new(1);
+            }
+            snapshot.metadata.session_state = SessionState::Archived;
+            snapshots.push(snapshot);
+        }
+        (!snapshots.is_empty()).then_some(snapshots)
     }
 
     /// Captures immutable tree statistics before dropping the live session.

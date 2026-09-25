@@ -239,14 +239,14 @@ mod tests {
     )]
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
-    use crate::feat::session::chat_session::ChatSessionState;
-    use jinn_session_store_msg::SessionState;
     use crate::feat::session::picker_entry::SessionTreeEntry;
-    use jinn_session_store_msg::SessionSummary;
     use crate::feat::theme::default_theme;
     use crate::protocol::SessionId;
     use jinn_selection_widget::PickerItem;
     use jinn_selection_widget::TreeItem;
+    use jinn_session_state::SessionSnapshot;
+    use jinn_session_store_msg::SessionState;
+    use jinn_session_store_msg::SessionSummary;
 
     use super::*;
 
@@ -339,7 +339,7 @@ mod tests {
         }
         async fn save(
             &self,
-            _session: &ChatSessionState,
+            _snapshot: &SessionSnapshot,
         ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
             Ok(())
         }
@@ -352,7 +352,7 @@ mod tests {
         async fn load_session(
             &self,
             _session_id: &SessionId,
-        ) -> Result<Option<ChatSessionState>, error_stack::Report<super::super::SessionStoreError>>
+        ) -> Result<Option<SessionSnapshot>, error_stack::Report<super::super::SessionStoreError>>
         {
             Ok(None)
         }
@@ -488,7 +488,7 @@ mod tests {
         }
         async fn save(
             &self,
-            _session: &ChatSessionState,
+            _snapshot: &SessionSnapshot,
         ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
             Ok(())
         }
@@ -501,7 +501,7 @@ mod tests {
         async fn load_session(
             &self,
             _session_id: &SessionId,
-        ) -> Result<Option<ChatSessionState>, error_stack::Report<super::super::SessionStoreError>>
+        ) -> Result<Option<SessionSnapshot>, error_stack::Report<super::super::SessionStoreError>>
         {
             Ok(None)
         }

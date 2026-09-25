@@ -1,5 +1,8 @@
 //! Authoritative durable and runtime composition for one session.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use jinn_core_types::ChatEntry;
 use jinn_token_count_msg::TokenRecord;
 use serde::{Deserialize, Serialize};
@@ -31,9 +34,20 @@ pub struct SessionCore {
     /// Runtime-only turn and discovery state.
     #[serde(skip)]
     pub ephemeral: SessionCoreEphemeral,
+    /// Monotonic capture sequence shared by clones of this authoritative core.
+    #[serde(skip)]
+    pub(crate) capture_counter: Arc<AtomicU64>,
 }
 
 impl SessionCore {
+    /// Reserves the next coherent snapshot revision.
+    #[must_use]
+    pub fn next_capture_revision(&self) -> crate::snapshot::SessionRevision {
+        crate::snapshot::SessionRevision::new(
+            self.capture_counter.fetch_add(1, Ordering::Relaxed) + 1,
+        )
+    }
+
     /// Restores history before the session is published as live.
     pub fn restore_history(&mut self, entries: Vec<ChatEntry>) {
         self.history_work.history.replace_all(entries);
@@ -54,6 +68,7 @@ impl Default for SessionCore {
             integrations: SessionIntegrationFields::default(),
             storage: SessionStorageFields::default(),
             ephemeral: SessionCoreEphemeral::default(),
+            capture_counter: Arc::new(AtomicU64::new(0)),
         }
     }
 }

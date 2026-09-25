@@ -12,6 +12,7 @@ pub mod fields;
 pub mod mutation_accumulator;
 mod runtime;
 pub mod session_map;
+pub mod snapshot;
 pub mod steering_buffer;
 
 pub use chat_session::{ChatSessionState, StreamingError};
@@ -23,3 +24,4 @@ pub use fields::{
 };
 pub use runtime::{SessionCoreEphemeral, SessionUi};
 pub use session_map::{SessionLoadGuard, SessionMap};
+pub use snapshot::{SessionRevision, SessionSnapshot, SessionSnapshotMetadata};

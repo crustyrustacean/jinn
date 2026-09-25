@@ -4,21 +4,18 @@ use std::collections::{HashMap, HashSet};
 
 use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::session::SessionStoreService;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
+use jinn_domain::feat::session::{SessionStoreService, snapshot_frozen_node_from_snapshot};
+use jinn_domain::protocol::{ChatEntry, system::ActiveSessionChanged};
+use jinn_session_state::SessionSnapshot;
 use jinn_session_store_msg::SessionForkRequested;
 use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested};
-use jinn_domain::feat::session::snapshot_frozen_node;
-use jinn_domain::protocol::{ChatEntry, system::ActiveSessionChanged};
 
 use crate::session_store_actor::SessionStoreActor;
 
 impl SessionStoreActor {
     /// Inserts a loaded session and returns its ID.
-    pub(crate) fn insert_loaded_session(
-        &self,
-        session: ChatSessionState,
-    ) -> SessionId {
+    pub(crate) fn insert_loaded_session(&self, session: ChatSessionState) -> SessionId {
         let session_id = session.session_id().clone();
         self.state.with_session(&self.session_cap, |view| {
             view.session.map().insert(session);
@@ -28,46 +25,39 @@ impl SessionStoreActor {
     }
 
     /// Completes initialization of an explicitly loaded session, then publishes its ID.
-    pub(crate) async fn restore_loaded_session(&self, session: ChatSessionState) {
-        let session_id = session.session_id().clone();
-        let original_cwd = {
-            let model = if session.model_selection().is_no_provider() {
-                self.state
-                    .read()
-                    .frontend
-                    .app_state
-                    .last_model
-                    .clone()
-                    .unwrap_or_default()
-            } else {
-                session.model_selection().clone()
-            };
-
-            self.state.with_session(&self.session_cap, |view| {
-                view.session.map().insert(session);
-            });
-            self.state.with_preferences(&self.frontend_cap, |ops| {
-                ops.frontend().update_sections(|sections| {
-                    sections
-                        .sessions
-                        .visual_parents
-                        .retain(|_id, parent| parent != &session_id);
-                });
-            });
-
-            self.state.with_session(&self.session_cap, |view| {
-                let map = view.session.map();
-                let Some(session) = map.get_mut(&session_id) else {
-                    return std::path::PathBuf::new();
-                };
-                session.set_model(model);
-                session.mark_interacted();
-                let cwd = session.cwd().to_path_buf();
-                map.set_active(session_id.clone());
-                map.clear_load();
-                cwd
-            })
+    pub(crate) async fn restore_loaded_session(&self, snapshot: SessionSnapshot) {
+        let session_id = snapshot.metadata.session_id.clone();
+        let model = if snapshot.metadata.profile.model.is_no_provider() {
+            self.state
+                .read()
+                .frontend
+                .app_state
+                .last_model
+                .clone()
+                .unwrap_or_default()
+        } else {
+            snapshot.metadata.profile.model.clone()
         };
+        let mut session = snapshot.restore_live();
+        session.set_model(model);
+        session.mark_interacted();
+        let original_cwd = session.cwd().to_path_buf();
+
+        self.state.with_preferences(&self.frontend_cap, |ops| {
+            ops.frontend().update_sections(|sections| {
+                sections
+                    .sessions
+                    .visual_parents
+                    .retain(|_id, parent| parent != &session_id);
+            });
+        });
+        self.state.with_session(&self.session_cap, |view| {
+            let map = view.session.map();
+            map.remove_frozen_node(&session_id);
+            map.insert(session);
+            map.set_active(session_id.clone());
+            map.clear_load();
+        });
 
         let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
         if !cwd_exists {
@@ -265,7 +255,7 @@ impl SessionStoreActor {
         let mut nodes = Vec::new();
         for id in session_ids {
             match store.load_session(id).await {
-                Ok(Some(session)) => nodes.push(snapshot_frozen_node(&session)),
+                Ok(Some(snapshot)) => nodes.push(snapshot_frozen_node_from_snapshot(&snapshot)),
                 Ok(None) => {
                     tracing::debug!(session_id = %id, "session in tree not found in store, skipping frozen node");
                 }

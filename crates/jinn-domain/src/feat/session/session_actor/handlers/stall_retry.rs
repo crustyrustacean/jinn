@@ -9,9 +9,9 @@
 //! turn is re-dispatched.
 
 use crate::common::actor_deps::BusPublish;
+use jinn_inference_msg::SendToLlmProvider;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::RetryStalledSession;
-use jinn_inference_msg::SendToLlmProvider;
 use jinn_turn_dispatch_msg::DispatchTurn;
 
 use super::super::SessionPersistenceActor;
@@ -149,10 +149,10 @@ mod tests {
     use crate::common::services::BusAudit;
     use jinn_inference_msg::SendToLlmProvider;
 
-    use jinn_session_msg::RetryStalledSession;
     use crate::feat::session::session_actor::SessionPersistenceActor;
     use crate::protocol::ChatEntryKind;
     use crate::protocol::SessionId;
+    use jinn_session_msg::RetryStalledSession;
 
     /// A session in `Streaming` with a partial assistant entry, a dangling
     /// partial tool call slot free, and an in-flight stream generation

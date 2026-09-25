@@ -15,12 +15,12 @@ use crate::session_fetch::{definition, execute};
 use crate::tool_types::ToolContext;
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
 use jinn_domain::common::app_paths::AppPaths;
-use jinn_domain::feat::session::chat_session::ChatSessionState;
 use jinn_domain::feat::session::session_store::{
     SessionStore, SessionStoreError, SessionStoreService,
 };
 use jinn_domain::feat::session_search::{TranscriptEntry, TranscriptWindow};
 use jinn_domain::protocol::{ChatEntry, ChatEntryId, SessionId};
+use jinn_session_state::SessionSnapshot;
 
 /// A stub store serving one canned transcript window, recording the last
 /// read it was asked for.
@@ -49,23 +49,20 @@ impl SessionStore for StubStore {
         "stub"
     }
 
-    async fn save(&self, _session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
+    async fn save(&self, _snapshot: &SessionSnapshot) -> Result<(), Report<SessionStoreError>> {
         Ok(())
     }
 
     async fn load_summaries(
         &self,
-    ) -> Result<
-        Vec<jinn_session_store_msg::SessionSummary>,
-        Report<SessionStoreError>,
-    > {
+    ) -> Result<Vec<jinn_session_store_msg::SessionSummary>, Report<SessionStoreError>> {
         Ok(Vec::new())
     }
 
     async fn load_session(
         &self,
         _session_id: &SessionId,
-    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
+    ) -> Result<Option<SessionSnapshot>, Report<SessionStoreError>> {
         Ok(None)
     }
 
@@ -99,10 +96,7 @@ impl SessionStore for StubStore {
 
     async fn load_unarchived_summaries(
         &self,
-    ) -> Result<
-        Vec<jinn_session_store_msg::SessionSummary>,
-        Report<SessionStoreError>,
-    > {
+    ) -> Result<Vec<jinn_session_store_msg::SessionSummary>, Report<SessionStoreError>> {
         Ok(Vec::new())
     }
 

@@ -9,7 +9,7 @@ use crate::sqlite::SqliteSessionStore;
 use jinn_core_types::SessionId;
 use jinn_domain::common::bus::test_harness::TestHarness;
 use jinn_domain::feat::session::SessionStoreService;
-use jinn_domain::feat::session::chat_session::ChatSessionState;
+use jinn_session_state::SessionSnapshot;
 
 /// Builds actor deps whose session store is a real SQLite store in a temp
 /// dir, so drains exercise the actual dirty-marker → FTS pipeline. Returns
@@ -31,8 +31,8 @@ async fn sqlite_actor_deps() -> (
 }
 
 /// A two-entry session whose entries mention "needle" so it is findable.
-fn needle_session(id: &SessionId) -> ChatSessionState {
-    let mut session = ChatSessionState::new();
+fn needle_session(id: &SessionId) -> SessionSnapshot {
+    let mut session = jinn_domain::feat::session::ChatSessionState::new();
     session.set_session_id(id.clone());
     session.set_title("tick".to_owned());
     session.push_entry(jinn_core_types::ChatEntry::user(
@@ -41,7 +41,7 @@ fn needle_session(id: &SessionId) -> ChatSessionState {
     session.push_entry(jinn_core_types::ChatEntry::assistant(
         "stitching the needle into place",
     ));
-    session
+    session.capture_snapshot()
 }
 
 async fn search_all(store: &SessionStoreService) -> crate::session_search::SearchOutcome {

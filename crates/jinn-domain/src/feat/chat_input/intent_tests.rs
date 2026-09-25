@@ -9,8 +9,8 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger, InputMode};
-use jinn_session_msg::PhaseKind;
 use crate::protocol::ChatEntry;
+use jinn_session_msg::PhaseKind;
 
 /// Empty slice registry + route table for handler tests that don't
 /// exercise slices or route rows.
@@ -1900,13 +1900,11 @@ fn hash_autocomplete_populates_matches_from_template_store() {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
-        jinn_context::PromptTemplateStore::from_vec(vec![
-            PromptTemplate {
-                name: "my_template".to_owned(),
-                description: "A test template".to_owned(),
-                body: "template body".to_owned(),
-            },
-        ]),
+        jinn_context::PromptTemplateStore::from_vec(vec![PromptTemplate {
+            name: "my_template".to_owned(),
+            description: "A test template".to_owned(),
+            body: "template body".to_owned(),
+        }]),
     );
 
     // When inserting '#' at position 0.

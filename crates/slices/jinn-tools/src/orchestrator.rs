@@ -27,9 +27,9 @@ use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
-use jinn_session_msg::SessionClosed;
 use jinn_domain::protocol::SessionId;
 use jinn_mcp_msg::McpConnectionStatus;
+use jinn_session_msg::SessionClosed;
 use jinn_tools_msg::{CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools};
 use jinn_tools_msg::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered, ToolsUnregistered,

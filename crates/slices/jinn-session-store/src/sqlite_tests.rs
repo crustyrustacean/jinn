@@ -37,7 +37,7 @@ async fn save_creates_summary() {
     let session = make_session(&session_id, "Test Session");
 
     // When saving and loading summaries.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let summaries = store.load_summaries().await.expect("load_summaries");
 
     // Then one summary is returned.
@@ -55,7 +55,7 @@ async fn load_session_restores_data() {
     let session = make_session(&session_id, "Test Session");
 
     // When saving and loading the session.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -88,7 +88,7 @@ async fn degraded_token_expanded_survives_save_and_reload() {
     session.push_entry(entry);
 
     // When saving and reloading the session.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -137,7 +137,7 @@ async fn attachment_outcome_survives_save_and_reload() {
     session.push_entry(entry);
 
     // When saving and reloading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -170,8 +170,14 @@ async fn summaries_returns_correct_count() {
     let id_a = SessionId::new();
     let id_b = SessionId::new();
 
-    store.save(&make_session(&id_a, "A")).await.expect("save A");
-    store.save(&make_session(&id_b, "B")).await.expect("save B");
+    store
+        .save(&make_session(&id_a, "A").capture_snapshot())
+        .await
+        .expect("save A");
+    store
+        .save(&make_session(&id_b, "B").capture_snapshot())
+        .await
+        .expect("save B");
 
     // When loading summaries.
     let summaries = store.load_summaries().await.expect("load_summaries");
@@ -186,15 +192,19 @@ async fn save_updates_existing_session() {
     // Given a store with a saved session.
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
+    let mut session = make_session(&session_id, "v1");
     store
-        .save(&make_session(&session_id, "v1"))
+        .save(&session.capture_snapshot())
         .await
         .expect("save v1");
 
     // When saving again with updated title.
-    let mut updated = make_session(&session_id, "v2");
-    updated.push_entry(ChatEntry::assistant("world"));
-    store.save(&updated).await.expect("save v2");
+    session.set_title("v2".to_owned());
+    session.push_entry(ChatEntry::assistant("world"));
+    store
+        .save(&session.capture_snapshot())
+        .await
+        .expect("save v2");
 
     // Then the summary reflects v2.
     let summaries = store.load_summaries().await.expect("load_summaries");
@@ -208,6 +218,180 @@ async fn save_updates_existing_session() {
         .expect("load_session")
         .expect("should exist");
     assert_eq!(loaded.history().len(), 2);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn failed_complete_snapshot_write_rolls_back_every_durable_part() {
+    // Given one complete snapshot with metadata, an attachment, history, and a token record.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("original".to_owned());
+    let mut entry = ChatEntry::user("original message");
+    if let ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+        attachments.push(jinn_provider::Attachment::image(
+            "image/png".to_owned(),
+            TINY_PNG.to_vec(),
+        ));
+    }
+    session.push_entry(entry);
+    session.push_token_record(jinn_token_count_msg::TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 100,
+        tokens_received: 50,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+    store
+        .save(&session.capture_snapshot())
+        .await
+        .expect("baseline save");
+    store
+        .pool()
+        .execute(
+            "CREATE TRIGGER reject_token_ledger
+             BEFORE INSERT ON token_ledger
+             BEGIN SELECT RAISE(ABORT, 'injected ledger failure'); END;",
+            vec![],
+        )
+        .await
+        .expect("create failure trigger");
+    session.set_title("newer".to_owned());
+    session.push_entry(ChatEntry::assistant("new message"));
+    session.push_token_record(jinn_token_count_msg::TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 200,
+        tokens_received: 75,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+
+    // When a newer complete snapshot is saved and its ledger insert fails.
+    let result = store.save(&session.capture_snapshot()).await;
+
+    // Then every durable part remains at the original complete snapshot.
+    assert!(result.is_err());
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load after rollback")
+        .expect("stored session");
+    assert_eq!(loaded.metadata.title.as_deref(), Some("original"));
+    assert_eq!(
+        loaded.metadata.session_state,
+        jinn_session_store_msg::SessionState::Loaded
+    );
+    assert_eq!(loaded.entries.len(), 1);
+    let ChatEntryKind::User { attachments, .. } = &loaded.entries[0].kind else {
+        panic!("original user entry should survive rollback");
+    };
+    assert_eq!(attachments[0].data(), TINY_PNG);
+    assert_eq!(loaded.token_ledger.len(), 1);
+    assert_eq!(loaded.token_ledger[0].tokens_sent, 100);
+    assert_eq!(loaded.token_ledger[0].tokens_received, 50);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn stale_snapshot_does_not_replace_newer_snapshot() {
+    // Given two ordered captures from one authoritative session.
+    let (_dir, store) = make_store().await;
+    let mut session = make_session(&SessionId::new(), "newer");
+    let stale = session.capture_snapshot();
+    session.set_title("newer".to_owned());
+    let newer = session.capture_snapshot();
+
+    // When saving the newer revision and then the stale revision.
+    store.save(&newer).await.expect("save newer");
+    store.save(&stale).await.expect("skip stale");
+
+    // Then the newer revision remains persisted.
+    let loaded = store
+        .load_session(session.session_id())
+        .await
+        .expect("load session")
+        .expect("stored session");
+    assert_eq!(loaded.metadata.title.as_deref(), Some("newer"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn load_session_returns_one_complete_durable_snapshot() {
+    // Given a session containing metadata, an attachment, history, and token accounting.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("complete".to_owned());
+    let mut entry = ChatEntry::user("hello");
+    if let ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+        attachments.push(jinn_provider::Attachment::image(
+            "image/png".to_owned(),
+            TINY_PNG.to_vec(),
+        ));
+    }
+    session.push_entry(entry);
+    session.push_token_record(jinn_token_count_msg::TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 10,
+        tokens_received: 20,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+    store.save(&session.capture_snapshot()).await.expect("save");
+
+    // When the session is loaded through the store.
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("stored session");
+
+    // Then one complete durable snapshot contains all parts from the same read.
+    assert_eq!(loaded.metadata.title.as_deref(), Some("complete"));
+    assert_eq!(
+        loaded.metadata.session_state,
+        jinn_session_store_msg::SessionState::Loaded
+    );
+    assert_eq!(loaded.entries.len(), 1);
+    let ChatEntryKind::User { attachments, .. } = &loaded.entries[0].kind else {
+        panic!("expected user entry");
+    };
+    assert_eq!(attachments[0].data(), TINY_PNG);
+    assert_eq!(loaded.token_ledger.len(), 1);
+    assert_eq!(loaded.token_ledger[0].tokens_sent, 10);
+    assert_eq!(loaded.token_ledger[0].tokens_received, 20);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn stale_archive_snapshot_is_rejected() {
+    // Given a newer revision already persisted for a session.
+    let (_dir, store) = make_store().await;
+    let session = make_session(&SessionId::new(), "newer");
+    let stale = session.capture_snapshot();
+    let newer = session.capture_snapshot();
+    store.save(&newer).await.expect("save newer");
+
+    // When an older revision is submitted for archive.
+    let result = store.archive_snapshots(&[stale]).await;
+
+    // Then the archive is rejected and the newer durable state remains unchanged.
+    assert!(result.is_err());
+    let loaded = store
+        .load_session(session.session_id())
+        .await
+        .expect("load")
+        .expect("stored session");
+    assert_eq!(loaded.metadata.title.as_deref(), Some("newer"));
 }
 
 #[rstest::rstest]
@@ -249,7 +433,7 @@ async fn save_creates_directory() {
     let session = make_session(&SessionId::new(), "Mkdir Test");
 
     // When saving.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     // Then the directory is created.
     assert!(nested.exists());
@@ -262,7 +446,7 @@ async fn delete_removes_session() {
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     store
-        .save(&make_session(&session_id, "To Delete"))
+        .save(&make_session(&session_id, "To Delete").capture_snapshot())
         .await
         .expect("save");
 
@@ -302,7 +486,10 @@ async fn fork_creates_new_session_with_entries_up_to_ordinal() {
     source.push_entry(ChatEntry::user("first"));
     source.push_entry(ChatEntry::assistant("second"));
     source.push_entry(ChatEntry::user("third"));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking at ordinal 1 (includes entries 0 and 1).
     let forked_id = store.fork(&source_id, 1).await.expect("fork");
@@ -345,7 +532,10 @@ async fn fork_at_the_newest_entry_ordinal_includes_that_entry() {
     source.set_title("Stale-source regression".to_owned());
     source.push_entry(ChatEntry::user("question"));
     source.push_entry(ChatEntry::assistant("fresh answer"));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking at the newest entry's ordinal (1).
     let forked_id = store.fork(&source_id, 1).await.expect("fork");
@@ -379,7 +569,10 @@ async fn fork_does_not_modify_source() {
     source.push_entry(ChatEntry::user("a"));
     source.push_entry(ChatEntry::assistant("b"));
     source.push_entry(ChatEntry::user("c"));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking at ordinal 1.
     store.fork(&source_id, 1).await.expect("fork");
@@ -404,7 +597,10 @@ async fn fork_shares_entry_data_not_junction_rows() {
     source.set_session_id(source_id.clone());
     source.set_title("Source".to_owned());
     source.push_entry(ChatEntry::user("shared entry"));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking at ordinal 0.
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
@@ -462,7 +658,7 @@ async fn all_entry_kinds_round_trip() {
     ));
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -513,7 +709,7 @@ async fn pin_position_round_trips() {
     session.push_entry(ChatEntry::user("unpinned"));
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -557,7 +753,7 @@ async fn token_ledger_round_trips() {
     });
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -602,7 +798,7 @@ async fn token_ledger_round_trips_prompt_and_cached_tokens() {
     });
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -629,7 +825,10 @@ async fn delete_cleans_up_orphaned_entries() {
     source.set_session_id(source_id.clone());
     source.set_title("Source".to_owned());
     source.push_entry(ChatEntry::user("shared"));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
 
@@ -666,7 +865,7 @@ async fn cwd_round_trips_through_save_and_load() {
     session.set_cwd(std::path::PathBuf::from("/tmp/my-project"));
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -688,7 +887,10 @@ async fn fork_inherits_cwd_from_source() {
     source.set_title("Original".to_owned());
     source.push_entry(ChatEntry::user("hello"));
     source.set_cwd(std::path::PathBuf::from("/home/user/project"));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking.
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
@@ -718,7 +920,10 @@ async fn fork_strips_suppressed_task_tool() {
             .disabled_tools
             .insert(jinn_tools_msg::TASK_TOOL_NAME.to_owned());
     }
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking.
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
@@ -750,7 +955,10 @@ async fn fork_preserves_other_disabled_tools() {
     source.set_title("Manual disable".to_owned());
     source.push_entry(ChatEntry::user("hello"));
     source.set_disabled_tools(std::collections::HashSet::from(["write".to_owned()]));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking.
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
@@ -791,7 +999,7 @@ async fn project_round_trips_through_save_and_load() {
     session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -815,7 +1023,7 @@ async fn project_defaults_to_none_for_legacy_rows() {
     let session = make_session(&session_id, "Legacy Session");
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -837,7 +1045,10 @@ async fn fork_inherits_project_from_source() {
     source.set_title("Original".to_owned());
     source.push_entry(ChatEntry::user("hello"));
     source.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking.
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
@@ -882,7 +1093,7 @@ async fn summary_from_store_carries_project() {
     session.set_title("Summary Project".to_owned());
     session.push_entry(ChatEntry::user("hello"));
     session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     // When loading summaries.
     let summaries = store.load_summaries().await.expect("load_summaries");
@@ -906,11 +1117,17 @@ async fn save_updates_cwd_on_existing_session() {
     session.set_title("CWD Update".to_owned());
     session.push_entry(ChatEntry::user("hello"));
     session.set_cwd(std::path::PathBuf::from("/old/path"));
-    store.save(&session).await.expect("save v1");
+    store
+        .save(&session.capture_snapshot())
+        .await
+        .expect("save v1");
 
     // When saving with an updated cwd.
     session.set_cwd(std::path::PathBuf::from("/new/path"));
-    store.save(&session).await.expect("save v2");
+    store
+        .save(&session.capture_snapshot())
+        .await
+        .expect("save v2");
 
     // Then the loaded session has the new cwd.
     let loaded = store
@@ -939,7 +1156,7 @@ async fn ignored_field_round_trips() {
     // When marking entries 2,3 as ignored.
     session.mark_entries_ignored(&[2, 3]);
 
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -970,7 +1187,7 @@ async fn lifecycle_metadata_round_trips() {
     session.set_lifecycle_args(vec!["my-branch".to_owned(), "--private".to_owned()]);
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -994,7 +1211,7 @@ async fn session_without_lifecycle_loads_as_none() {
     let session = make_session(&session_id, "Plain Session");
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -1018,7 +1235,10 @@ async fn fork_inherits_lifecycle_metadata() {
     source.push_entry(ChatEntry::user("hello"));
     source.set_lifecycle_name(Some("fossil branch".to_owned()));
     source.set_lifecycle_args(vec!["dev".to_owned()]);
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking.
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
@@ -1046,7 +1266,7 @@ async fn lifecycle_script_state_setup_ran_round_trips() {
     session.advance_lifecycle_after_setup();
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -1069,7 +1289,7 @@ async fn lifecycle_script_state_nothing_ran_round_trips() {
     let session = make_session(&session_id, "Default State");
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -1094,7 +1314,10 @@ async fn fork_inherits_lifecycle_script_state() {
     source.set_title("Source".to_owned());
     source.push_entry(ChatEntry::user("hello"));
     source.advance_lifecycle_after_setup();
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking.
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
@@ -1125,7 +1348,7 @@ async fn non_persistent_session_is_not_written() {
 
     // When saving.
     store
-        .save(&session)
+        .save(&session.capture_snapshot())
         .await
         .expect("save should be a no-op, not an error");
 
@@ -1150,7 +1373,7 @@ async fn persistent_session_is_written() {
     session.set_persist(true);
 
     // When saving.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     // Then the row exists.
     let loaded = store
@@ -1182,7 +1405,7 @@ async fn streamed_timing_roundtrips_through_db() {
     session.push_entry(entry);
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     let loaded = store
         .load_session(&session_id)
@@ -1220,7 +1443,10 @@ async fn fork_ordinal_persists_across_save_and_load() {
     source.push_entry(ChatEntry::user("first"));
     source.push_entry(ChatEntry::assistant("second"));
     source.push_entry(ChatEntry::user("third"));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking at ordinal 1.
     let forked_id = store.fork(&source_id, 1).await.expect("fork");
@@ -1247,7 +1473,10 @@ async fn fork_blocking_sets_fork_ordinal() {
     source.push_entry(ChatEntry::user("c"));
     source.push_entry(ChatEntry::assistant("d"));
     source.push_entry(ChatEntry::user("e"));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking at ordinal 4 (all entries inherited).
     let forked_id = store.fork(&source_id, 4).await.expect("fork");
@@ -1432,7 +1661,7 @@ fn metadata_blob_is_unchanged_by_group_composition() {
 
     // When converting the session core to the persisted metadata representation.
     let blob = serde_json::to_string(&crate::sqlite::PersistableCore::from(
-        &session.persistable_core(),
+        &session.capture_snapshot().metadata,
     ))
     .expect("serialize metadata");
 
@@ -1510,7 +1739,7 @@ async fn sessions_table_has_exactly_nine_columns() {
     let session_id = SessionId::new();
     let mut session = make_session(&session_id, "Schema Check");
     session.set_model(ModelSelection::Single("anthropic/claude-opus-4".to_owned()));
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     // When listing the sessions table columns.
     let db_path = dir.path().join("sessions.db");
@@ -1606,7 +1835,7 @@ async fn user_entry_with_image_attachment_roundtrips_through_sqlite() {
     session.push_entry(entry);
 
     // When saving and reloading the session.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -1657,18 +1886,18 @@ fn legacy_flat_lifecycle_blob_loads_after_group_composition() {
     // When deserializing and restoring it into a session core.
     let persistable: crate::sqlite::PersistableCore =
         serde_json::from_str(legacy_blob).expect("deserialize legacy blob");
-    let core = jinn_domain::feat::session::chat_session::SessionCore::from(persistable);
+    let metadata: jinn_session_state::SessionSnapshotMetadata = persistable.into();
 
-    // Then every persisted lifecycle value is restored into the composed group.
-    assert_eq!(core.identity.title.as_deref(), Some("Legacy lifecycle"));
-    assert_eq!(core.lifecycle.cwd, std::path::Path::new("/legacy/project"));
-    assert_eq!(core.lifecycle.lifecycle_name.as_deref(), Some("release"));
-    assert_eq!(core.lifecycle.lifecycle_args, ["--verbose"]);
+    // Then every persisted lifecycle value is restored into snapshot metadata.
+    assert_eq!(metadata.title.as_deref(), Some("Legacy lifecycle"));
+    assert_eq!(metadata.cwd, std::path::Path::new("/legacy/project"));
+    assert_eq!(metadata.lifecycle_name.as_deref(), Some("release"));
+    assert_eq!(metadata.lifecycle_args, ["--verbose"]);
     assert_eq!(
-        core.lifecycle.lifecycle_script_state,
+        metadata.lifecycle_script_state,
         jinn_domain::feat::session::chat_session::LifecycleScriptState::TeardownRan
     );
-    assert!(!core.storage.persist);
+    assert!(!metadata.persist);
 }
 
 #[rstest::rstest]
@@ -1680,7 +1909,7 @@ async fn legacy_blob_without_origin_loads_as_user() {
     let session_id = SessionId::new();
     session.set_session_id(session_id.clone());
     let blob = serde_json::to_string(&crate::sqlite::PersistableCore::from(
-        &session.persistable_core(),
+        &session.capture_snapshot().metadata,
     ))
     .expect("serialize");
 
@@ -1694,11 +1923,11 @@ async fn legacy_blob_without_origin_loads_as_user() {
     let stripped = serde_json::to_string(&value).expect("re-serialize");
     let persistable: crate::sqlite::PersistableCore =
         serde_json::from_str(&stripped).expect("deserialize legacy blob");
-    let core = jinn_domain::feat::session::chat_session::SessionCore::from(persistable);
+    let metadata: jinn_session_state::SessionSnapshotMetadata = persistable.into();
 
     // Then the legacy blob loads as User.
     assert_eq!(
-        core.identity.origin,
+        metadata.origin,
         jinn_domain::feat::session::chat_session::SessionOrigin::User
     );
 }
@@ -1710,7 +1939,7 @@ async fn legacy_blob_without_project_defaults_to_none() {
     let mut session = ChatSessionState::new();
     session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
     let blob = serde_json::to_string(&crate::sqlite::PersistableCore::from(
-        &session.persistable_core(),
+        &session.capture_snapshot().metadata,
     ))
     .expect("serialize");
 
@@ -1724,10 +1953,10 @@ async fn legacy_blob_without_project_defaults_to_none() {
     let stripped = serde_json::to_string(&value).expect("re-serialize");
     let persistable: crate::sqlite::PersistableCore =
         serde_json::from_str(&stripped).expect("deserialize legacy blob");
-    let core = jinn_domain::feat::session::chat_session::SessionCore::from(persistable);
+    let metadata: jinn_session_state::SessionSnapshotMetadata = persistable.into();
 
     // Then the legacy blob loads with no project (blank column).
-    assert_eq!(core.identity.project, None);
+    assert_eq!(metadata.project, None);
 }
 
 #[rstest::rstest]
@@ -1741,7 +1970,7 @@ async fn subagent_origin_roundtrips_through_store() {
     child.set_session_id(session_id.clone());
     child.set_title("subagent".to_owned());
     child.push_entry(ChatEntry::user("hello"));
-    store.save(&child).await.expect("save");
+    store.save(&child.capture_snapshot()).await.expect("save");
 
     // When loading it back.
     let loaded = store
@@ -1769,7 +1998,10 @@ async fn forked_session_persists_fork_origin() {
     source.set_title("subagent".to_owned());
     source.push_entry(ChatEntry::user("first"));
     source.push_entry(ChatEntry::assistant("second"));
-    store.save(&source).await.expect("save source");
+    store
+        .save(&source.capture_snapshot())
+        .await
+        .expect("save source");
 
     // When forking it at ordinal 0.
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
@@ -1798,7 +2030,10 @@ async fn set_archived_many_round_trips_subset() {
     let b = SessionId::new();
     let c = SessionId::new();
     for (id, title) in [(&a, "a"), (&b, "b"), (&c, "c")] {
-        store.save(&make_session(id, title)).await.expect("save");
+        store
+            .save(&make_session(id, title).capture_snapshot())
+            .await
+            .expect("save");
     }
 
     // When archiving a subset (a and c) in one call.
@@ -1828,7 +2063,10 @@ async fn set_archived_many_with_empty_slice_is_noop() {
     // Given a store with one saved session.
     let (_dir, store) = make_store().await;
     let a = SessionId::new();
-    store.save(&make_session(&a, "a")).await.expect("save");
+    store
+        .save(&make_session(&a, "a").capture_snapshot())
+        .await
+        .expect("save");
 
     // When calling set_archived_many with an empty slice.
     store
@@ -1851,8 +2089,14 @@ async fn set_archived_many_false_un_archives() {
     let (_dir, store) = make_store().await;
     let a = SessionId::new();
     let b = SessionId::new();
-    store.save(&make_session(&a, "a")).await.expect("save");
-    store.save(&make_session(&b, "b")).await.expect("save");
+    store
+        .save(&make_session(&a, "a").capture_snapshot())
+        .await
+        .expect("save");
+    store
+        .save(&make_session(&b, "b").capture_snapshot())
+        .await
+        .expect("save");
     store
         .set_archived_many(&[a.clone(), b.clone()], true)
         .await
@@ -1866,9 +2110,11 @@ async fn set_archived_many_false_un_archives() {
 
     // Then both sessions are loaded again.
     let summaries = store.load_summaries().await.expect("summaries");
-    assert!(summaries.iter().all(|s| {
-        s.session_state == jinn_session_store_msg::SessionState::Loaded
-    }));
+    assert!(
+        summaries
+            .iter()
+            .all(|s| { s.session_state == jinn_session_store_msg::SessionState::Loaded })
+    );
 }
 
 #[rstest::rstest]
@@ -1877,7 +2123,10 @@ async fn set_archived_many_ignores_unknown_ids() {
     // Given a store with one saved session.
     let (_dir, store) = make_store().await;
     let a = SessionId::new();
-    store.save(&make_session(&a, "a")).await.expect("save");
+    store
+        .save(&make_session(&a, "a").capture_snapshot())
+        .await
+        .expect("save");
 
     // When archiving a slice containing the session and an unknown ID.
     store
@@ -1911,7 +2160,7 @@ async fn token_count_round_trips_through_store() {
     session.push_entry(counted);
 
     // When saving and loading.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     let loaded = store
         .load_session(&session_id)
         .await
@@ -1936,7 +2185,10 @@ async fn saving_entry_with_uncomputed_count_preserves_persisted_count() {
     let shared = ChatEntry::user("shared entry");
     let shared_id = shared.id.clone();
     session.push_entry(shared);
-    store.save(&session).await.expect("first save");
+    store
+        .save(&session.capture_snapshot())
+        .await
+        .expect("first save");
 
     // (Seed a persisted count directly, as if another session's save had.)
     store
@@ -1958,7 +2210,10 @@ async fn saving_entry_with_uncomputed_count_preserves_persisted_count() {
         clone.id = shared_id.clone();
         clone
     });
-    store.save(&other).await.expect("second save");
+    store
+        .save(&other.capture_snapshot())
+        .await
+        .expect("second save");
 
     // Then the previously persisted count is not clobbered by the NULL.
     let loaded = store
@@ -2019,7 +2274,7 @@ async fn save_marks_session_dirty_and_reindex_indexes_it() {
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     store
-        .save(&make_two_entry_session(&session_id, "sailing"))
+        .save(&make_two_entry_session(&session_id, "sailing").capture_snapshot())
         .await
         .expect("save");
 
@@ -2059,7 +2314,7 @@ async fn reindex_honors_default_field_visibility_via_roles() {
         "needle found in config.toml",
         ToolResultStatus::Success,
     ));
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     drain(&store).await.expect("reindex");
 
     // When searching without a role filter.
@@ -2101,7 +2356,7 @@ async fn reindex_clears_rows_of_deleted_sessions() {
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     store
-        .save(&make_two_entry_session(&session_id, "doomed"))
+        .save(&make_two_entry_session(&session_id, "doomed").capture_snapshot())
         .await
         .expect("save");
     drain(&store).await.expect("reindex");
@@ -2134,11 +2389,11 @@ async fn search_reports_per_session_rollup() {
     let a = SessionId::new();
     let b = SessionId::new();
     store
-        .save(&make_two_entry_session(&a, "alpha"))
+        .save(&make_two_entry_session(&a, "alpha").capture_snapshot())
         .await
         .expect("save a");
     store
-        .save(&make_two_entry_session(&b, "beta"))
+        .save(&make_two_entry_session(&b, "beta").capture_snapshot())
         .await
         .expect("save b");
     drain(&store).await.expect("reindex");
@@ -2172,7 +2427,7 @@ async fn search_limits_hits_but_reports_full_totals() {
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     store
-        .save(&make_two_entry_session(&session_id, "capped"))
+        .save(&make_two_entry_session(&session_id, "capped").capture_snapshot())
         .await
         .expect("save");
     drain(&store).await.expect("reindex");
@@ -2204,11 +2459,11 @@ async fn search_filters_by_session_ids() {
     let a = SessionId::new();
     let b = SessionId::new();
     store
-        .save(&make_two_entry_session(&a, "alpha"))
+        .save(&make_two_entry_session(&a, "alpha").capture_snapshot())
         .await
         .expect("save a");
     store
-        .save(&make_two_entry_session(&b, "beta"))
+        .save(&make_two_entry_session(&b, "beta").capture_snapshot())
         .await
         .expect("save b");
     drain(&store).await.expect("reindex");
@@ -2238,7 +2493,7 @@ async fn search_surfaces_fts_syntax_errors_verbatim() {
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     store
-        .save(&make_two_entry_session(&session_id, "syntax"))
+        .save(&make_two_entry_session(&session_id, "syntax").capture_snapshot())
         .await
         .expect("save");
     drain(&store).await.expect("reindex");
@@ -2271,7 +2526,7 @@ async fn search_dates_filter_on_entry_timestamps() {
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     store
-        .save(&make_two_entry_session(&session_id, "dated"))
+        .save(&make_two_entry_session(&session_id, "dated").capture_snapshot())
         .await
         .expect("save");
     drain(&store).await.expect("reindex");
@@ -2305,7 +2560,7 @@ async fn search_snippets_are_single_line_with_match_markers() {
     session.set_session_id(session_id.clone());
     session.set_title("snippets".to_owned());
     session.push_entry(ChatEntry::assistant("first line\nneedle on its\nown line"));
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     drain(&store).await.expect("reindex");
 
     // When searching for the needle.
@@ -2348,7 +2603,7 @@ async fn search_flags_ignored_entries_as_excluded() {
         ChatEntry::user("dropped needle")
             .with_context_override(jinn_core_types::ContextOverride::ForcedExclude),
     );
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     drain(&store).await.expect("reindex");
 
     // When searching.
@@ -2387,7 +2642,7 @@ async fn search_does_not_flag_pinned_entries_as_excluded() {
     session.set_title("pinned".to_owned());
     session
         .push_entry(ChatEntry::user("pinned needle").with_pin(jinn_core_types::PinPosition::Top));
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     drain(&store).await.expect("reindex");
 
     // When searching.
@@ -2420,7 +2675,7 @@ async fn fetch_window_returns_entries_around_anchor() {
     for i in 0..5 {
         session.push_entry(ChatEntry::user(format!("entry {i}")));
     }
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     // When fetching a window of 3 entries anchored at the middle entry.
     let anchor = session.history()[2].id.clone();
@@ -2450,7 +2705,7 @@ async fn fetch_window_clamps_at_session_start() {
     for i in 0..5 {
         session.push_entry(ChatEntry::user(format!("entry {i}")));
     }
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     // When fetching a window anchored at the first entry.
     let anchor = session.history()[0].id.clone();
@@ -2475,7 +2730,7 @@ async fn fetch_window_errors_for_anchor_in_wrong_session() {
     session.set_session_id(session_id.clone());
     session.set_title("solo".to_owned());
     session.push_entry(ChatEntry::user("entry here"));
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     // When fetching a window anchored at an entry from another session.
     let stranger = ChatEntry::user("stranger");
@@ -2514,7 +2769,7 @@ async fn fetch_tail_returns_last_entries() {
     for i in 0..5 {
         session.push_entry(ChatEntry::user(format!("entry {i}")));
     }
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     // When fetching the tail with a limit of 2.
     let window = store
@@ -2543,7 +2798,7 @@ async fn fetch_tail_marks_excluded_entries() {
         ChatEntry::assistant("dropped")
             .with_context_override(jinn_core_types::ContextOverride::ForcedExclude),
     );
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     // When fetching the tail.
     let window = store
@@ -2566,11 +2821,11 @@ async fn dirty_session_ids_returns_saved_sessions() {
     let a = SessionId::new();
     let b = SessionId::new();
     store
-        .save(&make_two_entry_session(&a, "a"))
+        .save(&make_two_entry_session(&a, "a").capture_snapshot())
         .await
         .expect("save");
     store
-        .save(&make_two_entry_session(&b, "b"))
+        .save(&make_two_entry_session(&b, "b").capture_snapshot())
         .await
         .expect("save");
 
@@ -2591,7 +2846,7 @@ async fn pending_dirty_count_tracks_markers() {
     let (_dir, store) = make_store().await;
     let id = SessionId::new();
     store
-        .save(&make_two_entry_session(&id, "counted"))
+        .save(&make_two_entry_session(&id, "counted").capture_snapshot())
         .await
         .expect("save");
 
@@ -2665,7 +2920,7 @@ async fn partial_chunk_persists_resume_point_and_next_chunk_finishes() {
     for i in 0..6 {
         session.push_entry(ChatEntry::user(format!("entry {i} mentions needle")));
     }
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
 
     // When the first bounded chunk runs.
     let finished = store.reindex_session_chunk(&id, 2).await.expect("chunk 1");
@@ -2745,7 +3000,7 @@ async fn reindex_maps_every_fts_row_in_the_rowid_side_table() {
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     store
-        .save(&make_two_entry_session(&session_id, "mapped"))
+        .save(&make_two_entry_session(&session_id, "mapped").capture_snapshot())
         .await
         .expect("save");
     drain(&store).await.expect("reindex");
@@ -2767,10 +3022,8 @@ async fn reindexed_rebuild_replaces_rows_via_rowid_map() {
     // Given an indexed session.
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
-    store
-        .save(&make_two_entry_session(&session_id, "rebuild"))
-        .await
-        .expect("save");
+    let session = make_two_entry_session(&session_id, "rebuild");
+    store.save(&session.capture_snapshot()).await.expect("save");
     drain(&store).await.expect("initial reindex");
     let (initial_fts, initial_map) =
         fts_and_map_counts(store.pool(), &session_id.to_string()).await;
@@ -2778,7 +3031,7 @@ async fn reindexed_rebuild_replaces_rows_via_rowid_map() {
     // When the session is saved again (re-marked dirty: a rebuild-from-zero)
     // and reindexed.
     store
-        .save(&make_two_entry_session(&session_id, "rebuild"))
+        .save(&session.capture_snapshot())
         .await
         .expect("save again");
     drain(&store).await.expect("rebuild reindex");
@@ -2831,7 +3084,7 @@ async fn reindex_of_never_indexed_session_skips_delete_with_empty_map() {
     let mut session = make_two_entry_session(&session_id, "fresh");
     // Save the session first so the marker exists with entries attached,
     // then clear its FTS presence to simulate a never-indexed session.
-    store.save(&session).await.expect("save");
+    store.save(&session.capture_snapshot()).await.expect("save");
     drain(&store).await.expect("reindex");
     store
         .pool()
