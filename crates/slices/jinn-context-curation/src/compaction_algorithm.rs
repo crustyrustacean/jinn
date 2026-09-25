@@ -3,8 +3,8 @@
 //! Extracted from the old `CompactionActor` for reuse by `CompactionWorker`.
 
 use jinn_core_types::{ChatEntry, ChatEntryKind};
-use jinn_domain::feat::context::strategy::token_estimator::CharRatioEstimator;
-use jinn_domain::feat::context::strategy::token_estimator::estimate_entry_tokens;
+use jinn_llm_support::token_estimator::CharRatioEstimator;
+use jinn_llm_support::token_estimator::estimate_entry_tokens;
 
 /// Whether a chat entry kind is a self-sufficient opener for the kept
 /// (recent) region after compaction.

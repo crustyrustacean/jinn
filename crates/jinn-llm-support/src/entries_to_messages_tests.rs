@@ -6,10 +6,11 @@
     reason = "test code"
 )]
 
-use crate::feat::provider::entries_to_messages::entries_to_messages;
-use crate::protocol::ChangeSource;
-use crate::protocol::ToolResultStatus;
-use crate::protocol::{ChatEntry, LlmMessage, PinPosition};
+use crate::entries_to_messages::entries_to_messages;
+use jinn_core_types::ChangeSource;
+use jinn_core_types::ToolResultStatus;
+use jinn_core_types::{ChatEntry, PinPosition};
+use jinn_provider::LlmMessage;
 
 #[rstest::rstest]
 fn entries_to_messages_converts_user_entries() {
@@ -540,9 +541,9 @@ fn transient_entries_are_skipped() {
 fn compaction_entry_produces_user_message_with_summary() {
     // Given a compaction entry.
     let entries = vec![ChatEntry {
-        id: crate::protocol::ChatEntryId::new(),
-        timing: crate::protocol::EntryTiming::instant_now(),
-        kind: crate::protocol::ChatEntryKind::Compaction {
+        id: jinn_core_types::ChatEntryId::new(),
+        timing: jinn_core_types::EntryTiming::instant_now(),
+        kind: jinn_core_types::ChatEntryKind::Compaction {
             summary: "User asked to fix a bug. Work completed.".to_owned(),
             tokens_before: 5000,
             tokens_after: 250,
@@ -550,7 +551,7 @@ fn compaction_entry_produces_user_message_with_summary() {
             model_used: "test/model".to_owned(),
         },
         pin_position: None,
-        context_override: crate::protocol::ContextOverride::Default,
+        context_override: jinn_core_types::ContextOverride::Default,
         context_history: Vec::new(),
         token_count: None,
     }];
@@ -655,9 +656,9 @@ fn message_order_after_compaction() {
         ChatEntry::user("old question").with_ignored(true),
         ChatEntry::assistant("old answer").with_ignored(true),
         ChatEntry {
-            id: crate::protocol::ChatEntryId::new(),
-            timing: crate::protocol::EntryTiming::instant_now(),
-            kind: crate::protocol::ChatEntryKind::Compaction {
+            id: jinn_core_types::ChatEntryId::new(),
+            timing: jinn_core_types::EntryTiming::instant_now(),
+            kind: jinn_core_types::ChatEntryKind::Compaction {
                 summary: "The user asked about X and was told Y".to_owned(),
                 tokens_before: 500,
                 tokens_after: 25,
@@ -665,7 +666,7 @@ fn message_order_after_compaction() {
                 model_used: "test/model".to_owned(),
             },
             pin_position: None,
-            context_override: crate::protocol::ContextOverride::Default,
+            context_override: jinn_core_types::ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
         },
@@ -744,7 +745,7 @@ fn error_entry_between_user_and_assistant() {
 #[rstest::rstest]
 fn error_entry_forced_exclude_is_skipped() {
     // Given an Error entry with ForcedExclude.
-    use crate::protocol::ContextOverride;
+    use jinn_core_types::ContextOverride;
     let entries = vec![
         ChatEntry::error("ignored error").with_context_override(ContextOverride::ForcedExclude),
     ];
@@ -759,7 +760,7 @@ fn error_entry_forced_exclude_is_skipped() {
 #[rstest::rstest]
 fn error_entry_forced_include_produces_user_message() {
     // Given an Error entry with ForcedInclude (not pinned).
-    use crate::protocol::ContextOverride;
+    use jinn_core_types::ContextOverride;
     let entries = vec![
         ChatEntry::error("important error").with_context_override(ContextOverride::ForcedInclude),
     ];
@@ -847,7 +848,7 @@ fn pinned_transient_entry_produces_user_message() {
 #[rstest::rstest]
 fn forced_include_system_entry_produces_system_message() {
     // Given a System entry with ForcedInclude (not pinned).
-    use crate::protocol::ContextOverride;
+    use jinn_core_types::ContextOverride;
     let entries =
         vec![ChatEntry::system("important").with_context_override(ContextOverride::ForcedInclude)];
 
@@ -868,7 +869,7 @@ fn forced_include_system_entry_produces_system_message() {
 #[rstest::rstest]
 fn forced_include_actor_entry_produces_user_message() {
     // Given an Actor entry with ForcedInclude (not pinned).
-    use crate::protocol::ContextOverride;
+    use jinn_core_types::ContextOverride;
     let entries =
         vec![ChatEntry::actor("src", "text").with_context_override(ContextOverride::ForcedInclude)];
 
@@ -899,20 +900,20 @@ fn forced_exclude_dangling_tool_call_produces_valid_messages() {
 
     // Force-exclude the dangling entries (simulating force_exclude_dangling_tool_calls).
     entries[1].apply_context_override(
-        crate::protocol::ContextOverride::ForcedExclude,
+        jinn_core_types::ContextOverride::ForcedExclude,
         ChangeSource::Internal {
             label: "test".to_owned(),
         },
     );
     entries[2].apply_context_override(
-        crate::protocol::ContextOverride::ForcedExclude,
+        jinn_core_types::ContextOverride::ForcedExclude,
         ChangeSource::Internal {
             label: "test".to_owned(),
         },
     );
     entries[2].apply_context_override(
-        crate::protocol::ContextOverride::ForcedExclude,
-        crate::protocol::ChangeSource::Internal {
+        jinn_core_types::ContextOverride::ForcedExclude,
+        jinn_core_types::ChangeSource::Internal {
             label: "test".to_owned(),
         },
     );
@@ -954,14 +955,14 @@ fn forced_exclude_preserves_complete_tool_loop_in_messages() {
 
     // Force-exclude only the dangling entries (tc-2 and its empty Assistant).
     entries[4].apply_context_override(
-        crate::protocol::ContextOverride::ForcedExclude,
-        crate::protocol::ChangeSource::Internal {
+        jinn_core_types::ContextOverride::ForcedExclude,
+        jinn_core_types::ChangeSource::Internal {
             label: "test".to_owned(),
         },
     );
     entries[5].apply_context_override(
-        crate::protocol::ContextOverride::ForcedExclude,
-        crate::protocol::ChangeSource::Internal {
+        jinn_core_types::ContextOverride::ForcedExclude,
+        jinn_core_types::ChangeSource::Internal {
             label: "test".to_owned(),
         },
     );
@@ -1010,20 +1011,20 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
 
     // Force-exclude the dangling entries (tc-3, tc-4, and their empty Assistant).
     entries[7].apply_context_override(
-        crate::protocol::ContextOverride::ForcedExclude,
-        crate::protocol::ChangeSource::Internal {
+        jinn_core_types::ContextOverride::ForcedExclude,
+        jinn_core_types::ChangeSource::Internal {
             label: "test".to_owned(),
         },
     );
     entries[8].apply_context_override(
-        crate::protocol::ContextOverride::ForcedExclude,
-        crate::protocol::ChangeSource::Internal {
+        jinn_core_types::ContextOverride::ForcedExclude,
+        jinn_core_types::ChangeSource::Internal {
             label: "test".to_owned(),
         },
     );
     entries[9].apply_context_override(
-        crate::protocol::ContextOverride::ForcedExclude,
-        crate::protocol::ChangeSource::Internal {
+        jinn_core_types::ContextOverride::ForcedExclude,
+        jinn_core_types::ChangeSource::Internal {
             label: "test".to_owned(),
         },
     );
@@ -1119,7 +1120,7 @@ fn excluded_empty_assistant_synthesizes_valid_parent_for_complete_loop() {
     // is default-out while its calls and results are in-context).
     let mut assistant = ChatEntry::assistant("");
     assistant.apply_context_override(
-        crate::protocol::ContextOverride::ForcedExclude,
+        jinn_core_types::ContextOverride::ForcedExclude,
         ChangeSource::Internal {
             label: "test".to_owned(),
         },
@@ -1294,7 +1295,7 @@ fn message_sequence_validator_accepts_real_empty_assistant_tool_parent() {
 
 fn force_exclude(entry: &mut ChatEntry) {
     entry.apply_context_override(
-        crate::protocol::ContextOverride::ForcedExclude,
+        jinn_core_types::ContextOverride::ForcedExclude,
         ChangeSource::Internal {
             label: "test".to_owned(),
         },
@@ -1302,7 +1303,7 @@ fn force_exclude(entry: &mut ChatEntry) {
 }
 
 fn compaction_entry(summary: &str) -> ChatEntry {
-    use crate::protocol::{ChatEntryId, ChatEntryKind, EntryTiming};
+    use jinn_core_types::{ChatEntryId, ChatEntryKind, EntryTiming};
     ChatEntry {
         id: ChatEntryId::new(),
         timing: EntryTiming::instant_now(),
@@ -1314,7 +1315,7 @@ fn compaction_entry(summary: &str) -> ChatEntry {
             model_used: "test-model".to_owned(),
         },
         pin_position: None,
-        context_override: crate::protocol::ContextOverride::Default,
+        context_override: jinn_core_types::ContextOverride::Default,
         context_history: Vec::new(),
         token_count: None,
     }
@@ -1434,7 +1435,7 @@ fn excluding_compaction_summary_yields_valid_message_sequence() {
     // summary-compaction would sit between a ToolResult and an Assistant, and
     // whose reserve boundary lands on an Assistant opener.
     //   [User, Assistant(big), ToolCall, ToolResult, Assistant(opener), User(recent)]
-    use crate::protocol::ChangeSource;
+    use jinn_core_types::ChangeSource;
     use jinn_context_curation::compaction_algorithm::adjust_cut_to_boundary;
 
     let big_padding = "w".repeat(600);
@@ -1459,7 +1460,7 @@ fn excluding_compaction_summary_yields_valid_message_sequence() {
     // Force-exclude every entry on the compacted side (indices < cut).
     for entry in entries.iter_mut().take(cut) {
         entry.apply_context_override(
-            crate::protocol::ContextOverride::ForcedExclude,
+            jinn_core_types::ContextOverride::ForcedExclude,
             ChangeSource::Internal {
                 label: "compaction".to_owned(),
             },
@@ -1485,7 +1486,7 @@ fn entries_to_messages_passes_user_attachments_through() {
 
     // Given a user entry with one image attachment.
     let mut entry = ChatEntry::user("describe this");
-    if let crate::protocol::ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+    if let jinn_core_types::ChatEntryKind::User { attachments, .. } = &mut entry.kind {
         attachments.push(Attachment::image("image/png".to_owned(), vec![1, 2, 3]));
     }
     let entries = vec![entry];
@@ -1513,7 +1514,7 @@ fn entries_to_messages_passes_user_attachments_through() {
 // editor cannot produce.
 // ═══════════════════════════════════════════════════════════════════════════
 
-use crate::feat::provider::entries_to_messages::enforce_valid_tool_sequences;
+use crate::entries_to_messages::enforce_valid_tool_sequences;
 use jinn_core_types::tool_types::ToolCall;
 
 fn call(id: &str) -> ToolCall {

@@ -6,7 +6,7 @@
 
 use std::sync::OnceLock;
 
-use crate::protocol::{ChatEntry, ChatEntryKind, ContextOverride};
+use jinn_core_types::{ChatEntry, ChatEntryKind, ContextOverride};
 use jinn_core_types::tool_types::ToolDefinition;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -225,7 +225,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::protocol::ChatEntry;
+    use jinn_core_types::ChatEntry;
 
     /// A simple estimator that returns the byte length of text.
     struct ByteLenEstimator;
@@ -269,7 +269,7 @@ mod tests {
             "id-1",
             "read_file",
             "file contents here",
-            crate::protocol::ToolResultStatus::Success,
+            jinn_core_types::ToolResultStatus::Success,
         );
 
         // When estimating tokens.
@@ -294,7 +294,7 @@ mod tests {
         // Given a user entry with two image attachments.
         let estimator = ByteLenEstimator;
         let mut entry = ChatEntry::user("describe");
-        if let crate::protocol::ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+        if let jinn_core_types::ChatEntryKind::User { attachments, .. } = &mut entry.kind {
             attachments.push(Attachment::image("image/png".to_owned(), vec![1]));
             attachments.push(Attachment::image("image/png".to_owned(), vec![2]));
         }
@@ -313,8 +313,8 @@ mod tests {
         let estimator = ByteLenEstimator;
         let mut entry = ChatEntry::user("some excluded text");
         entry.apply_context_override(
-            crate::protocol::ContextOverride::ForcedExclude,
-            crate::protocol::ChangeSource::User,
+            jinn_core_types::ContextOverride::ForcedExclude,
+            jinn_core_types::ChangeSource::User,
         );
 
         // When estimating the entry's content tokens.

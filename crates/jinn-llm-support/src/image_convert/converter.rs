@@ -156,7 +156,7 @@ impl ImageConverterService {
     /// the conversion path.
     #[must_use]
     pub fn unavailable() -> Self {
-        Self::new(Arc::new(crate::feat::image_convert::UnavailableConverter))
+        Self::new(Arc::new(crate::image_convert::UnavailableConverter))
     }
 
     #[must_use]

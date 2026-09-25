@@ -5,7 +5,6 @@ pub mod chat_input;
 pub mod context;
 pub mod file_lister;
 pub mod global;
-pub mod image_convert;
 pub mod install;
 pub mod intent;
 pub mod navigation;

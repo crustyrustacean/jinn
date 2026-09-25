@@ -10,7 +10,7 @@ use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
+use jinn_llm_support::token_estimator::{TiktokenCounter, TokenCounter};
 use jinn_domain::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_inference_msg::{StreamCompleted, StreamCompletedReason, StreamToken};
 use jinn_session_history_msg::CitationsReceived;
@@ -1732,7 +1732,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_uses_local_count_when_no_provider_report() {
-        use jinn_domain::feat::context::strategy::token_estimator::TokenCounter;
+        use jinn_llm_support::token_estimator::TokenCounter;
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1767,7 +1767,7 @@ mod tests {
         actor.on_stream_completed(&event).await;
 
         let counter =
-            jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
+            jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
         let expected = counter.count(content) as u32;
 
         let state = actor.state.read();
@@ -2208,7 +2208,7 @@ mod tests {
 
     /// Deterministic counter for unit testing - counts characters.
     struct CharCounter;
-    impl jinn_domain::feat::context::strategy::token_estimator::TokenCounter for CharCounter {
+    impl jinn_llm_support::token_estimator::TokenCounter for CharCounter {
         fn count(&self, text: &str) -> usize {
             text.chars().count()
         }

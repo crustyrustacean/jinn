@@ -1936,6 +1936,7 @@ dependencies = [
  "jinn-domain",
  "jinn-inference",
  "jinn-inference-msg",
+ "jinn-llm-support",
  "jinn-mcp-msg",
  "jinn-mcp-slice",
  "jinn-persona",
@@ -2164,6 +2165,7 @@ dependencies = [
  "jinn-context-assembly-msg",
  "jinn-core-types",
  "jinn-domain",
+ "jinn-llm-support",
  "jinn-persona-msg",
  "jinn-provider",
  "jinn-session-history-msg",
@@ -2206,6 +2208,7 @@ dependencies = [
  "jinn-context-curation-msg",
  "jinn-core-types",
  "jinn-domain",
+ "jinn-llm-support",
  "jinn-preferences-config",
  "jinn-provider",
  "jinn-provider-config",
@@ -2378,6 +2381,7 @@ dependencies = [
  "jinn-core-types",
  "jinn-cwd-msg",
  "jinn-inference-msg",
+ "jinn-llm-support",
  "jinn-mcp",
  "jinn-mcp-msg",
  "jinn-persona-msg",
@@ -2475,6 +2479,25 @@ dependencies = [
  "serde_json",
  "tokio",
  "trouper",
+]
+
+[[package]]
+name = "jinn-llm-support"
+version = "0.118.0"
+dependencies = [
+ "derive_more",
+ "error-stack",
+ "jinn-context",
+ "jinn-core-types",
+ "jinn-provider",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tiktoken",
+ "tracing",
+ "unicode-segmentation",
+ "wherror",
+ "which 7.0.3",
 ]
 
 [[package]]
@@ -3092,6 +3115,7 @@ dependencies = [
  "jinn-core-types",
  "jinn-domain",
  "jinn-inference-msg",
+ "jinn-llm-support",
  "jinn-persona-msg",
  "jinn-provider",
  "jinn-provider-selection",
@@ -3348,6 +3372,7 @@ dependencies = [
  "error-stack",
  "jinn-core-types",
  "jinn-domain",
+ "jinn-llm-support",
  "jinn-session-history-msg",
  "jinn-session-msg",
  "jinn-session-state",
@@ -3390,6 +3415,7 @@ dependencies = [
  "jinn-core-types",
  "jinn-domain",
  "jinn-inference-msg",
+ "jinn-llm-support",
  "jinn-mcp-msg",
  "jinn-preferences-config",
  "jinn-session-history-msg",

@@ -23,7 +23,7 @@ use crate::compaction_algorithm::{
 use crate::compaction_serializer::serialize_entries_for_compaction;
 use jinn_domain::common::services::Services;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::context::strategy::token_estimator::{CharRatioEstimator, TokenEstimator};
+use jinn_llm_support::token_estimator::{CharRatioEstimator, TokenEstimator};
 
 use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;

@@ -34,7 +34,7 @@ use jinn_domain::PromptTemplatesLoaded;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+use jinn_llm_support::token_estimator::TiktokenCounter;
 use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
 use jinn_persona_msg::{LoadPersonaPickerEntries, PersonasLoaded};
 use jinn_session_history_msg::CitationsReceived;
@@ -85,7 +85,7 @@ pub struct SessionPersistenceActor {
     token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache,
     /// Image converter (ImageMagick) for transcoding non-native image
     /// attachments. Wraps a trait object so tests inject fakes.
-    image_converter: jinn_domain::feat::image_convert::ImageConverterService,
+    image_converter: jinn_llm_support::image_convert::ImageConverterService,
 }
 
 impl BusPublish for SessionPersistenceActor {
@@ -101,7 +101,7 @@ pub struct SessionPersistenceActorDeps {
     pub counter: TiktokenCounter,
     /// Auto-pruner entry token cache for the accumulation gate.
     pub token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache,
-    pub image_converter: jinn_domain::feat::image_convert::ImageConverterService,
+    pub image_converter: jinn_llm_support::image_convert::ImageConverterService,
 }
 
 impl ServiceActor for SessionPersistenceActor {

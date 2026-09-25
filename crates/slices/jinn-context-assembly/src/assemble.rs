@@ -16,10 +16,10 @@ use jinn_context::env_context::{
 };
 use jinn_context_assembly_msg::AssemblyInputs;
 use jinn_core_types::ToolDefinition;
-use jinn_domain::feat::context::strategy::token_estimator::{
+use jinn_llm_support::token_estimator::{
     IMAGE_ATTACHMENT_TOKENS, TokenCounter,
 };
-use jinn_domain::feat::context::tool_prompt::build_tool_context_block;
+use jinn_llm_support::tool_prompt::build_tool_context_block;
 use jinn_domain::protocol::{ChatEntry, LlmMessage, PinPosition, entries_to_messages};
 use jinn_skills::format_skills_for_prompt;
 use jinn_slices::AssembledPrompt;
@@ -295,7 +295,7 @@ fn count_tool_schema_tokens(tools: &[ToolDefinition], counter: &dyn TokenCounter
 pub fn assemble_erased(inputs: serde_json::Value) -> Result<AssembledPrompt, serde_json::Error> {
     let inputs: AssemblyInputs = serde_json::from_value(inputs)?;
     let counter =
-        jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
+        jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
     Ok(assemble(&inputs, &counter))
 }
 
@@ -316,7 +316,7 @@ mod tests {
     use jinn_core_types::tool_types::ToolDefinition;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+    use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_domain::protocol::ChatEntry;
     use jinn_domain::protocol::ToolResultStatus;
     use jinn_skills_msg::Skill;
@@ -373,7 +373,7 @@ mod tests {
     /// can recompute minimap-style per-entry sums with the same tokenizer.
     struct CounterAsEstimator<'a>(&'a TiktokenCounter);
 
-    impl jinn_domain::feat::context::strategy::token_estimator::TokenEstimator
+    impl jinn_llm_support::token_estimator::TokenEstimator
         for CounterAsEstimator<'_>
     {
         fn estimate(&self, text: &str) -> usize {
@@ -1627,7 +1627,7 @@ mod tests {
         assert_eq!(
             counted - baseline,
             u32::try_from(
-                jinn_domain::feat::context::strategy::token_estimator::IMAGE_ATTACHMENT_TOKENS
+                jinn_llm_support::token_estimator::IMAGE_ATTACHMENT_TOKENS
             )
             .unwrap_or(0),
             "image attachment must add the flat per-image cost"
@@ -1652,7 +1652,7 @@ mod tests {
 
         // Then the flat cost is added once per image.
         let image_flat = u32::try_from(
-            jinn_domain::feat::context::strategy::token_estimator::IMAGE_ATTACHMENT_TOKENS,
+            jinn_llm_support::token_estimator::IMAGE_ATTACHMENT_TOKENS,
         )
         .unwrap_or(0);
         assert_eq!(
@@ -1806,7 +1806,7 @@ mod tests {
                 .iter()
                 .filter(|entry| entry.is_in_context())
                 .map(|entry| {
-                    jinn_domain::feat::context::strategy::token_estimator::
+                    jinn_llm_support::token_estimator::
                     estimate_entry_content_tokens(&estimator, entry)
                 })
                 .sum()

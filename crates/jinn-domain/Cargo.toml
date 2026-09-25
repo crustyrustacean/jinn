@@ -33,6 +33,7 @@ jinn-provider = { workspace = true }
 jinn-common = { workspace = true }
 jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
+jinn-llm-support = { workspace = true }
 jinn-session-history = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-context-curation-msg = { workspace = true }

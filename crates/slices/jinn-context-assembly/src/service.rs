@@ -32,7 +32,7 @@ impl ServiceActor for ContextAssemblyService {
 impl MsgHandler<AssembleContext> for ContextAssemblyService {
     async fn handle(&mut self, msg: &AssembleContext, ctx: &mut MsgCtx<'_>) {
         let counter =
-            jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
+            jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
         let prompt = assemble(&msg.inputs, &counter);
         ctx.reply(AssembledResponse {
             session_id: prompt.session_id.clone(),

@@ -16,6 +16,7 @@ jinn-session-msg = { workspace = true }
 jinn-session-state = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-domain = { workspace = true }
+jinn-llm-support = { workspace = true }
 jinn-slices = { workspace = true }
 serde_json = { workspace = true }
 error-stack = { workspace = true }

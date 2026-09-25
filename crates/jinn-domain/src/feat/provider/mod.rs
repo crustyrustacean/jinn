@@ -3,15 +3,11 @@
 //! The provider-selection family (actors, contracts, entry types, the
 //! provider cell) lives in the `jinn-provider-selection` slice and its
 //! `jinn-provider-selection-msg` crate. What remains here: the
-//! streaming indicator (a session-*phase* visual), the chat-entry →
-//! LLM-message converter (context-assembly's vocabulary), and the
-//! provider UI registration.
+//! streaming indicator (a session-*phase* visual) and the provider UI
+//! registration. The chat-entry → LLM-message converter
+//! (context-assembly's vocabulary) now lives in `jinn-llm-support`.
 
-pub mod entries_to_messages;
 pub mod indicator;
-
-#[cfg(test)]
-mod entries_to_messages_tests;
 
 pub use indicator::StreamingIndicatorElement;
 

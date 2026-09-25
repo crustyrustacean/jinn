@@ -415,7 +415,7 @@ mod tests {
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
         use jinn_domain::common::state::State;
-        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+        use jinn_llm_support::token_estimator::TiktokenCounter;
         use jinn_inference_msg::SendToLlmProvider;
         use std::time::Duration;
 
@@ -445,7 +445,7 @@ mod tests {
                 counter: TiktokenCounter::o200k_base(),
                 token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
                 image_converter:
-                    jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
+                    jinn_llm_support::image_convert::ImageConverterService::unavailable(),
             },
         );
 
@@ -484,7 +484,7 @@ mod tests {
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
         use jinn_domain::common::state::State;
-        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+        use jinn_llm_support::token_estimator::TiktokenCounter;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
         use jinn_session_msg::PhaseKind;
@@ -519,7 +519,7 @@ mod tests {
                 counter: TiktokenCounter::o200k_base(),
                 token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
                 image_converter:
-                    jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
+                    jinn_llm_support::image_convert::ImageConverterService::unavailable(),
             },
         );
 
@@ -636,7 +636,7 @@ mod tests {
         use jinn_domain::common::app_state::AppState;
         use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
         use jinn_domain::common::state::State;
-        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+        use jinn_llm_support::token_estimator::TiktokenCounter;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::StreamToken;
         use std::time::Duration;
@@ -678,7 +678,7 @@ mod tests {
                 counter: TiktokenCounter::o200k_base(),
                 token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
                 image_converter:
-                    jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
+                    jinn_llm_support::image_convert::ImageConverterService::unavailable(),
             },
         );
 

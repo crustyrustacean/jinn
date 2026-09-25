@@ -71,7 +71,7 @@ use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
 use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
-use jinn_domain::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
+use jinn_llm_support::token_estimator::{TiktokenCounter, TokenCounter};
 use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
 /// Default enabled state for trivial-assistant auto-prune.
