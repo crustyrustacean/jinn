@@ -83,8 +83,8 @@ pub fn project_spec() -> PickerSpec<ProjectEntry> {
         })
         .bind("<c-enter>", "new+lifecycle", |ctx| {
             // Stash the chosen dir and pop the picker, then chain into the
-            // session-lifecycle picker via the REAL registry — its open hook
-            // (not a legacy loader) now fills the entries.
+            // session-lifecycle picker via the real registry — its open hook
+            // fills the entries.
             let (path, starting_cwd) = {
                 let state = state_of(ctx);
                 let Some(entry) = state.frontend.project_picker().selected_item() else {

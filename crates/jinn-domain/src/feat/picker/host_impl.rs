@@ -2,10 +2,9 @@
 //! `AppState`.
 //!
 //! Typed selection storage is lent as `dyn Any` (specs downcast to the
-//! exact `SelectionState<PickerEntry<T>>` they own); anything not yet on
-//! the trait flows through `state_any`. This is the *only* place that maps
-//! picker ids onto the kernel's typed picker fields, so adding a field
-//! migration is a one-match change here.
+//! exact `SelectionState<PickerEntry<T>>` they own); anything not on the
+//! trait flows through `state_any`. This is the *only* place that maps
+//! picker ids onto the kernel's typed picker fields.
 
 use jinn_picker::Palette;
 use jinn_picker::PickerHost;
@@ -52,6 +51,8 @@ pub fn active_picker_ops(
         PickerKind::Project => state.frontend.project_picker_mut(),
         PickerKind::McpServer => state.frontend.mcp_server_picker_mut(),
         PickerKind::Endpoint => state.frontend.endpoint_picker_mut(),
+        // Retired: no picker state, never pushed as a scope.
+        PickerKind::CompactionModel => return None,
     })
 }
 
@@ -73,6 +74,8 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
         PickerKind::Project => state.frontend.project_picker(),
         PickerKind::McpServer => state.frontend.mcp_server_picker(),
         PickerKind::Endpoint => state.frontend.endpoint_picker(),
+        // Retired: no picker state, never pushed as a scope.
+        PickerKind::CompactionModel => return None,
     })
 }
 
@@ -164,9 +167,9 @@ impl PickerHost for AppStatePickerHost<'_> {
 
     fn palette(&self) -> Palette {
         let theme = &self.state.frontend.theme;
-        // Chrome fields mirror the selection widget's defaults: the legacy
-        // pickers never themed borders/filter/separator, and migrated
-        // pickers must keep that look.
+        // Chrome fields mirror the selection widget's defaults: the pickers
+        // do not theme borders/filter/separator, and this palette keeps
+        // that look.
         Palette {
             border: ratatui::style::Color::DarkGray,
             filter_text: ratatui::style::Color::White,
@@ -317,6 +320,8 @@ impl PickerHost for AppStateRenderHost<'_> {
             PickerKind::Project => self.state.frontend.project_picker(),
             PickerKind::McpServer => self.state.frontend.mcp_server_picker(),
             PickerKind::Endpoint => self.state.frontend.endpoint_picker(),
+            // Retired: no picker state, never pushed as a scope.
+            PickerKind::CompactionModel => return None,
         })
     }
 }
@@ -451,7 +456,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn skill_scrolls_use_the_legacy_slot_until_migration() {
+    fn preview_scrolls_are_stored_per_picker_id() {
         // Given a host state.
         let mut state = AppState::default_with_scope_focus();
         let skill = PickerId::new(SKILL_ID);

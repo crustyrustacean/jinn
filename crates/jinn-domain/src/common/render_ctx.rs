@@ -31,9 +31,8 @@ pub struct RenderCtx<'a> {
     /// scope renders nothing.
     pub overlay_views: &'a OverlayViews<SliceFacts>,
     /// The generic picker spec registry. Empty unless the caller supplied
-    /// the app's registry — spec-driven pickers resolve through it; a picker
-    /// whose scope is open but whose spec is absent from this registry draws
-    /// nothing.
+    /// the app's registry — every picker kind renders through it, so an
+    /// empty registry draws no picker.
     pub pickers: PickerRegistry,
 }
 

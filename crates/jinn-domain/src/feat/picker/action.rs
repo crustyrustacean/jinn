@@ -7,8 +7,8 @@
 //! drained; optional picker closure precedes the requested scope transition).
 //!
 //! Every function is a no-op returning an empty result when the active
-//! picker has no spec (unmigrated kinds fall through to legacy arms) or
-//! the id/action doesn't resolve — stale intents are ignored, never panics.
+//! picker has no spec (a kind with no registered spec) or the id/action
+//! doesn't resolve — stale intents are ignored, never panics.
 
 use jinn_picker::ActionCtx;
 use jinn_picker::PickerOutcome;
@@ -41,10 +41,8 @@ fn fold(state: &mut AppState, outcome: PickerOutcome) -> IntentResult {
 /// Runs the active picker's spec hook for `which`, when declared.
 ///
 /// Per-hook fallback: a lifecycle step is spec-driven only when the
-/// spec *declares that hook* — anything the spec hasn't taken over yet
-/// still flows to the legacy per-kind handlers. This is what keeps the
-/// repository green between registering a spec stub and migrating its
-/// hooks; when all pickers have migrated, the fallbacks disappear.
+/// spec *declares that hook* — a step the spec hasn't taken over falls
+/// through to the per-kind handlers.
 pub fn run_active_hook(
     state: &mut AppState,
     registry: &PickerRegistry,
@@ -83,7 +81,7 @@ pub fn run_active_hook(
 /// Runs the active picker's selection-change hook when its spec declares
 /// one — the live preview fired after the cursor moved or the page turned.
 /// A no-op when no spec is active or the spec has no selection-change
-/// behavior (unmigrated/hookless pickers are untouched).
+/// behavior.
 pub fn run_selection_change(state: &mut AppState, registry: &PickerRegistry) {
     let Some(kind) = state.frontend.picker_kind() else {
         return;
@@ -122,7 +120,7 @@ pub enum Hook {
 }
 
 /// Runs the active picker's close hook when it has a spec. Returns
-/// `Some(result)` when the hook ran (the caller stops — legacy restores
+/// `Some(result)` when the hook ran (the caller stops — a per-kind restore
 /// must not double-apply), `None` when no spec is active.
 pub fn try_close_active(state: &mut AppState, registry: &PickerRegistry) -> Option<IntentResult> {
     let kind = state.frontend.picker_kind()?;

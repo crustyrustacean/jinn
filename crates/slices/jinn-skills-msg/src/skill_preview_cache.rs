@@ -27,7 +27,7 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 
 use jinn_selection_widget::PreviewCache;
-use ratatui::text::Line;
+use jinn_selection_widget::preview_content::SharedPreviewLines;
 
 /// Cache for skill-preview rendered lines.
 ///
@@ -48,7 +48,7 @@ use ratatui::text::Line;
 ///
 #[derive(Debug, Default)]
 pub struct SkillPreviewCache {
-    entries: Mutex<HashMap<(u64, usize), Vec<Line<'static>>>>,
+    entries: Mutex<HashMap<(u64, usize), SharedPreviewLines>>,
 }
 
 impl SkillPreviewCache {
@@ -81,14 +81,14 @@ impl SkillPreviewCache {
 }
 
 impl PreviewCache for SkillPreviewCache {
-    fn get(&self, key: &str, width: usize) -> Option<Vec<Line<'static>>> {
+    fn get(&self, key: &str, width: usize) -> Option<SharedPreviewLines> {
         // The key is the decimal body hash produced by `SkillEntry::cache_key`.
         let hash: u64 = key.parse().ok()?;
         self.entries.lock().get(&(hash, width)).cloned()
     }
 
     /// NOTE: currently using unbounded memory. Revisit if memory consumption becomes a problem.
-    fn insert(&self, key: String, width: usize, lines: Vec<Line<'static>>) {
+    fn insert(&self, key: String, width: usize, lines: SharedPreviewLines) {
         // The key is the decimal body hash produced by `SkillEntry::cache_key`.
         if let Ok(hash) = key.parse::<u64>() {
             self.entries.lock().insert((hash, width), lines);
@@ -120,6 +120,11 @@ mod tests {
         Line::from(s.to_owned())
     }
 
+    /// The shared payload the zero-copy `PreviewCache` stores.
+    fn lines(s: &str) -> SharedPreviewLines {
+        std::sync::Arc::new(vec![line(s)])
+    }
+
     #[rstest::rstest]
     #[test]
     fn get_on_empty_cache_returns_none() {
@@ -131,7 +136,7 @@ mod tests {
     #[test]
     fn insert_then_get_returns_stored_lines() {
         let cache = SkillPreviewCache::new();
-        cache.insert(body_key("# bash"), 80, vec![line("rendered bash preview")]);
+        cache.insert(body_key("# bash"), 80, lines("rendered bash preview"));
         let got = cache
             .get(&body_key("# bash"), 80)
             .expect("entry should exist");
@@ -144,11 +149,11 @@ mod tests {
     #[test]
     fn width_is_part_of_the_key() {
         let cache = SkillPreviewCache::new();
-        cache.insert(body_key("# rust"), 80, vec![line("width 80")]);
+        cache.insert(body_key("# rust"), 80, lines("width 80"));
         // Same body, different width -> miss.
         assert!(cache.get(&body_key("# rust"), 100).is_none());
         // Insert at the new width.
-        cache.insert(body_key("# rust"), 100, vec![line("width 100")]);
+        cache.insert(body_key("# rust"), 100, lines("width 100"));
         // Both widths now hit.
         assert!(cache.get(&body_key("# rust"), 80).is_some());
         assert!(cache.get(&body_key("# rust"), 100).is_some());
@@ -158,7 +163,7 @@ mod tests {
     #[test]
     fn different_bodies_are_independent() {
         let cache = SkillPreviewCache::new();
-        cache.insert(body_key("# alpha"), 80, vec![line("a")]);
+        cache.insert(body_key("# alpha"), 80, lines("a"));
         // beta's body is not cached.
         assert!(cache.get(&body_key("# beta"), 80).is_none());
     }
@@ -167,8 +172,8 @@ mod tests {
     #[test]
     fn clear_empties_all_entries() {
         let cache = SkillPreviewCache::new();
-        cache.insert(body_key("# a"), 80, vec![line("a")]);
-        cache.insert(body_key("# b"), 100, vec![line("b")]);
+        cache.insert(body_key("# a"), 80, lines("a"));
+        cache.insert(body_key("# b"), 100, lines("b"));
         assert_eq!(cache.len(), 2);
         cache.clear();
         assert!(cache.is_empty());
@@ -182,7 +187,7 @@ mod tests {
         // The PreviewCache trait returns owned Vec<Line>, so callers can hold
         // the result across the cache being mutated.
         let cache = SkillPreviewCache::new();
-        cache.insert(body_key("# k"), 80, vec![line("v")]);
+        cache.insert(body_key("# k"), 80, lines("v"));
         let got = cache.get(&body_key("# k"), 80).expect("entry should exist");
         cache.clear();
         // The clone survives the clear.

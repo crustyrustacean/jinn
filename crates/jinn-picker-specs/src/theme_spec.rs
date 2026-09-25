@@ -66,7 +66,7 @@ fn state_ref_of<'a>(ctx: &'a StatusCtx<'_>) -> &'a AppState {
 
 /// Renders one picker row: the theme's focus-accent swatch followed by the
 /// name (selected rows carry the selection background). Filter matches are
-/// not highlighted — identical to the legacy theme row rendering.
+/// not highlighted.
 fn theme_row(entry: &ThemeEntry, ctx: &RowCtx<'_>) -> Line<'static> {
     let style = if ctx.is_selected {
         Style::default()
@@ -329,7 +329,7 @@ mod tests {
             .frontend
             .caches
             .skill_preview_cache
-            .insert("12345".to_owned(), 80, Vec::new());
+            .insert("12345".to_owned(), 80, Vec::new().into());
         assert_eq!(state.frontend.caches.skill_preview_cache.len(), 1);
         let registry = crate::build_picker_registry();
         let picker_id = PickerId::new(jinn_picker::THEME_ID);

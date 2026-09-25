@@ -44,9 +44,7 @@ pub struct Palette {
 ///
 /// Implemented by the kernel: typed storage is lent as `dyn Any` (specs
 /// downcast to the exact `SelectionState<PickerEntry<T>>` they own), and
-/// anything not yet on this trait flows through [`PickerHost::state_any`].
-/// Operations shared by two or more migrated specs graduate onto named
-/// methods permanently.
+/// anything not on this trait flows through [`PickerHost::state_any`].
 ///
 /// Domain-authored spec closures capture what they need at builder time and
 /// borrow this host through the action contexts; the crate never depends on
@@ -60,8 +58,7 @@ pub trait PickerHost {
     fn selection_state_ref(&self, id: PickerId) -> Option<&dyn std::any::Any>;
 
     /// The full kernel state, for spec-authored downcasts — the sanctioned
-    /// escape hatch while the pilot migrates; shared operations graduate
-    /// onto named trait methods instead of staying here forever.
+    /// escape hatch for reaching cells the trait does not name.
     fn state_any(&mut self) -> &mut dyn std::any::Any;
 
     /// Read-only full kernel state.

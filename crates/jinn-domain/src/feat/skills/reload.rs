@@ -23,7 +23,38 @@ pub fn reload_skill_picker_entries(
     disabled: &HashSet<String>,
     theme: &jinn_theme::Theme,
 ) {
-    let wrapped = jinn_skills::build_skill_entries(discovered, disabled, theme);
+    let mut entries: Vec<crate::feat::skills::skill_entry::SkillEntry> = discovered
+        .iter()
+        .map(|skill| {
+            let name = skill.name.clone();
+            let description = skill.description.clone();
+            crate::feat::skills::skill_entry::SkillEntry {
+                name,
+                description,
+                body: skill.body.clone(),
+                enabled: !disabled.contains(&skill.name),
+                source: skill.source.clone(),
+                theme: theme.clone(),
+            }
+        })
+        .collect();
+
+    entries.sort_by_key(|e| e.name.to_lowercase());
+
+    let wrapped = jinn_picker::make_items_with_hooks(
+        entries,
+        jinn_picker::PickerItemHooks::new()
+            .row(crate::feat::skills::skill_entry::skill_row)
+            .search(|entry: &crate::feat::skills::skill_entry::SkillEntry| {
+                format!("{} {}", entry.name, entry.description)
+            })
+            .preview(crate::feat::skills::skill_entry::render_skill_preview)
+            .preview_key(|entry: &crate::feat::skills::skill_entry::SkillEntry| {
+                Some(jinn_picker::PreviewKey(
+                    crate::feat::skills::skill_entry::body_signature(&entry.body),
+                ))
+            }),
+    );
     frontend.skill_picker_mut().set_items(wrapped);
 }
 

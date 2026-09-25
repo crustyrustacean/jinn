@@ -128,7 +128,8 @@ impl CommandLog {
 /// Two writers, two fields — never cross the streams:
 /// - [`QuakeBarState::input`] — written ONLY by the intent-handler
 ///   input hook (synchronous char editing, via the shared cell handle).
-/// - [`QuakeBarState::log`] — written ONLY by the [`QuakeBarActor`]
+/// - [`QuakeBarState::log`] — written ONLY by the
+///   [`QuakeBarCanvasActor`](super::canvas_actor::QuakeBarCanvasActor)
 ///   (the command log; submit routes through
 ///   [`SubmitQuakeBarCommand`](super::command::SubmitQuakeBarCommand) so the
 ///   actor is the single mutator).
@@ -139,7 +140,7 @@ impl CommandLog {
 pub struct QuakeBarState {
     /// The 1-line command input. OWNER: IntentHandler (input hook).
     pub input: QuakeBarInput,
-    /// The persistent command log. OWNER: QuakeBarActor.
+    /// The persistent command log. OWNER: QuakeBarCanvasActor.
     pub log: CommandLog,
 }
 

@@ -307,7 +307,9 @@ impl TuiApp {
 pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
     match focus {
         FocusScope::Picker { kind } => match kind {
-            PickerKind::Provider => Scope::PickerProvider,
+            // CompactionModel is retired and never pushed as a scope; it
+            // shares the provider scope so the match stays total.
+            PickerKind::Provider | PickerKind::CompactionModel => Scope::PickerProvider,
             PickerKind::Session => Scope::PickerSession,
             PickerKind::Persona => Scope::PickerPersona,
             PickerKind::Theme => Scope::PickerTheme,

@@ -6,6 +6,13 @@
 //! display.
 
 use ratatui::text::Line;
+use std::sync::Arc;
+
+/// Shared, immutable handle to a rendered preview body.
+///
+/// The cache stores and hands out this handle so a hit never deep-copies the
+/// rendered lines. Contents are read-only.
+pub type SharedPreviewLines = Arc<Vec<Line<'static>>>;
 
 /// Abstract cache for rendered preview lines.
 ///
@@ -16,17 +23,22 @@ use ratatui::text::Line;
 pub trait PreviewCache {
     /// Looks up previously rendered lines for the given key and width.
     ///
-    /// Returns an owned clone so callers may mutate the result without aliasing
-    /// the stored value. Returns `None` on a miss.
-    fn get(&self, key: &str, width: usize) -> Option<Vec<Line<'static>>>;
+    /// Returns a shared handle to the stored lines. The payload is never
+    /// re-allocated on a hit — callers must treat the contents as read-only and
+    /// must not mutate them in place, as the value may be shared with the cache
+    /// and with other handles. Returns `None` on a miss.
+    fn get(&self, key: &str, width: usize) -> Option<SharedPreviewLines>;
 
     /// Stores rendered lines for the given key and width.
+    ///
+    /// Takes a shared handle so the caller can keep using the value it just
+    /// stored without copying it.
     ///
     /// Implementations use interior mutability (e.g. `RefCell`/`Mutex`) so the
     /// cache can be shared behind an immutable `&self` reference. This keeps the
     /// `PreviewCache` covariant over its lifetime, allowing reborrowing from a
     /// transient borrow without variance or lifetime conflicts.
-    fn insert(&self, key: String, width: usize, lines: Vec<Line<'static>>);
+    fn insert(&self, key: String, width: usize, lines: SharedPreviewLines);
 }
 
 /// Trait for picker items that can provide preview content.
@@ -61,6 +73,10 @@ pub trait PreviewContent {
     /// Get-or-render-and-insert, delegating to a [`PreviewCache`] when one is
     /// supplied.
     ///
+    /// Returns a shared handle to the rendered lines. A cache hit never copies
+    /// the rendered body — the returned `Arc` points directly at the stored
+    /// payload. Callers must treat the lines as read-only.
+    ///
     /// Behavior:
     /// - If [`cache_key`](Self::cache_key) returns `None`, always renders fresh
     ///   via [`preview_lines`](Self::preview_lines) (item opted out of caching).
@@ -71,20 +87,22 @@ pub trait PreviewContent {
         &self,
         width: usize,
         cache: Option<&dyn PreviewCache>,
-    ) -> Vec<Line<'static>> {
+    ) -> SharedPreviewLines {
         let Some(key) = self.cache_key() else {
-            return self.preview_lines(width);
+            return Arc::new(self.preview_lines(width));
         };
-        match cache {
-            None => self.preview_lines(width),
-            Some(c) => match c.get(&key, width) {
-                Some(cached) => cached,
-                None => {
-                    let lines = self.preview_lines(width);
-                    c.insert(key, width, lines.clone());
-                    lines
-                }
-            },
+        let Some(cache) = cache else {
+            return Arc::new(self.preview_lines(width));
+        };
+        match cache.get(&key, width) {
+            Some(hit) => hit,
+            None => {
+                // Render once, wrap in an Arc, and hand the same Arc to the cache
+                // and the caller so the miss path never copies the rendered body.
+                let rendered = Arc::new(self.preview_lines(width));
+                cache.insert(key, width, Arc::clone(&rendered));
+                rendered
+            }
         }
     }
 }
@@ -127,14 +145,17 @@ mod tests {
     /// Simple in-test [`PreviewCache`] backed by a `HashMap`.
     #[derive(Default)]
     struct TestCache {
-        entries: std::cell::RefCell<std::collections::HashMap<(String, usize), Vec<Line<'static>>>>,
+        entries: std::cell::RefCell<std::collections::HashMap<(String, usize), SharedPreviewLines>>,
     }
 
     impl PreviewCache for TestCache {
-        fn get(&self, key: &str, width: usize) -> Option<Vec<Line<'static>>> {
-            self.entries.borrow().get(&(key.to_owned(), width)).cloned()
+        fn get(&self, key: &str, width: usize) -> Option<SharedPreviewLines> {
+            self.entries
+                .borrow()
+                .get(&(key.to_owned(), width))
+                .map(Arc::clone)
         }
-        fn insert(&self, key: String, width: usize, lines: Vec<Line<'static>>) {
+        fn insert(&self, key: String, width: usize, lines: SharedPreviewLines) {
             self.entries.borrow_mut().insert((key, width), lines);
         }
     }

@@ -8,10 +8,8 @@
 //!
 //! Two trouper [`ServiceActor`]s, fed by the `jinn.context-curation`
 //! forward route: the prune actor (evaluates the enabled strategies on
-//! each `HistoryAppended`, snapshotting the history internally — the
-//! old `HistorySnapshotActor`/`HistorySnapshotReady` fan-out dissolved
-//! into it) and the compaction actor (runs `CompactionWorker` on
-//! `TriggerCompaction`).
+//! each `HistoryAppended`, snapshotting the history internally) and the
+//! compaction actor (runs `CompactionWorker` on `TriggerCompaction`).
 //!
 //! Kernel dependency (see Cargo.toml): the compaction worker reads
 //! through `State` and consumes the kernel token estimator, granted at

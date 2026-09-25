@@ -1140,10 +1140,9 @@ mod picker_spec_row_tests {
     use crate::scope::Scope;
     use jinn_domain::{Key, KeyEvent, Modifiers};
 
-    /// A persona stub spec registers no binds; the skill stub spec
-    /// registers none either — so `bind_picker_spec_rows` must be a
-    /// no-op for the pilot stubs and must land rows once specs declare
-    /// binds. This test pins the mechanism with a throwaway spec.
+    /// A spec that declares no binds must make `bind_picker_spec_rows` a
+    /// no-op; a spec that declares binds must have its rows land. This test
+    /// pins the mechanism with a throwaway spec.
     #[rstest::rstest]
     #[test]
     fn spec_rows_land_in_the_picker_scope_as_picker_actions() {

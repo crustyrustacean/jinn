@@ -61,6 +61,9 @@ pub trait SidebarSection: std::fmt::Debug + 'static {
 
     /// Returns the total content height in rows for the current state.
     ///
-    /// Used by the sidebar for scrolling calculations.
-    fn content_height(&self, ctx: &RenderCtx) -> u16;
+    /// Used by the sidebar for scrolling calculations. Takes `&mut self` so a
+    /// section may memoize expensive layout work shared with `render` — the
+    /// sidebar calls this once per section per frame, immediately before
+    /// rendering that same section.
+    fn content_height(&mut self, ctx: &RenderCtx) -> u16;
 }

@@ -16,6 +16,10 @@ pub enum PickerKind {
     Theme,
     /// Session lifecycle picker - select a lifecycle recipe for new session creation.
     SessionLifecycle,
+    /// Retired: the compaction model is configured only by `[compaction] model`
+    /// in `jinn.toml`. Retained so persisted state still deserializes; it is
+    /// never pushed as a scope and has no picker state.
+    CompactionModel,
     /// Reasoning effort picker - select reasoning effort for reasoning-capable models.
     ReasoningEffort,
     /// Tool picker - toggle which tools are enabled for the session.
@@ -43,6 +47,8 @@ impl std::fmt::Display for PickerKind {
             Self::Theme => write!(f, "themes"),
 
             Self::SessionLifecycle => write!(f, "session-lifecycle"),
+
+            Self::CompactionModel => write!(f, "compaction model"),
 
             Self::ReasoningEffort => write!(f, "reasoning effort"),
 

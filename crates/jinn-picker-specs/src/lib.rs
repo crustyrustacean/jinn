@@ -1,34 +1,16 @@
 //! Picker specs and the `AppState` host lens — the kernel's picker adapter.
 //!
-//! The twelve feature specs live here rather than in the kernel so each can
-//! later follow its owning slice. They are the composition side of
-//! [`jinn_picker`]: each spec authors one picker's row rendering, search,
-//! preview, keybinds, and lifecycle in one place, and `build_picker_registry`
-//! registers them all.
+//! The twelve feature specs live here rather than in the kernel. They are the
+//! composition side of [`jinn_picker`]: each spec authors one picker's row
+//! rendering, search, preview, keybinds, and lifecycle in one place, and
+//! `build_picker_registry` registers them all.
 //!
 //! # Why this crate depends on the kernel
 //!
 //! Every spec's confirm and open hooks read and write [`AppState`] through
-//! the host's `state_any` bridge. That bridge is **temporary**: it downcasts
-//! the whole application state to reach a few cells, so a spec depends on the
-//! kernel in its entirety rather than only on what it uses. The debt is paid
-//! down spec by spec, each one moving to its owning slice as that family
-//! graduates to cells:
-//!
-//! | Spec | Owning slice |
-//! |------|--------------|
-//! | `persona` | `jinn-persona` |
-//! | `skill` | the skills family |
-//! | `theme` | `jinn-theme-slice` |
-//! | `tool` | `jinn-tools` |
-//! | `mcp_server` | `jinn-mcp-slice` |
-//! | `session_lifecycle` | `jinn-session-init` |
-//! | `task_list` | the task family |
-//! | `session` | the session family |
-//! | `provider` | `jinn-provider-selection` |
-//! | `endpoint` | `jinn-provider-selection` |
-//! | `reasoning_effort` | `jinn-provider-selection` |
-//! | `project` | the project family |
+//! the host's `state_any` bridge, which downcasts the whole application state
+//! to reach a few cells. That makes a spec depend on the kernel in its
+//! entirety rather than only on what it uses.
 //!
 //! # The cycle guard
 //!

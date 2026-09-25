@@ -167,7 +167,7 @@ mod tests {
         let _result = handle_scroll_up(&mut state);
 
         // Then the scroll offset decreased.
-        let offset_before = 20u16;
+        let offset_before = 20u32;
         assert!(state.active_session().scroll_offset().unwrap_or(0) < offset_before);
     }
 

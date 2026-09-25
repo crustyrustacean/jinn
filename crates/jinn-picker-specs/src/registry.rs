@@ -1,17 +1,13 @@
 //! Composition-side picker registry — where specs are built and registered.
 //!
-//! This module is the adapter between the kernel's legacy `PickerKind` world
-//! and the generic `jinn-picker` spec world: specs register here at
+//! This module is the adapter between the kernel's `PickerKind` world and
+//! the generic `jinn-picker` spec world: specs register here at
 //! composition time, and [`jinn_picker::spec_id_for_kind`] maps the static
-//! per-kind scopes/intents onto the registry until every picker has migrated
-//! to its owning slice.
-//!
-//! When the last picker migrates, the kind→id mapping is deleted;
-//! `PickerRegistry::ids` then *is* the picker vocabulary.
+//! per-kind scopes/intents onto the registry.
 
 use jinn_picker::PickerRegistry;
 
-/// Builds the picker registry: every migrated picker registers its spec here
+/// Builds the picker registry: every picker registers its spec here
 /// once at composition.
 ///
 /// The kernel cannot call this — it must not depend on this crate — so
