@@ -8,6 +8,12 @@
 use ratatui::text::Line;
 use std::sync::Arc;
 
+/// Shared, immutable handle to a rendered preview body.
+///
+/// The cache stores and hands out this handle so a hit never deep-copies the
+/// rendered lines. Contents are read-only.
+pub type SharedPreviewLines = Arc<Vec<Line<'static>>>;
+
 /// Abstract cache for rendered preview lines.
 ///
 /// Lets a [`PreviewContent`] implementor skip re-rendering when the same
@@ -21,7 +27,7 @@ pub trait PreviewCache {
     /// re-allocated on a hit — callers must treat the contents as read-only and
     /// must not mutate them in place, as the value may be shared with the cache
     /// and with other handles. Returns `None` on a miss.
-    fn get(&self, key: &str, width: usize) -> Option<Arc<Vec<Line<'static>>>>;
+    fn get(&self, key: &str, width: usize) -> Option<SharedPreviewLines>;
 
     /// Stores rendered lines for the given key and width.
     ///
@@ -32,7 +38,7 @@ pub trait PreviewCache {
     /// cache can be shared behind an immutable `&self` reference. This keeps the
     /// `PreviewCache` covariant over its lifetime, allowing reborrowing from a
     /// transient borrow without variance or lifetime conflicts.
-    fn insert(&self, key: String, width: usize, lines: Arc<Vec<Line<'static>>>);
+    fn insert(&self, key: String, width: usize, lines: SharedPreviewLines);
 }
 
 /// Trait for picker items that can provide preview content.
@@ -81,13 +87,12 @@ pub trait PreviewContent {
         &self,
         width: usize,
         cache: Option<&dyn PreviewCache>,
-    ) -> Arc<Vec<Line<'static>>> {
+    ) -> SharedPreviewLines {
         let Some(key) = self.cache_key() else {
             return Arc::new(self.preview_lines(width));
         };
-        let cache = match cache {
-            None => return Arc::new(self.preview_lines(width)),
-            Some(c) => c,
+        let Some(cache) = cache else {
+            return Arc::new(self.preview_lines(width));
         };
         match cache.get(&key, width) {
             Some(hit) => hit,
@@ -140,18 +145,17 @@ mod tests {
     /// Simple in-test [`PreviewCache`] backed by a `HashMap`.
     #[derive(Default)]
     struct TestCache {
-        entries:
-            std::cell::RefCell<std::collections::HashMap<(String, usize), Arc<Vec<Line<'static>>>>>,
+        entries: std::cell::RefCell<std::collections::HashMap<(String, usize), SharedPreviewLines>>,
     }
 
     impl PreviewCache for TestCache {
-        fn get(&self, key: &str, width: usize) -> Option<Arc<Vec<Line<'static>>>> {
+        fn get(&self, key: &str, width: usize) -> Option<SharedPreviewLines> {
             self.entries
                 .borrow()
                 .get(&(key.to_owned(), width))
                 .map(Arc::clone)
         }
-        fn insert(&self, key: String, width: usize, lines: Arc<Vec<Line<'static>>>) {
+        fn insert(&self, key: String, width: usize, lines: SharedPreviewLines) {
             self.entries.borrow_mut().insert((key, width), lines);
         }
     }

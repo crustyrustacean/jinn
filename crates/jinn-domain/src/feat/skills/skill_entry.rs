@@ -228,7 +228,10 @@ mod tests {
     fn body_signature_is_far_cheaper_than_hashing_a_large_body() {
         // Given a body the size of a real skill file (~27 KB).
         let body = "# Rust rules\n\nlet x = 1;\n".repeat(1024);
-        assert!(body.len() > 20_000, "test body should be realistically large");
+        assert!(
+            body.len() > 20_000,
+            "test body should be realistically large"
+        );
 
         // When computing the per-frame key many times versus hashing it.
         let iters = 2_000;

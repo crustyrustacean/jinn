@@ -30,8 +30,7 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use jinn_selection_widget::PreviewCache;
-use ratatui::text::Line;
+use jinn_selection_widget::{PreviewCache, SharedPreviewLines};
 
 /// Cache for skill-preview rendered lines.
 ///
@@ -53,7 +52,7 @@ use ratatui::text::Line;
 /// [`FrontendCaches`]: crate::feat::ui::frontend_state::FrontendCaches
 #[derive(Debug, Default)]
 pub struct SkillPreviewCache {
-    entries: Mutex<HashMap<(u64, usize), Arc<Vec<Line<'static>>>>>,
+    entries: Mutex<HashMap<(u64, usize), SharedPreviewLines>>,
 }
 
 impl SkillPreviewCache {
@@ -86,19 +85,19 @@ impl SkillPreviewCache {
 }
 
 impl PreviewCache for SkillPreviewCache {
-    fn get(&self, key: &str, width: usize) -> Option<Arc<Vec<Line<'static>>>> {
+    fn get(&self, key: &str, width: usize) -> Option<SharedPreviewLines> {
         // The key is the decimal body byte length produced by
         // `SkillEntry::cache_key`.
-        let hash: u64 = key.parse().ok()?;
-        self.entries.lock().get(&(hash, width)).map(Arc::clone)
+        let signature: u64 = key.parse().ok()?;
+        self.entries.lock().get(&(signature, width)).map(Arc::clone)
     }
 
     /// NOTE: currently using unbounded memory. Revisit if memory consumption becomes a problem.
-    fn insert(&self, key: String, width: usize, lines: Arc<Vec<Line<'static>>>) {
+    fn insert(&self, key: String, width: usize, lines: SharedPreviewLines) {
         // The key is the decimal body byte length produced by
         // `SkillEntry::cache_key`.
-        if let Ok(hash) = key.parse::<u64>() {
-            self.entries.lock().insert((hash, width), lines);
+        if let Ok(signature) = key.parse::<u64>() {
+            self.entries.lock().insert((signature, width), lines);
         }
     }
 }
