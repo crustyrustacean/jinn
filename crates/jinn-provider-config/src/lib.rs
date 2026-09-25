@@ -3,7 +3,7 @@
 //! Defines the [`LlmService`] trait for streaming LLM responses and
 //! [`LlmServiceFactory`] for creating per-call service instances.
 //! Includes an `OpenRouter` implementation, a sample provider for UI testing,
-//! and a generic factory that supports any `LLMBackend` via config.
+//! and a generic factory that supports any backend via config.
 
 mod api_keys;
 mod api_keys_service;

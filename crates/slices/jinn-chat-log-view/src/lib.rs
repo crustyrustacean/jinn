@@ -7,7 +7,7 @@
 //! `ChatSession`'s semantic methods (a facade over the cell), and the chat
 //! log renderer publishes its per-frame caches through the same methods.
 //! There is no actor and no route row: the writers are the exempt sync
-//! handler and the render pass, exactly as the migration docs prescribe.
+//! handler and the render pass.
 
 pub mod chat_log;
 

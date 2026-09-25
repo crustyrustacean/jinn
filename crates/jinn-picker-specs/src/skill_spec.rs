@@ -1,6 +1,6 @@
 //! The skill picker's spec — behavior authored once in the builder.
 //!
-//! Owns everything the legacy per-kind handler arms used to scatter: the
+//! Owns the skill picker's behavior in one place: the
 //! TAB toggle (with its loaded-skill no-op), CTRL+L load (pinned tool
 //! call/result pair, durable auto-enable), CTRL+R refresh (full discovery
 //! rescan), preview scrolling, the ESC snapshot revert, and the cached
@@ -31,7 +31,7 @@ use jinn_skills_msg::ScanSkills;
 /// The kernel entry this picker's items wrap in storage.
 pub use jinn_domain::feat::skills::SkillEntry;
 
-/// Rows visible in the preview pane per page (the legacy constant).
+/// Rows visible in the preview pane per page.
 const PREVIEW_PAGE_SIZE: usize = 10;
 
 /// Builds the skill picker's spec.
@@ -980,7 +980,7 @@ mod render_cache_tests {
     use ratatui::layout::Rect;
 
     /// Renders the skill picker through its registered spec (the same path
-    /// the tui render pass takes for migrated kinds).
+    /// the tui render pass takes).
     fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(ctx.state);
         let id = jinn_picker::spec_id_for_kind(&PickerKind::Skill).expect("skill is spec-mapped");

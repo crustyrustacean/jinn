@@ -47,7 +47,7 @@ fn state_of<'a>(ctx: &'a mut ActionCtx<'_>) -> &'a mut AppState {
 // ── Rendering ──────────────────────────���─────────────────────────────────
 
 /// Renders one picker row: the status-colored task row with the widget's
-/// tree connector prepended for children (the legacy row layout).
+/// tree connector prepended for children.
 pub fn task_list_row(entry: &TaskListTreeEntry, ctx: &RowCtx<'_>) -> Line<'static> {
     let mut line = render_task_list_row(
         entry.display_label(),

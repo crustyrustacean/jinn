@@ -37,11 +37,12 @@ pub enum RescanPromptTemplatesError {
 
 /// Validates the RescanPromptTemplates intent.
 ///
-/// Always succeeds for now. The error variant exists for future use.
+/// Always succeeds — the rescan has no preconditions. The error variant
+/// exists so a future precondition has somewhere to land.
 ///
 /// # Errors
 ///
-/// Returns an error if prompt templates directory is not configured.
+/// Never returns an error today.
 pub fn validate_rescan_prompt_templates(
     _state: &AppState,
 ) -> Result<(), RescanPromptTemplatesError> {

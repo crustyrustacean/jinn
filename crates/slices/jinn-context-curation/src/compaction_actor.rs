@@ -6,9 +6,6 @@
 //! [`CompactionWorker::evaluate_for_session`], publishes the resulting
 //! mutations as `SubmitHistoryMutations`, and pushes feedback system
 //! entries for queued/skipped/failed outcomes.
-//!
-//! This is a direct port of the kernel `CompactionTriggerActor`
-//! to the trouper runtime; the handle body is unchanged.
 
 use trouper::actor::ActorPath;
 use trouper::actor::{MsgHandler, ServiceActor};

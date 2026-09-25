@@ -14,8 +14,10 @@ use jinn_slices::BusMessage;
 /// Submit the current quake bar input into the command log.
 ///
 /// Emitted by the `IntentHandler` on `<enter>` while the `QuakeBar` scope is
-/// active. The [`QuakeBarActor`](super::quake_bar_actor) is the sole subscriber
-/// and appends `text` to the command log (which is the only writer of the log).
+/// active. The
+/// [`QuakeBarCanvasActor`](super::canvas_actor::QuakeBarCanvasActor) is the sole
+/// subscriber and appends `text` to the command log (which is the only writer
+/// of the log).
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Submit the current quake bar input into the command log.")]
 pub struct SubmitQuakeBarCommand {

@@ -159,7 +159,6 @@ impl SessionPersistenceActor {
         let assembled = {
             let inputs = {
                 let guard = self.state.read();
-                // FIXME: make spawn_blocking probably
                 build_assembly_inputs(&guard, session_id)
             };
             match assemble_via_service(&self.services, inputs).await {
