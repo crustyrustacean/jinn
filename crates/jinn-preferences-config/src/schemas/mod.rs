@@ -23,10 +23,10 @@ pub mod tool_call_watchdog;
 pub mod tools;
 
 pub use auto_prune::{
-    AutoPruneConfig, BrokenEditAutoPruneConfig, ConsecutiveReadsAutoPruneConfig,
-    DoubleEditAutoPruneConfig, EditReadAutoPruneConfig, ReadEditAutoPruneConfig,
-    RegexAutoPruneConfig, RegexPruneRule, ToolAgeWindowAutoPruneConfig,
-    TrivialAssistantAutoPruneConfig,
+    AnchoredAssistantAutoPruneConfig, AutoPruneConfig, BrokenEditAutoPruneConfig,
+    ConsecutiveReadsAutoPruneConfig, DoubleEditAutoPruneConfig, EditReadAutoPruneConfig,
+    ReadEditAutoPruneConfig, RegexAutoPruneConfig, RegexPruneRule, TodoAutoPruneConfig,
+    ToolAgeWindowAutoPruneConfig, TrivialAssistantAutoPruneConfig,
 };
 pub use chat_log::ChatLogConfig;
 pub use compaction::CompactionConfig;

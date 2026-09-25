@@ -35,6 +35,7 @@ use jinn_domain::Services;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_mcp_msg::McpServerConfig;
+use jinn_mcp_msg::config::McpServersConfig;
 use jinn_mcp_msg::{McpEnablementChanged, McpRuntimeState, RestartError, RestartMcpServer};
 use jinn_mcp_msg::{McpServerLog, McpServerStatus};
 use jinn_session_lifecycle_msg::SessionCreated;
@@ -331,13 +332,16 @@ impl McpCoordinatorActor {
     }
 }
 
-/// Reads the configured `[mcp_server.<name>]` entries from user preferences.
+/// Reads the configured `[mcp.server.<name>]` entries from the
+/// configuration layer, at the point of use so a reload is observed
+/// without a restart.
 fn configured_servers(services: &Services) -> Vec<(String, McpServerConfig)> {
-    let prefs = services.user_preferences_storage.read();
-    prefs
-        .mcp_server
-        .iter()
-        .map(|(n, c)| (n.clone(), c.clone()))
+    services
+        .config
+        .get::<McpServersConfig>()
+        .unwrap_or_default()
+        .0
+        .into_iter()
         .collect()
 }
 
@@ -507,8 +511,8 @@ mod lifecycle_tests {
     use jinn_domain::common::actor_deps::ActorDeps;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
     use jinn_mcp_msg::McpServerConfig;
+    use jinn_mcp_msg::config::McpServersConfig;
     use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
-    use jinn_preferences_config::user_preferences::UserPreferences;
 
     use super::{McpCoordinatorActor, McpCoordinatorActorDeps};
     use jinn_mcp_msg::McpEnablementChanged;
@@ -549,13 +553,12 @@ mod lifecycle_tests {
             .iter()
             .map(|(name, config)| ((*name).to_owned(), config.clone()))
             .collect();
+        // Seeded through the layer the coordinator reads from, so the test
+        // exercises the real resolution path.
         services
-            .user_preferences_storage
-            .save(&UserPreferences {
-                mcp_server,
-                ..UserPreferences::default()
-            })
-            .expect("seed prefs");
+            .config
+            .put::<McpServersConfig>(&McpServersConfig(mcp_server))
+            .expect("seed the mcp.server section");
         let state = jinn_domain::common::state::State::new(
             jinn_domain::common::app_state::AppState::default(),
         );
@@ -953,7 +956,6 @@ mod status_tests {
     use jinn_domain::common::bus::test_harness::TestHarness;
     use jinn_domain::common::state::State;
     use jinn_mcp_msg::{McpConnectionStatus, McpRuntimeState, McpServerLog, McpServerStatus};
-    use jinn_preferences_config::user_preferences::UserPreferences;
     use jinn_session_msg::{SessionArchived, SessionClosed, SessionTeardownFinished};
     use jinn_session_store_msg::SessionLoadCompleted;
     use jinn_slices::TypedCell;
@@ -964,10 +966,6 @@ mod status_tests {
     /// Spawns a coordinator with a dedicated MCP runtime cell.
     async fn spawn_with_session(harness: &TestHarness) -> (TypedCell<McpRuntimeState>, SessionId) {
         let services = harness.services().await;
-        services
-            .user_preferences_storage
-            .save(&UserPreferences::default())
-            .expect("seed prefs");
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         let runtime = crate::activate_runtime(&services.slices)

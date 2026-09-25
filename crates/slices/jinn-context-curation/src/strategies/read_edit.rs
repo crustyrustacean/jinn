@@ -88,6 +88,11 @@ fn count_subsequent_modifications(
 /// [`ForcedExclude`]: jinn_core_types::ContextOverride::ForcedExclude
 #[derive(Clone)]
 pub struct ReadEditAutoPruneWorker {
+    /// The configuration layer. The worker holds a cheap
+    /// cloneable handle and re-reads its own subsection inside
+    /// `evaluate`, so enablement and tuning are observed per pass
+    /// rather than frozen at wiring time.
+    pub layer: jinn_config::ConfigLayer,
     /// Configuration for the read-edit auto-prune strategy.
     pub config: ReadEditAutoPruneConfig,
 }
@@ -107,6 +112,17 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
+        // Live read: this strategy's own subsection, switched off or
+        // unreadable means a no-op pass rather than an absent worker.
+        let config = match super::super::worker::strategy_section(&self.layer, |auto| {
+            let section = &auto.read_edit;
+            section.enabled.then(|| section.clone())
+        }) {
+            Some(config) => config,
+            None => return Vec::new(),
+        };
+        let config = &config;
+
         let mut mutations = Vec::new();
         let history_len = history.len();
 
@@ -148,16 +164,16 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
                 .is_some_and(jinn_core_types::ChatEntry::is_protected_from_prune);
 
             // Count how many edit/write calls to the same file appear after
-            // this read. Once the threshold is reached, the read is stale.
+            // this read. Once the config.threshold is reached, the read is stale.
             let modify_count =
-                count_subsequent_modifications(&history, i, &read_path, self.config.threshold);
+                count_subsequent_modifications(&history, i, &read_path, config.threshold);
 
-            if modify_count >= self.config.threshold {
-                // min_age protection: don't prune reads that are too close to
+            if modify_count >= config.threshold {
+                // config.min_age protection: don't prune reads that are too close to
                 // the end of history.
-                let call_within_min_age = is_within_min_age(history_len, i, self.config.min_age);
+                let call_within_min_age = is_within_min_age(history_len, i, config.min_age);
                 let result_within_min_age =
-                    is_within_min_age(history_len, result_idx, self.config.min_age);
+                    is_within_min_age(history_len, result_idx, config.min_age);
 
                 if !call_protected && !call_within_min_age {
                     mutations.push(HistoryMutation::SetContextOverride {
@@ -231,22 +247,22 @@ mod tests {
     /// Build a worker with a specific `min_age` floor.
     fn worker_with_min_age(min_age: usize) -> ReadEditAutoPruneWorker {
         ReadEditAutoPruneWorker {
-            config: ReadEditAutoPruneConfig {
-                enabled: true,
-                min_age,
-                threshold: 2,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "read_edit",
+                format!("min_age = {min_age}\n"),
+            ),
+            config: Default::default(),
         }
     }
 
     /// Build a worker with a specific `threshold`.
     fn worker_with_threshold(threshold: usize) -> ReadEditAutoPruneWorker {
         ReadEditAutoPruneWorker {
-            config: ReadEditAutoPruneConfig {
-                enabled: true,
-                min_age: 0,
-                threshold,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "read_edit",
+                format!("threshold = {threshold}\nmin_age = 0\n"),
+            ),
+            config: Default::default(),
         }
     }
 

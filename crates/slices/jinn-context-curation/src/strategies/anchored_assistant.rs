@@ -50,17 +50,12 @@ pub use jinn_preferences_config::schemas::auto_prune::AnchoredAssistantAutoPrune
 /// See the [module docs](self) for full semantics.
 #[derive(Clone)]
 pub struct AnchoredAssistantAutoPruneWorker {
-    /// Configuration for the anchor-radius strategy. The working
-    /// [`radius`](AnchoredAssistantAutoPruneConfig::radius) is sourced from
-    /// this config's own `radius` field at wiring time.
+    /// The configuration layer; the anchor radius and the trivial-assistant
+    /// floor are both derived from it on every pass.
+    pub layer: jinn_config::ConfigLayer,
+    /// Configuration for the anchor-radius strategy. A seed describing the
+    /// shape only — the working values are read live from `layer`.
     pub config: AnchoredAssistantAutoPruneConfig,
-    /// The anchor radius applied at evaluation time.
-    pub radius: usize,
-    /// Minimum token count for an entry to be considered a pruning candidate.
-    /// Entries at or below this threshold are owned by
-    /// [`TrivialAssistantAutoPruneWorker`](super::TrivialAssistantAutoPruneWorker).
-    /// Derived from `trivial_assistant.max_tokens + 1` at wiring time.
-    pub min_candidate_tokens: u32,
     /// Shared per-session, per-entry token-count cache. Cheap clone (inner is
     /// `Arc`-shared).
     pub token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache,
@@ -286,11 +281,27 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
         session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
+        // Read this strategy's subsection AND the trivial-assistant floor
+        // it is defined relative to, both live. Deriving the floor at wiring
+        // time would pin it to whatever the user had at launch.
+        let prune = super::super::worker::strategy_section(&self.layer, |auto| {
+            let section = &auto.anchored_assistant;
+            section.enabled.then(|| {
+                (
+                    section.clone(),
+                    auto.trivial_assistant.max_tokens as u32 + 1,
+                )
+            })
+        });
+        let Some((config, min_candidate_tokens)) = prune else {
+            return Vec::new();
+        };
+        let radius = config.radius;
         let mutations = build_prune_mutations(&PruneCtx {
             history: &history,
-            radius: self.radius,
-            min_age: self.config.min_age,
-            min_candidate_tokens: self.min_candidate_tokens,
+            radius,
+            min_age: config.min_age,
+            min_candidate_tokens,
             session_id,
             token_cache: &self.token_cache,
             counter: &self.counter,
@@ -298,7 +309,7 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
         });
         tracing::debug!(
             mutations = mutations.len(),
-            radius = self.radius,
+            radius,
             history_len = history.len(),
         );
         mutations
@@ -334,16 +345,29 @@ mod tests {
         worker_with_min_age(radius, 0)
     }
 
+    /// A layer whose anchored-assistant section is enabled at `radius` and
+    /// `min_age`, with the trivial-assistant floor left at its default so
+    /// the candidate threshold is the 81 the rest of these tests assume.
+    fn layer_for(radius: usize, min_age: usize) -> jinn_config::ConfigLayer {
+        let document = format!(
+            "[context_curation.auto_prune.anchored_assistant]\nenabled = true\nradius = {radius}\nmin_age = {min_age}\n"
+        );
+        let parsed = document.parse().expect("test TOML parses");
+        jinn_config::ConfigLayer::load(std::sync::Arc::new(
+            jinn_config::InMemoryConfigStorage::new(parsed),
+        ))
+        .expect("layer loads")
+    }
+
     /// Build a worker with the given radius and `min_age`.
     fn worker_with_min_age(radius: usize, min_age: usize) -> AnchoredAssistantAutoPruneWorker {
         AnchoredAssistantAutoPruneWorker {
+            layer: layer_for(radius, min_age),
             config: AnchoredAssistantAutoPruneConfig {
                 enabled: true,
                 radius,
                 min_age,
             },
-            radius,
-            min_candidate_tokens: 81,
             token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::new(),
             counter: TiktokenCounter::o200k_base(),
         }

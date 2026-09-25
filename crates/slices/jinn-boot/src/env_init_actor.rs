@@ -16,6 +16,7 @@ use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use wherror::Error;
 
 use jinn_boot_msg::{EnvironmentConfigReply, EnvironmentLoaded, GetEnvironmentConfig};
+use jinn_mcp_msg::config::McpServersConfig;
 
 /// Error type for environment initialization failures.
 #[derive(Debug, Error)]
@@ -149,9 +150,13 @@ impl EnvInitActor {
     /// seeds each one found into `ApiKeysService` from the process
     /// environment (present non-empty values only).
     fn resolve_mcp_header_variables(&self) {
-        let prefs = self.deps.services.user_preferences_storage.read();
-        let values: Vec<&str> = prefs
-            .mcp_server
+        let servers = self
+            .deps
+            .services
+            .config
+            .get::<McpServersConfig>()
+            .unwrap_or_default();
+        let values: Vec<&str> = servers
             .values()
             .flat_map(|server| server.headers.values().map(String::as_str))
             .collect();
@@ -176,37 +181,55 @@ mod tests {
     )]
     use std::time::Duration;
 
-    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
-    use jinn_mcp_msg::McpServerConfig;
-    use jinn_preferences_config::user_preferences::UserPreferences;
-
     use super::{
         EnvInitActor, EnvInitActorDeps, EnvironmentConfigReply, EnvironmentLoaded,
         GetEnvironmentConfig,
     };
+    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use std::sync::Arc;
+
+    use jinn_mcp_msg::McpServerConfig;
+    use jinn_mcp_msg::config::McpServersConfig;
 
     /// Unique env-var names so parallel test runs never collide.
     const SET_VAR: &str = "JINN_TEST_MCP_HEADER_RESOLVED";
     const MISSING_VAR: &str = "JINN_TEST_MCP_HEADER_NEVER_SET";
 
-    /// Builds default preferences declaring one MCP server whose headers
-    /// reference the given env-var names.
-    fn prefs_referencing(vars: &[&str]) -> UserPreferences {
-        let mut prefs = UserPreferences::default();
+    /// A document declaring one MCP server whose headers reference the
+    /// given env-var names, under the section's umbrella.
+    fn config_referencing(vars: &[&str]) -> String {
         let headers = vars
             .iter()
             .map(|v| (format!("X-{v}"), format!("Bearer ${{{v}}}")))
             .collect();
-        prefs.mcp_server.insert(
-            "header-probe".to_owned(),
-            McpServerConfig {
-                transport: jinn_mcp_msg::TransportKind::RemoteHttp,
-                url: Some("http://localhost:3001/mcp".to_owned()),
-                headers,
-                ..McpServerConfig::default()
-            },
-        );
-        prefs
+        let server = McpServerConfig {
+            transport: jinn_mcp_msg::TransportKind::RemoteHttp,
+            url: Some("http://localhost:3001/mcp".to_owned()),
+            headers,
+            ..McpServerConfig::default()
+        };
+        let table = toml::Value::try_from(server)
+            .expect("server serializes")
+            .as_table()
+            .expect("server is a table")
+            .clone();
+        let body: String = table
+            .iter()
+            .map(|(key, value)| format!("{key} = {value}\n"))
+            .collect();
+        // The section is the map: one sub-table per server, directly
+        // under the `mcp` umbrella.
+        format!("[mcp.header-probe]\n{body}")
+    }
+
+    /// Points the services' config layer at a document seeded with
+    /// `document`, then re-reads so the swap is visible immediately.
+    fn layer_with(services: &jinn_domain::Services, document: &str) {
+        let parsed = document.parse().expect("test TOML parses");
+        services
+            .config
+            .use_storage(Arc::new(jinn_config::InMemoryConfigStorage::new(parsed)))
+            .expect("layer re-reads from the seeded backend");
     }
 
     #[rstest::rstest]
@@ -218,12 +241,11 @@ mod tests {
         unsafe { std::env::set_var(SET_VAR, "live-value") };
         let harness = TestHarness::new().await;
         let deps = harness.actor_deps().await;
-        let service = deps.services.user_preferences_storage.clone();
-        service.save(&prefs_referencing(&[SET_VAR])).expect("save");
+        layer_with(&deps.services, &config_referencing(&[SET_VAR]));
         let keys = deps.services.api_keys.clone();
 
         // When the env init actor resolves keys for a config request.
-        let services = harness.services().await;
+        let services = deps.services.clone();
         let path = EnvInitActor::spawn(&services.trouper_system, EnvInitActorDeps { deps });
         let reply = services
             .trouper_system
@@ -250,14 +272,11 @@ mod tests {
         unsafe { std::env::remove_var(MISSING_VAR) };
         let harness = TestHarness::new().await;
         let deps = harness.actor_deps().await;
-        let service = deps.services.user_preferences_storage.clone();
-        service
-            .save(&prefs_referencing(&[MISSING_VAR]))
-            .expect("save");
+        layer_with(&deps.services, &config_referencing(&[MISSING_VAR]));
         let keys = deps.services.api_keys.clone();
 
         // When the env init actor resolves keys for a config request.
-        let services = harness.services().await;
+        let services = deps.services.clone();
         let path = EnvInitActor::spawn(&services.trouper_system, EnvInitActorDeps { deps });
         let reply = services
             .trouper_system

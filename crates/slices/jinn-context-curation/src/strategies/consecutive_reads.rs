@@ -51,6 +51,11 @@ use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, Conte
 /// call+result pairs. Older pairs are excluded from LLM context.
 #[derive(Clone)]
 pub struct ConsecutiveReadsAutoPruneWorker {
+    /// The configuration layer. The worker holds a cheap
+    /// cloneable handle and re-reads its own subsection inside
+    /// `evaluate`, so enablement and tuning are observed per pass
+    /// rather than frozen at wiring time.
+    pub layer: jinn_config::ConfigLayer,
     /// Configuration for the consecutive-reads auto-prune strategy.
     pub config: ConsecutiveReadsAutoPruneConfig,
 }
@@ -206,16 +211,23 @@ impl HistoryWorker for ConsecutiveReadsAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let keep_last = self.config.keep_last.max(1);
+        // Live read: this strategy has no tuning of its own beyond its
+        // enablement switch, so the whole point of the read is to honour
+        // that switch. Off or unreadable means a no-op pass, not an
+        // absent worker.
+        let config = match super::super::worker::strategy_section(&self.layer, |auto| {
+            let section = &auto.consecutive_reads;
+            section.enabled.then(|| section.clone())
+        }) {
+            Some(config) => config,
+            None => return Vec::new(),
+        };
+        let config = &config;
+
+        let keep_last = config.keep_last.max(1);
 
         let groups = collect_read_pairs_by_path(&history);
-        build_prune_mutations(
-            &history,
-            &groups,
-            keep_last,
-            self.config.min_age,
-            self.name(),
-        )
+        build_prune_mutations(&history, &groups, keep_last, config.min_age, self.name())
     }
 }
 
@@ -259,11 +271,11 @@ mod tests {
 
     fn worker_with(keep_last: usize, min_age: usize) -> ConsecutiveReadsAutoPruneWorker {
         ConsecutiveReadsAutoPruneWorker {
-            config: ConsecutiveReadsAutoPruneConfig {
-                enabled: true,
-                keep_last,
-                min_age,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "consecutive_reads",
+                format!("keep_last = {keep_last}\nmin_age = {min_age}\n"),
+            ),
+            config: Default::default(),
         }
     }
 

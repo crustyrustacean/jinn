@@ -5,7 +5,7 @@
 //! `[[auto_prune.regex.rules]]` in `jinn.toml`.
 //!
 //! Regex patterns are compiled once at construction time via
-//! [`RegexAutoPruneWorker::from_config`] and never recompiled during evaluation.
+//! [`RegexAutoPruneWorker::compile`], per pass rather than once at wiring.
 //!
 //! The top-level `min_age` field (default: 50) is a raw-distance protection
 //! floor: matching pairs whose `ToolCall` is within `min_age` slots of the
@@ -57,37 +57,56 @@ struct CompiledRegexRule {
 /// `SetContextOverride::ForcedExclude` for both the call and its result.
 #[derive(Clone)]
 pub struct RegexAutoPruneWorker {
-    /// Compiled regex rules (empty if disabled or no rules configured).
-    rules: Vec<CompiledRegexRule>,
+    /// The configuration layer. The rules are compiled from it on every
+    /// pass rather than once at wiring: a pattern the user fixes in their
+    /// editor should start working on the next pass, not require a restart.
+    layer: jinn_config::ConfigLayer,
 }
 
 impl RegexAutoPruneWorker {
-    /// Construct a worker from config, compiling all regex patterns once.
-    ///
-    /// Returns `Err(regex::Error)` if any pattern is invalid.
-    /// Clamps `keep_last` to a minimum of 1.
-    /// Returns an empty worker if disabled or no rules configured.
-    ///
-    /// # Errors
-    ///
-    /// Returns `regex::Error` if any pattern string fails to compile.
-    pub fn from_config(config: &RegexAutoPruneConfig) -> Result<Self, regex::Error> {
-        if !config.enabled || config.rules.is_empty() {
-            return Ok(Self { rules: Vec::new() });
-        }
+    /// Constructs a worker that compiles its rules from `layer` per pass.
+    #[must_use]
+    pub fn new(layer: jinn_config::ConfigLayer) -> Self {
+        Self { layer }
+    }
 
-        let mut compiled = Vec::with_capacity(config.rules.len());
-        for rule in &config.rules {
-            let regex = regex::Regex::new(&rule.pattern)?;
-            compiled.push(CompiledRegexRule {
-                regex,
-                tool_name: rule.tool_name.clone(),
-                keep_last: rule.keep_last.max(1),
-                min_age: rule.min_age,
-            });
+    /// Compiles the configured rules, skipping any pattern the `regex`
+    /// crate rejects.
+    ///
+    /// A bad pattern is a warning, not a failure: one typo should cost the
+    /// user that one rule, not the whole strategy. Returns `None` when the
+    /// section is off or has no rules.
+    fn compile(&self) -> Option<Vec<CompiledRegexRule>> {
+        let config = self
+            .layer
+            .get::<jinn_preferences_config::schemas::AutoPruneConfig>()
+            .ok()?;
+        let section = &config.regex;
+        if !section.enabled || section.rules.is_empty() {
+            return None;
         }
-
-        Ok(Self { rules: compiled })
+        Some(
+            section
+                .rules
+                .iter()
+                .filter_map(|rule| match regex::Regex::new(&rule.pattern) {
+                    Ok(regex) => Some(CompiledRegexRule {
+                        regex,
+                        tool_name: rule.tool_name.clone(),
+                        keep_last: rule.keep_last.max(1),
+                        min_age: rule.min_age,
+                    }),
+                    Err(error) => {
+                        tracing::warn!(
+                            pattern = %rule.pattern,
+                            err = ?error,
+                            "invalid regex in auto_prune config, skipping rule",
+                        );
+                        None
+                    }
+                })
+                .collect(),
+        )
     }
 }
 
@@ -273,7 +292,10 @@ impl HistoryWorker for RegexAutoPruneWorker {
         _session_id: &SessionId,
         history: std::sync::Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mutations = build_prune_mutations(&history, &self.rules, self.name());
+        let Some(rules) = self.compile() else {
+            return Vec::new();
+        };
+        let mutations = build_prune_mutations(&history, &rules, self.name());
 
         tracing::debug!(total_mutations = mutations.len(), "regex worker done");
         mutations
@@ -311,18 +333,50 @@ mod tests {
         ]
     }
 
+    /// A worker whose regex section carries the given rules but is
+    /// switched off.
+    fn worker_with_disabled(rules: Vec<RegexPruneRule>) -> RegexAutoPruneWorker {
+        let mut document = String::new();
+        for rule in rules {
+            document.push_str("[[context_curation.auto_prune.regex.rules]]\n");
+            let table = toml::Value::try_from(rule)
+                .expect("rule serializes")
+                .as_table()
+                .expect("rule is a table")
+                .clone();
+            for (key, value) in table {
+                document.push_str(&format!("{key} = {value}\n"));
+            }
+        }
+        RegexAutoPruneWorker::new(crate::worker::test_layer(&document))
+    }
+
+    /// A worker whose regex section carries the given rules, written the
+    /// way a user's file writes them: one array-of-tables entry per rule.
+    fn worker_with(rules: Vec<RegexPruneRule>) -> RegexAutoPruneWorker {
+        let mut document = String::from("[context_curation.auto_prune.regex]\nenabled = true\n");
+        for rule in rules {
+            document.push_str("[[context_curation.auto_prune.regex.rules]]\n");
+            let table = toml::Value::try_from(rule)
+                .expect("rule serializes")
+                .as_table()
+                .expect("rule is a table")
+                .clone();
+            for (key, value) in table {
+                document.push_str(&format!("{key} = {value}\n"));
+            }
+        }
+        RegexAutoPruneWorker::new(crate::worker::test_layer(&document))
+    }
+
     /// Helper: build a worker from rules with given keep_last for "cargo check" pattern.
     fn worker_for_cargo_check(keep_last: usize) -> RegexAutoPruneWorker {
-        RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
-            enabled: true,
-            rules: vec![RegexPruneRule {
-                pattern: "cargo check".to_owned(),
-                tool_name: "bash".to_owned(),
-                keep_last,
-                min_age: 0,
-            }],
-        })
-        .expect("valid config")
+        worker_with(vec![RegexPruneRule {
+            pattern: "cargo check".to_owned(),
+            tool_name: "bash".to_owned(),
+            keep_last,
+            min_age: 0,
+        }])
     }
 
     /// Helper: evaluate a worker on a history snapshot.
@@ -334,17 +388,13 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn from_config_clamps_keep_last_to_minimum_1() {
-        let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
-            enabled: true,
-            rules: vec![RegexPruneRule {
-                pattern: "cargo check".to_owned(),
-                tool_name: "bash".to_owned(),
-                keep_last: 0,
-                min_age: 0,
-            }],
-        })
-        .expect("valid config");
+    fn keep_last_is_clamped_to_minimum_1() {
+        let worker = worker_with(vec![RegexPruneRule {
+            pattern: "cargo check".to_owned(),
+            tool_name: "bash".to_owned(),
+            keep_last: 0,
+            min_age: 0,
+        }]);
 
         // Verify by checking behavior: with 1 match and keep_last clamped to 1, no pruning.
         let history = vec![
@@ -360,32 +410,51 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn from_config_returns_error_for_invalid_regex() {
-        let result = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
-            enabled: true,
-            rules: vec![RegexPruneRule {
-                pattern: "[".to_owned(),
-                tool_name: "bash".to_owned(),
-                keep_last: 1,
-                min_age: 0,
-            }],
-        });
-        assert!(result.is_err(), "invalid regex should return error");
+    fn invalid_pattern_is_skipped_without_failing_the_strategy() {
+        let worker = worker_with(vec![RegexPruneRule {
+            pattern: "[".to_owned(),
+            tool_name: "bash".to_owned(),
+            keep_last: 1,
+            min_age: 0,
+        }]);
+
+        // Then the bad rule is simply not applied — one typo costs that
+        // rule, not the whole strategy, and certainly not a restart.
+        assert_eq!(worker.compile().map(|rules| rules.len()), Some(0));
     }
 
     #[rstest::rstest]
     #[test]
-    fn from_config_disabled_returns_empty_worker() {
-        let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
-            enabled: false,
-            rules: vec![RegexPruneRule {
+    fn a_good_rule_still_applies_alongside_an_invalid_one() {
+        // Given two rules, one uncompilable.
+        let worker = worker_with(vec![
+            RegexPruneRule {
+                pattern: "[".to_owned(),
+                tool_name: "bash".to_owned(),
+                keep_last: 1,
+                min_age: 0,
+            },
+            RegexPruneRule {
                 pattern: "cargo check".to_owned(),
                 tool_name: "bash".to_owned(),
                 keep_last: 1,
                 min_age: 0,
-            }],
-        })
-        .expect("valid config");
+            },
+        ]);
+
+        // Then only the good one survives.
+        assert_eq!(worker.compile().map(|rules| rules.len()), Some(1));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn disabled_section_produces_no_mutations() {
+        let worker = worker_with_disabled(vec![RegexPruneRule {
+            pattern: "cargo check".to_owned(),
+            tool_name: "bash".to_owned(),
+            keep_last: 1,
+            min_age: 0,
+        }]);
 
         let history = vec![
             bash_call_result("tc-1", "cargo check", "ok")[0].clone(),
@@ -597,24 +666,20 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn multiple_rules_apply_independently() {
-        let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
-            enabled: true,
-            rules: vec![
-                RegexPruneRule {
-                    pattern: "cargo check".to_owned(),
-                    tool_name: "bash".to_owned(),
-                    keep_last: 1,
-                    min_age: 0,
-                },
-                RegexPruneRule {
-                    pattern: "cargo test".to_owned(),
-                    tool_name: "bash".to_owned(),
-                    keep_last: 1,
-                    min_age: 0,
-                },
-            ],
-        })
-        .expect("valid config");
+        let worker = worker_with(vec![
+            RegexPruneRule {
+                pattern: "cargo check".to_owned(),
+                tool_name: "bash".to_owned(),
+                keep_last: 1,
+                min_age: 0,
+            },
+            RegexPruneRule {
+                pattern: "cargo test".to_owned(),
+                tool_name: "bash".to_owned(),
+                keep_last: 1,
+                min_age: 0,
+            },
+        ]);
 
         let mut history = Vec::new();
 
@@ -645,16 +710,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn rules_filter_by_tool_name() {
-        let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
-            enabled: true,
-            rules: vec![RegexPruneRule {
-                pattern: "foo".to_owned(),
-                tool_name: "bash".to_owned(),
-                keep_last: 1,
-                min_age: 0,
-            }],
-        })
-        .expect("valid config");
+        let worker = worker_with(vec![RegexPruneRule {
+            pattern: "foo".to_owned(),
+            tool_name: "bash".to_owned(),
+            keep_last: 1,
+            min_age: 0,
+        }]);
 
         let mut history = Vec::new();
 
@@ -673,16 +734,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn regex_matches_against_tool_call_text() {
-        let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
-            enabled: true,
-            rules: vec![RegexPruneRule {
-                pattern: "bash:.*cargo check".to_owned(),
-                tool_name: "bash".to_owned(),
-                keep_last: 1,
-                min_age: 0,
-            }],
-        })
-        .expect("valid config");
+        let worker = worker_with(vec![RegexPruneRule {
+            pattern: "bash:.*cargo check".to_owned(),
+            tool_name: "bash".to_owned(),
+            keep_last: 1,
+            min_age: 0,
+        }]);
 
         let mut history = Vec::new();
 
@@ -725,24 +782,20 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn multiple_rules_same_tool_different_patterns() {
-        let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
-            enabled: true,
-            rules: vec![
-                RegexPruneRule {
-                    pattern: "cargo check".to_owned(),
-                    tool_name: "bash".to_owned(),
-                    keep_last: 1,
-                    min_age: 0,
-                },
-                RegexPruneRule {
-                    pattern: "cargo clippy".to_owned(),
-                    tool_name: "bash".to_owned(),
-                    keep_last: 1,
-                    min_age: 0,
-                },
-            ],
-        })
-        .expect("valid config");
+        let worker = worker_with(vec![
+            RegexPruneRule {
+                pattern: "cargo check".to_owned(),
+                tool_name: "bash".to_owned(),
+                keep_last: 1,
+                min_age: 0,
+            },
+            RegexPruneRule {
+                pattern: "cargo clippy".to_owned(),
+                tool_name: "bash".to_owned(),
+                keep_last: 1,
+                min_age: 0,
+            },
+        ]);
 
         let mut history = Vec::new();
 
@@ -772,16 +825,12 @@ mod tests {
 
     /// Helper: like `worker_for_cargo_check` but with explicit `min_age`.
     fn worker_with_min_age(keep_last: usize, min_age: usize) -> RegexAutoPruneWorker {
-        RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
-            enabled: true,
-            rules: vec![RegexPruneRule {
-                pattern: "cargo check".to_owned(),
-                tool_name: "bash".to_owned(),
-                keep_last,
-                min_age,
-            }],
-        })
-        .expect("valid config")
+        worker_with(vec![RegexPruneRule {
+            pattern: "cargo check".to_owned(),
+            tool_name: "bash".to_owned(),
+            keep_last,
+            min_age,
+        }])
     }
 
     /// Build a history containing `n` cargo-check pairs and tail padding.

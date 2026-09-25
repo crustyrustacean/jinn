@@ -471,7 +471,6 @@ impl ActorSystemBuilder {
         jinn_context_curation_activate(
             &mut services,
             state.clone(),
-            &user_preferences_storage,
             handle.clone(),
             compaction_prompt,
         );
@@ -753,7 +752,6 @@ fn jinn_token_count_activate(
 fn jinn_context_curation_activate(
     services: &mut Services,
     state: jinn_domain::common::state::State,
-    user_preferences_storage: &UserPreferencesStorageService,
     handle: tokio::runtime::Handle,
     compaction_prompt: String,
 ) {
@@ -766,96 +764,60 @@ fn jinn_context_curation_activate(
     use jinn_context_curation::worker::HistoryWorker;
     use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
-    let prefs = user_preferences_storage.read();
-    let auto_prune = prefs.auto_prune.clone();
+    let config = services.config.clone();
     let entry_token_cache = HistoryWorkerChatEntryTokenCache::default();
     let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
 
-    let mut workers: Vec<Box<dyn HistoryWorker>> = Vec::new();
-
-    // Auto-prune worker: read→edit context pruning.
-    let config = auto_prune.read_edit.clone();
-    if config.enabled {
-        workers.push(Box::new(ReadEditAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: edit→read context pruning.
-    let config = auto_prune.edit_read.clone();
-    if config.enabled {
-        workers.push(Box::new(EditReadAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: regex-based tool call pruning.
-    let regex_config = auto_prune.regex.clone();
-    if regex_config.enabled && !regex_config.rules.is_empty() {
-        match RegexAutoPruneWorker::from_config(&regex_config) {
-            Ok(worker) => workers.push(Box::new(worker)),
-            Err(e) => {
-                tracing::warn!(err=?e, "invalid regex in auto_prune config, skipping");
-            }
-        }
-    } else {
-        tracing::debug!(
-            enabled = regex_config.enabled,
-            rules = regex_config.rules.len(),
-            "regex auto-prune skipped",
-        );
-    }
-
-    // Auto-prune worker: todo tool call pruning.
-    let config = auto_prune.todo.clone();
-    if config.enabled {
-        workers.push(Box::new(TodoAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: broken-edit context pruning.
-    let config = auto_prune.broken_edit.clone();
-    if config.enabled {
-        workers.push(Box::new(BrokenEditAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: double-edit context pruning.
-    let config = auto_prune.double_edit.clone();
-    if config.enabled {
-        workers.push(Box::new(DoubleEditAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: consecutive-reads per-file pruning.
-    let config = auto_prune.consecutive_reads.clone();
-    if config.enabled {
-        workers.push(Box::new(ConsecutiveReadsAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: tool-age-window context pruning.
-    let config = auto_prune.tool_age_window.clone();
-    if config.enabled {
-        workers.push(Box::new(ToolAgeWindowAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: trivial-assistant context pruning.
-    let trivial_config = auto_prune.trivial_assistant.clone();
-    if trivial_config.enabled {
-        workers.push(Box::new(TrivialAssistantAutoPruneWorker {
-            config: trivial_config,
+    // Every strategy is constructed unconditionally and reads its own
+    // subsection inside `evaluate`. Gating here instead would make a
+    // disabled strategy an ABSENT worker, and then a `reload` could only
+    // ever turn a strategy ON -- there would be no worker left to turn
+    // off. Reading live makes enablement symmetric in both directions.
+    let workers: Vec<Box<dyn HistoryWorker>> = vec![
+        Box::new(ReadEditAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(EditReadAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(BrokenEditAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(DoubleEditAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(ConsecutiveReadsAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(ToolAgeWindowAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(TodoAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(TrivialAssistantAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
             token_cache: entry_token_cache.clone(),
             counter,
-        }));
-    }
-
-    // Auto-prune worker: anchored-assistant context pruning (its
-    // candidate floor derives from the trivial-assistant max-tokens).
-    let anchored_config = auto_prune.anchored_assistant.clone();
-    let trivial_max_tokens = auto_prune.trivial_assistant.max_tokens as u32;
-    if anchored_config.enabled {
-        workers.push(Box::new(AnchoredAssistantAutoPruneWorker {
-            radius: anchored_config.radius,
-            config: anchored_config,
-            min_candidate_tokens: trivial_max_tokens + 1,
-            token_cache: entry_token_cache.clone(),
+        }),
+        Box::new(AnchoredAssistantAutoPruneWorker {
+            // The anchor radius and the trivial-assistant floor are both
+            // read live; this seed only describes the shape.
+            layer: config.clone(),
+            config: Default::default(),
+            token_cache: entry_token_cache,
             counter,
-        }));
-    }
-    drop(prefs);
+        }),
+        Box::new(RegexAutoPruneWorker::new(config.clone())),
+    ];
 
     let compaction_deps = jinn_context_curation::compaction_actor::CompactionActorDeps {
         services: services.clone(),

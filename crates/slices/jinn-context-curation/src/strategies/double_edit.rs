@@ -50,6 +50,11 @@ use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, Conte
 /// pairs are excluded from context immediately (no tail-entry threshold).
 #[derive(Clone)]
 pub struct DoubleEditAutoPruneWorker {
+    /// The configuration layer. The worker holds a cheap
+    /// cloneable handle and re-reads its own subsection inside
+    /// `evaluate`, so enablement and tuning are observed per pass
+    /// rather than frozen at wiring time.
+    pub layer: jinn_config::ConfigLayer,
     /// Configuration for the double-edit auto-prune strategy.
     pub config: DoubleEditAutoPruneConfig,
 }
@@ -121,7 +126,20 @@ impl HistoryWorker for DoubleEditAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        if self.config.max_file_edits == 0 {
+        // Live read: this strategy has no tuning of its own beyond its
+        // enablement switch, so the whole point of the read is to honour
+        // that switch. Off or unreadable means a no-op pass, not an
+        // absent worker.
+        let config = match super::super::worker::strategy_section(&self.layer, |auto| {
+            let section = &auto.double_edit;
+            section.enabled.then(|| section.clone())
+        }) {
+            Some(config) => config,
+            None => return Vec::new(),
+        };
+        let config = &config;
+
+        if config.max_file_edits == 0 {
             return Vec::new();
         }
 
@@ -129,8 +147,8 @@ impl HistoryWorker for DoubleEditAutoPruneWorker {
         build_prune_mutations(
             history.len(),
             groups,
-            self.config.max_file_edits,
-            self.config.min_age,
+            config.max_file_edits,
+            config.min_age,
             self.name(),
         )
     }
@@ -293,21 +311,21 @@ mod tests {
 
     fn worker_with_max(max: usize) -> DoubleEditAutoPruneWorker {
         DoubleEditAutoPruneWorker {
-            config: DoubleEditAutoPruneConfig {
-                enabled: true,
-                max_file_edits: max,
-                min_age: 0,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "double_edit",
+                format!("max_file_edits = {max}\nmin_age = 0\n"),
+            ),
+            config: Default::default(),
         }
     }
 
     fn worker_with_max_and_min_age(max: usize, min_age: usize) -> DoubleEditAutoPruneWorker {
         DoubleEditAutoPruneWorker {
-            config: DoubleEditAutoPruneConfig {
-                enabled: true,
-                max_file_edits: max,
-                min_age,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "double_edit",
+                format!("max_file_edits = {max}\nmin_age = {min_age}\n"),
+            ),
+            config: Default::default(),
         }
     }
 

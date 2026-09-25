@@ -98,6 +98,11 @@ use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 /// "protect nothing"), `max_tokens` is clamped to a minimum of 1.
 #[derive(Clone)]
 pub struct TrivialAssistantAutoPruneWorker {
+    /// The configuration layer. The worker holds a cheap
+    /// cloneable handle and re-reads its own subsection inside
+    /// `evaluate`, so enablement and tuning are observed per pass
+    /// rather than frozen at wiring time.
+    pub layer: jinn_config::ConfigLayer,
     /// Configuration for the trivial-assistant auto-prune strategy.
     pub config: TrivialAssistantAutoPruneConfig,
     /// Shared per-session, per-entry token-count cache. Cheap clone (inner is
@@ -212,10 +217,21 @@ impl HistoryWorker for TrivialAssistantAutoPruneWorker {
         session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
+        // Live read: this strategy's own subsection, switched off or
+        // unreadable means a no-op pass rather than an absent worker.
+        let config = match super::super::worker::strategy_section(&self.layer, |auto| {
+            let section = &auto.trivial_assistant;
+            section.enabled.then(|| section.clone())
+        }) {
+            Some(config) => config,
+            None => return Vec::new(),
+        };
+        let config = &config;
+
         let mutations = build_trivial_assistant_mutations(
             &history,
-            self.config.min_age,
-            self.config.max_tokens as u32,
+            config.min_age,
+            config.max_tokens as u32,
             session_id,
             &self.token_cache,
             &self.counter,
@@ -223,8 +239,8 @@ impl HistoryWorker for TrivialAssistantAutoPruneWorker {
         );
         tracing::debug!(
             mutations = mutations.len(),
-            min_age = self.config.min_age,
-            max_tokens = self.config.max_tokens,
+            config.min_age = config.min_age,
+            config.max_tokens = config.max_tokens,
             history_len = history.len(),
             "trivial_assistant evaluate done"
         );
@@ -249,11 +265,11 @@ mod tests {
     /// Build a worker with the given thresholds (enabled = true).
     fn worker(min_age: usize, max_tokens: usize) -> TrivialAssistantAutoPruneWorker {
         TrivialAssistantAutoPruneWorker {
-            config: TrivialAssistantAutoPruneConfig {
-                enabled: true,
-                min_age,
-                max_tokens,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "trivial_assistant",
+                format!("min_age = {min_age}\nmax_tokens = {max_tokens}\n"),
+            ),
+            config: Default::default(),
             token_cache: HistoryWorkerChatEntryTokenCache::new(),
             counter: TiktokenCounter::o200k_base(),
         }
@@ -792,7 +808,6 @@ mod tests {
     #[test]
     fn anchored_assistant_worker_reads_external_cache_writes() {
         use crate::strategies::anchored_assistant::AnchoredAssistantAutoPruneWorker;
-        use jinn_preferences_config::schemas::auto_prune::AnchoredAssistantAutoPruneConfig;
 
         let shared_cache = HistoryWorkerChatEntryTokenCache::new();
         let session_id = SessionId::new();
@@ -800,23 +815,21 @@ mod tests {
         // Trivial worker constructed against the shared handle — proves
         // both workers can hold the same cache instance (type-check).
         let _trivial = TrivialAssistantAutoPruneWorker {
-            config: TrivialAssistantAutoPruneConfig {
-                enabled: true,
-                min_age: 100,
-                max_tokens: 80,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "trivial_assistant",
+                format!("min_age = 0\nmax_tokens = 80\n"),
+            ),
+            config: Default::default(),
             token_cache: shared_cache.clone(),
             counter: TiktokenCounter::o200k_base(),
         };
 
         let anchored = AnchoredAssistantAutoPruneWorker {
-            config: AnchoredAssistantAutoPruneConfig {
-                enabled: true,
-                radius: 5,
-                min_age: 0,
-            },
-            radius: 5,
-            min_candidate_tokens: 81,
+            layer: crate::worker::layer_with_strategy(
+                "anchored_assistant",
+                format!("radius = 5\nmin_age = 0\n"),
+            ),
+            config: Default::default(),
             token_cache: shared_cache.clone(),
             counter: TiktokenCounter::o200k_base(),
         };

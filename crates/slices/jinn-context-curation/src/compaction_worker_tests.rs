@@ -569,13 +569,6 @@ fn session_continues_after_background_compaction() {
     {
         let mut app = state.write();
         app.session.insert(session);
-        // Use a tiny reserve so compaction triggers with just 20 turns.
-        app.frontend.preferences.compaction = CompactionConfig {
-            model: None,
-            threshold: 0.8,
-            reserve_tokens: 100,
-            fallback_context_window: 150_000,
-        };
     }
 
     let services = TestServices::builder()
@@ -583,12 +576,17 @@ fn session_continues_after_background_compaction() {
             FakeLlmServiceFactory::new(vec![FAKE_SUMMARY.to_owned()]),
         )))
         .build();
-    // Sync test preferences to the in-memory storage.
-    let prefs = state.read().frontend.preferences.clone();
+    // A tiny reserve so compaction triggers with just 20 turns, written
+    // through the layer the worker actually reads.
     services
-        .user_preferences_storage
-        .save(&prefs)
-        .expect("save test prefs");
+        .config
+        .put::<CompactionConfig>(&CompactionConfig {
+            model: None,
+            threshold: 0.8,
+            reserve_tokens: 100,
+            fallback_context_window: 150_000,
+        })
+        .expect("layer writes the compaction section");
     let handle = services.handle.clone();
 
     let worker = CompactionWorker::new(services, handle, state, String::new());
@@ -667,6 +665,9 @@ use jinn_provider_config::ModelCache;
 struct ThresholdTestEnv {
     state: State,
     session_id: SessionId,
+    /// Carried so `set_compaction_config` writes through the same layer
+    /// the worker reads from.
+    services: jinn_domain::Services,
 }
 
 impl ThresholdTestEnv {
@@ -685,7 +686,11 @@ impl ThresholdTestEnv {
             let mut app = state.write();
             app.session.insert(session);
         }
-        Self { state, session_id }
+        Self {
+            state,
+            session_id,
+            services: TestServices::builder().build(),
+        }
     }
 
     /// Set the session's cached context_size (tiktoken count from last assembly).
@@ -709,26 +714,27 @@ impl ThresholdTestEnv {
             .update(|cell| cell.model_cache = Some(cache));
     }
 
-    /// Set the compaction config.
+    /// Set the compaction config through the configuration layer — the
+    /// same path production reads, so a test that seeds here is exercising
+    /// the real resolution rather than a state mirror of it.
     fn set_compaction_config(&self, config: CompactionConfig) {
-        let mut app = self.state.write();
-        app.frontend.preferences.compaction = config;
+        self.services
+            .config
+            .put::<CompactionConfig>(&config)
+            .expect("layer writes the compaction section");
     }
 
     /// Build a CompactionWorker backed by a fake LLM that returns the given summary.
     fn build_worker(&self, summary_text: &str) -> CompactionWorker {
-        let services = TestServices::builder()
-            .llm_service(LlmServiceFactoryService::new(Arc::new(
-                FakeLlmServiceFactory::new(vec![summary_text.to_owned()]),
-            )))
-            .build();
-        // Sync test preferences to the in-memory storage so
-        // the worker can load them via services.user_preferences_storage.
-        let prefs = self.state.read().frontend.preferences.clone();
-        services
-            .user_preferences_storage
-            .save(&prefs)
-            .expect("save test prefs");
+        // The env's services are reused (not rebuilt) so a config written
+        // by `set_compaction_config` is the same value the worker reads.
+        // `Services` is a cheap-clone handle container, so swapping the LLM
+        // factory on a clone does not disturb the config layer.
+        let mut services = self.services.clone();
+        services.llm_service =
+            LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
+                summary_text.to_owned(),
+            ])));
         let handle = services.handle.clone();
         CompactionWorker::new(services, handle, self.state.clone(), String::new())
     }

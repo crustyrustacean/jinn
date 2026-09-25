@@ -76,6 +76,11 @@ use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, Conte
 /// at evaluation time.
 #[derive(Clone)]
 pub struct ToolAgeWindowAutoPruneWorker {
+    /// The configuration layer. The worker holds a cheap
+    /// cloneable handle and re-reads its own subsection inside
+    /// `evaluate`, so enablement and tuning are observed per pass
+    /// rather than frozen at wiring time.
+    pub layer: jinn_config::ConfigLayer,
     /// Configuration for the tool-age-window auto-prune strategy.
     pub config: ToolAgeWindowAutoPruneConfig,
 }
@@ -241,10 +246,21 @@ impl HistoryWorker for ToolAgeWindowAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mutations = build_age_window_mutations(&history, self.config.min_age, self.name());
+        // Live read: this strategy's own subsection, switched off or
+        // unreadable means a no-op pass rather than an absent worker.
+        let config = match super::super::worker::strategy_section(&self.layer, |auto| {
+            let section = &auto.tool_age_window;
+            section.enabled.then(|| section.clone())
+        }) {
+            Some(config) => config,
+            None => return Vec::new(),
+        };
+        let config = &config;
+
+        let mutations = build_age_window_mutations(&history, config.min_age, self.name());
         tracing::debug!(
             mutations = mutations.len(),
-            min_age = self.config.min_age,
+            config.min_age = config.min_age,
             history_len = history.len(),
             "tool_age_window evaluate done"
         );
@@ -270,10 +286,11 @@ mod tests {
     /// Build a worker with the given `min_age` (enabled = true).
     fn worker(min_age: usize) -> ToolAgeWindowAutoPruneWorker {
         ToolAgeWindowAutoPruneWorker {
-            config: ToolAgeWindowAutoPruneConfig {
-                enabled: true,
-                min_age,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "tool_age_window",
+                format!("min_age = {min_age}\n"),
+            ),
+            config: Default::default(),
         }
     }
 

@@ -30,6 +30,7 @@ use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
 use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use jinn_preferences_config::schemas::CompactionConfig;
+use jinn_preferences_config::schemas::RequestRetryConfig;
 
 /// Errors during compaction.
 #[derive(Debug, Error)]
@@ -169,8 +170,22 @@ impl CompactionWorker {
         &self,
         trigger: &CompactionTrigger,
     ) -> Result<Vec<HistoryMutation>, error_stack::Report<CompactionError>> {
-        // Load preferences from service (outside state lock).
-        let prefs = self.services.user_preferences_storage.read();
+        // Read the compaction + retry policy from the configuration layer
+        // at the point of use, outside the state lock.
+        let (config, retry_config) = {
+            let config = self
+                .services
+                .config
+                .get::<CompactionConfig>()
+                .unwrap_or_default();
+            let retry_config = self
+                .services
+                .config
+                .get::<RequestRetryConfig>()
+                .map(|retry| jinn_provider_config::request_retry_to_provider_config(&retry))
+                .unwrap_or_default();
+            (config, retry_config)
+        };
 
         // Write session state (resolve_model advances the alloy round-robin index).
         let (model_name, history) = {
@@ -182,14 +197,7 @@ impl CompactionWorker {
             })
         };
 
-        // Read compaction preferences and retry configuration.
-        let (config, compaction_prompt, retry_config) = {
-            let config = prefs.compaction.clone();
-            let compaction_prompt = self.compaction_prompt.clone();
-            let retry_config =
-                jinn_provider_config::request_retry_to_provider_config(&prefs.request_retry);
-            (config, compaction_prompt, retry_config)
-        };
+        let compaction_prompt = self.compaction_prompt.clone();
 
         if history.is_empty() {
             return Ok(vec![]);
@@ -245,19 +253,30 @@ impl CompactionWorker {
             return vec![];
         }
 
-        // Load preferences from service (outside state lock).
-        let prefs = self.services.user_preferences_storage.read();
+        // Read the compaction + retry policy from the configuration layer
+        // at the point of use, outside the state lock.
+        let (config, retry_config) = {
+            let config = self
+                .services
+                .config
+                .get::<CompactionConfig>()
+                .unwrap_or_default();
+            let retry_config = self
+                .services
+                .config
+                .get::<RequestRetryConfig>()
+                .map(|retry| jinn_provider_config::request_retry_to_provider_config(&retry))
+                .unwrap_or_default();
+            (config, retry_config)
+        };
 
-        let (config, model_name, compaction_prompt, retry_config, full_history) = {
+        let (model_name, compaction_prompt, full_history) = {
             let state = self.state.read();
-            let config = prefs.compaction.clone();
             let Some(session) = state.session.get(session_id) else {
                 return vec![];
             };
             let model_name = session.profile().model.clone();
             let compaction_prompt = self.compaction_prompt.clone();
-            let retry_config =
-                jinn_provider_config::request_retry_to_provider_config(&prefs.request_retry);
 
             // Uses the exact same values displayed in the status bar:
             //   - context_size() = tiktoken count from last prompt assembly
@@ -308,7 +327,7 @@ impl CompactionWorker {
             );
 
             let history = session.history().to_vec();
-            (config, model_name, compaction_prompt, retry_config, history)
+            (model_name, compaction_prompt, history)
         };
 
         // Pre-generate the compaction entry ID and mark as in-flight.

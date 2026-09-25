@@ -39,7 +39,7 @@ struct ConfigInner {
     /// The decor-preserving document; the authoritative in-memory state.
     doc: RwLock<DocumentMut>,
     /// Where the document is persisted, for `reload` and `put`.
-    storage: Arc<dyn ConfigDocumentStorage>,
+    storage: RwLock<Arc<dyn ConfigDocumentStorage>>,
     /// Sections registered for `validate()`, in registration order.
     registry: RwLock<Vec<RegisteredSection>>,
 }
@@ -47,7 +47,7 @@ struct ConfigInner {
 impl std::fmt::Debug for ConfigInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfigInner")
-            .field("backend", &self.storage.name())
+            .field("backend", &self.storage.read().name())
             .field("registered_sections", &self.registry.read().len())
             .finish_non_exhaustive()
     }
@@ -244,7 +244,7 @@ impl ConfigLayer {
         Ok(Self {
             inner: Arc::new(ConfigInner {
                 doc: RwLock::new(doc),
-                storage,
+                storage: RwLock::new(storage),
                 registry: RwLock::new(Vec::new()),
             }),
         })
@@ -253,7 +253,7 @@ impl ConfigLayer {
     /// The backend's name, for debugging.
     #[must_use]
     pub fn backend_name(&self) -> &'static str {
-        self.inner.storage.name()
+        self.inner.storage.read().name()
     }
 
     /// The current document's text, as the layer holds it.
@@ -335,7 +335,7 @@ impl ConfigLayer {
 
         // Disk first, then memory: a failed write leaves the in-memory
         // document agreeing with what is actually on disk.
-        self.inner.storage.write(&doc)?;
+        self.inner.storage.read().write(&doc)?;
         *self.inner.doc.write() = doc;
         Ok(())
     }
@@ -409,7 +409,7 @@ impl ConfigLayer {
         // array, so an entry the caller dropped must go explicitly.
         drop_unmatched_entries(&mut doc, T::KEY, T::ENTRY_KEY, value);
 
-        self.inner.storage.write(&doc)?;
+        self.inner.storage.read().write(&doc)?;
         *self.inner.doc.write() = doc;
         Ok(())
     }
@@ -450,7 +450,28 @@ impl ConfigLayer {
     /// Returns [`ConfigError::Storage`] or [`ConfigError::Malformed`]
     /// when the document cannot be re-read or parsed.
     pub fn reload(&self) -> Result<(), Report<ConfigError>> {
-        let doc = self.inner.storage.read()?;
+        let doc = self.inner.storage.read().read()?;
+        *self.inner.doc.write() = doc;
+        Ok(())
+    }
+
+    /// Points the layer at a different storage backend and re-reads from
+    /// it. For tests that seed a document over an already-built layer;
+    /// production never swaps the backend out from under itself.
+    ///
+    /// The swap and the re-read are one step on purpose: a caller that
+    /// swapped and then reloaded separately could interleave with another
+    /// reader and leave the snapshot describing the *previous* backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] when the new backend cannot be read.
+    pub fn use_storage(
+        &self,
+        storage: Arc<dyn ConfigDocumentStorage>,
+    ) -> Result<(), Report<ConfigError>> {
+        let doc = storage.read()?;
+        *self.inner.storage.write() = storage;
         *self.inner.doc.write() = doc;
         Ok(())
     }
