@@ -276,7 +276,9 @@ impl SessionDiscoveryWorker {
     }
 
     /// The skills resource scan (blocking), with the state write +
-    /// picker reload + `SkillsLoaded` publication on completion.
+    /// `SkillsLoaded` publication on completion. The picker repaints from
+    /// that broadcast — the picker is slice-owned, so the worker has no
+    /// reason to know it exists.
     fn spawn_skills_task(&self, cwd: &std::path::Path) -> tokio::task::JoinHandle<ResourceOutcome> {
         if !Self::cwd_gate_open(cwd) {
             return skipped();

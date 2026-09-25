@@ -64,7 +64,11 @@ fn wired() -> (TypedCell<SkillPickerState>, KeyRoutes) {
     clippy::expect_used,
     reason = "test helper: a broken host is a test-setup failure, not a behavior under test"
 )]
-async fn activated() -> (jinn_slices::Slices, KeyRoutes) {
+async fn activated() -> (
+    jinn_slices::Slices,
+    KeyRoutes,
+    &'static jinn_domain::Services,
+) {
     let slices = jinn_slices::Slices::new();
     let key_routes = KeyRoutes::new();
     let mut viewport = jinn_slices::view::Viewport::new();
@@ -82,7 +86,8 @@ async fn activated() -> (jinn_slices::Slices, KeyRoutes) {
     host.finalize(&|_key| None)
         .expect("skills slice finalizes cleanly");
 
-    (slices, key_routes)
+    let system: &'static jinn_domain::Services = Box::leak(Box::new(services));
+    (slices, key_routes, system)
 }
 
 /// A discovered skill with a body, as the discovery scan would produce.
@@ -329,7 +334,7 @@ fn the_opener_binds_outside_the_picker_it_opens() {
 async fn the_picker_registers_a_filter_input_hook() {
     // Given the wiring activation performs — the real `activate`, not a
     // hand-built stand-in, so removing the registration here is detectable.
-    let (slices, key_routes) = activated().await;
+    let (slices, key_routes, _system) = activated().await;
 
     // When asking for the picker's input hook.
     let hook = key_routes.input_hook(&skill_picker_scope());
@@ -351,7 +356,7 @@ async fn the_picker_registers_a_filter_input_hook() {
 #[tokio::test]
 async fn typing_a_character_narrows_the_visible_skills() {
     // Given an activated skills slice with an open picker.
-    let (slices, key_routes) = activated().await;
+    let (slices, key_routes, _system) = activated().await;
     let cell = slices
         .reader(&skill_picker_slot())
         .expect("skill picker cell registered at activation");
@@ -372,7 +377,7 @@ async fn typing_a_character_narrows_the_visible_skills() {
 #[tokio::test]
 async fn backspacing_removes_the_last_filter_character() {
     // Given an activated skills slice whose filter holds one typed character.
-    let (slices, key_routes) = activated().await;
+    let (slices, key_routes, _system) = activated().await;
     let cell = slices
         .reader(&skill_picker_slot())
         .expect("skill picker cell registered at activation");
@@ -391,6 +396,37 @@ async fn backspacing_removes_the_last_filter_character() {
 }
 
 // ── Republish ────────────────────────────────────────────────────────────
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_published_scan_repaints_an_open_picker() {
+    // Given an activated skills slice whose picker is open over one skill.
+    let (slices, _routes, system) = activated().await;
+    let cell = slices
+        .reader(&skill_picker_slot())
+        .expect("skill picker cell registered at activation");
+    opened(&cell, &["alpha"], &[]);
+
+    // When a discovery scan publishes a newly found skill over the bus.
+    system
+        .trouper_system
+        .publish(jinn_skills_msg::SkillsLoaded {
+            session_id: jinn_core_types::SessionId::new(),
+            skills: vec![skill("alpha"), skill("delta")],
+            error: None,
+        })
+        .await;
+    // The broadcast is asynchronous; give the subscription a turn to drain.
+    for _ in 0..100 {
+        if visible_names(&cell).len() == 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    // Then the open menu shows the new skill without being reopened.
+    assert_eq!(visible_names(&cell), vec!["alpha", "delta"]);
+}
 
 #[rstest::rstest]
 fn a_rescan_keeps_the_highlight_on_the_skill_being_looked_at() {

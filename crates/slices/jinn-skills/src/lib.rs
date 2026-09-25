@@ -72,20 +72,23 @@ pub fn activate(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>)
     // Repaint the picker when a discovery scan reports new skills. Spawned here
     // because the cell only exists here, and before any scan is published so no
     // result can slip past the subscription.
-    host.spawn_service::<
+    //
+    // Built with the explicit builder rather than `host.spawn_service`, which
+    // omits `.handles(...)`: the actor would spawn and stay subscribed to
+    // nothing, so a rescan would update the session but never the open menu.
+    trouper::builder::spawn_service_builder::<
         skill_picker_republisher_actor::SkillPickerRepublisherActor,
-        _,
-        std::convert::Infallible,
-    >(
-        trouper::actor::ActorPath::new(
-            skill_picker_republisher_actor::SkillPickerRepublisherActor::PATH.to_owned(),
-        ),
-        move || {
-            Ok(skill_picker_republisher_actor::SkillPickerRepublisherActor::new(
-                cell.clone(),
-            ))
-        },
-    );
+    >(host.system())
+    .at(trouper::actor::ActorPath::new(
+        skill_picker_republisher_actor::SkillPickerRepublisherActor::PATH.to_owned(),
+    ))
+    .start_with(move || {
+        Box::pin(async move {
+            Ok(skill_picker_republisher_actor::SkillPickerRepublisherActor::new(cell.clone()))
+        })
+    })
+    .handles::<jinn_skills_msg::SkillsLoaded>()
+    .start();
 }
 
 #[cfg(test)]
