@@ -42,7 +42,7 @@ pub(in crate::session_actor) async fn emit_history_appended(
 pub(crate) async fn test_actor() -> super::SessionPersistenceActor {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+    use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
     super::SessionPersistenceActor {
@@ -67,7 +67,7 @@ pub(crate) async fn test_actor_recording() -> (
 ) {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+    use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
     let (bus, audit) = jinn_domain::common::services::BusService::new_recording();
@@ -376,8 +376,7 @@ pub(crate) async fn test_actor_with_store_recording(
                 jinn_domain::common::app_state::AppState::default(),
             ),
             services,
-            counter:
-                jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
+            counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
             token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
             image_converter: test_image_converter(),
         },
@@ -391,6 +390,6 @@ pub(crate) async fn test_actor_with_store_recording(
 /// conversion path inject their own converter.
 #[cfg(test)]
 pub(in crate::session_actor) fn test_image_converter()
--> jinn_domain::feat::image_convert::ImageConverterService {
-    jinn_domain::feat::image_convert::ImageConverterService::unavailable()
+-> jinn_llm_support::image_convert::ImageConverterService {
+    jinn_llm_support::image_convert::ImageConverterService::unavailable()
 }

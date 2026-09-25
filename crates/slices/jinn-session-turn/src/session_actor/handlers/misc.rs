@@ -66,7 +66,7 @@ impl SessionPersistenceActor {
                 .accumulation_threshold_tokens
         };
         let token_costs: std::collections::HashMap<jinn_core_types::ChatEntryId, u32> = {
-            use jinn_domain::feat::context::strategy::token_estimator::TokenCounter;
+            use jinn_llm_support::token_estimator::TokenCounter;
             let state = self.state.read();
             let session = state.session.get(&payload.session_id);
             payload

@@ -20,7 +20,7 @@ use jinn_session_history_msg::PushChatEntry;
 
 use super::super::SessionPersistenceActor;
 use jinn_context::attachment_path::{PathResolveContext, PendingPath};
-use jinn_domain::feat::image_convert::ResolveOutcome;
+use jinn_llm_support::image_convert::ResolveOutcome;
 use jinn_session_msg::PhaseKind;
 use jinn_turn_dispatch_msg::DispatchTurn;
 
@@ -221,7 +221,7 @@ impl SessionPersistenceActor {
         }
         let converter = self.image_converter.clone();
         let result = tokio::task::spawn_blocking(move || {
-            jinn_domain::feat::image_convert::resolve_attachments_blocking(
+            jinn_llm_support::image_convert::resolve_attachments_blocking(
                 &pending_paths,
                 &converter,
             )
@@ -262,7 +262,7 @@ impl SessionPersistenceActor {
                 true
             }
             Ok(Err(report)) => {
-                let message = jinn_domain::feat::image_convert::format_attachment_error(&report);
+                let message = jinn_llm_support::image_convert::format_attachment_error(&report);
                 self.push_entry_and_block(session_id, entry.clone(), message)
                     .await;
                 false

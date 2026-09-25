@@ -5,7 +5,7 @@
 )]
 
 use super::render::*;
-use jinn_domain::feat::ui::chat_log::GUTTER_WIDTH;
+use jinn_chat_log_view::chat_log::GUTTER_WIDTH;
 use jinn_domain::protocol::ChatEntry;
 use jinn_selection_widget::compute_popup_rect;
 use jinn_slices::FocusScope;

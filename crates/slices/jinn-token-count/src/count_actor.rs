@@ -20,7 +20,7 @@ use trouper::system::ActorSystem;
 
 use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
 use jinn_domain::common::state::State;
-use jinn_domain::feat::context::strategy::token_estimator::{
+use jinn_llm_support::token_estimator::{
     TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_content_tokens,
 };
 use jinn_session_history_msg::HistoryAppended;
@@ -188,10 +188,10 @@ mod tests {
     )]
     use super::*;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::feat::context::strategy::token_estimator::estimate_entry_tokens;
     use jinn_domain::protocol::ChangeSource;
     use jinn_domain::protocol::ChatEntry;
     use jinn_domain::protocol::ContextOverride;
+    use jinn_llm_support::token_estimator::estimate_entry_tokens;
     use jinn_session_state::ChatSessionState;
 
     fn actor_for(state: &State) -> TokenCountActor {

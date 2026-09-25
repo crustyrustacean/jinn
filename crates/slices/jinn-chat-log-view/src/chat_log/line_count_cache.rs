@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use ratatui::text::Line;
 
-use crate::protocol::{ChatEntry, ChatEntryId};
+use jinn_core_types::{ChatEntry, ChatEntryId};
 
 /// Cached wrapped line count and rendered lines for a single entry.
 #[derive(Debug, Clone)]
@@ -138,10 +138,6 @@ impl EntryLineCache {
         );
     }
 
-    #[expect(
-        clippy::rc_buffer,
-        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
-    )]
     /// Store a wrapped line count and rendered lines for an entry.
     pub fn insert_with_lines(
         &mut self,
@@ -207,8 +203,8 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::protocol::ToolResultStatus;
-    use crate::protocol::{ChatEntry, ChatEntryKind};
+    use jinn_core_types::ToolResultStatus;
+    use jinn_core_types::{ChatEntry, ChatEntryKind};
 
     #[rstest::rstest]
     fn cache_hit_returns_count() {
@@ -245,7 +241,7 @@ mod tests {
         cache.insert(&entry, false, 0, 80, 5);
 
         // When the entry's content changes.
-        if let crate::protocol::ChatEntryKind::Assistant(ref mut text) = entry.kind {
+        if let jinn_core_types::ChatEntryKind::Assistant(ref mut text) = entry.kind {
             text.push_str(" world");
         }
 

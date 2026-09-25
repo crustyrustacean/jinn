@@ -1,0 +1,28 @@
+[package]
+name = "jinn-llm-support"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Kernel-free LLM support vocabulary: token estimation, tool-prompt blocks, chat-entry conversion, and image attachment conversion."
+
+[dependencies]
+jinn-context = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-provider = { workspace = true }
+derive_more = { workspace = true }
+error-stack = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tiktoken = { workspace = true }
+tracing = { workspace = true }
+unicode-segmentation = { workspace = true }
+which = { workspace = true }
+wherror = { workspace = true }
+
+[dev-dependencies]
+jinn-context-curation = { workspace = true }
+rstest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

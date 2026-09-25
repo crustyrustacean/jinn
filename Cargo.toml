@@ -49,6 +49,7 @@ path = "src/lib.rs"
 
 [dependencies]
 jinn-core-types = { workspace = true }
+jinn-llm-support = { workspace = true }
 jinn-persona = { workspace = true }
 jinn-provider-selection = { workspace = true }
 jinn-token-count = { workspace = true }
@@ -174,6 +175,7 @@ jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }
 jinn-context = { path = "crates/jinn-context" }
 jinn-core-types = { path = "crates/jinn-core-types" }
+jinn-llm-support = { path = "crates/jinn-llm-support" }
 jinn-dashboard = { path = "crates/slices/jinn-dashboard" }
 jinn-theme-slice = { path = "crates/slices/jinn-theme" }
 jinn-persona = { path = "crates/slices/jinn-persona" }

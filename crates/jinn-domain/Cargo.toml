@@ -6,13 +6,14 @@ edition.workspace = true
 [features]
 # Opt-in: compiles the full 36-grammar tree-sitter set for markdown code-block
 # highlighting instead of the curated default set (see root Cargo.toml).
-syntax-all = ["ratatui-markdown/highlight-lang-all"]
+syntax-all = ["jinn-chat-log-view/syntax-all"]
 # Opt-in: exposes the bus test harness (in-crate tests enable it via
 # `cfg(test)`; downstream slice-crate tests opt in by feature).
 test-harness = []
 
 [dependencies]
 jinn-chat-input-msg = { workspace = true }
+jinn-chat-log-view = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-cwd-msg = { workspace = true }
 jinn-persona-msg = { workspace = true }
@@ -33,6 +34,7 @@ jinn-provider = { workspace = true }
 jinn-common = { workspace = true }
 jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
+jinn-llm-support = { workspace = true }
 jinn-session-history = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-context-curation-msg = { workspace = true }
@@ -50,7 +52,6 @@ jinn-selection-widget = { workspace = true }
 jinn-picker = { workspace = true }
 
 jinn-theme = { workspace = true }
-ratatui-markdown = { workspace = true }
 
 # External deps
 serde = { workspace = true }
@@ -64,13 +65,10 @@ async-trait = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 dirs = { workspace = true }
-which = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
-strip-ansi-escapes = { workspace = true }
-tiktoken = { workspace = true }
 throbber-widgets-tui = { workspace = true }
 parking_lot = { workspace = true }
 libc = { workspace = true }

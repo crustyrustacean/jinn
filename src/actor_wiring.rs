@@ -26,7 +26,7 @@ use jinn_quake_bar;
 use jinn_slices;
 
 use jinn_domain::common::actor_deps::ActorDeps;
-use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+use jinn_llm_support::token_estimator::TiktokenCounter;
 
 use jinn_domain::{AppCore, State};
 
@@ -332,7 +332,7 @@ impl ActorSystemBuilder {
                 state: state.clone(),
                 counter: token_counter,
                 token_cache: entry_token_cache.clone(),
-                image_converter: jinn_domain::feat::image_convert::ImageConverterService::system(),
+                image_converter: jinn_llm_support::image_convert::ImageConverterService::system(),
             },
         );
 
@@ -765,8 +765,7 @@ fn jinn_context_curation_activate(
     let prefs = user_preferences_storage.read();
     let auto_prune = prefs.auto_prune.clone();
     let entry_token_cache = HistoryWorkerChatEntryTokenCache::default();
-    let counter =
-        jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
+    let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
 
     let mut workers: Vec<Box<dyn HistoryWorker>> = Vec::new();
 

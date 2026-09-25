@@ -3,7 +3,7 @@
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
-use crate::protocol::AttachmentOutcome;
+use jinn_core_types::AttachmentOutcome;
 
 use super::markdown::render_markdown;
 use super::shared::{Pad, RenderContext, pad_entry_with, pad_line_to_width};
@@ -129,8 +129,8 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::feat::ui::chat_log::shared::RenderContext;
-    use crate::protocol::{AttachmentOutcome, ResolvedToken};
+    use crate::chat_log::shared::RenderContext;
+    use jinn_core_types::{AttachmentOutcome, ResolvedToken};
 
     fn ctx() -> RenderContext {
         RenderContext {

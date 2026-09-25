@@ -6,12 +6,12 @@
     reason = "test code"
 )]
 
-use crate::feat::context::strategy::token_estimator::{
+use crate::token_estimator::{
     CharRatioEstimator, TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_tokens,
     estimate_tool_schema_tokens,
 };
-use crate::protocol::{ChatEntry, PinPosition};
 use jinn_core_types::tool_types::ToolDefinition;
+use jinn_core_types::{ChatEntry, PinPosition};
 
 #[rstest::rstest]
 fn char_ratio_returns_nonzero_for_empty_string() {
@@ -76,7 +76,7 @@ fn estimate_entry_tokens_for_user() {
 
 #[rstest::rstest]
 fn estimate_entry_tokens_for_user_with_image_includes_flat_cost() {
-    use crate::protocol::ChatEntryKind;
+    use jinn_core_types::ChatEntryKind;
     use jinn_provider::Attachment;
 
     // Given a char ratio estimator and a user entry carrying one image attachment.
@@ -353,7 +353,7 @@ fn estimate_entry_tokens_for_forced_include_error_uses_actionable_framing() {
     // Given a ForcedInclude Error entry. The estimator must compute the
     // count for the actionable framing (not the legacy `[Error]` prefix)
     // so budget estimates stay aligned with what the renderer emits.
-    use crate::protocol::ContextOverride;
+    use jinn_core_types::ContextOverride;
     let estimator = CharRatioEstimator;
     let text = "merge conflict report";
     let entry = ChatEntry::error(text).with_context_override(ContextOverride::ForcedInclude);

@@ -21,7 +21,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::feat::ui::chat_log::shared::RenderContext;
+    use crate::chat_log::shared::RenderContext;
 
     fn render_context() -> RenderContext {
         RenderContext {

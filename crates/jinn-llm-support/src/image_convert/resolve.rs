@@ -175,7 +175,7 @@ mod tests {
     use error_stack::Report;
 
     use super::*;
-    use crate::feat::image_convert::converter::{ImageConversionError, ImageConverter};
+    use crate::image_convert::converter::{ImageConversionError, ImageConverter};
 
     /// A fake converter that returns canned PNG bytes or fails, recording its
     /// calls so tests can assert conversion was/wasn't attempted.

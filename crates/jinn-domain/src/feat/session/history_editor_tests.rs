@@ -668,7 +668,7 @@ fn randomized_editor_ops_always_assemble_valid_sequences() {
 
         // Then the assembled message list is always sequence-valid.
         let messages =
-            crate::feat::provider::entries_to_messages::entries_to_messages(session.history());
+            jinn_llm_support::entries_to_messages::entries_to_messages(session.history());
         assert!(
             sequence_is_valid(&messages),
             "step {step} produced an invalid sequence: {messages:?}"

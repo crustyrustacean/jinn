@@ -17,6 +17,7 @@ trouper = { workspace = true }
 # the `State` API and consumes the kernel token estimator. Tool-definition
 # inputs remain kernel-bound until the session-family migration.
 jinn-domain = { workspace = true }
+jinn-llm-support = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-provider = { workspace = true }

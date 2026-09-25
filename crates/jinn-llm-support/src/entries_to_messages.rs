@@ -1,7 +1,7 @@
 //! Conversion from chat entries to LLM messages.
 
-use crate::protocol::{ChatEntry, ChatEntryKind, ContextOverride};
 use jinn_core_types::tool_types::ToolCall;
+use jinn_core_types::{ChatEntry, ChatEntryKind, ContextOverride};
 use jinn_provider::LlmMessage;
 
 /// Convert chat history entries to LLM messages.
@@ -196,7 +196,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
 /// This is the safety net for states the write-time history editor cannot
 /// produce: legacy persisted sessions and hypothetical future bugs. Normal
 /// editor-produced histories never trip it.
-pub(crate) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
+pub(super) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
     let mut out: Vec<LlmMessage> = Vec::with_capacity(messages.len());
     // Open batch: (declaring assistant's index in `out`, unresolved call ids,
     // resolved tool messages held until the batch validates).

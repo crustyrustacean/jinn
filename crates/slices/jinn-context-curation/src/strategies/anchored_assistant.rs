@@ -42,7 +42,7 @@ use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
 use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
-use jinn_domain::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
+use jinn_llm_support::token_estimator::{TiktokenCounter, TokenCounter};
 pub use jinn_preferences_config::schemas::auto_prune::AnchoredAssistantAutoPruneConfig;
 
 /// Anchored-assistant auto-prune worker.

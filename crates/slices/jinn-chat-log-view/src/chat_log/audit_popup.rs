@@ -7,8 +7,8 @@
 //! Popup geometry and rendering live in the TUI layer; this module owns only
 //! the textual content.
 
-use crate::protocol::EntryTiming;
-use crate::protocol::{ChangeSource, ChatEntry, ContextChangeEvent, ContextOverride};
+use jinn_core_types::EntryTiming;
+use jinn_core_types::{ChangeSource, ChatEntry, ContextChangeEvent, ContextOverride};
 use jinn_theme::Theme;
 
 use ratatui::style::Style;
@@ -284,7 +284,7 @@ mod tests {
     //! fallback.
 
     use super::*;
-    use crate::protocol::ChatEntry;
+    use jinn_core_types::ChatEntry;
     use jinn_theme::default_theme;
 
     /// Convenience: format `entry` with the default theme.

@@ -31,7 +31,7 @@ use jinn_theme::Theme;
 #[derive(Debug, Default)]
 pub struct FrontendCaches {
     /// Cached wrapped line counts and rendered lines per chat entry.
-    pub entry_line_cache: RwLock<crate::feat::ui::chat_log::line_count_cache::EntryLineCache>,
+    pub entry_line_cache: RwLock<jinn_chat_log_view::chat_log::EntryLineCache>,
     /// Cached rendered lines for skill-preview popups. An `Arc` handle so
     /// the skill picker's host lens can lend it to the spec's render path.
     pub skill_preview_cache:
