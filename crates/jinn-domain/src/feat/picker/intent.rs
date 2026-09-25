@@ -39,6 +39,15 @@ pub fn handle_open_picker(
         return IntentResult::empty();
     }
 
+    // Slice-owned pickers push their own dynamic scope. The kernel resolves
+    // the id to a registered slice scope and does nothing else: the slice
+    // renders and acts on its own state, so the kernel never branches on
+    // which picker it was.
+    if let Some(scope) = slice_owned_picker_scope(kind) {
+        state.frontend.scope_push(FocusScope::Dynamic(scope));
+        return IntentResult::empty();
+    }
+
     state.frontend.scope_push(FocusScope::Picker { kind });
 
     // Every kind is spec-driven: the open hook owns open-time preparation.
@@ -51,6 +60,18 @@ pub fn handle_open_picker(
         );
     }
     IntentResult::empty()
+}
+
+/// The dynamic scope of a picker that its owning slice has taken over.
+///
+/// A `None` here means the picker is still kernel-driven (a legacy
+/// `FocusScope::Picker` plus a spec). Each entry is a slice-owned scope the
+/// slice registered at activation; the kernel only relays the identity.
+fn slice_owned_picker_scope(kind: PickerKind) -> Option<jinn_slices::SliceScopeId> {
+    match kind {
+        PickerKind::Skill => Some(jinn_skills::skill_picker_scope()),
+        _ => None,
+    }
 }
 
 /// Resets the preview scroll offset when the active picker's spec opts in

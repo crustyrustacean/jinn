@@ -71,3 +71,115 @@ pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
     let cache = state.preview_cache.clone();
     widget.preview_cache(cache.as_ref()).render(frame, area);
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        reason = "test module, panics are acceptable"
+    )]
+    use super::*;
+    use jinn_slices::OverlayViews;
+    use jinn_slices::SliceHost;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    /// The load-bearing test for a slice-owned picker: the render pass must
+    /// draw it. The kernel dispatches a `FocusScope::Dynamic` picker through
+    /// the generic overlay path, so this exercises geometry + view + cell
+    /// with no kernel borrow at all.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn render_draws_the_skill_picker_from_its_own_cell() {
+        // Given an activated skills slice holding one skill.
+        let slices = jinn_slices::Slices::new();
+        let mut viewport = jinn_slices::view::Viewport::new();
+        let overlay_views = OverlayViews::new();
+        let key_routes = jinn_slices::KeyRoutes::new();
+        let services = jinn_domain::Services::new_fake().await;
+        let mut host = SliceHost::new(
+            &slices,
+            &mut viewport,
+            &overlay_views,
+            &key_routes,
+            &services.trouper_system,
+        );
+        crate::activate(&mut host);
+        slices
+            .reader::<jinn_skills_msg::SkillPickerState>(&jinn_skills_msg::skill_picker_slot())
+            .expect("cell registered")
+            .update(|state: &mut jinn_skills_msg::SkillPickerState| {
+                state
+                    .selection
+                    .set_items(jinn_picker::make_items_with_hooks(
+                        vec![jinn_skills_msg::SkillEntry {
+                            name: "web-coder".to_owned(),
+                            description: "writes web code".to_owned(),
+                            body: "# Body".to_owned(),
+                            enabled: true,
+                            source: jinn_skills_msg::SkillSource::Global,
+                            theme: jinn_theme::default_theme(),
+                        }],
+                        jinn_picker::PickerItemHooks::new()
+                            .row(jinn_skills_msg::skill_row)
+                            .search(|e: &jinn_skills_msg::SkillEntry| e.name.clone()),
+                    ));
+            });
+        let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), &slices);
+
+        // When the overlay view renders the picker.
+        let area = Rect::new(0, 0, 100, 30);
+        let mut terminal =
+            Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+        terminal
+            .draw(|frame| render_skill_picker(frame, area, &facts))
+            .expect("draw");
+
+        // Then the skill's name is on screen — the picker draws itself.
+        let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect();
+        assert!(
+            rendered.contains("web-coder"),
+            "slice-owned picker must draw its rows; got {rendered:?}"
+        );
+    }
+
+    /// The overlay must be discoverable by identity alone: the render pass
+    /// looks it up through the registry with no picker-specific branch.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn registered_overlay_resolves_by_scope_identity() {
+        // Given an activated skills slice.
+        let slices = jinn_slices::Slices::new();
+        let mut viewport = jinn_slices::view::Viewport::new();
+        let overlay_views = OverlayViews::new();
+        let key_routes = jinn_slices::KeyRoutes::new();
+        let services = jinn_domain::Services::new_fake().await;
+        let mut host = SliceHost::new(
+            &slices,
+            &mut viewport,
+            &overlay_views,
+            &key_routes,
+            &services.trouper_system,
+        );
+        crate::activate(&mut host);
+        let scope = crate::skill_picker_scope();
+
+        // When the render pass resolves the scope's overlay and view.
+        let overlay = slices.overlay(&scope);
+        let view = overlay_views.view(&scope);
+        let area = Rect::new(0, 0, 100, 30);
+
+        // Then both are present and the geometry yields a popup rect.
+        assert!(overlay.is_some(), "overlay geometry must be registered");
+        assert!(view.is_some(), "overlay view must be registered");
+        let rect = overlay.expect("overlay")(&area).expect("rect");
+        assert!(rect.width > 0 && rect.height > 0);
+    }
+}
