@@ -3207,7 +3207,10 @@ version = "0.118.0"
 dependencies = [
  "jinn-chat-log-view",
  "jinn-picker",
+ "jinn-selection-widget",
  "jinn-skills-msg",
+ "jinn-theme",
+ "parking_lot",
  "ratatui",
  "rstest",
  "serde",

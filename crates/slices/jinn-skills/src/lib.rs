@@ -9,7 +9,9 @@ pub mod format;
 pub mod frontmatter;
 pub mod scan;
 pub mod skill;
+pub mod skill_picker_reload;
 pub mod skill_preview;
+pub mod skill_preview_cache;
 
 pub use format::format_skills_for_prompt;
 pub use jinn_skills_msg::SKILL_CONTENT_PREFIX;
@@ -18,4 +20,6 @@ pub use jinn_skills_msg::loaded_skill_summary_label;
 pub use jinn_skills_msg::parse_loaded_skill_name;
 pub use jinn_skills_msg::{Skill, SkillFrontmatter, SkillSource};
 pub use scan::scan_skills;
+pub use skill_picker_reload::{build_skill_entries, reload_skill_picker};
 pub use skill_preview::render_skill_preview;
+pub use skill_preview_cache::SkillPreviewCache;
