@@ -21,6 +21,12 @@ pub fn skill_picker_slot() -> SlotKey {
     SlotKey::builtin("skills", "picker")
 }
 
+/// Result rows assumed before the render pass has measured the real popup.
+///
+/// Chosen to match the kernel's pre-measurement fallback, so the first keypress
+/// after opening the picker pages the same way it always has.
+pub const RESULTS_VIEWPORT_FALLBACK: usize = 20;
+
 /// The skill picker's complete state: what it shows, and the set it restores
 /// to on cancel.
 #[derive(Debug)]
@@ -38,6 +44,18 @@ pub struct SkillPickerState {
     pub preview_scroll: usize,
     /// The picker's rendered-preview cache, shared with the render pass.
     pub preview_cache: std::sync::Arc<crate::skill_preview_cache::SkillPreviewCache>,
+    /// How many result rows fit on screen, measured by the render pass.
+    ///
+    /// Paging needs a real row count: `SelectionState`'s `max_visible` argument
+    /// decides whether the scroll window follows the cursor, so passing a
+    /// constant would let the highlight walk off-screen. The kernel used to
+    /// publish this measurement into its own state every frame; a slice-owned
+    /// picker measures it in its own renderer instead, which is the same
+    /// information arriving by a slice-owned route.
+    pub results_viewport: usize,
+    /// The theme the rows were built with, so a background repaint recolors
+    /// them consistently instead of stranding them on a stale palette.
+    pub theme: jinn_theme::Theme,
 }
 
 impl Default for SkillPickerState {
@@ -47,6 +65,10 @@ impl Default for SkillPickerState {
             snapshot: None,
             preview_scroll: 0,
             preview_cache: std::sync::Arc::new(crate::skill_preview_cache::SkillPreviewCache::new()),
+            // Matches the kernel's pre-measurement fallback, so the very first
+            // keypress before any render behaves as it always has.
+            results_viewport: RESULTS_VIEWPORT_FALLBACK,
+            theme: jinn_theme::default_theme(),
         }
     }
 }

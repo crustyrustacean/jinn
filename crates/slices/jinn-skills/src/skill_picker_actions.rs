@@ -22,6 +22,7 @@ pub fn open(
 ) {
     state.reset();
     state.snapshot = Some(disabled.clone());
+    state.theme = theme.clone();
     state
         .selection
         .set_items(build_skill_entries(discovered, disabled, theme));

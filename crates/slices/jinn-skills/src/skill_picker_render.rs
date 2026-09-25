@@ -41,24 +41,40 @@ pub fn skill_picker_palette(theme: &jinn_theme::Theme) -> jinn_picker::Palette {
 }
 
 /// The skill picker's declared binds, in footer order.
-pub const SKILL_PICKER_BINDS: &[jinn_picker::BindRow] = &[jinn_picker::BindRow {
-    notation: "<tab>",
-    label: "toggle",
-    category_hint: "input",
-}];
+///
+/// Sourced from the route rows the slice actually attaches, so the footer can
+/// never advertise a key the picker does not bind.
+#[must_use]
+pub fn skill_picker_binds() -> Vec<jinn_picker::BindRow> {
+    crate::skill_picker_routes::SKILL_PICKER_BINDINGS
+        .iter()
+        .map(|(notation, label)| jinn_picker::BindRow {
+            notation,
+            label,
+            category_hint: "input",
+        })
+        .collect()
+}
 
 /// Draws the skill picker popup for one frame.
 pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
     let Some(cell) = facts.slices.reader(&jinn_skills_msg::skill_picker_slot()) else {
         return;
     };
+
+    // Measure the popup's result rows and publish them for the navigation keys,
+    // which need a real row count to keep the highlight on screen. This is the
+    // slice-owned equivalent of the kernel's per-frame viewport write.
+    let measured = crate::skill_picker_viewport::results_viewport(area);
+    cell.update(|state: &mut SkillPickerState| state.results_viewport = measured);
+
     let guard = cell.read();
     let state: &SkillPickerState = &guard;
 
     let theme = &facts.theme;
     let palette = skill_picker_palette(theme);
-    let keybind =
-        jinn_picker::keybind_line(SKILL_PICKER_BINDS, jinn_picker::Tail::Standard, &palette);
+    let binds = skill_picker_binds();
+    let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
     let footers = vec![Line::from(String::new()), Line::from(keybind.0)];
 
     let widget = PreviewSelectionWidget::new(&state.selection)

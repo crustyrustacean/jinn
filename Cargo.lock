@@ -3205,18 +3205,24 @@ dependencies = [
 name = "jinn-skills"
 version = "0.118.0"
 dependencies = [
+ "error-stack",
  "jinn-chat-log-view",
+ "jinn-core-types",
  "jinn-domain",
  "jinn-picker",
  "jinn-selection-widget",
+ "jinn-session-init-msg",
+ "jinn-session-msg",
  "jinn-skills-msg",
  "jinn-slices",
  "jinn-theme",
  "ratatui",
  "rstest",
  "serde",
+ "serde_json",
  "tempfile",
  "tokio",
+ "trouper",
 ]
 
 [[package]]

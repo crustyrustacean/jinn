@@ -1,9 +1,13 @@
-//! The skills slice — implementation services for agent-skill support.
+//! The skills slice — implementation services and the skills picker.
 //!
-//! Owns YAML frontmatter parsing, directory scanning, prompt formatting, and
-//! the loaded-skill label vocabulary. Portable skill values and crossing
-//! contracts live in `jinn-skills-msg`. Everything here is UI-free and
-//! kernel-free.
+//! Owns YAML frontmatter parsing, directory scanning, prompt formatting, the
+//! loaded-skill label vocabulary, and the skills picker itself. Portable skill
+//! values and crossing contracts live in `jinn-skills-msg`.
+//!
+//! The picker is fully slice-owned: its state is a cell, its keys are route
+//! rows attached below, and its renderer reads the cell. It reaches session
+//! state through the same `as_any_mut` seam the sidebar and terminal slices use,
+//! so the kernel holds no skill-picker scope, keybind, or identifier.
 
 pub mod format;
 pub mod frontmatter;
@@ -12,7 +16,10 @@ pub mod skill;
 pub mod skill_picker_actions;
 pub mod skill_picker_reload;
 pub mod skill_picker_render;
+pub mod skill_picker_republisher_actor;
+pub mod skill_picker_routes;
 pub mod skill_picker_scope;
+pub mod skill_picker_viewport;
 pub mod skill_preview;
 
 pub use format::format_skills_for_prompt;
@@ -26,6 +33,8 @@ pub use scan::scan_skills;
 pub use skill_picker_actions::{cancel, confirm, highlighted_name, open, toggle_highlighted};
 pub use skill_picker_reload::{build_skill_entries, reload_skill_picker};
 pub use skill_picker_render::{render_skill_picker, skill_picker_overlay_rect};
+pub use skill_picker_routes::{SKILL_PICKER_BINDINGS, attach_skill_picker_rows};
+pub use skill_picker_routes::{republish_from_discovery, register_skill_picker_input_hook};
 pub use skill_picker_scope::skill_picker_scope;
 pub use skill_preview::render_skill_preview;
 
@@ -41,7 +50,7 @@ pub use skill_preview::render_skill_preview;
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>) {
-    let _cell = host
+    let cell = host
         .register_cell(
             jinn_skills_msg::skill_picker_slot(),
             jinn_skills_msg::SkillPickerState::default(),
@@ -55,6 +64,28 @@ pub fn activate(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>)
     host.register_overlay_selectable(&scope);
     host.register_overlay_slot(scope.clone(), jinn_skills_msg::skill_picker_slot());
     host.register_overlay_view(scope, std::sync::Arc::new(render_skill_picker));
+
+    // The picker's keys, and the filter's input hook, are the slice's own.
+    attach_skill_picker_rows(host.key_routes(), &cell);
+    register_skill_picker_input_hook(host.key_routes(), &cell);
+
+    // Repaint the picker when a discovery scan reports new skills. Spawned here
+    // because the cell only exists here, and before any scan is published so no
+    // result can slip past the subscription.
+    host.spawn_service::<
+        skill_picker_republisher_actor::SkillPickerRepublisherActor,
+        _,
+        std::convert::Infallible,
+    >(
+        trouper::actor::ActorPath::new(
+            skill_picker_republisher_actor::SkillPickerRepublisherActor::PATH.to_owned(),
+        ),
+        move || {
+            Ok(skill_picker_republisher_actor::SkillPickerRepublisherActor::new(
+                cell.clone(),
+            ))
+        },
+    );
 }
 
 #[cfg(test)]
