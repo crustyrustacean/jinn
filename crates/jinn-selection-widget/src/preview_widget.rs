@@ -10,6 +10,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use std::sync::Arc;
 
 use crate::preview_content::{PreviewCache, PreviewContent};
 use crate::{PickerItem, SelectionColors, SelectionState, compute_popup_rect};
@@ -317,7 +318,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         let lines = if let Some(item) = self.state.selected_item() {
             item.preview_lines_cached(width, cache)
         } else {
-            Vec::new()
+            Arc::new(Vec::new())
         };
 
         let visible: Vec<Line<'static>> = lines

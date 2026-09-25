@@ -430,7 +430,7 @@ mod tests {
         caches.skill_preview_cache.insert(
             crate::feat::skills::skill_entry::body_hash_key("## body"),
             80,
-            vec![Line::raw("old-theme")],
+            vec![Line::raw("old-theme")].into(),
         );
         assert_eq!(caches.skill_preview_cache.len(), 1);
 
