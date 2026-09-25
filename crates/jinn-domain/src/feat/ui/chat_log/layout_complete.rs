@@ -123,7 +123,7 @@ impl LayoutCompletionActor {
                 // next frame must measure again.
                 Outcome::Stale
             } else {
-                self.store_counts(&state, computed);
+                Self::store_counts(&state, computed);
                 Outcome::Current
             }
         };
@@ -149,11 +149,7 @@ impl LayoutCompletionActor {
     /// they are stored verbatim: re-deriving the hashes here would walk
     /// every entry's content a second time and cost as much as the
     /// measurement itself.
-    fn store_counts(
-        &self,
-        state: &crate::common::app_state::AppState,
-        computed: &ChatLogLayoutComputed,
-    ) {
+    fn store_counts(state: &crate::common::app_state::AppState, computed: &ChatLogLayoutComputed) {
         let measured: Vec<MeasuredLineCount> = computed
             .counts
             .iter()
@@ -187,6 +183,14 @@ enum Outcome {
 }
 
 impl MsgHandler<ChatLogLayoutComputed> for LayoutCompletionActor {
+    /// Applying a result is synchronous state work, so this returns ready.
+    ///
+    /// The lint expectation is deliberate: `MsgHandler::handle` is async by
+    /// trait contract, and there is nothing to await here.
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "MsgHandler::handle is async by trait contract; applying a result has nothing to await"
+    )]
     async fn handle(&mut self, msg: &ChatLogLayoutComputed, _ctx: &mut MsgCtx<'_>) {
         let applied = self.apply(msg);
         if applied != LayoutApplied::Applied {

@@ -29,10 +29,6 @@ pub use layout_worker::{LayoutWorkerActor, LayoutWorkerActorDeps};
 ///
 /// Their typed subscriptions are installed by these spawn calls before it
 /// returns, so a load published after activation cannot race startup.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "port convention: install takes owned state and clones it into each actor"
-)]
 pub fn install_layout_actors(
     system: &trouper::system::ActorSystem,
     state: crate::common::state::State,
