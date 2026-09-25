@@ -71,7 +71,7 @@ impl SessionsSection {
         reason = "idx modulo symbol count is always in bounds"
     )]
     fn current_throbber_symbol(&self) -> &'static str {
-        let symbols = &throbber_widgets_tui::symbols::throbber::BRAILLE_EIGHT.symbols;
+        let symbols = &throbber_widgets_tui::ASCII.symbols;
         let len = symbols.len() as i8;
         let mut index = self.throbber_state.index() % len;
         if index < 0 {
@@ -161,9 +161,11 @@ impl SidebarSection for SessionsSection {
         }
 
         // Footer: ╰─── Sessions ───╯ (with highlighted S)
+        let is_startup_hydrating = state.session.is_startup_hydrating();
         let label = " Sessions ";
         let width = area.width as usize;
-        let label_len = label.len() + usize::from(is_startup_hydrating);
+        // The spinner claims one glyph plus its separating space.
+        let label_len = label.len() + 2 * usize::from(is_startup_hydrating);
         let dash_budget = width.saturating_sub(2).saturating_sub(label_len);
         let left_dashes = dash_budget / 2;
         let right_dashes = dash_budget - left_dashes;
@@ -177,21 +179,18 @@ impl SidebarSection for SessionsSection {
             theme.border_unfocused
         };
 
-        let mut footer = vec![
-            Span::styled(before_s, Style::default().fg(footer_color)),
-            Span::styled("S".to_owned(), Style::default().fg(theme.accent_action)),
-            Span::styled(after_s, Style::default().fg(footer_color)),
-        ];
+        let mut footer = vec![Span::styled(before_s, Style::default().fg(footer_color))];
         if is_startup_hydrating {
             footer.push(Span::styled(
-                self.current_throbber_symbol(),
+                format!("{} ", self.current_throbber_symbol()),
                 Style::default().fg(theme.streaming),
             ));
         }
-        footer.push(Span::styled(
-            right_dashes,
-            Style::default().fg(footer_color),
-        ));
+        footer.extend([
+            Span::styled("S".to_owned(), Style::default().fg(theme.accent_action)),
+            Span::styled(after_s, Style::default().fg(footer_color)),
+            Span::styled(right_dashes, Style::default().fg(footer_color)),
+        ]);
         lines.push(Line::from(footer));
 
         let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
