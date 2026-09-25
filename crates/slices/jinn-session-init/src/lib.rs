@@ -115,8 +115,7 @@ pub fn install_actors(
 /// on demand by the kernel from this shared factory.
 ///
 /// The factory closure captures `AppPaths` (the scan inputs are
-/// launch-wide) and clones `State` per activation; each entity mints
-/// its own write authorities in [`worker::WorkerDeps::for_session`].
+/// launch-wide) and clones `State` per activation.
 ///
 /// `args_template` is merged with the entity `"key"` at activation;
 /// production passes `{}` and tests may inject e.g. a shortened

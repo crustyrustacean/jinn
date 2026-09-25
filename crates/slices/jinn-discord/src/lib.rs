@@ -136,7 +136,6 @@ pub async fn activate(
                 tx: bridge_tx,
                 gateway_tx,
                 state,
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
     }

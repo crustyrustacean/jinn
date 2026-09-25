@@ -2,7 +2,7 @@
 //!
 //! [`ToolDefinition`], [`ToolCall`], and [`ToolResult`] live in
 //! `jinn-core-types`; [`ToolContext`] lives here because it depends on kernel
-//! types (state, caps, services handles) that only the slice reads.
+//! types (state and service handles) that only the slice reads.
 
 use std::fmt;
 use std::path::PathBuf;
@@ -46,9 +46,6 @@ pub struct ToolContext {
     /// `SendToLlmProvider` through the tool execution chain so tool
     /// events can carry accurate timing.
     pub dispatched_at: jiff::Timestamp,
-    /// Authority to write session state (task lists, skill installs).
-    /// Only present for tools that mutate sessions.
-    pub session_cap: Option<jinn_domain::common::tcaps::session::SessionCap>,
     /// MCP coordinator actor ref — `Some` only for the `restart_mcp_server`
     /// tool, which `ask`s the coordinator directly (request/reply) to learn
     /// whether a restart connected. Resolved from
@@ -114,7 +111,6 @@ mod tests {
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,

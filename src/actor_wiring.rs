@@ -90,18 +90,17 @@ impl ActorSystemBuilder {
 
         // Create shared State FIRST — injected into multiple actors.
         let state = State::new(AppState::default());
-        let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
 
         // Set preferences
         {
-            let mut guard = state.write(&intent_handler_cap);
+            let mut guard = state.write();
             guard.frontend.preferences = user_preferences_storage.read();
         }
 
         // Set app state (last_model, theme_name, persona_name, sidebar_width)
         {
             let app_state = app_state_storage.read();
-            let mut guard = state.write(&intent_handler_cap);
+            let mut guard = state.write();
             guard.frontend.app_state.last_model = app_state.last_model.clone();
             guard.frontend.app_state.theme_name = app_state.theme_name.clone();
             guard.frontend.app_state.persona_name = app_state.persona_name.clone();
@@ -111,7 +110,7 @@ impl ActorSystemBuilder {
         // Set default CWD for sessions (inherited from shell).
         let (initial_session_id, initial_cwd) = {
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
-            let mut guard = state.write(&intent_handler_cap);
+            let mut guard = state.write();
             guard.session.set_default_cwd(cwd.clone());
             guard.active_session_mut().set_cwd(cwd.clone());
             (guard.active_session().session_id().clone(), cwd)
@@ -191,7 +190,7 @@ impl ActorSystemBuilder {
         // the FrontendState facade resolves through — before any intent
         // can fire.
         state
-            .write(&intent_handler_cap)
+            .write()
             .frontend
             .attach_slices(services.slices.clone());
         jinn_scope_focus_activate(&mut services);
@@ -331,8 +330,6 @@ impl ActorSystemBuilder {
             jinn_session_turn::session_actor::SessionPersistenceActorDeps {
                 deps: actor_deps.clone(),
                 state: state.clone(),
-                cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-                frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 counter: token_counter,
                 token_cache: entry_token_cache.clone(),
                 image_converter: jinn_domain::feat::image_convert::ImageConverterService::system(),
@@ -350,7 +347,6 @@ impl ActorSystemBuilder {
                 deps: actor_deps.clone(),
                 state: state.clone(),
                 services: services.clone(),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 builtin_filter: None,
             },
         );
@@ -427,7 +423,6 @@ impl ActorSystemBuilder {
             jinn_domain::feat::file_lister::DirectoryListerActorDeps {
                 deps: actor_deps.clone(),
                 state: state.clone(),
-                frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
             },
         );
 
@@ -689,11 +684,10 @@ async fn jinn_preferences_activate(
     services: &mut Services,
     state: jinn_domain::common::state::State,
 ) {
-    // The two persistence actors spawn here (with the state handle and
-    // their frontend caps) and subscribe synchronously — this must
-    // complete before the env-init tail publishes `EnvironmentLoaded`,
-    // which triggers publishes of `UpdateAppState`/`UpdatePreferences`
-    // on first boot.
+    // The two persistence actors spawn here with shared state and services,
+    // then subscribe synchronously — this must complete before the env-init
+    // tail publishes `EnvironmentLoaded`, which triggers publishes of
+    // `UpdateAppState`/`UpdatePreferences` on first boot.
     let system = services.trouper_system.clone();
     let services_handle = services.clone();
     let mut host = jinn_slices::SliceHost::new(

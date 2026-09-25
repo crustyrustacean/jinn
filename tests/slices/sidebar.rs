@@ -43,7 +43,7 @@ async fn session_closed_crosses_to_sidebar_and_clamps_cursor() {
     // close itself — the actor's job is the cursor clamp).
     let app = test_app().await;
     let removed_id = {
-        let mut state = app.core.state.write_test_no_cap();
+        let mut state = app.core.state.write();
         let default_id = state.session.active_session_id().clone();
         state.session.remove_without_replacement(&default_id);
         let s1 = ChatSessionState::new();

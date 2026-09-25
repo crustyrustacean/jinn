@@ -4,7 +4,7 @@
 //! Subscribes to [`SessionDiscoverySettled`] on its slice-internal
 //! topic (the worker publishes there; no reverse relay — this is the
 //! event's only consumer) and writes a markdown summary as a
-//! `Transient` chat entry directly via [`State`] + [`SessionCap`], the
+//! `Transient` chat entry directly via [`State`], the
 //! discord slice's write-path precedent. One entry per settled event —
 //! it fires only on the coalesced signal, never per scan.
 
@@ -15,7 +15,6 @@ use trouper::system::ActorSystem;
 
 use jinn_core_types::SessionId;
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::session::SessionCap;
 use jinn_domain::protocol::ChatEntry;
 
 use crate::contracts::SessionDiscoverySettled;
@@ -25,19 +24,17 @@ use crate::contracts::SessionDiscoverySettled;
 pub struct DiscoveryNotifier {
     /// Shared application state.
     state: State,
-    /// Authority to push the summary entry into the session.
-    session_cap: SessionCap,
 }
 
 impl ServiceActor for DiscoveryNotifier {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // The state handle and cap cannot ride JSON args; spawn
-        // injects them via `start_with` (see `spawn`).
+        // The state handle cannot ride JSON args; spawn injects it via
+        // `start_with` (see `spawn`).
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("DiscoveryNotifier is spawned via start_with; start requires state + cap"),
+                .attach("DiscoveryNotifier is spawned via start_with; start requires state"),
         )
     }
 }
@@ -57,12 +54,7 @@ impl DiscoveryNotifier {
             .start_with({
                 move || {
                     let state = state.clone();
-                    Box::pin(async move {
-                        Ok(Self {
-                            state,
-                            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-                        })
-                    })
+                    Box::pin(async move { Ok(Self { state }) })
                 }
             })
             .handles::<SessionDiscoverySettled>()
@@ -72,7 +64,7 @@ impl DiscoveryNotifier {
     /// Writes the summary entry into the session, dropping silently if
     /// the session is gone (closed since the run started).
     fn push_summary(&self, session_id: &SessionId, summary: String) {
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             if let Some(session) = view.session.map().get_mut(session_id) {
                 session.push_entry(ChatEntry::transient(summary));
             } else {

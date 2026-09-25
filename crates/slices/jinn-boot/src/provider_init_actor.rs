@@ -30,7 +30,7 @@ pub struct ProviderInitActor {
     deps: ActorDeps,
     /// Shared application state (to read active session ID).
     state: State,
-    /// Provider write capability.
+    /// Provider-owned cell.
     provider_cell: jinn_slices::TypedCell<jinn_provider_selection_msg::ProviderCell>,
 }
 
@@ -41,7 +41,7 @@ pub struct ProviderInitActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
-    /// Provider write capability.
+    /// Provider-owned cell.
     pub provider_cell: jinn_slices::TypedCell<jinn_provider_selection_msg::ProviderCell>,
 }
 
@@ -410,7 +410,7 @@ mod tests {
 
         // Set an explicit model on the active session.
         state
-            .write_test_no_cap()
+            .write()
             .active_session_mut()
             .set_model(ModelSelection::Single("bench-model".to_owned()));
 

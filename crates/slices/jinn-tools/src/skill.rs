@@ -198,7 +198,6 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
@@ -245,7 +244,7 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard.session_mut_or_create(&session_id);
         }
         let ctx = ToolContext {
@@ -260,7 +259,6 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
@@ -309,7 +307,7 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
             session.set_discovered_skills(vec![Skill {
                 name: "proj-skill".to_owned(),
@@ -341,7 +339,6 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
@@ -395,7 +392,7 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
             session.set_discovered_skills(vec![Skill {
                 name: "header-skill".to_owned(),
@@ -425,7 +422,6 @@ mod tests {
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
@@ -516,7 +512,6 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
@@ -565,7 +560,7 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
             let seeded_xml = "<skill name=\"phased-task-loop\" location=\"/tmp\">\nbody\n</skill>";
             let mut entry = ChatEntry::tool_result(
@@ -596,7 +591,6 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
@@ -635,7 +629,7 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
             let seeded_xml = "<skill name=\"rust-programming\" location=\"/tmp\">\nbody\n</skill>";
             let mut entry = ChatEntry::tool_result(
@@ -666,7 +660,6 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
@@ -706,7 +699,7 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
             session.set_disabled_skills(HashSet::from(["web-coder".to_owned()]));
         }
@@ -729,7 +722,6 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,

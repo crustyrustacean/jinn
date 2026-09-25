@@ -117,11 +117,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             Err(msg) => return tool_error(call, &msg),
         };
 
-        let Some(session_cap) = &ctx.session_cap else {
-            return tool_error(call, "no session capability");
-        };
         let phase_description = phase_input.description.clone();
-        let result = state.with_session(session_cap, |view| {
+        let result = state.with_session(|view| {
             let session = view.session.map().get_unchecked_mut(&session_id);
             let list = session.task_list_mut();
             let replaced = list.set_phase_from_input(&phase_input);
@@ -208,7 +205,6 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: Some(jinn_domain::common::tcaps::mint::mint_session_cap()),
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
@@ -226,7 +222,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         {
-            let mut w = state.write_test_no_cap();
+            let mut w = state.write();
             let session = w.session_mut(&session_id);
             session.task_list_mut().set_from_inputs(&[
                 PhaseInput {
@@ -338,7 +334,7 @@ mod tests {
         // Given a session with two phases both named Build.
         let (state, session_id) = setup_with_two_phases();
         {
-            let mut w = state.write_test_no_cap();
+            let mut w = state.write();
             let session = w.session_mut(&session_id);
             session.task_list_mut().set_from_inputs(&[
                 PhaseInput {

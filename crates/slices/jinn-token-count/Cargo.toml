@@ -8,8 +8,8 @@ description = "The token-count slice: per-entry token counting and the shared to
 jinn-token-count-msg = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }
-# Kernel dep (sidebar precedent): both actors write through tcaps
-# (State + SessionCap), granted at slice activation.
+# Kernel dep: the count actor writes session entries through the shared
+# `State` session projection.
 jinn-core-types = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-session-msg = { workspace = true }

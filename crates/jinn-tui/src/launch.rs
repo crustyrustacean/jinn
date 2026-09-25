@@ -52,14 +52,8 @@ pub fn launch(
     mut services: jinn_domain::Services,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
-    let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
     load_compaction_prompt(&paths.prompts_dir(), &paths.system_prompts_dir())?;
-    load_theme(
-        &core.state,
-        &paths.themes_dir(),
-        &paths.system_themes_dir(),
-        &intent_handler_cap,
-    );
+    load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
     // Resolve mouse-selection config from environment.
     let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
@@ -102,7 +96,6 @@ pub fn launch(
             register_sections(&mut s);
             s
         },
-        intent_handler_cap,
     })
 }
 
@@ -129,12 +122,7 @@ pub fn load_compaction_prompt(
 /// Searches the user themes directory first, then the system themes directory.
 /// If the preferred theme cannot be loaded, falls back to the default theme.
 /// Failures are logged but not fatal.
-pub fn load_theme(
-    state: &State,
-    user_dir: &Path,
-    system_dir: &Path,
-    cap: &jinn_domain::common::tcaps::IntentHandlerCap,
-) {
+pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
     let theme_name = {
         let guard = state.read();
         guard.frontend.app_state.theme_name.clone()
@@ -142,7 +130,7 @@ pub fn load_theme(
     match jinn_theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
         Ok(theme) => {
             tracing::info!(theme = ?theme_name, "loaded theme");
-            state.write(cap).frontend.theme = theme;
+            state.write().frontend.theme = theme;
         }
         Err(e) => {
             tracing::warn!(err = ?e, "failed to load theme, using default");

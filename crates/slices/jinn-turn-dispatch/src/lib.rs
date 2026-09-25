@@ -11,9 +11,8 @@
 //! ask the context-assembly service, and publish `SendToLlmProvider` on
 //! the kernel topic.
 //!
-//! Kernel dependency (see Cargo.toml): the queue actor writes through
-//! tcaps (State + SessionCap) and consumes session vocabulary, granted at
-//! activation.
+//! Kernel dependency (see Cargo.toml): the queue actor uses shared
+//! [`jinn_domain::common::state::State`] and consumes session vocabulary.
 
 pub mod queue_actor;
 

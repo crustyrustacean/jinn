@@ -61,7 +61,6 @@ use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::SessionCap;
 use jinn_domain::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use jinn_domain::feat::context::snapshot::assemble_via_service;
 use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
@@ -89,8 +88,6 @@ pub struct QueueActor {
     state: State,
     /// Application-wide runtime services (bus publish, assembly ask, paths).
     services: Services,
-    /// Authority to write the session capsule.
-    cap: SessionCap,
 }
 
 impl BusPublish for QueueActor {
@@ -128,13 +125,7 @@ impl QueueActor {
                 move || {
                     let state = state.clone();
                     let services = services.clone();
-                    Box::pin(async move {
-                        Ok(Self {
-                            state,
-                            services,
-                            cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-                        })
-                    })
+                    Box::pin(async move { Ok(Self { state, services }) })
                 }
             })
             .handles::<SessionPhaseChanged>()
@@ -159,7 +150,7 @@ impl QueueActor {
     /// no fragment is pending.
     async fn handle_idle_transition(&self, session_id: &SessionId) {
         let item = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
                 // Steering takes priority: a steered fragment must become its
                 // own turn (with its own LLM response), so the queued item
@@ -233,7 +224,7 @@ impl QueueActor {
         // is not confirmed image-capable, push entry + error and abort dispatch
         // (no begin_sending, no re-enqueue). Mirrors the Idle-path gate.
         if let Some(error_entry) = self.evaluate_gate(session_id, entry) {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
                 session.push_entry(entry.clone());
                 session.push_entry(error_entry);
@@ -250,7 +241,7 @@ impl QueueActor {
         }
 
         let (old_phase, new_phase) = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
                 if session.title().is_none() {
                     let title = match &entry.kind {
@@ -328,7 +319,7 @@ impl QueueActor {
         Option<ReasoningEffort>,
         Option<String>,
     ) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let profile = view
                 .session
                 .map()
@@ -366,7 +357,7 @@ impl QueueActor {
         // interstitials before assembly. Steering fragments are NOT drained
         // here — steering waits for its own turn at the next idle slot.
         {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
                 session.edit_history().normalize_loop_layout();
             });
@@ -415,7 +406,7 @@ impl QueueActor {
         // still make this turn (it arrived while the turn was being
         // prepared, so the user intended it to steer the ongoing dispatch).
         {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
                 if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
                     let entry_id = entry.id.clone();
@@ -440,7 +431,7 @@ impl QueueActor {
         // record carries the resolved model (the direct-send path's former
         // push-then-`set_last_token_model` dance, converged).
         let (provider_id, model_used, reasoning_effort, endpoint_tag, old_phase, new_phase) = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
                 let reasoning_effort = resolve_effort(session.profile().reasoning_effort);
                 // Snapshot the endpoint tag immutably before mutating the

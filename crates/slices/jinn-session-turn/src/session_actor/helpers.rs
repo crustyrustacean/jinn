@@ -47,8 +47,6 @@ pub(crate) async fn test_actor() -> super::SessionPersistenceActor {
 
     super::SessionPersistenceActor {
         state: State::new(AppState::default_with_scope_focus()),
-        cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-        frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
         services: jinn_domain::common::services::Services::new_fake().await,
         counter: TiktokenCounter::o200k_base(),
         token_cache: HistoryWorkerChatEntryTokenCache::default(),
@@ -79,8 +77,6 @@ pub(crate) async fn test_actor_recording() -> (
     (
         super::SessionPersistenceActor {
             state: State::new(AppState::default()),
-            cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
             services,
             counter: TiktokenCounter::o200k_base(),
             token_cache: HistoryWorkerChatEntryTokenCache::default(),
@@ -379,8 +375,6 @@ pub(crate) async fn test_actor_with_store_recording(
             state: jinn_domain::common::state::State::new(
                 jinn_domain::common::app_state::AppState::default(),
             ),
-            cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
             services,
             counter:
                 jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),

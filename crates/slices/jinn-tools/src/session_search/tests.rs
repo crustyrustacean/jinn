@@ -213,7 +213,6 @@ fn tool_ctx(store: SessionStoreService, session_id: Option<SessionId>) -> ToolCo
         max_output_lines: None,
         max_output_bytes: None,
         dispatched_at: jiff::Timestamp::now(),
-        session_cap: None,
         mcp_coordinator: None,
         interactive_term: None,
         task_spawns: None,

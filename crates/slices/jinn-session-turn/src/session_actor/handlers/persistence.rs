@@ -24,7 +24,6 @@ impl SessionPersistenceActor {
         let store = &self.services.session_store;
 
         let state = self.state.clone();
-        let cap = self.cap;
         let session_id = session_id.clone();
         let session_id_log = session_id.clone();
 
@@ -32,7 +31,7 @@ impl SessionPersistenceActor {
         // dropped before the potentially large durable snapshot clone.
         let snapshot = tokio::task::spawn_blocking(move || {
             {
-                state.with_session(&cap, |view| {
+                state.with_session(|view| {
                     if let Some(session) = view.session.map().get_mut(&session_id) {
                         session.touch();
                     }
@@ -69,7 +68,7 @@ impl SessionPersistenceActor {
         &mut self,
         payload: &MarkSessionInteracted,
     ) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             if let Some(session) = view.session.map().get_mut(&payload.session_id) {
                 session.mark_interacted();
             }
@@ -116,7 +115,7 @@ mod tests {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             state.active_session_mut().mark_interacted();
         }
 
@@ -135,14 +134,14 @@ mod tests {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.mark_interacted();
         }
 
         // When a user entry is added and the turn path saves.
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             state
                 .active_session_mut()
                 .push_entry(jinn_core_types::ChatEntry::user("new turn"));
@@ -168,7 +167,7 @@ mod tests {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.mark_interacted();
             // A large history makes the clone window wide enough to probe.

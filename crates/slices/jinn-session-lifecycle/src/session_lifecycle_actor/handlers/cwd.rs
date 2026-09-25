@@ -10,7 +10,7 @@ impl SessionLifecycleActor {
         &self,
         payload: &SetSessionCwd,
     ) {
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             if let Some(session) = view.session.map().get_mut(&payload.session_id) {
                 session.set_cwd(payload.cwd.clone());
             }

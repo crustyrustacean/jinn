@@ -137,10 +137,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             }
         };
 
-        let Some(session_cap) = &ctx.session_cap else {
-            return tool_error(call, "no session capability");
-        };
-        let result = state.with_session(session_cap, |view| {
+        let result = state.with_session(|view| {
             let session = view.session.map().get_unchecked_mut(&session_id);
             let list = session.task_list_mut();
             if phase_inputs.is_empty() {
@@ -229,7 +226,6 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: Some(jinn_domain::common::tcaps::mint::mint_session_cap()),
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
@@ -246,7 +242,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         {
-            let mut w = state.write_test_no_cap();
+            let mut w = state.write();
             let session = w.session_mut(&session_id);
             session.task_list_mut().set_from_inputs(&[PhaseInput {
                 description: "Old Phase".to_owned(),

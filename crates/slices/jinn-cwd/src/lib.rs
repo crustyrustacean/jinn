@@ -4,8 +4,8 @@
 //! [`jinn_cwd_msg::CwdInputState`], the dynamic-scope overlay that renders it,
 //! and the route rows that open, confirm, and leave the popup. Typing goes
 //! through a route-table input hook; confirm resolves the typed path with the
-//! shared pure resolver and publishes the kernel's `SetSessionCwd` through
-//! the [`jinn_slices::SliceActionState`] capability, so this crate never
+//! shared pure resolver and returns a publish closure for the kernel's
+//! `SetSessionCwd` through [`jinn_slices::SliceActionState`], so this crate never
 //! depends on the kernel. The external `<M-c>`/`<M-d>` selector flow is
 //! composition-side (TUI suspend) and unaffected by this slice.
 

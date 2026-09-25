@@ -34,8 +34,6 @@ pub const CONTEXT_SIZE_PATH: &str = "context-size";
 pub struct ContextSizeActor {
     /// Shared application state.
     state: State,
-    /// Authority to write assembled context size into sessions.
-    session_cap: jinn_domain::common::tcaps::session::SessionCap,
     /// Runtime services (the trouper system for assembly asks).
     services: jinn_domain::common::services::Services,
 }
@@ -48,8 +46,8 @@ impl ServiceActor for ContextSizeActor {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the state handle,
-        // counter, and capability via `start_with`.
+        // Never called: the spawn helper injects the state handle and
+        // services via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("ContextSizeActor is spawned via start_with"),
@@ -73,13 +71,7 @@ impl ContextSizeActor {
                 move || {
                     let state = state.clone();
                     let services = services.clone();
-                    Box::pin(async move {
-                        Ok(Self {
-                            state,
-                            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-                            services,
-                        })
-                    })
+                    Box::pin(async move { Ok(Self { state, services }) })
                 }
             })
             .handles::<HistoryAppended>()
@@ -117,7 +109,7 @@ impl ContextSizeActor {
         match result {
             Ok(assembled_tokens) => {
                 let session_id = session_id.clone();
-                self.state.with_session(&self.session_cap, |view| {
+                self.state.with_session(|view| {
                     if let Some(session) = view.session.map().get_mut(&session_id) {
                         session.set_context_size(assembled_tokens);
                     }
@@ -183,7 +175,6 @@ mod tests {
         }
         ContextSizeActor {
             state: State::new(AppState::default()),
-            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             services,
         }
     }
@@ -194,7 +185,7 @@ mod tests {
         // Given an actor with a session that has history.
         let actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello world"));
@@ -238,7 +229,7 @@ mod tests {
 
         // When adding an entry and recalculating.
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("a long message that adds tokens"));
@@ -291,7 +282,7 @@ mod tests {
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             state.session.insert(second);
             // Active session has history, second does not.
             state

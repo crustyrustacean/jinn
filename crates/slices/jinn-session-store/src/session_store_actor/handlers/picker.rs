@@ -31,7 +31,7 @@ impl SessionStoreActor {
                     },
                 ),
         );
-        self.state.with_preferences(&self.frontend_cap, |ops| {
+        self.state.with_preferences(|ops| {
             ops.frontend().session_picker_mut().set_items(wrapped);
         });
     }

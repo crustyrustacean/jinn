@@ -1,8 +1,8 @@
 //! Session-store actor — persistence, loading, startup hydration, and archiving.
 //!
 //! This actor owns the store-facing half of session management. It mutates
-//! session state only through the same narrow capabilities and tcaps as the
-//! kernel actor, then releases the state lock before publishing or persisting.
+//! shared session state and then releases the state lock before publishing or
+//! persisting.
 
 mod handlers;
 
@@ -11,8 +11,6 @@ use jinn_domain::Services;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::frontend::FrontendCap;
-use jinn_domain::common::tcaps::session::SessionCap;
 use jinn_session_store_msg::PersistSession;
 use jinn_session_store_msg::SessionLoadRequested;
 use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
@@ -39,18 +37,12 @@ pub struct SessionStoreActorDeps {
     pub services: Services,
     /// Shared application state.
     pub state: State,
-    /// Capability for session-map writes.
-    pub session_cap: SessionCap,
-    /// Capability for picker and frontend reconciliation writes.
-    pub frontend_cap: FrontendCap,
 }
 
 /// Actor that owns session persistence, loading, hydration, and archiving.
 pub struct SessionStoreActor {
     services: Services,
     state: State,
-    session_cap: SessionCap,
-    frontend_cap: FrontendCap,
 }
 
 impl BusPublish for SessionStoreActor {
@@ -92,8 +84,6 @@ impl SessionStoreActor {
                         Ok(Self {
                             services: deps.services,
                             state: deps.state,
-                            session_cap: deps.session_cap,
-                            frontend_cap: deps.frontend_cap,
                         })
                     })
                 }

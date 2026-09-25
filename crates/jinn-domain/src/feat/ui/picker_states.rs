@@ -104,8 +104,8 @@ pub struct PickerStates {
 
     /// Provider picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (navigation) / provider-selection slice's
-    /// `ProviderActor` (fills items at load time through the sanctioned
-    /// `FrontendCap` path). The cell ([`jinn_provider_selection_msg::
+    /// `ProviderActor` (fills items at load time through the
+    /// `State::with_pickers` projection). The cell ([`jinn_provider_selection_msg::
     /// ProviderCell`]) holds the source data; this field is the
     /// render/navigation surface the picker host lends from `&AppState`.
     pub provider_picker:
@@ -113,8 +113,8 @@ pub struct PickerStates {
 
     /// OpenRouter endpoint picker state - one row per routing upstream.
     /// OWNER: IntentHandler (navigation) / provider-selection slice's
-    /// `ProviderActor` (fills items at load time through the sanctioned
-    /// `FrontendCap` path). Endpoint loading/fetched-at flags live on the
+    /// `ProviderActor` (fills items at load time through the
+    /// `State::with_pickers` projection). Endpoint loading/fetched-at flags live on the
     /// provider cell.
     pub endpoint_picker:
         jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<EndpointEntry>>,

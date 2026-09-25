@@ -5,9 +5,8 @@ edition.workspace = true
 
 [dependencies]
 jinn-mcp-msg = { workspace = true }
-# Kernel dep (sidebar precedent): the coordinator writes ChatSession.mcp_server_status
-# through a SessionCap and consumes session lifecycle events — the sync
-# SliceActionState capability pattern does not fit async actors.
+# Kernel dep: the coordinator consumes shared application state and session
+# lifecycle events through the asynchronous actor path.
 jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-tools-msg = { workspace = true }

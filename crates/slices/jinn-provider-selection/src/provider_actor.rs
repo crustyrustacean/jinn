@@ -4,8 +4,7 @@
 //! Subscribes to provider-related commands and events, writes the
 //! provider cell (model cache, alloy mode, endpoint fetch state) and the
 //! provider/endpoint picker fields (the picker render/navigation surface
-//! on `FrontendState`, written through the sanctioned `FrontendCap`
-//! path), and emits events for other actors to react to.
+//! on `FrontendState`), and emits events for other actors to react to.
 //!
 //! # State ownership
 //!
@@ -25,8 +24,6 @@
 use error_stack::Report;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::frontend::FrontendCap;
-use jinn_domain::common::tcaps::session::SessionCap;
 use jinn_picker::ENDPOINT_ID;
 use jinn_picker_specs::build_picker_registry;
 use jinn_provider_config::ModelCache;
@@ -58,12 +55,6 @@ pub struct ProviderActor {
     deps: ActorDeps,
     /// The provider cell — the shared model-cache + endpoint-fetch payload.
     provider_cell: jinn_slices::TypedCell<ProviderCell>,
-    /// Authority to write the session model ([`SessionCap`]) — used by
-    /// `handle_provider_switch` to set the session's active model.
-    session_cap: SessionCap,
-    /// Authority to write the provider/endpoint picker fields on
-    /// `FrontendState` (the picker render/navigation surface).
-    frontend_cap: FrontendCap,
     /// In-memory, per-model cache of OpenRouter routing endpoints for the
     /// application's lifetime (not persisted to disk). Keyed by resolved model
     /// id; value is the parsed upstream list plus the fetch timestamp. The
@@ -81,10 +72,6 @@ pub struct ProviderActorDeps {
     pub deps: ActorDeps,
     /// The provider cell handle.
     pub provider_cell: jinn_slices::TypedCell<ProviderCell>,
-    /// Authority to write the session model.
-    pub session_cap: SessionCap,
-    /// Authority to write the picker fields on `FrontendState`.
-    pub frontend_cap: FrontendCap,
 }
 
 impl ServiceActor for ProviderActor {
@@ -162,8 +149,6 @@ impl ProviderActor {
                             state: deps.state,
                             deps: deps.deps,
                             provider_cell: deps.provider_cell,
-                            session_cap: deps.session_cap,
-                            frontend_cap: deps.frontend_cap,
                             endpoints_cache: std::collections::HashMap::new(),
                         })
                     })
@@ -231,7 +216,7 @@ impl BusPublish for ProviderActor {
 impl ProviderActor {
     /// ProviderSwitch: update session profile and emit ProviderSwitched event.
     fn handle_provider_switch(&self, payload: &ProviderSwitch) {
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             view.session
                 .map()
                 .get_or_create(&payload.session_id)
@@ -256,7 +241,7 @@ impl ProviderActor {
             &model_selection,
             alloy_mode,
         );
-        self.state.with_pickers(&self.frontend_cap, |p| {
+        self.state.with_pickers(|p| {
             p.provider_picker = picker;
         });
     }
@@ -287,7 +272,7 @@ impl ProviderActor {
         self.deps.services.provider_registry.merge_cache(&cache);
         self.store_model_cache(cache);
         self.handle_load_provider_picker_entries();
-        self.state.with_session(&self.session_cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&event.session_id);
             session.push_entry(jinn_core_types::ChatEntry::transient(
                 models_refresh_transcript(event),
@@ -418,7 +403,7 @@ impl ProviderActor {
         let wrapped = build_picker_registry()
             .make_items(ENDPOINT_ID, entries)
             .unwrap_or_default();
-        self.state.with_pickers(&self.frontend_cap, |p| {
+        self.state.with_pickers(|p| {
             p.endpoint_picker.set_items(wrapped);
         });
     }
@@ -592,7 +577,6 @@ mod tests {
     use jinn_domain::AppState;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
     use jinn_domain::common::state::State;
-    use jinn_domain::common::tcaps::mint;
     use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_provider_config::{
         InputModalities, Modality, ModelCache, ModelInfo, ProviderEntry, ProviderRegistry,
@@ -635,8 +619,6 @@ mod tests {
                     deps: self.deps.clone(),
                     state: self.state.clone(),
                     provider_cell: self.cell(),
-                    session_cap: mint::mint_session_cap(),
-                    frontend_cap: mint::mint_frontend_cap(),
                 },
             );
         }
@@ -1549,7 +1531,7 @@ mod tests {
         ctx.spawn_provider_actor();
 
         ctx.state
-            .write_test_no_cap()
+            .write()
             .active_session_mut()
             .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
         let cell = ctx.cell();

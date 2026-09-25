@@ -14,7 +14,6 @@ use crate::common::app_state::AppState;
 use crate::common::bus::test_harness::TestHarness;
 use crate::common::services::test_services::TestServices;
 use crate::common::state::State;
-use crate::common::tcaps::mint::mint_frontend_cap;
 use jinn_core_types::SessionId;
 
 use super::directory_lister_actor::{
@@ -28,10 +27,6 @@ fn file_entry(name: &str) -> FileEntry {
         name: name.into(),
         is_dir: false,
     }
-}
-
-fn mint_cap() -> crate::common::tcaps::frontend::FrontendCap {
-    mint_frontend_cap()
 }
 
 // ── resolve_list_dir ───────────────────────────────────────────────────────
@@ -253,7 +248,6 @@ async fn spawn_actor(deps: &ActorDeps, state: &State) -> trouper::actor::ActorPa
         DirectoryListerActorDeps {
             deps: deps.clone(),
             state: state.clone(),
-            frontend_cap: mint_frontend_cap(),
         },
     )
 }
@@ -267,7 +261,7 @@ async fn actor_reads_directory_entries_into_file_picker() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // Set the expected request id and mark loading.
-    state.with_file_picker(&mint_cap(), |ops| {
+    state.with_file_picker(|ops| {
         ops.file_picker().expected_request_id = 1;
         ops.file_picker().loading = true;
     });
@@ -309,7 +303,7 @@ async fn actor_drops_stale_reply_when_request_id_mismatches() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // The expected id is 5, but we send a request with id 1 (stale).
-    state.with_file_picker(&mint_cap(), |ops| {
+    state.with_file_picker(|ops| {
         ops.file_picker().expected_request_id = 5;
         ops.file_picker().loading = true;
     });
@@ -339,7 +333,7 @@ async fn actor_returns_empty_for_nonexistent_directory() {
     // Given an actor and a path that does not exist.
     let (harness, state, deps) = create_harness().await;
     let _actor = spawn_actor(&deps, &state).await;
-    state.with_file_picker(&mint_cap(), |ops| {
+    state.with_file_picker(|ops| {
         ops.file_picker().expected_request_id = 1;
         ops.file_picker().loading = true;
     });
@@ -370,7 +364,7 @@ async fn actor_lists_hidden_files() {
     let dir = make_temp_dir(&[(".hidden", false), ("visible.txt", false)]);
     let (harness, state, deps) = create_harness().await;
     let _actor = spawn_actor(&deps, &state).await;
-    state.with_file_picker(&mint_cap(), |ops| {
+    state.with_file_picker(|ops| {
         ops.file_picker().expected_request_id = 1;
         ops.file_picker().loading = true;
     });

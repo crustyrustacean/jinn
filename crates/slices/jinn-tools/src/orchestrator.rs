@@ -131,8 +131,6 @@ pub struct ToolOrchestratorActor {
     pending: HashMap<SessionId, PendingBatch>,
     /// Shared application state for reading session CWD.
     state: State,
-    /// Session write capability for todo-list and skill tools.
-    session_cap: jinn_domain::common::tcaps::session::SessionCap,
     /// Runtime services.
     services: Services,
 }
@@ -144,8 +142,6 @@ pub struct ToolOrchestratorActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
-    /// Session write capability for todo-list and skill tools.
-    pub session_cap: jinn_domain::common::tcaps::session::SessionCap,
     /// Runtime services.
     pub services: Services,
     /// Override which built-in tools to register. `None` means register all.
@@ -261,7 +257,6 @@ impl ToolOrchestratorActor {
             session_tools: HashMap::new(),
             pending: HashMap::new(),
             state: deps.state,
-            session_cap: deps.session_cap,
             services: deps.services,
         };
         let all_builtins = crate::registry::builtin_tools(default_timeout_secs);
@@ -606,7 +601,6 @@ impl ToolOrchestratorActor {
             max_output_lines,
             max_output_bytes,
             dispatched_at,
-            session_cap: Some(self.session_cap),
             mcp_coordinator: self.services.mcp_coordinator.get().cloned(),
             interactive_term: self.services.interactive_term.get().cloned(),
             task_spawns: Some(self.services.task_spawns.clone()),
@@ -997,7 +991,6 @@ mod timeout_tests {
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
-            session_cap: None,
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,
@@ -1254,7 +1247,6 @@ mod panic_safety_tests {
                 max_output_lines: None,
                 max_output_bytes: None,
                 dispatched_at: jiff::Timestamp::now(),
-                session_cap: None,
                 mcp_coordinator: None,
                 interactive_term: None,
                 task_spawns: None,
@@ -1448,7 +1440,6 @@ mod mcp_dispatch_gate_tests {
                 },
                 state: state.clone(),
                 services: services.clone(),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 builtin_filter: None,
             },
         );
@@ -1572,7 +1563,7 @@ mod mcp_dispatch_gate_tests {
         // Given a state with a seeded session, the stub tools registered for it.
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
-        state.write_test_no_cap().session.get_or_create(&session_id);
+        state.write().session.get_or_create(&session_id);
         let (harness, _services) = spawn_orchestrator(&state).await;
         register_stub_tools(&harness, &session_id).await;
 
@@ -1606,7 +1597,7 @@ mod mcp_dispatch_gate_tests {
         // tools still registered (the in-flight-turn race the gate guards).
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
-        state.write_test_no_cap().session.get_or_create(&session_id);
+        state.write().session.get_or_create(&session_id);
         let (harness, _services) = spawn_orchestrator(&state).await;
         register_stub_tools(&harness, &session_id).await;
         let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
@@ -1632,7 +1623,7 @@ mod mcp_dispatch_gate_tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         state
-            .write_test_no_cap()
+            .write()
             .session
             .get_or_create(&session_id)
             .enable_mcp_server("stub");
@@ -1664,7 +1655,7 @@ mod mcp_dispatch_gate_tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         state
-            .write_test_no_cap()
+            .write()
             .session
             .get_or_create(&session_id)
             .enable_mcp_server("stub");

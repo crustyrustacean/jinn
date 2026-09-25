@@ -31,7 +31,7 @@ impl SessionPersistenceActor {
     /// newest generation wins (the LLM actor aborts the superseded task),
     /// matching the stale-completion drop semantics.
     pub(in crate::session_actor) fn on_send_to_llm_provider(&self, payload: &SendToLlmProvider) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             session.arm_stream(payload.dispatched_at);
         });
@@ -74,7 +74,7 @@ impl SessionPersistenceActor {
     ) {
         // Discard partial streaming entries — but only while a stream is
         // genuinely in flight for this session.
-        let acted = self.state.with_session(&self.cap, |view| {
+        let acted = self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming)
                 && session.has_in_flight_stream()
@@ -160,7 +160,7 @@ mod tests {
         // on this actor's system (production wiring does this at boot).
         let _ = jinn_context_assembly::service::ensure_spawned(&actor.services.trouper_system);
         let session_id = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
             // A partial assistant entry created via the streaming path so it
@@ -239,7 +239,7 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.clear_stream_generation();
         }
@@ -268,7 +268,7 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.finish_streaming(true, jiff::Timestamp::now());
         }
@@ -295,7 +295,7 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             let now = jiff::Timestamp::now();
             session.begin_tool_call(0, "tc-partial", "bash", now);

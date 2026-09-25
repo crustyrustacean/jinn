@@ -108,7 +108,6 @@ impl TuiAppBuilder {
                 register_sections(&mut s);
                 s
             },
-            intent_handler_cap: jinn_domain::common::tcaps::mint::mint_intent_handler_cap(),
         }
     }
 }

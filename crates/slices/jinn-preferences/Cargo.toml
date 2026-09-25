@@ -5,8 +5,8 @@ edition.workspace = true
 description = "The preferences slice: persists jinn.toml and state.toml (PreferencesActor + AppStateActor)."
 
 [dependencies]
-# Kernel dep is deliberate: both actors write AppState inline —
-# `frontend.preferences` / `frontend.app_state` through `FrontendCap`, the
+# Kernel dep is deliberate: both actors write AppState inline through
+# `State` projections — `frontend.preferences` / `frontend.app_state`, the
 # theme cell resolution in the app-state sync, and the project-picker
 # reload after a preference save. See AGENTS.md §3 "one boundary = one
 # actor": these are the authoritative writers for those fields.

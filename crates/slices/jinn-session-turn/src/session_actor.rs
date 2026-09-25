@@ -79,8 +79,6 @@ pub fn default_token_cache() -> jinn_token_count_msg::HistoryWorkerChatEntryToke
 /// snapshots through the session-store service when turn state changes.
 pub struct SessionPersistenceActor {
     state: State,
-    cap: jinn_domain::common::tcaps::session::SessionCap,
-    frontend_cap: jinn_domain::common::tcaps::frontend::FrontendCap,
     /// Runtime services (the session store and the bus).
     services: jinn_domain::common::services::Services,
     /// Token counter for recording token usage in the session ledger.
@@ -103,8 +101,6 @@ impl BusPublish for SessionPersistenceActor {
 pub struct SessionPersistenceActorDeps {
     pub deps: ActorDeps,
     pub state: State,
-    pub cap: jinn_domain::common::tcaps::session::SessionCap,
-    pub frontend_cap: jinn_domain::common::tcaps::frontend::FrontendCap,
     pub counter: TiktokenCounter,
     /// Auto-pruner entry token cache for the accumulation gate.
     pub token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache,
@@ -153,8 +149,6 @@ impl SessionPersistenceActor {
                     Box::pin(async move {
                         Ok(Self {
                             state: deps.state,
-                            cap: deps.cap,
-                            frontend_cap: deps.frontend_cap,
                             services: deps.deps.services,
                             counter: deps.counter,
                             token_cache: deps.token_cache,

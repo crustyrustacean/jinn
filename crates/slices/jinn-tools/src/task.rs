@@ -397,9 +397,6 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     let Some(bus) = ctx.bus else {
         return tool_error(call, "no message bus available");
     };
-    let Some(session_cap) = ctx.session_cap else {
-        return tool_error(call, "no session authority available");
-    };
     let args = match parse_args(&call.arguments) {
         Ok(args) => args,
         Err(msg) => return tool_error(call, &msg),
@@ -428,7 +425,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     // actor on EnqueueUserMessage, MCP coordinator on SessionCreated) looks
     // the session up by id — insertion must precede publication or they
     // would each `get_or_create` a bare session over the real child.
-    state.with_session(&session_cap, |view| {
+    state.with_session(|view| {
         let map = view.session.map();
         map.insert(child);
         // Stamp the parent's tool-call entry with the child link. The UI

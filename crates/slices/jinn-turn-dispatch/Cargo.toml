@@ -9,10 +9,9 @@ jinn-turn-dispatch-msg = { workspace = true }
 jinn-inference-msg = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }
-# Kernel dep (token-count precedent): the queue actor writes through
-# tcaps (State + SessionCap), consumes session vocabulary
+# Kernel dep: the queue actor uses shared `State`, consumes session vocabulary
 # (QueueItem/ChatEntry, phase machine, enqueue protocols), and asks the
-# context-assembly service through Services — granted at slice activation.
+# context-assembly service through `Services`.
 jinn-core-types = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-history-msg = { workspace = true }

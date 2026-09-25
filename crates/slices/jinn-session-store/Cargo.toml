@@ -6,8 +6,8 @@ description = """
 The session-store slice: session persistence/restoration actor, SQLite backend,
 and background FTS search-index maintenance actor.
 
-Kernel dependency: the shared `SessionStore` service seam, `State`, and
-capabilities live in `jinn-domain`; session snapshots and reconstruction
+Kernel dependency: the shared `SessionStore` service seam and `State` live in
+`jinn-domain`; session snapshots and reconstruction
 contracts come from `jinn-session-state`.
 """
 

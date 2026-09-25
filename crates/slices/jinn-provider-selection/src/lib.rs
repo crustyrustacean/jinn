@@ -9,9 +9,7 @@
 //! `AppState::provider_state`.
 //!
 //! The provider/endpoint picker `SelectionState`s stay on the kernel's
-//! `FrontendState` (the picker host lens lends them from `&AppState`);
-//! this slice's actors fill them at load time through the sanctioned
-//! `FrontendCap` path.
+//! `FrontendState` (the picker host lens lends them from `&AppState`).
 
 pub mod attachment_gate;
 pub mod discover_actor;
@@ -78,8 +76,6 @@ pub fn activate(
             deps,
             state,
             provider_cell: provider_cell.clone(),
-            session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-            frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
         },
     );
 

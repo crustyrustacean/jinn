@@ -11,7 +11,6 @@ use jinn_domain::Services;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::session::SessionCap;
 use jinn_session_lifecycle_msg::builtin::BuiltinRegistry;
 use jinn_session_lifecycle_msg::{
     CancelLifecycleCommand, CloseSession, FinishSessionSetup, FinishSessionTeardown,
@@ -35,8 +34,6 @@ pub const SESSION_LIFECYCLE_MAILBOX_CAPACITY: usize = 1_024;
 pub struct SessionLifecycleActorDeps {
     /// Shared application state.
     pub state: State,
-    /// Capability for lifecycle-owned session fields.
-    pub session_cap: SessionCap,
     /// Application-wide services, including the bus and session store summaries.
     pub services: Services,
     /// Registry of compiled lifecycle handlers.
@@ -48,7 +45,6 @@ pub struct SessionLifecycleActorDeps {
 /// Actor that owns session setup, teardown, close, cancellation, and cwd changes.
 pub struct SessionLifecycleActor {
     state: State,
-    session_cap: SessionCap,
     services: Services,
     builtin_registry: BuiltinRegistry,
     shell: String,
@@ -93,7 +89,6 @@ impl SessionLifecycleActor {
                     Box::pin(async move {
                         Ok(Self {
                             state: deps.state,
-                            session_cap: deps.session_cap,
                             services: deps.services,
                             builtin_registry: deps.builtin_registry,
                             shell: deps.shell,

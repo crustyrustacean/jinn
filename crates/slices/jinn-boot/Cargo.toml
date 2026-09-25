@@ -12,9 +12,9 @@ jinn-boot-msg = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }
 # Kernel dep (turn-dispatch/session-store precedent): the boot actors
-# read/write AppState through State + the minted SessionCap, publish
+# read/write AppState through the shared `State` API, publish
 # provider contracts, and reuse the kernel session vocabulary
-# (no_api_keys_msg). Granted at install time.
+# (no_api_keys_msg).
 jinn-domain = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-mcp-msg = { workspace = true }

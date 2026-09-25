@@ -37,8 +37,6 @@ pub struct PreferencesActor {
     services: Services,
     /// Shared application state — writes `frontend.preferences` inline after persist.
     state: State,
-    /// Write authority for `frontend.preferences`.
-    cap: jinn_domain::common::tcaps::FrontendCap,
 }
 
 impl ServiceActor for PreferencesActor {
@@ -49,8 +47,8 @@ impl ServiceActor for PreferencesActor {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the state handle and
-        // capability via `start_with`.
+        // Never called: the spawn helper injects the state handle
+        // via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("PreferencesActor is spawned via start_with"),
@@ -62,12 +60,7 @@ impl PreferencesActor {
     /// Spawns the actor at its static path, declaring `UpdatePreferences`
     /// as handled — the declaration registers the command's route (its
     /// sole handler), so bridge-published commands deliver here.
-    pub fn spawn(
-        system: &ActorSystem,
-        services: Services,
-        state: State,
-        cap: jinn_domain::common::tcaps::FrontendCap,
-    ) -> ActorPath {
+    pub fn spawn(system: &ActorSystem, services: Services, state: State) -> ActorPath {
         spawn_service_builder::<Self>(system)
             .at(ActorPath::new(PREFERENCES_ACTOR_PATH))
             .start_with({
@@ -76,7 +69,6 @@ impl PreferencesActor {
                         Ok(Self {
                             services: services.clone(),
                             state: state.clone(),
-                            cap,
                         })
                     })
                 }
@@ -100,7 +92,7 @@ impl PreferencesActor {
         // reload the open project picker so adds/removes round-tripping through
         // this actor are reflected immediately. The author of `frontend.preferences`
         // is this actor — keep the writes in one state guard.
-        self.state.with_preferences(&self.cap, |view| {
+        self.state.with_preferences(|view| {
             let frontend = view.frontend();
             frontend.preferences = prefs.clone();
             if frontend.is_picker()

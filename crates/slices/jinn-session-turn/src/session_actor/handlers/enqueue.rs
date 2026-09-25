@@ -72,7 +72,7 @@ impl SessionPersistenceActor {
         }
 
         let action = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
                 match session.phase() {
                     PhaseKind::Idle => {
@@ -162,7 +162,7 @@ impl SessionPersistenceActor {
 
         // Blocked: push the user entry and the error entry, then persist.
         // The session stays Idle — no phase transition, no dispatch.
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(session_id);
             session.push_entry(entry.clone());
             session.push_entry(error_entry);
@@ -280,7 +280,7 @@ impl SessionPersistenceActor {
         user_entry: ChatEntry,
         message: String,
     ) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(session_id);
             session.push_entry(user_entry);
             session.push_entry(ChatEntry::error(message));
@@ -319,7 +319,7 @@ impl SessionPersistenceActor {
         // Push UI-only resume marker and transition Idle → Sending.
         let marker = ChatEntry::system("\u{21bb} session resumed");
         let (old_phase, new_phase) = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
                 session.push_entry(marker.clone());
                 let old_phase = session.phase();
@@ -367,7 +367,7 @@ impl SessionPersistenceActor {
     ) {
         let fragment_len = payload.text.len();
         let new_depth = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
                 session
                     .steering_buffer_mut()
@@ -392,7 +392,7 @@ impl SessionPersistenceActor {
             preview = %payload.entry.text().chars().take(60).collect::<String>(),
             "handle_push_chat_entry"
         );
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             session.push_entry(payload.entry.clone());
         });
@@ -449,7 +449,7 @@ mod tests {
         // Given an idle session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -490,7 +490,7 @@ mod tests {
         // Given a new session with no title.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -515,7 +515,7 @@ mod tests {
         // Given a session in Streaming phase (busy).
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.active_session_mut();
             session.begin_streaming();
             guard.session.active_session_id().clone()
@@ -545,7 +545,7 @@ mod tests {
         // Given a session with default model (NO_PROVIDER_ID).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -574,7 +574,7 @@ mod tests {
         // Given a session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -616,7 +616,7 @@ mod tests {
         // Given an idle session with no attachments.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -666,7 +666,7 @@ mod tests {
         });
         std::fs::write(&path, json.to_string()).expect("write models.dev.json");
         // Set the session's active model to the seeded model id.
-        let mut guard = actor.state.write_test_no_cap();
+        let mut guard = actor.state.write();
         guard
             .active_session_mut()
             .set_model(ModelSelection::Single(model_id.to_owned()));
@@ -678,7 +678,7 @@ mod tests {
         // Given an idle session whose active model is a known text-only model.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -722,7 +722,7 @@ mod tests {
         // Given an idle session whose active model is vision-capable.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -758,13 +758,13 @@ mod tests {
         // Given an idle session whose active model is NOT in models.dev (unknown).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
         // Set a model id but write NO models.dev entry for it.
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .active_session_mut()
                 .set_model(ModelSelection::Single("my-uncatalogued-llama".to_owned()));
@@ -806,12 +806,12 @@ mod tests {
         // Given an idle session whose active model is unknown AND a text-only message.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .active_session_mut()
                 .set_model(ModelSelection::Single("my-uncatalogued-llama".to_owned()));
@@ -843,7 +843,7 @@ mod tests {
         // Given a session already in Streaming phase.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.active_session_mut();
             session.begin_streaming();
             guard.session.active_session_id().clone()
@@ -876,7 +876,7 @@ mod tests {
         // Given an idle session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -929,7 +929,7 @@ mod tests {
     ) {
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };

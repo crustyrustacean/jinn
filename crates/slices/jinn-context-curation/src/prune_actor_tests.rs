@@ -151,7 +151,7 @@ async fn prune_actor_publishes_submit_mutations_for_long_history() {
     let (mut actor, state, audit) = create_actor(vec![Box::new(TruncateOldUserEntries)]).await;
     let sid = SessionId::new();
     {
-        let mut guard = state.write_test_no_cap();
+        let mut guard = state.write();
         let session = guard.session_mut_or_create(&sid);
         for i in 0..5 {
             session
@@ -176,7 +176,7 @@ async fn prune_actor_publishes_nothing_for_short_history() {
     let (mut actor, state, audit) = create_actor(vec![Box::new(TruncateOldUserEntries)]).await;
     let sid = SessionId::new();
     {
-        let mut guard = state.write_test_no_cap();
+        let mut guard = state.write();
         let session = guard.session_mut_or_create(&sid);
         for i in 0..2 {
             session

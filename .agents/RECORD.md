@@ -43,6 +43,7 @@ Entries are added or amended **only with human approval**.
 - (arch) Test fixtures and integration tests that span crates live in the root crate's `tests/` directory so `just check` and IDE analysis never compile them; unit tests inside a crate may only use that crate's dependencies.
 - (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
 - (arch) `AppState` is the shared state; the frontend writes user input, domain actors write their owned fields, and the TUI renderer reads it on each tick.
+- (arch) Shared `AppState` mutations currently synchronize through closure-based `State` methods rather than token-based authority types.
 - (context) jinn has no memory subsystem by decision: durable cross-session facts are carried by AGENTS.md/CLAUDE.md files, personas, and skills; cross-session recall is via the `session_search` and `session_fetch` tools; planning state is carried by pinned plan files.
 - (compaction) Compaction is gated by a context-size threshold: it skips when below, triggers when at or above, and uses a fallback context length when the model isn't in the cache.
 - (compaction) Compaction preserves pinned entries; the cut index walks backwards from a reserve and advances past complete tool loops to a valid opener.
@@ -66,13 +67,13 @@ Entries are added or amended **only with human approval**.
 - (context) `@path` tokens resolve to `file://` URIs against cwd/home when the file is a readable image; otherwise the token is left as literal text.
 - (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) per wired actor.
 - (dashboard) Dashboard state is a `Slices` cell owned by `DashboardCanvasActor`, fed by generic events: actor-lifecycle events and `ServiceStatusUpdate` status updates; features publish `ServiceStatusUpdate` for display only.
-- (slices) Render slices live in per-slice typed cells behind the `Slices` facade; registration mints exactly one write handle, held by the owning actor; the renderer and intent router hold read handles only.
+- (slices) Render slices live in per-slice typed cells behind the `Slices` facade; the owning actor, renderer, and intent router share typed handles to the registered cell.
 - (slices) Route rows can bind into named composition scopes via `BindSite::StaticScopes`; a slice's entry-point key (e.g. discord's `gdc`) is a slice-owned route row with no central intent variant, and which-key prefix groups derive from attached rows instead of hardcoded calls.
 - (keybinds) Feature keybinds are route rows carrying scope and key; keymap bindings are generated from registered rows at launch; dynamic intents and scope ids are data-carried, so an unregistered slice leaves no keymap, scope, or intent residue.
 - (keybinds) The terminal overlay's keybinds are term-slice route rows binding the dynamic scopes term:view and term:control; no static terminal scope or terminal intent variants exist in the kernel.
 - (keybinds) A slice key hook registers a per-scope catch-all returning a byte-carrying dynamic intent; key-hook and modal scopes are excluded from the GlobalToggle spread and the typing carve-out so capture mode stays hermetic.
 - (keybinds) A slice can declare a dynamic scope modal through the route table; while a modal scope is on top, other slices' GlobalToggle rows and the typing carve-out do not pierce it — the scope's keys come from its own rows and hooks.
-- (keybinds) Route row actions are `ActionFn` closures that receive an `ActionCtx` (`&mut AppState`, `&Slices`) lent by the intent handler at dispatch; actions capture no capabilities and never mint caps — state outside the slice's cells is reached only through the lent context.
+- (keybinds) Route row actions are `ActionFn` closures that receive an `ActionCtx` (`&mut AppState`, `&Slices`) lent by the intent handler at dispatch; state outside the slice's cells is reached only through the lent context.
 - (discovery) Project discovery walks ancestors from the session cwd up to either a VCS root or `$HOME`, whichever comes first; `$HOME` is exclusive.
 - (discovery) VCS roots are detected by marker files (`.git`, `.hg`, `.fslckout`, `.fossil`, `.jj`), not by shelling out to a VCS CLI.
 - (discovery) The skills, prompt-template, and context-file scans run per session inside the session-init slice's keyed discovery worker.
@@ -222,7 +223,7 @@ Entries are added or amended **only with human approval**.
 - (citations) The citations detector accepts `link` as a synonym for `url`, so Z.ai-shaped search results surface citations.
 - (citations) The citations detector recurses into strings that parse as JSON (any value type, bounded depth), so doubly-encoded tool outputs are detected.
 - (testing) All workspace Rust tests run under rstest's timeout: RSTEST_TIMEOUT=10s is set via .cargo/config.toml [env] and baked into tests at compile time, independent of the command entrypoint.
-- (testing) Tests exceeding the default rstest timeout carry an explicit #[timeout] override (typically 30s); the trybuild compile-fail suite in jinn-domain is exempt from rstest entirely.
+- (testing) Tests exceeding the default rstest timeout carry an explicit #[timeout] override (typically 30s).
 - (testing) just lint rejects bare #[test]/#[tokio::test] attributes without an accompanying rstest attribute.
 - (discord) Inbound Discord input — plain messages and every slash command — is accepted only from user IDs listed in `[discord].authorized_users`; an empty or missing list authorizes nobody (deny by default).
 - (discord) Unauthorized slash-command use gets an ephemeral refusal; unauthorized plain messages are silently dropped.
@@ -315,7 +316,8 @@ Entries are added or amended **only with human approval**.
 - (todo) The next-task indicator remains derived from list state and renders after every write and in `todo_get_task_list`.
 - (slices) The chat-log-view slice is a crate owning the per-session chat log view state in one cell keyed by session id; the IntentHandler and the renderer write through ChatSession's semantic methods.
 - (slices) The sidebar, token-count, context-assembly, and preferences actors are trouper ServiceActors spawned at slice activation.
-- (slices) The preferences actors write through caps and publish no bus events.
+- (slices) The preferences actors write persisted preferences and app state through the shared `State` lock.
+- (slices) The preferences and app-state actors publish no bus events.
 - (slices) SessionUi persists only the steering buffer; the chat input and chat log view fields live in their slices' cells.
 - (slices) The chat-input slice is a crate owning the per-session chat input state in one cell keyed by session id; the IntentHandler and the session actor write through ChatSession's semantic methods.
 - (slices) The chat input box cannot be remotely locked or disabled.
@@ -329,7 +331,7 @@ Entries are added or amended **only with human approval**.
 - (pickers) jinn_picker PickerEntry is Clone and delegates TreeItem structure to domain entries.
 - (skills) jinn ships a bundled `jinn-usage` agent skill whose body routes to per-topic reference files (keybindings, workflows, configuration) installed beside its SKILL.md.
 - (skills) Bundled skill content is compile-time embedded, so installed skill docs match the running jinn binary; refreshing them requires `jinn install --force`.
-- (slices) The cwd slice is a kernel-free crate owning the change-directory popup's state cell, route rows, and input hook; confirm resolves the path and publishes SetSessionCwd through capabilities on SliceActionState.
+- (slices) The cwd slice is a kernel-free crate owning the change-directory popup's state cell, route rows, and input hook; confirm resolves the path and publishes SetSessionCwd through SliceActionState.
 - (slices) SetSessionCwd and SessionCwdChanged stay session-lifecycle contracts; SessionLifecycleActor applies the cwd and session-init re-discovers on the change.
 - (slices) The sidebar's section focus is a dynamic scope per section (sidebar/<section>); FocusScope and the TUI Scope have no static sidebar variants.
 - (slices) A sidebar section is derived from the dynamic scope id's name; ScopeStack is_sidebar and sidebar_section match scope ids with the sidebar slice prefix.
@@ -389,7 +391,7 @@ Entries are added or amended **only with human approval**.
 - (boot) ProviderInit builds the provider registry, merges the disk model cache, and re-applies the persisted last_model only when the active session has no explicit model.
 - (provider) The provider-selection family (ProviderActor, DiscoverActor, entry/message builders, endpoint/reasoning vocabulary) lives in the jinn-provider-selection slice.
 - (provider) The provider cell (provider/state) holds the model cache, the provider picker's alloy mode, and the endpoint fetch state (in-flight flag + last-fetched timestamp); the slice's actors and boot write it, the picker specs and gates read it, and the picker SelectionStates stay on the kernel's PickerStates as the render/navigation surface.
-- (provider) tcaps no longer has a provider capsule; ProviderCap/ProviderView are dissolved and boot writes the model cache through the provider cell.
+- (provider) The provider model cache currently lives in the provider-owned cell.
 - (session) SendMessage no longer exists; EnqueueUserMessage is the only user-message entry point.
 - (session-init) RescanPromptTemplates and PromptTemplatesLoaded live in jinn-session-init-msg.
 - (picker) The picker framework (spec/registry/hooks, the twelve id constants, spec_id_for_kind, the style helpers, and the full-hook make_items_with_hooks wrapping seam) lives in the kernel-free jinn-picker crate; the twelve feature specs plus build_picker_registry live in jinn-picker-specs, which depends on jinn-domain. The generic dispatch layer (intents, validation, action routing, both host lenses, geometry, the row types) deliberately stays kernel-resident because feat/intent/handler.rs calls into it.
@@ -402,7 +404,7 @@ Entries are added or amended **only with human approval**.
 - (session) `SessionStoreActor` persists and reconstructs complete `SessionSnapshot` values through SQLite.
 - (session) SQLite session persistence commits metadata, history, attachments, and token-ledger changes in one transaction.
 - (mcp) MCP runtime status and stderr are stored in an MCP-owned live cell, while persisted MCP enablement remains part of the session snapshot.
-- (arch) `jinn-domain` retains shared application state, capabilities, service seams, and frontend orchestration rather than the complete session-domain implementation.
+- (arch) `jinn-domain` retains shared application state, named mutation projections, service seams, and frontend orchestration rather than the complete session-domain implementation.
 - (session) Session leaf vocabulary is split by facet across jinn-session-lifecycle-msg, jinn-session-store-msg, and jinn-session-msg.
 - (session) SessionStoreActor and SessionLifecycleActor own storage and lifecycle contracts in their respective slices.
 - (session) SessionPersistenceActor is the jinn-session-turn actor for coordinated turn progression, context work, and sanctioned history folds.

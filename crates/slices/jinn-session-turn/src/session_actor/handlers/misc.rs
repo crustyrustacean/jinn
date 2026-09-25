@@ -33,7 +33,7 @@ impl SessionPersistenceActor {
             build_skills_refresh_message(&event.skills)
         };
 
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             if let Some(session) = view.session.map().get_mut(&event.session_id) {
                 session.push_entry(ChatEntry::transient(content));
             }
@@ -110,7 +110,7 @@ impl SessionPersistenceActor {
 
         // Capture what changed (if anything) so events can be emitted after releasing the write lock.
         let (session_id, changed) = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
 
                 for mutation in payload.mutations.clone() {
@@ -229,7 +229,7 @@ mod tests {
         // Given a default (10_000) accumulation threshold and one user entry.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             state.session.active_session_id().clone()
@@ -321,7 +321,7 @@ mod tests {
         // Given a default (10_000) accumulation threshold and two user entries.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("first"));
             session.push_entry(ChatEntry::user("second"));
@@ -392,7 +392,7 @@ mod tests {
     async fn handle_submit_history_mutations_emits_context_override_changed_on_change() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             state.session.active_session_id().clone()
@@ -428,7 +428,7 @@ mod tests {
     async fn handle_submit_history_mutations_does_not_emit_on_noop_mutation() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             let id = session.session_id().clone();
@@ -480,7 +480,7 @@ mod tests {
         // Given a session with one assistant entry and the default 10_000 threshold.
         let (actor, _audit) = test_actor_recording().await;
         let (session_id, entry_id) = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             let entry = ChatEntry::assistant("response");
             let id = entry.id.clone();
@@ -523,7 +523,7 @@ mod tests {
         // Given a session with one assistant entry.
         let (actor, _audit) = test_actor_recording().await;
         let (session_id, entry_id) = {
-            let mut state = actor.state.write_test_no_cap();
+            let mut state = actor.state.write();
             let session = state.active_session_mut();
             let entry = ChatEntry::assistant("response");
             let id = entry.id.clone();

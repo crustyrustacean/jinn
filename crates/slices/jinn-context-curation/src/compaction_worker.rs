@@ -63,8 +63,6 @@ pub struct CompactionWorker {
     handle: Handle,
     /// Shared application state (for reading session history).
     state: State,
-    /// Proof of authority to write session state (model round-robin advance).
-    cap: jinn_domain::common::tcaps::SessionCap,
     /// The compaction system prompt loaded once at startup.
     compaction_prompt: String,
     /// Sessions with an auto-compaction currently in flight.
@@ -91,14 +89,12 @@ impl CompactionWorker {
         services: Services,
         handle: Handle,
         state: State,
-        cap: jinn_domain::common::tcaps::SessionCap,
         compaction_prompt: String,
     ) -> Self {
         Self {
             services,
             handle,
             state,
-            cap,
             compaction_prompt,
             compaction_in_progress: Arc::new(Mutex::new(HashSet::new())),
             pending_compaction_id: Arc::new(Mutex::new(HashMap::new())),
@@ -178,7 +174,7 @@ impl CompactionWorker {
 
         // Write session state (resolve_model advances the alloy round-robin index).
         let (model_name, history) = {
-            self.state.with_session(&self.cap, |view| {
+            self.state.with_session(|view| {
                 let session = view.session.map().get_unchecked_mut(&trigger.session_id);
                 let model_name = session.profile_mut().model.resolve_model();
                 let history = session.history().to_vec();
@@ -186,7 +182,7 @@ impl CompactionWorker {
             })
         };
 
-        // Read context (read-only, no cap needed).
+        // Read compaction preferences and retry configuration.
         let (config, compaction_prompt, retry_config) = {
             let config = prefs.compaction.clone();
             let compaction_prompt = self.compaction_prompt.clone();

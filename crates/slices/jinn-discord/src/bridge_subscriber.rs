@@ -41,9 +41,9 @@ use trouper::system::ActorSystem;
 
 /// The Discord bridge subscriber.
 ///
-/// Holds the sender halves of the two gateway kanal channels, a clone
-/// of [`State`], and the session capability — the fold writes the
-/// `gdc` (to-thread) result `ChatEntry` inline on outcome events.
+/// Holds the sender halves of the two gateway kanal channels and a clone
+/// of [`State`] — the fold writes the `gdc` (to-thread) result `ChatEntry`
+/// inline on outcome events.
 pub struct DiscordBridgeSubscriber {
     /// Forwards topic events onto this channel as [`BridgeEvent`]s.
     tx: kanal::Sender<BridgeEvent>,
@@ -54,8 +54,6 @@ pub struct DiscordBridgeSubscriber {
     /// Shared application state — writes the `gdc` (to-thread) result
     /// `ChatEntry` back into the targeted session's history.
     state: State,
-    /// Authority to push entries into sessions.
-    session_cap: jinn_domain::common::tcaps::session::SessionCap,
 }
 
 /// Dependencies for [`DiscordBridgeSubscriber`].
@@ -67,8 +65,6 @@ pub struct DiscordBridgeSubscriberDeps {
     pub gateway_tx: kanal::Sender<GatewayRequest>,
     /// Shared application state.
     pub state: State,
-    /// Authority to push entries into sessions.
-    pub session_cap: jinn_domain::common::tcaps::session::SessionCap,
 }
 
 impl DiscordBridgeSubscriber {
@@ -90,7 +86,6 @@ impl DiscordBridgeSubscriber {
             tx,
             gateway_tx,
             state,
-            session_cap,
         } = deps;
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("discord-bridge"))
@@ -101,7 +96,6 @@ impl DiscordBridgeSubscriber {
                             tx,
                             gateway_tx,
                             state,
-                            session_cap,
                         })
                     })
                 }
@@ -121,8 +115,8 @@ impl ServiceActor for DiscordBridgeSubscriber {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the channels, state,
-        // and capability via `start_with`.
+        // Never called: the spawn helper injects the channels and state
+        // via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("DiscordBridgeSubscriber is spawned via start_with"),
@@ -179,17 +173,12 @@ impl DiscordBridgeSubscriber {
     /// Constructs a subscriber instance directly (for tests that call
     /// the fold helpers; added in the Phase 4 test port).
     #[cfg(test)]
-    pub(crate) fn new(
-        tx: kanal::Sender<BridgeEvent>,
-        state: State,
-        session_cap: jinn_domain::common::tcaps::session::SessionCap,
-    ) -> Self {
+    pub(crate) fn new(tx: kanal::Sender<BridgeEvent>, state: State) -> Self {
         let (gateway_tx, _gateway_rx) = kanal::bounded(1);
         Self {
             tx,
             gateway_tx,
             state,
-            session_cap,
         }
     }
 }
@@ -237,13 +226,13 @@ impl DiscordBridgeSubscriber {
     /// Handle `DiscordThreadCreated`: push a system `ChatEntry` mentioning the title.
     pub(super) fn handle_created(&self, msg: &DiscordThreadCreated) {
         let entry = ChatEntry::system(format!("Continuing in Discord thread: {}", msg.title));
-        push_entry(&self.state, self.session_cap, &msg.session_id, entry);
+        push_entry(&self.state, &msg.session_id, entry);
     }
 
     /// Handle `DiscordThreadCreateFailed`: push an error `ChatEntry`.
     pub(super) fn handle_failed(&self, msg: &DiscordThreadCreateFailed) {
         let entry = ChatEntry::error(reason_message(&msg.reason));
-        push_entry(&self.state, self.session_cap, &msg.session_id, entry);
+        push_entry(&self.state, &msg.session_id, entry);
     }
 
     /// Push one event onto the channel.
@@ -286,13 +275,8 @@ fn event_discriminant(event: &BridgeEvent) -> &'static str {
 
 /// Push a `ChatEntry` into a session by id; drop silently if the session is
 /// gone (closed/archived concurrently since the `gdc` request was emitted).
-fn push_entry(
-    state: &State,
-    session_cap: jinn_domain::common::tcaps::session::SessionCap,
-    session_id: &SessionId,
-    entry: ChatEntry,
-) {
-    state.with_session(&session_cap, |view| {
+fn push_entry(state: &State, session_id: &SessionId, entry: ChatEntry) {
+    state.with_session(|view| {
         if let Some(session) = view.session.map().get_mut(session_id) {
             session.push_entry(entry);
         } else {
@@ -351,14 +335,10 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         // Seed the session so `push_entry` finds it.
-        state.with_session(&jinn_domain::common::tcaps::mint::mint_session_cap(), |v| {
+        state.with_session(|v| {
             v.session.map().get_or_create(&session_id);
         });
-        let subscriber = DiscordBridgeSubscriber::new(
-            tx,
-            state,
-            jinn_domain::common::tcaps::mint::mint_session_cap(),
-        );
+        let subscriber = DiscordBridgeSubscriber::new(tx, state);
         (subscriber, session_id)
     }
 
@@ -464,12 +444,7 @@ mod tests {
         let session_id = SessionId::new();
 
         // When pushing an entry for a session that doesn't exist.
-        push_entry(
-            &state,
-            jinn_domain::common::tcaps::mint::mint_session_cap(),
-            &session_id,
-            ChatEntry::system("nope"),
-        );
+        push_entry(&state, &session_id, ChatEntry::system("nope"));
 
         // Then no panic occurred (reaching here is the assertion).
     }
@@ -501,7 +476,6 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
@@ -538,7 +512,6 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
@@ -577,7 +550,6 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
@@ -620,7 +592,6 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
@@ -657,7 +628,6 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
@@ -692,7 +662,6 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
@@ -722,8 +691,7 @@ mod tests {
         let (gw_tx, _gw_rx) = kanal::bounded::<GatewayRequest>(4);
         let state = State::new(AppState::default());
         let sid = SessionId::new();
-        let cap = jinn_domain::common::tcaps::mint::mint_session_cap();
-        state.with_session(&cap, |v| {
+        state.with_session(|v| {
             v.session.map().get_or_create(&sid);
         });
         DiscordBridgeSubscriber::spawn(
@@ -732,7 +700,6 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: state.clone(),
-                session_cap: cap,
             },
         );
 

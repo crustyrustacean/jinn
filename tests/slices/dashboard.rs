@@ -82,7 +82,7 @@ async fn j_keypress_routes_to_dashboard_actor_and_moves_selection() {
     let mut app = test_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
         .scope_swap_base(jinn_slices::FocusScope::Dynamic(
             jinn_dashboard::dashboard_scope(),
@@ -156,7 +156,7 @@ async fn dashboard_app() -> jinn_tui::TuiApp {
     let app = test_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
         .scope_swap_base(jinn_slices::FocusScope::Dynamic(
             jinn_dashboard::dashboard_scope(),
@@ -202,7 +202,7 @@ async fn registered_tab_stays_highlighted_when_another_overlay_opens() {
     let mut app = dashboard_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
         .scope_push(jinn_slices::FocusScope::Dynamic(
             jinn_slices::SliceScopeId::new("quake-bar", "bar"),

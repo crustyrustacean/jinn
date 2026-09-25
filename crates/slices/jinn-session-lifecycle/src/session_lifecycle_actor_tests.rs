@@ -9,7 +9,6 @@ use error_stack::Report;
 use jinn_domain::AppState;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::mint;
 use jinn_preferences_config::schemas::{BuiltinId, LifecycleCommand};
 use jinn_session_lifecycle_msg::CloseSession;
 use jinn_session_lifecycle_msg::TeardownSessionTree;
@@ -36,7 +35,6 @@ async fn actor_fixture(builtin_registry: BuiltinRegistry) -> ActorFixture {
         harness.system(),
         SessionLifecycleActorDeps {
             state: state.clone(),
-            session_cap: mint::mint_session_cap(),
             services: services.clone(),
             builtin_registry,
             shell: "/bin/sh".to_owned(),

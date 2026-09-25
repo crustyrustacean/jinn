@@ -16,7 +16,7 @@ jinn-term-msg = { workspace = true }
 jinn-theme = { workspace = true }
 ratatui = { workspace = true }
 # Kernel dep (justified): the coordinator subscribes to the session bus's
-# SessionClosed event, writes app state through the tcaps caps, and its
+# SessionClosed event, writes app state through the shared `State` API, and its
 # deps carry ActorDeps — the sidebar-actor precedent for in-slice actors.
 jinn-domain = { workspace = true }
 jinn-tools-msg = { workspace = true }

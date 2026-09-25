@@ -69,21 +69,10 @@ pub fn activate(
         &pruner_cell,
     );
 
-    // Spawn the persistence actors (caps minted here — activation is
-    // the single writer grant for each). Each spawn declares its
-    // handled command via `.handles`, which registers the route.
-    let prefs_path = PreferencesActor::spawn(
-        system,
-        services.clone(),
-        state.clone(),
-        jinn_domain::common::tcaps::mint::mint_frontend_cap(),
-    );
+    // Spawn the persistence actors. Each spawn declares its handled command
+    // via `.handles`, which registers the route.
+    let prefs_path = PreferencesActor::spawn(system, services.clone(), state.clone());
     drop(prefs_path);
-    let app_state_path = AppStateActor::spawn(
-        system,
-        services,
-        state,
-        jinn_domain::common::tcaps::mint::mint_frontend_cap(),
-    );
+    let app_state_path = AppStateActor::spawn(system, services, state);
     drop(app_state_path);
 }

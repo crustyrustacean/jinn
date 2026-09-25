@@ -76,7 +76,7 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         activate_citations(&mut services).await;
         jinn_tools::activate(&mut services, &core.state);
         core.state
-            .write_test_no_cap()
+            .write()
             .frontend
             .attach_slices(services.slices.clone());
         activate_session_init(&mut services, &core).await;
@@ -109,7 +109,6 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
             register_sections(&mut s);
             s
         },
-        intent_handler_cap: jinn_domain::common::tcaps::mint::mint_intent_handler_cap(),
     }
 }
 

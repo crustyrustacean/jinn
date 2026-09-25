@@ -1,9 +1,9 @@
 // Tool-level tests for the `task` tool's spawn and await behavior.
 //
 // These tests exercise `execute()` directly against a real bus (via
-// `TestHarness`), a shared `State`, and a minted session cap — the same
-// wiring the tool orchestrator provides in production. No session actor is
-// spawned: the tests stand in for the child session's own actor by driving
+// `TestHarness`) and the same shared `State` wiring the tool orchestrator
+// provides in production. No session actor is spawned: the tests stand in for
+// the child session's own actor by driving
 // phase transitions and pushing entries, which is exactly what the actor
 // does in production on stream events.
 
@@ -24,7 +24,6 @@ use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::mint::mint_session_cap;
 use jinn_domain::feat::chat_input::protocol::command::EnqueueUserMessage;
 use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
 use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
@@ -46,8 +45,8 @@ fn task_call(arguments: &str) -> ToolCall {
     }
 }
 
-/// Builds a tool context wired to the harness bus, shared state, and a minted
-/// session cap — the production wiring minus the MCP coordinator.
+/// Builds a tool context wired to the harness bus, shared state, and runtime
+/// services — the production wiring minus the MCP coordinator.
 async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -> ToolContext {
     let services = harness.services().await;
     ToolContext {
@@ -61,7 +60,6 @@ async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -
         max_output_lines: None,
         max_output_bytes: None,
         dispatched_at: jiff::Timestamp::now(),
-        session_cap: Some(mint_session_cap()),
         mcp_coordinator: None,
         interactive_term: None,
         task_spawns: Some(services.task_spawns.clone()),
@@ -75,9 +73,9 @@ async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -
 fn parent_fixture() -> (State, SessionId) {
     let state = State::new(AppState::default_with_scope_focus());
     let parent_id = SessionId::new();
-    state.write_test_no_cap().session.get_or_create(&parent_id);
+    state.write().session.get_or_create(&parent_id);
     {
-        let mut w = state.write_test_no_cap();
+        let mut w = state.write();
         let parent = w.session.get_mut(&parent_id).expect("parent seeded");
         parent.set_model(jinn_core_types::model_selection::ModelSelection::Single(
             "test-provider/test-model".to_owned(),
@@ -104,7 +102,7 @@ async fn finish_child_like_session_actor(
     text: &str,
 ) {
     let old = {
-        let mut w = state.write_test_no_cap();
+        let mut w = state.write();
         let child = w.session.get_mut(child_id).expect("child seeded");
         let old = child.phase();
         child.begin_sending();
@@ -130,7 +128,7 @@ async fn cancel_child_like_user(
     child_id: &SessionId,
 ) {
     {
-        let mut w = state.write_test_no_cap();
+        let mut w = state.write();
         let child = w.session.get_mut(child_id).expect("child seeded");
         child.begin_sending();
         child.begin_streaming();
@@ -308,7 +306,7 @@ async fn task_child_inherits_parent_project() {
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
     {
-        let mut w = state.write_test_no_cap();
+        let mut w = state.write();
         let parent = w.session.get_mut(&parent_id).expect("parent seeded");
         parent.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
     }
@@ -344,7 +342,7 @@ async fn task_child_task_list_starts_empty() {
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
     {
-        let mut w = state.write_test_no_cap();
+        let mut w = state.write();
         let parent = w.session.get_mut(&parent_id).expect("parent seeded");
         parent.task_list_mut().set_from_inputs(&[
             PhaseInput {
@@ -392,7 +390,7 @@ async fn task_child_task_list_does_not_propagate_to_parent() {
 
     // When the child records its own todo work.
     {
-        let mut w = state.write_test_no_cap();
+        let mut w = state.write();
         let child = w.session.get_mut(&child_id).expect("child present");
         child.task_list_mut().set_from_inputs(&[PhaseInput {
             description: "Subagent work".to_owned(),
@@ -443,7 +441,7 @@ async fn task_stamps_spawned_child_session_on_parent_tool_call() {
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
     {
-        let mut w = state.write_test_no_cap();
+        let mut w = state.write();
         let parent = w.session.get_mut(&parent_id).expect("parent seeded");
         parent.push_entry(ChatEntry::tool_call(
             "tc_task_1",
@@ -489,7 +487,7 @@ async fn task_stamp_leaves_unrelated_tool_call_entries_untouched() {
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
     {
-        let mut w = state.write_test_no_cap();
+        let mut w = state.write();
         let parent = w.session.get_mut(&parent_id).expect("parent seeded");
         parent.push_entry(ChatEntry::tool_call(
             "tc_task_1",
@@ -647,7 +645,7 @@ async fn task_timeout_cancels_child_and_fails() {
     // budget.
     settle_child_discovery(&harness.bus(), &created[0].session_id, &parent_servers()).await;
     {
-        let mut w = state.write_test_no_cap();
+        let mut w = state.write();
         let child = w.session.get_mut(&created[0].session_id).expect("child");
         child.begin_sending();
         child.begin_streaming();
@@ -711,7 +709,7 @@ async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
     // parent goes.
     settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
     {
-        let mut w = state.write_test_no_cap();
+        let mut w = state.write();
         let child = w.session.get_mut(&child_id).expect("child");
         child.begin_sending();
         child.begin_streaming();

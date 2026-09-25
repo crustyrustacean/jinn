@@ -41,7 +41,7 @@ impl SessionPersistenceActor {
     /// brand-new, never-sent-to session would otherwise be silently dropped
     /// by the `is_persistable` guard.
     pub(in crate::session_actor) async fn handle_pin_chat_entry(&self, payload: &PinChatEntry) {
-        self.state.with_session(&self.cap, |view| {
+        self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             session.pin_entry(&payload.entry_id, payload.position);
             session.mark_interacted();
@@ -58,33 +58,32 @@ impl SessionPersistenceActor {
     /// interacted so the removal persists.
     pub(in crate::session_actor) async fn handle_unpin_chat_entry(&self, payload: &UnpinChatEntry) {
         {
-            self.state
-                .with_session_pins(&self.cap, &self.frontend_cap, |view| {
-                    let is_active = view.session.map().active_session_id() == &payload.session_id;
-                    let old_index = if is_active {
-                        view.frontend.with_sections(
-                            |s| {
-                                s.pins.selection_index(&sorted_pinned_ids_from_session(
-                                    view.session.map().active_session(),
-                                ))
-                            },
-                            || 0,
-                        )
-                    } else {
-                        0
-                    };
+            self.state.with_session_pins(|view| {
+                let is_active = view.session.map().active_session_id() == &payload.session_id;
+                let old_index = if is_active {
+                    view.frontend.with_sections(
+                        |s| {
+                            s.pins.selection_index(&sorted_pinned_ids_from_session(
+                                view.session.map().active_session(),
+                            ))
+                        },
+                        || 0,
+                    )
+                } else {
+                    0
+                };
 
-                    let session = view.session.map().get_or_create(&payload.session_id);
-                    session.unpin_entry(&payload.entry_id);
-                    session.mark_interacted();
+                let session = view.session.map().get_or_create(&payload.session_id);
+                session.unpin_entry(&payload.entry_id);
+                session.mark_interacted();
 
-                    if is_active {
-                        let new_sorted =
-                            sorted_pinned_ids_from_session(view.session.map().active_session());
-                        view.frontend
-                            .update_sections(|s| s.pins.clamp_to_nearest(&new_sorted, old_index));
-                    }
-                });
+                if is_active {
+                    let new_sorted =
+                        sorted_pinned_ids_from_session(view.session.map().active_session());
+                    view.frontend
+                        .update_sections(|s| s.pins.clamp_to_nearest(&new_sorted, old_index));
+                }
+            });
         }
         self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
@@ -190,10 +189,9 @@ impl SessionPersistenceActor {
 
         entries.sort_by_key(|e| e.name.to_lowercase());
 
-        self.state
-            .with_persona_picker(&self.frontend_cap, |picker| {
-                picker.set_items(entries);
-            });
+        self.state.with_persona_picker(|picker| {
+            picker.set_items(entries);
+        });
     }
 }
 
@@ -388,7 +386,7 @@ mod tests {
         // (the value the store actor's environment handler seeds from state.toml at startup).
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard.frontend.app_state.persona_name = Some("general".to_owned());
         }
         let payload = PersonasLoaded {
@@ -414,7 +412,7 @@ mod tests {
         // Given a session with a user entry.
         let (actor, state, audit) = create_actor().await;
         let entry_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.active_session_mut();
             let entry = jinn_core_types::ChatEntry::user("hello");
             let id = entry.id.clone();
@@ -456,7 +454,7 @@ mod tests {
         // Given a session with a pinned entry.
         let (actor, state, audit) = create_actor().await;
         let entry_id = {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             let session = guard.active_session_mut();
             let mut entry = jinn_core_types::ChatEntry::user("hello");
             entry.pin_position = Some(PinPosition::Top);
@@ -499,7 +497,7 @@ mod tests {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         let entry_id = {
-            let mut guard = actor.state.write_test_no_cap();
+            let mut guard = actor.state.write();
             let session = guard.active_session_mut();
             let entry = jinn_core_types::ChatEntry::user("hello");
             let id = entry.id.clone();
@@ -532,7 +530,7 @@ mod tests {
     /// Pushes `n` pinned entries (all `Top`, so display order = insertion order)
     /// into the active session and returns their IDs in insertion order.
     fn push_pinned_entries(state: &State, n: usize) -> Vec<ChatEntryId> {
-        let mut guard = state.write_test_no_cap();
+        let mut guard = state.write();
         let session = guard.active_session_mut();
         (0..n)
             .map(|i| {
@@ -552,7 +550,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(ids[0].clone());
         });
 
@@ -581,7 +579,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(ids[1].clone());
         });
 
@@ -611,7 +609,7 @@ mod tests {
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
         let selected = ids[1].clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(selected.clone());
         });
 
@@ -640,7 +638,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(ids[2].clone());
         });
 
@@ -669,7 +667,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 1);
         let session_id = state.read().session.active_session_id().clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(ids[0].clone());
         });
 
@@ -697,7 +695,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let selected = ids[1].clone();
-        state.write_test_no_cap().frontend.update_sections(|s| {
+        state.write().frontend.update_sections(|s| {
             s.pins.select_by_id(selected.clone());
         });
 

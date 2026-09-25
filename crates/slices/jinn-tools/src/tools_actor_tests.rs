@@ -12,7 +12,6 @@ use crate::orchestrator::{ToolOrchestratorActor, ToolOrchestratorActorDeps};
 use jinn_core_types::tool_types::ToolCall;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_domain::common::state::State;
-use jinn_domain::common::tcaps::mint;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_tools_msg::{ExecuteToolBatch, ToolBatchCompleted};
 use std::time::Duration;
@@ -30,7 +29,6 @@ async fn orchestrator_completes_builtin_bash_batch_dispatched_over_the_bus() {
         ToolOrchestratorActorDeps {
             deps: harness.actor_deps().await,
             state: State::new(jinn_domain::AppState::default()),
-            session_cap: mint::mint_session_cap(),
             services: harness.services().await,
             builtin_filter: Some(vec!["bash".to_owned()]),
         },
@@ -89,7 +87,7 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
 
     let state = State::new(jinn_domain::AppState::default());
     {
-        let mut s = state.write_test_no_cap();
+        let mut s = state.write();
         let session = s.active_session_mut();
         session.push_entry(jinn_core_types::ChatEntry::user("list files"));
         session.push_entry(jinn_core_types::ChatEntry::assistant("checking"));
@@ -107,7 +105,6 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
         ToolOrchestratorActorDeps {
             deps: harness.actor_deps().await,
             state: state.clone(),
-            session_cap: mint::mint_session_cap(),
             services: harness.services().await,
             builtin_filter: Some(vec!["bash".to_owned()]),
         },
@@ -122,8 +119,6 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
                 deps
             },
             state,
-            cap: mint::mint_session_cap(),
-            frontend_cap: mint::mint_frontend_cap(),
             counter:
                 jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
             token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
@@ -227,7 +222,6 @@ async fn registered_session_scoped_actor_tool_completes_its_batch() {
         ToolOrchestratorActorDeps {
             deps: harness.actor_deps().await,
             state: State::new(jinn_domain::AppState::default()),
-            session_cap: mint::mint_session_cap(),
             services: harness.services().await,
             builtin_filter: Some(vec![]),
         },

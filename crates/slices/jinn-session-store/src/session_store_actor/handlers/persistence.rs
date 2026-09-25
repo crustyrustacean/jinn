@@ -13,13 +13,12 @@ impl SessionStoreActor {
     pub(crate) async fn save_active_session(&self, session_id: &SessionId) {
         let services = self.services.clone();
         let state = self.state.clone();
-        let cap = self.session_cap;
         let requested_id = session_id.clone();
         let logged_id = session_id.clone();
 
         let snapshot = tokio::task::spawn_blocking(move || {
             {
-                state.with_session(&cap, |view| {
+                state.with_session(|view| {
                     if let Some(session) = view.session.map().get_mut(&requested_id) {
                         session.touch();
                     }

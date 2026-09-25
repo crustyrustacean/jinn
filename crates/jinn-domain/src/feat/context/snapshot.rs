@@ -109,7 +109,7 @@ mod composition_ask_tests {
         let state = State::new(AppState::default_with_scope_focus());
         let session_id = state.read().session.active_session_id().clone();
         {
-            let mut guard = state.write_test_no_cap();
+            let mut guard = state.write();
             guard
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello"));

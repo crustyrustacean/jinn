@@ -771,8 +771,7 @@ mod lifecycle_tests {
     }
 
     /// Inserts a fresh session carrying `enabled` into the harness's shared
-    /// state and returns its id. Bypasses capability checks via
-    /// `write_test_no_cap` (coordinator tests only hold their own cap).
+    /// state and returns its id.
     fn insert_session_with_enablement(
         state: &jinn_domain::common::state::State,
         enabled: &BTreeSet<String>,
@@ -780,7 +779,7 @@ mod lifecycle_tests {
         let mut session = jinn_session_state::ChatSessionState::new();
         session.set_enabled_mcp_servers(enabled.clone());
         let session_id = session.session_id().clone();
-        let mut app_state = state.write_test_no_cap();
+        let mut app_state = state.write();
         app_state.session.insert(session);
         drop(app_state);
         session_id
@@ -910,7 +909,7 @@ mod lifecycle_tests {
         // When the session's enablement shrinks to empty and SessionCreated
         // reconciles against the shrunken set.
         {
-            let mut app_state = state.write_test_no_cap();
+            let mut app_state = state.write();
             if let Some(s) = app_state.session.get_mut(&session_id) {
                 s.set_enabled_mcp_servers(BTreeSet::new());
             }

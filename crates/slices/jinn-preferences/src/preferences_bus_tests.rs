@@ -39,8 +39,7 @@ async fn preferences_setup() -> (TestHarness, jinn_domain::Services, State) {
     let harness = TestHarness::new().await;
     let services = harness.services().await;
     let state = State::new(AppState::default_with_scope_focus());
-    let cap = jinn_domain::common::tcaps::mint::mint_frontend_cap();
-    super::PreferencesActor::spawn(harness.system(), services.clone(), state.clone(), cap);
+    super::PreferencesActor::spawn(harness.system(), services.clone(), state.clone());
     (harness, services, state)
 }
 
@@ -50,8 +49,7 @@ async fn app_state_setup() -> (TestHarness, jinn_domain::Services, State) {
     let harness = TestHarness::new().await;
     let services = harness.services().await;
     let state = State::new(AppState::default_with_scope_focus());
-    let cap = jinn_domain::common::tcaps::mint::mint_frontend_cap();
-    super::AppStateActor::spawn(harness.system(), services.clone(), state.clone(), cap);
+    super::AppStateActor::spawn(harness.system(), services.clone(), state.clone());
     (harness, services, state)
 }
 
