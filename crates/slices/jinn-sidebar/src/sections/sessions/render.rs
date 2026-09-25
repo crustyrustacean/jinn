@@ -14,6 +14,7 @@ mod entry_line_tests;
 use std::time::Instant;
 
 use crate::sections::section_trait::{SidebarSection, SidebarSectionId};
+use crate::sections::sessions::state::{SessionEntry, SessionListKey, session_list_key};
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
 use ratatui::Frame;
@@ -41,6 +42,12 @@ pub struct SessionsSection {
     throbber_state: ThrobberState,
     /// Timestamp of the last animation frame advance.
     last_animation_step: Instant,
+    /// The sessions tree, kept from the last frame it was built.
+    cached_tree: Vec<SessionEntry>,
+    /// The inputs `cached_tree` was built from.
+    cached_key: Option<Vec<SessionListKey>>,
+    /// How many times the tree has actually been rebuilt.
+    rebuilds: u64,
 }
 
 impl Default for SessionsSection {
@@ -48,6 +55,9 @@ impl Default for SessionsSection {
         Self {
             throbber_state: ThrobberState::default(),
             last_animation_step: Instant::now(),
+            cached_tree: Vec::new(),
+            cached_key: None,
+            rebuilds: 0,
         }
     }
 }
@@ -56,6 +66,40 @@ impl SessionsSection {
     /// Creates a new sessions section.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The sessions tree, rebuilding it only if its inputs changed.
+    ///
+    /// Building the tree clones every session title and then every entry, so an
+    /// unchanged frame reuses the previous result instead. Both `content_height`
+    /// and `render` come through here, so they can never disagree on the count.
+    fn sessions_tree(
+        &mut self,
+        state: &jinn_domain::common::app_state::AppState,
+    ) -> &[SessionEntry] {
+        let key = session_list_key(state);
+        if self.cached_key.as_ref() != Some(&key) {
+            self.cached_tree = sorted_open_sessions(state);
+            self.cached_key = Some(key);
+            self.rebuilds += 1;
+        }
+        &self.cached_tree
+    }
+
+    /// Number of sessions in the currently cached tree.
+    ///
+    /// Exposed for tests that assert the height and the render agree.
+    #[must_use]
+    pub fn cached_session_count(&self) -> usize {
+        self.cached_tree.len()
+    }
+
+    /// How many times the sessions tree has been rebuilt.
+    ///
+    /// Exposed for tests that assert the memo is actually skipping work.
+    #[must_use]
+    pub fn rebuilds(&self) -> u64 {
+        self.rebuilds
     }
 
     /// Advances the animation frame if enough time has elapsed.
@@ -90,7 +134,7 @@ impl SidebarSection for SessionsSection {
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         let state = ctx.state;
-        let sessions = sorted_open_sessions(state);
+        let sessions = self.sessions_tree(state).to_vec();
         let is_startup_hydrating = state.session.is_startup_hydrating();
         let theme = &state.frontend.theme;
         let sidebar_focused = state.frontend.is_sidebar();
@@ -197,9 +241,9 @@ impl SidebarSection for SessionsSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, ctx: &RenderCtx) -> u16 {
+    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
         let state = ctx.state;
-        let entry_count = sorted_open_sessions(state).len() as u16;
+        let entry_count = self.sessions_tree(state).len() as u16;
         let visible = entry_count.min(MAX_VISIBLE_SESSIONS as u16);
         // entries(N).max(1) + footer(1)
         visible.max(1) + 1 // max(1) for the no-sessions placeholder line

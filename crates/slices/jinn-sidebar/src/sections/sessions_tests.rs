@@ -81,13 +81,13 @@ fn state_with_sessions(count: usize) -> AppState {
 
 #[rstest::rstest]
 fn section_id_is_sessions() {
-    let section = SessionsSection::new();
+    let mut section = SessionsSection::new();
     assert_eq!(section.id(), jinn_sidebar_msg::SidebarSectionId::Sessions);
 }
 
 #[rstest::rstest]
 fn content_height_with_one_session() {
-    let section = SessionsSection::new();
+    let mut section = SessionsSection::new();
     let state = AppState::default_with_scope_focus();
     assert_eq!(
         {
@@ -101,7 +101,7 @@ fn content_height_with_one_session() {
 
 #[rstest::rstest]
 fn content_height_with_three_sessions() {
-    let section = SessionsSection::new();
+    let mut section = SessionsSection::new();
     let state = state_with_sessions(3);
     assert_eq!(
         {
@@ -116,7 +116,7 @@ fn content_height_with_three_sessions() {
 #[rstest::rstest]
 fn content_height_capped_at_max_visible() {
     // Given state with 20 sessions (more than MAX_VISIBLE_SESSIONS = 15).
-    let section = SessionsSection::new();
+    let mut section = SessionsSection::new();
     let state = state_with_sessions(20);
 
     // When computing content height.
@@ -3221,4 +3221,132 @@ fn sidebar_after_archive_tree_cascade_shows_survivors_only() {
     {
         assert!(index < sessions.len(), "cursor out of bounds: {index}");
     }
+}
+
+#[rstest::rstest]
+fn an_unchanged_frame_rebuilds_the_tree_only_once() {
+    // Given a sessions section that has rendered one frame.
+    let mut section = SessionsSection::new();
+    let state = state_with_sessions(3);
+    {
+        let slices = jinn_slices::Slices::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
+        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        section.content_height(&ctx);
+    }
+    let after_first = section.rebuilds();
+    assert_eq!(after_first, 1, "the first frame must build the tree");
+
+    // When several more frames render with nothing changed.
+    for _ in 0..5 {
+        let slices = jinn_slices::Slices::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
+        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        section.content_height(&ctx);
+    }
+
+    // Then no further rebuilds happened.
+    assert_eq!(
+        section.rebuilds(),
+        after_first,
+        "an unchanged frame must reuse the cached tree"
+    );
+}
+
+#[rstest::rstest]
+fn height_and_render_agree_on_the_session_count() {
+    // Given a sessions section and state with several sessions.
+    let mut section = SessionsSection::new();
+    let state = state_with_sessions(4);
+
+    // When the height is computed and then rendered.
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
+    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    let height = section.content_height(&ctx);
+    let tree_len = section.cached_session_count();
+
+    // Then the height reflects exactly those sessions plus the footer.
+    assert_eq!(u32::from(height), tree_len as u32 + 1);
+}
+
+#[rstest::rstest]
+fn adding_a_session_rebuilds_the_tree() {
+    // Given a section that has already built its tree.
+    let mut section = SessionsSection::new();
+    let mut state = state_with_sessions(2);
+    let before = {
+        let slices = jinn_slices::Slices::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
+        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        section.content_height(&ctx);
+        section.rebuilds()
+    };
+
+    // When a new session is added.
+    let added = {
+        let mut s = ChatSessionState::new();
+        s.push_entry(ChatEntry::user("a newly added session"));
+        state.session.insert(s)
+    };
+    let _ = added;
+
+    // Then the tree is rebuilt.
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
+    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    section.content_height(&ctx);
+    assert_eq!(section.rebuilds(), before + 1);
+}
+
+#[rstest::rstest]
+fn a_renamed_session_rebuilds_the_tree() {
+    // Given a section that has built its tree.
+    let mut section = SessionsSection::new();
+    let mut state = state_with_sessions(2);
+    let before = {
+        let slices = jinn_slices::Slices::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
+        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        section.content_height(&ctx);
+        section.rebuilds()
+    };
+
+    // When an untouched frame renders first (proving the memo is warm).
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
+    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    section.content_height(&ctx);
+    assert_eq!(section.rebuilds(), before, "no change, no rebuild");
+
+    // Then a same-length rename still invalidates the memo.
+    let target = state.session.iter().next().map(|(id, _)| id.clone());
+    if let Some(id) = target {
+        if let Some(session) = state.session.get_mut(&id) {
+            let original = session.title().unwrap_or("Untitled Session").to_owned();
+            // Same byte length, different bytes at the head and the tail, so
+            // only the boundary digest can catch it.
+            let flipped = original
+                .chars()
+                .map(|c| if c == 'a' { 'b' } else { 'a' })
+                .collect::<String>();
+            assert_eq!(
+                original.len(),
+                flipped.len(),
+                "the rename is deliberately length-preserving"
+            );
+            session.set_title(flipped);
+        }
+    }
+
+    // Then exactly one more rebuild happens.
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
+    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    section.content_height(&ctx);
+    assert_eq!(
+        section.rebuilds(),
+        before + 1,
+        "a same-length rename must still invalidate the memo"
+    );
 }

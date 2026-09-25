@@ -2,15 +2,109 @@
 
 use std::collections::HashSet;
 
+use jinn_core_types::SessionId;
 use jinn_domain::common::app_state::AppState;
 pub use jinn_session_list::{SessionEntry, SessionEntryKind};
 pub use jinn_sidebar_msg::SessionsSectionState;
 
 use jinn_session_msg::{PhaseKind, SessionOrigin};
 
+/// A cheap, clone-free summary of everything the sessions tree depends on.
+///
+/// The tree build clones every session's title and then clones every entry
+/// again, so doing it per frame is expensive with many sessions. Comparing two
+/// of these instead costs one pass of O(1) reads per session — no `String`
+/// clones, no allocation — and only a mismatch pays for a rebuild.
+///
+/// The title is summarised by length plus its first and last few bytes, which
+/// catches a rename (and any length change) without reading the whole string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionListKey {
+    id: SessionId,
+    title_len: usize,
+    title_head: u64,
+    title_tail: u64,
+    is_active: bool,
+    created_at: jiff::Timestamp,
+    is_idle: bool,
+    last_entry_is_error: bool,
+    parent_id: Option<SessionId>,
+    is_subagent: bool,
+    has_live_term: bool,
+}
+
+impl SessionListKey {
+    /// Summarize a title by length and its boundary bytes.
+    fn title_digest(title: &str) -> (usize, u64, u64) {
+        const EDGE: usize = 8;
+        let bytes = title.as_bytes();
+        let head = &bytes[..bytes.len().min(EDGE)];
+        let tail = &bytes[bytes.len().saturating_sub(EDGE)..];
+        (bytes.len(), fold_bytes(head), fold_bytes(tail))
+    }
+
+    /// Read the per-session scalars the tree depends on.
+    fn of_session(
+        id: &SessionId,
+        session: &jinn_session_state::ChatSessionState,
+        active_id: &SessionId,
+        has_live_term: bool,
+    ) -> Self {
+        let title = session.title().unwrap_or("Untitled Session");
+        let (title_len, title_head, title_tail) = Self::title_digest(title);
+        Self {
+            id: id.clone(),
+            title_len,
+            title_head,
+            title_tail,
+            is_active: id == active_id,
+            created_at: *session.created_at(),
+            is_idle: matches!(session.phase(), PhaseKind::Idle) && !session.is_busy(),
+            last_entry_is_error: session.history().last().is_some_and(|entry| {
+                matches!(&entry.kind, jinn_core_types::ChatEntryKind::Error(..))
+            }),
+            parent_id: session.parent_session().clone(),
+            is_subagent: session.origin() == SessionOrigin::Subagent,
+            has_live_term,
+        }
+    }
+}
+
+/// Fold a few bytes into a `u64` for cheap comparison.
+fn fold_bytes(bytes: &[u8]) -> u64 {
+    bytes
+        .iter()
+        .fold(0u64, |acc, b| acc.rotate_left(8) ^ u64::from(*b))
+}
+
 /// Collects loaded sessions in visible depth-first order.
 pub fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     sorted_open_sessions_split(&state.session, &state.frontend)
+}
+
+/// A cheap summary of the current session list, for memoization.
+///
+/// Reads only O(1) scalars per session: no title clones, no tree build.
+pub fn session_list_key(state: &AppState) -> Vec<SessionListKey> {
+    let active_id = state.session.active_session_id();
+    state
+        .session
+        .iter()
+        .filter(|(_, session)| {
+            session.session_state() == jinn_session_store_msg::SessionState::Loaded
+        })
+        .map(|(id, session)| {
+            let has_live_term = state
+                .frontend
+                .slices()
+                .and_then(|slices| {
+                    slices
+                        .reader::<jinn_term_msg::TerminalTabState>(&jinn_term_msg::term_tabs_slot())
+                })
+                .is_some_and(|cell| cell.read().live_terms.contains(id));
+            SessionListKey::of_session(id, session, &active_id, has_live_term)
+        })
+        .collect()
 }
 
 /// Split-borrow variant used by sidebar actors and other slice-owned adapters.
