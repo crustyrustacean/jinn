@@ -2604,6 +2604,51 @@ impl ChatSessionState {
         self.update_view(|v| *v.visual_items.write() = items);
     }
 
+    /// Publish the visual items list computed during render, replacing the
+    /// stored list only when it differs.
+    ///
+    /// The renderer recomputes the list every frame, but it changes only when
+    /// the history, the ignore sets, or the collapse threshold change. An
+    /// unconditional write would allocate and copy a list that is one entry
+    /// per history entry on every frame. Returns `true` when the stored list
+    /// was replaced.
+    pub fn set_visual_items_if_changed(&self, items: &[VisualItem]) -> bool {
+        self.update_view_taking(|v| Some(v.set_visual_items_if_changed(items)))
+            .unwrap_or(false)
+    }
+
+    /// Publish the per-entry wrapped line ranges computed during render,
+    /// replacing the stored ranges only when they differ.
+    ///
+    /// The ranges are one pair per visual item and are recomputed every
+    /// frame, but the values only change when the wrapped layout does.
+    /// Returns `true` when the stored ranges were replaced.
+    pub fn set_entry_line_ranges_if_changed(&self, ranges: &[(u32, u32)]) -> bool {
+        self.update_view_taking(|v| Some(v.set_entry_line_ranges_if_changed(ranges)))
+            .unwrap_or(false)
+    }
+
+    /// How many times the visual items list was actually replaced.
+    ///
+    /// Counts replacements rather than frames, so a caller can tell that a
+    /// frame over unchanged history reused the stored list.
+    #[must_use]
+    pub fn visual_items_writes(&self) -> u64 {
+        self.with_view(
+            |v| v.visual_items_writes(),
+            || 0,
+        )
+    }
+
+    /// How many times the per-entry line ranges were actually replaced.
+    ///
+    /// Counts replacements rather than frames, so a caller can tell that a
+    /// frame over unchanged history reused the stored ranges.
+    #[must_use]
+    pub fn entry_line_ranges_writes(&self) -> u64 {
+        self.with_view(|v| v.entry_line_ranges_writes(), || 0)
+    }
+
     /// A snapshot copy of the visual items list computed by the last render.
     ///
     /// Returns an empty vec before the first render. Copying keeps the view

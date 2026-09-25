@@ -2298,3 +2298,87 @@ fn a_large_session_frame_avoids_rehashing_its_content() {
         "the signature path should beat full fingerprinting, got {ratio:.1}x"
     );
 }
+
+#[rstest::rstest]
+fn unchanged_frame_rewrites_no_visual_items() {
+    // Given a chat log that has rendered one frame.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.active_session_mut().push_entry(ChatEntry::user("hello"));
+        s.active_session_mut().push_entry(ChatEntry::user("world"));
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 10);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let after_first = state.active_session().visual_items_writes();
+    assert_eq!(after_first, 1, "the first frame must publish the list");
+
+    // When several more frames render with nothing changed.
+    for _ in 0..5 {
+        terminal
+            .draw(|frame| {
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+                element.render(frame, area, &ctx);
+            })
+            .unwrap();
+    }
+
+    // Then the visual items list was not written back again.
+    assert_eq!(
+        state.active_session().visual_items_writes(),
+        after_first,
+        "an unchanged frame must reuse the stored visual items"
+    );
+}
+
+#[rstest::rstest]
+fn unchanged_frame_rewrites_no_line_ranges() {
+    // Given a chat log that has rendered one frame.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.active_session_mut().push_entry(ChatEntry::user("hello"));
+        s.active_session_mut().push_entry(ChatEntry::user("world"));
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 10);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let after_first = state.active_session().entry_line_ranges_writes();
+    assert_eq!(after_first, 1, "the first frame must publish the ranges");
+
+    // When several more frames render with nothing changed.
+    for _ in 0..5 {
+        terminal
+            .draw(|frame| {
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+                element.render(frame, area, &ctx);
+            })
+            .unwrap();
+    }
+
+    // Then the per-entry line ranges were not written back again.
+    assert_eq!(
+        state.active_session().entry_line_ranges_writes(),
+        after_first,
+        "an unchanged frame must reuse the stored line ranges"
+    );
+}

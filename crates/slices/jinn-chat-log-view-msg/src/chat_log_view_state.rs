@@ -128,6 +128,18 @@ pub struct ChatLogViewUi {
     ///
     /// Cleared by: >100ms gap, or any non-`ChatEntryIgnoreSelected` intent.
     pub ignore_sweep: Option<(std::time::Instant, ContextOverride)>,
+    /// How many times `visual_items` was actually replaced.
+    ///
+    /// The renderer recomputes the visual item list every frame but only
+    /// replaces the stored one when it differs, so this counts real writes
+    /// rather than frames. Exposed for tests that assert the renderer is
+    /// reusing the stored list.
+    visual_items_writes: u64,
+    /// How many times `entry_line_ranges` was actually replaced.
+    ///
+    /// Counts real writes rather than frames, for the same reason as
+    /// `visual_items_writes`.
+    entry_line_ranges_writes: u64,
 }
 
 impl Clone for ChatLogViewUi {
@@ -147,6 +159,8 @@ impl Clone for ChatLogViewUi {
             shown_ignored_blocks: self.shown_ignored_blocks.clone(),
             visual_items: RwLock::new(self.visual_items.read().clone()),
             ignore_sweep: self.ignore_sweep,
+            visual_items_writes: self.visual_items_writes,
+            entry_line_ranges_writes: self.entry_line_ranges_writes,
         }
     }
 }
@@ -164,4 +178,50 @@ pub type ChatLogViews = HashMap<SessionId, ChatLogViewUi>;
 #[must_use]
 pub fn chat_log_views_slot() -> SlotKey {
     SlotKey::builtin("chat-log-view", "state")
+}
+
+impl ChatLogViewUi {
+    /// Publish the visual items list the renderer just computed, replacing
+    /// the stored list only when it actually differs.
+    ///
+    /// The renderer recomputes this list every frame but the list changes
+    /// rarely, so an unconditional write would mean an allocation and a
+    /// full copy on every frame. Returns `true` when the stored list was
+    /// replaced.
+    pub fn set_visual_items_if_changed(&mut self, items: &[VisualItem]) -> bool {
+        let mut slot = self.visual_items.write();
+        if *slot == items {
+            return false;
+        }
+        *slot = items.to_vec();
+        self.visual_items_writes += 1;
+        true
+    }
+
+    /// Publish the per-entry wrapped line ranges the renderer just computed,
+    /// replacing the stored ranges only when they actually differ.
+    ///
+    /// One range pair per visual item, so this is as long as the visual item
+    /// list. Returns `true` when the stored ranges were replaced.
+    pub fn set_entry_line_ranges_if_changed(&mut self, ranges: &[(u32, u32)]) -> bool {
+        let mut slot = self.entry_line_ranges.write();
+        if *slot == ranges {
+            return false;
+        }
+        *slot = ranges.to_vec();
+        self.entry_line_ranges_writes += 1;
+        true
+    }
+
+    /// How many times the visual items list was actually replaced.
+    #[must_use]
+    pub fn visual_items_writes(&self) -> u64 {
+        self.visual_items_writes
+    }
+
+    /// How many times the per-entry line ranges were actually replaced.
+    #[must_use]
+    pub fn entry_line_ranges_writes(&self) -> u64 {
+        self.entry_line_ranges_writes
+    }
 }

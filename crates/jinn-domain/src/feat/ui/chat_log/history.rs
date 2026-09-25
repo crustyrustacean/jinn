@@ -109,7 +109,7 @@ impl UiElement for ChatLogElement {
             {
                 let session = state.active_session();
                 session.set_last_max_offset(render.scroll.max_offset);
-                session.set_entry_line_ranges(render.entry_line_ranges.clone());
+                session.set_entry_line_ranges_if_changed(&render.entry_line_ranges);
                 session.set_viewport_height(area.height);
                 session.set_blank_count(render.scroll.blank_count as u32);
                 session.set_rendered_scroll_offset(render.scroll.clamped);
@@ -230,10 +230,15 @@ impl<'a> HistoryRender<'a> {
 
     /// Compute visual items from flat history and store on session state.
     ///
-    /// Must be called before `compute_line_ranges`.
+    /// Must be called before `compute_line_ranges`. The computed list is
+    /// published to the session's view state only when it differs from the
+    /// stored one, so a frame over unchanged history does not copy the list
+    /// back.
     fn compute_visual_items(&mut self) {
-        let session = self.state.active_session();
-        let shown_ignored_blocks = session.shown_ignored_blocks_snapshot();
+        let shown_ignored_blocks = {
+            let session = self.state.active_session();
+            session.shown_ignored_blocks_snapshot()
+        };
         let min_collapse = self
             .state
             .frontend
@@ -248,7 +253,7 @@ impl<'a> HistoryRender<'a> {
         );
         self.state
             .active_session()
-            .set_visual_items(visual_items.clone());
+            .set_visual_items_if_changed(&visual_items);
         self.visual_items = visual_items;
     }
 
