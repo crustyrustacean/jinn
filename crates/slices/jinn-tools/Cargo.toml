@@ -35,11 +35,14 @@ unicode-segmentation = { workspace = true }
 # precedent for a slice consuming kernel vocabulary at execution time.
 jinn-domain = { workspace = true, features = ["test-harness"] }
 jinn-context-assembly = { workspace = true }
+jinn-session-turn = { workspace = true }
 jinn-preferences-config = { workspace = true }
 
 jinn-session-init-msg = { workspace = true }
 
 [dev-dependencies]
+jinn-token-count-msg = { workspace = true }
+jinn-slices = { workspace = true }
 async-trait = { workspace = true }
 tempfile = { workspace = true }
 rstest = { workspace = true }

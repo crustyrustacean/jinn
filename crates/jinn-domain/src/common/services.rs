@@ -36,7 +36,7 @@ pub mod test_services;
 pub mod bus_service;
 pub use bus_service::BusService;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-harness"))]
 pub use bus_service::{BusAudit, RecordedMessage};
 
 /// Runtime services shared across the application.

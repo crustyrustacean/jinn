@@ -112,9 +112,9 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
             builtin_filter: Some(vec!["bash".to_owned()]),
         },
     );
-    jinn_domain::feat::session::session_actor::SessionPersistenceActor::spawn(
+    jinn_session_turn::activate(
         harness.system(),
-        jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
+        jinn_session_turn::session_actor::SessionPersistenceActorDeps {
             deps: {
                 let deps = harness.actor_deps().await;
                 let _ =
@@ -126,7 +126,7 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
             frontend_cap: mint::mint_frontend_cap(),
             counter:
                 jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
-            token_cache: jinn_domain::feat::session::session_actor::default_token_cache(),
+            token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
             image_converter: jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
         },
     );

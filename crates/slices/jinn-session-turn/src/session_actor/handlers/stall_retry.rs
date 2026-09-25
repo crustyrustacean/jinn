@@ -8,7 +8,7 @@
 //! a hard provider error: partial streaming entries are discarded and the
 //! turn is re-dispatched.
 
-use crate::common::actor_deps::BusPublish;
+use jinn_domain::common::actor_deps::BusPublish;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::RetryStalledSession;
@@ -30,7 +30,7 @@ impl SessionPersistenceActor {
     /// A second dispatch for the same session simply overwrites the guard:
     /// newest generation wins (the LLM actor aborts the superseded task),
     /// matching the stale-completion drop semantics.
-    pub(in crate::feat::session::session_actor) fn on_send_to_llm_provider(
+    pub(in crate::session_actor) fn on_send_to_llm_provider(
         &self,
         payload: &SendToLlmProvider,
     ) {
@@ -71,7 +71,7 @@ impl SessionPersistenceActor {
     ///   generation completed with `ToolUse` before tools dispatch) → no-op:
     ///   a restart during tool execution is structurally impossible, even if
     ///   a misfire occurs.
-    pub(in crate::feat::session::session_actor) async fn on_retry_stalled_session(
+    pub(in crate::session_actor) async fn on_retry_stalled_session(
         &self,
         payload: &RetryStalledSession,
     ) {
@@ -146,12 +146,12 @@ mod tests {
         reason = "test code"
     )]
     use super::super::super::helpers::test_actor_recording;
-    use crate::common::services::BusAudit;
+    use jinn_domain::common::services::BusAudit;
     use jinn_inference_msg::SendToLlmProvider;
 
-    use crate::feat::session::session_actor::SessionPersistenceActor;
-    use crate::protocol::ChatEntryKind;
-    use crate::protocol::SessionId;
+    use crate::session_actor::SessionPersistenceActor;
+    use jinn_core_types::ChatEntryKind;
+    use jinn_core_types::SessionId;
     use jinn_session_msg::RetryStalledSession;
 
     /// A session in `Streaming` with a partial assistant entry, a dangling
@@ -318,7 +318,7 @@ mod tests {
             matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-partial")
                 && !matches!(
                     e.context_override(),
-                    crate::protocol::ContextOverride::ForcedExclude
+                    jinn_core_types::ContextOverride::ForcedExclude
                 )
         });
         assert!(

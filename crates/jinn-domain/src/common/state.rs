@@ -85,7 +85,7 @@ impl State {
     ///
     /// Returns `None` if a writer holds the lock. Used by tests that must
     /// *observe* contention rather than merely reason about it.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-harness"))]
     pub fn try_read(&self) -> Option<StateReadGuard<'_>> {
         self.inner.try_read().map(|inner| StateReadGuard { inner })
     }

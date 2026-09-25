@@ -18,8 +18,8 @@ use std::path::Path;
 use error_stack::{Report, ResultExt};
 
 use crate::feat::context::prompt_template::{ImageKind, PendingPath, classify_image_bytes};
-use crate::feat::image_convert::ImageConverterService;
-use crate::protocol::ResolvedToken;
+use super::ImageConverterService;
+use jinn_core_types::ResolvedToken;
 use jinn_provider::Attachment;
 
 /// Errors that can occur while resolving `@path` image attachments.
@@ -39,7 +39,7 @@ pub struct ImageResolveError;
 /// [`attachments`]: ResolveOutcome::attachments
 /// [`degraded`]: ResolveOutcome::degraded
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(super) struct ResolveOutcome {
+pub struct ResolveOutcome {
     /// Successfully resolved image attachments, in path order.
     pub attachments: Vec<Attachment>,
     /// Resolved tokens that attached successfully as images, in order.
@@ -62,7 +62,7 @@ pub(super) struct ResolveOutcome {
 /// since the user clearly intended an image attachment there.
 ///
 /// This is a blocking function — callers must run it inside `spawn_blocking`.
-pub(super) fn resolve_attachments_blocking(
+pub fn resolve_attachments_blocking(
     paths: &[PendingPath],
     converter: &ImageConverterService,
 ) -> Result<ResolveOutcome, Report<ImageResolveError>> {
@@ -148,7 +148,7 @@ fn convert_via_imagemagick(
 /// Joins the error's context chain (the top-level message plus attached
 /// context frames) into a single string.
 #[must_use]
-pub(super) fn format_attachment_error(report: &Report<ImageResolveError>) -> String {
+pub fn format_attachment_error(report: &Report<ImageResolveError>) -> String {
     use std::fmt::Write as _;
     let mut out = String::from("Could not attach image: ");
     // The Report's Display already includes the error and all attachments.
@@ -171,7 +171,7 @@ mod tests {
     use error_stack::Report;
 
     use super::*;
-    use crate::feat::image_convert::{ImageConversionError, ImageConverter};
+    use crate::feat::image_convert::converter::{ImageConversionError, ImageConverter};
 
     /// A fake converter that returns canned PNG bytes or fails, recording its
     /// calls so tests can assert conversion was/wasn't attempted.

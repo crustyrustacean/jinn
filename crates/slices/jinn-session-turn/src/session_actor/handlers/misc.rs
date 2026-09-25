@@ -1,44 +1,18 @@
-//! Miscellaneous handlers - model refresh display and history mutation intake.
-//!
-//! Handles pushing model refresh results as transient markdown entries to the
-//! chat log, and queueing history mutations for deferred application. Loading
-//! the session picker now lives in the `jinn-session-store` slice.
+//! Miscellaneous handlers - skills refresh display and history mutation intake.
 
 use super::super::SessionPersistenceActor;
-use crate::ModelsRefreshed;
-use crate::common::actor_deps::BusPublish;
-use crate::feat::context::protocol::event::ContextOverrideChanged;
-use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
+use jinn_domain::common::actor_deps::BusPublish;
+use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
+use jinn_session_history_msg::SubmitHistoryMutations;
 use jinn_session_msg::PhaseKind;
 
-use crate::protocol::{ChatEntry, PickerKind};
+use jinn_domain::protocol::{ChatEntry, PickerKind};
 
 impl SessionPersistenceActor {
-    /// Pushes a transient markdown entry after model refresh.
-    ///
-    /// Builds a markdown table from the refresh results and pushes it directly
-    /// to session state. Does NOT emit `PushChatEntry` - transient entries
-    /// are not persisted.
-    pub(in crate::feat::session::session_actor) fn on_models_refreshed(
-        &self,
-        event: &ModelsRefreshed,
-    ) {
-        let content = if event.results.is_empty() && event.errors.is_empty() {
-            "Models refreshed: no providers found".to_owned()
-        } else {
-            build_models_refresh_table(event)
-        };
-
-        self.state.with_session(&self.cap, |view| {
-            let session = view.session.map().get_or_create(&event.session_id);
-            session.push_entry(ChatEntry::transient(content));
-        });
-    }
-
     /// Pushes a transient entry listing discovered skills.
-    pub(in crate::feat::session::session_actor) fn on_skills_loaded(
+    pub(in crate::session_actor) fn on_skills_loaded(
         &self,
-        event: &crate::feat::skills::SkillsLoaded,
+        event: &jinn_domain::feat::skills::SkillsLoaded,
     ) {
         // Only show a message when the skill picker is active (manual refresh).
         // Startup scans arrive while no picker is open.
@@ -73,7 +47,7 @@ impl SessionPersistenceActor {
     /// `pending_mutations` and applies them immediately if the session is
     /// idle (no active stream). If the session is streaming or sending,
     /// mutations are deferred until the next stream completion.
-    pub(in crate::feat::session::session_actor) async fn handle_submit_history_mutations(
+    pub(in crate::session_actor) async fn handle_submit_history_mutations(
         &self,
         payload: &SubmitHistoryMutations,
     ) {
@@ -93,15 +67,15 @@ impl SessionPersistenceActor {
                 .auto_prune
                 .accumulation_threshold_tokens
         };
-        let token_costs: std::collections::HashMap<crate::protocol::ChatEntryId, u32> = {
-            use crate::feat::context::strategy::token_estimator::TokenCounter;
+        let token_costs: std::collections::HashMap<jinn_core_types::ChatEntryId, u32> = {
+            use jinn_domain::feat::context::strategy::token_estimator::TokenCounter;
             let state = self.state.read();
             let session = state.session.get(&payload.session_id);
             payload
                 .mutations
                 .iter()
                 .filter_map(|m| match m {
-                    crate::protocol::HistoryMutation::SetContextOverride {
+                    jinn_core_types::HistoryMutation::SetContextOverride {
                         entry_id,
                         source,
                         ..
@@ -143,7 +117,7 @@ impl SessionPersistenceActor {
                     if is_prune_override(&mutation) {
                         // Pruner ForcedExclude: route into the accumulation buffer
                         // so it counts toward the batch flush threshold.
-                        if let crate::protocol::HistoryMutation::SetContextOverride {
+                        if let jinn_core_types::HistoryMutation::SetContextOverride {
                             entry_id,
                             value,
                             source,
@@ -203,12 +177,12 @@ impl SessionPersistenceActor {
 /// the server-side KV cache isn't invalidated per-entry. Worker
 /// `ForcedInclude` (protection), compaction overrides, and any non-context
 /// mutation apply immediately instead.
-fn is_prune_override(mutation: &crate::protocol::HistoryMutation) -> bool {
-    use crate::protocol::HistoryMutation;
+fn is_prune_override(mutation: &jinn_core_types::HistoryMutation) -> bool {
+    use jinn_core_types::HistoryMutation;
     matches!(
         mutation,
         HistoryMutation::SetContextOverride {
-            value: crate::protocol::ContextOverride::ForcedExclude,
+            value: jinn_core_types::ContextOverride::ForcedExclude,
             source,
             ..
         } if !is_compaction_source(source)
@@ -221,55 +195,11 @@ fn is_prune_override(mutation: &crate::protocol::HistoryMutation) -> bool {
 /// itself a context reduction that must apply promptly, and holding back its
 /// excludes would leave the gathered entries and the new summary both in
 /// context simultaneously.
-fn is_compaction_source(source: &crate::protocol::ChangeSource) -> bool {
-    matches!(source, crate::protocol::ChangeSource::Worker { name } if name == "compaction")
+fn is_compaction_source(source: &jinn_domain::protocol::ChangeSource) -> bool {
+    matches!(source, jinn_domain::protocol::ChangeSource::Worker { name } if name == "compaction")
 }
-/// Builds a markdown table string from the models refresh event.
-///
-/// Format:
-/// ```markdown
-/// | Provider | Models | Status |
-/// |----------|--------|--------|
-/// | ollama   | 5      | ✅     |
-/// | openai   | 0      | ❌ API key not resolved |
-/// ```
-#[expect(
-    clippy::else_if_without_else,
-    reason = "no-op on fallthrough is intentional"
-)]
-fn build_models_refresh_table(event: &ModelsRefreshed) -> String {
-    // Collect all provider names and sort alphabetically.
-    let mut all_providers: Vec<&str> = event
-        .results
-        .keys()
-        .chain(event.errors.keys())
-        .map(std::string::String::as_str)
-        .collect();
-    all_providers.sort_unstable();
-    all_providers.dedup();
-
-    let mut rows = Vec::new();
-    for provider in all_providers {
-        if let Some(models) = event.results.get(provider) {
-            rows.push(format!("| {provider} | {} | ✅ |", models.len()));
-        } else if let Some(err) = event.errors.get(provider) {
-            rows.push(format!("| {provider} | 0 | ❌ {err} |"));
-        }
-    }
-
-    let mut table = String::new();
-    table.push_str("| Provider | Models | Status |\n");
-    table.push_str("|----------|--------|--------|\n");
-    for row in rows {
-        table.push_str(&row);
-        table.push('\n');
-    }
-
-    table
-}
-
 /// Builds a markdown message listing discovered skills.
-fn build_skills_refresh_message(skills: &[crate::feat::skills::Skill]) -> String {
+fn build_skills_refresh_message(skills: &[jinn_domain::feat::skills::Skill]) -> String {
     let mut msg = format!("Skills refreshed: {} found\n\n", skills.len());
     for skill in skills {
         msg.push_str("- ");
@@ -289,118 +219,8 @@ mod tests {
         clippy::unnecessary_mut_passed,
         reason = "test code"
     )]
-    use crate::ModelsRefreshed;
-    use crate::feat::session::session_actor::helpers::test_actor_recording;
-    use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind, SessionId};
-    use jinn_provider::{InputModalities, ModelInfo};
-    use std::collections::HashMap;
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_models_refreshed_pushes_transient_entry() {
-        let (actor, _audit) = test_actor_recording().await;
-        let session_id = SessionId::new();
-
-        let mut results = HashMap::new();
-        results.insert(
-            "ollama".to_owned(),
-            vec![ModelInfo {
-                id: "llama3".to_owned(),
-                context_length: Some(8192),
-                input_modalities: InputModalities::text(),
-            }],
-        );
-        actor.on_models_refreshed(&ModelsRefreshed {
-            session_id: session_id.clone(),
-            results,
-            errors: HashMap::new(),
-        });
-
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session");
-        assert_eq!(session.history().len(), 1);
-        let entry = &session.history()[0];
-        assert!(matches!(&entry.kind, ChatEntryKind::Transient(t) if t.contains("ollama")));
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_models_refreshed_empty_results_shows_no_providers_message() {
-        let (actor, _audit) = test_actor_recording().await;
-        let session_id = SessionId::new();
-
-        actor.on_models_refreshed(&ModelsRefreshed {
-            session_id: session_id.clone(),
-            results: HashMap::new(),
-            errors: HashMap::new(),
-        });
-
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session");
-        assert_eq!(session.history().len(), 1);
-        let entry = &session.history()[0];
-        assert!(
-            matches!(&entry.kind, ChatEntryKind::Transient(t) if t.contains("no providers found")),
-            "expected 'no providers found' message, got {:?}",
-            entry.kind
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_models_refreshed_with_errors_shows_table() {
-        let (actor, _audit) = test_actor_recording().await;
-        let session_id = SessionId::new();
-
-        let mut errors = HashMap::new();
-        errors.insert("openai".to_owned(), "API key not resolved".to_owned());
-        actor.on_models_refreshed(&ModelsRefreshed {
-            session_id: session_id.clone(),
-            results: HashMap::new(),
-            errors,
-        });
-
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session");
-        let entry = &session.history()[0];
-        assert!(
-            matches!(&entry.kind, ChatEntryKind::Transient(t) if t.contains("openai") && t.contains("API key not resolved")),
-            "expected table with error, got {:?}",
-            entry.kind
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn build_models_refresh_table_includes_provider_and_model_count() {
-        let mut results = HashMap::new();
-        results.insert(
-            "ollama".to_owned(),
-            vec![
-                ModelInfo {
-                    id: "llama3".to_owned(),
-                    context_length: Some(8192),
-                    input_modalities: InputModalities::text(),
-                },
-                ModelInfo {
-                    id: "phi3".to_owned(),
-                    context_length: None,
-                    input_modalities: InputModalities::text(),
-                },
-            ],
-        );
-        let event = ModelsRefreshed {
-            session_id: SessionId::new(),
-            results,
-            errors: HashMap::new(),
-        };
-
-        let table = super::build_models_refresh_table(&event);
-
-        assert!(table.contains("ollama"), "expected provider name in table");
-        assert!(table.contains('2'), "expected model count in table");
-        assert!(table.contains("✅"), "expected success indicator");
-    }
+    use crate::session_actor::helpers::test_actor_recording;
+    use jinn_domain::protocol::{ChangeSource, ChatEntry, SessionId};
 
     #[rstest::rstest]
     #[tokio::test]
@@ -423,11 +243,11 @@ mod tests {
         // When submitting a single sub-threshold ForcedExclude override.
         actor
             .handle_submit_history_mutations(
-                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                &jinn_session_history_msg::SubmitHistoryMutations {
                     session_id: session_id.clone(),
-                    mutations: vec![crate::protocol::HistoryMutation::SetContextOverride {
+                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
                         entry_id: entry_id.clone(),
-                        value: crate::protocol::ContextOverride::ForcedExclude,
+                        value: jinn_core_types::ContextOverride::ForcedExclude,
                         source: ChangeSource::Internal {
                             label: "test".to_owned(),
                         },
@@ -441,7 +261,7 @@ mod tests {
         let session = state.session.get(&session_id).unwrap();
         assert_eq!(
             session.history()[0].context_override(),
-            crate::protocol::ContextOverride::Default
+            jinn_core_types::ContextOverride::Default
         );
         assert!(!session.has_pending_mutations());
         assert!(
@@ -461,7 +281,7 @@ mod tests {
 
         actor
             .handle_submit_history_mutations(
-                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                &jinn_session_history_msg::SubmitHistoryMutations {
                     session_id: session_id.clone(),
                     mutations: vec![],
                 },
@@ -481,11 +301,11 @@ mod tests {
 
         actor
             .handle_submit_history_mutations(
-                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                &jinn_session_history_msg::SubmitHistoryMutations {
                     session_id: new_session_id.clone(),
-                    mutations: vec![crate::protocol::HistoryMutation::SetContextOverride {
-                        entry_id: crate::protocol::ChatEntryId::new(),
-                        value: crate::protocol::ContextOverride::ForcedExclude,
+                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
+                        entry_id: jinn_core_types::ChatEntryId::new(),
+                        value: jinn_core_types::ContextOverride::ForcedExclude,
                         source: ChangeSource::Internal {
                             label: "test".to_owned(),
                         },
@@ -529,11 +349,11 @@ mod tests {
         // and a ForcedInclude (worker protection) for entry 2.
         actor
             .handle_submit_history_mutations(
-                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                &jinn_session_history_msg::SubmitHistoryMutations {
                     session_id: session_id.clone(),
-                    mutations: vec![crate::protocol::HistoryMutation::SetContextOverride {
+                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
                         entry_id: entry_id_1,
-                        value: crate::protocol::ContextOverride::ForcedExclude,
+                        value: jinn_core_types::ContextOverride::ForcedExclude,
                         source: ChangeSource::Internal {
                             label: "test".to_owned(),
                         },
@@ -543,11 +363,11 @@ mod tests {
             .await;
         actor
             .handle_submit_history_mutations(
-                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                &jinn_session_history_msg::SubmitHistoryMutations {
                     session_id: session_id.clone(),
-                    mutations: vec![crate::protocol::HistoryMutation::SetContextOverride {
+                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
                         entry_id: entry_id_2,
-                        value: crate::protocol::ContextOverride::ForcedInclude,
+                        value: jinn_core_types::ContextOverride::ForcedInclude,
                         source: ChangeSource::Internal {
                             label: "test".to_owned(),
                         },
@@ -564,11 +384,11 @@ mod tests {
         assert_eq!(session.pending_mutation_count(), 0);
         assert_eq!(
             session.history()[0].context_override(),
-            crate::protocol::ContextOverride::Default
+            jinn_core_types::ContextOverride::Default
         );
         assert_eq!(
             session.history()[1].context_override(),
-            crate::protocol::ContextOverride::ForcedInclude
+            jinn_core_types::ContextOverride::ForcedInclude
         );
         assert_eq!(
             session.accumulated_prune_count(),
@@ -595,11 +415,11 @@ mod tests {
 
         actor
             .handle_submit_history_mutations(
-                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                &jinn_session_history_msg::SubmitHistoryMutations {
                     session_id: session_id.clone(),
-                    mutations: vec![crate::protocol::HistoryMutation::SetContextOverride {
+                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
                         entry_id: entry_id.clone(),
-                        value: crate::protocol::ContextOverride::ForcedExclude,
+                        value: jinn_core_types::ContextOverride::ForcedExclude,
                         source: ChangeSource::Worker {
                             name: "compaction".to_owned(),
                         },
@@ -625,7 +445,7 @@ mod tests {
             let id = session.session_id().clone();
             session.set_entry_context_override_at(
                 0,
-                crate::protocol::ContextOverride::ForcedExclude,
+                jinn_core_types::ContextOverride::ForcedExclude,
                 ChangeSource::Internal {
                     label: "setup".to_owned(),
                 },
@@ -641,11 +461,11 @@ mod tests {
 
         actor
             .handle_submit_history_mutations(
-                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                &jinn_session_history_msg::SubmitHistoryMutations {
                     session_id: session_id.clone(),
-                    mutations: vec![crate::protocol::HistoryMutation::SetContextOverride {
+                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
                         entry_id: entry_id.clone(),
-                        value: crate::protocol::ContextOverride::ForcedExclude,
+                        value: jinn_core_types::ContextOverride::ForcedExclude,
                         source: ChangeSource::Worker {
                             name: "test_worker".to_owned(),
                         },
@@ -684,11 +504,11 @@ mod tests {
         // When submitting a worker ForcedInclude override (protection, never a prune).
         actor
             .handle_submit_history_mutations(
-                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                &jinn_session_history_msg::SubmitHistoryMutations {
                     session_id: session_id.clone(),
-                    mutations: vec![crate::protocol::HistoryMutation::SetContextOverride {
+                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
                         entry_id: entry_id.clone(),
-                        value: crate::protocol::ContextOverride::ForcedInclude,
+                        value: jinn_core_types::ContextOverride::ForcedInclude,
                         source: ChangeSource::Worker {
                             name: "auto-prune-todo".to_owned(),
                         },
@@ -703,7 +523,7 @@ mod tests {
         let session = state.session.get(&session_id).unwrap();
         assert_eq!(
             session.history()[0].context_override(),
-            crate::protocol::ContextOverride::ForcedInclude,
+            jinn_core_types::ContextOverride::ForcedInclude,
             "worker ForcedInclude must apply immediately"
         );
         assert!(
@@ -729,11 +549,11 @@ mod tests {
         // When submitting a compaction ForcedExclude override.
         actor
             .handle_submit_history_mutations(
-                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                &jinn_session_history_msg::SubmitHistoryMutations {
                     session_id: session_id.clone(),
-                    mutations: vec![crate::protocol::HistoryMutation::SetContextOverride {
+                    mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
                         entry_id: entry_id.clone(),
-                        value: crate::protocol::ContextOverride::ForcedExclude,
+                        value: jinn_core_types::ContextOverride::ForcedExclude,
                         source: ChangeSource::Worker {
                             name: "compaction".to_owned(),
                         },
@@ -747,7 +567,7 @@ mod tests {
         let session = state.session.get(&session_id).unwrap();
         assert_eq!(
             session.history()[0].context_override(),
-            crate::protocol::ContextOverride::ForcedExclude,
+            jinn_core_types::ContextOverride::ForcedExclude,
             "compaction ForcedExclude must apply immediately"
         );
         assert!(

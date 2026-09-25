@@ -314,11 +314,10 @@ impl ToolOrchestratorActor {
         );
         builtin_definitions.push(web_search_def);
 
-        // Announce built-in tools so downstream actors can cache them.
-        // NOTE: fired inline during construction — by the time this
-        // returns, the actor is already subscribed (the builder
-        // handshake completes first), so the announcement cannot race
-        // its own subscription.
+        // Announce built-in tools so dispatch and context assembly share the
+        // same definitions. The shared registry is updated directly here;
+        // the event remains the crossing notification for other consumers.
+        actor.cache_registered_tools(&builtin_definitions, None);
         let bus = actor.deps.services.bus.clone();
         tokio::spawn(async move {
             bus.publish(ToolsRegistered {
@@ -372,13 +371,9 @@ impl MsgHandler<ToolExecutionCompleted> for ToolOrchestratorActor {
 
 impl MsgHandler<SessionClosed> for ToolOrchestratorActor {
     async fn handle(&mut self, msg: &SessionClosed, _ctx: &mut MsgCtx<'_>) {
-        // Drop per-session tool registrations so the map does not leak.
-        if self.session_tools.remove(&msg.session_id).is_some() {
-            tracing::debug!(
-                session_id = ?msg.session_id,
-                "removed session-scoped tool registrations on SessionClosed"
-            );
-        }
+        // Drop per-session routing and context definitions so neither map leaks.
+        self.session_tools.remove(&msg.session_id);
+        self.remove_cached_session_tools(&msg.session_id);
     }
 }
 
@@ -387,6 +382,7 @@ impl MsgHandler<ToolsUnregistered> for ToolOrchestratorActor {
         // Given a provider tearing down its session-scoped registrations.
         // When pruning the routing map.
         let Some(session_map) = self.session_tools.get_mut(&msg.session_id) else {
+            self.remove_cached_provider_tools(msg);
             return;
         };
         session_map.retain(|_, reg| match reg {
@@ -396,8 +392,9 @@ impl MsgHandler<ToolsUnregistered> for ToolOrchestratorActor {
         if session_map.is_empty() {
             self.session_tools.remove(&msg.session_id);
         }
+        self.remove_cached_provider_tools(msg);
 
-        // Then the provider's tools are no longer routable for that session.
+        // Then the provider's tools are no longer routable or visible in context.
     }
 }
 
@@ -408,6 +405,72 @@ impl BusPublish for ToolOrchestratorActor {
 }
 
 impl ToolOrchestratorActor {
+    /// Mirrors registered definitions into the context-facing registry cell.
+    fn cache_registered_tools(
+        &self,
+        definitions: &[ToolDefinition],
+        session_id: Option<&SessionId>,
+    ) {
+        let Some(cell) = self
+            .services
+            .slices
+            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
+        else {
+            tracing::warn!("tools registry cell missing; tool definitions unavailable to context");
+            return;
+        };
+
+        cell.update(|registry| match session_id {
+            Some(session_id) => {
+                let session_tools = registry.session.entry(session_id.clone()).or_default();
+                for definition in definitions {
+                    session_tools.insert(definition.name.clone(), definition.clone());
+                }
+            }
+            None => {
+                for definition in definitions {
+                    registry
+                        .global
+                        .insert(definition.name.clone(), definition.clone());
+                }
+            }
+        });
+    }
+
+    /// Removes one provider's definitions from the context-facing session map.
+    fn remove_cached_provider_tools(&self, message: &ToolsUnregistered) {
+        let Some(cell) = self
+            .services
+            .slices
+            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
+        else {
+            return;
+        };
+
+        cell.update(|registry| {
+            let Some(session_tools) = registry.session.get_mut(&message.session_id) else {
+                return;
+            };
+            session_tools.retain(|name, _| !name.starts_with(&message.provider));
+            if session_tools.is_empty() {
+                registry.session.remove(&message.session_id);
+            }
+        });
+    }
+
+    /// Removes a closed session from the context-facing registry.
+    fn remove_cached_session_tools(&self, session_id: &SessionId) {
+        if let Some(cell) = self
+            .services
+            .slices
+            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
+        {
+            cell.update(|registry| {
+                registry.session.remove(session_id);
+            });
+        }
+    }
+
     /// Stores actor-provided tools and emits a [`ToolsRegistered`] event.
     ///
     /// When `session_id` is `Some`, the tools are stored under
@@ -438,6 +501,7 @@ impl ToolOrchestratorActor {
             }
         }
 
+        self.cache_registered_tools(definitions, session_id.as_ref());
         self.publish(ToolsRegistered {
             provider: provider.to_owned(),
             definitions: definitions.to_vec(),
@@ -1348,6 +1412,7 @@ mod mcp_dispatch_gate_tests {
     use jinn_domain::common::state::State;
     use jinn_domain::protocol::SessionId;
     use jinn_mcp_msg::McpConnectionStatus;
+    use jinn_session_msg::SessionClosed;
     use jinn_tools_msg::{ExecuteTool, ExecuteToolBatch, RegisterTools};
     use jinn_tools_msg::{ToolExecutionCompleted, ToolsUnregistered};
 
@@ -1355,7 +1420,12 @@ mod mcp_dispatch_gate_tests {
 
     const PROVIDER: &str = "mcp__stub__";
 
-    async fn spawn_orchestrator(state: &State) -> (TestHarness, ()) {
+    async fn spawn_orchestrator(
+        state: &State,
+    ) -> (
+        TestHarness,
+        jinn_domain::common::services::Services,
+    ) {
         let harness = TestHarness::new().await;
         let services = harness.services().await;
         ToolOrchestratorActor::spawn(
@@ -1365,12 +1435,12 @@ mod mcp_dispatch_gate_tests {
                     services: services.clone(),
                 },
                 state: state.clone(),
-                services,
+                services: services.clone(),
                 session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 builtin_filter: None,
             },
         );
-        (harness, ())
+        (harness, services)
     }
 
     fn mcp_tool_def() -> ToolDefinition {
@@ -1403,6 +1473,15 @@ mod mcp_dispatch_gate_tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
+    fn tools_registry(
+        services: &jinn_domain::common::services::Services,
+    ) -> jinn_slices::TypedCell<jinn_tools_msg::ToolRegistry> {
+        services
+            .slices
+            .reader(&jinn_tools_msg::tools_registry_slot())
+            .expect("tools registry cell")
+    }
+
     async fn publish_batch(harness: &TestHarness, session_id: &SessionId) {
         harness
             .publish(ExecuteToolBatch {
@@ -1415,12 +1494,65 @@ mod mcp_dispatch_gate_tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn tools_unregistered_removes_context_definitions() {
+        // Given an actor with the stub tool registered for a session.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        let (harness, services) = spawn_orchestrator(&state).await;
+        register_stub_tools(&harness, &session_id).await;
+
+        // When the provider unregisters its tools.
+        harness
+            .publish(ToolsUnregistered {
+                provider: PROVIDER.to_owned(),
+                session_id,
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Then the definition is no longer available to context assembly.
+        let registry = tools_registry(&services);
+        assert!(
+            !registry
+                .read()
+                .session
+                .values()
+                .flatten()
+                .any(|(_, tool)| tool.name == "mcp__stub__echo"),
+            "unregistered tool remains in the context registry"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_closed_removes_context_definitions() {
+        // Given an actor with the stub tool registered for a session.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        let (harness, services) = spawn_orchestrator(&state).await;
+        register_stub_tools(&harness, &session_id).await;
+
+        // When the session closes.
+        harness
+            .publish(SessionClosed {
+                session_id: session_id.clone(),
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Then its context definitions are removed.
+        let registry = tools_registry(&services);
+        assert!(!registry.read().session.contains_key(&session_id));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn tools_unregistered_removes_the_providers_tools_from_the_routing_map() {
         // Given a state with a seeded session, the stub tools registered for it.
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         state.write_test_no_cap().session.get_or_create(&session_id);
-        let (harness, _actor) = spawn_orchestrator(&state).await;
+        let (harness, _services) = spawn_orchestrator(&state).await;
         register_stub_tools(&harness, &session_id).await;
 
         // When the provider unregisters its tools for that session.
@@ -1454,7 +1586,7 @@ mod mcp_dispatch_gate_tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         state.write_test_no_cap().session.get_or_create(&session_id);
-        let (harness, _actor) = spawn_orchestrator(&state).await;
+        let (harness, _services) = spawn_orchestrator(&state).await;
         register_stub_tools(&harness, &session_id).await;
         let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
 
@@ -1489,7 +1621,7 @@ mod mcp_dispatch_gate_tests {
             .get_mut(&session_id)
             .expect("session")
             .set_mcp_server_status("stub", McpConnectionStatus::Dead);
-        let (harness, _actor) = spawn_orchestrator(&state).await;
+        let (harness, _services) = spawn_orchestrator(&state).await;
         register_stub_tools(&harness, &session_id).await;
         let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
 
@@ -1524,7 +1656,7 @@ mod mcp_dispatch_gate_tests {
             .get_mut(&session_id)
             .expect("session")
             .set_mcp_server_status("stub", McpConnectionStatus::Running);
-        let (harness, _actor) = spawn_orchestrator(&state).await;
+        let (harness, _services) = spawn_orchestrator(&state).await;
         register_stub_tools(&harness, &session_id).await;
         let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
 

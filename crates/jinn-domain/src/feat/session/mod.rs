@@ -23,7 +23,6 @@ pub mod picker_entry;
 pub mod profile;
 pub mod protocol;
 pub mod prune_report;
-pub mod session_actor;
 mod session_lifecycle_fields;
 pub mod steering_buffer;
 pub mod token_stats;

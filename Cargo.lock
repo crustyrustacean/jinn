@@ -1957,6 +1957,7 @@ dependencies = [
  "jinn-session-lifecycle-msg",
  "jinn-session-msg",
  "jinn-session-store",
+ "jinn-session-turn",
  "jinn-sidebar",
  "jinn-sidebar-msg",
  "jinn-slices",
@@ -2988,6 +2989,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-session-turn"
+version = "0.118.0"
+dependencies = [
+ "async-trait",
+ "error-stack",
+ "jiff",
+ "jinn-context-assembly",
+ "jinn-core-types",
+ "jinn-domain",
+ "jinn-inference-msg",
+ "jinn-persona-msg",
+ "jinn-provider",
+ "jinn-provider-selection",
+ "jinn-session-history-msg",
+ "jinn-session-msg",
+ "jinn-session-state",
+ "jinn-session-store-msg",
+ "jinn-token-count-msg",
+ "jinn-tools-msg",
+ "jinn-turn-dispatch-msg",
+ "parking_lot",
+ "rstest",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "trouper",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-sidebar"
 version = "0.118.0"
 dependencies = [
@@ -3258,9 +3290,12 @@ dependencies = [
  "jinn-session-msg",
  "jinn-session-state",
  "jinn-session-store-msg",
+ "jinn-session-turn",
  "jinn-skills",
  "jinn-skills-msg",
+ "jinn-slices",
  "jinn-term-msg",
+ "jinn-token-count-msg",
  "jinn-tools-msg",
  "rand 0.9.5",
  "regex",
@@ -3351,6 +3386,7 @@ dependencies = [
  "jinn-domain",
  "jinn-inference-msg",
  "jinn-provider",
+ "jinn-provider-selection",
  "jinn-session-history-msg",
  "jinn-session-msg",
  "jinn-session-store-msg",

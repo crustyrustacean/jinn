@@ -99,6 +99,46 @@ impl ServiceActor for ProviderActor {
     }
 }
 
+/// Builds the transient transcript message for a model refresh.
+#[expect(
+    clippy::else_if_without_else,
+    reason = "no-op on fallthrough is intentional"
+)]
+fn models_refresh_transcript(event: &ModelsRefreshed) -> String {
+    if event.results.is_empty() && event.errors.is_empty() {
+        return "Models refreshed: no providers found".to_owned();
+    }
+
+    let mut providers: Vec<&str> = event
+        .results
+        .keys()
+        .chain(event.errors.keys())
+        .map(String::as_str)
+        .collect();
+    providers.sort_unstable();
+    providers.dedup();
+
+    let rows = providers
+        .into_iter()
+        .map(|provider| {
+            if let Some(models) = event.results.get(provider) {
+                format!("| {provider} | {} | ✅ |", models.len())
+            } else if let Some(error) = event.errors.get(provider) {
+                format!("| {provider} | 0 | ❌ {error} |")
+            } else {
+                String::new()
+            }
+        })
+        .collect::<Vec<_>>();
+
+    format!(
+        "| Provider | Models | Status |\n|----------|--------|--------|\n{}",
+        rows.into_iter()
+            .map(|row| format!("{row}\n"))
+            .collect::<String>()
+    )
+}
+
 /// Static path the provider actor spawns at (one instance per process).
 pub const PROVIDER_ACTOR_PATH: &str = "jinn.provider.actor";
 
@@ -251,6 +291,12 @@ impl ProviderActor {
         self.deps.services.provider_registry.merge_cache(&cache);
         self.store_model_cache(cache);
         self.handle_load_provider_picker_entries();
+        self.state.with_session(&self.session_cap, |view| {
+            let session = view.session.map().get_or_create(&event.session_id);
+            session.push_entry(jinn_core_types::ChatEntry::transient(
+                models_refresh_transcript(event),
+            ));
+        });
     }
 
     /// ModelCacheLoaded: restore model cache from disk and reload picker entries.
@@ -759,6 +805,41 @@ mod tests {
             resolved.is_some(),
             "model should be in registry after ModelsRefreshed"
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_appends_transient_result_to_session_history() {
+        // Given a provider actor and an empty session.
+        let ctx = create_ctx().await;
+        ctx.spawn_provider_actor();
+        let session_id = ctx.state.read().session.active_session_id().clone();
+        let event = ModelsRefreshed {
+            session_id: session_id.clone(),
+            results: std::collections::HashMap::from([(
+                "ollama".to_owned(),
+                vec![ModelInfo {
+                    id: "llama3".to_owned(),
+                    context_length: Some(8192),
+                    input_modalities: InputModalities::text(),
+                }],
+            )]),
+            errors: std::collections::HashMap::new(),
+        };
+
+        // When publishing the refresh result.
+        ctx.harness.publish(event).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the session history contains one transient refresh entry.
+        let state = ctx.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert_eq!(session.history().len(), 1);
+        assert!(matches!(
+            &session.history()[0].kind,
+            jinn_core_types::ChatEntryKind::Transient(content)
+                if content.contains("ollama") && content.contains('1')
+        ));
     }
 
     #[rstest::rstest]

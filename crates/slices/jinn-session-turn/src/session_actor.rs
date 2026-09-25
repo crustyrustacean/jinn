@@ -24,33 +24,31 @@
 mod handlers;
 mod helpers;
 
-pub use handlers::multimodal_gate::evaluate_attachment_gate;
-
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
-use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::common::services::bus_service::BusService;
-use crate::common::state::State;
-use crate::feat::chat_input::protocol::command::{
+use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_domain::common::services::bus_service::BusService;
+use jinn_domain::common::state::State;
+use jinn_domain::feat::chat_input::protocol::command::{
     EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage,
 };
-use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
-use crate::feat::context::protocol::event::PersonasLoaded;
-use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-use crate::feat::session::protocol::citations_received::CitationsReceived;
-use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
-use crate::feat::session::protocol::task_list_updated::TaskListUpdated;
-use crate::feat::skills::SkillsLoaded;
-use crate::{ModelsRefreshed, PromptTemplatesLoaded};
+use jinn_domain::feat::context::protocol::command::LoadPersonaPickerEntries;
+use jinn_domain::feat::context::protocol::event::PersonasLoaded;
+use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+use jinn_session_history_msg::CitationsReceived;
+use jinn_session_history_msg::SubmitHistoryMutations;
+use jinn_session_history_msg::TaskListUpdated;
+use jinn_domain::feat::skills::SkillsLoaded;
+use jinn_domain::PromptTemplatesLoaded;
 use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
 use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry, UnpinChatEntry};
-use jinn_session_msg::{MarkSessionInteracted, RetryStalledSession, SessionClosed};
+use jinn_session_msg::{MarkSessionInteracted, RetryStalledSession};
 use jinn_tools_msg::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered, ToolsUnregistered,
+    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
 };
 
 /// The session actor's static trouper path.
@@ -81,10 +79,10 @@ pub fn default_token_cache() -> jinn_token_count_msg::HistoryWorkerChatEntryToke
 /// snapshots through the session-store service when turn state changes.
 pub struct SessionPersistenceActor {
     state: State,
-    cap: crate::common::tcaps::session::SessionCap,
-    frontend_cap: crate::common::tcaps::frontend::FrontendCap,
+    cap: jinn_domain::common::tcaps::session::SessionCap,
+    frontend_cap: jinn_domain::common::tcaps::frontend::FrontendCap,
     /// Runtime services (the session store and the bus).
-    services: crate::common::services::Services,
+    services: jinn_domain::common::services::Services,
     /// Token counter for recording token usage in the session ledger.
     counter: TiktokenCounter,
     /// Auto-pruner entry token cache, shared with the prune workers. Used by the
@@ -92,7 +90,7 @@ pub struct SessionPersistenceActor {
     token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache,
     /// Image converter (ImageMagick) for transcoding non-native image
     /// attachments. Wraps a trait object so tests inject fakes.
-    image_converter: crate::feat::image_convert::ImageConverterService,
+    image_converter: jinn_domain::feat::image_convert::ImageConverterService,
 }
 
 impl BusPublish for SessionPersistenceActor {
@@ -105,12 +103,12 @@ impl BusPublish for SessionPersistenceActor {
 pub struct SessionPersistenceActorDeps {
     pub deps: ActorDeps,
     pub state: State,
-    pub cap: crate::common::tcaps::session::SessionCap,
-    pub frontend_cap: crate::common::tcaps::frontend::FrontendCap,
+    pub cap: jinn_domain::common::tcaps::session::SessionCap,
+    pub frontend_cap: jinn_domain::common::tcaps::frontend::FrontendCap,
     pub counter: TiktokenCounter,
     /// Auto-pruner entry token cache for the accumulation gate.
     pub token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache,
-    pub image_converter: crate::feat::image_convert::ImageConverterService,
+    pub image_converter: jinn_domain::feat::image_convert::ImageConverterService,
 }
 
 impl ServiceActor for SessionPersistenceActor {
@@ -195,11 +193,7 @@ impl SessionPersistenceActor {
             .handles::<CitationsReceived>()
             .handles::<ChatEntryPinChanged>()
             .handles::<TaskListUpdated>()
-            .handles::<ModelsRefreshed>()
             .handles::<SkillsLoaded>()
-            .handles::<ToolsRegistered>()
-            .handles::<ToolsUnregistered>()
-            .handles::<SessionClosed>()
             .handles::<PromptTemplatesLoaded>()
             .handles::<PersonasLoaded>()
             // Deep mailbox with Block: this actor is the single sink for
@@ -346,12 +340,6 @@ impl MsgHandler<CitationsReceived> for SessionPersistenceActor {
     }
 }
 
-impl MsgHandler<ModelsRefreshed> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &ModelsRefreshed, _ctx: &mut MsgCtx<'_>) {
-        self.on_models_refreshed(msg);
-    }
-}
-
 impl MsgHandler<SkillsLoaded> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &SkillsLoaded, _ctx: &mut MsgCtx<'_>) {
         self.on_skills_loaded(msg);
@@ -367,27 +355,6 @@ impl MsgHandler<ChatEntryPinChanged> for SessionPersistenceActor {
 impl MsgHandler<TaskListUpdated> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &TaskListUpdated, _ctx: &mut MsgCtx<'_>) {
         self.save_active_session(&msg.session_id).await;
-    }
-}
-
-impl MsgHandler<ToolsRegistered> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &ToolsRegistered, _ctx: &mut MsgCtx<'_>) {
-        self.on_tools_registered(msg);
-    }
-}
-
-impl MsgHandler<ToolsUnregistered> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &ToolsUnregistered, _ctx: &mut MsgCtx<'_>) {
-        self.on_tools_unregistered(msg);
-    }
-}
-
-/// Cleans the closed session's entry from the context tool cache — the map
-/// the orchestrator's own cleanup does not reach (it prunes its routing map,
-/// not the LLM-facing definitions cache).
-impl MsgHandler<SessionClosed> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &SessionClosed, _ctx: &mut MsgCtx<'_>) {
-        self.on_session_closed_cleanup(&msg.session_id);
     }
 }
 

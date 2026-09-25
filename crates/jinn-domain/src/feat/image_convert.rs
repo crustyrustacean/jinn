@@ -12,11 +12,15 @@
 
 mod binary_locator;
 mod converter;
+mod resolve;
 
 pub use binary_locator::{ImageMagickLocator, SystemImageMagickLocator};
 pub use converter::{
     ImageConversionError, ImageConverter, ImageConverterService, ImageMagickConverter,
     UnavailableConverter,
+};
+pub use resolve::{
+    ImageResolveError, ResolveOutcome, format_attachment_error, resolve_attachments_blocking,
 };
 
 #[cfg(test)]

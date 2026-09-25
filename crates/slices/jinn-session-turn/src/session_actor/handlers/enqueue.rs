@@ -11,17 +11,17 @@
 //! actor (trouper) assembles the prompt and publishes
 //! `SendToLlmProvider`.
 
-use crate::common::actor_deps::BusPublish;
-use crate::feat::chat_input::protocol::command::{
+use jinn_domain::common::actor_deps::BusPublish;
+use jinn_domain::feat::chat_input::protocol::command::{
     EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage,
 };
-use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use crate::protocol::{ChatEntry, ChatEntryKind};
+use jinn_domain::feat::chat_input::protocol::event::ChatEntrySubmitted;
+use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
 use jinn_session_history_msg::PushChatEntry;
 
 use super::super::SessionPersistenceActor;
-use super::image_resolve::ResolveOutcome;
-use crate::feat::context::prompt_template::PendingPath;
+use jinn_domain::feat::image_convert::ResolveOutcome;
+use jinn_domain::feat::context::prompt_template::PendingPath;
 use jinn_session_msg::PhaseKind;
 use jinn_turn_dispatch_msg::DispatchTurn;
 
@@ -36,7 +36,7 @@ enum EnqueueAction {
 
 impl SessionPersistenceActor {
     /// EnqueueUserMessage: if idle → assemble prompt; if busy → queue.
-    pub(in crate::feat::session::session_actor) async fn handle_enqueue_user_message(
+    pub(in crate::session_actor) async fn handle_enqueue_user_message(
         &self,
         payload: &EnqueueUserMessage,
     ) {
@@ -136,7 +136,7 @@ impl SessionPersistenceActor {
     /// unknown to the reference data.
     async fn attachment_gate_blocks(
         &self,
-        session_id: &crate::SessionId,
+        session_id: &jinn_domain::SessionId,
         entry: &ChatEntry,
     ) -> bool {
         let is_idle = {
@@ -151,7 +151,7 @@ impl SessionPersistenceActor {
             return false;
         }
 
-        let Some(error_entry) = super::multimodal_gate::evaluate_attachment_gate(
+        let Some(error_entry) = jinn_provider_selection::attachment_gate::evaluate_attachment_gate(
             &self.services,
             &self.state,
             session_id,
@@ -179,10 +179,10 @@ impl SessionPersistenceActor {
     /// store (so `@path` scanning still runs, but `#token` lookup finds nothing).
     fn expand_user_entry(
         &self,
-        session_id: &crate::SessionId,
+        session_id: &jinn_domain::SessionId,
         entry: &mut ChatEntry,
     ) -> Vec<PendingPath> {
-        use crate::feat::context::prompt_template::PathResolveContext;
+        use jinn_domain::feat::context::prompt_template::PathResolveContext;
         use jinn_session_state::chat_session::expand_user_entry as expand;
         let (store, cwd) = {
             let guard = self.state.read();
@@ -214,7 +214,7 @@ impl SessionPersistenceActor {
     /// slow disk or a slow conversion.
     async fn resolve_image_attachments(
         &self,
-        session_id: &crate::SessionId,
+        session_id: &jinn_domain::SessionId,
         pending_paths: Vec<PendingPath>,
         entry: &mut ChatEntry,
     ) -> bool {
@@ -223,7 +223,10 @@ impl SessionPersistenceActor {
         }
         let converter = self.image_converter.clone();
         let result = tokio::task::spawn_blocking(move || {
-            super::image_resolve::resolve_attachments_blocking(&pending_paths, &converter)
+            jinn_domain::feat::image_convert::resolve_attachments_blocking(
+                &pending_paths,
+                &converter,
+            )
         })
         .await;
         match result {
@@ -255,12 +258,13 @@ impl SessionPersistenceActor {
                     // degraded `@path` tokens. Set unconditionally — an empty
                     // (but non-default) marker keeps re-expansion idempotent for
                     // fully-attached messages.
-                    *entry_outcome = crate::protocol::AttachmentOutcome { attached, degraded };
+                    *entry_outcome = jinn_domain::protocol::AttachmentOutcome { attached, degraded };
                 }
                 true
             }
             Ok(Err(report)) => {
-                let message = super::image_resolve::format_attachment_error(&report);
+                let message =
+                    jinn_domain::feat::image_convert::format_attachment_error(&report);
                 self.push_entry_and_block(session_id, entry.clone(), message)
                     .await;
                 false
@@ -273,7 +277,7 @@ impl SessionPersistenceActor {
     /// vision-capability gate's blocking path.
     async fn push_entry_and_block(
         &self,
-        session_id: &crate::SessionId,
+        session_id: &jinn_domain::SessionId,
         user_entry: ChatEntry,
         message: String,
     ) {
@@ -296,11 +300,11 @@ impl SessionPersistenceActor {
     ///
     /// The System marker is excluded from LLM context by default
     /// (see `ChatEntryKind::is_included_by_default`), so only the UI sees it.
-    pub(in crate::feat::session::session_actor) async fn handle_enqueue_resume_turn(
+    pub(in crate::session_actor) async fn handle_enqueue_resume_turn(
         &self,
         payload: &EnqueueResumeTurn,
     ) {
-        use crate::protocol::ChatEntry;
+        use jinn_core_types::ChatEntry;
         use jinn_session_msg::SessionPhaseChanged;
 
         // Only dispatch from Idle. Busy sessions ignore resume (no queuing).
@@ -358,7 +362,7 @@ impl SessionPersistenceActor {
     /// The buffer is drained into a `User` entry at the next prompt-assembly
     /// boundary. This handler performs no phase check - routing (queue vs steer)
     /// is the responsibility of the chat-input layer.
-    pub(in crate::feat::session::session_actor) fn handle_submit_steering_message(
+    pub(in crate::session_actor) fn handle_submit_steering_message(
         &self,
         payload: &SubmitSteeringMessage,
     ) {
@@ -382,7 +386,7 @@ impl SessionPersistenceActor {
 
     /// PushChatEntry: push entry to session history, emit ChatEntrySubmitted event,
     /// and persist the session to disk.
-    pub(in crate::feat::session::session_actor) async fn handle_push_chat_entry(
+    pub(in crate::session_actor) async fn handle_push_chat_entry(
         &self,
         payload: &PushChatEntry,
     ) {
@@ -420,19 +424,19 @@ mod tests {
         reason = "test code"
     )]
 
-    use crate::common::services::BusAudit;
-    use crate::feat::chat_input::protocol::command::{EnqueueResumeTurn, EnqueueUserMessage};
-    use crate::protocol::{ChatEntry, ChatEntryKind};
+    use jinn_domain::common::services::BusAudit;
+    use jinn_domain::feat::chat_input::protocol::command::{EnqueueResumeTurn, EnqueueUserMessage};
+    use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_session_history_msg::PushChatEntry;
     use jinn_session_msg::PhaseKind;
 
     async fn create_actor() -> (
         super::super::super::SessionPersistenceActor,
-        crate::common::state::State,
+        jinn_domain::common::state::State,
         BusAudit,
     ) {
-        let state = crate::common::state::State::new(crate::common::app_state::AppState::default());
+        let state = jinn_domain::common::state::State::new(jinn_domain::common::app_state::AppState::default());
         let (actor, audit) = super::super::super::helpers::test_actor_recording().await;
         let actor = super::super::super::SessionPersistenceActor {
             state: state.clone(),
@@ -913,7 +917,7 @@ mod tests {
         let markers: Vec<_> = session
             .history()
             .iter()
-            .filter(|e| matches!(e.kind, crate::protocol::ChatEntryKind::System { .. }))
+            .filter(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::System { .. }))
             .collect();
         assert_eq!(markers.len(), 1, "expected one System marker pushed");
     }
@@ -921,9 +925,9 @@ mod tests {
     // Helper: seed a vision-capable model and return the idle session id.
     async fn idle_vision_session() -> (
         super::super::super::SessionPersistenceActor,
-        crate::common::state::State,
+        jinn_domain::common::state::State,
         BusAudit,
-        crate::protocol::SessionId,
+        jinn_core_types::SessionId,
     ) {
         let (actor, state, audit) = create_actor().await;
         let session_id = {
@@ -937,7 +941,7 @@ mod tests {
 
     /// Extracts the `expanded` text of the most recent `User` entry in history.
     fn last_user_expanded(
-        session: &crate::feat::session::chat_session::ChatSessionState,
+        session: &jinn_session_state::ChatSessionState,
     ) -> Option<String> {
         session.history().iter().rev().find_map(|e| match &e.kind {
             ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),

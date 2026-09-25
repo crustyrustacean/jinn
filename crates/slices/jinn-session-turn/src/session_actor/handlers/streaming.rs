@@ -6,12 +6,12 @@
 
 use std::collections::VecDeque;
 
-use crate::common::actor_deps::BusPublish;
-use crate::feat::context::protocol::event::ContextOverrideChanged;
-use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
-use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session::protocol::citations_received::CitationsReceived;
-use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, SessionId};
+use jinn_domain::common::actor_deps::BusPublish;
+use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
+use jinn_domain::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
+use jinn_session_state::ChatSessionState;
+use jinn_session_history_msg::CitationsReceived;
+use jinn_domain::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, SessionId};
 use jinn_core_types::tool_types::ToolCall;
 use jinn_inference_msg::{StreamCompleted, StreamCompletedReason, StreamToken};
 use jinn_session_msg::SessionPhaseChanged;
@@ -23,7 +23,7 @@ use jinn_session_msg::PhaseKind;
 impl SessionPersistenceActor {
     /// Appends a streaming token to the session's assistant entry,
     /// or to the thinking entry if the token is flagged as reasoning.
-    pub(in crate::feat::session::session_actor) fn on_stream_token(&self, event: &StreamToken) {
+    pub(in crate::session_actor) fn on_stream_token(&self, event: &StreamToken) {
         self.state.with_session(&self.cap, |view| {
             let session = view.session.map().get_or_create(&event.session_id);
             match session.phase() {
@@ -67,7 +67,7 @@ impl SessionPersistenceActor {
     /// handler reads as a step-by-step recipe. See [`Self::apply_stream_completion`]
     /// for the under-lock state transitions and [`resolve_output_tokens`] for the
     /// token-accounting policy.
-    pub(in crate::feat::session::session_actor) async fn on_stream_completed(
+    pub(in crate::session_actor) async fn on_stream_completed(
         &self,
         event: &StreamCompleted,
     ) {
@@ -159,7 +159,7 @@ impl SessionPersistenceActor {
 
     /// Handles `CitationsReceived`: appends a single display-only `Annotation`
     /// entry recording the turn's `url_citation` sources, then persists.
-    pub(in crate::feat::session::session_actor) async fn on_citations_received(
+    pub(in crate::session_actor) async fn on_citations_received(
         &self,
         event: &CitationsReceived,
     ) {
@@ -436,8 +436,8 @@ mod tests {
     use super::super::super::helpers::{
         test_actor, test_actor_recording, test_actor_with_store_recording,
     };
-    use crate::feat::session::protocol::citations_received::CitationsReceived;
-    use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
+    use jinn_session_history_msg::CitationsReceived;
+    use jinn_domain::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
     use jinn_inference_msg::{StreamCompleted, StreamCompletedReason, StreamToken};
     use jinn_session_msg::PhaseKind;
     use jinn_session_msg::SessionPhaseChanged;
@@ -770,19 +770,19 @@ mod tests {
         let history = session.history();
         assert_eq!(
             history[0].context_override(),
-            crate::protocol::ContextOverride::Default
+            jinn_core_types::ContextOverride::Default
         );
         assert_eq!(
             history[1].context_override(),
-            crate::protocol::ContextOverride::ForcedExclude
+            jinn_core_types::ContextOverride::ForcedExclude
         );
         assert_eq!(
             history[2].context_override(),
-            crate::protocol::ContextOverride::ForcedExclude
+            jinn_core_types::ContextOverride::ForcedExclude
         );
         assert_eq!(
             history[3].context_override(),
-            crate::protocol::ContextOverride::Default
+            jinn_core_types::ContextOverride::Default
         );
     }
 
@@ -1198,7 +1198,7 @@ mod tests {
                 "tc-1",
                 "bash",
                 "file.txt",
-                crate::protocol::ToolResultStatus::Success,
+                jinn_core_types::ToolResultStatus::Success,
             ));
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1224,7 +1224,7 @@ mod tests {
         for entry in session.history() {
             assert_eq!(
                 entry.context_override(),
-                crate::protocol::ContextOverride::Default,
+                jinn_core_types::ContextOverride::Default,
                 "expected Default for entry {:?}",
                 entry.kind
             );
@@ -1279,9 +1279,9 @@ mod tests {
             let entry_id = entry.id.clone();
             session.push_entry(entry);
             session.begin_streaming();
-            session.queue_mutations(vec![crate::protocol::HistoryMutation::SetContextOverride {
+            session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
                 entry_id: entry_id.clone(),
-                value: crate::protocol::ContextOverride::ForcedExclude,
+                value: jinn_core_types::ContextOverride::ForcedExclude,
                 source: ChangeSource::Internal {
                     label: "test".into(),
                 },
@@ -1313,7 +1313,7 @@ mod tests {
             .expect("entry");
         assert_eq!(
             assistant.context_override(),
-            crate::protocol::ContextOverride::ForcedExclude
+            jinn_core_types::ContextOverride::ForcedExclude
         );
         assert!(audit.contains_name("HistoryAppended"));
     }
@@ -1329,9 +1329,9 @@ mod tests {
             let entry_id = entry.id.clone();
             session.push_entry(entry);
             session.begin_streaming();
-            session.queue_mutations(vec![crate::protocol::HistoryMutation::SetContextOverride {
+            session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
                 entry_id: entry_id.clone(),
-                value: crate::protocol::ContextOverride::ForcedExclude,
+                value: jinn_core_types::ContextOverride::ForcedExclude,
                 source: ChangeSource::Internal {
                     label: "test".into(),
                 },
@@ -1365,7 +1365,7 @@ mod tests {
             .expect("assistant entry exists");
         assert_eq!(
             assistant.context_override(),
-            crate::protocol::ContextOverride::ForcedExclude,
+            jinn_core_types::ContextOverride::ForcedExclude,
             "expected mutation to be applied at stream error"
         );
     }
@@ -1383,9 +1383,9 @@ mod tests {
             let entry_id = entry.id.clone();
             session.push_entry(entry);
             session.begin_streaming();
-            session.queue_mutations(vec![crate::protocol::HistoryMutation::SetContextOverride {
+            session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
                 entry_id: entry_id.clone(),
-                value: crate::protocol::ContextOverride::ForcedExclude,
+                value: jinn_core_types::ContextOverride::ForcedExclude,
                 source: ChangeSource::Internal {
                     label: "test".into(),
                 },
@@ -1418,7 +1418,7 @@ mod tests {
             .expect("entry");
         assert_eq!(
             assistant.context_override(),
-            crate::protocol::ContextOverride::ForcedExclude
+            jinn_core_types::ContextOverride::ForcedExclude
         );
     }
 
@@ -1434,9 +1434,9 @@ mod tests {
             let entry_id = entry.id.clone();
             session.push_entry(entry);
             session.begin_streaming();
-            session.queue_mutations(vec![crate::protocol::HistoryMutation::SetContextOverride {
+            session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
                 entry_id: entry_id.clone(),
-                value: crate::protocol::ContextOverride::ForcedExclude,
+                value: jinn_core_types::ContextOverride::ForcedExclude,
                 source: ChangeSource::Internal {
                     label: "test".into(),
                 },
@@ -1472,7 +1472,7 @@ mod tests {
             .expect("entry");
         assert_eq!(
             assistant.context_override(),
-            crate::protocol::ContextOverride::Default,
+            jinn_core_types::ContextOverride::Default,
             "expected mutation to NOT be applied for ToolUse reason"
         );
     }
@@ -1737,7 +1737,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_uses_local_count_when_no_provider_report() {
-        use crate::feat::context::strategy::token_estimator::TokenCounter;
+        use jinn_domain::feat::context::strategy::token_estimator::TokenCounter;
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write_test_no_cap();
@@ -1772,7 +1772,7 @@ mod tests {
         actor.on_stream_completed(&event).await;
 
         let counter =
-            crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
+            jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
         let expected = counter.count(content) as u32;
 
         let state = actor.state.read();
@@ -1808,10 +1808,10 @@ mod tests {
         let assistant = session
             .history()
             .iter()
-            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Assistant(_)))
+            .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Assistant(_)))
             .expect("assistant entry");
         match &assistant.timing {
-            crate::protocol::EntryTiming::Streamed {
+            jinn_core_types::EntryTiming::Streamed {
                 dispatched_at,
                 first_token_at,
                 finished_at,
@@ -1852,10 +1852,10 @@ mod tests {
         let thinking = session
             .history()
             .iter()
-            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+            .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Thinking(_)))
             .expect("thinking entry");
         match &thinking.timing {
-            crate::protocol::EntryTiming::Streamed {
+            jinn_core_types::EntryTiming::Streamed {
                 dispatched_at,
                 first_token_at,
                 finished_at,
@@ -1910,10 +1910,10 @@ mod tests {
         let assistant = session
             .history()
             .iter()
-            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Assistant(_)))
+            .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Assistant(_)))
             .expect("assistant entry");
         match &assistant.timing {
-            crate::protocol::EntryTiming::Streamed { finished_at, .. } => {
+            jinn_core_types::EntryTiming::Streamed { finished_at, .. } => {
                 assert!(
                     finished_at.is_some(),
                     "finished_at should be set after completion"
@@ -1958,10 +1958,10 @@ mod tests {
         let thinking = session
             .history()
             .iter()
-            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+            .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Thinking(_)))
             .expect("thinking entry");
         match &thinking.timing {
-            crate::protocol::EntryTiming::Streamed { finished_at, .. } => {
+            jinn_core_types::EntryTiming::Streamed { finished_at, .. } => {
                 assert!(
                     finished_at.is_some(),
                     "thinking finished_at should be set after content token arrives"
@@ -2003,10 +2003,10 @@ mod tests {
             let thinking = session
                 .history()
                 .iter()
-                .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+                .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Thinking(_)))
                 .expect("thinking entry");
             match &thinking.timing {
-                crate::protocol::EntryTiming::Streamed { finished_at, .. } => *finished_at,
+                jinn_core_types::EntryTiming::Streamed { finished_at, .. } => *finished_at,
                 other => panic!("expected Streamed, got {other:?}"),
             }
         };
@@ -2026,10 +2026,10 @@ mod tests {
         let thinking = session
             .history()
             .iter()
-            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+            .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Thinking(_)))
             .expect("thinking entry");
         match &thinking.timing {
-            crate::protocol::EntryTiming::Streamed { finished_at, .. } => {
+            jinn_core_types::EntryTiming::Streamed { finished_at, .. } => {
                 assert_eq!(
                     *finished_at, finished_at_first,
                     "thinking finished_at must not change on subsequent content tokens"
@@ -2081,10 +2081,10 @@ mod tests {
         let thinking = session
             .history()
             .iter()
-            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+            .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Thinking(_)))
             .expect("thinking entry");
         match &thinking.timing {
-            crate::protocol::EntryTiming::Streamed { finished_at, .. } => {
+            jinn_core_types::EntryTiming::Streamed { finished_at, .. } => {
                 assert!(
                     finished_at.is_some(),
                     "thinking finished_at should be set by safety net on pure-reasoning completion"
@@ -2136,12 +2136,12 @@ mod tests {
         let thinking = session
             .history()
             .iter()
-            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+            .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Thinking(_)))
             .expect("thinking entry");
         match (&thinking.kind, &thinking.timing) {
             (
-                crate::protocol::ChatEntryKind::Thinking(text),
-                crate::protocol::EntryTiming::Streamed { finished_at, .. },
+                jinn_core_types::ChatEntryKind::Thinking(text),
+                jinn_core_types::EntryTiming::Streamed { finished_at, .. },
             ) => {
                 assert_eq!(
                     text, "partial reasoning",
@@ -2198,10 +2198,10 @@ mod tests {
         let assistant = session
             .history()
             .iter()
-            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Assistant(_)))
+            .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Assistant(_)))
             .expect("assistant entry");
         match &assistant.timing {
-            crate::protocol::EntryTiming::Streamed { finished_at, .. } => {
+            jinn_core_types::EntryTiming::Streamed { finished_at, .. } => {
                 assert!(
                     finished_at.is_some(),
                     "finished_at should be set even on cancellation"
@@ -2213,7 +2213,7 @@ mod tests {
 
     /// Deterministic counter for unit testing - counts characters.
     struct CharCounter;
-    impl crate::feat::context::strategy::token_estimator::TokenCounter for CharCounter {
+    impl jinn_domain::feat::context::strategy::token_estimator::TokenCounter for CharCounter {
         fn count(&self, text: &str) -> usize {
             text.chars().count()
         }

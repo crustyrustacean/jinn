@@ -13,6 +13,7 @@
 //! this slice's actors fill them at load time through the sanctioned
 //! `FrontendCap` path.
 
+pub mod attachment_gate;
 pub mod discover_actor;
 pub mod endpoint_loader;
 pub mod entries;

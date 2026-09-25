@@ -6,7 +6,7 @@
 //! must reach disk without routing a command through another actor.
 
 use super::super::SessionPersistenceActor;
-use crate::common::actor_deps::BusPublish;
+use jinn_domain::common::actor_deps::BusPublish;
 use jinn_session_msg::{MarkSessionInteracted, UserInteracted};
 
 impl SessionPersistenceActor {
@@ -17,9 +17,9 @@ impl SessionPersistenceActor {
     /// accounting as one snapshot before SQLite performs its own transaction.
     /// Errors are logged as warnings - persistence failure must not break
     /// the user experience.
-    pub(in crate::feat::session::session_actor) async fn save_active_session(
+    pub(in crate::session_actor) async fn save_active_session(
         &self,
-        session_id: &crate::protocol::SessionId,
+        session_id: &jinn_core_types::SessionId,
     ) {
         let store = &self.services.session_store;
 
@@ -65,7 +65,7 @@ impl SessionPersistenceActor {
     /// Marks a session as having been interacted with by the user.
     ///
     /// Sets `has_interacted = true` on the session and emits a `UserInteracted` event.
-    pub(in crate::feat::session::session_actor) async fn handle_mark_session_interacted(
+    pub(in crate::session_actor) async fn handle_mark_session_interacted(
         &mut self,
         payload: &MarkSessionInteracted,
     ) {
@@ -130,6 +130,39 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn save_active_session_persists_post_mutation_history() {
+        // Given an interacted session.
+        let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+        {
+            let mut state = actor.state.write_test_no_cap();
+            let session = state.active_session_mut();
+            session.mark_interacted();
+        }
+
+        // When a user entry is added and the turn path saves.
+        {
+            let mut state = actor.state.write_test_no_cap();
+            state
+                .active_session_mut()
+                .push_entry(jinn_core_types::ChatEntry::user("new turn"));
+        }
+        actor.save_active_session(&session_id).await;
+
+        // Then the store receives that post-mutation history.
+        let snapshot = store
+            .last_saved_session(&session_id)
+            .expect("session snapshot");
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(
+            snapshot.entries[0].prompt_text(),
+            Some("new turn"),
+            "saved snapshot must contain the latest turn"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn save_active_session_releases_write_lock_before_clone() {
         // Given an interacted session with a large history.
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
@@ -140,7 +173,7 @@ mod tests {
             session.mark_interacted();
             // A large history makes the clone window wide enough to probe.
             for i in 0..5000 {
-                session.push_entry(crate::protocol::ChatEntry::user(format!("msg {i}")));
+                session.push_entry(jinn_core_types::ChatEntry::user(format!("msg {i}")));
             }
         }
 

@@ -1,21 +1,19 @@
 //! Context-related handlers - pinning, caching, and persona management.
 //!
-//! Handles entry pinning (PinChatEntry/UnpinChatEntry), tool definition caching
-//! (ToolsRegistered), prompt template caching (PromptTemplatesLoaded),
-//! persona selection (PersonasLoaded), and persona picker population
-//! (LoadPersonaPickerEntries).
+//! Handles entry pinning (PinChatEntry/UnpinChatEntry), prompt template
+//! caching (PromptTemplatesLoaded), persona selection (PersonasLoaded), and
+//! persona picker population (LoadPersonaPickerEntries).
 //!
 //! Relocated from `PromptAssemblyActor` - these concerns are session-related
 //! mutations of `AppState`, not part of prompt assembly.
 
-use crate::PromptTemplatesLoaded;
-use crate::common::actor_deps::BusPublish;
-use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
-use crate::feat::persona::PersonaEntry;
-use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
+use jinn_domain::PromptTemplatesLoaded;
+use jinn_domain::common::actor_deps::BusPublish;
+use jinn_domain::feat::context::protocol::command::LoadPersonaPickerEntries;
+use jinn_domain::feat::persona::PersonaEntry;
+use jinn_core_types::DEFAULT_PERSONA_NAME;
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
-use jinn_tools_msg::{ToolsRegistered, ToolsUnregistered};
 
 use super::super::SessionPersistenceActor;
 
@@ -23,10 +21,10 @@ use super::super::SessionPersistenceActor;
 /// `AppState::sorted_pinned_ids` but operating on a session directly so the
 /// pins handler can run inside a [`SessionPinsView`] without `&AppState`.
 fn sorted_pinned_ids_from_session(
-    session: &crate::feat::session::chat_session::ChatSessionState,
-) -> Vec<crate::protocol::ChatEntryId> {
-    use crate::common::app_state::pin_sort_key;
-    use crate::protocol::ChatEntryId;
+    session: &jinn_session_state::ChatSessionState,
+) -> Vec<jinn_core_types::ChatEntryId> {
+    use jinn_domain::common::app_state::pin_sort_key;
+    use jinn_core_types::ChatEntryId;
     let mut pinned = session.pinned_entries();
     pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
     pinned
@@ -42,7 +40,7 @@ impl SessionPersistenceActor {
     /// pin (and the entry it anchors) reaches the store — a pin on a
     /// brand-new, never-sent-to session would otherwise be silently dropped
     /// by the `is_persistable` guard.
-    pub(in crate::feat::session::session_actor) async fn handle_pin_chat_entry(
+    pub(in crate::session_actor) async fn handle_pin_chat_entry(
         &self,
         payload: &PinChatEntry,
     ) {
@@ -61,7 +59,7 @@ impl SessionPersistenceActor {
     ///
     /// Like pinning, unpinning is an interaction and marks the session
     /// interacted so the removal persists.
-    pub(in crate::feat::session::session_actor) async fn handle_unpin_chat_entry(
+    pub(in crate::session_actor) async fn handle_unpin_chat_entry(
         &self,
         payload: &UnpinChatEntry,
     ) {
@@ -100,87 +98,6 @@ impl SessionPersistenceActor {
         .await;
     }
 
-    /// ToolsRegistered: cache tool definitions in global or per-session map.
-    pub(in crate::feat::session::session_actor) fn on_tools_registered(
-        &self,
-        evt: &ToolsRegistered,
-    ) {
-        let Some(cell) = self
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-        else {
-            tracing::warn!("tools registry cell missing; dropping ToolsRegistered");
-            return;
-        };
-
-        match &evt.session_id {
-            // Global tools (builtins) -> shared map.
-            None => {
-                cell.update(|registry| {
-                    for def in &evt.definitions {
-                        registry.global.insert(def.name.clone(), def.clone());
-                    }
-                });
-            }
-            // Session-scoped tools -> per-session map.
-            Some(target_id) => {
-                cell.update(|registry| {
-                    let session_map = registry.session.entry(target_id.clone()).or_default();
-                    for def in &evt.definitions {
-                        session_map.insert(def.name.clone(), def.clone());
-                    }
-                });
-            }
-        }
-    }
-
-    /// ToolsUnregistered: prune a provider's session-scoped tools from the
-    /// context cache so the LLM stops seeing them (e.g. an MCP server was
-    /// disabled, or its actor tore down on close/restart).
-    pub(in crate::feat::session::session_actor) fn on_tools_unregistered(
-        &self,
-        evt: &ToolsUnregistered,
-    ) {
-        // Tool names are "<provider><tool>" — the provider string already
-        // carries its trailing "__" separator (e.g. `mcp__stub__echo`), so a
-        // plain provider-prefix match never over-matches `stub_extended`.
-        let prefix = evt.provider.clone();
-        if let Some(cell) = self
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-        {
-            cell.update(|registry| {
-                let Some(map) = registry.session.get_mut(&evt.session_id) else {
-                    return;
-                };
-                map.retain(|name, _| !name.starts_with(&prefix));
-                if map.is_empty() {
-                    registry.session.remove(&evt.session_id);
-                }
-            });
-        }
-    }
-
-    /// SessionClosed cleanup: drop the closed session's entry from the
-    /// context tool cache so it does not leak across the app's lifetime
-    /// (the orchestrator prunes its own routing map separately).
-    pub(in crate::feat::session::session_actor) fn on_session_closed_cleanup(
-        &self,
-        session_id: &crate::protocol::SessionId,
-    ) {
-        if let Some(cell) = self
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-        {
-            cell.update(|registry| {
-                registry.session.remove(session_id);
-            });
-        }
-    }
-
     /// No-op receiver for [`PromptTemplatesLoaded`].
     #[expect(
         clippy::unused_self,
@@ -193,7 +110,7 @@ impl SessionPersistenceActor {
     /// so there is no global mirror to update. The handler exists only to keep
     /// the event dispatch arm explicit (and to make future per-session-side
     /// reactions easy to add).
-    pub(in crate::feat::session::session_actor) fn on_prompt_templates_loaded(
+    pub(in crate::session_actor) fn on_prompt_templates_loaded(
         &self,
         event: &PromptTemplatesLoaded,
     ) {
@@ -211,9 +128,9 @@ impl SessionPersistenceActor {
     /// 2. Keep current active_persona if it still exists in the new list.
     /// 3. Fallback to `"coding-assistant"` by name.
     /// 4. If coding-assistant not found, pick first available.
-    pub(in crate::feat::session::session_actor) fn on_personas_loaded(
+    pub(in crate::session_actor) fn on_personas_loaded(
         &self,
-        payload: &crate::feat::context::protocol::event::PersonasLoaded,
+        payload: &jinn_domain::feat::context::protocol::event::PersonasLoaded,
     ) {
         if payload.error.is_some() {
             tracing::warn!(
@@ -247,7 +164,7 @@ impl SessionPersistenceActor {
     }
 
     /// Loads persona picker entries into `AppState`.
-    pub(in crate::feat::session::session_actor) fn handle_load_persona_picker_entries(
+    pub(in crate::session_actor) fn handle_load_persona_picker_entries(
         &self,
         _payload: &LoadPersonaPickerEntries,
     ) {
@@ -298,14 +215,13 @@ mod tests {
 
     use super::super::super::helpers::test_actor_with_store_recording;
     use super::*;
-    use crate::common::app_state::AppState;
-    use crate::common::services::BusAudit;
-    use crate::common::state::State;
-    use crate::feat::context::protocol::event::PersonasLoaded;
-    use crate::feat::persona::Persona;
-    use crate::feat::ui::picker_states::PickerExt;
-    use crate::protocol::{ChatEntryId, PinPosition, SessionId};
-    use jinn_core_types::tool_types::ToolDefinition;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::common::services::BusAudit;
+    use jinn_domain::common::state::State;
+    use jinn_domain::feat::context::protocol::event::PersonasLoaded;
+    use jinn_domain::feat::persona::Persona;
+    use jinn_domain::feat::ui::picker_states::PickerExt;
+    use jinn_domain::protocol::{ChatEntryId, PinPosition, SessionId};
 
     fn make_persona(name: &str) -> Persona {
         Persona {
@@ -327,332 +243,6 @@ mod tests {
             ..actor
         };
         (actor, state, audit)
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_tools_registered_keeps_regular_tools_in_global_map() {
-        // Given a session actor.
-        let (actor, _state, _audit) = create_actor().await;
-
-        // Build a ToolsRegistered with a builtin-shaped tool definition.
-        let definitions = vec![ToolDefinition {
-            name: "bash".to_owned(),
-            description: "Run a shell command".to_owned(),
-            parameters: serde_json::json!({"type": "object"}),
-            prompt_snippet: None,
-            prompt_guidelines: vec![],
-            server_tool_type: None,
-        }];
-        let payload = ToolsRegistered {
-            provider: "builtin".to_owned(),
-            definitions,
-            session_id: None,
-        };
-
-        // When processing the event.
-        actor.on_tools_registered(&payload);
-
-        // Then regular tools are in the global map.
-        let registry = actor
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-            .expect("tools registry cell seeded");
-        assert!(
-            registry.read().global.contains_key("bash"),
-            "bash should be in global tool map"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_tools_registered_ignores_attached_tools_for_different_session() {
-        // Given a session actor.
-        let (actor, _state, _audit) = create_actor().await;
-        // Build a ToolsRegistered targeting a different session.
-        let other_session_id = SessionId::new();
-        let payload = ToolsRegistered {
-            provider: "tester:alpha".to_owned(),
-            definitions: vec![ToolDefinition {
-                name: "judgment_passed".to_owned(),
-                description: "Pass".to_owned(),
-                prompt_snippet: None,
-                prompt_guidelines: vec![],
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-                server_tool_type: None,
-            }],
-            session_id: Some(other_session_id.clone()),
-        };
-
-        // When processing the event.
-        actor.on_tools_registered(&payload);
-
-        // Then the tool is NOT in any global map.
-        let registry = actor
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-            .expect("tools registry cell seeded");
-        let registry_guard = registry.read();
-        assert!(
-            !registry_guard.global.contains_key("judgment_passed"),
-            "attached tool for different session should not be in global map"
-        );
-        // And NOT in the target session's map either (it was stored by session_id key).
-        // Since the tool WAS stored in session_tool_definitions[other_session_id],
-        // it should be there, not in global.
-        let session_tools = registry_guard.session.get(&other_session_id);
-        // The tool IS stored under the correct session key (that's the new behavior).
-        assert!(
-            session_tools.is_some_and(|m| m.contains_key("judgment_passed")),
-            "attached tool should be stored under its target session key"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_tools_registered_stores_attached_tools_for_own_session() {
-        // Given a session actor.
-        let (actor, state, _audit) = create_actor().await;
-        let session_id = state.read().session.active_session_id().clone();
-
-        // Build a ToolsRegistered targeting this session.
-        let payload = ToolsRegistered {
-            provider: "tester:alpha".to_owned(),
-            definitions: vec![ToolDefinition {
-                name: "judgment_passed".to_owned(),
-                description: "Pass".to_owned(),
-                prompt_snippet: None,
-                prompt_guidelines: vec![],
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-                server_tool_type: None,
-            }],
-            session_id: Some(session_id.clone()),
-        };
-
-        // When processing the event.
-        actor.on_tools_registered(&payload);
-
-        // Then the tool IS stored in the session-specific map.
-        let registry = actor
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-            .expect("tools registry cell seeded");
-        let registry_guard = registry.read();
-        let session_tools = registry_guard.session.get(&session_id);
-        assert!(
-            session_tools.is_some_and(|m| m.contains_key("judgment_passed")),
-            "attached tool for own session should be stored in session map"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_tools_unregistered_prunes_the_providers_tools_from_the_context_cache() {
-        // Given a session actor with two MCP providers' tools cached for one
-        // session (stub's echo + other's tool).
-        let (actor, _state, _audit) = create_actor().await;
-        let session_id = SessionId::new();
-        for (provider, tool_name) in [
-            ("mcp__stub__", "mcp__stub__echo"),
-            ("mcp__other__", "mcp__other__tool"),
-        ] {
-            actor.on_tools_registered(&ToolsRegistered {
-                provider: provider.to_owned(),
-                definitions: vec![ToolDefinition {
-                    name: tool_name.to_owned(),
-                    description: String::new(),
-                    prompt_snippet: None,
-                    prompt_guidelines: vec![],
-                    parameters: serde_json::json!({"type": "object", "properties": {}}),
-                    server_tool_type: None,
-                }],
-                session_id: Some(session_id.clone()),
-            });
-        }
-
-        // When the stub provider unregisters its tools.
-        actor.on_tools_unregistered(&ToolsUnregistered {
-            provider: "mcp__stub__".to_owned(),
-            session_id: session_id.clone(),
-        });
-
-        // Then only the other provider's tool remains cached.
-        let registry = actor
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-            .expect("tools registry cell seeded");
-        let registry_guard = registry.read();
-        let session_tools = registry_guard
-            .session
-            .get(&session_id)
-            .expect("session map must survive while another provider's tools remain");
-        assert!(
-            !session_tools.contains_key("mcp__stub__echo"),
-            "stub's tool must be pruned"
-        );
-        assert!(
-            session_tools.contains_key("mcp__other__tool"),
-            "other provider's tool must survive"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_tools_unregistered_drops_the_session_map_when_it_empties() {
-        // Given a session actor with one provider's tool cached.
-        let (actor, _state, _audit) = create_actor().await;
-        let session_id = SessionId::new();
-        actor.on_tools_registered(&ToolsRegistered {
-            provider: "mcp__stub__".to_owned(),
-            definitions: vec![ToolDefinition {
-                name: "mcp__stub__echo".to_owned(),
-                description: String::new(),
-                prompt_snippet: None,
-                prompt_guidelines: vec![],
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-                server_tool_type: None,
-            }],
-            session_id: Some(session_id.clone()),
-        });
-
-        // When that provider unregisters.
-        actor.on_tools_unregistered(&ToolsUnregistered {
-            provider: "mcp__stub__".to_owned(),
-            session_id: session_id.clone(),
-        });
-
-        // Then the emptied session map is removed entirely.
-        let registry = actor
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-            .expect("tools registry cell seeded");
-        assert!(
-            !registry.read().session.contains_key(&session_id),
-            "emptied session map must be dropped"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_tools_unregistered_spares_similarly_named_servers() {
-        // Given a session actor with tools from "stub" and "stub_extended".
-        let (actor, _state, _audit) = create_actor().await;
-        let session_id = SessionId::new();
-        for (provider, tool_name) in [
-            ("mcp__stub__", "mcp__stub__echo"),
-            ("mcp__stub_extended__", "mcp__stub_extended__echo"),
-        ] {
-            actor.on_tools_registered(&ToolsRegistered {
-                provider: provider.to_owned(),
-                definitions: vec![ToolDefinition {
-                    name: tool_name.to_owned(),
-                    description: String::new(),
-                    prompt_snippet: None,
-                    prompt_guidelines: vec![],
-                    parameters: serde_json::json!({"type": "object", "properties": {}}),
-                    server_tool_type: None,
-                }],
-                session_id: Some(session_id.clone()),
-            });
-        }
-
-        // When only "stub" unregisters.
-        actor.on_tools_unregistered(&ToolsUnregistered {
-            provider: "mcp__stub__".to_owned(),
-            session_id: session_id.clone(),
-        });
-
-        // Then "stub_extended"'s tool survives (prefix match includes the
-        // trailing "__" separator).
-        let registry = actor
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-            .expect("tools registry cell seeded");
-        let registry_guard = registry.read();
-        let session_tools = registry_guard
-            .session
-            .get(&session_id)
-            .expect("session map must survive");
-        assert!(
-            session_tools.contains_key("mcp__stub_extended__echo"),
-            "similarly-named server's tool must survive"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn session_closed_removes_the_sessions_context_tool_cache() {
-        // Given a session actor with a session-scoped tool cached.
-        let (actor, _state, _audit) = create_actor().await;
-        let session_id = SessionId::new();
-        actor.on_tools_registered(&ToolsRegistered {
-            provider: "mcp__stub__".to_owned(),
-            definitions: vec![ToolDefinition {
-                name: "mcp__stub__echo".to_owned(),
-                description: String::new(),
-                prompt_snippet: None,
-                prompt_guidelines: vec![],
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-                server_tool_type: None,
-            }],
-            session_id: Some(session_id.clone()),
-        });
-
-        // When the session closes (the SessionClosed cleanup path).
-        actor.on_session_closed_cleanup(&session_id);
-
-        // Then the session's context-cache entry is gone.
-        let registry = actor
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-            .expect("tools registry cell seeded");
-        assert!(
-            !registry.read().session.contains_key(&session_id),
-            "closed session's context tool cache must be removed"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_tools_registered_stores_global_tools_unconditionally() {
-        // Given a session actor.
-        let (actor, _state, _audit) = create_actor().await;
-        // Given a session actor.
-
-        // Build a global ToolsRegistered (session_id: None).
-        let payload = ToolsRegistered {
-            provider: "tester:beta".to_owned(),
-            definitions: vec![ToolDefinition {
-                name: "global_helper".to_owned(),
-                description: "Help".to_owned(),
-                prompt_snippet: None,
-                prompt_guidelines: vec![],
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-                server_tool_type: None,
-            }],
-            session_id: None,
-        };
-
-        // When processing the event.
-        actor.on_tools_registered(&payload);
-
-        // Then the global tool is stored.
-        let registry = actor
-            .services
-            .slices
-            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-            .expect("tools registry cell seeded");
-        assert!(
-            registry.read().global.contains_key("global_helper"),
-            "global tool should be stored unconditionally"
-        );
     }
 
     #[rstest::rstest]
@@ -831,7 +421,7 @@ mod tests {
         let entry_id = {
             let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
-            let entry = crate::protocol::ChatEntry::user("hello");
+            let entry = jinn_core_types::ChatEntry::user("hello");
             let id = entry.id.clone();
             session.push_entry(entry);
             id
@@ -873,7 +463,7 @@ mod tests {
         let entry_id = {
             let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
-            let mut entry = crate::protocol::ChatEntry::user("hello");
+            let mut entry = jinn_core_types::ChatEntry::user("hello");
             entry.pin_position = Some(PinPosition::Top);
             let id = entry.id.clone();
             session.push_entry(entry);
@@ -916,7 +506,7 @@ mod tests {
         let entry_id = {
             let mut guard = actor.state.write_test_no_cap();
             let session = guard.active_session_mut();
-            let entry = crate::protocol::ChatEntry::user("hello");
+            let entry = jinn_core_types::ChatEntry::user("hello");
             let id = entry.id.clone();
             session.push_entry(entry);
             id
@@ -951,7 +541,7 @@ mod tests {
         let session = guard.active_session_mut();
         (0..n)
             .map(|i| {
-                let mut entry = crate::protocol::ChatEntry::user(format!("entry {i}"));
+                let mut entry = jinn_core_types::ChatEntry::user(format!("entry {i}"));
                 entry.pin_position = Some(PinPosition::Top);
                 let id = entry.id.clone();
                 session.push_entry(entry);

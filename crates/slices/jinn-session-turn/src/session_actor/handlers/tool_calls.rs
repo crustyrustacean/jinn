@@ -3,10 +3,10 @@
 //! Handles the full tool call lifecycle: creation via streaming, argument assembly,
 //! execution tracking, result collection, and batch completion routing.
 
-use crate::common::actor_deps::BusPublish;
-use crate::feat::context::protocol::event::ContextOverrideChanged;
-use crate::feat::context::snapshot::{assemble_via_service, build_assembly_inputs};
-use crate::protocol::PinPosition;
+use jinn_domain::common::actor_deps::BusPublish;
+use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
+use jinn_domain::feat::context::snapshot::{assemble_via_service, build_assembly_inputs};
+use jinn_core_types::PinPosition;
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_session_msg::PhaseKind;
@@ -20,7 +20,7 @@ use super::super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
     /// Begins tracking a streaming tool call.
-    pub(in crate::feat::session::session_actor) fn on_tool_use_started(
+    pub(in crate::session_actor) fn on_tool_use_started(
         &self,
         event: &ToolUseStarted,
     ) {
@@ -33,7 +33,7 @@ impl SessionPersistenceActor {
     ///
     /// The placeholder entry was created by `on_tool_use_started`. This updates
     /// it in place with the full arguments string, avoiding a duplicate entry.
-    pub(in crate::feat::session::session_actor) fn on_tool_call_received(
+    pub(in crate::session_actor) fn on_tool_call_received(
         &self,
         event: &ToolCallReceived,
     ) {
@@ -48,7 +48,7 @@ impl SessionPersistenceActor {
     }
 
     /// Appends a partial JSON delta to a streaming tool call.
-    pub(in crate::feat::session::session_actor) fn on_tool_call_streaming(
+    pub(in crate::session_actor) fn on_tool_call_streaming(
         &self,
         event: &ToolCallStreaming,
     ) {
@@ -60,7 +60,7 @@ impl SessionPersistenceActor {
         });
     }
     /// Pushes a tool result entry into the session history.
-    pub(in crate::feat::session::session_actor) async fn on_tool_execution_completed(
+    pub(in crate::session_actor) async fn on_tool_execution_completed(
         &self,
         event: &ToolExecutionCompleted,
     ) {
@@ -100,7 +100,7 @@ impl SessionPersistenceActor {
     }
 
     /// Creates a pending ToolResult entry when a streaming tool starts executing.
-    pub(in crate::feat::session::session_actor) fn on_tool_execution_started(
+    pub(in crate::session_actor) fn on_tool_execution_started(
         &self,
         event: &ToolExecutionStarted,
     ) {
@@ -110,7 +110,7 @@ impl SessionPersistenceActor {
         });
     }
     /// Appends incremental output to a pending ToolResult entry.
-    pub(in crate::feat::session::session_actor) fn on_tool_execution_output(
+    pub(in crate::session_actor) fn on_tool_execution_output(
         &self,
         event: &ToolExecutionOutput,
     ) {
@@ -121,7 +121,7 @@ impl SessionPersistenceActor {
     }
     /// Drains pending history mutations and steering buffer entries, emitting
     /// ContextOverrideChanged events for any modified entries.
-    async fn apply_pending_mutations_and_steering(&self, session_id: &crate::protocol::SessionId) {
+    async fn apply_pending_mutations_and_steering(&self, session_id: &jinn_core_types::SessionId) {
         // Drain and apply pending history mutations, then normalize loop
         // layout so committed loops never contain interstitials before
         // assembly (the read-side converter stays simple).
@@ -169,7 +169,7 @@ impl SessionPersistenceActor {
 
     /// Assembles the continuation prompt, transitions to streaming phase,
     /// and emits the SendToLlmProvider command.
-    async fn assemble_and_send_continuation(&self, session_id: &crate::protocol::SessionId) {
+    async fn assemble_and_send_continuation(&self, session_id: &jinn_core_types::SessionId) {
         let assembled = {
             let inputs = {
                 let guard = self.state.read();
@@ -199,7 +199,7 @@ impl SessionPersistenceActor {
 
                 let reasoning_effort = {
                     let profile = session.profile();
-                    crate::resolve_effort(profile.reasoning_effort)
+                    jinn_domain::resolve_effort(profile.reasoning_effort)
                 };
                 let (provider_id, model_used, endpoint_tag) = {
                     // Snapshot the endpoint tag immutably before mutating the model
@@ -272,7 +272,7 @@ impl SessionPersistenceActor {
     /// and the session is already in sending state (set by `on_stream_completed`
     /// for the `ToolUse` reason). We just need to assemble the prompt via
     /// the full session history.
-    pub(in crate::feat::session::session_actor) async fn on_tool_batch_completed(
+    pub(in crate::session_actor) async fn on_tool_batch_completed(
         &self,
         event: &ToolBatchCompleted,
     ) {
@@ -330,9 +330,9 @@ impl SessionPersistenceActor {
     /// Called from both `on_tool_batch_completed` (normal path, phase already
     /// `Sending`) and `on_stream_completed` (draining a buffered batch that
     /// raced ahead of `StreamCompleted(ToolUse)`).
-    pub(in crate::feat::session::session_actor) async fn continue_tool_loop(
+    pub(in crate::session_actor) async fn continue_tool_loop(
         &self,
-        session_id: &crate::protocol::SessionId,
+        session_id: &jinn_core_types::SessionId,
     ) {
         // If tool loop is disabled, end the turn instead of continuing.
         // This is used by judge verdict tools to prevent infinite tool-call loops.
@@ -373,9 +373,9 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use super::super::super::helpers::{test_actor, test_actor_recording};
-    use crate::protocol::ToolResultStatus;
-    use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
+    use super::super::super::helpers::{ensure_context_assembly, test_actor, test_actor_recording};
+    use jinn_core_types::ToolResultStatus;
+    use jinn_domain::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
     use jinn_core_types::tool_types::{ToolCall, ToolResult};
     use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
     use jinn_session_msg::PhaseKind;
@@ -425,11 +425,11 @@ mod tests {
     #[tokio::test]
     async fn tool_batch_completed_via_bus_emits_continuation() {
         // Given a spawned session actor with a tool-call entry in its history.
-        use crate::common::app_state::AppState;
-        use crate::common::bus::test_harness::{TestHarness, await_recorded};
-        use crate::common::state::State;
-        use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-        use crate::feat::session::session_actor::{
+        use jinn_domain::common::app_state::AppState;
+        use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+        use jinn_domain::common::state::State;
+        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+        use crate::session_actor::{
             SessionPersistenceActor, SessionPersistenceActorDeps,
         };
         use jinn_inference_msg::SendToLlmProvider;
@@ -454,17 +454,15 @@ mod tests {
             SessionPersistenceActorDeps {
                 deps: {
                     let deps = harness.actor_deps().await;
-                    let _ = crate::feat::context::assembly_test_bridge::ensure_spawned(
-                        &deps.services.trouper_system,
-                    );
+                    ensure_context_assembly(&deps.services.trouper_system);
                     deps
                 },
                 state,
-                cap: crate::common::tcaps::mint::mint_session_cap(),
-                frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
+                cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+                frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 counter: TiktokenCounter::o200k_base(),
                 token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-                image_converter: crate::feat::image_convert::ImageConverterService::unavailable(),
+                image_converter: jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
             },
         );
 
@@ -497,14 +495,14 @@ mod tests {
         // Given a spawned session actor with a streaming session whose tool
         // batch has already landed (the buffered-batch pre-cancel state: history
         // holds the tool call, phase is Streaming).
-        use crate::common::app_state::AppState;
-        use crate::common::bus::test_harness::{TestHarness, await_recorded};
-        use crate::common::state::State;
-        use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-        use crate::feat::session::session_actor::{
+        use jinn_domain::common::app_state::AppState;
+        use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+        use jinn_domain::common::state::State;
+        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+        use crate::session_actor::{
             SessionPersistenceActor, SessionPersistenceActorDeps,
         };
-        use crate::protocol::ChatEntry;
+        use jinn_core_types::ChatEntry;
         use jinn_core_types::tool_types::ToolResult;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
@@ -533,17 +531,15 @@ mod tests {
             SessionPersistenceActorDeps {
                 deps: {
                     let deps = harness.actor_deps().await;
-                    let _ = crate::feat::context::assembly_test_bridge::ensure_spawned(
-                        &deps.services.trouper_system,
-                    );
+                    ensure_context_assembly(&deps.services.trouper_system);
                     deps
                 },
                 state: state.clone(),
-                cap: crate::common::tcaps::mint::mint_session_cap(),
-                frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
+                cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+                frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 counter: TiktokenCounter::o200k_base(),
                 token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-                image_converter: crate::feat::image_convert::ImageConverterService::unavailable(),
+                image_converter: jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
             },
         );
 
@@ -629,7 +625,7 @@ mod tests {
         let cancelled_entries = session
             .history()
             .iter()
-            .filter(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Error { .. }))
+            .filter(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Error { .. }))
             .count();
         assert_eq!(
             cancelled_entries, 1,
@@ -656,11 +652,11 @@ mod tests {
         // against switching the bus itself to Guaranteed). The drop race itself is
         // timing-dependent and not deterministically reproducible here; this guard
         // ensures the wiring stays correct and the burst path stays livelock-free.
-        use crate::common::app_state::AppState;
-        use crate::common::bus::test_harness::{TestHarness, await_recorded};
-        use crate::common::state::State;
-        use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-        use crate::feat::session::session_actor::{
+        use jinn_domain::common::app_state::AppState;
+        use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+        use jinn_domain::common::state::State;
+        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+        use crate::session_actor::{
             SessionPersistenceActor, SessionPersistenceActorDeps,
         };
         use jinn_inference_msg::SendToLlmProvider;
@@ -697,17 +693,15 @@ mod tests {
             SessionPersistenceActorDeps {
                 deps: {
                     let deps = harness.actor_deps().await;
-                    let _ = crate::feat::context::assembly_test_bridge::ensure_spawned(
-                        &deps.services.trouper_system,
-                    );
+                    ensure_context_assembly(&deps.services.trouper_system);
                     deps
                 },
                 state,
-                cap: crate::common::tcaps::mint::mint_session_cap(),
-                frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
+                cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+                frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 counter: TiktokenCounter::o200k_base(),
                 token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-                image_converter: crate::feat::image_convert::ImageConverterService::unavailable(),
+                image_converter: jinn_domain::feat::image_convert::ImageConverterService::unavailable(),
             },
         );
 
@@ -1204,7 +1198,7 @@ mod tests {
             .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-dispatch"))
             .expect("tool call entry");
         match &tc.timing {
-            crate::protocol::EntryTiming::Streamed { dispatched_at, .. } => {
+            jinn_core_types::EntryTiming::Streamed { dispatched_at, .. } => {
                 assert_eq!(dispatched_at, &dispatched);
             }
             other => panic!("expected Streamed, got {other:?}"),
@@ -1367,9 +1361,9 @@ mod tests {
             session.begin_streaming();
             session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
-            session.queue_mutations(vec![crate::protocol::HistoryMutation::SetContextOverride {
+            session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
                 entry_id: entry_id.clone(),
-                value: crate::protocol::ContextOverride::ForcedExclude,
+                value: jinn_core_types::ContextOverride::ForcedExclude,
                 source: ChangeSource::Internal {
                     label: "test".into(),
                 },
@@ -1400,7 +1394,7 @@ mod tests {
             .expect("assistant entry exists");
         assert_eq!(
             assistant.context_override(),
-            crate::protocol::ContextOverride::ForcedExclude,
+            jinn_core_types::ContextOverride::ForcedExclude,
             "expected mutation to be applied at tool batch completion"
         );
 
