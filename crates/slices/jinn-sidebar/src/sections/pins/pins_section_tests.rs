@@ -275,7 +275,7 @@ fn render_rows(
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer();
@@ -351,7 +351,7 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
 
@@ -375,7 +375,7 @@ fn render_selected_entry_has_darkgray_marker_when_not_focused() {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
 

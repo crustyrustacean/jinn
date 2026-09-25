@@ -6,6 +6,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::Block;
 
+use super::layout;
 use super::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
@@ -45,65 +46,49 @@ impl Sidebar {
 
     /// Renders all sections within the given area.
     ///
-    /// Applies a dark gray background to the entire sidebar area,
-    /// then renders each section in registration order, stacking vertically.
-    /// Sections receive their computed sub-area based on content height.
+    /// Sections form one document whose rows are windowed by a single offset
+    /// that keeps the focused section's cursor visible, so a section taller
+    /// than the column scrolls instead of being silently dropped. Each section
+    /// receives the slice of the column its span occupies, plus the number of
+    /// its own leading rows scrolled above the column.
     pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         // Clear sidebar area with dark gray background.
         let background =
             Block::default().style(Style::default().bg(ctx.state.frontend.theme.gutter_bg));
         frame.render_widget(background, area);
 
-        // Pre-compute all section heights so we don't fight the borrow checker.
-        let heights: Vec<u16> = self
-            .sections
-            .iter_mut()
-            .map(|s| s.content_height(ctx))
-            .collect();
-        let n = self.sections.len();
+        let document = {
+            let ids: Vec<_> = self.sections.iter().map(|section| section.id()).collect();
+            layout::with_cursor(layout::document_for(ctx.state, &ids), ctx.state)
+        };
+        let offset = document.offset(area.height);
+        // When the document is shorter than the column, push it down so the
+        // sessions block — the last section — sits at the bottom of a tall
+        // terminal. Once the document overflows, the slack is zero and the
+        // single scroll offset takes over.
+        let slack = document.bottom_slack(area.height);
+        let area = Rect {
+            y: area.y + slack,
+            height: area.height - slack,
+            ..area
+        };
 
-        // Render all sections except the last top-down.
-        let mut y_offset = 0u16;
-        for (i, section) in self.sections.iter_mut().enumerate() {
-            let height = heights.get(i).copied().unwrap_or(0);
-            if i == n - 1 {
-                break; // handle last section separately
-            }
-            if height == 0 || y_offset >= area.height {
+        for (span, section) in document.spans.iter().zip(self.sections.iter_mut()) {
+            let Some((section_area, skip_rows)) =
+                layout::visible_rect(area, *span, offset, area.height)
+            else {
                 continue;
-            }
-            let available = area.height.saturating_sub(y_offset);
-            let section_height = height.min(available);
-            let section_area = Rect {
-                x: area.x,
-                y: area.y + y_offset,
-                width: area.width,
-                height: section_height,
             };
-            section.render(frame, section_area, ctx);
-            y_offset += section_height;
+            section.render(frame, section_area, skip_rows, ctx);
         }
 
-        // Render the last section (Sessions) anchored to the bottom.
-        if n > 0 {
-            let last_idx = n - 1;
-            let height = heights.get(last_idx).copied().unwrap_or(0);
-            if height > 0 {
-                let bottom_y = area.height.saturating_sub(height);
-                let section_y = bottom_y.max(y_offset);
-                let available = area.height.saturating_sub(section_y);
-                let section_height = height.min(available);
-                let section_area = Rect {
-                    x: area.x,
-                    y: area.y + section_y,
-                    width: area.width,
-                    height: section_height,
-                };
-                if let Some(section) = self.sections.get_mut(last_idx) {
-                    section.render(frame, section_area, ctx);
-                }
-            }
-        }
+        layout::render_scroll_indicators(
+            frame,
+            area,
+            offset,
+            document.total_rows,
+            &ctx.state.frontend.theme,
+        );
     }
 }
 
@@ -333,9 +318,6 @@ pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
             } else if target == jinn_sidebar_msg::SidebarSectionId::Pins {
                 // Pins has a retained cursor - sync chat log to show it.
                 pins::pins_section::sync_chat_log_cursor(state);
-            } else if target == jinn_sidebar_msg::SidebarSectionId::Sessions {
-                // Ensure scroll offset is valid for sessions.
-                sessions::scroll_to_cursor(state);
             }
             return;
         }

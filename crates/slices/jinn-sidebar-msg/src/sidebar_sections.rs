@@ -396,8 +396,6 @@ mod tests {
 pub struct SessionsSectionState {
     /// Index into the sorted open sessions list.
     pub selected_index: Option<usize>,
-    /// Scroll offset: the first session entry index that is visible.
-    pub scroll_offset: usize,
     /// Visual-parent index: maps a loaded session to its nearest loaded ancestor
     /// when the direct parent has been archived/removed from memory.
     /// Updated reactively in `remove_and_replace()`, invalidated on session load.

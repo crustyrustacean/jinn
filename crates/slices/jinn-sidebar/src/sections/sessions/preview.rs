@@ -15,11 +15,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::sections::sessions::MAX_VISIBLE_SESSIONS;
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_chat_log_view::chat_log::RenderContext;
 use jinn_chat_log_view::chat_log::entry_to_lines;
-use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_session_state::ChatSessionState;
 use jinn_sidebar_msg::SessionPreviewCache;
@@ -31,18 +29,6 @@ const PREVIEW_ENTRY_COUNT: usize = 5;
 const PREVIEW_MAX_LINES: usize = 20;
 /// Default max lines for tool entries when no preference is set.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
-
-/// Computes the sessions section content height from state.
-///
-/// Mirrors the logic in `SessionsSection::content_height` so the preview
-/// can determine where the sessions section starts without needing the
-/// section instance.
-pub fn sessions_section_content_height(state: &AppState) -> u16 {
-    let entry_count = sorted_open_sessions(state).len() as u16;
-    let visible = entry_count.min(MAX_VISIBLE_SESSIONS as u16);
-    // entries(N).max(1) + footer(1)
-    visible.max(1) + 1
-}
 
 /// Renders the session preview popup when the sidebar sessions section is focused.
 ///
@@ -81,16 +67,20 @@ pub fn render_session_preview_for_state(
     let theme = &state.frontend.theme;
     let tool_max = state.frontend.preferences.tool_entry_max_lines;
 
-    // Compute the sessions section top Y (it's the last section, bottom-anchored).
-    let sessions_height = sessions_section_content_height(state);
-    let sessions_top_y = sidebar_rect.y + sidebar_rect.height.saturating_sub(sessions_height);
-
-    // Cursor position: visual row within the sessions section.
-    let scroll_offset = state
-        .frontend
-        .with_sections(|s| s.sessions.scroll_offset, || 0);
-    let visual_row = idx.saturating_sub(scroll_offset) as u16;
-    let cursor_y = sessions_top_y + visual_row;
+    // Anchor the popup to the cursor through the same document layout the
+    // sidebar renders with, so it stays attached while the column scrolls.
+    let document = crate::sections::layout::document_with_cursor(state);
+    let offset = document.offset(sidebar_rect.height);
+    let span = document.span_or_empty(jinn_sidebar_msg::SidebarSectionId::Sessions);
+    let cursor_y = sidebar_rect
+        .y
+        .saturating_add(span.top_in_view(offset))
+        .saturating_add(u16::try_from(idx).unwrap_or(u16::MAX))
+        .min(
+            sidebar_rect
+                .y
+                .saturating_add(sidebar_rect.height.saturating_sub(1)),
+        );
 
     // Compute content line count for height estimation.
     let mut cache = state.frontend.caches.session_preview_cache.write();

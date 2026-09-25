@@ -43,10 +43,9 @@ pub use load_subagent::{
     LoadSubagentError, handle_load_subagent_session, validate_load_subagent_session,
 };
 
-pub use navigate::{navigate, receive_cursor, scroll_to_cursor, scroll_to_cursor_split};
+pub use navigate::{navigate, receive_cursor};
 pub use preview::{
     render_session_preview, render_session_preview_for_state, session_preview_popup_rect,
-    sessions_section_content_height,
 };
 pub use reconcile::{reconcile_after_session_removal, reconcile_split};
 pub use render::SessionsSection;
@@ -71,7 +70,5 @@ pub use teardown::handle_session_teardown;
 pub(crate) const ACTIVE_PREFIX: &str = "▸ ";
 /// Inactive session prefix (two spaces to align with `ACTIVE_PREFIX`).
 pub(crate) const INACTIVE_PREFIX: &str = "  ";
-/// Maximum number of session entries visible at once.
-pub const MAX_VISIBLE_SESSIONS: usize = 15;
 /// Minimum time between animation frame advances.
 pub(crate) const ANIMATION_INTERVAL: Duration = Duration::from_millis(80);

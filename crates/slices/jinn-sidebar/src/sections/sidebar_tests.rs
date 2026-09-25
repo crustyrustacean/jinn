@@ -427,7 +427,7 @@ fn jump_prev_from_persona_at_boundary_does_nothing() {
 
 #[rstest::rstest]
 fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
-    // Given 20 sessions, persona focused, sessions has cursor at index 18 with scroll_offset 4.
+    // Given 20 sessions, persona focused, sessions has cursor at index 18.
     let mut state = {
         let mut s = AppState::default_with_scope_focus();
         for i in 1..20 {
@@ -451,9 +451,6 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
     state
         .frontend
         .update_sections(|s| s.sessions.selected_index = Some(18));
-    state
-        .frontend
-        .update_sections(|s| s.sessions.scroll_offset = 4);
 
     // When jumping to sessions (skipping empty pins if any, or through pins).
     jump_to_section(&SidebarIntent::MoveDown, &mut state);
@@ -467,13 +464,6 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
                 .frontend
                 .with_sections(|s| s.sessions.selected_index, || None),
             Some(18)
-        );
-        // And scroll_to_cursor was called to adjust offset.
-        assert_eq!(
-            state
-                .frontend
-                .with_sections(|s| s.sessions.scroll_offset, || 0),
-            4
         );
     }
 }
