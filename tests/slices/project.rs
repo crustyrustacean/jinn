@@ -13,7 +13,12 @@ async fn project_activation_registers_project_add_cell() {
     activate_project(&mut services);
 
     // Then the project-add cell is registered.
-    assert!(services.slices.slots().contains(&jinn_project::project_add_slot()));
+    assert!(
+        services
+            .slices
+            .slots()
+            .contains(&jinn_project::project_add_slot())
+    );
 }
 
 #[rstest::rstest]
@@ -27,5 +32,10 @@ async fn preferences_activation_does_not_register_project_add_cell() {
     activate_preferences(&mut services);
 
     // Then the project-add cell is absent.
-    assert!(!services.slices.slots().contains(&jinn_project::project_add_slot()));
+    assert!(
+        !services
+            .slices
+            .slots()
+            .contains(&jinn_project::project_add_slot())
+    );
 }
