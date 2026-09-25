@@ -8,8 +8,8 @@
 )]
 
 use super::intent::{
-    attach_project_add_rows, confirm_project_add, leave_project_add, open_project_add,
-    project_add_scope, project_add_slot, register_project_add_input_hook,
+    attach_project_add_rows, clear_or_leave_project_add, confirm_project_add, leave_project_add,
+    open_project_add, project_add_scope, project_add_slot, register_project_add_input_hook,
 };
 use super::state::ProjectAddInputState;
 use jinn_slices::KeyRoutes;
@@ -89,7 +89,7 @@ fn cell() -> (jinn_slices::Slices, TypedCell<ProjectAddInputState>) {
 }
 
 #[rstest::rstest]
-fn rows_bind_confirm_and_leave_in_own_scope_and_open_in_picker_scope() {
+fn rows_bind_confirm_leave_clear_and_open() {
     // Given a route table with the popup rows attached.
     let routes = KeyRoutes::new();
     let (_slices, cell) = cell();
@@ -105,7 +105,7 @@ fn rows_bind_confirm_and_leave_in_own_scope_and_open_in_picker_scope() {
         .expect("opener row");
     assert_eq!(open.key, "<c-n>");
     assert!(matches!(open.site, BindSite::StaticScopes(_)));
-    // And confirm/leave bind <enter>/<esc> in the popup's own scope.
+    // And confirm/leave/clear bind in the popup's own scope.
     let confirm = rows
         .iter()
         .find(|row| row.route_id.as_str() == "confirm-project-add")
@@ -117,6 +117,11 @@ fn rows_bind_confirm_and_leave_in_own_scope_and_open_in_picker_scope() {
         .find(|row| row.route_id.as_str() == "leave-project-add")
         .expect("leave row");
     assert_eq!(leave.key, "<esc>");
+    let clear = rows
+        .iter()
+        .find(|row| row.route_id.as_str() == "clear-or-leave-project-add")
+        .expect("clear row");
+    assert_eq!(clear.key, "<c-c>");
 }
 
 #[rstest::rstest]
@@ -195,6 +200,36 @@ fn confirm_invalid_dir_stays_open_without_publishing() {
 }
 
 #[rstest::rstest]
+fn clear_or_leave_with_text_clears_and_stays_open() {
+    // Given a popup with typed text.
+    let (_slices, cell) = cell();
+    cell.update(|s| s.text.set("/tmp/some-project".to_owned()));
+
+    // When Ctrl-C is requested.
+    let result = clear_or_leave_project_add(&cell);
+
+    // Then the input clears without leaving the popup.
+    assert!(result.scope_signal.is_none());
+    assert!(cell.read().text.input.is_empty());
+}
+
+#[rstest::rstest]
+fn clear_or_leave_with_empty_text_clears_and_leaves() {
+    // Given an empty popup.
+    let (_slices, cell) = cell();
+
+    // When Ctrl-C is requested.
+    let result = clear_or_leave_project_add(&cell);
+
+    // Then the popup requests its own conditional pop.
+    assert_eq!(
+        result.scope_signal,
+        Some(ScopeSignal::PopIf(project_add_scope()))
+    );
+    assert!(cell.read().text.input.is_empty());
+}
+
+#[rstest::rstest]
 fn leave_clears_the_cell() {
     // Given a popup with text.
     let (_slices, cell) = cell();
@@ -208,7 +243,7 @@ fn leave_clears_the_cell() {
 }
 
 #[rstest::rstest]
-fn input_hook_edits_the_cell_and_ignores_non_edit_intents() {
+fn input_hook_edits_the_cell() {
     // Given a route table with the input hook registered.
     let routes = KeyRoutes::new();
     let (_slices, cell) = cell();
@@ -226,4 +261,43 @@ fn input_hook_edits_the_cell_and_ignores_non_edit_intents() {
     // Then the cell reflects the edits: the 'm' landed before the 't'.
     let state = cell.read();
     assert_eq!(state.text.input, "/mt");
+}
+
+#[rstest::rstest]
+fn input_hook_moves_cursor_home_and_consumes_intent() {
+    // Given a route table with the input hook registered and text.
+    let routes = KeyRoutes::new();
+    let (_slices, cell) = cell();
+    cell.update(|s| s.text.set("héllo".to_owned()));
+    register_project_add_input_hook(&routes, &cell);
+    let hook = routes
+        .input_hook(&project_add_scope())
+        .expect("hook registered for the popup scope");
+
+    // When moving the cursor home.
+    let result = hook(&EditIntent::CursorHome);
+
+    // Then the intent is consumed and the cursor reaches the start.
+    assert!(result.is_some());
+    assert_eq!(cell.read().text.cursor_pos, 0);
+}
+
+#[rstest::rstest]
+fn input_hook_moves_cursor_end_and_consumes_intent() {
+    // Given a route table with the input hook registered and text.
+    let routes = KeyRoutes::new();
+    let (_slices, cell) = cell();
+    cell.update(|s| s.text.set("héllo".to_owned()));
+    cell.update(|s| s.text.cursor_home());
+    register_project_add_input_hook(&routes, &cell);
+    let hook = routes
+        .input_hook(&project_add_scope())
+        .expect("hook registered for the popup scope");
+
+    // When moving the cursor to the end.
+    let result = hook(&EditIntent::CursorEnd);
+
+    // Then the intent is consumed and the cursor reaches the end.
+    assert!(result.is_some());
+    assert_eq!(cell.read().text.cursor_pos, "héllo".len());
 }

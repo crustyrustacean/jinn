@@ -356,15 +356,14 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "cancel rename",
         sync(rename::handle_rename_session_leave),
     ));
-    routes.attach(RouteRow {
-        route_id: RouteId::new("sidebar:ctrl-clear"),
-        scope: rename_scope(),
-        key: "<c-c>",
-        category: "general",
-        site: BindSite::OwnScope,
-        feature: "sidebar",
-        outcome: RouteOutcome::StaticIntent(RouteId::new("sidebar:ctrl-clear")),
-    });
+    routes.attach(row(
+        "rename-clear-or-leave",
+        rename_scope(),
+        "<c-c>",
+        "general",
+        "clear the title, or leave when already empty",
+        sync(rename::handle_rename_session_clear_or_leave),
+    ));
     routes.attach(row(
         "session-archive",
         sessions_scope.clone(),
@@ -576,11 +575,18 @@ pub fn register_rename_input_hook(
                 cell.update(|s| rename::cursor_right(&mut s.rename_input));
                 IntentResult::empty()
             }
+            EditIntent::CursorHome => {
+                cell.update(|s| rename::cursor_home(&mut s.rename_input));
+                IntentResult::empty()
+            }
+            EditIntent::CursorEnd => {
+                cell.update(|s| rename::cursor_end(&mut s.rename_input));
+                IntentResult::empty()
+            }
             EditIntent::Paste(text) => {
                 cell.update(|s| rename::paste(&mut s.rename_input, text));
                 IntentResult::empty()
             }
-            EditIntent::CursorHome | EditIntent::CursorEnd => return None,
         };
         Some(result)
     });
@@ -598,35 +604,85 @@ mod tests {
     )]
 
     use super::*;
+    use jinn_slices::route::EditIntent;
 
-    /// The sidebar's rows bind `<c-c>` in the rename popup's dynamic scope
-    /// (as a static-intent row resolving to the kernel's CtrlClear). The
-    /// popup's input-hook typing carve-out does not cover `<c-c>`, so this
-    /// row is the only way ctrl-clear reaches the rename arm of
-    /// `handle_ctrl_clear`.
+    fn rename_cell() -> (
+        jinn_slices::Slices,
+        jinn_slices::TypedCell<jinn_sidebar_msg::SidebarSections>,
+    ) {
+        let slices = jinn_slices::Slices::new();
+        let cell = slices
+            .register(
+                crate::sidebar_sections_slot(),
+                jinn_sidebar_msg::SidebarSections::default(),
+            )
+            .expect("fresh registry has the sidebar slot free");
+        (slices, cell)
+    }
+
+    #[rstest::rstest]
+    fn rename_input_hook_pastes_unicode_at_cursor() {
+        // Given a rename cell containing Unicode text with the cursor at its start.
+        let routes = KeyRoutes::new();
+        let (_slices, cell) = rename_cell();
+        cell.update(|sections| sections.rename_input.text.set("é界".to_owned()));
+        cell.update(|sections| sections.rename_input.text.cursor_home());
+        register_rename_input_hook(&routes, &cell);
+        let hook = routes
+            .input_hook(&rename_scope())
+            .expect("rename hook is registered");
+
+        // When bracketed paste is handled.
+        let result = hook(&EditIntent::Paste("🙂".to_owned()));
+
+        // Then the paste is consumed and inserted at the cursor.
+        assert!(result.is_some());
+        assert_eq!(cell.read().rename_input.text.input, "🙂é界");
+    }
+
+    #[rstest::rstest]
+    fn rename_input_hook_consumes_home_and_end() {
+        // Given a rename cell with the cursor at the start.
+        let routes = KeyRoutes::new();
+        let (_slices, cell) = rename_cell();
+        cell.update(|sections| sections.rename_input.text.set("héllo".to_owned()));
+        cell.update(|sections| sections.rename_input.text.cursor_home());
+        register_rename_input_hook(&routes, &cell);
+        let hook = routes
+            .input_hook(&rename_scope())
+            .expect("rename hook is registered");
+
+        // When End and Home are handled.
+        let end = hook(&EditIntent::CursorEnd);
+        let end_position = cell.read().rename_input.text.cursor_pos;
+        let home = hook(&EditIntent::CursorHome);
+
+        // Then both intents are consumed and the cursor reaches each boundary.
+        assert!(end.is_some());
+        assert_eq!(end_position, "héllo".len());
+        assert!(home.is_some());
+        assert_eq!(cell.read().rename_input.text.cursor_pos, 0);
+    }
+
+    /// The rename popup's `<c-c>` route is a slice action rather than a
+    /// static kernel intent, so its clear/leave behavior stays owned here.
     #[rstest::rstest]
     #[test]
-    fn attach_sidebar_rows_binds_ctrl_clear_in_the_rename_scope() {
+    fn attach_sidebar_rows_binds_action_for_ctrl_clear_in_rename_scope() {
         // Given an empty shared route table.
         let routes = KeyRoutes::new();
 
         // When the sidebar's rows are attached.
         attach_sidebar_rows(&routes);
 
-        // Then some row binds <c-c> in the rename scope as the
-        // sidebar:ctrl-clear static intent.
-        let ctrl_clear_in_rename = routes.rows().iter().any(|row| {
+        // Then <c-c> resolves to the rename clear-or-leave action.
+        assert!(routes.rows().iter().any(|row| {
             row.scope == rename_scope()
                 && row.key == "<c-c>"
                 && matches!(
-                    row.outcome,
-                    jinn_slices::RouteOutcome::StaticIntent(ref id)
-                        if id.as_str() == "sidebar:ctrl-clear"
+                    &row.outcome,
+                    RouteOutcome::Action { action, .. } if *action == "rename-clear-or-leave"
                 )
-        });
-        assert!(
-            ctrl_clear_in_rename,
-            "rename scope must carry a <c-c> sidebar:ctrl-clear row"
-        );
+        }));
     }
 }

@@ -74,11 +74,11 @@ fn row(
     }
 }
 
-/// Attaches the popup's route rows: confirm (`<enter>`) and leave (`<esc>`),
-/// plus the opener (`<c-n>` in the static `Picker(project)` scope — the
-/// popup scope does not exist yet when that key is pressed, so the opener
-/// binds there via the `StaticScopes` site and pushes the popup scope
-/// itself).
+/// Attaches the popup's route rows: confirm (`<enter>`), leave (`<esc>`),
+/// and Ctrl-C clear/leave, plus the opener (`<c-n>` in the static
+/// `Picker(project)` scope — the popup scope does not exist yet when that key
+/// is pressed, so the opener binds there via the `StaticScopes` site and
+/// pushes the popup scope itself).
 pub fn attach_project_add_rows(routes: &jinn_slices::KeyRoutes, cell: &ProjectAddCell) {
     routes.attach(RouteRow {
         route_id: RouteId::new("project-add:open"),
@@ -114,6 +114,13 @@ pub fn attach_project_add_rows(routes: &jinn_slices::KeyRoutes, cell: &ProjectAd
             IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(project_add_scope()))
         }),
     ));
+    routes.attach(row(
+        "clear-or-leave-project-add",
+        "<c-c>",
+        "project",
+        "clear the path, or leave when already empty",
+        action(cell, |_ctx, cell| clear_or_leave_project_add(cell)),
+    ));
 }
 
 /// Registers the popup's editing hook: every editing intent lands in the
@@ -143,11 +150,18 @@ pub fn register_project_add_input_hook(routes: &jinn_slices::KeyRoutes, cell: &P
                 cell.update(|s| s.text.cursor_right());
                 IntentResult::empty()
             }
+            EditIntent::CursorHome => {
+                cell.update(|s| s.text.cursor_home());
+                IntentResult::empty()
+            }
+            EditIntent::CursorEnd => {
+                cell.update(|s| s.text.cursor_end());
+                IntentResult::empty()
+            }
             EditIntent::Paste(text) => {
                 cell.update(|s| s.text.paste(text));
                 IntentResult::empty()
             }
-            EditIntent::CursorHome | EditIntent::CursorEnd => return None,
         };
         Some(result)
     });
@@ -217,4 +231,14 @@ pub(super) fn confirm_project_add(ctx: &mut ActionCtx<'_>, cell: &ProjectAddCell
 /// scope, so it pops explicitly).
 pub(super) fn leave_project_add(cell: &ProjectAddCell) {
     cell.update(|s| *s = ProjectAddInputState::default());
+}
+
+/// Clears nonempty input while remaining open, or leaves when already empty.
+pub(super) fn clear_or_leave_project_add(cell: &ProjectAddCell) -> IntentResult {
+    let had_text = !cell.read().text.input.is_empty();
+    leave_project_add(cell);
+    match had_text {
+        true => IntentResult::empty(),
+        false => IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(project_add_scope())),
+    }
 }
