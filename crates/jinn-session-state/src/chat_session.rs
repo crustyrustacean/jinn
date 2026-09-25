@@ -2647,6 +2647,25 @@ impl ChatSessionState {
             .machine
             .is_tool_call_at_history_index(idx)
     }
+
+    /// The ids of every `ToolCall` entry currently streaming arguments from the LLM.
+    ///
+    /// A single snapshot of the streaming state, so callers that need to test many
+    /// entries (such as the chat log's per-frame layout pass) pay one map walk instead
+    /// of a history scan per entry. Indices with no corresponding history entry are
+    /// skipped, matching [`Self::is_tool_call_streaming`]'s treatment of unknown ids.
+    pub fn streaming_tool_call_ids(&self) -> HashSet<ChatEntryId> {
+        let history: &[ChatEntry] = &self.core.history_work.history;
+        self.core
+            .ephemeral
+            .machine
+            .streaming_tool_call_indices()
+            .values()
+            .filter_map(|&history_index| history.get(history_index))
+            .map(|entry| entry.id.clone())
+            .collect()
+    }
+
     /// Returns this session's working directory for tool execution.
     pub fn cwd(&self) -> &std::path::Path {
         &self.core.lifecycle.cwd

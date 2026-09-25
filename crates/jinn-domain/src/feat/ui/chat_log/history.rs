@@ -26,14 +26,14 @@ mod gutter;
 mod scroll_indicator;
 mod viewport;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::protocol::ToolResultStatus;
-use crate::protocol::{ChatEntry, ChatEntryKind};
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_chat_log_view_msg::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
 };
@@ -169,6 +169,11 @@ struct HistoryRender<'a> {
 
     // Built by pipeline steps
     tool_result_statuses: HashMap<String, ToolResultStatus>,
+    /// Ids of the `ToolCall` entries streaming arguments right now.
+    ///
+    /// Snapshotted once per frame so layout can test membership per entry instead of
+    /// scanning the whole history for each tool call.
+    streaming_tool_call_ids: HashSet<ChatEntryId>,
     /// Per-visual-item wrapped line ranges: `entry_line_ranges[vi_idx] = (start, end)`.
     entry_line_ranges: Vec<(u16, u16)>,
     miss_lines: HashMap<usize, Vec<Line<'static>>>,
@@ -199,6 +204,7 @@ impl<'a> HistoryRender<'a> {
             width: area.width.saturating_sub(GUTTER_WIDTH),
             height: area.height,
         };
+        let streaming_tool_call_ids = state.active_session().streaming_tool_call_ids();
         Self {
             history: state.active_session().history(),
             selected_idx: state.active_session().selected_entry_index(),
@@ -209,6 +215,7 @@ impl<'a> HistoryRender<'a> {
             gutter_area,
             content_area,
             tool_result_statuses: HashMap::new(),
+            streaming_tool_call_ids,
             entry_line_ranges: Vec::new(),
             miss_lines: HashMap::new(),
             cached_lines: HashMap::new(),
@@ -254,6 +261,12 @@ impl<'a> HistoryRender<'a> {
     // Step 1: Build tool result status map
     // -----------------------------------------------------------------------
 
+    /// Whether `entry` is a `ToolCall` still streaming arguments.
+    fn is_streaming_tool_call(&self, entry: &ChatEntry) -> bool {
+        matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
+            && self.streaming_tool_call_ids.contains(&entry.id)
+    }
+
     /// Pair tool call IDs with their result status for background coloring.
     fn build_tool_result_map(&mut self) {
         self.tool_result_statuses = self
@@ -294,11 +307,7 @@ impl<'a> HistoryRender<'a> {
                     // entry's content fingerprint is unchanged.
                     let variant = render_variant(
                         self.paired_status_for_entry(entry),
-                        matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                            && self
-                                .state
-                                .active_session()
-                                .is_tool_call_streaming(&entry.id),
+                        self.is_streaming_tool_call(entry),
                         self.is_task_waiting(entry),
                     );
                     if let Some(hit) = cache.get(entry, is_expanded, variant, self.content_width) {
@@ -318,11 +327,7 @@ impl<'a> HistoryRender<'a> {
                             .tool_entry_max_lines
                             .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                         let paired_status = self.paired_status_for_entry(entry);
-                        let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                            && self
-                                .state
-                                .active_session()
-                                .is_tool_call_streaming(&entry.id);
+                        let is_streaming = self.is_streaming_tool_call(entry);
                         let is_waiting_on_subagent = self.is_task_waiting(entry);
                         let variant =
                             render_variant(paired_status, is_streaming, is_waiting_on_subagent);
@@ -507,11 +512,7 @@ impl<'a> HistoryRender<'a> {
                         lines
                     } else {
                         let paired_status = self.paired_status_for_entry(entry);
-                        let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                            && self
-                                .state
-                                .active_session()
-                                .is_tool_call_streaming(&entry.id);
+                        let is_streaming = self.is_streaming_tool_call(entry);
                         let is_waiting_on_subagent = self.is_task_waiting(entry);
                         let ctx = RenderContext {
                             content_width: self.content_width,
