@@ -10,7 +10,6 @@
 //! composition; commenting that call removes the slice with no other
 //! edits (removability).
 
-pub mod bridge;
 pub mod canvas_actor;
 pub mod contracts;
 pub mod fabric_events;
@@ -71,7 +70,7 @@ pub fn activate(ctx: &mut SliceCtx<'_>) -> Result<TypedCellRef, ActivationError>
     // registers the topic cursors synchronously, so events published
     // after this point cannot be missed, leaving no entries stuck on
     // "Starting". The forward relays (drained in composition) feed the
-    // topics from the kameo bus.
+    // topics from the fabric.
     canvas_actor::DashboardCanvasActor::spawn(ctx.trouper_system, &cell);
 
     // Route rows + view + tab declaration.

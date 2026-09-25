@@ -3,7 +3,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-use jinn_domain::feat::ui::chat_log::GUTTER_WIDTH;
+use jinn_chat_log_view::chat_log::GUTTER_WIDTH;
 use jinn_domain::{AppUiRegistry, RenderCtx};
 
 /// Renders the chat log element and registers it as selectable when not sidebar-focused.

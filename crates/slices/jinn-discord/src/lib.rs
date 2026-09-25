@@ -35,7 +35,6 @@ pub use jinn_discord_msg::DiscordThreadCreated;
 pub use jinn_discord_msg::ForumChannelError;
 pub use jinn_discord_msg::GatewayRequest;
 pub use jinn_discord_msg::ThreadId;
-pub use jinn_discord_msg::discord_topic;
 pub use key_routes::attach_discord_rows;
 pub use key_routes::discord_scope;
 pub use message_split::split_message;
@@ -137,37 +136,9 @@ pub async fn activate(
                 tx: bridge_tx,
                 gateway_tx,
                 state,
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
     }
-
-    // Forward routes: the session-family messages this slice consumes
-    // cross the core bridge onto `jinn.session`. Composition drains the
-    // staged set into per-route relays; the relay is just one more bus
-    // subscriber, so existing kameo consumers are unaffected.
-    let topic = jinn_session_msg::session_topic();
-    host.forward::<jinn_session_msg::SessionPhaseChanged, _>(topic.clone(), || {
-        <jinn_session_msg::SessionPhaseChanged as trouper::schema::Schema>::schema_def()
-    });
-    host.forward::<jinn_session_msg::SessionSetupCompleted, _>(topic.clone(), || {
-        <jinn_session_msg::SessionSetupCompleted as trouper::schema::Schema>::schema_def()
-    });
-    host.forward::<jinn_session_msg::SessionTeardownFinished, _>(topic.clone(), || {
-        <jinn_session_msg::SessionTeardownFinished as trouper::schema::Schema>::schema_def()
-    });
-    host.forward::<jinn_session_msg::SessionArchived, _>(topic.clone(), || {
-        <jinn_session_msg::SessionArchived as trouper::schema::Schema>::schema_def()
-    });
-    host.forward::<CreateThreadForSession, _>(topic.clone(), || {
-        <CreateThreadForSession as trouper::schema::Schema>::schema_def()
-    });
-    host.forward::<DiscordThreadCreated, _>(topic.clone(), || {
-        <DiscordThreadCreated as trouper::schema::Schema>::schema_def()
-    });
-    host.forward::<DiscordThreadCreateFailed, _>(topic, || {
-        <DiscordThreadCreateFailed as trouper::schema::Schema>::schema_def()
-    });
 
     // Route rows: the `gdc` sequence in the Normal scope.
     attach_discord_rows(host.key_routes());

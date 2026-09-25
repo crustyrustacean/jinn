@@ -22,23 +22,14 @@ pub mod intent;
 mod intent_phase2_tests;
 #[cfg(test)]
 mod intent_tests;
-pub mod protocol;
 pub mod slash_command;
-pub mod state;
 pub mod validator;
 
 // Re-export state types for convenience.
-pub use state::autocomplete::AutocompleteTrigger;
-pub use state::{ChatInputBoxState, InputMode};
-
-/// A single match for the prompt template autocomplete popup.
-#[derive(Debug, Clone)]
-pub struct AutocompleteMatch {
-    /// The template name (e.g. `"code-review"`).
-    pub name: String,
-    /// Short human-readable description for the popup.
-    pub description: String,
-}
+pub use jinn_chat_input_msg::AutocompleteMatch;
+pub use jinn_chat_input_msg::AutocompleteTrigger;
+pub use jinn_chat_input_msg::ChatInputBoxState;
+pub use jinn_chat_input_msg::InputMode;
 
 // Re-export element for registration.
 pub use element::ChatInputBoxElement;
@@ -68,6 +59,3 @@ mod register_tests {
         assert_eq!(registry.iter_mut().count(), 1);
     }
 }
-
-#[cfg(test)]
-mod chat_input_tests;

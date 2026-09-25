@@ -21,13 +21,12 @@ async fn test_app() -> TuiApp {
 }
 
 #[rstest::rstest]
-#[case::normal_chat(jinn_domain::FocusScope::Normal, Scope::Normal)]
-#[case::sidebar(jinn_domain::FocusScope::SidebarPersona, Scope::SidebarPersona)]
-#[case::input(jinn_domain::FocusScope::Input, Scope::Input)]
-#[case::picker_provider(jinn_domain::FocusScope::Picker { kind: jinn_domain::PickerKind::Provider }, Scope::PickerProvider)]
-#[case::sidebar_resize(jinn_domain::FocusScope::SidebarResize, Scope::SidebarResize)]
-#[case::picker_task_list(jinn_domain::FocusScope::Picker { kind: jinn_domain::PickerKind::TaskList }, Scope::PickerTaskList)]
-fn scope_for_focus_maps_correctly(#[case] focus: jinn_domain::FocusScope, #[case] expected: Scope) {
+#[case::normal_chat(jinn_slices::FocusScope::Normal, Scope::Normal)]
+#[case::sidebar(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope(), Scope::Dynamic(jinn_slices::SliceScopeId::navigation("sidebar", "persona")))]
+#[case::input(jinn_slices::FocusScope::Input, Scope::Input)]
+#[case::picker_provider(jinn_slices::FocusScope::Picker { kind: jinn_domain::PickerKind::Provider }, Scope::PickerProvider)]
+#[case::picker_task_list(jinn_slices::FocusScope::Picker { kind: jinn_domain::PickerKind::TaskList }, Scope::PickerTaskList)]
+fn scope_for_focus_maps_correctly(#[case] focus: jinn_slices::FocusScope, #[case] expected: Scope) {
     // Given a focus scope.
     // When mapping to a keymap scope.
     // Then the expected scope is returned.
@@ -214,32 +213,28 @@ fn keymap_at(scope: Scope) -> WhichKeyInstance {
     WhichKeyInstance::new(keymap::init(), scope)
 }
 
+/// A keymap with the sidebar's route rows bound (as launch.rs does).
+fn keymap_with_routes_at(scope: Scope) -> WhichKeyInstance {
+    let mut km = keymap::init();
+    let routes = jinn_slices::route::KeyRoutes::new();
+    jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
+    crate::keymap_gen::bind_route_rows(&routes, &mut km);
+    WhichKeyInstance::new(km, scope)
+}
+
 fn key<'a>(notation: &'a str) -> jinn_domain::KeyEvent {
     jinn_domain::KeyEvent::parse_notation(notation).expect("notation should parse")
 }
 
 #[rstest::rstest]
-fn s_in_sidebar_task_list_opens_task_list_picker() {
-    // Given the keymap rooted at SidebarTaskList.
-    let mut wk = keymap_at(Scope::SidebarTaskList);
-
-    // When pressing `s`.
-    let intent = wk.handle_key(key("s"));
-
-    // Then it resolves to OpenPicker { kind: TaskList } ("search task list").
-    assert_eq!(
-        intent.map(|i| i.to_string()).as_deref(),
-        Some("search task list")
-    );
-}
-
-#[rstest::rstest]
 #[case::normal(Scope::Normal)]
 #[case::input(Scope::Input)]
-#[case::sidebar_sessions(Scope::SidebarSessions)]
+#[case::sidebar_sessions(Scope::Dynamic(jinn_slices::SliceScopeId::navigation(
+    "sidebar", "sessions"
+)))]
 #[case::picker_session(Scope::PickerSession)]
 fn s_outside_sidebar_task_list_does_not_open_task_list_picker(#[case] scope: Scope) {
-    // Given the keymap rooted at a non-SidebarTaskList scope.
+    // Given the keymap rooted at a non-sidebar-task-list scope.
     let mut wk = keymap_at(scope);
 
     // When pressing `s`.
@@ -263,7 +258,7 @@ fn esc_in_picker_task_list_returns_to_normal_mode() {
     let intent = wk.handle_key(key("escape"));
 
     // Then it resolves to EnterNormalMode (the existing handler closes the picker
-    // and restores the prior SidebarTaskList scope).
+    // and restores the prior sidebar task-list scope).
     assert_eq!(
         intent.map(|i| i.to_string()).as_deref(),
         Some("enter normal mode")
@@ -289,8 +284,8 @@ fn alt_q_in_input_scope_toggles_input_mode() {
 #[rstest::rstest]
 #[test]
 fn alt_s_in_input_scope_focuses_sidebar_sessions() {
-    // Given the keymap rooted at Input scope.
-    let mut wk = keymap_at(Scope::Input);
+    // Given the keymap (with sidebar route rows) rooted at Input scope.
+    let mut wk = keymap_with_routes_at(Scope::Input);
 
     // When pressing Alt+s (notation: `m-s`).
     let intent = wk.handle_key(key("m-s"));
@@ -304,57 +299,9 @@ fn alt_s_in_input_scope_focuses_sidebar_sessions() {
 
 #[rstest::rstest]
 #[test]
-fn sessions_i_resolves_to_sidebar_confirm_insert() {
-    // Given the keymap rooted at the Sessions sidebar.
-    let mut wk = keymap_at(Scope::SidebarSessions);
-
-    // When pressing `i`.
-    let intent = wk.handle_key(key("i"));
-
-    // Then it resolves to SidebarConfirmInsert (activate + insert).
-    assert_eq!(
-        intent.map(|i| i.to_string()).as_deref(),
-        Some("activate session -> insert mode")
-    );
-}
-
-#[rstest::rstest]
-#[test]
-fn sessions_enter_still_resolves_to_sidebar_confirm() {
-    // Given the keymap rooted at the Sessions sidebar.
-    let mut wk = keymap_at(Scope::SidebarSessions);
-
-    // When pressing `<enter>`.
-    let intent = wk.handle_key(key("enter"));
-
-    // Then it still resolves to SidebarConfirm (activate + normal).
-    assert_eq!(
-        intent.map(|i| i.to_string()).as_deref(),
-        Some("activate session")
-    );
-}
-
-#[rstest::rstest]
-#[test]
-fn pins_enter_resolves_to_sidebar_leave() {
-    // Given the keymap rooted at the Pins sidebar.
-    let mut wk = keymap_at(Scope::SidebarPins);
-
-    // When pressing `<enter>`.
-    let intent = wk.handle_key(key("enter"));
-
-    // Then it resolves to SidebarLeave (leave to Normal at the pin's position).
-    assert_eq!(
-        intent.map(|i| i.to_string()).as_deref(),
-        Some("return to normal mode")
-    );
-}
-
-#[rstest::rstest]
-#[test]
 fn alt_s_in_normal_scope_focuses_sidebar_sessions() {
-    // Given the keymap rooted at Normal scope.
-    let mut wk = keymap_at(Scope::Normal);
+    // Given the keymap (with sidebar route rows) rooted at Normal scope.
+    let mut wk = keymap_with_routes_at(Scope::Normal);
 
     // When pressing Alt+s (notation: `m-s`).
     let intent = wk.handle_key(key("m-s"));

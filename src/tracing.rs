@@ -9,7 +9,7 @@
 //! Filter precedence: `-v`/`-q` (via `clap_verbosity_flag`) controls only the
 //! verbosity of `jinn*` crates — [`EnvFilter`] matches targets by string
 //! prefix, so `jinn={level}` covers every workspace crate. Third-party crates
-//! (wasmtime, kameo, …) sit on a global `warn` floor, so warnings and errors
+//! (wasmtime, trouper, …) sit on a global `warn` floor, so warnings and errors
 //! always surface from dependencies; at `-q` the floor steps down to `error`
 //! and at `-qq` everything is off. Setting `RUST_LOG` overrides this
 //! automatic filter entirely.
@@ -56,14 +56,6 @@ pub enum TracingMode {
     },
     /// Headless mode: writes to BOTH terminal and file.
     Headless {
-        /// Resolved path to the log file (e.g. `~/.local/state/jinn/jinn.log`).
-        log_path: PathBuf,
-    },
-    /// Out-of-band tooling (e.g. `jinn plugin ...`): file-only logging.
-    /// The terminal belongs to the subcommand's own output (scaffolds,
-    /// cargo passthrough, install results) — tracing must never interleave
-    /// with it.
-    Quiet {
         /// Resolved path to the log file (e.g. `~/.local/state/jinn/jinn.log`).
         log_path: PathBuf,
     },
@@ -143,7 +135,7 @@ fn format_from_verbosity(verbosity: &Verbosity<WarnLevel>) -> String {
 /// Compact event formatter: shows only the *innermost* span plus a nesting
 /// depth marker, with optional ANSI coloring of the structural segments.
 ///
-/// kameo creates one `actor.handle_message` span per actor hop (parented on
+/// trouper creates one `actor.handle_message` span per actor hop (parented on
 /// the caller's span), so a single tell→handle→publish round trip can nest a
 /// dozen spans. Rendering the whole chain on every line produces giant,
 /// mostly-redundant prefixes. This formatter renders:
@@ -153,7 +145,7 @@ fn format_from_verbosity(verbosity: &Verbosity<WarnLevel>) -> String {
 /// ```
 ///
 /// `…×N` says how deep the event fired without repeating the parents; the
-/// innermost span is where the event actually happened (for kameo arrivals
+/// innermost span is where the event actually happened (for actor arrivals
 /// that's the actor name + message type). Line length is therefore bounded
 /// regardless of nesting depth.
 ///
@@ -379,9 +371,7 @@ pub fn init(
     let filter = build_filter(rust_log.as_deref(), &verbosity);
 
     let log_path = match &mode {
-        TracingMode::Tui { log_path }
-        | TracingMode::Headless { log_path }
-        | TracingMode::Quiet { log_path } => log_path.clone(),
+        TracingMode::Tui { log_path } | TracingMode::Headless { log_path } => log_path.clone(),
     };
 
     let logfile = open_log_file(&log_path)?;
@@ -399,7 +389,7 @@ pub fn init(
     let formatter = CompactSpans { color: trace_color };
 
     match mode {
-        TracingMode::Tui { .. } | TracingMode::Quiet { .. } => {
+        TracingMode::Tui { .. } => {
             let file_layer = tracing_subscriber::fmt::layer()
                 .event_format(formatter)
                 .with_ansi(trace_color)

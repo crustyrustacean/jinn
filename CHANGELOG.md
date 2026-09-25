@@ -21,10 +21,78 @@
 - Fix context undercounting bug in status bar.
   - This only impacts the `<percent>/<total>` (`5%/1M`) display. It was not counting tool results nor system prompts which could lead to 10%+ undercounting.
   - Count now includes tool results, tool guidelines, tool schemas.
+- Steering/queue ordering behaves as intended.
+  - Previously the queue buffer would get dumped at the end of a turn even if there were messages in the steering buffer. This would occur in situations where both the queue buffer and steering buffer had messages, but the agent was already on their last message (hence no time to "steer" it). Now, anything in the steering buffer gets dumped first regardless of the state of the agent turn.
+- `task` (subagent) tool changes:
+  - Updated instructions to encourage concurrent sessions and discourage individual sessions.
+  - Todo list no longer longer propagates subagent sessions.
+  - `max_duration_seconds` is no longer presented to the model, but will still be accepted and applied if provided. This change was made because its not always clear how long a subagent task will take, and ending it prematurely throws away all the work.
 
-- These plugins were move into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them:
-  - `persona-loader`
-  - `theme-loader`
+- These plugins were move into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them. Please see the next section on plugin-related TOML configuration changes.
+  - Deleted `persona-loader`
+  - Deleted `theme-loader`
+  - Deleted `stall-watchdog`
+  - Deleted `tool-call-watchdog`
+  - Deleted `url-citations`
+
+## TOML Configuration Changes
+
+**theme-loader** is now always active. The TOML configuration is now ignored and should be deleted:
+
+```toml
+# (DELETE THIS)
+[plugin.theme-loader]
+wasm = "theme-loader.wasm"
+enabled = true
+```
+
+**persona-loader** is now always active. The TOML configuration is now ignored and should be deleted:
+
+```toml
+# (DELETE THIS)
+[plugin.persona-loader]
+wasm = "persona-loader.wasm"
+enabled = true
+```
+
+**stall-watchdog** is now always active. The TOML configuration CHANGED:
+
+```toml
+# (DELETE THIS)
+[plugin.stall-watchdog]
+wasm = "stall-watchdog.wasm"
+enabled = true
+
+# (USE THIS NOW)
+[stall_watchdog]        # behavior config now lives here
+# amount of time to wait for a response from a provider before restarting the stream
+timeout_secs = 60
+# number of restarts before aborting the stream
+max_restarts = 3
+```
+
+**tool-call-watchdog** is now always active. The TOML configuration CHANGED:
+
+```toml
+# (DELETE THIS)
+[plugin.tool-call-watchdog]
+wasm = "tool-call-watchdog.wasm"
+enabled = true
+
+# (USE THIS NOW)
+[tool_call_watchdog]    # behavior config now lives here
+# stream will be terminated if there are this many tool call failures in a short window of time
+max_failures = 4
+```
+
+**url-citations** is now always active. The TOML configuration is now ignored and should be deleted:
+
+```toml
+# (DELETE THIS)
+[plugin.url-citations]
+wasm = "url-citations.wasm"
+enabled = true
+```
 
 ## 2026-09-13 v0.118.0
 

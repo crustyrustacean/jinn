@@ -6,8 +6,7 @@
     reason = "test code"
 )]
 
-use crate::protocol::key::Modifiers;
-use crate::{Key, KeyEvent};
+use jinn_slices::{Key, KeyEvent, Modifiers};
 
 #[rstest::rstest]
 #[case::ctrl(Modifiers::none(), "ctrl", false)]

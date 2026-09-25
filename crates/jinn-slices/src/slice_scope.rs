@@ -1,7 +1,7 @@
 //! Dynamic slice identity — scope ids and data-carried intents.
 //!
-//! Slices that are wired in composition (dashboard, quake bar, future
-//! guest plugins) must not require central enum edits: the vocabulary
+//! Slices that are wired in composition (dashboard, quake bar) must not
+//! require central enum edits: the vocabulary
 //! here carries identity as data. A slice mints a [`SliceScopeId`] for
 //! its focus scope and addresses its actions through
 //! [`DynamicIntent`]; the handler dispatches dynamic intents *only*
@@ -15,22 +15,49 @@
 /// manifests can key on it. The canonical constructors are the slice
 /// features' own consts — there is no registry of ids, and spelling a
 /// new one is exactly the act of creating a slice.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct SliceScopeId {
     /// The slice that owns this scope, e.g. `quake-bar`.
     slice: String,
     /// The scope's name within the slice, e.g. `open`.
     name: String,
+    /// Whether the scope captures text input (lights up input-focused UI
+    /// and serves the editing intents through its input hook). Navigation
+    /// surfaces (browser lists, tabs) set this false.
+    captures_input: bool,
 }
 
 impl SliceScopeId {
-    /// Mints a slice scope id from its two components.
+    /// Mints a slice scope id from its two components. The scope is
+    /// input-capturing by default; see [`SliceScopeId::navigation`] for
+    /// navigation-only surfaces.
     #[must_use]
     pub fn new(slice: &str, name: &str) -> Self {
         Self {
             slice: slice.to_owned(),
             name: name.to_owned(),
+            captures_input: true,
         }
+    }
+
+    /// Mints a navigation-only scope id: keys drive a cursor/selection,
+    /// no text input is captured, and the scope reports `Mode::Normal`
+    /// so input-focused UI stays dark.
+    #[must_use]
+    pub fn navigation(slice: &str, name: &str) -> Self {
+        Self {
+            slice: slice.to_owned(),
+            name: name.to_owned(),
+            captures_input: false,
+        }
+    }
+
+    /// Whether this scope captures text input.
+    #[must_use]
+    pub fn captures_input(&self) -> bool {
+        self.captures_input
     }
 
     /// The owning slice's identifier.
@@ -72,6 +99,7 @@ impl std::str::FromStr for SliceScopeId {
         Ok(Self {
             slice: slice.to_owned(),
             name: name.to_owned(),
+            captures_input: true,
         })
     }
 }

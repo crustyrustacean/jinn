@@ -12,23 +12,15 @@ mod app_state_tests;
 pub mod bridge;
 pub mod bus;
 pub mod core;
-pub mod focus;
-pub mod frontmatter;
-pub mod line_input;
-pub mod overlay_views;
-pub mod path_display;
+pub mod frontend_projection;
 pub mod process_kill;
 pub mod render_ctx;
 pub mod request_dump;
-pub mod root_supervisor;
 pub mod services;
-pub mod session_map;
+pub mod session_projection;
 pub mod slices;
 pub mod state;
 pub mod system_resource;
-pub mod tcaps;
-pub mod trouper_bridge;
-pub mod tui_signals;
 pub mod ui_element;
 pub mod ui_element_fake;
 pub mod ui_registry;
@@ -41,7 +33,6 @@ pub type AppUiRegistry = ui_registry::UiRegistry;
 /// Called once during application startup. Each feature module that provides
 /// UI elements exposes a `register()` function that adds its elements to the registry.
 pub fn register_all_ui_elements(registry: &mut AppUiRegistry) {
-    crate::feat::ui::status_bar::register(registry);
     crate::feat::ui::chat_log::register(registry);
     crate::feat::provider::register(registry);
     crate::feat::chat_input::register(registry);

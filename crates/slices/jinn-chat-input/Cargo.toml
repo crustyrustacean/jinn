@@ -1,0 +1,17 @@
+[package]
+name = "jinn-chat-input"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+jinn-chat-input-msg = { workspace = true }
+jinn-slices = { workspace = true }
+
+[dev-dependencies]
+jinn-core-types = { workspace = true }
+rstest = { workspace = true }
+tokio = { workspace = true }
+jinn-domain = { workspace = true }
+
+[lints]
+workspace = true

@@ -7,10 +7,12 @@
 //! [`DashboardNav`], and the bus delivers it to the dashboard actor —
 //! its sole subscriber, which folds the navigation into the slice cell.
 //!
-//! Sole-subscriber note: kameo's bus is broadcast, so "routing to the
+//! Sole-subscriber note: the fabric is broadcast, so "routing to the
 //! dashboard actor" relies on it being the only subscriber for this
 //! type. That pairing is asserted by test; keep `DashboardNav` reserved
 //! for the dashboard actor's consumption.
+
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +37,31 @@ pub enum DashboardNav {
 
 impl BusMessage for DashboardNav {}
 
-jinn_slices::crossing_schema!(DashboardNav, "DashboardNav", trouper::schema::SchemaKind::Command,
-    description: "Move the dashboard's selection cursor (enum payload).",
-    fields: []);
+impl trouper::schema::Schema for DashboardNav {
+    fn schema_def() -> trouper::schema::SchemaDef {
+        trouper::schema::SchemaDef {
+            name: "DashboardNav".to_owned(),
+            kind: trouper::schema::SchemaKind::Command,
+            fields: vec![],
+            description: Some("Move the dashboard's selection cursor (enum payload).".to_owned()),
+        }
+    }
+}
+
+impl trouper::envelope::PayloadValue for DashboardNav {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn field(&self, _name: &str) -> Option<String> {
+        None
+    }
+
+    fn to_json_bytes(&self) -> Arc<[u8]> {
+        trouper::envelope::payload_value_json_bytes(self)
+    }
+
+    fn clone_value(&self) -> Box<dyn trouper::envelope::PayloadValue> {
+        Box::new(*self)
+    }
+}

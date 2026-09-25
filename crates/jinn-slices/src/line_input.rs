@@ -1,7 +1,7 @@
 //! A single-line text input with grapheme-aware cursor editing.
 //!
-//! Shared by all single-line popup inputs ([`crate::feat::session_lifecycle`]
-//! arg input, [`crate::feat::rename_session_input`], and the CWD input popup).
+//! Shared by all single-line slice popup inputs, including session lifecycle
+//! arguments, session rename, project add, and CWD.
 //!
 //! The cursor is a **byte** offset into [`LineInput::input`], always landed on a
 //! grapheme boundary. This matches the contract previously duplicated across
@@ -119,6 +119,20 @@ impl LineInput {
                 None => self.cursor_pos = self.input.len(),
             }
         }
+    }
+
+    /// Moves the cursor to the start of the input.
+    ///
+    /// No-op when the cursor is already at position 0.
+    pub fn cursor_home(&mut self) {
+        self.cursor_pos = 0;
+    }
+
+    /// Moves the cursor to the end of the input.
+    ///
+    /// No-op when the cursor is already at the end.
+    pub fn cursor_end(&mut self) {
+        self.cursor_pos = self.input.len();
     }
 
     /// Returns the number of graphemes before the cursor.
@@ -390,6 +404,60 @@ mod tests {
 
         // Then cursor stays at end.
         assert_eq!(li.cursor_pos, 2);
+    }
+
+    #[rstest::rstest]
+    fn cursor_home_moves_to_start() {
+        // Given a Unicode input with the cursor at the end.
+        let mut li = LineInput::new();
+        li.set("aé".to_owned());
+
+        // When moving the cursor home.
+        li.cursor_home();
+
+        // Then the cursor lands on the first grapheme boundary.
+        assert_eq!(li.cursor_pos, 0);
+    }
+
+    #[rstest::rstest]
+    fn cursor_home_noop_at_start() {
+        // Given an input with the cursor at the start.
+        let mut li = LineInput::new();
+        li.set("hi".to_owned());
+        li.cursor_home();
+
+        // When moving the cursor home.
+        li.cursor_home();
+
+        // Then the cursor remains at the start.
+        assert_eq!(li.cursor_pos, 0);
+    }
+
+    #[rstest::rstest]
+    fn cursor_end_moves_to_end() {
+        // Given a Unicode input with the cursor at the start.
+        let mut li = LineInput::new();
+        li.set("aé".to_owned());
+        li.cursor_home();
+
+        // When moving the cursor to the end.
+        li.cursor_end();
+
+        // Then the cursor lands after the final grapheme.
+        assert_eq!(li.cursor_pos, "aé".len());
+    }
+
+    #[rstest::rstest]
+    fn cursor_end_noop_at_end() {
+        // Given an input with the cursor at the end.
+        let mut li = LineInput::new();
+        li.set("hi".to_owned());
+
+        // When moving the cursor to the end.
+        li.cursor_end();
+
+        // Then the cursor remains at the end.
+        assert_eq!(li.cursor_pos, "hi".len());
     }
 
     #[rstest::rstest]

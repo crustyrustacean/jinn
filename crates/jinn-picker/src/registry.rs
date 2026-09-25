@@ -19,7 +19,7 @@ use crate::ctx::ActionCtx;
 use crate::ctx::LoadCtx;
 use crate::ctx::StatusCtx;
 use crate::entry::PickerEntry;
-use crate::entry::RenderHooks;
+use crate::entry::PickerItemHooks;
 use crate::entry::make_items;
 use crate::hooks::PickerLifecycleFn;
 use crate::hooks::PickerLoadFn;
@@ -28,6 +28,54 @@ use crate::host::PickerHost;
 use crate::id::PickerId;
 use crate::outcome::PickerOutcome;
 use crate::widget::WidgetKind;
+
+/// The id of the persona picker's spec.
+pub const PERSONA_ID: &str = "persona";
+/// The id of the skill picker's spec.
+pub const SKILL_ID: &str = "skill";
+/// The id of the theme picker's spec.
+pub const THEME_ID: &str = "theme";
+/// The id of the tool picker's spec.
+pub const TOOL_ID: &str = "tool";
+/// The id of the MCP server picker's spec.
+pub const MCP_SERVER_ID: &str = "mcp-server";
+/// The id of the session-lifecycle picker's spec.
+pub const SESSION_LIFECYCLE_ID: &str = "session-lifecycle";
+/// The id of the task-list picker's spec.
+pub const TASK_LIST_ID: &str = "task-list";
+/// The id of the session picker's spec.
+pub const SESSION_ID: &str = "session";
+/// The id of the reasoning-effort picker's spec.
+pub const REASONING_EFFORT_ID: &str = "reasoning-effort";
+/// The id of the provider picker's spec.
+pub const PROVIDER_ID: &str = "provider";
+/// The id of the endpoint picker's spec.
+pub const ENDPOINT_ID: &str = "endpoint";
+/// The id of the project picker's spec.
+pub const PROJECT_ID: &str = "project";
+
+/// Maps a picker kind onto its spec id. The compaction-model picker remains on
+/// its legacy path and has no spec id.
+#[must_use]
+pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&'static str> {
+    use jinn_slices::picker_kind::PickerKind;
+
+    match kind {
+        PickerKind::Persona => Some(PERSONA_ID),
+        PickerKind::Skill => Some(SKILL_ID),
+        PickerKind::Theme => Some(THEME_ID),
+        PickerKind::Tool => Some(TOOL_ID),
+        PickerKind::McpServer => Some(MCP_SERVER_ID),
+        PickerKind::SessionLifecycle => Some(SESSION_LIFECYCLE_ID),
+        PickerKind::ReasoningEffort => Some(REASONING_EFFORT_ID),
+        PickerKind::TaskList => Some(TASK_LIST_ID),
+        PickerKind::Session => Some(SESSION_ID),
+        PickerKind::Provider => Some(PROVIDER_ID),
+        PickerKind::Endpoint => Some(ENDPOINT_ID),
+        PickerKind::Project => Some(PROJECT_ID),
+        PickerKind::CompactionModel => None,
+    }
+}
 
 /// The tail appended to a generated keybind line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,7 +215,7 @@ where
     pub(crate) actions: Vec<crate::hooks::PickerBindAction>,
     pub(crate) keybind_tail: Tail,
     pub(crate) load: Option<PickerLoadFn<T>>,
-    pub(crate) hooks: Arc<RenderHooks<T>>,
+    pub(crate) hooks: Arc<PickerItemHooks<T>>,
     pub(crate) status: Option<PickerStatusFn>,
     pub(crate) on_open: Option<PickerLifecycleFn>,
     pub(crate) on_confirm: Option<PickerLifecycleFn>,
@@ -455,6 +503,11 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
 
+    /// A schema'd stand-in message for action-closure assertions.
+    #[derive(Clone, serde::Serialize, serde::Deserialize, trouper::schema::Event)]
+    #[schema(description = "Picker registry action test message.")]
+    pub(super) struct PickerRecordedToggle;
+
     use super::*;
     use crate::builder::PickerSpec;
     use crate::ctx::LoadCtx;
@@ -537,7 +590,7 @@ mod tests {
         registry.register(PickerSpec::<Entry>::new(PickerId::new("dispatch")).bind(
             "<tab>",
             "toggle",
-            |_ctx: &mut ActionCtx<'_>| PickerOutcome::new_message(String::from("toggled")),
+            |_ctx: &mut ActionCtx<'_>| PickerOutcome::new_message(PickerRecordedToggle),
         ));
         let spec = registry.get("dispatch").expect("registered");
 
@@ -547,7 +600,7 @@ mod tests {
         let outcome = spec.run_action("<tab>", &mut ctx);
 
         // Then the action ran (message recorded) and the picker stayed open.
-        assert_eq!(outcome.message_names, ["alloc::string::String"]);
+        assert_eq!(outcome.message_names, ["PickerRecordedToggle"]);
         assert!(!outcome.close);
     }
 

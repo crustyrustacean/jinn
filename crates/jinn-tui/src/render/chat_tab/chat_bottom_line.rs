@@ -10,11 +10,11 @@ use jinn_domain::RenderCtx;
 ///
 /// Color reflects the current focus scope.
 pub(super) fn render_chat_bottom_line(frame: &mut Frame<'_>, content_area: Rect, ctx: &RenderCtx) {
-    let focus_scope = ctx.state.frontend.scope_stack.current();
+    let focus_scope = ctx.state.frontend.scope();
     let theme = &ctx.state.frontend.theme;
 
     let line_y = content_area.y + content_area.height.saturating_sub(1);
-    let chat_line_color = if matches!(focus_scope, jinn_domain::FocusScope::Normal) {
+    let chat_line_color = if matches!(focus_scope, jinn_slices::FocusScope::Normal) {
         theme.focus_accent
     } else {
         theme.border_unfocused
@@ -35,7 +35,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code, panics are acceptable"
     )]
-    use jinn_domain::FocusScope;
+    use jinn_slices::FocusScope;
     use jinn_testutil::setup_term;
     use ratatui::layout::Rect;
     use ratatui::style::Color;
@@ -51,12 +51,7 @@ mod tests {
     async fn chat_bottom_line_is_yellow_when_normal_scope() {
         // Given a TuiApp rendered with Normal scope.
         let mut app = crate::TuiApp::test_builder().build().await;
-        app.core
-            .state
-            .write_test_no_cap()
-            .frontend
-            .scope_stack
-            .clear_overlays();
+        app.core.state.write().frontend.scope_clear_overlays();
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.
@@ -84,10 +79,9 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .frontend
-            .scope_stack
-            .push(FocusScope::Input);
+            .scope_push(FocusScope::Input);
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.
@@ -114,10 +108,9 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .frontend
-            .scope_stack
-            .push(FocusScope::SidebarPersona);
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope());
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.

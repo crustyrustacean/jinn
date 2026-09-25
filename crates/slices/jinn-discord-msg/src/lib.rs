@@ -1,7 +1,7 @@
 //! Discord crossing contracts.
 //!
 //! The EXPORT surface of the discord slice: every message that travels
-//! between jinn's kameo bus and the poise gateway task (or the discord
+//! between jinn's message fabric and the poise gateway task (or the discord
 //! status topic on the trouper fabric). The slice, whose single crate
 //! (`jinn-discord`) carries both the domain pieces and the poise
 //! gateway `backend` module, depends on this crate; the kernel never
@@ -10,12 +10,7 @@
 use jinn_core_types::SessionId;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-
-/// The trouper topic the discord status event crosses on.
-#[must_use]
-pub fn discord_topic() -> trouper::topics::Topic {
-    trouper::topics::Topic::new("jinn.discord")
-}
+use std::sync::Arc;
 
 /// The Discord session id (a string) tied to a jinn [`SessionId`].
 ///
@@ -128,7 +123,8 @@ pub enum ForumChannelError {
 /// topic, where the slice's bridge subscriber turns it into a
 /// [`GatewayRequest`] on the request channel. The gateway owns the
 /// serenity `Http`, so Discord-mutating work is funneled through it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Lift a jinn session into a new Discord forum thread.")]
 pub struct CreateThreadForSession {
     /// The session to continue in Discord (bound to the new thread).
     pub session_id: SessionId,
@@ -141,7 +137,8 @@ pub struct CreateThreadForSession {
 /// Published by the gateway after a successful thread creation; the
 /// bridge subscriber appends a `ChatEntry::system` confirmation to the
 /// session's history.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A Discord forum thread was created and bound to a session.")]
 pub struct DiscordThreadCreated {
     /// The session that now has a Discord thread.
     pub session_id: SessionId,
@@ -155,37 +152,14 @@ pub struct DiscordThreadCreated {
 /// appends a `ChatEntry::error` to the session's history. No thread is
 /// created on `AlreadyBound` / `ForumChannel(_)`; a thread may exist on
 /// Discord but be unbound on `MappingWriteFailed`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "Discord thread creation failed; carries the reason.")]
 pub struct DiscordThreadCreateFailed {
     /// The session whose `gdc` failed.
     pub session_id: SessionId,
     /// Why it failed.
     pub reason: CreateThreadReason,
 }
-
-jinn_slices::crossing_schema!(CreateThreadForSession, "CreateThreadForSession",
-trouper::schema::SchemaKind::Command,
-description: "Lift a jinn session into a new Discord forum thread.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "title" => trouper::schema::FieldTy::Str,
-]);
-
-jinn_slices::crossing_schema!(DiscordThreadCreated, "DiscordThreadCreated",
-trouper::schema::SchemaKind::Event,
-description: "A Discord forum thread was created and bound to a session.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "title" => trouper::schema::FieldTy::Str,
-]);
-
-jinn_slices::crossing_schema!(DiscordThreadCreateFailed, "DiscordThreadCreateFailed",
-trouper::schema::SchemaKind::Event,
-description: "Discord thread creation failed; carries the reason.",
-fields: [
-    "session_id" => trouper::schema::FieldTy::Uuid,
-    "reason" => trouper::schema::FieldTy::Json,
-]);
 
 /// A request from the jinn command path to the poise gateway task.
 ///
@@ -263,10 +237,34 @@ impl DiscordStatusUpdate {
     }
 }
 
-jinn_slices::crossing_schema!(DiscordStatusUpdate, "DiscordStatusUpdate",
-    trouper::schema::SchemaKind::Event,
-    description: "Discord gateway connection status.",
-    fields: []);
+impl trouper::schema::Schema for DiscordStatusUpdate {
+    fn schema_def() -> trouper::schema::SchemaDef {
+        trouper::schema::SchemaDef {
+            name: "DiscordStatusUpdate".to_owned(),
+            kind: trouper::schema::SchemaKind::Event,
+            fields: vec![],
+            description: Some("Discord gateway connection status.".to_owned()),
+        }
+    }
+}
+
+impl trouper::envelope::PayloadValue for DiscordStatusUpdate {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn field(&self, _name: &str) -> Option<String> {
+        None
+    }
+
+    fn to_json_bytes(&self) -> Arc<[u8]> {
+        trouper::envelope::payload_value_json_bytes(self)
+    }
+
+    fn clone_value(&self) -> Box<dyn trouper::envelope::PayloadValue> {
+        Box::new(self.clone())
+    }
+}
 
 #[cfg(test)]
 mod tests {

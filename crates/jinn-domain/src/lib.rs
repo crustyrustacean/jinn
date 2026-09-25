@@ -3,12 +3,12 @@
 //! This crate consolidates the application's domain logic:
 //!
 //! - **Protocol types** (`protocol/`) - cross-cutting value types shared across
-//!   feature boundaries: `Intent`, `Key`, `Mode`, and system events. Each
-//!   feature also defines its own per-type messages in a `protocol/` directory
-//!   under its feature module; the actor bus routes by `TypeId` via the marker
-//!   trait `BusMessage` (in `common/bus.rs`) rather than a central enum.
+//!   feature boundaries: `Intent`, `Key`, `Mode`, and system events. Slice-owned
+//!   commands and events live in their canonical `*-msg` crates; the actor bus
+//!   routes by `TypeId` via the marker trait `BusMessage` (in `common/bus.rs`)
+//!   rather than a central enum.
 //! - **Domain slices** (`feat/`) - vertical slices where each feature colocates
-//!   its actors, intents, UI elements, state, and messages together.
+//!   its actors, intents, UI elements, and state implementation.
 //! - **Common** (`common/`) - shared infrastructure (bus, services, app paths,
 //!   TOML patching), most of which is re-exported from the `jinn-common` crate.
 //!
@@ -28,28 +28,24 @@ fn install_rustls_provider_for_tests() {
 
 pub mod common;
 pub mod feat;
-pub mod init;
 
 // Not yet reorganized (handled in later phases)
 pub mod protocol;
 
 // Re-export actor types that are still in use
-pub use common::actor::{ActorCounter, NoDirectMsg};
+pub use common::actor::{ActorCounter, ActorName};
 // Re-export component types (state, UI)
 pub use common::app_paths::{AppPaths, BrowserProfileMode};
 pub use common::app_state::pin_sort_key;
-pub use common::app_state::{
-    AppState, ContextAssemblyState, FocusScope, FrontendState, ProviderState, ScopeStack,
-    SessionState,
-};
+pub use common::app_state::{AppState, FrontendState, SessionState};
 pub use common::bridge::{Bridge, BridgeClosure};
 pub use common::bus::BusMessage;
 pub use common::render_ctx::RenderCtx;
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
-pub use common::tui_signals::TuiSignals;
 pub use common::{AppUiRegistry, register_all_ui_elements};
-pub use feat::context::prompt_template::PromptTemplateStore;
-pub use feat::provider_infra::NO_PROVIDER_ID;
+pub use jinn_context::PromptTemplateStore;
+pub use jinn_core_types::NO_PROVIDER_ID;
+pub use jinn_slices::{FocusScope, ScopeStack, TuiSignals};
 
 // Re-export services types
 pub use common::services::Services;
@@ -63,91 +59,70 @@ pub use common::core::{AppCore, SHUTDOWN_TIMEOUT, STARTUP_TIMEOUT, wait_for_syst
 pub use feat::intent::IntentHandler;
 
 // Re-export providers types
-pub use feat::provider_infra::TOOL_LOOP_TRIGGER;
-pub use feat::provider_infra::cache_path;
-pub use feat::provider_infra::{
+pub use jinn_provider_config::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, FilesystemConfigStorage,
     InMemoryConfigStorage, InitProvidersOutcome, LlmServiceFactoryService, ModelCache,
     NoProvidersAvailableFactory, ProviderEntry, ProviderId, ProviderRegistry,
-    ProviderRegistryService, ProvidersConfig, ScriptedResponse, config_path,
-    init_default_providers_to,
+    ProviderRegistryService, ProvidersConfig, ScriptedResponse, TOOL_LOOP_TRIGGER, cache_path,
+    config_path, init_default_providers_to,
 };
 // Re-export context types
 
 // Re-export session types
-pub use feat::session::PoolConfig;
 pub use feat::session::SessionStoreService;
-pub use feat::session::SqliteSessionStore;
+// The SQLite implementation moved to the jinn-session-store slice crate —
+// import it from there (`jinn_session_store::sqlite::SqliteSessionStore`).
 
 pub use feat::session::no_api_keys_msg;
-pub use feat::session::phase_machine::PhaseKind;
+pub use jinn_session_msg::PhaseKind;
 
 // Re-export reasoning types
-pub use feat::reasoning::{ReasoningEffort, resolve_effort};
-// Re-export preferences types
-pub use feat::preferences_actor::AppStateStorageService;
-pub use feat::preferences_actor::FilesystemAppStateStorage;
-pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
-pub use feat::preferences_actor::InMemoryAppStateStorage;
-pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
-pub use feat::preferences_actor::RequestRetryConfig;
-pub use feat::preferences_actor::UserPreferences;
-pub use feat::preferences_actor::UserPreferencesStorageService;
-pub use feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
-pub use feat::preferences_actor::protocol::event::PreferencesUpdated;
-pub use feat::preferences_actor::{InitOutcome, init_default_config_to, preferences_path};
-
-// Re-export install (default resource seeding + builtin plugin registration).
+// The reasoning-effort vocabulary is owned by the provider-selection
+// slice's msg crate (kernel→msg direction); re-exported here so the
+// long-standing `jinn_domain::ReasoningEffort` paths keep resolving.
+pub use jinn_provider_selection_msg::ReasoningEffort;
+pub use jinn_provider_selection_msg::resolve_effort;
+// Re-export install (default resource seeding).
 pub use feat::install::{
-    BuiltinPluginInstall, Destinations, InstallError, InstallOutcome, InstallReport,
-    JinnTomlOutcome, install_builtin_plugins_to, install_defaults_to,
+    Destinations, InstallError, InstallOutcome, InstallReport, JinnTomlOutcome, install_defaults_to,
 };
-// Re-export plugin registration policies (replace vs add-only).
-pub use feat::plugin::install::register_plugin_if_absent;
-
-// Re-export persona types
-pub use feat::persona::{Persona, PersonaEntry};
 
 // Re-export services submodules
 
 // Re-export protocol types at crate root
-pub use protocol::ProviderPickerEntry;
+pub use jinn_provider_selection_msg::ProviderPickerEntry;
 pub use protocol::entries_to_messages;
 pub use protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, Intent, IntentResult, Key, KeyEvent, Mode, Modifiers,
-    PickerKind, PinPosition, PromptTemplate,
+    ChatEntry, ChatEntryId, ChatEntryKind, IntentResult, KernelIntent, Key, KeyEvent, Mode,
+    Modifiers, PickerKind, PinPosition,
 };
 
 // Re-export domain types from their canonical locations
 pub use common::actor::protocol::command::ProceedWithShutdown;
-pub use common::actor::protocol::event::{
-    ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned,
+pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
+pub use jinn_provider::LlmMessage;
+pub use jinn_session_history_msg::PushChatEntry;
+pub use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
+// The curation contracts are owned by the context-curation slice's msg
+// crate (kernel→msg direction, same as the stream contracts); re-exported
+// here so the long-standing `jinn_domain::TriggerCompaction` path keeps
+// resolving.
+pub use jinn_context_curation_msg::TriggerCompaction;
+// Stream contracts are owned by the inference slice's msg crate (kernel→msg
+// direction, jinn-session-msg precedent); re-exported here so the long-standing
+// `jinn_domain::X` paths keep resolving.
+// Provider-selection contracts are owned by the provider-selection slice's
+// msg crate (kernel→msg direction); re-exported here so the long-standing
+// `jinn_domain::X` paths keep resolving.
+pub use jinn_provider_selection_msg::{
+    LoadEndpointPickerEntries, LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed,
+    ProviderSwitch, ProviderSwitched, RefreshEndpointPickerEntries, RefreshModels,
 };
-pub use feat::chat_input::protocol::command::{
-    EnqueueUserMessage, PushChatEntry, SetChatInputEnabled, SetChatInputText,
+// The prompt-scan contracts are owned by the session-init slice's msg crate
+// (kernel→msg direction, skills precedent); re-exported here so the
+// long-standing `jinn_domain::X` paths keep resolving.
+pub use jinn_inference_msg::{
+    CancelStream, SendToLlmProvider, StreamCompleted, StreamCompletedReason, StreamOrigin,
+    StreamToken,
 };
-pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
-pub use feat::context::assemble::AssembledPrompt;
-pub use feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
-pub use feat::provider::llm_message::LlmMessage;
-pub use feat::provider::protocol::command::{
-    CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
-    SendToLlmProvider,
-};
-pub use feat::provider::protocol::event::{
-    ModelCacheLoaded, ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
-    StreamCompletedReason, StreamToken,
-};
-pub use feat::session::protocol::session_fork_requested::SessionForkRequested;
-pub use feat::session::protocol::session_id::SessionId;
-pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;
-pub use feat::session::protocol::session_load_requested::SessionLoadRequested;
-pub use feat::session::protocol::session_new::SessionNew;
-pub use feat::tools_actor::BoxedToolFuture;
-pub use feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
-pub use feat::tools_actor::protocol::event::{
-    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered, ToolsUnregistered,
-};
-pub use feat::tools_actor::registry::{BuiltinToolEntry, builtin_tools};
-pub use feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
+pub use jinn_session_init_msg::{PromptTemplate, PromptTemplatesLoaded, RescanPromptTemplates};

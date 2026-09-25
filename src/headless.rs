@@ -4,7 +4,7 @@
 //! It receives commands, submits them to the core, and shuts down gracefully.
 
 use error_stack::{Report, ResultExt};
-use jinn_domain::EnqueueUserMessage;
+use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_domain::IntentHandler;
 use jinn_domain::common::services::Services;
 use jinn_domain::{AppCore, Bridge, ChatEntry};
@@ -25,26 +25,20 @@ pub struct HeadlessApp {
     core: AppCore,
     /// Services container — holds the root supervisor for shutdown.
     services: Services,
-    /// Capability for God-mode `State::write()`.
-    intent_handler_cap: jinn_domain::common::tcaps::IntentHandlerCap,
 }
 
 impl HeadlessApp {
     /// Creates a new headless app with the given core and services.
     #[must_use]
     pub fn new(core: AppCore, services: Services) -> Self {
-        let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
-        Self {
-            core,
-            services,
-            intent_handler_cap,
-        }
+        Self { core, services }
     }
 
-    /// Returns a handle to the root supervisor actor ref.
+    /// Returns the trouper system handle, for the graceful shutdown
+    /// sweep at exit.
     #[must_use]
-    pub fn root_supervisor(&self) -> jinn_domain::common::root_supervisor::RootSupervisorRef {
-        self.services.root_supervisor.clone()
+    pub fn trouper_system(&self) -> trouper::system::ActorSystem {
+        self.services.trouper_system.clone()
     }
 
     /// Sends a chat message through the core pipeline.
@@ -103,14 +97,13 @@ impl HeadlessApp {
         for keys in lines {
             for key in keys {
                 let state_read = self.core.state.read();
-                let scope =
-                    jinn_tui::app::scope_for_focus(state_read.frontend.scope_stack.current());
+                let scope = jinn_tui::app::scope_for_focus(&state_read.frontend.scope());
                 drop(state_read);
                 which_key.set_scope(scope);
 
                 if let Some(intent) = which_key.handle_key(key) {
                     // Process the intent through the IntentHandler.
-                    let mut state = self.core.state.write(&self.intent_handler_cap);
+                    let mut state = self.core.state.write();
                     let result = IntentHandler::handle(
                         &intent,
                         &mut state,
@@ -141,13 +134,16 @@ impl HeadlessApp {
 
     /// Shuts down the actor system gracefully.
     ///
-    /// Signals the root supervisor to stop, cascading to all supervised child
-    /// actors, then races the shutdown barrier against a 20-second timeout.
+    /// Runs the trouper graceful sweep (drain + on_stop hooks + store
+    /// flush), hard-capped at a 10-second deadline.
     pub fn shutdown(&self) {
-        let root = self.services.root_supervisor.clone();
+        let system = self.services.trouper_system.clone();
         let result = self.services.handle.block_on(async {
-            let _ = root.stop_gracefully().await;
-            tokio::time::timeout(Duration::from_secs(20), root.wait_for_shutdown()).await
+            tokio::time::timeout(
+                Duration::from_secs(20),
+                system.shutdown_graceful(Duration::from_secs(10)),
+            )
+            .await
         });
         if result.is_err() {
             tracing::warn!("headless actor shutdown timed out after 20s; proceeding");

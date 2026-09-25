@@ -1,25 +1,23 @@
 //! Frontend / UI state.
 
+use jinn_chat_input_msg::FilePickerState;
+use jinn_sidebar_msg::SidebarScopeExt;
 use parking_lot::RwLock;
 
-use crate::common::focus::{FocusScope, ScopeStack};
-use crate::common::tui_signals::TuiSignals;
-use crate::feat::cwd_input::state::CwdInputState;
-use crate::feat::preferences_actor::UserPreferences;
-use crate::feat::preferences_actor::app_state_file::AppStateFile;
-use crate::feat::project_add_input::state::ProjectAddInputState;
-use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
-use crate::feat::rename_session_input::state::RenameSessionInputState;
+use jinn_preferences_config::UserPreferences;
+use jinn_preferences_config::app_state_file::AppStateFile;
+use jinn_sidebar_msg::SidebarSectionId;
+use jinn_slices::FocusScope;
+use jinn_slices::TuiSignals;
 
-use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
-use crate::feat::theme::Theme;
 use crate::feat::ui::picker_states::PickerStates;
-pub use crate::feat::ui::sidebar::mcp_servers_section::McpServersSectionState;
-pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
-pub use crate::feat::ui::sidebar::pins::state::PinsState;
-pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
-use crate::feat::ui::sidebar::state::SidebarState;
-pub use crate::feat::ui::sidebar::task_list_section::TaskListSectionState;
+pub use jinn_sidebar_msg::McpServersSectionState;
+pub use jinn_sidebar_msg::PersonaSectionState;
+pub use jinn_sidebar_msg::PinsState;
+pub use jinn_sidebar_msg::SessionsSectionState;
+pub use jinn_sidebar_msg::SidebarSections;
+pub use jinn_sidebar_msg::TaskListSectionState;
+use jinn_theme::Theme;
 
 /// Theme-sensitive caches owned by the frontend.
 ///
@@ -33,14 +31,13 @@ pub use crate::feat::ui::sidebar::task_list_section::TaskListSectionState;
 #[derive(Debug, Default)]
 pub struct FrontendCaches {
     /// Cached wrapped line counts and rendered lines per chat entry.
-    pub entry_line_cache: RwLock<crate::feat::ui::chat_log::line_count_cache::EntryLineCache>,
+    pub entry_line_cache: RwLock<jinn_chat_log_view::chat_log::EntryLineCache>,
     /// Cached rendered lines for skill-preview popups. An `Arc` handle so
     /// the skill picker's host lens can lend it to the spec's render path.
     pub skill_preview_cache:
         std::sync::Arc<crate::feat::skills::skill_preview_cache::SkillPreviewCache>,
     /// Cached rendered lines for session preview popups.
-    pub session_preview_cache:
-        RwLock<crate::feat::ui::sidebar::sessions::preview::SessionPreviewCache>,
+    pub session_preview_cache: RwLock<jinn_sidebar_msg::SessionPreviewCache>,
 }
 
 impl FrontendCaches {
@@ -78,37 +75,6 @@ pub struct PendingSessionCreation {
 /// anti-pattern.
 #[derive(Debug)]
 pub struct FrontendState {
-    /// Set to `true` when the user has requested to quit.
-    /// OWNER: IntentHandler (Quit intent),
-    ///        shutdown-tracker (ProceedWithShutdown command).
-    pub should_quit: bool,
-
-    /// Pins sidebar section state - selection index within the pinned entries list.
-    /// OWNER: IntentHandler (pins navigation).
-    pub pins: PinsState,
-
-    /// Sidebar state - focus tracking.
-    /// OWNER: IntentHandler (sidebar focus/leave).
-    pub sidebar: SidebarState,
-
-    /// Persona sidebar section state - cursor tracking.
-    /// OWNER: IntentHandler (sidebar navigation).
-    pub persona_section: PersonaSectionState,
-
-    /// Sessions sidebar section state - cursor tracking.
-    /// OWNER: IntentHandler (sidebar navigation).
-    pub sessions_section: SessionsSectionState,
-
-    /// Task list sidebar section state - phase cursor tracking.
-    /// OWNER: IntentHandler (sidebar navigation).
-    pub task_list_section: TaskListSectionState,
-    /// MCP servers sidebar section state - cursor tracking.
-    /// OWNER: IntentHandler (sidebar navigation).
-    pub mcp_servers_section: McpServersSectionState,
-    /// Signals from the IntentHandler for the outer platform layer.
-    /// OWNER: IntentHandler (cleared and set each handle() call).
-    pub tui_signals: TuiSignals,
-
     /// Cached copy of user preferences from `jinn.toml`.
     /// Updated by `PreferencesActor` inline after persisting to `jinn.toml` (authoritative),
     /// and by the `IntentHandler` for immediate UI feedback (exempt).
@@ -118,10 +84,6 @@ pub struct FrontendState {
     /// Updated by `AppStateActor` inline after persisting to `state.toml` (authoritative),
     /// and by the `IntentHandler` for immediate UI feedback (exempt).
     pub app_state: AppStateFile,
-
-    /// Focus scope stack - single source of truth for what the user is focused on.
-    /// OWNER: IntentHandler (push/pop on scope transitions).
-    pub scope_stack: ScopeStack,
 
     /// The current resolved theme (colors for the render pipeline).
     /// OWNER: IntentHandler (theme picker preview, exempt), AppStateActor (authoritative, on state.toml change).
@@ -141,60 +103,18 @@ pub struct FrontendState {
     /// Global toggle (not per-session); not persisted across process restarts.
     pub audit_popup_visible: bool,
 
-    /// Transient one-line hint shown in the status bar (e.g. "that session
-    /// has no live terminal"). `None` hides it. The next intent clears it, so
-    /// it never lingers past the action that raised it.
-    /// OWNER: IntentHandler (raise); every handled intent dismisses it.
-    pub status_hint: Option<String>,
-
     /// Whether the "Press x again to teardown and archive 1 session" prompt is showing.
-    /// OWNER: IntentHandler (set on first SidebarSessionClose, consumed on second
-    ///         SidebarSessionClose or dismissed on any other key).
+    /// OWNER: sidebar route action (set on first close, consumed on matching
+    /// second close or dismissed by IntentHandler for unrelated actions).
     pub close_session_prompt: bool,
 
     /// State of the "Press A again to archive N sessions" prompt.
-    /// `Confirm` arms the confirm press; `Busy` blocks it (a member of the
-    /// subtree is streaming). OWNER: IntentHandler (set on first
-    /// SidebarSessionArchiveTree, consumed on second SidebarSessionArchiveTree,
-    /// dismissed on any other key).
-    pub archive_tree_prompt:
-        Option<crate::feat::ui::sidebar::sessions::archive_tree::ArchiveTreePrompt>,
+    /// OWNER: sidebar route action; IntentHandler dismisses it for unrelated actions.
+    pub archive_tree_prompt: Option<jinn_sidebar_msg::ArchiveTreePrompt>,
 
     /// All picker state - grouped for independent evolution.
     /// Use [`PickerExt`](super::picker_states::PickerExt) to access picker fields.
     pub pickers: PickerStates,
-
-    /// Path to the themes directory (`~/.config/jinn/themes/`).
-    /// Set once during init from `AppPaths`. Used by the theme picker to discover themes.
-    /// OWNER: Init code (set once at startup).
-    pub themes_dir: std::path::PathBuf,
-
-    /// Path to the system themes directory (`/usr/share/jinn/themes/`).
-    /// Set once during init from `AppPaths`. Used as fallback for theme discovery.
-    /// OWNER: Init code (set once at startup).
-    pub system_themes_dir: std::path::PathBuf,
-
-    /// Arg input popup state - active when `FocusScope::ArgInput` is on the scope stack.
-    /// OWNER: IntentHandler (arg input editing, confirmation).
-    pub arg_input: ArgInputState,
-
-    /// Rename session input popup state - active when `FocusScope::RenameSessionInput` is on the scope stack.
-    /// OWNER: IntentHandler (rename input editing, confirmation).
-    pub rename_session_input: RenameSessionInputState,
-
-    /// Pruner accumulation threshold input popup state - active when
-    /// `FocusScope::PrunerAccumulationInput` is on the scope stack.
-    /// OWNER: IntentHandler (threshold input editing, confirmation).
-    pub pruner_accumulation_input: PrunerAccumulationInputState,
-
-    /// Cwd input popup state - active when `FocusScope::CwdInput` is on the scope stack.
-    /// OWNER: IntentHandler (cwd input editing, confirmation).
-    pub cwd_input: CwdInputState,
-
-    /// Project-add input popup state - active when `FocusScope::ProjectAddInput` is on
-    /// the scope stack.
-    /// OWNER: IntentHandler (project-add input editing, confirmation).
-    pub project_add_input: ProjectAddInputState,
 
     /// Creation stash for the next session from the projects UI.
     ///
@@ -205,56 +125,284 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (set by project picker, consumed by session creation).
     pub pending_creation: Option<PendingSessionCreation>,
 
-    /// Terminal tab state - mirror of the active `interactive_term` session.
-    /// OWNER: InteractiveTermActor (screen/control events); the IntentHandler
-    /// flips the control holder on takeover intents (exempt writer).
-    pub terminal: crate::feat::interactive_term::terminal_tab_state::TerminalTabState,
-
     pub sidebar_width: u16,
 
     /// `@path` file popup state.
     /// OWNER: DirectoryListerActor (entries, loading, expected_request_id).
-    pub file_picker: crate::feat::file_lister::FilePickerState,
+    pub file_picker: FilePickerState,
+
+    /// Late-attached handle to the slice registry, carrying the
+    /// scope-focus cell (the focus stack, TUI signals, and quit latch).
+    /// Attached once at wiring, before any intent can fire; a clone of
+    /// `Slices` shares its cells, so cells minted after the attach are
+    /// visible here. Before attach (or without the slice's
+    /// `activate()`), facade reads return defaults and writes no-op —
+    /// the removability property.
+    /// (Composition attaches once; direct pokes defeat the facade.)
+    #[doc(hidden)]
+    pub scope_focus: std::sync::OnceLock<jinn_slices::Slices>,
 }
 
 impl Default for FrontendState {
     fn default() -> Self {
-        let mut scope_stack = ScopeStack::default();
-        scope_stack.push(FocusScope::Input);
         Self {
-            should_quit: false,
-            pins: PinsState::default(),
-            sidebar: SidebarState,
-            persona_section: PersonaSectionState::default(),
-            sessions_section: SessionsSectionState::default(),
-            task_list_section: TaskListSectionState::default(),
-            mcp_servers_section: McpServersSectionState::default(),
-            tui_signals: TuiSignals::new(),
+            scope_focus: std::sync::OnceLock::new(),
             preferences: UserPreferences::default(),
             app_state: AppStateFile::default(),
-            scope_stack,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
             caches: FrontendCaches::default(),
             cancel_stream_prompt: false,
             audit_popup_visible: false,
-            status_hint: None,
             close_session_prompt: false,
             archive_tree_prompt: None,
             pickers: PickerStates::default(),
-            themes_dir: std::path::PathBuf::new(),
-            system_themes_dir: std::path::PathBuf::new(),
-            arg_input: ArgInputState::default(),
-            rename_session_input: RenameSessionInputState::default(),
-            pruner_accumulation_input: PrunerAccumulationInputState::default(),
-            cwd_input: CwdInputState::default(),
-            project_add_input: ProjectAddInputState::default(),
             pending_creation: None,
-            terminal: crate::feat::interactive_term::terminal_tab_state::TerminalTabState::default(
-            ),
 
             sidebar_width: 30,
-            file_picker: crate::feat::file_lister::FilePickerState::default(),
+            file_picker: FilePickerState::default(),
         }
+    }
+}
+
+impl FrontendState {
+    /// Attaches the slice registry handle carrying the scope-focus
+    /// cell. Called once at wiring; later calls are ignored.
+    /// The attached slice registry, if composition attached one.
+    ///
+    /// Cell-backed state (personas, tool registry) resolves through this;
+    /// `None` before attachment or in tests that skip activation.
+    #[must_use]
+    pub fn slices(&self) -> Option<&jinn_slices::Slices> {
+        self.scope_focus.get()
+    }
+
+    pub fn attach_slices(&self, slices: jinn_slices::Slices) {
+        let _ = self.scope_focus.set(slices);
+    }
+
+    /// Resolves the scope-focus cell, if the handle is attached and the
+    /// slice's `activate()` minted it.
+    fn scope_cell(&self) -> Option<jinn_slices::cell::TypedCell<jinn_slices::ScopeFocusState>> {
+        let slices = self.scope_focus.get()?;
+        slices.reader::<jinn_slices::ScopeFocusState>(&jinn_slices::scope_focus_slot())
+    }
+
+    /// Resolves the sidebar sections cell, if the handle is attached and
+    /// the sidebar slice's `activate()` minted it.
+    fn sections_cell(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_sidebar_msg::SidebarSections>> {
+        let slices = self.scope_focus.get()?;
+        slices
+            .reader::<jinn_sidebar_msg::SidebarSections>(&jinn_sidebar_msg::sidebar_sections_slot())
+    }
+
+    /// Runs `f` against the five sidebar sections' state. A no-op when the
+    /// cell is absent (slice not activated) — writes are silently dropped,
+    /// matching the no-slice configuration.
+    pub fn update_sections<F>(&self, f: F)
+    where
+        F: FnOnce(&mut jinn_sidebar_msg::SidebarSections),
+    {
+        if let Some(cell) = self.sections_cell() {
+            cell.update(f);
+        }
+    }
+
+    /// Reads the sidebar sections' state through `f`, falling back to
+    /// `default` when the cell is absent.
+    #[must_use]
+    pub fn with_sections<R, F, D>(&self, f: F, default: D) -> R
+    where
+        F: FnOnce(&jinn_sidebar_msg::SidebarSections) -> R,
+        D: FnOnce() -> R,
+    {
+        match self.sections_cell() {
+            Some(cell) => {
+                let guard = cell.read();
+                f(&guard)
+            }
+            None => default(),
+        }
+    }
+
+    /// Resolves the theme slice's entries cell, if the handle is attached
+    /// and the theme slice's `activate()` minted it.
+    fn theme_entries_cell(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_theme_msg::ThemeEntries>> {
+        let slices = self.scope_focus.get()?;
+        slices.reader::<jinn_theme_msg::ThemeEntries>(&jinn_theme_msg::theme_entries_slot())
+    }
+
+    /// Reads the theme slice's entries through `f`, falling back to
+    /// `default` when the cell is absent (slice not activated).
+    #[must_use]
+    pub fn with_theme_entries<R, F, D>(&self, f: F, default: D) -> R
+    where
+        F: FnOnce(&jinn_theme_msg::ThemeEntries) -> R,
+        D: FnOnce() -> R,
+    {
+        match self.theme_entries_cell() {
+            Some(cell) => {
+                let guard = cell.read();
+                f(&guard)
+            }
+            None => default(),
+        }
+    }
+
+    /// Runs `f` against the theme slice's entries. A no-op when the cell
+    /// is absent (slice not activated) — writes are silently dropped,
+    /// matching the no-slice configuration.
+    pub fn update_theme_entries<F>(&self, f: F)
+    where
+        F: FnOnce(&mut jinn_theme_msg::ThemeEntries),
+    {
+        if let Some(cell) = self.theme_entries_cell() {
+            cell.update(f);
+        }
+    }
+
+    /// Runs `f` against the scope-focus state (stack, signals, quit).
+    /// A no-op when the cell is absent (slice not activated) — writes
+    /// are silently dropped, matching the no-slice configuration.
+    pub fn update_scope<F>(&self, f: F)
+    where
+        F: FnOnce(&mut jinn_slices::ScopeFocusState),
+    {
+        if let Some(cell) = self.scope_cell() {
+            cell.update(f);
+        }
+    }
+
+    /// Reads the scope-focus state through `f`, falling back to
+    /// `default` when the cell is absent.
+    #[must_use]
+    pub fn with_scope<R, F, D>(&self, f: F, default: D) -> R
+    where
+        F: FnOnce(&jinn_slices::ScopeFocusState) -> R,
+        D: FnOnce() -> R,
+    {
+        match self.scope_cell() {
+            Some(cell) => f(&cell.read()),
+            None => default(),
+        }
+    }
+
+    /// The current (top) focus scope; [`FocusScope::Input`] before the
+    /// slice is activated.
+    #[must_use]
+    pub fn scope(&self) -> FocusScope {
+        self.with_scope(|s| s.stack.current().clone(), || FocusScope::Input)
+    }
+
+    /// Whether a quit has been requested; `false` before the slice is
+    /// activated.
+    #[must_use]
+    pub fn quit(&self) -> bool {
+        self.with_scope(|s| s.quit, || false)
+    }
+
+    /// Latches (or clears) the quit request.
+    pub fn set_quit(&self, quit: bool) {
+        self.update_scope(|s| s.quit = quit);
+    }
+
+    /// A snapshot copy of the current TUI signals; all-clear before the
+    /// slice is activated.
+    #[must_use]
+    pub fn signals_snapshot(&self) -> TuiSignals {
+        self.with_scope(|s| s.signals.clone(), TuiSignals::new)
+    }
+
+    /// The picker kind of the current scope, if a picker is focused.
+    #[must_use]
+    pub fn picker_kind(&self) -> Option<jinn_slices::PickerKind> {
+        self.with_scope(|s| s.stack.picker_kind().copied(), || None)
+    }
+
+    /// Runs `f` with the current (top) scope. Prefer [`Self::scope`]
+    /// for a clone.
+    pub fn with_current<R, F, D>(&self, f: F, default: D) -> R
+    where
+        F: FnOnce(&FocusScope) -> R,
+        D: FnOnce() -> R,
+    {
+        self.with_scope(|s| f(s.stack.current()), default)
+    }
+
+    /// Pushes a scope (entering an overlay).
+    pub fn scope_push(&self, scope: FocusScope) {
+        self.update_scope(|s| s.stack.push(scope));
+    }
+
+    /// Pops the top scope (leaving an overlay). No-op at the base.
+    pub fn scope_pop(&self) {
+        self.update_scope(|s| {
+            let _ = s.stack.pop();
+        });
+    }
+
+    /// Pops all overlay scopes, returning to the base.
+    pub fn scope_clear_overlays(&self) {
+        self.update_scope(|s| s.stack.clear_overlays());
+    }
+
+    /// Replaces the base scope and clears overlays.
+    pub fn scope_swap_base(&self, new_base: FocusScope) {
+        self.update_scope(|s| s.stack.swap_base(new_base));
+    }
+
+    /// Swaps the top scope for a different sidebar section (no-op when
+    /// the current scope is not a sidebar section).
+    pub fn scope_set_sidebar_section(&self, section: SidebarSectionId) {
+        self.update_scope(|s| s.stack.set_sidebar_section(section));
+    }
+
+    /// The focused sidebar section, if a sidebar scope is active.
+    #[must_use]
+    pub fn sidebar_section(&self) -> Option<SidebarSectionId> {
+        self.with_scope(|s| s.stack.sidebar_section(), || None)
+    }
+
+    /// Whether the current scope is a picker.
+    #[must_use]
+    pub fn is_picker(&self) -> bool {
+        self.with_scope(|s| s.stack.is_picker(), || false)
+    }
+
+    /// Whether the current scope is any sidebar section.
+    #[must_use]
+    pub fn is_sidebar(&self) -> bool {
+        self.with_scope(|s| s.stack.is_sidebar(), || false)
+    }
+
+    /// The scope one level below the top.
+    #[must_use]
+    pub fn scope_parent(&self) -> Option<FocusScope> {
+        self.with_scope(|s| s.stack.parent().cloned(), || None)
+    }
+
+    /// The base (bottom) scope.
+    #[must_use]
+    pub fn scope_base(&self) -> FocusScope {
+        self.with_scope(|s| s.stack.base().clone(), || FocusScope::Input)
+    }
+
+    /// Whether the stack has any scopes (always `true` after default).
+    #[must_use]
+    pub fn scope_len(&self) -> usize {
+        self.with_scope(|s| s.stack.len(), || 0)
+    }
+
+    /// Drains the TUI signals: returns the current flags and resets
+    /// them to all-clear (consume-once semantics for the run loop).
+    #[must_use]
+    pub fn take_signals(&self) -> TuiSignals {
+        let taken = self.signals_snapshot();
+        self.update_scope(|s| s.signals = TuiSignals::new());
+        taken
     }
 }
 

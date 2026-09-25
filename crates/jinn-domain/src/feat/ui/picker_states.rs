@@ -5,20 +5,20 @@
 //! on [`FrontendState`](super::FrontendState) so consumers are decoupled from the
 //! internal storage layout.
 
-use crate::feat::endpoint::picker_entry::EndpointEntry;
 use std::collections::HashSet;
 
-use crate::feat::mcp::picker_entry::McpServerEntry;
-use crate::feat::persona::PersonaEntry;
-use crate::feat::plugin::PluginPickerEntry;
-use crate::feat::reasoning::ReasoningEffortEntry;
-use crate::feat::session::picker_entry::SessionTreeEntry;
-use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
 use crate::feat::skills::skill_entry::SkillEntry;
-use crate::feat::theme::Theme;
-use crate::feat::theme::ThemeEntry;
-use crate::feat::todo_list::picker_entry::TaskListTreeEntry;
-use crate::feat::tools_actor::tool_entry::ToolEntry;
+use jinn_mcp_msg::McpServerEntry;
+use jinn_persona_msg::PersonaEntry;
+use jinn_project_msg::ProjectEntry;
+use jinn_provider_selection_msg::ProviderPickerEntry;
+use jinn_provider_selection_msg::endpoint::EndpointEntry;
+use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
+use jinn_session_lifecycle_msg::SessionLifecycleEntry;
+use jinn_session_store_msg::SessionTreeEntry;
+use jinn_theme::Theme;
+use jinn_theme::ThemeEntry;
+use jinn_tools_msg::{TaskListTreeEntry, ToolEntry};
 
 /// All picker state - grouped so the picker subsystem can evolve independently.
 ///
@@ -79,9 +79,8 @@ pub struct PickerStates {
     pub task_list_picker:
         jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<TaskListTreeEntry>>,
 
-    pub project_picker: jinn_selection_widget::SelectionState<
-        jinn_picker::PickerEntry<crate::feat::project::picker_entry::ProjectEntry>,
-    >,
+    pub project_picker:
+        jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>>,
 
     /// Measured results-area row count for the currently-active picker, as
     /// written by the TUI render pre-pass each frame. Used by the picker
@@ -98,32 +97,26 @@ pub struct PickerStates {
     pub mcp_server_picker:
         jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<McpServerEntry>>,
 
-    /// Plugin picker state - read-only list of loaded plugins.
-    /// OWNER: IntentHandler (populated on plugin picker open).
-    pub plugin_picker:
-        jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<PluginPickerEntry>>,
-
     /// Snapshot of enabled MCP servers before picker opens - restored on ESC.
     /// OWNER: IntentHandler (set on MCP picker open, consumed on confirm/cancel).
     pub mcp_server_picker_snapshot: Option<std::collections::BTreeSet<String>>,
 
+    /// Provider picker state (items, filter text, selection index).
+    /// OWNER: IntentHandler (navigation) / provider-selection slice's
+    /// `ProviderActor` (fills items at load time through the
+    /// `State::with_pickers` projection). The cell ([`jinn_provider_selection_msg::
+    /// ProviderCell`]) holds the source data; this field is the
+    /// render/navigation surface the picker host lends from `&AppState`.
+    pub provider_picker:
+        jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProviderPickerEntry>>,
+
     /// OpenRouter endpoint picker state - one row per routing upstream.
-    /// OWNER: IntentHandler (populated on endpoint picker open).
+    /// OWNER: IntentHandler (navigation) / provider-selection slice's
+    /// `ProviderActor` (fills items at load time through the
+    /// `State::with_pickers` projection). Endpoint loading/fetched-at flags live on the
+    /// provider cell.
     pub endpoint_picker:
         jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<EndpointEntry>>,
-
-    /// True while an endpoint fetch is in flight (open or `<c-r>` refresh).
-    /// Set synchronously by the open/refresh intent; cleared by `ProviderActor`
-    /// when it writes items back (success or error).
-    /// OWNER: IntentHandler (sets) / ProviderActor (clears).
-    pub endpoint_loading: bool,
-
-    /// When the endpoint cache for the active model was last populated.
-    /// Set by `ProviderActor` on a successful fetch (and preserved on a
-    /// cache-served open). Survives across picker opens so the footer can
-    /// show "fetched Xs ago".
-    /// OWNER: ProviderActor.
-    pub endpoint_fetched_at: Option<jiff::Timestamp>,
 }
 
 /// Extension trait providing typed access to picker state on [`FrontendState`](super::FrontendState).
@@ -222,14 +215,10 @@ pub trait PickerExt {
     /// Read-only access to the project picker state.
     fn project_picker(
         &self,
-    ) -> &jinn_selection_widget::SelectionState<
-        jinn_picker::PickerEntry<crate::feat::project::picker_entry::ProjectEntry>,
-    >;
+    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>>;
     fn project_picker_mut(
         &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<
-        jinn_picker::PickerEntry<crate::feat::project::picker_entry::ProjectEntry>,
-    >;
+    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>>;
 
     /// Read-only access to the MCP server picker state.
     fn mcp_server_picker(
@@ -239,15 +228,6 @@ pub trait PickerExt {
     fn mcp_server_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<McpServerEntry>>;
-
-    /// Read-only access to the plugin picker state.
-    fn plugin_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<PluginPickerEntry>>;
-    /// Mutable access to the plugin picker state.
-    fn plugin_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<PluginPickerEntry>>;
 
     /// Read-only access to the OpenRouter endpoint picker state.
     fn endpoint_picker(
@@ -402,17 +382,13 @@ impl PickerExt for super::frontend_state::FrontendState {
     }
     fn project_picker(
         &self,
-    ) -> &jinn_selection_widget::SelectionState<
-        jinn_picker::PickerEntry<crate::feat::project::picker_entry::ProjectEntry>,
-    > {
+    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>> {
         &self.pickers.project_picker
     }
 
     fn project_picker_mut(
         &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<
-        jinn_picker::PickerEntry<crate::feat::project::picker_entry::ProjectEntry>,
-    > {
+    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>> {
         &mut self.pickers.project_picker
     }
 
@@ -426,19 +402,6 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<McpServerEntry>> {
         &mut self.pickers.mcp_server_picker
-    }
-
-    fn plugin_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<PluginPickerEntry>> {
-        &self.pickers.plugin_picker
-    }
-
-    fn plugin_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<PluginPickerEntry>>
-    {
-        &mut self.pickers.plugin_picker
     }
 
     fn endpoint_picker(

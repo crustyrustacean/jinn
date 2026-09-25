@@ -15,7 +15,6 @@ in the which-key popup (`?`).
 | `<leader>st` | Tool | Enable/disable tools for this session |
 | `<leader>sk` | Skill | Enable/disable skills; load skill bodies into context |
 | `<leader>sM` | MCP server | Enable/disable/restart MCP servers (inspector) |
-| `<leader>sP` | Plugin | Read-only list of loaded plugins |
 | `<leader>sh` | Theme | UI theme |
 | `<leader>sr` | Reasoning effort | Model reasoning-effort level |
 | `<leader>sE` | Endpoint | OpenRouter routing endpoint pin |

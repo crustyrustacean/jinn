@@ -9,9 +9,9 @@ use std::path::Path;
 
 use error_stack::{Report, ResultExt};
 use jinn_domain::common::system_resource::load_system_resource;
-use jinn_domain::feat::ui::sidebar::register_sections;
-use jinn_domain::feat::ui::sidebar::sidebar::Sidebar;
 use jinn_domain::{AppCore, AppUiRegistry, State};
+use jinn_sidebar::sections::register_sections;
+use jinn_sidebar::sections::sidebar::Sidebar;
 use wherror::Error;
 
 use crate::app::WhichKeyInstance;
@@ -52,54 +52,29 @@ pub fn launch(
     mut services: jinn_domain::Services,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
-    let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
-    load_compaction_prompt(
-        &core.state,
-        &paths.prompts_dir(),
-        &paths.system_prompts_dir(),
-        &intent_handler_cap,
-    )?;
-    load_theme(
-        &core.state,
-        &paths.themes_dir(),
-        &paths.system_themes_dir(),
-        &intent_handler_cap,
-    );
+    load_compaction_prompt(&paths.prompts_dir(), &paths.system_prompts_dir())?;
+    load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
     // Resolve mouse-selection config from environment.
     let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
     let tui_config = TuiConfig::new(mouse_selection);
 
     // The single keymap-bootstrap site. Production and tests reach this
-    // via the same path. The terminal control-toggle binding comes from
-    // `[interactive_term]` prefs, validated by the same parser the keymap
-    // binds through (falls back to the default, loudly).
-    let configured = core
-        .state
-        .read()
-        .frontend
-        .preferences
-        .interactive_term
-        .control_toggle_key
-        .clone();
-    let control_toggle = jinn_domain::feat::interactive_term::prefs::normalize_control_toggle_key(
-        &configured,
-    )
-    .unwrap_or_else(|| {
-        tracing::warn!(
-            configured = %configured,
-            default = jinn_domain::feat::interactive_term::prefs::DEFAULT_CONTROL_TOGGLE_KEY,
-            "invalid [interactive_term] control_toggle_key; falling back to the default"
-        );
-        jinn_domain::feat::interactive_term::prefs::DEFAULT_CONTROL_TOGGLE_KEY.to_owned()
-    });
+    // via the same path. (The terminal control-toggle binding is a slice
+    // route row — attached from `jinn_term::activate` during actor-system
+    // bootstrap, not here.)
 
     let mut ui_registry = AppUiRegistry::new();
     jinn_domain::register_all_ui_elements(&mut ui_registry);
+    // The status-bar slice's element (the slice's cell is minted in the
+    // actor-system bootstrap). Registered here because the kernel cannot
+    // reference slice crates, and jinn-tui's registry assembly is the
+    // composition point for display chrome.
+    jinn_status_bar::register(&mut ui_registry);
 
     // Generated keymap bindings from the slice route rows attached
     // during actor-system bootstrap (single keymap bootstrap site).
-    let mut keymap = keymap::init_with_control_toggle(&control_toggle);
+    let mut keymap = keymap::init();
     register_slice_wiring(&mut services, &mut keymap);
     let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
 
@@ -121,7 +96,6 @@ pub fn launch(
             register_sections(&mut s);
             s
         },
-        intent_handler_cap,
     })
 }
 
@@ -134,16 +108,13 @@ pub fn launch(
 /// Returns an error if the compaction prompt is missing from both directories
 /// or cannot be read. This is a fatal error - the application cannot run without it.
 pub fn load_compaction_prompt(
-    state: &State,
     user_dir: &Path,
     system_dir: &Path,
-    cap: &jinn_domain::common::tcaps::IntentHandlerCap,
-) -> Result<(), Report<LaunchError>> {
+) -> Result<String, Report<LaunchError>> {
     let prompt =
         load_system_resource("_compaction.md", user_dir, system_dir).change_context(LaunchError)?;
     tracing::info!("loaded compaction prompt");
-    state.write(cap).context.compaction_prompt = prompt;
-    Ok(())
+    Ok(prompt)
 }
 
 /// Loads the theme from user preferences into application state.
@@ -151,20 +122,15 @@ pub fn load_compaction_prompt(
 /// Searches the user themes directory first, then the system themes directory.
 /// If the preferred theme cannot be loaded, falls back to the default theme.
 /// Failures are logged but not fatal.
-pub fn load_theme(
-    state: &State,
-    user_dir: &Path,
-    system_dir: &Path,
-    cap: &jinn_domain::common::tcaps::IntentHandlerCap,
-) {
+pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
     let theme_name = {
         let guard = state.read();
         guard.frontend.app_state.theme_name.clone()
     };
-    match jinn_domain::feat::theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
+    match jinn_theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
         Ok(theme) => {
             tracing::info!(theme = ?theme_name, "loaded theme");
-            state.write(cap).frontend.theme = theme;
+            state.write().frontend.theme = theme;
         }
         Err(e) => {
             tracing::warn!(err = ?e, "failed to load theme, using default");
@@ -185,12 +151,12 @@ fn register_slice_wiring(
     keymap: &mut ratatui_which_key::Keymap<
         jinn_domain::KeyEvent,
         Scope,
-        jinn_domain::Intent,
+        jinn_domain::KernelIntent,
         KeyCategory,
     >,
 ) {
     // Slice activation happens in the actor-system bootstrap
-    // (`actor_wiring`), which is the async context kameo spawns need and
+    // (`actor_wiring`), which is the async context actor spawns need and
     // the only place that can put the dashboard first in spawn order.
     // This function runs after it, so every slice's rows exist by now.
     crate::keymap_gen::bind_route_rows(&services.key_routes, keymap);

@@ -7,13 +7,13 @@
 )]
 
 use crate::common::app_state::AppState;
-use crate::common::app_state::FocusScope;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::chat_input::element::ChatInputBoxElement;
-use crate::feat::session::queue_item::QueueItem;
-use crate::feat::theme::default_theme;
 use crate::protocol::ChatEntry;
+use jinn_slices::FocusScope;
+use jinn_theme::default_theme;
+use jinn_turn_dispatch_msg::QueueItem;
 
 use jinn_testutil::setup_term;
 use ratatui::layout::Position;
@@ -35,8 +35,8 @@ fn render_draws_input_buffer() {
     // Given a ChatInputBoxElement with "hello" in state (Normal mode).
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut().insert_text("hello");
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(|i| i.insert_text("hello"));
         s
     };
 
@@ -46,7 +46,7 @@ fn render_draws_input_buffer() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -63,9 +63,9 @@ fn render_input_mode_yellow_prompt() {
     // Given a ChatInputBoxElement in Input mode with "hi" in buffer.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.push(FocusScope::Input);
-        s.active_chat_input_mut().insert_text("hi");
+        let mut s = AppState::default_with_scope_focus();
+        s.frontend.scope_push(FocusScope::Input);
+        s.update_active_input(|i| i.insert_text("hi"));
         s
     };
 
@@ -75,7 +75,7 @@ fn render_input_mode_yellow_prompt() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -92,8 +92,8 @@ fn render_input_mode_yellow_prompt() {
 fn render_input_mode_yellow_border() {
     // Given a ChatInputBoxElement in Input mode.
     let mut element = ChatInputBoxElement;
-    let mut state = AppState::default();
-    state.frontend.scope_stack.push(FocusScope::Input);
+    let state = AppState::default_with_scope_focus();
+    state.frontend.scope_push(FocusScope::Input);
 
     let (mut terminal, area) = setup_term(40, 3);
 
@@ -101,7 +101,7 @@ fn render_input_mode_yellow_border() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -118,9 +118,9 @@ fn render_input_mode_cursor_at_end_of_text() {
     // Given a ChatInputBoxElement in Input mode with "abc" in buffer.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.push(FocusScope::Input);
-        s.active_chat_input_mut().insert_text("abc");
+        let mut s = AppState::default_with_scope_focus();
+        s.frontend.scope_push(FocusScope::Input);
+        s.update_active_input(|i| i.insert_text("abc"));
         s
     };
 
@@ -130,7 +130,7 @@ fn render_input_mode_cursor_at_end_of_text() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -147,11 +147,11 @@ fn render_cursor_at_mid_buffer() {
     // Given a ChatInputBoxElement in Input mode with "abc" and cursor at position 1.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.push(FocusScope::Input);
-        s.active_chat_input_mut().insert_text("abc");
-        s.active_chat_input_mut().move_cursor_to_start();
-        s.active_chat_input_mut().move_cursor_right(); // cursor at 1 (between 'a' and 'b')
+        let mut s = AppState::default_with_scope_focus();
+        s.frontend.scope_push(FocusScope::Input);
+        s.update_active_input(|i| i.insert_text("abc"));
+        s.update_active_input(crate::feat::chat_input::ChatInputBoxState::move_cursor_to_start);
+        s.update_active_input(crate::feat::chat_input::ChatInputBoxState::move_cursor_right); // cursor at 1 (between 'a' and 'b')
         s
     };
 
@@ -161,7 +161,7 @@ fn render_cursor_at_mid_buffer() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -178,10 +178,10 @@ fn render_cursor_at_home() {
     // Given a ChatInputBoxElement in Input mode with "hi" and cursor moved to start.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.push(FocusScope::Input);
-        s.active_chat_input_mut().insert_text("hi");
-        s.active_chat_input_mut().move_cursor_to_start();
+        let mut s = AppState::default_with_scope_focus();
+        s.frontend.scope_push(FocusScope::Input);
+        s.update_active_input(|i| i.insert_text("hi"));
+        s.update_active_input(crate::feat::chat_input::ChatInputBoxState::move_cursor_to_start);
         s
     };
 
@@ -191,7 +191,7 @@ fn render_cursor_at_home() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -208,8 +208,8 @@ fn multiline_first_line_has_prefix() {
     // Given a ChatInputBoxElement with "hello\nworld" in buffer (Normal mode).
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut().insert_text("hello\nworld");
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(|i| i.insert_text("hello\nworld"));
         s
     };
 
@@ -219,7 +219,7 @@ fn multiline_first_line_has_prefix() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -238,8 +238,8 @@ fn multiline_second_line_has_indent() {
     // Given a ChatInputBoxElement with "hello\nworld" in buffer (Normal mode).
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut().insert_text("hello\nworld");
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(|i| i.insert_text("hello\nworld"));
         s
     };
 
@@ -249,7 +249,7 @@ fn multiline_second_line_has_indent() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -268,9 +268,9 @@ fn render_multiline_cursor_on_second_line() {
     // Given a ChatInputBoxElement in Input mode with "ab\ncd" and cursor at end.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.push(FocusScope::Input);
-        s.active_chat_input_mut().insert_text("ab\ncd");
+        let mut s = AppState::default_with_scope_focus();
+        s.frontend.scope_push(FocusScope::Input);
+        s.update_active_input(|i| i.insert_text("ab\ncd"));
         s
     };
 
@@ -280,7 +280,7 @@ fn render_multiline_cursor_on_second_line() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -298,14 +298,14 @@ fn render_multiline_cursor_between_newlines() {
     // Given a ChatInputBoxElement in Input mode with "a\n\nb" and cursor on the empty middle line.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.push(FocusScope::Input);
-        s.active_chat_input_mut().insert_text("a\n\nb");
+        let mut s = AppState::default_with_scope_focus();
+        s.frontend.scope_push(FocusScope::Input);
+        s.update_active_input(|i| i.insert_text("a\n\nb"));
         // Cursor is at end (pos 4). Move back 1 to be on the empty middle line.
-        s.active_chat_input_mut().move_cursor_left(); // now at pos 3, which is after the second \n, before 'b'
+        s.update_active_input(crate::feat::chat_input::ChatInputBoxState::move_cursor_left); // now at pos 3, which is after the second \n, before 'b'
         // Actually: "a\n\nb" → graphemes: a(0) \n(1) \n(2) b(3). cursor at 3 = before 'b'.
         // Move left once more to be at pos 2 = after first \n, on empty line.
-        s.active_chat_input_mut().move_cursor_left();
+        s.update_active_input(crate::feat::chat_input::ChatInputBoxState::move_cursor_left);
         s
     };
 
@@ -315,7 +315,7 @@ fn render_multiline_cursor_between_newlines() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -333,10 +333,10 @@ fn render_wraps_long_text() {
     // Given "hello world" in a narrow terminal (width 10) so it wraps.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut().insert_text("hello world");
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(|i| i.insert_text("hello world"));
         // Set wrap width to simulate narrow terminal: 10 - 2 prefix = 8
-        s.active_chat_input_mut().set_wrap_width(8);
+        s.update_active_input(|i| i.set_wrap_width(8));
         s
     };
 
@@ -346,7 +346,7 @@ fn render_wraps_long_text() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -367,10 +367,10 @@ fn render_cursor_on_wrapped_continuation() {
     // Given "hello world" in a narrow terminal with cursor on wrapped line.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.push(FocusScope::Input);
-        s.active_chat_input_mut().insert_text("hello world");
-        s.active_chat_input_mut().set_wrap_width(8);
+        let mut s = AppState::default_with_scope_focus();
+        s.frontend.scope_push(FocusScope::Input);
+        s.update_active_input(|i| i.insert_text("hello world"));
+        s.update_active_input(|i| i.set_wrap_width(8));
         s
     };
 
@@ -380,7 +380,7 @@ fn render_cursor_on_wrapped_continuation() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -404,12 +404,11 @@ fn indicator_shows_up_arrow_when_lines_hidden_above() {
     // Given a narrow terminal with 3 visible rows and 5 total lines, scrolled to offset 2.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         // 5 logical lines, narrow width so each wraps to 1 visual line.
-        s.active_chat_input_mut()
-            .insert_text("line1\nline2\nline3\nline4\nline5");
-        s.active_chat_input_mut().set_wrap_width(38);
-        s.active_chat_input_mut().set_scroll_offset(2);
+        s.update_active_input(|i| i.insert_text("line1\nline2\nline3\nline4\nline5"));
+        s.update_active_input(|i| i.set_wrap_width(38));
+        s.update_active_input(|i| i.set_scroll_offset(2));
         s
     };
 
@@ -419,7 +418,7 @@ fn indicator_shows_up_arrow_when_lines_hidden_above() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -444,10 +443,9 @@ fn indicator_shows_down_arrow_when_lines_hidden_below() {
     // Given a narrow terminal with 3 visible rows and 5 total lines, scrolled to offset 0.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut()
-            .insert_text("line1\nline2\nline3\nline4\nline5");
-        s.active_chat_input_mut().set_wrap_width(38);
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(|i| i.insert_text("line1\nline2\nline3\nline4\nline5"));
+        s.update_active_input(|i| i.set_wrap_width(38));
         // scroll_offset = 0, so lines_above = 0, lines_below = 5 - 0 - 3 = 2.
         s
     };
@@ -458,7 +456,7 @@ fn indicator_shows_down_arrow_when_lines_hidden_below() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -484,11 +482,10 @@ fn indicator_shows_both_arrows_when_viewport_in_middle() {
     // Given a narrow terminal with 3 visible rows and 7 total lines, scrolled to offset 2.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut()
-            .insert_text("line1\nline2\nline3\nline4\nline5\nline6\nline7");
-        s.active_chat_input_mut().set_wrap_width(38);
-        s.active_chat_input_mut().set_scroll_offset(2);
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(|i| i.insert_text("line1\nline2\nline3\nline4\nline5\nline6\nline7"));
+        s.update_active_input(|i| i.set_wrap_width(38));
+        s.update_active_input(|i| i.set_scroll_offset(2));
         // lines_above = 2, lines_below = 7 - 2 - 3 = 2.
         s
     };
@@ -499,7 +496,7 @@ fn indicator_shows_both_arrows_when_viewport_in_middle() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -524,9 +521,9 @@ fn no_indicators_when_content_fits() {
     // Given a terminal where all content fits without scrolling.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut().insert_text("hello");
-        s.active_chat_input_mut().set_wrap_width(38);
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(|i| i.insert_text("hello"));
+        s.update_active_input(|i| i.set_wrap_width(38));
         s
     };
 
@@ -536,7 +533,7 @@ fn no_indicators_when_content_fits() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -555,9 +552,9 @@ fn render_cursor_after_cjk() {
     // Given a ChatInputBoxElement in Input mode with CJK text "中文".
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.push(FocusScope::Input);
-        s.active_chat_input_mut().insert_text("中文");
+        let mut s = AppState::default_with_scope_focus();
+        s.frontend.scope_push(FocusScope::Input);
+        s.update_active_input(|i| i.insert_text("中文"));
         s
     };
 
@@ -567,7 +564,7 @@ fn render_cursor_after_cjk() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -584,9 +581,9 @@ fn render_cursor_after_emoji() {
     // Given a ChatInputBoxElement in Input mode with emoji "🎉🎉".
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.push(FocusScope::Input);
-        s.active_chat_input_mut().insert_text("🎉🎉");
+        let mut s = AppState::default_with_scope_focus();
+        s.frontend.scope_push(FocusScope::Input);
+        s.update_active_input(|i| i.insert_text("🎉🎉"));
         s
     };
 
@@ -596,7 +593,7 @@ fn render_cursor_after_emoji() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -613,11 +610,11 @@ fn render_cursor_mixed_ascii_cjk() {
     // Given a ChatInputBoxElement in Input mode with mixed "a中b" and cursor at pos 2 (after "中").
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.push(FocusScope::Input);
-        s.active_chat_input_mut().insert_text("a中b");
+        let mut s = AppState::default_with_scope_focus();
+        s.frontend.scope_push(FocusScope::Input);
+        s.update_active_input(|i| i.insert_text("a中b"));
         // Cursor at end (pos 3). Move left once to pos 2 (after "中").
-        s.active_chat_input_mut().move_cursor_left();
+        s.update_active_input(crate::feat::chat_input::ChatInputBoxState::move_cursor_left);
         s
     };
 
@@ -627,7 +624,7 @@ fn render_cursor_mixed_ascii_cjk() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -646,8 +643,8 @@ fn render_queue_badge_in_queue_mode() {
     // Given a ChatInputBoxElement toggled to Queue mode with empty buffer.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut().toggle_input_mode(); // Steer → Queue
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(crate::feat::chat_input::ChatInputBoxState::toggle_input_mode); // Steer → Queue
         s
     };
 
@@ -657,7 +654,7 @@ fn render_queue_badge_in_queue_mode() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -694,7 +691,7 @@ fn render_queue_badge_in_queue_mode() {
 fn render_steer_badge_in_steer_mode() {
     // Given a ChatInputBoxElement in default (Steer) mode.
     let mut element = ChatInputBoxElement;
-    let state = AppState::default();
+    let state = AppState::default_with_scope_focus();
 
     let (mut terminal, area) = setup_term(40, 3);
 
@@ -702,7 +699,7 @@ fn render_steer_badge_in_steer_mode() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -740,7 +737,7 @@ fn render_steer_badge_shows_buffer_count_when_nonzero() {
     // Given Steer mode with 2 fragments buffered.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut()
             .steering_buffer_mut()
             .push_fragment("first".to_owned());
@@ -756,7 +753,7 @@ fn render_steer_badge_shows_buffer_count_when_nonzero() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -798,8 +795,8 @@ fn render_queue_badge_shows_queue_count_when_nonzero() {
     // Given QUEUE mode with 2 queued user messages.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut().toggle_input_mode(); // Steer -> Queue
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(crate::feat::chat_input::ChatInputBoxState::toggle_input_mode); // Steer -> Queue
         s.active_session_mut()
             .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("first"))));
         s.active_session_mut()
@@ -813,7 +810,7 @@ fn render_queue_badge_shows_queue_count_when_nonzero() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -850,7 +847,7 @@ fn render_queue_badge_shows_queue_count_when_nonzero() {
 fn render_queue_badge_no_count_when_buffer_empty() {
     // Given Queue mode (default) - even if buffer had fragments, badge width is just [QUEUE].
     let mut element = ChatInputBoxElement;
-    let state = AppState::default();
+    let state = AppState::default_with_scope_focus();
 
     let (mut terminal, area) = setup_term(40, 3);
 
@@ -858,7 +855,7 @@ fn render_queue_badge_no_count_when_buffer_empty() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -888,8 +885,8 @@ fn steer_badge_is_muted_in_normal_mode() {
     // Given a ChatInputBoxElement in Steer mode with Normal (browsing) scope.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.frontend.scope_stack.pop(); // pop Input → back to Normal
+        let s = AppState::default_with_scope_focus();
+        s.frontend.scope_pop(); // pop Input → back to Normal
         s
     };
 
@@ -899,7 +896,7 @@ fn steer_badge_is_muted_in_normal_mode() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -932,9 +929,9 @@ fn queue_badge_is_muted_in_normal_mode() {
     // Given a ChatInputBoxElement toggled to Queue mode with Normal (browsing) scope.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut().toggle_input_mode(); // Steer → Queue
-        s.frontend.scope_stack.pop(); // pop Input → back to Normal
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(crate::feat::chat_input::ChatInputBoxState::toggle_input_mode); // Steer → Queue
+        s.frontend.scope_pop(); // pop Input → back to Normal
         s
     };
 
@@ -944,7 +941,7 @@ fn queue_badge_is_muted_in_normal_mode() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -968,14 +965,14 @@ fn steer_badge_count_is_muted_in_normal_mode() {
     // Given Steer mode with 2 fragments buffered, Normal scope.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut()
             .steering_buffer_mut()
             .push_fragment("first".to_owned());
         s.active_session_mut()
             .steering_buffer_mut()
             .push_fragment("second".to_owned());
-        s.frontend.scope_stack.pop(); // pop Input → back to Normal
+        s.frontend.scope_pop(); // pop Input → back to Normal
         s
     };
 
@@ -985,7 +982,7 @@ fn steer_badge_count_is_muted_in_normal_mode() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1011,13 +1008,13 @@ fn queue_badge_count_is_muted_in_normal_mode() {
     // Given Queue mode with 2 queued items, Normal scope.
     let mut element = ChatInputBoxElement;
     let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut().toggle_input_mode(); // Steer → Queue
+        let mut s = AppState::default_with_scope_focus();
+        s.update_active_input(crate::feat::chat_input::ChatInputBoxState::toggle_input_mode); // Steer → Queue
         s.active_session_mut()
             .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("first"))));
         s.active_session_mut()
             .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("second"))));
-        s.frontend.scope_stack.pop(); // pop Input → back to Normal
+        s.frontend.scope_pop(); // pop Input → back to Normal
         s
     };
 
@@ -1027,7 +1024,7 @@ fn queue_badge_count_is_muted_in_normal_mode() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })

@@ -1,8 +1,14 @@
-//! Service wrapper for the kameo [`MessageBus`](kameo_actors::message_bus::MessageBus).
+//! Service wrapper for the message fabric.
 //!
-//! In production, delegates to a real kameo `MessageBus`. In tests, can operate
-//! in **recording mode** via [`BusService::new_recording()`], which captures all
-//! `publish()` calls for assertion with [`BusAudit`].
+//! Production publishes onto the **trouper actor system**: every message
+//! is broadcast by its schema id to EVERY actor that declared
+//! `.handles::<M>()` at spawn. Publishing is schema-broadcast — no route
+//! table, no topic resolution, no way for one slice's registration to
+//! divert another consumer's traffic.
+//!
+//! In tests, [`BusService`] can operate in **recording mode** via
+//! [`BusService::new_recording()`], which captures all `publish()` calls
+//! for assertion with [`BusAudit`].
 
 use std::any::{Any, TypeId};
 use std::fmt;
@@ -10,16 +16,13 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use kameo::actor::ActorRef;
-use kameo_actors::message_bus::{MessageBus, Publish, Register};
-
 use crate::common::bus::BusMessage;
 
 // ---------------------------------------------------------------------------
 // BusService
 // ---------------------------------------------------------------------------
 
-/// Shared, cloneable wrapper around the message bus.
+/// Shared, cloneable wrapper around the message fabric.
 ///
 /// Injected into [`Services`](super::Services) during startup.
 /// All bus operations go through this wrapper.
@@ -33,17 +36,48 @@ pub struct BusService {
 
 #[derive(Clone)]
 enum BusInner {
-    Real(ActorRef<MessageBus>),
-    #[cfg_attr(not(test), expect(dead_code, reason = "test-only recording mode"))]
+    /// Trouper-native fabric: publishes broadcast by schema to every
+    /// declarant subscriber.
+    Troupe {
+        system: trouper::system::ActorSystem,
+    },
+    #[cfg_attr(
+        not(any(test, feature = "test-harness")),
+        expect(
+            dead_code,
+            reason = "recording mode is test-only but lives in the shared bus type"
+        )
+    )]
     Recording(Arc<Mutex<Vec<RecordedMessage>>>),
 }
 
 impl BusService {
-    /// Creates a new bus service wrapping the given actor ref.
+    /// Creates a bus service backed by the trouper fabric.
     #[must_use]
-    pub fn new(bus: ActorRef<MessageBus>) -> Self {
+    pub fn new_trouper(system: trouper::system::ActorSystem) -> Self {
         Self {
-            inner: BusInner::Real(bus),
+            inner: BusInner::Troupe { system },
+        }
+    }
+
+    /// The trouper system this service publishes onto, when the fabric is
+    /// trouper-backed. The seam the bridge drains closures against.
+    ///
+    /// # Panics
+    ///
+    /// Panics when called on a recording-mode bus (test-only): there is no
+    /// system to return.
+    #[expect(
+        clippy::panic,
+        reason = "invariant: recording variant is test-only; calling system_ref on it is programmer misuse"
+    )]
+    #[must_use]
+    pub fn system_ref(&self) -> &trouper::system::ActorSystem {
+        match &self.inner {
+            BusInner::Troupe { system } => system,
+            BusInner::Recording(_) => {
+                panic!("system_ref() called on a recording bus (test-only)")
+            }
         }
     }
 
@@ -52,7 +86,7 @@ impl BusService {
     /// Returns a `(BusService, BusAudit)` pair. The service captures all
     /// `publish()` calls; the audit handle reads them back.
     /// `register()` is a no-op in recording mode.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-harness"))]
     pub fn new_recording() -> (Self, BusAudit) {
         let messages = Arc::new(Mutex::new(Vec::new()));
         let service = Self {
@@ -62,94 +96,35 @@ impl BusService {
         (service, audit)
     }
 
-    /// Returns a reference to the underlying bus actor ref.
-    ///
-    /// # Panics
-    ///
-    /// Panics if called on a recording-mode bus (tests should not need this).
-    /// A recipient handle for forwarding publishes of `M` to the
-    /// bus's subscribers — the seam the bridge's per-route relays
-    /// register through at activation time.
-    pub async fn register_recipient<M>(&self, recipient: kameo::actor::Recipient<M>)
-    where
-        M: crate::common::bus::BusMessage,
-    {
-        match &self.inner {
-            BusInner::Real(bus) => {
-                if let Err(err) = bus.ask(Register(recipient)).await {
-                    tracing::warn!(?err, "bus recipient registration returned an error");
-                }
-            }
-            BusInner::Recording(_) => {
-                let _ = recipient;
-            }
-        }
-    }
-
-    /// Returns the raw bus actor ref.
-    ///
-    /// # Panics
-    ///
-    /// Panics when called on a recording (test-only) bus: there is no
-    /// actor to return.
-    #[expect(
-        clippy::panic,
-        reason = "invariant: recording variant is test-only; calling actor_ref on it is programmer misuse"
-    )]
-    #[must_use]
-    pub fn actor_ref(&self) -> &ActorRef<MessageBus> {
-        match &self.inner {
-            BusInner::Real(bus) => bus,
-            BusInner::Recording(_) => panic!("actor_ref() called on recording BusService"),
-        }
-    }
-
     /// Returns `true` if this bus is in recording mode (test-only).
     #[must_use]
     pub fn is_recording(&self) -> bool {
         matches!(&self.inner, BusInner::Recording(_))
     }
 
-    /// Registers a recipient to receive messages of type `M` on the bus.
+    /// Publishes a typed message onto the fabric.
     ///
-    /// No-op in recording mode.
-    pub async fn register<M: Clone + Send + 'static>(&self, recipient: kameo::actor::Recipient<M>) {
-        match &self.inner {
-            BusInner::Real(bus) => {
-                if let Err(e) = bus.ask(Register(recipient)).await {
-                    tracing::warn!(error = ?e, "failed to register on bus; likely during shutdown");
-                }
-            }
-            BusInner::Recording(_) => {
-                // No-op in recording mode
-                let _ = recipient;
-            }
-        }
-    }
-
-    /// Registers an actor to receive messages of type `M` on the bus.
-    ///
-    /// Convenience wrapper that creates the recipient from the actor ref.
-    /// No-op in recording mode.
-    pub async fn subscribe<M: Clone + Send + 'static, A: kameo::message::Message<M>>(
-        &self,
-        actor_ref: &ActorRef<A>,
-    ) {
-        self.register(actor_ref.clone().recipient::<M>()).await;
-    }
-
-    /// Publishes a typed message to all registered recipients on the bus.
-    ///
+    /// The message broadcasts by its schema id to every actor that
+    /// declared `.handles::<M>()`; zero receivers is a silent no-op.
     /// In recording mode, captures the message for later assertion.
-    ///
-    pub async fn publish<M: BusMessage>(&self, msg: M) {
+    pub async fn publish<M>(&self, msg: M)
+    where
+        M: BusMessage
+            + trouper::schema::Schema
+            + serde::Serialize
+            + Clone
+            + Send
+            + Sync
+            + trouper::envelope::PayloadValue,
+    {
         match &self.inner {
-            BusInner::Real(bus) => {
-                let name = message_name::<M>();
-                tracing::debug!(message = name, "kameo: {name} sent");
-                if let Err(e) = bus.tell(Publish(msg)).await {
-                    tracing::warn!(err = ?e, "bus publish failed");
-                }
+            BusInner::Troupe { system } => {
+                tracing::debug!(
+                    message = message_name::<M>(),
+                    "trouper: {} published",
+                    message_name::<M>()
+                );
+                system.publish(msg).await;
             }
             BusInner::Recording(recorded) => {
                 let type_id = TypeId::of::<M>();
@@ -174,7 +149,7 @@ fn message_name<M: BusMessage>() -> &'static str {
 impl fmt::Debug for BusService {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.inner {
-            BusInner::Real(_) => f.debug_struct("BusService").finish_non_exhaustive(),
+            BusInner::Troupe { .. } => f.debug_struct("BusService<Troupe>").finish_non_exhaustive(),
             BusInner::Recording(_) => f
                 .debug_struct("BusService<Recording>")
                 .finish_non_exhaustive(),
@@ -284,13 +259,19 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(
+        Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, trouper::schema::Event,
+    )]
+    #[schema(description = "Bus test message alpha.")]
     struct Alpha {
         val: u32,
     }
     impl crate::common::bus::BusMessage for Alpha {}
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(
+        Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, trouper::schema::Event,
+    )]
+    #[schema(description = "Bus test message beta.")]
     struct Beta {
         text: String,
     }
@@ -364,16 +345,6 @@ mod tests {
         assert!(betas.is_empty());
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn register_is_noop_in_recording_mode() {
-        let (bus, _audit) = BusService::new_recording();
-        // register is a no-op in recording mode — just verify it doesn't panic
-        // We can't easily create a Recipient without spawning an actor,
-        // so just verify the bus drops without panic.
-        drop(bus);
-    }
-
     /// A `MakeWriter` capturing formatted log output for assertions.
     #[derive(Clone, Default)]
     struct CapturingWriter(Arc<std::sync::Mutex<Vec<u8>>>);
@@ -411,16 +382,14 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn publish_on_real_bus_logs_sent_line() {
-        use kameo::actor::Spawn;
+    async fn publish_on_trouper_bus_logs_published_line() {
         use tracing_subscriber::Layer;
         use tracing_subscriber::layer::SubscriberExt;
 
-        // Given a real MessageBus-backed BusService and a subscriber
-        // capturing debug events.
-        let bus_actor = MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
-        let bus_ref = MessageBus::spawn(bus_actor);
-        let bus = BusService::new(bus_ref);
+        // Given a trouper-backed BusService and a subscriber capturing
+        // debug events.
+        let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
+        let bus = BusService::new_trouper(system);
 
         let capture = CapturingWriter::default();
         let subscriber = tracing_subscriber::registry().with(
@@ -434,16 +403,15 @@ mod tests {
         // When publishing a message.
         bus.publish(Alpha { val: 7 }).await;
 
-        // Then a debug line names the type as sent. Delivery into the bus
-        // actor is async, so poll briefly for the line to land.
+        // Then a debug line names the type as published.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         loop {
-            if capture.contents().contains("kameo: Alpha sent") {
+            if capture.contents().contains("trouper: Alpha published") {
                 return;
             }
             assert!(
                 std::time::Instant::now() < deadline,
-                "expected 'kameo: Alpha sent' in captured output, got: {}",
+                "expected 'trouper: Alpha published' in captured output, got: {}",
                 capture.contents()
             );
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;

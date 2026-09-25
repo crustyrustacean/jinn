@@ -1,0 +1,31 @@
+[package]
+name = "jinn-token-count"
+version.workspace = true
+edition.workspace = true
+description = "The token-count slice: per-entry token counting and the shared token cache eviction."
+
+[dependencies]
+jinn-token-count-msg = { workspace = true }
+# The trouper runtime: ServiceActors, topics, schemas.
+trouper = { workspace = true }
+# Kernel dep: the count actor writes session entries through the shared
+# `State` session projection.
+jinn-core-types = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-domain = { workspace = true }
+jinn-llm-support = { workspace = true }
+jinn-slices = { workspace = true }
+serde_json = { workspace = true }
+error-stack = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

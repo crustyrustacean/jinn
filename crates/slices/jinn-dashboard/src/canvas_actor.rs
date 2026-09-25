@@ -21,7 +21,7 @@
 //! single sink.
 //!
 //! The actor runs on the trouper runtime ([`ServiceActor`] tier: a
-//! stateless fold into shared state, no journaling). The kameo→canvas
+//! stateless fold into shared state, no journaling). The fabric→canvas
 //! bridge ([`crate::common::trouper_bridge`]) translates the bus messages
 //! onto its topics; the cell handle cannot ride the runtime's JSON start
 //! args, so it is injected through the builder's
@@ -50,7 +50,9 @@ pub struct DashboardCanvasActor {
 }
 
 impl ServiceActor for DashboardCanvasActor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the cell via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
@@ -74,7 +76,7 @@ impl DashboardCanvasActor {
     /// Panics if the topic subscriptions fail, which can only happen on a
     /// broken actor system; the spawn-then-activate ordering relies on it.
     pub fn spawn(system: &ActorSystem, cell: &TypedCell<DashboardState>) -> ActorPath {
-        let path = trouper::builder::spawn_service_builder::<Self>(system)
+        trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("dashboard"))
             // Deep inbox: the startup lifecycle burst (hundreds of
             // events in under a second) must not fill the dashboard's
@@ -90,22 +92,7 @@ impl DashboardCanvasActor {
             .handles::<ActorShutdownCompleted>()
             .handles::<ServiceStatusUpdate>()
             .handles::<DashboardNav>()
-            .start();
-        #[expect(
-            clippy::expect_used,
-            reason = "subscription failure is a broken actor system, not a caller bug;                       the spawn-then-activate ordering relies on the cursor being registered"
-        )]
-        system
-            .subscribe(&path, &crate::bridge::fabric_topic(), None)
-            .expect("dashboard actor subscribes to the fabric topic");
-        #[expect(
-            clippy::expect_used,
-            reason = "subscription failure is a broken actor system, not a caller bug"
-        )]
-        system
-            .subscribe(&path, &crate::bridge::dashboard_topic(), None)
-            .expect("dashboard actor subscribes to the dashboard topic");
-        path
+            .start()
     }
 
     /// Folds an [`ActorStarting`] into the cell.
@@ -133,7 +120,7 @@ impl DashboardCanvasActor {
     }
 
     /// Folds a [`DashboardNav`] into the cell.
-    fn apply_nav(&self, msg: DashboardNav) {
+    fn apply_nav(&self, msg: &DashboardNav) {
         self.cell.update(|s| match msg {
             DashboardNav::Up => s.select_prev(),
             DashboardNav::Down => s.select_next(),
@@ -144,31 +131,31 @@ impl DashboardCanvasActor {
 }
 
 impl MsgHandler<ActorStarting> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: ActorStarting, _ctx: &mut MsgCtx<'_>) {
-        self.apply_starting(&msg);
+    async fn handle(&mut self, msg: &ActorStarting, _ctx: &mut MsgCtx<'_>) {
+        self.apply_starting(msg);
     }
 }
 
 impl MsgHandler<ActorStarted> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: ActorStarted, _ctx: &mut MsgCtx<'_>) {
-        self.apply_started(&msg);
+    async fn handle(&mut self, msg: &ActorStarted, _ctx: &mut MsgCtx<'_>) {
+        self.apply_started(msg);
     }
 }
 
 impl MsgHandler<ActorShutdownCompleted> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: ActorShutdownCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.apply_shutdown(&msg);
+    async fn handle(&mut self, msg: &ActorShutdownCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.apply_shutdown(msg);
     }
 }
 
 impl MsgHandler<ServiceStatusUpdate> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: ServiceStatusUpdate, _ctx: &mut MsgCtx<'_>) {
-        self.apply_service_status(&msg);
+    async fn handle(&mut self, msg: &ServiceStatusUpdate, _ctx: &mut MsgCtx<'_>) {
+        self.apply_service_status(msg);
     }
 }
 
 impl MsgHandler<DashboardNav> for DashboardCanvasActor {
-    async fn handle(&mut self, msg: DashboardNav, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &DashboardNav, _ctx: &mut MsgCtx<'_>) {
         self.apply_nav(msg);
     }
 }
@@ -260,13 +247,10 @@ mod tests {
 
         // When an ActorStarting envelope lands on the fabric topic.
         fabric
-            .send_to_topic(
-                &ActorStarting {
-                    name: "llm".to_owned(),
-                    description: None,
-                },
-                &crate::bridge::fabric_topic(),
-            )
+            .send_to_topic(ActorStarting {
+                name: "llm".to_owned(),
+                description: None,
+            })
             .await;
 
         // Then the dashboard shows the actor as Starting.
@@ -283,25 +267,19 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(
-                &ActorStarting {
-                    name: "llm".to_owned(),
-                    description: Some("LlmActor".to_owned()),
-                },
-                &crate::bridge::fabric_topic(),
-            )
+            .send_to_topic(ActorStarting {
+                name: "llm".to_owned(),
+                description: Some("LlmActor".to_owned()),
+            })
             .await;
         wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
 
         // When the ActorStarted envelope arrives.
         fabric
-            .send_to_topic(
-                &ActorStarted {
-                    name: "llm".to_owned(),
-                    description: Some("LlmActor".to_owned()),
-                },
-                &crate::bridge::fabric_topic(),
-            )
+            .send_to_topic(ActorStarted {
+                name: "llm".to_owned(),
+                description: Some("LlmActor".to_owned()),
+            })
             .await;
 
         // Then the entry promotes to Running with the description.
@@ -328,13 +306,10 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(
-                &ActorStarted {
-                    name: "llm".to_owned(),
-                    description: Some("LlmActor".to_owned()),
-                },
-                &crate::bridge::fabric_topic(),
-            )
+            .send_to_topic(ActorStarted {
+                name: "llm".to_owned(),
+                description: Some("LlmActor".to_owned()),
+            })
             .await;
         wait_for(|| {
             dashboard_entry(&cell, "llm").is_some_and(|(l, _, _)| l == ActorLifecycle::Running)
@@ -343,13 +318,10 @@ mod tests {
 
         // When the racing ActorStarting envelope lands afterwards.
         fabric
-            .send_to_topic(
-                &ActorStarting {
-                    name: "llm".to_owned(),
-                    description: Some("LlmActor".to_owned()),
-                },
-                &crate::bridge::fabric_topic(),
-            )
+            .send_to_topic(ActorStarting {
+                name: "llm".to_owned(),
+                description: Some("LlmActor".to_owned()),
+            })
             .await;
         wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
 
@@ -369,24 +341,18 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(
-                &ActorStarted {
-                    name: "llm".to_owned(),
-                    description: None,
-                },
-                &crate::bridge::fabric_topic(),
-            )
+            .send_to_topic(ActorStarted {
+                name: "llm".to_owned(),
+                description: None,
+            })
             .await;
         wait_for(|| dashboard_entry(&cell, "llm").is_some()).await;
 
         // When the ActorShutdownCompleted envelope arrives.
         fabric
-            .send_to_topic(
-                &ActorShutdownCompleted {
-                    name: "llm".to_owned(),
-                },
-                &crate::bridge::fabric_topic(),
-            )
+            .send_to_topic(ActorShutdownCompleted {
+                name: "llm".to_owned(),
+            })
             .await;
 
         // Then the entry is Dead.
@@ -399,36 +365,30 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn status_update_sets_status_message_and_lifecycle() {
-        // Given a wired actor with a Running entry for "web-fetch".
+        // Given a wired actor with a Running entry for "sample-actor".
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric
-            .send_to_topic(
-                &ActorStarted {
-                    name: "web-fetch".to_owned(),
-                    description: None,
-                },
-                &crate::bridge::fabric_topic(),
-            )
+            .send_to_topic(ActorStarted {
+                name: "sample-actor".to_owned(),
+                description: None,
+            })
             .await;
-        wait_for(|| dashboard_entry(&cell, "web-fetch").is_some()).await;
+        wait_for(|| dashboard_entry(&cell, "sample-actor").is_some()).await;
 
         // When a ServiceStatusUpdate projection arrives with a status message.
         fabric
-            .send_to_topic(
-                &ServiceStatusUpdate {
-                    name: "web-fetch".to_owned(),
-                    description: None,
-                    lifecycle: None,
-                    status_message: Some("3 urls verified".to_owned()),
-                },
-                &crate::bridge::fabric_topic(),
-            )
+            .send_to_topic(ServiceStatusUpdate {
+                name: "sample-actor".to_owned(),
+                description: None,
+                lifecycle: None,
+                status_message: Some("3 urls verified".to_owned()),
+            })
             .await;
 
         // Then the Notes column carries the message.
         wait_for(|| {
-            dashboard_entry(&cell, "web-fetch")
+            dashboard_entry(&cell, "sample-actor")
                 .is_some_and(|(_, m, _)| m.as_deref() == Some("3 urls verified"))
         })
         .await;
@@ -442,24 +402,17 @@ mod tests {
         let cell = wire_actor(&fabric);
         for name in ["a", "b", "c"] {
             fabric
-                .send_to_topic(
-                    &ActorStarted {
-                        name: name.to_owned(),
-                        description: None,
-                    },
-                    &crate::bridge::fabric_topic(),
-                )
+                .send_to_topic(ActorStarted {
+                    name: name.to_owned(),
+                    description: None,
+                })
                 .await;
         }
         wait_for(|| cell.read().actors().len() == 3).await;
 
         // When DashboardNav::Down envelopes arrive twice.
-        fabric
-            .send_to_topic(&DashboardNav::Down, &crate::bridge::dashboard_topic())
-            .await;
-        fabric
-            .send_to_topic(&DashboardNav::Down, &crate::bridge::dashboard_topic())
-            .await;
+        fabric.send_to_topic(DashboardNav::Down).await;
+        fabric.send_to_topic(DashboardNav::Down).await;
 
         // Then the cursor lands on the third row.
         wait_for(|| cell.read().selected_index() == 2).await;
@@ -467,7 +420,7 @@ mod tests {
 
     /// The lifecycle events the dashboard folds are the **same Rust
     /// types** the kernel publishes (`jinn_slices::fabric` re-exported
-    /// here via `fabric_events`) — kameo bus dispatch is by `TypeId`,
+    /// here via `fabric_events`) — fabric dispatch is by schema id,
     /// so schema-id-equal mirrors would silently drop every event.
     /// This pins the shared identity plus the wire schema id.
     #[rstest::rstest]
@@ -483,10 +436,11 @@ mod tests {
         let roundtripped: ActorStarting =
             serde_json::from_value(serde_json::to_value(&starting).unwrap()).unwrap();
 
-        // Then the payload survived and the schema id is name@1.
+        // Then the payload survived and the schema id is the bare name
+        // (trouper 0.8 dropped the version component).
         assert_eq!(roundtripped.name, "llm");
         let id = ActorStarting::schema_id().to_string();
-        assert!(id.starts_with("ActorStarting@"), "id was {id}");
+        assert_eq!(id, "ActorStarting", "id was {id}");
         // And the dashboard's import surface IS the shared fabric type.
         let _: jinn_slices::fabric::ActorStarting = starting;
     }

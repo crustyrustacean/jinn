@@ -95,7 +95,6 @@ Misc:
 | `<leader>st` | Tool toggle picker |
 | `<leader>sk` | Skill picker |
 | `<leader>sM` | MCP server picker/inspector |
-| `<leader>sP` | Plugin list (read-only) |
 | `<leader>sh` | Theme picker |
 | `<leader>sr` | Reasoning-effort picker |
 | `<leader>sE` | OpenRouter endpoint picker |

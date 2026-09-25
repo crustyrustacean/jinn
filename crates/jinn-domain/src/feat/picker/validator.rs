@@ -52,13 +52,16 @@ pub enum PickerConfirmError {
 pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmError> {
     let kind = state
         .frontend
-        .scope_stack
         .picker_kind()
-        .copied()
         .ok_or(PickerConfirmError::NoActivePicker)?;
 
     let has_selection = match kind {
-        PickerKind::Provider => state.provider.provider_picker.selected_item().is_some(),
+        PickerKind::Provider => state
+            .frontend
+            .pickers
+            .provider_picker
+            .selected_item()
+            .is_some(),
         PickerKind::Session => state.frontend.session_picker().selected_item().is_some(),
         PickerKind::Persona => state.frontend.persona_picker().selected_item().is_some(),
         PickerKind::Theme => state.frontend.theme_picker().selected_item().is_some(),
@@ -74,13 +77,15 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
             .is_some(),
         PickerKind::Tool => state.frontend.tool_picker().selected_item().is_some(),
         PickerKind::Skill => state.frontend.skill_picker().selected_item().is_some(),
-        // TaskList and Plugin are read-only; Enter is a no-op. Skip the
-        // selection gate so the confirm handler (which itself returns
-        // empty) is always reached.
-        PickerKind::TaskList | PickerKind::Plugin => true,
+        // TaskList is read-only; Enter is a no-op. Skip the selection
+        // gate so the confirm handler (which itself returns empty) is
+        // always reached.
+        PickerKind::TaskList => true,
         PickerKind::Project => state.frontend.project_picker().selected_item().is_some(),
         PickerKind::McpServer => state.frontend.mcp_server_picker().selected_item().is_some(),
         PickerKind::Endpoint => state.frontend.endpoint_picker().selected_item().is_some(),
+        // CompactionModel has no picker state (the kind is retired).
+        PickerKind::CompactionModel => false,
     };
 
     if has_selection {
@@ -106,7 +111,7 @@ pub enum OpenPickerError {
 ///
 /// Returns an error if a picker is already active.
 pub fn validate_open_picker(state: &AppState, _kind: &PickerKind) -> Result<(), OpenPickerError> {
-    if state.frontend.scope_stack.is_picker() {
+    if state.frontend.is_picker() {
         return Err(OpenPickerError::AlreadyInPicker);
     }
     Ok(())
@@ -123,12 +128,12 @@ mod tests {
     )]
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
 
     #[rstest::rstest]
     fn validate_picker_confirm_rejects_no_active_picker() {
         // If the validator always returned Ok, confirming with no picker would be allowed.
-        let state = AppState::default();
+        let state = AppState::default_with_scope_focus();
 
         let result = validate_picker_confirm(&state);
 
@@ -141,8 +146,8 @@ mod tests {
     #[rstest::rstest]
     fn validate_open_picker_rejects_when_already_in_picker() {
         // If the validator always returned Ok, nested pickers would be allowed.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Picker {
+        let state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Provider,
         });
 
@@ -154,7 +159,7 @@ mod tests {
     #[rstest::rstest]
     fn validate_open_picker_allows_when_no_picker_active() {
         // Verifies the positive case - opening a picker when none is active.
-        let state = AppState::default();
+        let state = AppState::default_with_scope_focus();
 
         let result = validate_open_picker(&state, &PickerKind::Provider);
 
@@ -168,28 +173,28 @@ mod tests {
     fn validate_picker_confirm_accepts_reasoning_with_selection() {
         // If the selection gate were broken, confirming with a selection would
         // be rejected.
-        use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
+        use jinn_core_types::reasoning::ReasoningEffort;
+        use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
 
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         let entry = ReasoningEffortEntry {
             effort: ReasoningEffort::High,
             name: "high".to_owned(),
             description: "High effort".to_owned(),
             is_active: false,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         };
-        let wrapped = crate::feat::picker::registry::build_picker_registry()
-            .make_items(
-                crate::feat::picker::registry::REASONING_EFFORT_ID,
-                vec![entry],
-            )
-            .unwrap_or_default();
+        let wrapped = jinn_picker::make_items_with_hooks(
+            vec![entry],
+            jinn_picker::PickerItemHooks::new()
+                .search(|entry: &ReasoningEffortEntry| entry.name.clone()),
+        );
         state
             .frontend
             .reasoning_effort_picker_mut()
             .set_items(wrapped);
         state.frontend.reasoning_effort_picker_mut().move_down(1);
-        state.frontend.scope_stack.push(FocusScope::Picker {
+        state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::ReasoningEffort,
         });
 
@@ -205,9 +210,9 @@ mod tests {
     fn validate_picker_confirm_rejects_reasoning_without_selection() {
         // If the selection gate were broken, confirming with no selection
         // would be allowed.
-        let mut state = AppState::default();
+        let state = AppState::default_with_scope_focus();
         // No entries set, so no selection.
-        state.frontend.scope_stack.push(FocusScope::Picker {
+        state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::ReasoningEffort,
         });
 

@@ -10,8 +10,8 @@ use derive_more::Debug;
 use jinn_domain::AppCore;
 use jinn_domain::AppUiRegistry;
 use jinn_domain::IntentHandler;
-use jinn_domain::feat::ui::sidebar::Sidebar;
-use jinn_domain::{FocusScope, Intent, PickerKind};
+use jinn_domain::{FocusScope, KernelIntent, PickerKind};
+use jinn_sidebar::sections::Sidebar;
 use ratatui::Frame;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
 
@@ -27,7 +27,7 @@ pub use builder::TuiAppBuilder;
 
 /// Type alias for the which-key state parameterized for jinn.
 pub type WhichKeyInstance =
-    WhichKeyState<jinn_domain::KeyEvent, Scope, Intent, crate::keymap::KeyCategory>;
+    WhichKeyState<jinn_domain::KeyEvent, Scope, KernelIntent, crate::keymap::KeyCategory>;
 
 /// Top-level application state and event loop.
 #[derive(Debug)]
@@ -62,9 +62,6 @@ pub struct TuiApp {
     pub config: TuiConfig,
     /// Sidebar container with registered sections.
     pub sidebar: Sidebar,
-    /// Capability for God-mode `State::write()` — held by the platform layer,
-    /// passed to IntentHandler::handle and used for render-time frontend mutations.
-    pub intent_handler_cap: jinn_domain::common::tcaps::IntentHandlerCap,
 }
 
 impl TuiApp {
@@ -88,10 +85,10 @@ impl TuiApp {
                         let state = self.core.state.read();
                         state.session.active_session_id().clone()
                     };
-                    let mut state = self.core.state.write(&self.intent_handler_cap);
+                    let mut state = self.core.state.write();
                     state.session.clear_load();
                     let closure = jinn_domain::common::bridge::Bridge::publish_closure(
-                        jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
+                        jinn_session_history_msg::PushChatEntry {
                             session_id,
                             entry: jinn_domain::ChatEntry::system(
                                 "Failed to load session: timed out",
@@ -108,7 +105,7 @@ impl TuiApp {
                 // (e.g., app starts in Input mode).
                 {
                     let state = self.core.state.read();
-                    let scope = scope_for_focus(state.frontend.scope_stack.current());
+                    let scope = scope_for_focus(&state.frontend.scope());
                     drop(state);
                     self.which_key.set_scope(scope);
                 }
@@ -158,7 +155,7 @@ impl TuiApp {
                         self.route_intent(intent);
                     }
                     crossterm::event::Event::Paste(text) => {
-                        self.route_intent(jinn_domain::Intent::PasteText { text });
+                        self.route_intent(jinn_domain::KernelIntent::PasteText { text });
                     }
                     _ => {}
                 }
@@ -218,10 +215,10 @@ impl TuiApp {
         clippy::needless_pass_by_value,
         reason = "public entry point consumed inside via IntentHandler::handle"
     )]
-    pub fn route_intent(&mut self, intent: Intent) {
+    pub fn route_intent(&mut self, intent: KernelIntent) {
         // Step 1-3: Handle intent, collect results, release lock.
         let (messages, signals) = {
-            let mut state = self.core.state.write(&self.intent_handler_cap);
+            let mut state = self.core.state.write();
 
             let result = IntentHandler::handle(
                 &intent,
@@ -232,7 +229,10 @@ impl TuiApp {
             );
 
             // Cancel selection when mode changes away from Picker.
-            if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape) {
+            if matches!(
+                intent,
+                KernelIntent::EnterNormalMode | KernelIntent::NormalEscape
+            ) {
                 self.selection = mem::take(&mut self.selection).cancel();
             }
 
@@ -251,7 +251,12 @@ impl TuiApp {
             self.which_key.toggle();
         }
         if signals.edit_requested {
-            let initial_content = self.core.state.read().active_chat_input().text().to_owned();
+            let initial_content = self
+                .core
+                .state
+                .read()
+                .active_session()
+                .with_input(|i| i.text().to_owned(), String::new);
             self.suspend.request(SuspendAction::Edit {
                 initial_content,
                 on_result: Box::new(|result| result),
@@ -287,7 +292,7 @@ impl TuiApp {
 
         // Step 6: Update scope based on new focus.
         let state_read = self.core.state.read();
-        let new_scope = scope_for_focus(state_read.frontend.scope_stack.current());
+        let new_scope = scope_for_focus(&state_read.frontend.scope());
         drop(state_read);
         self.which_key.set_scope(new_scope.clone());
     }
@@ -299,10 +304,10 @@ impl TuiApp {
 }
 
 /// Returns the keymap scope corresponding to the given focus scope.
-pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
+pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
     match focus {
         FocusScope::Picker { kind } => match kind {
-            PickerKind::Provider => Scope::PickerProvider,
+            PickerKind::Provider | PickerKind::CompactionModel => Scope::PickerProvider,
             PickerKind::Session => Scope::PickerSession,
             PickerKind::Persona => Scope::PickerPersona,
             PickerKind::Theme => Scope::PickerTheme,
@@ -314,25 +319,13 @@ pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
             PickerKind::TaskList => Scope::PickerTaskList,
             PickerKind::Project => Scope::PickerProject,
             PickerKind::McpServer => Scope::PickerMcpServer,
-            PickerKind::Plugin => Scope::PickerPlugin,
+            // CompactionModel has no picker state (the kind is retired); it
+            // is never pushed as a scope.
         },
         FocusScope::Input => Scope::Input,
-        FocusScope::SidebarPersona => Scope::SidebarPersona,
-        FocusScope::SidebarPins => Scope::SidebarPins,
-        FocusScope::SidebarSessions => Scope::SidebarSessions,
-        FocusScope::SidebarTaskList => Scope::SidebarTaskList,
-        FocusScope::SidebarMcpServers => Scope::SidebarMcpServers,
-        FocusScope::ArgInput => Scope::ArgInput,
-        FocusScope::RenameSessionInput => Scope::RenameSessionInput,
-        FocusScope::CwdInput => Scope::CwdInput,
-        FocusScope::ProjectAddInput => Scope::ProjectAddInput,
-        FocusScope::PrunerAccumulationInput => Scope::PrunerAccumulationInput,
         // Dynamic slice scopes pass their identity through unchanged.
         FocusScope::Dynamic(id) => Scope::Dynamic(id.clone()),
-        FocusScope::SidebarResize => Scope::SidebarResize,
 
         FocusScope::Normal => Scope::Normal,
-        FocusScope::TerminalView => Scope::TerminalView,
-        FocusScope::TerminalControl => Scope::TerminalControl,
     }
 }

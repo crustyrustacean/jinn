@@ -8,7 +8,6 @@ repository = "https://github.com/jayson-lennon/jinn"
 
 [features]
 default = []
-headless-chrome = ["jinn-web-fetch/headless-chrome", "jinn-web-search/headless-chrome"]
 syntax-all = ["jinn-domain/syntax-all"]
 
 # cargo-binstall artifact discovery. The binary is built locally and
@@ -25,7 +24,7 @@ disabled-strategies = ["quick-install", "compile"]
 [workspace]
 # `crates/jinn-*` (not `crates/*`) so the glob never matches the `crates/slices/`
 # container directory, which holds the slice crates matched by `crates/slices/*`.
-members = ["crates/jinn-*", "crates/slices/*", "plugins/*", "vendor/*"]
+members = ["crates/jinn-*", "crates/slices/*", "vendor/*"]
 
 
 [workspace.package]
@@ -42,26 +41,6 @@ codegen-units = 1
 [profile.dev]
 debug = 0
 
-# wasmtime's JIT-compile step dominates debug-build plugin startup (~10x
-# slower unoptimized). Optimize wasmtime's compiler/runtime crates in dev
-# builds so plugin compilation is close to release speed; the cache (see
-# PluginEngine) then makes later launches skip compilation entirely.
-# (Cargo rejects globs in profile package tables, so enumerate the family.)
-[profile.dev.package.wasmtime]
-opt-level = 2
-[profile.dev.package.wasmtime-internal-cranelift]
-opt-level = 2
-[profile.dev.package.wasmtime-internal-jit-debug]
-opt-level = 2
-[profile.dev.package.wasmtime-internal-unwinder]
-opt-level = 2
-[profile.dev.package.cranelift-codegen]
-opt-level = 2
-[profile.dev.package.cranelift-assembler-x64]
-opt-level = 2
-[profile.dev.package.wasmparser]
-opt-level = 2
-
 [patch.crates-io]
 tiktoken = { path = "vendor/tiktoken" }
 
@@ -69,26 +48,67 @@ tiktoken = { path = "vendor/tiktoken" }
 path = "src/lib.rs"
 
 [dependencies]
+jinn-core-types = { workspace = true }
+jinn-llm-support = { workspace = true }
+jinn-persona = { workspace = true }
+jinn-provider-selection = { workspace = true }
+jinn-token-count = { workspace = true }
+jinn-context-curation = { workspace = true }
+jinn-context-curation-msg = { workspace = true }
+jinn-turn-dispatch = { workspace = true }
+jinn-inference = { workspace = true }
+jinn-watchdog = { workspace = true }
+jinn-citations = { workspace = true }
+jinn-inference-msg = { workspace = true }
+jinn-mcp-slice = { workspace = true }
+jinn-chat-input-msg = { workspace = true }
+jinn-chat-log-view-msg = { workspace = true }
+jinn-boot = { workspace = true }
+jinn-boot-msg = { workspace = true }
+jinn-cwd-msg = { workspace = true }
+jinn-persona-msg = { workspace = true }
+jinn-sidebar-msg = { workspace = true }
+jinn-status-bar-msg = { workspace = true }
+jinn-term = { workspace = true }
+jinn-tools = { workspace = true }
+jinn-term-msg = { workspace = true }
+jinn-tools-msg = { workspace = true }
+jinn-theme-msg = { workspace = true }
+jinn-token-count-msg = { workspace = true }
+jinn-mcp-msg = { workspace = true }
+jinn-context-assembly = { workspace = true }
+jinn-theme-slice = { workspace = true }
 jinn-cli = { workspace = true }
-jinn-plugin = { workspace = true }
-jinn-plugin-api = { workspace = true }
+jinn-chat-input = { workspace = true }
+jinn-chat-log-view = { workspace = true }
+jinn-scope-focus = { workspace = true }
+jinn-sidebar = { workspace = true }
+jinn-cwd = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-preferences = { workspace = true }
+jinn-project = { workspace = true }
 jinn-dashboard = { workspace = true }
 jinn-discord = { workspace = true }
 jinn-discord-msg = { workspace = true }
 jinn-quake-bar = { workspace = true }
+jinn-status-bar = { workspace = true }
 jinn-session-msg = { workspace = true }
+jinn-session-list = { workspace = true }
+jinn-session-init = { workspace = true }
+jinn-session-store = { workspace = true }
+jinn-session-lifecycle = { workspace = true }
+jinn-session-turn = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-picker = { workspace = true }
+jinn-picker-specs = { workspace = true }
+jinn-provider-config = { workspace = true }
 
-jinn-web-fetch = { workspace = true }
-jinn-web-search = { workspace = true }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
-kameo = { workspace = true }
-kameo_actors = { workspace = true }
 trouper = { workspace = true }
 async-trait = { workspace = true }
 wherror = { workspace = true }
@@ -124,7 +144,25 @@ rustls = { workspace = true }
 jinn-dashboard = { workspace = true }
 jinn-quake-bar = { workspace = true }
 jinn-discord = { workspace = true }
+jinn-boot-msg = { workspace = true }
+jinn-session-init = { workspace = true }
+jinn-session-init-msg = { workspace = true }
+jinn-skills-msg = { workspace = true }
+jinn-provider-selection-msg = { workspace = true }
+jinn-provider-selection = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-turn-dispatch = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+jinn-watchdog = { workspace = true, features = ["test-harness"] }
+jinn-provider = { workspace = true }
+jinn-chat-input = { workspace = true }
+jinn-chat-log-view = { workspace = true }
+jinn-scope-focus = { workspace = true }
+jinn-status-bar = { workspace = true }
 jinn-testutil = { workspace = true }
+jinn-theme = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 
@@ -135,13 +173,37 @@ jinn-domain = { path = "crates/jinn-domain" }
 jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }
+jinn-context = { path = "crates/jinn-context" }
 jinn-core-types = { path = "crates/jinn-core-types" }
+jinn-llm-support = { path = "crates/jinn-llm-support" }
 jinn-dashboard = { path = "crates/slices/jinn-dashboard" }
+jinn-theme-slice = { path = "crates/slices/jinn-theme" }
+jinn-persona = { path = "crates/slices/jinn-persona" }
+jinn-token-count = { path = "crates/slices/jinn-token-count" }
 jinn-quake-bar = { path = "crates/slices/jinn-quake-bar" }
+jinn-session-init = { path = "crates/slices/jinn-session-init" }
+jinn-chat-input = { path = "crates/slices/jinn-chat-input" }
+jinn-chat-log-view = { path = "crates/slices/jinn-chat-log-view" }
+jinn-scope-focus = { path = "crates/slices/jinn-scope-focus" }
+jinn-sidebar = { path = "crates/slices/jinn-sidebar" }
+jinn-cwd = { path = "crates/slices/jinn-cwd" }
+jinn-status-bar = { path = "crates/slices/jinn-status-bar" }
 jinn-slices = { path = "crates/jinn-slices" }
 jinn-session-msg = { path = "crates/jinn-session-msg" }
+jinn-session-state = { path = "crates/jinn-session-state" }
+jinn-boot = { path = "crates/slices/jinn-boot" }
+jinn-boot-msg = { path = "crates/slices/jinn-boot-msg" }
+jinn-session-store = { path = "crates/slices/jinn-session-store" }
+jinn-session-turn = { path = "crates/slices/jinn-session-turn" }
+jinn-session-store-msg = { path = "crates/slices/jinn-session-store-msg" }
+jinn-session-lifecycle-msg = { path = "crates/slices/jinn-session-lifecycle-msg" }
+jinn-session-lifecycle = { path = "crates/slices/jinn-session-lifecycle" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }
+jinn-preferences-config = { path = "crates/jinn-preferences-config" }
+jinn-preferences = { path = "crates/slices/jinn-preferences" }
+jinn-project = { path = "crates/slices/jinn-project" }
+jinn-project-msg = { path = "crates/slices/jinn-project-msg" }
 ratatui-markdown = { path = "vendor/ratatui-markdown", features = [
   "markdown",
   "highlight",
@@ -163,14 +225,43 @@ jinn-tui = { path = "crates/jinn-tui" }
 jinn-cli = { path = "crates/jinn-cli" }
 jinn-selection-widget = { path = "crates/jinn-selection-widget" }
 jinn-picker = { path = "crates/jinn-picker" }
+jinn-picker-specs = { path = "crates/jinn-picker-specs" }
 jinn-testutil = { path = "crates/jinn-testutil" }
 
 jinn-theme = { path = "crates/jinn-theme" }
-jinn-web-fetch = { path = "crates/jinn-web-fetch" }
-jinn-web-search = { path = "crates/jinn-web-search" }
 jinn-mcp = { path = "crates/jinn-mcp" }
-jinn-plugin-api = { path = "crates/jinn-plugin-api" }
-jinn-plugin = { path = "crates/jinn-plugin" }
+jinn-mcp-slice = { path = "crates/slices/jinn-mcp-slice" }
+jinn-chat-input-msg = { path = "crates/slices/jinn-chat-input-msg" }
+jinn-chat-log-view-msg = { path = "crates/slices/jinn-chat-log-view-msg" }
+jinn-cwd-msg = { path = "crates/slices/jinn-cwd-msg" }
+jinn-persona-msg = { path = "crates/slices/jinn-persona-msg" }
+jinn-sidebar-msg = { path = "crates/slices/jinn-sidebar-msg" }
+jinn-status-bar-msg = { path = "crates/slices/jinn-status-bar-msg" }
+jinn-term = { path = "crates/slices/jinn-term" }
+jinn-tools = { path = "crates/slices/jinn-tools" }
+jinn-term-msg = { path = "crates/slices/jinn-term-msg" }
+jinn-tools-msg = { path = "crates/slices/jinn-tools-msg" }
+jinn-theme-msg = { path = "crates/slices/jinn-theme-msg" }
+jinn-token-count-msg = { path = "crates/slices/jinn-token-count-msg" }
+jinn-turn-dispatch-msg = { path = "crates/slices/jinn-turn-dispatch-msg" }
+jinn-turn-dispatch = { path = "crates/slices/jinn-turn-dispatch" }
+jinn-session-history = { path = "crates/slices/jinn-session-history" }
+jinn-session-history-msg = { path = "crates/slices/jinn-session-history-msg" }
+jinn-skills = { path = "crates/slices/jinn-skills" }
+jinn-skills-msg = { path = "crates/slices/jinn-skills-msg" }
+jinn-provider-selection-msg = { path = "crates/slices/jinn-provider-selection-msg" }
+jinn-provider-selection = { path = "crates/slices/jinn-provider-selection" }
+jinn-session-init-msg = { path = "crates/slices/jinn-session-init-msg" }
+jinn-session-list = { path = "crates/jinn-session-list" }
+jinn-inference-msg = { path = "crates/slices/jinn-inference-msg" }
+jinn-inference = { path = "crates/slices/jinn-inference" }
+jinn-watchdog = { path = "crates/slices/jinn-watchdog" }
+jinn-citations = { path = "crates/slices/jinn-citations" }
+jinn-context-curation-msg = { path = "crates/slices/jinn-context-curation-msg" }
+jinn-context-curation = { path = "crates/slices/jinn-context-curation" }
+jinn-mcp-msg = { path = "crates/slices/jinn-mcp-msg" }
+jinn-context-assembly-msg = { path = "crates/slices/jinn-context-assembly-msg" }
+jinn-context-assembly = { path = "crates/slices/jinn-context-assembly" }
 wasm-encoder = "=0.252.0"
 wasmparser = "=0.252.0"
 wasmtime = { version = "47", features = ["component-model-async", "cache"] }
@@ -196,10 +287,11 @@ futures = "0.3"
 
 
 # Actor framework
-kameo = { version = "0.20", features = ["tracing"] }
-kameo_actors = "0.5"
 
-trouper = "0.1.0"
+# The trouper actor runtime (published to crates.io; the SDK workspace
+# remains the development home — see .plans/actor-canvas/plan.md)
+trouper = "0.9.0"
+
 
 # PTY + terminal emulation (interactive_term tool)
 portable-pty = "0.9"
@@ -256,6 +348,7 @@ sha2 = "0.10"
 glob = "0.3"
 libc = "0.2"
 rand = "0.9"
+reasoning-parser = "1.2"
 mockito = "1.7"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "form", "json", "stream"] }
 # Pin the rustls crypto provider to `ring`. reqwest's `rustls` feature hard-wires

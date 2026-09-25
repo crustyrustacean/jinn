@@ -65,13 +65,13 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::feat::session::model_selection::ModelSelection;
     use crate::protocol::PickerKind;
+    use jinn_core_types::model_selection::ModelSelection;
 
     #[rstest::rstest]
     fn refresh_models_succeeds_with_provider() {
         // Given a state with a configured provider.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
             .set_model(ModelSelection::Single("ollama".to_owned()));
@@ -86,7 +86,7 @@ mod tests {
     #[rstest::rstest]
     fn refresh_models_fails_with_no_provider() {
         // Given a state with the default no-provider ID.
-        let state = AppState::default();
+        let state = AppState::default_with_scope_focus();
 
         // When validating refresh models.
         let result = validate_refresh_models(&state);
@@ -98,7 +98,7 @@ mod tests {
     #[rstest::rstest]
     fn session_new_succeeds_when_no_picker_active() {
         // Given a state with no active picker.
-        let state = AppState::default();
+        let state = AppState::default_with_scope_focus();
 
         // When validating session new.
         validate_session_new(&state);
@@ -109,13 +109,10 @@ mod tests {
     #[rstest::rstest]
     fn session_new_succeeds_when_picker_active() {
         // Given a state with an active picker.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(crate::common::app_state::FocusScope::Picker {
-                kind: PickerKind::Provider,
-            });
+        let state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(jinn_slices::FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
 
         // When validating session new.
         validate_session_new(&state);

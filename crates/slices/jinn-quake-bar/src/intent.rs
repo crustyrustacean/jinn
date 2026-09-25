@@ -6,7 +6,7 @@
 //!   the slice's dynamic scope to actions: submit, scroll, close.
 //! - The **open toggle** is a row on the [`BindSite::GlobalToggle`]
 //!   site: it emits a [`ScopeSignal::Push`] so the handler (the exempt
-//!   `scope_stack` writer) enters the slice's scope.
+//!   scope-stack writer) enters the slice's scope.
 //! - The **input hook** (registered by [`register_quake_input_hook`])
 //!   intercepts editing intents while the quake scope is active and
 //!   writes the slice cell synchronously — the sanctioned carve-out for
@@ -231,6 +231,7 @@ pub fn register_quake_input_hook(routes: &KeyRoutes, cell: &TypedCell<QuakeBarSt
                 });
                 Some(IntentResult::empty())
             }
+            EditIntent::Paste(_) => None,
         }
     });
     routes.register_input_hook(&quake_scope(), hook);
@@ -327,6 +328,7 @@ mod tests {
                 jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    key_bytes: Vec::new(),
                 },
             )
             .expect("open row attached");
@@ -351,6 +353,7 @@ mod tests {
                 jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    key_bytes: Vec::new(),
                 },
             )
             .expect("close row attached");
@@ -377,6 +380,7 @@ mod tests {
             jinn_slices::ActionCtx {
                 state: &mut state,
                 slices: &slices,
+                key_bytes: Vec::new(),
             },
         );
 
@@ -406,6 +410,7 @@ mod tests {
             jinn_slices::ActionCtx {
                 state: &mut state,
                 slices: &slices,
+                key_bytes: Vec::new(),
             },
         );
 
@@ -463,6 +468,7 @@ mod tests {
                 jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    key_bytes: Vec::new(),
                 },
             )
             .expect("scroll-up row");
@@ -481,6 +487,7 @@ mod tests {
                 jinn_slices::ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    key_bytes: Vec::new(),
                 },
             )
             .expect("scroll-down row");
@@ -510,6 +517,18 @@ mod tests {
 
         fn push_session_error(&mut self, message: &str) {
             self.errors.push(message.to_owned());
+        }
+
+        fn active_session_cwd(&self) -> std::path::PathBuf {
+            std::path::PathBuf::new()
+        }
+
+        fn publish_session_cwd(
+            &self,
+            _session_id: jinn_core_types::SessionId,
+            _cwd: std::path::PathBuf,
+        ) -> jinn_slices::PublishClosure {
+            Box::new(|_bus| {})
         }
     }
 }

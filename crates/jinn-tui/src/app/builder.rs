@@ -4,13 +4,14 @@ use jinn_domain::AppCore;
 
 use crate::TuiApp;
 use crate::app::WhichKeyInstance;
+use crate::app::scope_for_focus;
 use crate::config::TuiConfig;
 use crate::keymap;
 use crate::selection::{SelectableRects, SelectionState};
 use crate::suspend::Suspend;
 use crate::{AppStatus, MsgHandler};
-use jinn_domain::feat::ui::sidebar::register_sections;
-use jinn_domain::feat::ui::sidebar::sidebar::Sidebar;
+use jinn_sidebar::sections::register_sections;
+use jinn_sidebar::sections::sidebar::Sidebar;
 
 /// Builder for constructing a [`TuiApp`] with sensible defaults for tests.
 ///
@@ -62,6 +63,22 @@ impl TuiAppBuilder {
         };
         let state = self.state.unwrap_or_default();
 
+        // Scope-focus cell: activate + attach so the FrontendState
+        // facade reads/writes real storage (kernel-free: the cell is
+        // minted through the shared Slices registry directly).
+        {
+            let slices = services.slices.clone();
+            let _ = slices.register(
+                jinn_slices::scope_focus_slot(),
+                jinn_slices::ScopeFocusState::default(),
+            );
+            let _ = slices.register(
+                jinn_provider_selection_msg::provider_state_slot(),
+                jinn_provider_selection_msg::ProviderCell::default(),
+            );
+            state.frontend.attach_slices(slices);
+        }
+
         let core = AppCore {
             state: jinn_domain::State::new(state),
             bridge: services.bridge.clone(),
@@ -71,8 +88,7 @@ impl TuiAppBuilder {
         jinn_domain::register_all_ui_elements(&mut ui_registry);
 
         let keymap = keymap::init();
-        let initial_scope =
-            crate::app::scope_for_focus(core.state.read().frontend.scope_stack.current());
+        let initial_scope = scope_for_focus(&core.state.read().frontend.scope());
 
         TuiApp {
             core,
@@ -92,7 +108,6 @@ impl TuiAppBuilder {
                 register_sections(&mut s);
                 s
             },
-            intent_handler_cap: jinn_domain::common::tcaps::mint::mint_intent_handler_cap(),
         }
     }
 }

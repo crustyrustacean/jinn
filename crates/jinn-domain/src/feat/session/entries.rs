@@ -1,17 +1,16 @@
 //! Session entries - loading and formatting for the tree-structured picker.
 //!
-//! Contains loader functions for session picker entries.
-//! The [`SessionTreeEntry`] struct and [`TreeItem`] implementation live
-//! in `picker_entry.rs`.
+//! Contains loader and sorting functions for canonical
+//! [`jinn_session_store_msg::SessionTreeEntry`] values.
 
 use std::collections::HashMap;
 
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
-use crate::feat::session::picker_entry::SessionTreeEntry;
-use crate::feat::theme::Theme;
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
+use jinn_session_store_msg::SessionTreeEntry;
+use jinn_theme::Theme;
 
 use super::SessionStoreService;
 
@@ -148,7 +147,7 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
             // Tree-aware sort: whole trees move as a unit, positioned by
             // the most recent updated_at in the tree. Loaded first.
             sort_entries_tree_aware(&mut entries);
-            crate::feat::session::picker_entry::apply_project_column_width(&mut entries);
+            jinn_session_store_msg::apply_project_column_width(&mut entries);
             entries
         }
         Err(e) => {
@@ -163,9 +162,12 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
 pub(crate) fn wrap_session_entries(
     entries: Vec<SessionTreeEntry>,
 ) -> Vec<jinn_picker::PickerEntry<SessionTreeEntry>> {
-    crate::feat::picker::registry::build_picker_registry()
-        .make_items(crate::feat::picker::registry::SESSION_ID, entries)
-        .unwrap_or_default()
+    jinn_picker::make_items_with_hooks(
+        entries,
+        jinn_picker::PickerItemHooks::new()
+            .row(jinn_session_store_msg::session_row)
+            .search(|entry: &SessionTreeEntry| entry.title.clone()),
+    )
 }
 
 /// Loads session tree entries into the picker state, ready for display.
@@ -205,7 +207,7 @@ pub async fn load_session_entries_from_store(
             // Tree-aware sort: whole trees move as a unit, positioned by
             // the most recent updated_at in the tree. Loaded first.
             sort_entries_tree_aware(&mut entries);
-            crate::feat::session::picker_entry::apply_project_column_width(&mut entries);
+            jinn_session_store_msg::apply_project_column_width(&mut entries);
             entries
         }
         Err(e) => {
@@ -236,13 +238,14 @@ mod tests {
     )]
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
-    use crate::feat::session::chat_session::ChatSessionState;
-    use crate::feat::session::chat_session::SessionState;
-    use crate::feat::session::picker_entry::SessionTreeEntry;
-    use crate::feat::session::session_summary::SessionSummary;
-    use crate::feat::theme::default_theme;
-    use crate::protocol::SessionId;
+    use jinn_core_types::SessionId;
+    use jinn_selection_widget::PickerItem;
     use jinn_selection_widget::TreeItem;
+    use jinn_session_state::SessionSnapshot;
+    use jinn_session_store_msg::SessionState;
+    use jinn_session_store_msg::SessionSummary;
+    use jinn_session_store_msg::SessionTreeEntry;
+    use jinn_theme::default_theme;
 
     use super::*;
 
@@ -288,6 +291,30 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn wrap_session_entries_keeps_the_spec_row_renderer() {
+        // Given a session tree entry.
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "My Session".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            None,
+            None,
+        );
+
+        // When wrapping it for picker storage.
+        let wrapped = wrap_session_entries(vec![entry]);
+
+        // Then the wrapped item renders through the spec's row hook
+        // (date, project, and title columns), not the plain search label.
+        let row = PickerItem::render_row(&wrapped[0], false);
+        assert!(row.spans.len() > 1);
+        assert!(row.spans.iter().any(|s| s.content.contains("My Session")));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn load_session_entries_returns_empty_on_error() {
         // Given a test Services (with fake session store that returns empty).
         let services = crate::common::services::Services::new_fake().await;
@@ -311,7 +338,7 @@ mod tests {
         }
         async fn save(
             &self,
-            _session: &ChatSessionState,
+            _snapshot: &SessionSnapshot,
         ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
             Ok(())
         }
@@ -324,7 +351,7 @@ mod tests {
         async fn load_session(
             &self,
             _session_id: &SessionId,
-        ) -> Result<Option<ChatSessionState>, error_stack::Report<super::super::SessionStoreError>>
+        ) -> Result<Option<SessionSnapshot>, error_stack::Report<super::super::SessionStoreError>>
         {
             Ok(None)
         }
@@ -384,12 +411,12 @@ mod tests {
 
         async fn search(
             &self,
-            _params: crate::feat::session_search::SearchParams,
+            _params: jinn_session_store_msg::SearchParams,
         ) -> Result<
-            crate::feat::session_search::SearchOutcome,
+            jinn_session_store_msg::SearchOutcome,
             error_stack::Report<super::super::SessionStoreError>,
         > {
-            Ok(crate::feat::session_search::SearchOutcome {
+            Ok(jinn_session_store_msg::SearchOutcome {
                 total_matches: 0,
                 per_session: Vec::new(),
                 hits: Vec::new(),
@@ -402,7 +429,7 @@ mod tests {
             _anchor: &crate::protocol::ChatEntryId,
             _context: usize,
         ) -> Result<
-            Option<crate::feat::session_search::TranscriptWindow>,
+            Option<jinn_session_store_msg::TranscriptWindow>,
             error_stack::Report<super::super::SessionStoreError>,
         > {
             Ok(None)
@@ -413,7 +440,7 @@ mod tests {
             _session_id: &SessionId,
             _limit: usize,
         ) -> Result<
-            Option<crate::feat::session_search::TranscriptWindow>,
+            Option<jinn_session_store_msg::TranscriptWindow>,
             error_stack::Report<super::super::SessionStoreError>,
         > {
             Ok(None)
@@ -460,7 +487,7 @@ mod tests {
         }
         async fn save(
             &self,
-            _session: &ChatSessionState,
+            _snapshot: &SessionSnapshot,
         ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
             Ok(())
         }
@@ -473,7 +500,7 @@ mod tests {
         async fn load_session(
             &self,
             _session_id: &SessionId,
-        ) -> Result<Option<ChatSessionState>, error_stack::Report<super::super::SessionStoreError>>
+        ) -> Result<Option<SessionSnapshot>, error_stack::Report<super::super::SessionStoreError>>
         {
             Ok(None)
         }
@@ -533,12 +560,12 @@ mod tests {
 
         async fn search(
             &self,
-            _params: crate::feat::session_search::SearchParams,
+            _params: jinn_session_store_msg::SearchParams,
         ) -> Result<
-            crate::feat::session_search::SearchOutcome,
+            jinn_session_store_msg::SearchOutcome,
             error_stack::Report<super::super::SessionStoreError>,
         > {
-            Ok(crate::feat::session_search::SearchOutcome {
+            Ok(jinn_session_store_msg::SearchOutcome {
                 total_matches: 0,
                 per_session: Vec::new(),
                 hits: Vec::new(),
@@ -551,7 +578,7 @@ mod tests {
             _anchor: &crate::protocol::ChatEntryId,
             _context: usize,
         ) -> Result<
-            Option<crate::feat::session_search::TranscriptWindow>,
+            Option<jinn_session_store_msg::TranscriptWindow>,
             error_stack::Report<super::super::SessionStoreError>,
         > {
             Ok(None)
@@ -562,7 +589,7 @@ mod tests {
             _session_id: &SessionId,
             _limit: usize,
         ) -> Result<
-            Option<crate::feat::session_search::TranscriptWindow>,
+            Option<jinn_session_store_msg::TranscriptWindow>,
             error_stack::Report<super::super::SessionStoreError>,
         > {
             Ok(None)

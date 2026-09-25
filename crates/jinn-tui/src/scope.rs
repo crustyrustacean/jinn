@@ -18,15 +18,15 @@ pub enum Scope {
     /// Normal mode - navigation and commands.
     Normal,
     /// Sidebar - Persona section.
-    SidebarPersona,
+
     /// Sidebar - Pins section.
-    SidebarPins,
+
     /// Sidebar - Sessions section.
-    SidebarSessions,
+
     /// Sidebar - Task list section.
-    SidebarTaskList,
+
     /// Sidebar - MCP servers section.
-    SidebarMcpServers,
+
     /// Picker - Provider/model selection.
     PickerProvider,
     /// Picker - Session browser.
@@ -51,47 +51,20 @@ pub enum Scope {
     PickerProject,
     /// Picker - MCP server toggle selection.
     PickerMcpServer,
-    /// Picker - Read-only plugin list.
-    PickerPlugin,
     /// Input mode - typing into the input buffer.
     Input,
-    /// Arg input mode - typing positional args for a lifecycle command.
-    ArgInput,
-    /// Token budget input mode - typing a numeric budget value.
-    TokenBudgetInput,
-    /// Rename session input mode - editing a session title.
-    RenameSessionInput,
-    /// CWD input mode - typing a directory path.
-    CwdInput,
-
     /// A dynamically-registered slice's scope.
     ///
     /// Derives `Ord` on the inner string-based id (which-key stores
     /// catch-all handlers in a `BTreeMap<S, _>`), so the derived
     /// ordering is required, not hand-rolled.
     Dynamic(jinn_slices::SliceScopeId),
-    /// Terminal tab — viewing an `interactive_term` session (passive).
-    TerminalView,
-    /// Terminal control — keys forward to the pty; handback key exits.
-    TerminalControl,
-    /// Project-add input mode - typing a directory path to register a project.
-    ProjectAddInput,
-    /// Pruner accumulation threshold input mode - numeric input for the KV-cache gate.
-    PrunerAccumulationInput,
-
-    /// Sidebar resize mode - adjusting sidebar width.
-    SidebarResize,
 }
 
 impl std::fmt::Display for Scope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Normal => write!(f, "Normal"),
-            Self::SidebarPersona => write!(f, "SidebarPersona"),
-            Self::SidebarPins => write!(f, "SidebarPins"),
-            Self::SidebarSessions => write!(f, "SidebarSessions"),
-            Self::SidebarTaskList => write!(f, "SidebarTaskList"),
-            Self::SidebarMcpServers => write!(f, "SidebarMcpServers"),
             Self::PickerProvider => write!(f, "Picker(provider)"),
             Self::PickerSession => write!(f, "Picker(session)"),
             Self::PickerPersona => write!(f, "Picker(persona)"),
@@ -105,18 +78,8 @@ impl std::fmt::Display for Scope {
             Self::PickerTaskList => write!(f, "Picker(task-list)"),
             Self::PickerProject => write!(f, "Picker(project)"),
             Self::PickerMcpServer => write!(f, "Picker(mcp-server)"),
-            Self::PickerPlugin => write!(f, "Picker(plugin)"),
             Self::Input => write!(f, "Input"),
             Self::Dynamic(id) => write!(f, "dynamic:{id}"),
-            Self::TerminalView => write!(f, "TerminalView"),
-            Self::TerminalControl => write!(f, "TerminalControl"),
-            Self::ArgInput => write!(f, "ArgInput"),
-            Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
-            Self::SidebarResize => write!(f, "SidebarResize"),
-            Self::RenameSessionInput => write!(f, "RenameSessionInput"),
-            Self::CwdInput => write!(f, "CwdInput"),
-            Self::ProjectAddInput => write!(f, "ProjectAddInput"),
-            Self::PrunerAccumulationInput => write!(f, "PrunerAccumulationInput"),
         }
     }
 }
@@ -133,11 +96,6 @@ impl std::str::FromStr for Scope {
         }
         match s {
             "Normal" => Ok(Self::Normal),
-            "SidebarPersona" => Ok(Self::SidebarPersona),
-            "SidebarPins" => Ok(Self::SidebarPins),
-            "SidebarSessions" => Ok(Self::SidebarSessions),
-            "SidebarTaskList" => Ok(Self::SidebarTaskList),
-            "SidebarMcpServers" => Ok(Self::SidebarMcpServers),
             "Picker(provider)" => Ok(Self::PickerProvider),
             "Picker(session)" => Ok(Self::PickerSession),
             "Picker(persona)" => Ok(Self::PickerPersona),
@@ -151,16 +109,7 @@ impl std::str::FromStr for Scope {
             "Picker(task-list)" => Ok(Self::PickerTaskList),
             "Picker(project)" => Ok(Self::PickerProject),
             "Picker(mcp-server)" => Ok(Self::PickerMcpServer),
-            "Picker(plugin)" => Ok(Self::PickerPlugin),
             "Input" => Ok(Self::Input),
-            "ArgInput" => Ok(Self::ArgInput),
-            "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
-            "RenameSessionInput" => Ok(Self::RenameSessionInput),
-            "CwdInput" => Ok(Self::CwdInput),
-            "ProjectAddInput" => Ok(Self::ProjectAddInput),
-            "PrunerAccumulationInput" => Ok(Self::PrunerAccumulationInput),
-            "SidebarResize" => Ok(Self::SidebarResize),
-
             _ => Err(()),
         }
     }
@@ -200,21 +149,6 @@ mod tests {
         assert_eq!(
             Scope::from_str(&s),
             Ok(scope),
-            "Display/FromStr should round-trip"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn plugin_picker_scope_round_trips() {
-        // Given the PickerPlugin scope variant.
-        // When formatting then parsing back.
-        // Then the round-trip preserves the variant.
-        let s = Scope::PickerPlugin.to_string();
-        assert_eq!(s, "Picker(plugin)");
-        assert_eq!(
-            Scope::from_str(&s),
-            Ok(Scope::PickerPlugin),
             "Display/FromStr should round-trip"
         );
     }

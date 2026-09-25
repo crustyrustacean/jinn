@@ -2,9 +2,9 @@
 //! on trouper.
 //!
 //! A [`ServiceActor`] subscribed to the `jinn.session` topic (fed by
-//! the core bridge's forward routes). It replaces the former kameo
+//! the core bridge's forward routes). It replaces the former in-kernel
 //! bridge actor: the crossing is now bus → relay → topic (kernel
-//! wiring) + this subscriber (slice folding), and no kameo actor lives
+//! wiring) + this subscriber (slice folding), and no relay actor lives
 //! in the slice.
 //!
 //! # What it folds
@@ -29,7 +29,7 @@ use jinn_discord_msg::{
     DiscordThreadCreated, ForumChannelError, GatewayRequest,
 };
 use jinn_domain::common::state::State;
-use jinn_domain::feat::session::chat_entry::ChatEntry;
+use jinn_domain::protocol::ChatEntry;
 use jinn_session_msg::{
     SessionArchived, SessionPhaseChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
@@ -41,9 +41,9 @@ use trouper::system::ActorSystem;
 
 /// The Discord bridge subscriber.
 ///
-/// Holds the sender halves of the two gateway kanal channels, a clone
-/// of [`State`], and the session capability — the fold writes the
-/// `gdc` (to-thread) result `ChatEntry` inline on outcome events.
+/// Holds the sender halves of the two gateway kanal channels and a clone
+/// of [`State`] — the fold writes the `gdc` (to-thread) result `ChatEntry`
+/// inline on outcome events.
 pub struct DiscordBridgeSubscriber {
     /// Forwards topic events onto this channel as [`BridgeEvent`]s.
     tx: kanal::Sender<BridgeEvent>,
@@ -54,8 +54,6 @@ pub struct DiscordBridgeSubscriber {
     /// Shared application state — writes the `gdc` (to-thread) result
     /// `ChatEntry` back into the targeted session's history.
     state: State,
-    /// Authority to push entries into sessions.
-    session_cap: jinn_domain::common::tcaps::session::SessionCap,
 }
 
 /// Dependencies for [`DiscordBridgeSubscriber`].
@@ -67,8 +65,6 @@ pub struct DiscordBridgeSubscriberDeps {
     pub gateway_tx: kanal::Sender<GatewayRequest>,
     /// Shared application state.
     pub state: State,
-    /// Authority to push entries into sessions.
-    pub session_cap: jinn_domain::common::tcaps::session::SessionCap,
 }
 
 impl DiscordBridgeSubscriber {
@@ -90,9 +86,8 @@ impl DiscordBridgeSubscriber {
             tx,
             gateway_tx,
             state,
-            session_cap,
         } = deps;
-        let path = trouper::builder::spawn_service_builder::<Self>(system)
+        trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("discord-bridge"))
             .start_with({
                 move || {
@@ -101,7 +96,6 @@ impl DiscordBridgeSubscriber {
                             tx,
                             gateway_tx,
                             state,
-                            session_cap,
                         })
                     })
                 }
@@ -113,23 +107,16 @@ impl DiscordBridgeSubscriber {
             .handles::<CreateThreadForSession>()
             .handles::<DiscordThreadCreated>()
             .handles::<DiscordThreadCreateFailed>()
-            .start();
-
-        #[expect(
-            clippy::expect_used,
-            reason = "subscription failure is a broken actor system, not a caller bug;                       the channel-parked-before-gateway ordering relies on the cursor"
-        )]
-        system
-            .subscribe(&path, &jinn_session_msg::session_topic(), None)
-            .expect("discord bridge subscriber subscribes to the session topic");
-        path
+            .start()
     }
 }
 
 impl ServiceActor for DiscordBridgeSubscriber {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the channels, state,
-        // and capability via `start_with`.
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: the spawn helper injects the channels and state
+        // via `start_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
                 .attach("DiscordBridgeSubscriber is spawned via start_with"),
@@ -138,47 +125,47 @@ impl ServiceActor for DiscordBridgeSubscriber {
 }
 
 impl MsgHandler<SessionPhaseChanged> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: SessionPhaseChanged, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_phase_changed(&msg);
+    async fn handle(&mut self, msg: &SessionPhaseChanged, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_phase_changed(msg);
     }
 }
 
 impl MsgHandler<SessionSetupCompleted> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: SessionSetupCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_setup_completed(&msg);
+    async fn handle(&mut self, msg: &SessionSetupCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_setup_completed(msg);
     }
 }
 
 impl MsgHandler<SessionTeardownFinished> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: SessionTeardownFinished, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_teardown_finished(&msg);
+    async fn handle(&mut self, msg: &SessionTeardownFinished, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_teardown_finished(msg);
     }
 }
 
 impl MsgHandler<SessionArchived> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: SessionArchived, _ctx: &mut MsgCtx<'_>) {
-        self.handle_session_archived(&msg);
+    async fn handle(&mut self, msg: &SessionArchived, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_archived(msg);
     }
 }
 
 impl MsgHandler<CreateThreadForSession> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: CreateThreadForSession, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &CreateThreadForSession, _ctx: &mut MsgCtx<'_>) {
         self.forward_gateway_request(GatewayRequest::CreateThreadForSession {
-            session_id: msg.session_id,
-            title: msg.title,
+            session_id: msg.session_id.clone(),
+            title: msg.title.clone(),
         });
     }
 }
 
 impl MsgHandler<DiscordThreadCreated> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: DiscordThreadCreated, _ctx: &mut MsgCtx<'_>) {
-        self.handle_created(&msg);
+    async fn handle(&mut self, msg: &DiscordThreadCreated, _ctx: &mut MsgCtx<'_>) {
+        self.handle_created(msg);
     }
 }
 
 impl MsgHandler<DiscordThreadCreateFailed> for DiscordBridgeSubscriber {
-    async fn handle(&mut self, msg: DiscordThreadCreateFailed, _ctx: &mut MsgCtx<'_>) {
-        self.handle_failed(&msg);
+    async fn handle(&mut self, msg: &DiscordThreadCreateFailed, _ctx: &mut MsgCtx<'_>) {
+        self.handle_failed(msg);
     }
 }
 
@@ -186,17 +173,12 @@ impl DiscordBridgeSubscriber {
     /// Constructs a subscriber instance directly (for tests that call
     /// the fold helpers; added in the Phase 4 test port).
     #[cfg(test)]
-    pub(crate) fn new(
-        tx: kanal::Sender<BridgeEvent>,
-        state: State,
-        session_cap: jinn_domain::common::tcaps::session::SessionCap,
-    ) -> Self {
+    pub(crate) fn new(tx: kanal::Sender<BridgeEvent>, state: State) -> Self {
         let (gateway_tx, _gateway_rx) = kanal::bounded(1);
         Self {
             tx,
             gateway_tx,
             state,
-            session_cap,
         }
     }
 }
@@ -244,13 +226,13 @@ impl DiscordBridgeSubscriber {
     /// Handle `DiscordThreadCreated`: push a system `ChatEntry` mentioning the title.
     pub(super) fn handle_created(&self, msg: &DiscordThreadCreated) {
         let entry = ChatEntry::system(format!("Continuing in Discord thread: {}", msg.title));
-        push_entry(&self.state, self.session_cap, &msg.session_id, entry);
+        push_entry(&self.state, &msg.session_id, entry);
     }
 
     /// Handle `DiscordThreadCreateFailed`: push an error `ChatEntry`.
     pub(super) fn handle_failed(&self, msg: &DiscordThreadCreateFailed) {
         let entry = ChatEntry::error(reason_message(&msg.reason));
-        push_entry(&self.state, self.session_cap, &msg.session_id, entry);
+        push_entry(&self.state, &msg.session_id, entry);
     }
 
     /// Push one event onto the channel.
@@ -293,13 +275,8 @@ fn event_discriminant(event: &BridgeEvent) -> &'static str {
 
 /// Push a `ChatEntry` into a session by id; drop silently if the session is
 /// gone (closed/archived concurrently since the `gdc` request was emitted).
-fn push_entry(
-    state: &State,
-    session_cap: jinn_domain::common::tcaps::session::SessionCap,
-    session_id: &SessionId,
-    entry: ChatEntry,
-) {
-    state.with_session(&session_cap, |view| {
+fn push_entry(state: &State, session_id: &SessionId, entry: ChatEntry) {
+    state.with_session(|view| {
         if let Some(session) = view.session.map().get_mut(session_id) {
             session.push_entry(entry);
         } else {
@@ -345,9 +322,9 @@ fn reason_message(reason: &CreateThreadReason) -> String {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
+    use jinn_core_types::SessionId;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::feat::session::chat_entry::ChatEntryKind;
-    use jinn_domain::protocol::SessionId;
+    use jinn_domain::protocol::ChatEntryKind;
 
     /// Build a bridge subscriber with one seeded session, plus its session id.
     ///
@@ -358,14 +335,10 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         // Seed the session so `push_entry` finds it.
-        state.with_session(&jinn_domain::common::tcaps::mint::mint_session_cap(), |v| {
+        state.with_session(|v| {
             v.session.map().get_or_create(&session_id);
         });
-        let subscriber = DiscordBridgeSubscriber::new(
-            tx,
-            state,
-            jinn_domain::common::tcaps::mint::mint_session_cap(),
-        );
+        let subscriber = DiscordBridgeSubscriber::new(tx, state);
         (subscriber, session_id)
     }
 
@@ -471,12 +444,7 @@ mod tests {
         let session_id = SessionId::new();
 
         // When pushing an entry for a session that doesn't exist.
-        push_entry(
-            &state,
-            jinn_domain::common::tcaps::mint::mint_session_cap(),
-            &session_id,
-            ChatEntry::system("nope"),
-        );
+        push_entry(&state, &session_id, ChatEntry::system("nope"));
 
         // Then no panic occurred (reaching here is the assertion).
     }
@@ -508,21 +476,17 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
 
         // When an Idle phase change is published on the session topic.
         fabric
-            .send_to_topic(
-                &SessionPhaseChanged {
-                    session_id: sid.clone(),
-                    old_phase: PhaseKind::Streaming,
-                    new_phase: PhaseKind::Idle,
-                },
-                &jinn_session_msg::session_topic(),
-            )
+            .send_to_topic(SessionPhaseChanged {
+                session_id: sid.clone(),
+                old_phase: PhaseKind::Streaming,
+                new_phase: PhaseKind::Idle,
+            })
             .await;
 
         // Then exactly one TurnFinished was forwarded.
@@ -548,21 +512,17 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
 
         // When a non-idle phase change is published on the session topic.
         fabric
-            .send_to_topic(
-                &SessionPhaseChanged {
-                    session_id: sid.clone(),
-                    old_phase: PhaseKind::Idle,
-                    new_phase: PhaseKind::Streaming,
-                },
-                &jinn_session_msg::session_topic(),
-            )
+            .send_to_topic(SessionPhaseChanged {
+                session_id: sid.clone(),
+                old_phase: PhaseKind::Idle,
+                new_phase: PhaseKind::Streaming,
+            })
             .await;
 
         // Then nothing is forwarded within a settle window.
@@ -590,21 +550,17 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
 
         // When a failed setup completion is published on the session topic.
         fabric
-            .send_to_topic(
-                &SessionSetupCompleted {
-                    session_id: sid.clone(),
-                    cwd: std::path::PathBuf::from("/repo"),
-                    error: Some("boom".to_owned()),
-                },
-                &jinn_session_msg::session_topic(),
-            )
+            .send_to_topic(SessionSetupCompleted {
+                session_id: sid.clone(),
+                cwd: std::path::PathBuf::from("/repo"),
+                error: Some("boom".to_owned()),
+            })
             .await;
 
         // Then exactly one SetupCompleted was forwarded with the payload.
@@ -636,20 +592,16 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
 
         // When a failed teardown finish is published on the session topic.
         fabric
-            .send_to_topic(
-                &SessionTeardownFinished {
-                    session_id: sid.clone(),
-                    error: Some("boom".to_owned()),
-                },
-                &jinn_session_msg::session_topic(),
-            )
+            .send_to_topic(SessionTeardownFinished {
+                session_id: sid.clone(),
+                error: Some("boom".to_owned()),
+            })
             .await;
 
         // Then exactly one TeardownFinished was forwarded with the payload.
@@ -676,19 +628,15 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
 
         // When an archive event is published on the session topic.
         fabric
-            .send_to_topic(
-                &SessionArchived {
-                    session_id: sid.clone(),
-                },
-                &jinn_session_msg::session_topic(),
-            )
+            .send_to_topic(SessionArchived {
+                session_id: sid.clone(),
+            })
             .await;
 
         // Then exactly one Archived was forwarded.
@@ -714,20 +662,16 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: State::new(AppState::default()),
-                session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
             },
         );
         let sid = SessionId::new();
 
         // When a CreateThreadForSession command is published on the session topic.
         fabric
-            .send_to_topic(
-                &CreateThreadForSession {
-                    session_id: sid.clone(),
-                    title: "my thread".to_owned(),
-                },
-                &jinn_session_msg::session_topic(),
-            )
+            .send_to_topic(CreateThreadForSession {
+                session_id: sid.clone(),
+                title: "my thread".to_owned(),
+            })
             .await;
 
         // Then exactly one GatewayRequest::CreateThreadForSession landed on
@@ -747,8 +691,7 @@ mod tests {
         let (gw_tx, _gw_rx) = kanal::bounded::<GatewayRequest>(4);
         let state = State::new(AppState::default());
         let sid = SessionId::new();
-        let cap = jinn_domain::common::tcaps::mint::mint_session_cap();
-        state.with_session(&cap, |v| {
+        state.with_session(|v| {
             v.session.map().get_or_create(&sid);
         });
         DiscordBridgeSubscriber::spawn(
@@ -757,19 +700,15 @@ mod tests {
                 tx,
                 gateway_tx: gw_tx,
                 state: state.clone(),
-                session_cap: cap,
             },
         );
 
         // When the gateway's thread-created event crosses the session topic.
         fabric
-            .send_to_topic(
-                &DiscordThreadCreated {
-                    session_id: sid.clone(),
-                    title: "Threaded".to_owned(),
-                },
-                &jinn_session_msg::session_topic(),
-            )
+            .send_to_topic(DiscordThreadCreated {
+                session_id: sid.clone(),
+                title: "Threaded".to_owned(),
+            })
             .await;
 
         // Then the session's history gained a System entry mentioning the title.

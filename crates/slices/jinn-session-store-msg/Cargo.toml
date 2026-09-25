@@ -1,0 +1,24 @@
+[package]
+name = "jinn-session-store-msg"
+version.workspace = true
+edition.workspace = true
+description = "Session-store crossing contracts: the search and transcript-window data model shared by the kernel store seam, the store slice, and the session tools."
+
+[dependencies]
+jinn-core-types = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
+unicode-width = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+trouper = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

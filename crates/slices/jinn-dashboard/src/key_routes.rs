@@ -162,6 +162,7 @@ mod tests {
                 ActionCtx {
                     state: &mut state,
                     slices: &slices,
+                    key_bytes: Vec::new(),
                 },
             )
             .expect("row is attached");
@@ -169,7 +170,7 @@ mod tests {
         // Then the result carries a DashboardNav message.
         assert_eq!(
             result.message_names,
-            vec![std::any::type_name::<super::DashboardNav>()],
+            vec!["DashboardNav"],
             "dashboard nav message name"
         );
     }
@@ -211,6 +212,7 @@ mod tests {
             ActionCtx {
                 state: &mut state,
                 slices: &slices,
+                key_bytes: Vec::new(),
             },
         );
 
@@ -228,6 +230,18 @@ mod tests {
 
         fn push_session_error(&mut self, message: &str) {
             self.errors.push(message.to_owned());
+        }
+
+        fn active_session_cwd(&self) -> std::path::PathBuf {
+            std::path::PathBuf::new()
+        }
+
+        fn publish_session_cwd(
+            &self,
+            _session_id: jinn_core_types::SessionId,
+            _cwd: std::path::PathBuf,
+        ) -> jinn_slices::PublishClosure {
+            Box::new(|_bus| {})
         }
     }
 

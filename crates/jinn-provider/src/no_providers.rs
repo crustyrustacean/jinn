@@ -3,9 +3,9 @@
 //! Used as the initial factory when no provider is available at startup.
 //! The streamed message explains how to configure providers.
 
-use crate::llm_message::LlmMessage;
 use error_stack::Report;
 use futures::stream;
+use jinn_core_types::llm_message::LlmMessage;
 
 use crate::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory};
 
@@ -18,9 +18,6 @@ const HELP_MESSAGE: &str = "No LLM provider is configured. To get started:\n\
     4. Open the provider picker (press p) and select a provider\n\
     \n\
     For local providers like Ollama, no API key is needed - just uncomment and select.";
-
-/// Sentinel provider ID used when no real provider is configured.
-pub const NO_PROVIDER_ID: &str = "__no_provider__";
 
 /// Factory that creates a service which streams the help message.
 #[derive(Debug, Clone)]

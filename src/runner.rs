@@ -19,16 +19,15 @@ pub enum Runner {
 }
 
 impl Runner {
-    /// Returns a handle to the root supervisor actor ref, for coordinated shutdown.
+    /// Returns the trouper system handle, for the graceful shutdown sweep
+    /// at exit.
     ///
-    /// Returns `None` in modes that don't have an actor system (e.g. headless without services).
-    pub fn root_supervisor(
-        &self,
-    ) -> Option<jinn_domain::common::root_supervisor::RootSupervisorRef> {
+    /// Returns `None` in modes that don't have a trouper fabric.
+    pub fn trouper_system(&self) -> Option<trouper::system::ActorSystem> {
         match self {
-            Runner::Tui(app) => Some(app.services.root_supervisor.clone()),
+            Runner::Tui(app) => Some(app.services.trouper_system.clone()),
             #[cfg(debug_assertions)]
-            Runner::Headless(app) => Some(app.root_supervisor()),
+            Runner::Headless(app) => Some(app.trouper_system()),
         }
     }
 

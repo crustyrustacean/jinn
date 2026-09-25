@@ -3,8 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::common::bus::BusMessage;
-use crate::protocol::Mode;
-use crate::protocol::key::KeyEvent;
+use jinn_slices::{KeyEvent, Mode};
 
 /// A key was pressed down.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,10 +31,11 @@ impl BusMessage for KeyDown {}
 impl BusMessage for KeyUp {}
 
 /// The active session changed.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "The active session changed.")]
 pub struct ActiveSessionChanged {
     /// The new active session ID.
-    pub session_id: crate::protocol::SessionId,
+    pub session_id: jinn_core_types::SessionId,
 }
 
 impl BusMessage for ActiveSessionChanged {}

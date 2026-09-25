@@ -1,0 +1,327 @@
+//! Environment initialization actor - reads env vars and populates API keys.
+//!
+//! During startup (`on_start`), loads `providers.toml`, resolves API keys from
+//! environment variables, populates the shared `ApiKeysService`, and stores
+//! the config for downstream actors to request via `ask(GetEnvironmentConfig)`.
+//!
+//! The `EnvironmentLoaded` event is retained for runtime reloads only.
+
+use error_stack::Report;
+use jinn_provider_config::ProvidersConfig;
+use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
+use trouper::context::MsgCtx;
+use trouper::registry::RegistryError;
+
+use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use wherror::Error;
+
+use jinn_boot_msg::{EnvironmentConfigReply, EnvironmentLoaded, GetEnvironmentConfig};
+
+/// Error type for environment initialization failures.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub struct EnvInitError;
+
+/// The environment initialization actor.
+///
+/// Loads `providers.toml` lazily on the first `GetEnvironmentConfig` ask,
+/// resolves API keys, and populates `ApiKeysService`. The ask is the one
+/// real startup ask path: composition asks it (with a mandatory timeout)
+/// before spawning downstream actors.
+pub struct EnvInitActor {
+    deps: ActorDeps,
+    config: Option<ProvidersConfig>,
+}
+
+/// Dependencies for spawning an [`EnvInitActor`].
+#[derive(Clone)]
+pub struct EnvInitActorDeps {
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
+}
+
+impl ServiceActor for EnvInitActor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "ServiceActor::start is async by trait contract"
+    )]
+    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
+        // Never called: spawned via `spawn`'s start_with (typed deps can't
+        // ride the JSON args).
+        Err(Report::new(RegistryError::InvalidSpec).attach("EnvInitActor spawns via start_with"))
+    }
+}
+
+/// Static path the env-init actor spawns at (one instance per process).
+pub const ENV_INIT_PATH: &str = "jinn.init.env";
+
+impl EnvInitActor {
+    /// Spawns the env-init actor onto the trouper system.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "port convention: spawn takes owned deps and clones into start_with"
+    )]
+    pub fn spawn(system: &trouper::system::ActorSystem, deps: EnvInitActorDeps) -> ActorPath {
+        let path = ActorPath::new(ENV_INIT_PATH);
+        trouper::builder::spawn_service_builder::<Self>(system)
+            .at(path.clone())
+            .start_with({
+                let deps = deps.clone();
+                move || {
+                    let deps = deps.clone();
+                    Box::pin(async move {
+                        Ok(Self {
+                            deps: deps.deps,
+                            config: None,
+                        })
+                    })
+                }
+            })
+            .handles::<GetEnvironmentConfig>()
+            .handles::<EnvironmentLoaded>()
+            // Ask replies leave the handler through ctx.reply; the flush
+            // gate drops any outbound type not declared here.
+            .emits::<EnvironmentConfigReply>()
+            .mailbox(64, trouper::inbox::OverloadPolicy::Block)
+            .start();
+        path
+    }
+}
+
+impl MsgHandler<GetEnvironmentConfig> for EnvInitActor {
+    async fn handle(&mut self, _msg: &GetEnvironmentConfig, ctx: &mut MsgCtx<'_>) {
+        if self.config.is_none() {
+            self.config = self.load_config_and_resolve_keys();
+        }
+        ctx.reply(EnvironmentConfigReply {
+            config: self.config.clone(),
+        });
+    }
+}
+
+impl MsgHandler<EnvironmentLoaded> for EnvInitActor {
+    async fn handle(&mut self, _msg: &EnvironmentLoaded, _ctx: &mut MsgCtx<'_>) {
+        // No-op: EnvInitActor doesn't react to EnvironmentLoaded.
+    }
+}
+
+impl BusPublish for EnvInitActor {
+    fn bus(&self) -> &jinn_domain::common::services::bus_service::BusService {
+        self.deps.bus()
+    }
+}
+
+impl EnvInitActor {
+    /// Loads config, resolves API keys and MCP header variables.
+    ///
+    /// Returns config on success. Providers contribute their configured env
+    /// vars; configured MCP servers contribute every `${VAR}` referenced by
+    /// their `headers` values. Missing or empty variables are skipped
+    /// silently here — a server whose headers cannot expand fails loudly at
+    /// connect time instead, where the user can see which server is dead.
+    fn load_config_and_resolve_keys(&self) -> Option<ProvidersConfig> {
+        let config = match self.deps.services.config_storage.load() {
+            Ok(config) => config,
+            Err(e) => {
+                tracing::error!(err = ?e, "env-init failed to load provider config");
+                return None;
+            }
+        };
+
+        // Resolve API keys from environment variables.
+        for provider in config.providers.values() {
+            if let Some(ref env_var) = provider.api_key_env
+                && let Ok(value) = std::env::var(env_var)
+                && !value.is_empty()
+            {
+                self.deps.services.api_keys.insert(env_var.clone(), value);
+            }
+        }
+
+        // Resolve MCP header variables from environment variables.
+        self.resolve_mcp_header_variables();
+
+        tracing::info!("environment loaded, API keys resolved");
+        Some(config)
+    }
+
+    /// Scans configured MCP server header values for `${VAR}` references and
+    /// seeds each one found into `ApiKeysService` from the process
+    /// environment (present non-empty values only).
+    fn resolve_mcp_header_variables(&self) {
+        let prefs = self.deps.services.user_preferences_storage.read();
+        let values: Vec<&str> = prefs
+            .mcp_server
+            .values()
+            .flat_map(|server| server.headers.values().map(String::as_str))
+            .collect();
+        for name in jinn_mcp_msg::referenced_header_variables(&values) {
+            if let Ok(value) = std::env::var(&name)
+                && !value.is_empty()
+            {
+                self.deps.services.api_keys.insert(name, value);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use std::time::Duration;
+
+    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_mcp_msg::McpServerConfig;
+    use jinn_preferences_config::user_preferences::UserPreferences;
+
+    use super::{
+        EnvInitActor, EnvInitActorDeps, EnvironmentConfigReply, EnvironmentLoaded,
+        GetEnvironmentConfig,
+    };
+
+    /// Unique env-var names so parallel test runs never collide.
+    const SET_VAR: &str = "JINN_TEST_MCP_HEADER_RESOLVED";
+    const MISSING_VAR: &str = "JINN_TEST_MCP_HEADER_NEVER_SET";
+
+    /// Builds default preferences declaring one MCP server whose headers
+    /// reference the given env-var names.
+    fn prefs_referencing(vars: &[&str]) -> UserPreferences {
+        let mut prefs = UserPreferences::default();
+        let headers = vars
+            .iter()
+            .map(|v| (format!("X-{v}"), format!("Bearer ${{{v}}}")))
+            .collect();
+        prefs.mcp_server.insert(
+            "header-probe".to_owned(),
+            McpServerConfig {
+                transport: jinn_mcp_msg::TransportKind::RemoteHttp,
+                url: Some("http://localhost:3001/mcp".to_owned()),
+                headers,
+                ..McpServerConfig::default()
+            },
+        );
+        prefs
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn referenced_header_variables_seed_api_keys_store() {
+        // Given preferences declaring an MCP server header referencing a
+        // variable that IS set in the process environment.
+        // SAFETY: single-threaded test setup; unique var name avoids races.
+        unsafe { std::env::set_var(SET_VAR, "live-value") };
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        let service = deps.services.user_preferences_storage.clone();
+        service.save(&prefs_referencing(&[SET_VAR])).expect("save");
+        let keys = deps.services.api_keys.clone();
+
+        // When the env init actor resolves keys for a config request.
+        let services = harness.services().await;
+        let path = EnvInitActor::spawn(&services.trouper_system, EnvInitActorDeps { deps });
+        let reply = services
+            .trouper_system
+            .ask(path, GetEnvironmentConfig, Duration::from_secs(5))
+            .await
+            .expect("ask succeeds");
+        let loaded: EnvironmentConfigReply = reply.decode().expect("decode reply");
+
+        // Then startup succeeded and the referenced key landed in the store.
+        assert!(loaded.config.is_some(), "config should load");
+        assert_eq!(keys.get(SET_VAR), Some("live-value".to_owned()));
+        // SAFETY: removing the test-only var set above; no concurrent readers.
+        unsafe {
+            std::env::remove_var(SET_VAR);
+        };
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn unset_header_variable_skips_store_and_startup_still_succeeds() {
+        // Given preferences declaring a header referencing a variable that is
+        // NOT present in the environment.
+        // SAFETY: ensures the name is truly absent despite prior test runs.
+        unsafe { std::env::remove_var(MISSING_VAR) };
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        let service = deps.services.user_preferences_storage.clone();
+        service
+            .save(&prefs_referencing(&[MISSING_VAR]))
+            .expect("save");
+        let keys = deps.services.api_keys.clone();
+
+        // When the env init actor resolves keys for a config request.
+        let services = harness.services().await;
+        let path = EnvInitActor::spawn(&services.trouper_system, EnvInitActorDeps { deps });
+        let reply = services
+            .trouper_system
+            .ask(path, GetEnvironmentConfig, Duration::from_secs(5))
+            .await
+            .expect("ask succeeds");
+        let loaded: EnvironmentConfigReply = reply.decode().expect("decode reply");
+
+        // Then startup still succeeds (silent skip).
+        assert!(loaded.config.is_some(), "config should load");
+        // And nothing was seeded for the missing variable.
+        assert!(keys.get(MISSING_VAR).is_none());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn get_environment_config_returns_none_without_config_file() {
+        // Given an env init actor with no config file.
+        let harness = TestHarness::new().await;
+        let services = harness.services().await;
+        let path = EnvInitActor::spawn(
+            &services.trouper_system,
+            EnvInitActorDeps {
+                deps: harness.actor_deps().await,
+            },
+        );
+
+        // When asking for config.
+        let reply = services
+            .trouper_system
+            .ask(path, GetEnvironmentConfig, Duration::from_secs(5))
+            .await;
+
+        // Then ask succeeds (but config may be None without a config file).
+        assert!(reply.is_ok(), "ask should succeed");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn environment_loaded_can_be_published_for_reload() {
+        // Given an env init actor and a recorder.
+        let harness = TestHarness::new().await;
+        let services = harness.services().await;
+        let _path = EnvInitActor::spawn(
+            &services.trouper_system,
+            EnvInitActorDeps {
+                deps: harness.actor_deps().await,
+            },
+        );
+        let recorder = harness.spawn_recorder::<EnvironmentLoaded>().await;
+
+        // When publishing EnvironmentLoaded manually (runtime reload).
+        let bus = harness.bus();
+        bus.publish(EnvironmentLoaded {
+            config: jinn_provider_config::ProvidersConfig {
+                providers: std::collections::BTreeMap::new(),
+                aliases: vec![],
+                default_provider: None,
+            },
+        })
+        .await;
+
+        // Then the event is received by subscribers.
+        let events = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+        assert_eq!(events.len(), 1, "expected EnvironmentLoaded event");
+    }
+}

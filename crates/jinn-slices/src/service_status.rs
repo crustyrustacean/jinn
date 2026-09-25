@@ -21,9 +21,12 @@ use jinn_core_types::ActorLifecycle;
 /// never needs to know a feature exists.
 ///
 /// This is a bridge-crossing type: the forward relay serializes it onto
-/// `jinn.fabric` under its [`crossing_schema`] contract, so the canvas
-/// actor's topic subscription can decode it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// `jinn.fabric` as a schema broadcast, so the canvas actor's
+/// subscription decodes it.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(
+    description = "A feature's projection onto its dashboard row (optional lifecycle, description, status message)."
+)]
 pub struct ServiceStatusUpdate {
     /// The dashboard row name (the key the owning feature publishes under,
     /// e.g. its `spawn_tracked!`/actor name).
@@ -37,7 +40,3 @@ pub struct ServiceStatusUpdate {
 }
 
 impl crate::BusMessage for ServiceStatusUpdate {}
-
-crate::crossing_schema!(ServiceStatusUpdate, "ServiceStatusUpdate", trouper::schema::SchemaKind::Event,
-    description: "A feature's projection onto its dashboard row (optional lifecycle, description, status message).",
-    fields: ["name" => trouper::schema::FieldTy::Str]);

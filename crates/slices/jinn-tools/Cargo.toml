@@ -1,0 +1,51 @@
+[package]
+name = "jinn-tools"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+jinn-chat-input-msg = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-skills-msg = { workspace = true }
+jinn-skills = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+jinn-inference-msg = { workspace = true }
+jinn-tools-msg = { workspace = true }
+jinn-common = { workspace = true }
+jinn-mcp-msg = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-term-msg = { workspace = true }
+jiff = { workspace = true }
+trouper = { workspace = true }
+regex = { workspace = true }
+rand = { workspace = true }
+base64 = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+tracing = { workspace = true }
+error-stack = { workspace = true }
+wherror = { workspace = true }
+unicode-segmentation = { workspace = true }
+# Kernel dep: the orchestrator builds `ToolContext`, whose state and
+# preference reads (skills discovery, task model selection, term spawn size,
+# project command-policy resolution) are kernel type reads — the discord
+# precedent for a slice consuming kernel vocabulary at execution time.
+jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-llm-support = { workspace = true }
+jinn-context-assembly = { workspace = true }
+jinn-session-turn = { workspace = true }
+
+jinn-session-init-msg = { workspace = true }
+
+[dev-dependencies]
+jinn-token-count-msg = { workspace = true }
+jinn-slices = { workspace = true }
+async-trait = { workspace = true }
+tempfile = { workspace = true }
+rstest = { workspace = true }

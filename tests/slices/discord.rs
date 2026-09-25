@@ -11,7 +11,7 @@
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
 use crate::common::{composed_keymap, plain};
-use jinn_domain::Intent;
+use jinn_domain::KernelIntent;
 use jinn_tui::Scope;
 use ratatui_which_key::NodeResult;
 
@@ -32,7 +32,7 @@ fn gdc_resolves_to_discord_to_thread_in_the_composed_keymap() {
     let NodeResult::Leaf { action } = result else {
         panic!("gdc must be a leaf, got {result:?}");
     };
-    let Intent::Dynamic(dynamic) = action else {
+    let KernelIntent::Dynamic(dynamic) = action else {
         panic!("gdc must resolve to a dynamic intent, got {action:?}");
     };
     assert_eq!(dynamic.slice.key(), "discord:actions");

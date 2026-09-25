@@ -1,7 +1,7 @@
 //! Application core: shared state and the kanal bridge.
 //!
 //! [`AppCore`] owns the shared application state and the [`Bridge`] whose
-//! drain task publishes closures to the kameo bus.
+//! drain task publishes closures onto the trouper fabric.
 
 use std::time::Duration;
 
@@ -17,11 +17,11 @@ pub const STARTUP_TIMEOUT: Duration = Duration::from_secs(3);
 /// Application core: shared state and the bridge to the actor system.
 ///
 /// Owns the shared state and the [`Bridge`] whose drain task publishes
-/// closures to the kameo bus.
+/// closures onto the trouper fabric.
 pub struct AppCore {
     /// Shared application state.
     pub state: State,
-    /// Bridge for sending typed message closures to the kameo bus.
+    /// Bridge for sending typed message closures onto the trouper fabric.
     pub bridge: Bridge,
 }
 

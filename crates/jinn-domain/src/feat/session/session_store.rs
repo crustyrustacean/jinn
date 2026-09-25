@@ -1,27 +1,24 @@
-//! Session store abstraction and SQLite implementation.
+//! Session store abstraction.
 //!
-//! Defines [`SessionStore`] as the async trait for session persistence and
-//! [`SqliteSessionStore`] as the SQLite-backed implementation. Sessions are
-//! stored in normalized tables with a junction table for entries, enabling
-//! fork support without data duplication.
+//! Defines [`SessionStore`] as the async trait for session persistence.
+//! The SQLite implementation (`SqliteSessionStore`) and the schema
+//! migrator live in the `jinn-session-store` slice crate; this module
+//! owns the seam (`SessionStore` + [`SessionStoreService`]) that the
+//! `Services` container carries.
 
-mod migrator;
 mod service;
-mod sqlite;
-#[cfg(test)]
-mod sqlite_tests;
 
 pub use service::SessionStoreService;
-pub use sqlite::{PoolConfig, SqliteSessionStore};
 
 use async_trait::async_trait;
 use error_stack::Report;
 use wherror::Error;
 
-use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session::session_summary::SessionSummary;
-use crate::feat::session_search::{SearchOutcome, SearchParams, TranscriptWindow};
-use crate::protocol::{ChatEntryId, SessionId};
+use crate::protocol::ChatEntryId;
+use jinn_core_types::SessionId;
+use jinn_session_state::SessionSnapshot;
+use jinn_session_store_msg::SessionSummary;
+use jinn_session_store_msg::{SearchOutcome, SearchParams, TranscriptWindow};
 
 /// Error type for session store operations.
 #[derive(Debug, Error)]
@@ -49,7 +46,26 @@ pub trait SessionStore: Send + Sync + 'static {
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if the write fails.
-    async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>>;
+    async fn save(&self, snapshot: &SessionSnapshot) -> Result<(), Report<SessionStoreError>>;
+
+    /// Archive one or more complete session snapshots.
+    ///
+    /// Implementations that can batch SQLite writes should override this method
+    /// and commit every member atomically. The default preserves compatibility
+    /// for simple test stores by saving snapshots in order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if any archive write fails.
+    async fn archive_snapshots(
+        &self,
+        snapshots: &[SessionSnapshot],
+    ) -> Result<(), Report<SessionStoreError>> {
+        for snapshot in snapshots {
+            self.save(snapshot).await?;
+        }
+        Ok(())
+    }
 
     /// Load lightweight summaries for all sessions.
     ///
@@ -70,7 +86,7 @@ pub trait SessionStore: Send + Sync + 'static {
     async fn load_session(
         &self,
         session_id: &SessionId,
-    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>>;
+    ) -> Result<Option<SessionSnapshot>, Report<SessionStoreError>>;
 
     /// Delete a session and all its data.
     ///

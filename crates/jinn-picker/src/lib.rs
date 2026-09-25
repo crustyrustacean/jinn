@@ -21,6 +21,7 @@ pub mod hooks;
 pub mod host;
 pub mod id;
 pub mod outcome;
+pub mod picker_style;
 pub mod preview_key;
 pub mod registry;
 pub mod render;
@@ -33,6 +34,8 @@ mod test_host;
 pub use builder::PickerSpec;
 pub use ctx::{ActionCtx, LoadCtx, PreviewCtx, RowCtx, StatusCtx};
 pub use entry::PickerEntry;
+pub use entry::PickerItemHooks;
+pub use entry::make_items_with_hooks;
 pub use hooks::{
     PickerBindAction, PickerLifecycleFn, PickerLoadFn, PickerPreviewFn, PickerPreviewKeyFn,
     PickerRowFn, PickerSearchFn, PickerSelectionChangeFn, PickerStatusFn,
@@ -46,6 +49,10 @@ pub use registry::ErasedPickerSpec;
 pub use registry::PickerRegistry;
 pub use registry::SpecHandle;
 pub use registry::Tail;
+pub use registry::{
+    ENDPOINT_ID, MCP_SERVER_ID, PERSONA_ID, PROJECT_ID, PROVIDER_ID, REASONING_EFFORT_ID,
+    SESSION_ID, SESSION_LIFECYCLE_ID, SKILL_ID, TASK_LIST_ID, THEME_ID, TOOL_ID, spec_id_for_kind,
+};
 pub use render::KeybindLine;
 pub use render::keybind_line;
 pub use scroll::PickerScrolls;

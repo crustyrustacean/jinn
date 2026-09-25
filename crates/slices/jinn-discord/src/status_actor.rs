@@ -5,22 +5,19 @@
 //!
 //! 1. folded into the authoritative connection cell
 //!    ([`discord_connection_slot`]),
-//! 2. published on the trouper `jinn.discord` topic (the slice's
-//!    EXPORT face — no forward bridge route exists for this type),
+//! 2. broadcast on the fabric by schema (the slice's EXPORT face),
 //! 3. translated into the dashboard's generic
-//!    [`ServiceStatusUpdate`] vocabulary and published on the kameo
-//!    bus, whose forward relay still feeds the fabric events topic.
+//!    [`ServiceStatusUpdate`] vocabulary and published on the
+//!    bus.
 //!
 //! The gateway task is a plain tokio task, so the channel stays kanal;
 //! the drain loop is spawned from the actor's construction and the
 //! actor path doubles as the readiness point.
 
-use jinn_dashboard::contracts::ServiceStatusUpdate;
 use jinn_discord_msg::DiscordStatusUpdate;
-use jinn_discord_msg::discord_topic;
+use jinn_slices::ServiceStatusUpdate;
 use jinn_slices::TypedCell;
 use trouper::actor::ServiceActor;
-use trouper::envelope::Event;
 use trouper::system::ActorSystem;
 
 /// Discord's own connection fact, folded by [`DiscordStatusActor`].
@@ -49,9 +46,9 @@ pub fn discord_connection_slot() -> jinn_slices::SlotKey {
 #[must_use]
 pub fn to_service_update(update: &DiscordStatusUpdate) -> ServiceStatusUpdate {
     let (lifecycle, with_description) = match update {
-        DiscordStatusUpdate::Connecting => (Some(jinn_dashboard::ActorLifecycle::Starting), true),
-        DiscordStatusUpdate::Connected => (Some(jinn_dashboard::ActorLifecycle::Running), true),
-        DiscordStatusUpdate::Error { .. } => (Some(jinn_dashboard::ActorLifecycle::Dead), true),
+        DiscordStatusUpdate::Connecting => (Some(jinn_core_types::ActorLifecycle::Starting), true),
+        DiscordStatusUpdate::Connected => (Some(jinn_core_types::ActorLifecycle::Running), true),
+        DiscordStatusUpdate::Error { .. } => (Some(jinn_core_types::ActorLifecycle::Dead), true),
         DiscordStatusUpdate::Disconnected => (None, false),
     };
     ServiceStatusUpdate {
@@ -88,7 +85,7 @@ pub fn fold_connection(state: &mut ConnectionState, update: &DiscordStatusUpdate
 ///
 /// Spawns its drain loop from construction: read each gateway update,
 /// fold it into the cell, publish the native event on the trouper
-/// topic, and republish the generic translation on the kameo bus.
+/// topic, and republish the generic translation on the fabric.
 pub struct DiscordStatusActor {
     /// Handle for the spawned drain loop (abort on drop semantics are
     /// not needed — the loop lives as long as the channels).
@@ -103,7 +100,7 @@ pub struct DiscordStatusActorDeps {
     /// The write handle for discord's connection cell — the drain loop
     /// is its single writer.
     pub cell: TypedCell<ConnectionState>,
-    /// The kameo bus, for the dashboard's generic vocabulary.
+    /// The message bus, for the dashboard's generic vocabulary.
     pub bus: jinn_domain::common::services::bus_service::BusService,
     /// The trouper system, for the native topic publish + schema
     /// registration.
@@ -131,7 +128,7 @@ impl DiscordStatusActor {
 
 impl ServiceActor for DiscordStatusActor {
     async fn start(
-        _args: &serde_json::Value,
+        _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
         // Never called: `spawn` constructs the actor directly (its
         // state is the drain task's captured handles, not message
@@ -143,7 +140,7 @@ impl ServiceActor for DiscordStatusActor {
 /// Background drain loop: reads discord status updates from the kanal
 /// channel, folds the connection fact into the cell, publishes the
 /// native event on the trouper topic, and republishes the generic
-/// translation on the kameo bus.
+/// translation on the fabric.
 async fn drain_status_channel(
     rx: kanal::AsyncReceiver<DiscordStatusUpdate>,
     cell: TypedCell<ConnectionState>,
@@ -152,24 +149,12 @@ async fn drain_status_channel(
 ) {
     while let Ok(update) = rx.recv().await {
         cell.update(|state| fold_connection(state, &update));
-        // Native event on the fabric: the dashboard subscribes the
-        // topic directly (this is why no forward route exists for the
-        // type).
-        let payload = serde_json::to_value(&update).unwrap_or(serde_json::Value::Null);
-        let event = Event::new(
-            <DiscordStatusUpdate as trouper::schema::Schema>::schema_id(),
-            payload,
-        );
-        if let Err(_unroutable) = system
-            .send(system.envelope_to_topic(event, discord_topic()))
-            .await
-        {
-            tracing::warn!("discord status topic send was unroutable");
-        }
+        // Native event on the fabric: every declarant subscriber
+        // receives it.
+        system.publish(update.clone()).await;
         // The dashboard consumes only the generic projection; discord's
         // row identity travels inside it, so the dashboard stays
-        // feature-agnostic. The forward relay (drained at composition)
-        // carries it to the fabric events topic.
+        // feature-agnostic.
         let () = bus.publish(to_service_update(&update)).await;
     }
 }
@@ -184,7 +169,7 @@ mod tests {
     use super::DiscordStatusActorDeps;
     use super::fold_connection;
     use super::to_service_update;
-    use jinn_dashboard::ActorLifecycle;
+    use jinn_core_types::ActorLifecycle;
     use jinn_discord_msg::DiscordStatusUpdate;
     use jinn_slices::Slices;
     use std::future::Future;
@@ -253,7 +238,7 @@ mod tests {
 
     impl trouper::actor::ServiceActor for TopicProbe {
         async fn start(
-            _args: &serde_json::Value,
+            _args: &trouper::json::Json,
         ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
             Err(
                 error_stack::IntoReport::into_report(trouper::registry::RegistryError::InvalidSpec)
@@ -265,10 +250,10 @@ mod tests {
     impl trouper::actor::MsgHandler<DiscordStatusUpdate> for TopicProbe {
         async fn handle(
             &mut self,
-            msg: DiscordStatusUpdate,
+            msg: &DiscordStatusUpdate,
             _ctx: &mut trouper::context::MsgCtx<'_>,
         ) {
-            self.seen.lock().push(msg);
+            self.seen.lock().push(msg.clone());
         }
     }
 
@@ -292,7 +277,7 @@ mod tests {
         let (tx, rx) = kanal::bounded::<DiscordStatusUpdate>(8);
         let fabric = jinn_testutil::TestFabric::new();
         let seen: Arc<parking_lot::Mutex<Vec<DiscordStatusUpdate>>> = Arc::default();
-        let probe_path = trouper::builder::spawn_service_builder::<TopicProbe>(fabric.system())
+        let _probe_path = trouper::builder::spawn_service_builder::<TopicProbe>(fabric.system())
             .at(trouper::actor::ActorPath::new("discord-status-probe"))
             .start_with({
                 let seen = seen.clone();
@@ -303,10 +288,6 @@ mod tests {
             })
             .handles::<DiscordStatusUpdate>()
             .start();
-        fabric
-            .system()
-            .subscribe(&probe_path, &jinn_discord_msg::discord_topic(), None)
-            .expect("probe subscribes");
         let deps = DiscordStatusActorDeps {
             status_rx: rx.to_async(),
             cell: connection,

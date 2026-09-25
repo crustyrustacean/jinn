@@ -9,25 +9,18 @@
 //! code review. Each group struct carries `/// OWNER:` documentation on the struct
 //! and on each field.
 
-pub use crate::common::focus::{FocusScope, ScopeStack};
-pub use crate::common::session_map::SessionLoadGuard;
-pub use crate::feat::context::assembly_state::ContextAssemblyState;
-pub use crate::feat::provider::ProviderState;
-pub use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
-pub use crate::feat::rename_session_input::state::RenameSessionInputState;
-
-pub use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
 
-use crate::protocol::{ChatEntryId, PickerKind, PinPosition, SessionId};
+use crate::protocol::{ChatEntryId, PickerKind, PinPosition};
+use jinn_core_types::SessionId;
 
-use crate::common::session_map::SessionMap;
 pub use crate::feat::chat_input::ChatInputBoxState;
-use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::ui::picker_states::PickerExt;
+use jinn_session_state::ChatSessionState;
+use jinn_session_state::SessionMap;
 
-/// Written to exclusively by `SessionPersistenceActor` and `IntentHandler`.
-/// No other actor should mutate these fields.
+/// Shared session registry and active-session state. Callers mutate it through
+/// [`SessionMap`] operations so session reads and snapshot capture stay coherent.
 ///
 /// See [`SessionMap`] for the full API.
 pub type SessionState = SessionMap;
@@ -37,14 +30,8 @@ pub type SessionState = SessionMap;
 pub struct AppState {
     /// Session lifecycle state - owned by session-actor.
     pub session: SessionState,
-    /// Context assembly state - owned by context-actor.
-    pub context: ContextAssemblyState,
-    /// Provider selection state - owned by provider-actor.
-    pub provider: ProviderState,
     /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
-    /// Plugin contributions - owned by plugin-coordinator-actor.
-    pub plugins: crate::feat::plugin::PluginContributions,
 }
 
 impl AppState {
@@ -54,12 +41,16 @@ impl AppState {
     /// Use for operations that work the same way on all picker types
     /// (insert char, backspace, move up/down, cursor left/right).
     pub fn active_picker_ops(&mut self) -> Option<&mut dyn jinn_selection_widget::PickerOps> {
-        let kind = self.frontend.scope_stack.picker_kind().copied()?;
+        let kind = self.frontend.picker_kind()?;
         match kind {
-            PickerKind::Provider => Some(&mut self.provider.provider_picker),
+            PickerKind::Provider => Some(&mut self.frontend.pickers.provider_picker),
             PickerKind::Session => Some(self.frontend.session_picker_mut()),
             PickerKind::Persona => Some(self.frontend.persona_picker_mut()),
             PickerKind::Theme => Some(self.frontend.theme_picker_mut()),
+
+            // CompactionModel has no picker state (the kind is retired); no
+            // navigation interface exists for it.
+            PickerKind::CompactionModel => None,
 
             PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker_mut()),
             PickerKind::ReasoningEffort => Some(self.frontend.reasoning_effort_picker_mut()),
@@ -68,7 +59,6 @@ impl AppState {
             PickerKind::TaskList => Some(self.frontend.task_list_picker_mut()),
             PickerKind::Project => Some(self.frontend.project_picker_mut()),
             PickerKind::McpServer => Some(self.frontend.mcp_server_picker_mut()),
-            PickerKind::Plugin => Some(self.frontend.plugin_picker_mut()),
             PickerKind::Endpoint => Some(self.frontend.endpoint_picker_mut()),
         }
     }
@@ -77,13 +67,162 @@ impl AppState {
     /// Returns `None` if no picker is currently active.
     /// Companion to [`AppState::active_picker_ops`] for the read-only
     /// `is_filter_empty` check used by the `CtrlClear` intent.
+    /// TEST-ONLY: an `AppState` whose scope-focus and chat-log-view cells
+    /// are activated and attached, so facade writes/reads behave like
+    /// production wiring.
+    #[doc(hidden)]
+    pub fn default_with_scope_focus() -> Self {
+        let state = Self::default();
+        let slices = jinn_slices::Slices::new();
+        if slices
+            .register(
+                jinn_slices::scope_focus_slot(),
+                jinn_slices::ScopeFocusState::default(),
+            )
+            .is_err()
+        {
+            // Already registered: this AppState's Slices was seeded
+            // before; attaching it again is the intent.
+        }
+        if slices
+            .register(
+                jinn_chat_log_view_msg::chat_log_views_slot(),
+                jinn_chat_log_view_msg::ChatLogViews::new(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_session_lifecycle_msg::arg_input_slot(),
+                jinn_session_lifecycle_msg::ArgInputState::empty(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_sidebar_msg::sidebar_sections_slot(),
+                jinn_sidebar_msg::SidebarSections::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_theme_msg::theme_entries_slot(),
+                jinn_theme_msg::ThemeEntries::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_persona_msg::personas_slot(),
+                jinn_persona_msg::Personas::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_tools_msg::tools_registry_slot(),
+                jinn_tools_msg::ToolRegistry::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_term_msg::term_tabs_slot(),
+                jinn_term_msg::TerminalTabState::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_provider_selection_msg::provider_state_slot(),
+                jinn_provider_selection_msg::ProviderCell::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        state.frontend.attach_slices(slices.clone());
+        state.session.attach_slices(slices);
+        state
+    }
+
+    /// The tools-family registry cell, if the registry is attached.
+    ///
+    /// Multi-party state (written by kernel tools handlers, read by
+    /// dispatch snapshots, the TUI, and picker specs) — the cell lives
+    /// in `jinn-slices` per the decomposition policy.
+    #[must_use]
+    pub fn tool_registry(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_tools_msg::ToolRegistry>> {
+        match self.frontend.slices() {
+            Some(s) => s.reader(&jinn_tools_msg::tools_registry_slot()),
+            None => None,
+        }
+    }
+
+    /// The provider-selection slice's cell, if the slice is attached.
+    ///
+    /// Multi-party state (written by the slice's actors and boot's cache
+    /// loader, read by the picker specs, status bar, and gates) — the cell
+    /// lives in the slice's msg crate per the decomposition policy.
+    #[must_use]
+    pub fn provider_state(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_provider_selection_msg::ProviderCell>> {
+        match self.frontend.slices() {
+            Some(s) => s.reader(&jinn_provider_selection_msg::provider_state_slot()),
+            None => None,
+        }
+    }
+
+    /// The term slice's terminal tab state cell, if attached.
+    #[must_use]
+    pub fn term_tabs(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_term_msg::TerminalTabState>> {
+        match self.frontend.slices() {
+            Some(s) => s.reader(&jinn_term_msg::term_tabs_slot()),
+            None => None,
+        }
+    }
+
+    /// The persona slice's selection cell, if attached.
+    #[must_use]
+    pub fn persona_selection(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_persona_msg::Personas>> {
+        match self.frontend.slices() {
+            Some(s) => s.reader(&jinn_persona_msg::personas_slot()),
+            None => None,
+        }
+    }
+
     pub fn active_picker_ops_ref(&self) -> Option<&dyn jinn_selection_widget::PickerOps> {
-        let kind = self.frontend.scope_stack.picker_kind().copied()?;
+        let kind = self.frontend.picker_kind()?;
         match kind {
-            PickerKind::Provider => Some(&self.provider.provider_picker),
+            PickerKind::Provider => Some(&self.frontend.pickers.provider_picker),
             PickerKind::Session => Some(self.frontend.session_picker()),
             PickerKind::Persona => Some(self.frontend.persona_picker()),
             PickerKind::Theme => Some(self.frontend.theme_picker()),
+
+            // CompactionModel has no picker state (the kind is retired).
+            PickerKind::CompactionModel => None,
 
             PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker()),
             PickerKind::ReasoningEffort => Some(self.frontend.reasoning_effort_picker()),
@@ -92,7 +231,6 @@ impl AppState {
             PickerKind::TaskList => Some(self.frontend.task_list_picker()),
             PickerKind::Project => Some(self.frontend.project_picker()),
             PickerKind::McpServer => Some(self.frontend.mcp_server_picker()),
-            PickerKind::Plugin => Some(self.frontend.plugin_picker()),
             PickerKind::Endpoint => Some(self.frontend.endpoint_picker()),
         }
     }
@@ -156,26 +294,25 @@ impl AppState {
         self.session.get_or_create(id)
     }
 
-    /// Read-only access to the active session's input box.
-    ///
-    /// Delegates to [`ChatSessionState::chat_input`] on the active session.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the active session does not exist in the sessions map.
-    pub fn active_chat_input(&self) -> &ChatInputBoxState {
-        self.active_session().chat_input()
+    /// Runs `f` against the active session's input draft, writing through
+    /// the chat-input facade (cell when attached, in-struct fallback when
+    /// not). The single write path for input edits.
+    pub fn update_active_input<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut ChatInputBoxState),
+    {
+        self.active_session().update_input(f);
     }
 
-    /// Mutable access to the active session's input box.
-    ///
-    /// Delegates to [`ChatSessionState::chat_input_mut`] on the active session.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the active session does not exist in the sessions map.
-    pub fn active_chat_input_mut(&mut self) -> &mut ChatInputBoxState {
-        self.active_session_mut().chat_input_mut()
+    /// Reads the active session's input draft through `f`, with `default`
+    /// supplying the result when the session has no entry in the cell.
+    /// The single read path for input state.
+    pub fn with_active_input<R, F, D>(&self, f: F, default: D) -> R
+    where
+        F: FnOnce(&ChatInputBoxState) -> R,
+        D: FnOnce() -> R,
+    {
+        self.active_session().with_input(f, default)
     }
 
     /// Returns pinned entry IDs sorted by position for the active session.

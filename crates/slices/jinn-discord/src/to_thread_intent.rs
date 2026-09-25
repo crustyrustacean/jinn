@@ -20,8 +20,8 @@ use jinn_slices::route::ActionCtx;
 use crate::status_actor::ConnectionState;
 use crate::status_actor::discord_connection_slot;
 use jinn_discord_msg::CreateThreadForSession;
-use jinn_domain::common::slices::Slices;
 use jinn_domain::protocol::IntentResult;
+use jinn_slices::Slices;
 
 /// Run the to-thread action (the `gdc` route row).
 ///
@@ -38,7 +38,11 @@ use jinn_domain::protocol::IntentResult;
 /// This function never returns `Err` — failures push a `ChatEntry::error`
 /// into the active session and yield an empty `IntentResult`.
 pub fn handle_to_discord_thread(ctx: ActionCtx<'_>) -> IntentResult {
-    let ActionCtx { state, slices } = ctx;
+    let ActionCtx {
+        state,
+        slices,
+        key_bytes: _,
+    } = ctx;
     // Precondition 1: title exists. The session title is `None` until the first
     // user message is sent, so this also gates the "empty session" case.
     let Some(title) = state.active_session_title() else {
@@ -110,9 +114,9 @@ mod tests {
     use crate::ConnectionState;
     use crate::discord_connection_slot;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::slices::Slices;
-    use jinn_domain::common::slices::key_routes::ActionCtx;
-    use jinn_domain::feat::session::chat_entry::ChatEntryKind;
+    use jinn_domain::protocol::ChatEntryKind;
+    use jinn_slices::Slices;
+    use jinn_slices::route::ActionCtx;
 
     /// Build the state + slices with the happy-path preconditions: a titled
     /// session, discord enabled + connected. (The gateway owns
@@ -140,7 +144,11 @@ mod tests {
     }
 
     fn ctx<'a>(state: &'a mut AppState, slices: &'a Slices) -> ActionCtx<'a> {
-        ActionCtx { state, slices }
+        ActionCtx {
+            state,
+            slices,
+            key_bytes: Vec::new(),
+        }
     }
 
     fn last_entry_kind(state: &AppState) -> &ChatEntryKind {

@@ -11,11 +11,12 @@
 use std::time::Duration;
 
 use crate::authorize;
-use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
-use jinn_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
-use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
-use jinn_domain::protocol::Intent;
-use jinn_domain::{Bridge, SessionId};
+use jinn_context::PromptTemplateStore;
+use jinn_core_types::SessionId;
+use jinn_domain::Bridge;
+use jinn_domain::protocol::KernelIntent;
+use jinn_preferences_config::schemas::SessionLifecycle;
+use jinn_session_store_msg::ArchiveSession;
 use poise::serenity_prelude as serenity;
 
 use crate::backend::gateway::{BotContext, BotData, BotError};
@@ -105,7 +106,7 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     };
 
     let new_session_id = {
-        let mut state = data.state.write(&data.intent_handler_cap);
+        let mut state = data.state.write();
         // Stash the chosen project so the lifecycle handler consumes it as the
         // new session's starting CWD and project stamp (same convention as the
         // project picker). Without this the handler falls back to inheriting
@@ -117,7 +118,7 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
             },
         );
         let result = jinn_domain::feat::intent::IntentHandler::handle(
-            &Intent::SessionLifecycleSetup {
+            &KernelIntent::SessionLifecycleSetup {
                 lifecycle_name: lifecycle.clone(),
                 args: args.clone(),
             },
@@ -300,7 +301,7 @@ pub async fn prompts(ctx: BotContext<'_>) -> Result<(), BotError> {
     let thread_id = channel_id.get().to_string();
     let reply = match data.thread_map.get_session_by_thread(&thread_id).await {
         Ok(Some(id)) => {
-            let session_id: jinn_domain::SessionId = id.into();
+            let session_id: jinn_core_types::SessionId = id.into();
             // 2. Read the session's prompt store under a single short-lived
             //    read lock. The decision (list / empty / missing) is captured
             //    as a `Lookup` so the guard is dropped before the await on
@@ -433,7 +434,7 @@ async fn collect_lifecycle_args(
     lifecycle: String,
 ) -> Result<Option<(String, Vec<String>)>, BotError> {
     use crate::backend::feat::discord::lifecycle_inputs::resolve_lifecycle_inputs;
-    use jinn_domain::feat::session_lifecycle::command_template::parse_quoted_args;
+    use jinn_session_lifecycle_msg::command_template::parse_quoted_args;
 
     // Resolve how many positional args the lifecycle needs and the prompt text
     // to show for them. Reading preferences under a short-lived read guard so it
@@ -542,10 +543,9 @@ fn render_prompts_list(store: &PromptTemplateStore) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{format_lifecycle_list, render_prompts_list};
-    use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
-    use jinn_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
-    use jinn_domain::feat::session_lifecycle::builtin::LifecycleCommand;
-    use jinn_domain::protocol::PromptTemplate;
+    use jinn_context::{PromptTemplate, PromptTemplateStore};
+    use jinn_preferences_config::schemas::LifecycleCommand;
+    use jinn_preferences_config::schemas::SessionLifecycle;
 
     fn lifecycle(name: &str, description: Option<&str>) -> SessionLifecycle {
         SessionLifecycle {

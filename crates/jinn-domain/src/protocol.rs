@@ -4,43 +4,39 @@
 //!
 //!
 //! - **[`intent`]** - `Intent` (user-initiated action) and `IntentResult`
-//! - **[`key`]** - `Key`, `KeyEvent`, `Modifiers` (keyboard input types)
-//! - **[`mode`]** - `Mode` (application interaction mode)
 //! - **[`system`]** - `KeyDown`, `KeyUp`, `ModeChanged`
+//! - Shared `Key`, `KeyEvent`, `Modifiers`, and `Mode` vocabulary from `jinn-slices`
 //!
-//! Domain-specific types (session, provider, context, tools, chat input, etc.) live
-//! in their feature modules under `feat/` and are re-exported here for convenience.
+//! Kernel protocol vocabulary and shared core/slice values live here; commands
+//! and events owned by a slice are defined directly in that slice's canonical
+//! `*-msg` crate.
 
 pub mod intent;
-pub mod key;
-#[cfg(test)]
-mod key_tests;
-pub mod mode;
 pub mod system;
 
 // Re-export primary types
 pub use crate::common::bus::BusMessage;
 pub use intent::CwdRoot;
-pub use intent::Intent;
 pub use intent::IntentResult;
+pub use intent::KernelIntent;
 pub use intent::ScopeSignal;
-pub use key::{Key, KeyEvent, Modifiers};
-pub use mode::Mode;
+pub use jinn_slices::{Key, KeyEvent, Mode, Modifiers};
 
 // Re-export domain types that are widely used as cross-cutting protocol concerns
 pub use crate::common::actor::actor_name::ActorName;
-pub use crate::feat::context::protocol::prompt_template::PromptTemplate;
+pub use jinn_session_init_msg::PromptTemplate;
 
-pub use crate::feat::picker::picker_kind::PickerKind;
-pub use crate::feat::provider::llm_message::LlmMessage;
-pub use crate::feat::session::protocol::session_id::SessionId;
+pub use jinn_provider::LlmMessage;
+pub use jinn_slices::picker_kind::PickerKind;
 
 // Re-export domain types used by the picker and UI
-pub use crate::feat::provider::entries_to_messages::entries_to_messages;
-pub use crate::feat::provider::picker_entry::ProviderPickerEntry;
-pub use crate::feat::session::chat_entry::{
-    ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
+pub use jinn_llm_support::entries_to_messages::entries_to_messages;
+pub use jinn_provider_selection_msg::ProviderPickerEntry;
+// The `ChatEntry` vocabulary is promoted to `jinn-core-types` (serde-only
+// value types); these re-exports keep the long-standing `jinn_domain::…`
+// paths resolving.
+pub use jinn_core_types::chat_history::ChatHistory;
+pub use jinn_core_types::{
+    AttachmentOutcome, ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextChangeEvent,
+    ContextOverride, EntryTiming, HistoryMutation, PinPosition, ResolvedToken, ToolResultStatus,
 };
-pub use crate::feat::session::entry_timing::EntryTiming;
-pub use crate::feat::session::picker_entry::SessionTreeEntry;
-pub use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};

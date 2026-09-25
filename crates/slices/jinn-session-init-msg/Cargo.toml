@@ -1,0 +1,19 @@
+[package]
+name = "jinn-session-init-msg"
+version.workspace = true
+edition.workspace = true
+description = "Session-init crossing contracts: resource discovery commands, loaded events, and the PromptTemplate noun."
+
+[dependencies]
+jinn-context = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-slices = { workspace = true }
+serde = { workspace = true }
+trouper = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

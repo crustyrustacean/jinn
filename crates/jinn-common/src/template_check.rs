@@ -29,9 +29,9 @@
 //!
 //! Maps keyed by a user-chosen name (`[providers.<name>]`,
 //! `[mcp_server.<name>.headers]`) and free-form value containers
-//! (`extra_body`, plugin `config`) produce different concrete key paths in
-//! the schema fixture and the template example. [`normalize`] masks those
-//! segments with `*` on both sides so comparison is structural.
+//! (`extra_body`) produce different concrete key paths in the schema
+//! fixture and the template example. [`normalize`] masks those segments
+//! with `*` on both sides so comparison is structural.
 //!
 //! Array-of-tables (`[[session_lifecycle]]`, `[[auto_prune.regex.rules]]`,
 //! `[[providers.<name>.model_info]]`) contribute *no* name segment: their
@@ -274,11 +274,9 @@ fn collection_patterns() -> &'static Vec<Vec<String>> {
         [
             "providers",
             "mcp_server",
-            "plugin",
             "mcp_server.*.headers",
             "providers.*.extra_body",
             "providers.*.model_info.extra_body",
-            "plugin.*.config",
         ]
         .into_iter()
         .map(|p| p.split('.').map(str::to_owned).collect())

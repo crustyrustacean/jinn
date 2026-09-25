@@ -5,10 +5,10 @@
 )]
 
 use super::render::*;
-use jinn_domain::FocusScope;
-use jinn_domain::feat::session::chat_entry::ChatEntry;
-use jinn_domain::feat::ui::chat_log::GUTTER_WIDTH;
+use jinn_chat_log_view::chat_log::GUTTER_WIDTH;
+use jinn_domain::protocol::ChatEntry;
 use jinn_selection_widget::compute_popup_rect;
+use jinn_slices::FocusScope;
 use jinn_testutil::setup_term;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -20,9 +20,16 @@ use ratatui::style::Color;
 /// through specs the registry holds.
 async fn render_test_app() -> crate::TuiApp {
     let services = jinn_domain::Services {
-        picker_registry: jinn_domain::feat::picker::registry::build_picker_registry(),
+        picker_registry: jinn_picker_specs::build_picker_registry(),
         ..jinn_domain::Services::new_fake().await
     };
+    services
+        .slices
+        .register(
+            jinn_mcp_msg::mcp_runtime_slot(),
+            jinn_mcp_msg::McpRuntimeState::default(),
+        )
+        .expect("MCP runtime cell is registered exactly once");
     crate::TuiApp::test_builder()
         .services(services)
         .build()
@@ -75,10 +82,9 @@ async fn picker_popup_rect_is_selectable() {
     // Switch to Picker mode with an active provider picker.
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
-        .scope_stack
-        .push(jinn_domain::FocusScope::Picker {
+        .scope_push(jinn_slices::FocusScope::Picker {
             kind: jinn_domain::PickerKind::Provider,
         });
 
@@ -110,10 +116,9 @@ async fn content_area_rect_is_selectable() {
     // Switch to Picker mode with an active provider picker.
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
-        .scope_stack
-        .push(jinn_domain::FocusScope::Picker {
+        .scope_push(jinn_slices::FocusScope::Picker {
             kind: jinn_domain::PickerKind::Provider,
         });
 
@@ -164,15 +169,10 @@ fn arrow_cell_position(layout: &AppLayout) -> (u16, u16) {
 async fn minimap_arrow_is_yellow_when_normal_scope() {
     // Given a TuiApp rendered with Normal scope and one chat entry.
     let mut app = render_test_app().await;
+    app.core.state.write().frontend.scope_clear_overlays();
     app.core
         .state
-        .write_test_no_cap()
-        .frontend
-        .scope_stack
-        .clear_overlays();
-    app.core
-        .state
-        .write_test_no_cap()
+        .write()
         .active_session_mut()
         .push_entry(ChatEntry::user("hello"));
     let (mut terminal, _area) = setup_term(80, 24);
@@ -200,13 +200,12 @@ async fn minimap_arrow_is_darkgray_when_input_scope() {
     let mut app = render_test_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
-        .scope_stack
-        .push(FocusScope::Input);
+        .scope_push(FocusScope::Input);
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .active_session_mut()
         .push_entry(ChatEntry::user("hello"));
     let (mut terminal, _area) = setup_term(80, 24);
@@ -251,15 +250,30 @@ async fn gutter_area_is_not_selectable() {
 
 #[rstest::rstest]
 #[tokio::test]
+#[expect(clippy::panic, reason = "test: a failed finalize must fail the test")]
 async fn cwd_input_popup_renders_and_is_selectable() {
-    // Given a TuiApp rendered with CwdInput scope.
+    // Given a TuiApp rendered with the cwd popup's dynamic scope, the cwd
+    // slice activated so its overlay + cell are registered.
     let mut app = render_test_app().await;
+    {
+        let services = &mut app.services;
+        let mut host = jinn_slices::SliceHost::new(
+            &services.slices,
+            &mut services.viewport,
+            &services.overlay_views,
+            &services.key_routes,
+            &services.trouper_system,
+        );
+        jinn_cwd::activate(&mut host);
+        if let Err(error) = host.finalize(&|_key| None) {
+            panic!("cwd slice finalize failed: {error}");
+        }
+    }
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
-        .scope_stack
-        .push(FocusScope::CwdInput);
+        .scope_push(FocusScope::Dynamic(jinn_cwd::cwd_scope()));
     let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering.
@@ -270,7 +284,7 @@ async fn cwd_input_popup_renders_and_is_selectable() {
         .unwrap();
 
     // Then the cwd popup rect is registered as selectable.
-    let popup_rect = jinn_domain::feat::cwd_input::render::cwd_input_popup_rect(frame_area(80, 24));
+    let popup_rect = jinn_cwd::cwd_input_popup_rect(frame_area(80, 24));
     let probe = app
         .selectable_rects
         .find_for_position(popup_rect.x + 1, popup_rect.y + 1);
@@ -311,17 +325,24 @@ async fn mcp_inspector_renders_server_list_and_logs_pane() {
     // Given the MCP server inspector open with one server selected + running.
     let mut app = render_test_app().await;
     {
-        use jinn_domain::feat::mcp::picker_entry::McpServerEntry;
-        use jinn_domain::feat::mcp_actor::protocol::McpConnectionStatus;
-        use jinn_domain::feat::theme::default_theme;
         use jinn_domain::feat::ui::picker_states::PickerExt;
-        let mut w = app.core.state.write_test_no_cap();
-        // Seed the active session's live data sources so the per-frame refresh
-        // produces the right preview.
-        w.active_session_mut()
-            .set_mcp_server_status("excalimate", McpConnectionStatus::Running);
-        w.active_session_mut()
-            .set_mcp_server_stderr("excalimate", "hello from stderr".to_owned());
+        use jinn_mcp_msg::McpConnectionStatus;
+        use jinn_mcp_msg::McpServerEntry;
+        use jinn_theme::default_theme;
+        let runtime = app
+            .services
+            .slices
+            .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot())
+            .expect("MCP runtime cell seeded by render test app");
+        let session_id = {
+            let w = app.core.state.read();
+            w.active_session().session_id().clone()
+        };
+        runtime.update(|runtime| {
+            runtime.set_status(&session_id, "excalimate", McpConnectionStatus::Running);
+            runtime.set_stderr(&session_id, "excalimate", "hello from stderr".to_owned());
+        });
+        let mut w = app.core.state.write();
         let entry = McpServerEntry::new(
             "excalimate".to_owned(),
             "npx @excalimate/mcp-server".to_owned(),
@@ -329,18 +350,13 @@ async fn mcp_inspector_renders_server_list_and_logs_pane() {
             default_theme(),
         );
         // Wrap the entry through the spec (storage holds PickerEntry<T>).
-        let wrapped = jinn_domain::feat::picker::registry::build_picker_registry()
-            .make_items(
-                jinn_domain::feat::picker::registry::MCP_SERVER_ID,
-                vec![entry],
-            )
+        let wrapped = jinn_picker_specs::build_picker_registry()
+            .make_items(jinn_picker::MCP_SERVER_ID, vec![entry])
             .expect("mcp-server spec registered");
         w.frontend.mcp_server_picker_mut().set_items(wrapped);
-        w.frontend
-            .scope_stack
-            .push(jinn_domain::FocusScope::Picker {
-                kind: jinn_domain::PickerKind::McpServer,
-            });
+        w.frontend.scope_push(jinn_slices::FocusScope::Picker {
+            kind: jinn_domain::PickerKind::McpServer,
+        });
     }
 
     let (mut terminal, _area) = setup_term(100, 30);
@@ -379,16 +395,23 @@ async fn mcp_inspector_tools_pane_renders_tool_names() {
     // Given the MCP inspector open in Tools mode with one advertised tool.
     let mut app = render_test_app().await;
     {
-        use jinn_domain::feat::mcp::picker_entry::{McpPreviewMode, McpServerEntry};
-        use jinn_domain::feat::theme::default_theme;
         use jinn_domain::feat::ui::picker_states::PickerExt;
-        let mut w = app.core.state.write_test_no_cap();
+        use jinn_mcp_msg::{McpPreviewMode, McpServerEntry};
+        use jinn_theme::default_theme;
+        let registry_cell = app
+            .services
+            .slices
+            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
+            .expect("tools registry seeded by render test app");
+        let session_id = {
+            let w = app.core.state.read();
+            w.active_session().session_id().clone()
+        };
         // Seed a tool definition so the per-frame refresh surfaces it in tools mode.
-        let session_id = w.active_session().session_id().clone();
         let mut defs = std::collections::BTreeMap::new();
         defs.insert(
             "mcp__excalimate__create_scene".to_owned(),
-            jinn_domain::ToolDefinition {
+            jinn_core_types::ToolDefinition {
                 name: "mcp__excalimate__create_scene".to_owned(),
                 description: "Create a scene".to_owned(),
                 parameters: serde_json::Value::Object(serde_json::Map::new()),
@@ -397,7 +420,9 @@ async fn mcp_inspector_tools_pane_renders_tool_names() {
                 server_tool_type: None,
             },
         );
-        w.context.session_tool_definitions.insert(session_id, defs);
+        registry_cell.update(|registry| {
+            registry.session.insert(session_id, defs);
+        });
         // Entry starts in Logs mode; flip to Tools so the rendered pane shows tools.
         let mut entry = McpServerEntry::new(
             "excalimate".to_owned(),
@@ -407,18 +432,14 @@ async fn mcp_inspector_tools_pane_renders_tool_names() {
         );
         entry.preview_mode = McpPreviewMode::Tools;
         // Wrap the entry through the spec (storage holds PickerEntry<T>).
-        let wrapped = jinn_domain::feat::picker::registry::build_picker_registry()
-            .make_items(
-                jinn_domain::feat::picker::registry::MCP_SERVER_ID,
-                vec![entry],
-            )
+        let wrapped = jinn_picker_specs::build_picker_registry()
+            .make_items(jinn_picker::MCP_SERVER_ID, vec![entry])
             .expect("mcp-server spec registered");
+        let mut w = app.core.state.write();
         w.frontend.mcp_server_picker_mut().set_items(wrapped);
-        w.frontend
-            .scope_stack
-            .push(jinn_domain::FocusScope::Picker {
-                kind: jinn_domain::PickerKind::McpServer,
-            });
+        w.frontend.scope_push(jinn_slices::FocusScope::Picker {
+            kind: jinn_domain::PickerKind::McpServer,
+        });
     }
 
     let (mut terminal, _area) = setup_term(100, 30);
@@ -451,10 +472,9 @@ async fn which_key_help_renders_above_the_terminal_overlay() {
     let mut app = render_test_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
-        .scope_stack
-        .swap_base(jinn_domain::FocusScope::TerminalView);
+        .scope_swap_base(jinn_slices::FocusScope::Dynamic(jinn_term_msg::view_scope()));
     app.which_key.active = true;
 
     let (mut terminal, _area) = setup_term(80, 24);
@@ -515,39 +535,35 @@ async fn model_picker_renders_telescope_layout_with_filter() {
     // Given a provider picker open with entries loaded and filter "ol".
     let mut app = render_test_app_with_provider().await;
     {
-        let mut w = app.core.state.write_test_no_cap();
-        w.frontend
-            .scope_stack
-            .push(jinn_domain::FocusScope::Picker {
-                kind: jinn_domain::PickerKind::Provider,
-            });
+        let mut w = app.core.state.write();
+        w.frontend.scope_push(jinn_slices::FocusScope::Picker {
+            kind: jinn_domain::PickerKind::Provider,
+        });
         // Load entries through the spec (raw entry matching the configured
         // ollama model).
-        let wrapped = jinn_domain::feat::picker::registry::build_picker_registry()
+        let wrapped = jinn_picker_specs::build_picker_registry()
             .make_items(
-                jinn_domain::feat::picker::registry::PROVIDER_ID,
-                vec![
-                    jinn_domain::feat::provider::picker_entry::ProviderPickerEntry {
-                        provider_id: "ollama/llama3".to_owned(),
-                        name: "ollama".to_owned(),
-                        provider_name: "ollama".to_owned(),
-                        backend: "ollama".to_owned(),
-                        model: "llama3".to_owned(),
-                        search_text: "llama3 ollama".to_owned(),
-                        is_alias: false,
-                        alias_target: None,
-                        is_available: true,
-                        is_remote: false,
-                        is_active: false,
-                        selected: false,
-                        theme: jinn_domain::feat::theme::default_theme(),
-                    },
-                ],
+                jinn_picker::PROVIDER_ID,
+                vec![jinn_provider_selection_msg::ProviderPickerEntry {
+                    provider_id: "ollama/llama3".to_owned(),
+                    name: "ollama".to_owned(),
+                    provider_name: "ollama".to_owned(),
+                    backend: "ollama".to_owned(),
+                    model: "llama3".to_owned(),
+                    search_text: "llama3 ollama".to_owned(),
+                    is_alias: false,
+                    alias_target: None,
+                    is_available: true,
+                    is_remote: false,
+                    is_active: false,
+                    selected: false,
+                    theme: jinn_theme::default_theme(),
+                }],
             )
             .expect("provider spec registered");
-        w.provider.provider_picker.set_items(wrapped);
-        w.provider.provider_picker.insert_char('o');
-        w.provider.provider_picker.insert_char('l');
+        w.frontend.pickers.provider_picker.set_items(wrapped);
+        w.frontend.pickers.provider_picker.insert_char('o');
+        w.frontend.pickers.provider_picker.insert_char('l');
     }
 
     let (mut terminal, _area) = setup_term(80, 24);
@@ -580,12 +596,10 @@ async fn model_picker_uses_dark_gray_border() {
     // Given a provider picker open with entries loaded.
     let mut app = render_test_app_with_provider().await;
     {
-        let mut w = app.core.state.write_test_no_cap();
-        w.frontend
-            .scope_stack
-            .push(jinn_domain::FocusScope::Picker {
-                kind: jinn_domain::PickerKind::Provider,
-            });
+        let w = app.core.state.write();
+        w.frontend.scope_push(jinn_slices::FocusScope::Picker {
+            kind: jinn_domain::PickerKind::Provider,
+        });
     }
 
     let (mut terminal, _area) = setup_term(80, 24);
@@ -610,37 +624,33 @@ async fn model_picker_no_active_marker_for_active_model() {
     // Given the active session is on ollama/llama3 with entries loaded.
     let mut app = render_test_app_with_provider().await;
     {
-        let mut w = app.core.state.write_test_no_cap();
-        w.frontend
-            .scope_stack
-            .push(jinn_domain::FocusScope::Picker {
-                kind: jinn_domain::PickerKind::Provider,
-            });
+        let mut w = app.core.state.write();
+        w.frontend.scope_push(jinn_slices::FocusScope::Picker {
+            kind: jinn_domain::PickerKind::Provider,
+        });
         // Wrap entries through the spec; the check column stays empty in
         // single mode (nothing selected).
-        let wrapped = jinn_domain::feat::picker::registry::build_picker_registry()
+        let wrapped = jinn_picker_specs::build_picker_registry()
             .make_items(
-                jinn_domain::feat::picker::registry::PROVIDER_ID,
-                vec![
-                    jinn_domain::feat::provider::picker_entry::ProviderPickerEntry {
-                        provider_id: "ollama/llama3".to_owned(),
-                        name: "ollama".to_owned(),
-                        provider_name: "ollama".to_owned(),
-                        backend: "ollama".to_owned(),
-                        model: "llama3".to_owned(),
-                        search_text: "llama3 ollama".to_owned(),
-                        is_alias: false,
-                        alias_target: None,
-                        is_available: true,
-                        is_remote: false,
-                        is_active: true,
-                        selected: false,
-                        theme: jinn_domain::feat::theme::default_theme(),
-                    },
-                ],
+                jinn_picker::PROVIDER_ID,
+                vec![jinn_provider_selection_msg::ProviderPickerEntry {
+                    provider_id: "ollama/llama3".to_owned(),
+                    name: "ollama".to_owned(),
+                    provider_name: "ollama".to_owned(),
+                    backend: "ollama".to_owned(),
+                    model: "llama3".to_owned(),
+                    search_text: "llama3 ollama".to_owned(),
+                    is_alias: false,
+                    alias_target: None,
+                    is_available: true,
+                    is_remote: false,
+                    is_active: true,
+                    selected: false,
+                    theme: jinn_theme::default_theme(),
+                }],
             )
             .expect("provider spec registered");
-        w.provider.provider_picker.set_items(wrapped);
+        w.frontend.pickers.provider_picker.set_items(wrapped);
     }
 
     let (mut terminal, _area) = setup_term(80, 24);
@@ -666,7 +676,7 @@ async fn model_picker_no_active_marker_for_active_model() {
 /// provider loader can build entries, plus the real picker registry.
 async fn render_test_app_with_provider() -> crate::TuiApp {
     use jinn_domain::common::services::test_services::TestServices;
-    use jinn_domain::feat::provider_infra::{ProviderEntry, ProvidersConfig};
+    use jinn_provider_config::{ProviderEntry, ProvidersConfig};
     use std::collections::BTreeMap;
     let config = ProvidersConfig {
         providers: BTreeMap::from([(
@@ -686,7 +696,7 @@ async fn render_test_app_with_provider() -> crate::TuiApp {
         default_provider: None,
     };
     let services = jinn_domain::Services {
-        picker_registry: jinn_domain::feat::picker::registry::build_picker_registry(),
+        picker_registry: jinn_picker_specs::build_picker_registry(),
         ..TestServices::builder().with_providers(config).build()
     };
     crate::TuiApp::test_builder()

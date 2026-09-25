@@ -1,0 +1,20 @@
+[package]
+name = "jinn-persona-msg"
+version.workspace = true
+edition.workspace = true
+description = "Canonical persona crossing contracts and shared picker vocabulary."
+
+[dependencies]
+jinn-slices = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+trouper = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+
+[lints]
+workspace = true

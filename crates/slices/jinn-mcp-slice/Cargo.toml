@@ -1,0 +1,35 @@
+[package]
+name = "jinn-mcp-slice"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+jinn-mcp-msg = { workspace = true }
+# Kernel dep: the coordinator consumes shared application state and session
+# lifecycle events through the asynchronous actor path.
+jinn-domain = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-tools-msg = { workspace = true }
+jinn-mcp = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+trouper = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+jiff = { workspace = true }
+libc = "0.2"
+jinn-core-types = { workspace = true }
+error-stack = { workspace = true }
+parking_lot = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+jinn-tools = { workspace = true }
+rstest = { workspace = true }
+ctor = "0.8"
+rustls = { workspace = true }

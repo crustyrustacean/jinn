@@ -4,7 +4,7 @@
 //! three picker widgets (`SelectionWidget`, `PreviewSelectionWidget`,
 //! `TreePickerWidget`) to compute the results-area row count for the
 //! currently-active picker. The render pre-pass writes that value into
-//! [`PickerStates::picker_results_viewport`](crate::feat::ui::PickerStates::picker_results_viewport)
+//! [`PickerStates::picker_results_viewport`](crate::feat::ui::picker_states::PickerStates::picker_results_viewport)
 //! so the navigation intents can keep the cursor inside the visible window
 //! instead of using a stale hardcoded constant.
 
@@ -38,7 +38,7 @@ pub fn measure_active_picker_results_height(
     frame_area: Rect,
     registry: &jinn_picker::PickerRegistry,
 ) -> u16 {
-    let Some(kind) = state.frontend.scope_stack.picker_kind().copied() else {
+    let Some(kind) = state.frontend.picker_kind() else {
         return PICKER_VIEWPORT_FALLBACK;
     };
 
@@ -48,9 +48,7 @@ pub fn measure_active_picker_results_height(
     // Spec-driven geometry: a spec's widget kind selects the layout math and
     // its `bottom_rows()` reserves the footer. Every kind is spec-driven; the
     // fallback (empty registry, test seams) reserves the legacy single row.
-    let height = match crate::feat::picker::registry::spec_id_for_kind(&kind)
-        .and_then(|id| registry.get(id))
-    {
+    let height = match jinn_picker::spec_id_for_kind(&kind).and_then(|id| registry.get(id)) {
         Some(spec) => match spec.widget_kind() {
             WidgetKind::Preview => skill_results_height(inner, popup_area, spec.bottom_rows()),
             WidgetKind::List | WidgetKind::Tree => {

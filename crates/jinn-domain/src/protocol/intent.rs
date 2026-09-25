@@ -1,30 +1,19 @@
 //! The [`Intent`] enum - one variant per user-initiated action.
-use crate::protocol::{PickerKind, SessionId};
+use std::sync::Arc;
 
-/// The search root for the directory picker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CwdRoot {
-    /// Search from the active session's current CWD.
-    Session,
-    /// Search from the user's home directory.
-    Home,
-}
+use crate::protocol::PickerKind;
+use jinn_core_types::SessionId;
 
-impl std::fmt::Display for CwdRoot {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CwdRoot::Session => write!(f, "session"),
-            CwdRoot::Home => write!(f, "home"),
-        }
-    }
-}
+/// The search root for the directory picker (shared vocabulary from
+/// `jinn-slices`; the scope-focus cell carries it in `TuiSignals`).
+pub use jinn_slices::cwd_root::CwdRoot;
 
 /// A user-initiated action.
 ///
 /// Every keymap binding and mouse event produces exactly one [`Intent`] variant.
 /// The keymap decides the intent; the `IntentHandler` decides what to do with it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Intent {
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum KernelIntent {
     /// Insert a character at the cursor position.
     InsertChar {
         /// The character to insert.
@@ -146,71 +135,8 @@ pub enum Intent {
     RefreshModels,
     /// Rescan the prompt templates directory.
     RescanPromptTemplates,
-    /// Enter the sidebar scope.
-    SidebarFocus,
-    /// Jump directly to the Sessions sidebar section from any scope.
-    SidebarFocusSessions,
-    /// Leave the sidebar, returning to origin scope.
-    SidebarLeave,
-    /// Move selection down in the sidebar.
-    SidebarMoveDown,
-    /// Move selection up in the sidebar.
-    SidebarMoveUp,
-    /// Jump to the next sidebar section.
-    SidebarSectionNext,
-    /// Jump to the previous sidebar section.
-    SidebarSectionPrev,
-    /// Activate the selected session (switch to it).
-    SidebarSessionConfirm,
-    /// Open the child subagent session linked to the selected `task` tool
-    /// call (Normal `<enter>`). Resolves the selection at handling time;
-    /// loads the child from disk when it is not in memory. No-op when
-    /// nothing is selected, the selection is not a `task` call, or the
-    /// call carries no link.
-    LoadSubagentSession,
-    /// Activate the selected session and enter Insert mode.
-    SidebarConfirmInsert,
-    /// Unpin the selected pinned entry.
-    PinsUnpin,
-    /// Set the selected pinned entry's position to TOP.
-    PinsPinTop,
-    /// Set the selected pinned entry's position to BOTTOM.
-    PinsPinBottom,
-    /// Set the selected pinned entry's position to RELATIVE.
-    PinsPinRelative,
-    /// Cycle the selected pinned entry's pin position.
-    PinsPinCycle,
-    /// Close the selected open session from the sidebar.
-    SidebarSessionClose,
-    /// Re-run teardown for the selected session without closing it.
-    SidebarSessionTeardown,
-    /// Archive the selected session without running teardown.
-    SidebarSessionArchive,
-    /// Archive the selected session and all its descendant sessions.
-    ///
-    /// Behind a press-again confirmation: the first press arms a prompt
-    /// showing the subtree size (or a busy notice if any member is streaming),
-    /// the second press emits the archive command. All-or-nothing — if any
-    /// member is busy, nothing archives.
-    SidebarSessionArchiveTree,
-    /// Tear down the selected session, then archive it and all its
-    /// descendant sessions once teardown succeeds.
-    ///
-    /// Behind a press-again confirmation like the archive-tree prompt: the
-    /// first press arms a prompt showing the subtree size (or a busy notice
-    /// if any member is streaming), the second press emits the teardown-tree
-    /// command. The root's pending teardown runs first; if it fails or any
-    /// member is busy, nothing archives.
-    SidebarSessionTeardownTree,
-    /// Open the persona picker from the sidebar.
-    SidebarPersonaEdit,
     /// Open the session lifecycle picker from the sidebar sessions section.
     SessionNewWithLifecycle,
-    /// Queue a "Continue" user message to the session under the sidebar cursor.
-    SidebarSessionContinue,
-    /// Re-run the lifecycle setup command for the sidebar-selected session.
-    /// Only valid when the session's lifecycle_script_state is NothingRan.
-    SidebarSessionRerunSetup,
 
     /// Select the next chat entry.
     ChatEntrySelectNext,
@@ -267,69 +193,6 @@ pub enum Intent {
     },
     /// Close the active session, running teardown if applicable.
     SessionClose,
-    /// Confirm the arg input and trigger lifecycle setup.
-    ArgInputConfirm,
-
-    /// Enter sidebar resize mode.
-    SidebarResizeEnter,
-    /// Expand the sidebar (move border left).
-    SidebarResizeExpand,
-    /// Contract the sidebar (move border right).
-    SidebarResizeContract,
-    /// Exit sidebar resize mode, returning to Normal scope.
-    SidebarResizeLeave,
-
-    /// Open the rename session input popup.
-    SidebarRenameSession,
-    /// Confirm the rename session input and apply.
-    RenameSessionConfirm,
-    /// Cancel the rename session input popup.
-    RenameSessionLeave,
-    /// Insert a character into the rename session input.
-    RenameInsertChar {
-        /// The character to insert.
-        ch: char,
-    },
-    /// Move cursor left in the rename session input.
-    RenameCursorLeft,
-    /// Move cursor right in the rename session input.
-    RenameCursorRight,
-    /// Delete the grapheme before the cursor in rename input.
-    RenameDeleteGrapheme,
-    /// Delete the grapheme after the cursor in rename input.
-    RenameDeleteForward,
-
-    /// Open the pruner accumulation threshold input popup.
-    OpenPrunerAccumulationInput,
-    /// Confirm the pruner accumulation input and persist.
-    PrunerAccumulationConfirm,
-    /// Cancel the pruner accumulation input popup.
-    PrunerAccumulationLeave,
-    /// Insert a character into the pruner accumulation input.
-    PrunerAccumulationInsertChar {
-        /// The character to insert.
-        ch: char,
-    },
-    /// Move cursor left in the pruner accumulation input.
-    PrunerAccumulationCursorLeft,
-    /// Move cursor right in the pruner accumulation input.
-    PrunerAccumulationCursorRight,
-    /// Delete the grapheme before the cursor in pruner accumulation input.
-    PrunerAccumulationDeleteGrapheme,
-    /// Delete the grapheme after the cursor in pruner accumulation input.
-    PrunerAccumulationDeleteForward,
-
-    /// Open the cwd input popup (type a directory path).
-    OpenCwdInput,
-    /// Confirm the cwd input - resolve, validate, and apply.
-    CwdInputConfirm,
-    /// Cancel the cwd input popup.
-    CwdInputLeave,
-
-    /// Confirm the project-add input - resolve, validate, and register.
-    ProjectAddInputConfirm,
-    /// Cancel the project-add input popup.
-    ProjectAddInputLeave,
 
     /// Change the session's working directory via an external picker.
     ChangeCwd {
@@ -340,215 +203,138 @@ pub enum Intent {
     /// A dynamically-registered slice's action.
     ///
     /// Dispatched exclusively through the feature route table
-    /// ([`KeyRoutes`](crate::common::slices::key_routes::KeyRoutes)):
+    /// ([`KeyRoutes`](jinn_slices::route::KeyRoutes)):
     /// a slice that never registered a row for this intent is inert by
     /// construction. Carries its identity as data, so slices never edit
     /// this enum.
     Dynamic(jinn_slices::DynamicIntent),
 
-    /// Scroll the task list preview popup toward the top (older tasks).
-    TaskListPreviewScrollUp,
-    /// Scroll the task list preview popup toward the bottom (newer tasks).
-    TaskListPreviewScrollDown,
-
     /// Switch between Chat and the registered dynamic tabs.
     SwitchTab,
-
-    // ── Terminal overlay (interactive_term takeover) ──────────────
-    /// Toggle the terminal overlay for a session (global `<M-t>`, or the
-    /// sidebar key for the *selected* session). `None` targets the active
-    /// session. Opens view mode when closed; closes the overlay when open.
-    /// No-op when the target session has no live terminal.
-    ToggleTerminalOverlay {
-        /// The chat session whose terminal to show; `None` = active session.
-        session_id: Option<crate::protocol::SessionId>,
-    },
-    /// Toggle the terminal overlay for the session *selected* in the sidebar
-    /// (sidebar `T` key). Resolves the selection at handling time; no-op when
-    /// the Sessions section is not focused, nothing is selected, or the
-    /// selected session has no live terminal.
-    ToggleTerminalOverlayForSelected,
-    /// Take control of the active `interactive_term` session (overlay open,
-    /// control-toggle key, default `<c-g>`). All subsequent keys forward to
-    /// the pty until the toggle key is pressed again.
-    TerminalTakeControl,
-    /// Toggle control back to view mode (control-toggle key, default
-    /// `<c-g>`). Releases control to the agent without messaging it; the
-    /// status hint advertises `I` for pushing the screen.
-    TerminalHandback,
-    /// Copy the visible terminal screen to the clipboard (view mode `y`).
-    TerminalYank,
-    /// Copy the visible terminal screen to the clipboard and push its text to
-    /// the model (view mode `I`): steered when the session is busy, dispatched
-    /// as a user message when idle.
-    TerminalPushScreen,
-    /// Forward one key event to the pty while the user holds control.
-    TerminalSendKey {
-        /// Encoded bytes for the key (produced by the keymap catch_all).
-        bytes: Vec<u8>,
-        /// Human-readable key description for the hint line.
-        label: String,
-    },
 }
 
-impl std::fmt::Display for Intent {
-    #[expect(
-        clippy::too_many_lines,
-        clippy::match_same_arms,
-        reason = "handler reads best as a single unit"
-    )]
+impl jinn_slices::BusMessage for KernelIntent {}
+
+impl trouper::schema::Schema for KernelIntent {
+    fn schema_def() -> trouper::schema::SchemaDef {
+        trouper::schema::SchemaDef {
+            name: "KernelIntent".to_owned(),
+            kind: trouper::schema::SchemaKind::Command,
+            fields: vec![],
+            description: Some(
+                "A user-initiated action produced by the keymap (dispatched dynamically between slices)."
+                    .to_owned(),
+            ),
+        }
+    }
+}
+
+impl trouper::envelope::PayloadValue for KernelIntent {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn field(&self, _name: &str) -> Option<String> {
+        None
+    }
+
+    fn to_json_bytes(&self) -> Arc<[u8]> {
+        trouper::envelope::payload_value_json_bytes(self)
+    }
+
+    fn clone_value(&self) -> Box<dyn trouper::envelope::PayloadValue> {
+        Box::new(self.clone())
+    }
+}
+
+impl std::fmt::Display for KernelIntent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Intent::InsertChar { ch } => write!(f, "insert '{ch}'"),
-            Intent::DeleteGrapheme => write!(f, "delete"),
-            Intent::DeleteGraphemeForward => write!(f, "forward delete"),
-            Intent::SubmitMessage => write!(f, "submit message"),
-            Intent::ToggleInputMode => write!(f, "toggle input mode"),
-            Intent::MoveCursorLeft => write!(f, "cursor left"),
-            Intent::MoveCursorRight => write!(f, "cursor right"),
-            Intent::MoveCursorToStart => write!(f, "cursor home"),
-            Intent::MoveCursorToEnd => write!(f, "cursor end"),
-            Intent::MoveCursorWordLeft => write!(f, "cursor word left"),
-            Intent::MoveCursorWordRight => write!(f, "cursor word right"),
-            Intent::MoveCursorUp => write!(f, "cursor up"),
-            Intent::MoveCursorDown => write!(f, "cursor down"),
-            Intent::AutocompleteConfirm => write!(f, "autocomplete confirm"),
-            Intent::PasteText { text } => {
+            KernelIntent::InsertChar { ch } => write!(f, "insert '{ch}'"),
+            KernelIntent::DeleteGrapheme => write!(f, "delete"),
+            KernelIntent::DeleteGraphemeForward => write!(f, "forward delete"),
+            KernelIntent::SubmitMessage => write!(f, "submit message"),
+            KernelIntent::ToggleInputMode => write!(f, "toggle input mode"),
+            KernelIntent::MoveCursorLeft => write!(f, "cursor left"),
+            KernelIntent::MoveCursorRight => write!(f, "cursor right"),
+            KernelIntent::MoveCursorToStart => write!(f, "cursor home"),
+            KernelIntent::MoveCursorToEnd => write!(f, "cursor end"),
+            KernelIntent::MoveCursorWordLeft => write!(f, "cursor word left"),
+            KernelIntent::MoveCursorWordRight => write!(f, "cursor word right"),
+            KernelIntent::MoveCursorUp => write!(f, "cursor up"),
+            KernelIntent::MoveCursorDown => write!(f, "cursor down"),
+            KernelIntent::AutocompleteConfirm => write!(f, "autocomplete confirm"),
+            KernelIntent::PasteText { text } => {
                 let line_count = text.lines().count();
                 write!(f, "paste ({line_count} lines)")
             }
-            Intent::ScrollUp => write!(f, "scroll up"),
-            Intent::ScrollDown => write!(f, "scroll down"),
-            Intent::MouseScrollUp => write!(f, "mouse scroll up"),
-            Intent::MouseScrollDown => write!(f, "mouse scroll down"),
-            Intent::ScrollToTop => write!(f, "scroll to top"),
-            Intent::ScrollToBottom => write!(f, "scroll to bottom"),
-            Intent::EditInput => write!(f, "edit in $EDITOR"),
-            Intent::Quit => write!(f, "quit"),
-            Intent::Interrupt { .. } => write!(f, "interrupt"),
-            Intent::CtrlClear => write!(f, "ctrl-c clear"),
-            Intent::EnterInsertMode => write!(f, "enter insert mode"),
-            Intent::EnterNormalMode => write!(f, "enter normal mode"),
-            Intent::ToggleWhichkey => write!(f, "toggle which-key"),
-            Intent::NormalEscape => write!(f, "escape"),
-            Intent::NoOp => write!(f, "no-op"),
-            Intent::OpenPicker { kind } => write!(f, "search {kind}"),
-            Intent::PickerInsertChar { ch } => write!(f, "picker insert '{ch}'"),
-            Intent::PickerBackspace => write!(f, "picker backspace"),
-            Intent::PickerConfirm => write!(f, "picker confirm"),
-            Intent::PickerAction { picker, action } => {
+            KernelIntent::ScrollUp => write!(f, "scroll up"),
+            KernelIntent::ScrollDown => write!(f, "scroll down"),
+            KernelIntent::MouseScrollUp => write!(f, "mouse scroll up"),
+            KernelIntent::MouseScrollDown => write!(f, "mouse scroll down"),
+            KernelIntent::ScrollToTop => write!(f, "scroll to top"),
+            KernelIntent::ScrollToBottom => write!(f, "scroll to bottom"),
+            KernelIntent::EditInput => write!(f, "edit in $EDITOR"),
+            KernelIntent::Quit => write!(f, "quit"),
+            KernelIntent::Interrupt { .. } => write!(f, "interrupt"),
+            KernelIntent::CtrlClear => write!(f, "ctrl-c clear"),
+            KernelIntent::EnterInsertMode => write!(f, "enter insert mode"),
+            KernelIntent::EnterNormalMode => write!(f, "enter normal mode"),
+            KernelIntent::ToggleWhichkey => write!(f, "toggle which-key"),
+            KernelIntent::NormalEscape => write!(f, "escape"),
+            KernelIntent::NoOp => write!(f, "no-op"),
+            KernelIntent::OpenPicker { kind } => write!(f, "search {kind}"),
+            KernelIntent::PickerInsertChar { ch } => write!(f, "picker insert '{ch}'"),
+            KernelIntent::PickerBackspace => write!(f, "picker backspace"),
+            KernelIntent::PickerConfirm => write!(f, "picker confirm"),
+            KernelIntent::PickerAction { picker, action } => {
                 write!(f, "picker action {action} ({picker})")
             }
-            Intent::PickerMoveUp => write!(f, "picker move up"),
-            Intent::PickerMoveDown => write!(f, "picker move down"),
-            Intent::PickerPageUp => write!(f, "picker page up"),
-            Intent::PickerPageDown => write!(f, "picker page down"),
-            Intent::PickerMoveCursorLeft => write!(f, "picker cursor left"),
-            Intent::PickerMoveCursorRight => write!(f, "picker cursor right"),
-            Intent::SessionNew => write!(f, "new session"),
-            Intent::RefreshModels => write!(f, "refresh models"),
-            Intent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
-            Intent::SidebarFocus => write!(f, "focus sidebar"),
-            Intent::SidebarFocusSessions => write!(f, "focus session list"),
-            Intent::SidebarLeave => write!(f, "return to normal mode"),
-            Intent::SidebarMoveDown => write!(f, "cursor down"),
-            Intent::SidebarMoveUp => write!(f, "cursor up"),
-            Intent::SidebarSectionNext => write!(f, "cursor to next section"),
-            Intent::SidebarSectionPrev => write!(f, "cursor to previous section"),
-            Intent::SidebarSessionConfirm => write!(f, "activate session"),
-            Intent::LoadSubagentSession => write!(f, "open subagent session"),
-            Intent::SidebarConfirmInsert => write!(f, "activate session -> insert mode"),
-            Intent::PinsUnpin => write!(f, "unpin entry"),
-            Intent::PinsPinTop => write!(f, "pin to top position"),
-            Intent::PinsPinBottom => write!(f, "pin to bottom position"),
-            Intent::PinsPinRelative => write!(f, "pin relative position"),
-            Intent::PinsPinCycle => write!(f, "cycle pin position"),
-            Intent::SidebarSessionClose => write!(f, "close session (w/teardown)"),
-            Intent::SidebarSessionTeardown => write!(f, "run teardown script"),
-            Intent::SidebarSessionArchive => write!(f, "archive session"),
-            Intent::SidebarSessionArchiveTree => write!(f, "archive session tree"),
-            Intent::SidebarSessionTeardownTree => write!(f, "teardown and archive tree"),
-            Intent::SidebarPersonaEdit => write!(f, "change persona"),
-            Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
-            Intent::SidebarSessionContinue => write!(f, "continue session"),
-            Intent::SidebarSessionRerunSetup => write!(f, "rerun session setup"),
+            KernelIntent::PickerMoveUp => write!(f, "picker move up"),
+            KernelIntent::PickerMoveDown => write!(f, "picker move down"),
+            KernelIntent::PickerPageUp => write!(f, "picker page up"),
+            KernelIntent::PickerPageDown => write!(f, "picker page down"),
+            KernelIntent::PickerMoveCursorLeft => write!(f, "picker cursor left"),
+            KernelIntent::PickerMoveCursorRight => write!(f, "picker cursor right"),
+            KernelIntent::SessionNew => write!(f, "new session"),
+            KernelIntent::RefreshModels => write!(f, "refresh models"),
+            KernelIntent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
+            KernelIntent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
 
-            Intent::ChatEntrySelectNext => write!(f, "select next entry"),
-            Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
-            Intent::ChatEntryJumpNextCompaction => write!(f, "next compaction"),
-            Intent::ChatEntryJumpPrevCompaction => write!(f, "previous compaction"),
-            Intent::ChatEntryJumpNextUserEntry => write!(f, "next user message"),
-            Intent::ChatEntryJumpPrevUserEntry => write!(f, "previous user message"),
-            Intent::ChatEntryJumpNextPinned => write!(f, "next pinned entry"),
-            Intent::ChatEntryJumpPrevPinned => write!(f, "previous pinned entry"),
-            Intent::ChatEntryJumpNextSources => write!(f, "next sources entry"),
-            Intent::ChatEntryJumpPrevSources => write!(f, "previous sources entry"),
-            Intent::ChatEntryPinSelected => write!(f, "pin entry"),
-            Intent::ExpandToolEntry => write!(f, "expand tool entry"),
-            Intent::ToggleAuditPopup => write!(f, "toggle audit popup"),
-            Intent::ToggleIgnoredBlockVisibility => write!(f, "toggle ignored block visibility"),
-            Intent::ForkFromEntry => write!(f, "fork from entry"),
-            Intent::NewSessionFromEntry => write!(f, "new session from entry"),
-            Intent::YankSelectedEntry => write!(f, "yank entry"),
-            Intent::ChatEntryIgnoreSelected => write!(f, "toggle entry in/out of context"),
-            Intent::ChatEntryResetSelected => write!(f, "reset entry to default context"),
-            Intent::ChatEntryIsolateSelected => write!(f, "isolate selected entry in context"),
+            KernelIntent::ChatEntrySelectNext => write!(f, "select next entry"),
+            KernelIntent::ChatEntrySelectPrev => write!(f, "select prev entry"),
+            KernelIntent::ChatEntryJumpNextCompaction => write!(f, "next compaction"),
+            KernelIntent::ChatEntryJumpPrevCompaction => write!(f, "previous compaction"),
+            KernelIntent::ChatEntryJumpNextUserEntry => write!(f, "next user message"),
+            KernelIntent::ChatEntryJumpPrevUserEntry => write!(f, "previous user message"),
+            KernelIntent::ChatEntryJumpNextPinned => write!(f, "next pinned entry"),
+            KernelIntent::ChatEntryJumpPrevPinned => write!(f, "previous pinned entry"),
+            KernelIntent::ChatEntryJumpNextSources => write!(f, "next sources entry"),
+            KernelIntent::ChatEntryJumpPrevSources => write!(f, "previous sources entry"),
+            KernelIntent::ChatEntryPinSelected => write!(f, "pin entry"),
+            KernelIntent::ExpandToolEntry => write!(f, "expand tool entry"),
+            KernelIntent::ToggleAuditPopup => write!(f, "toggle audit popup"),
+            KernelIntent::ToggleIgnoredBlockVisibility => {
+                write!(f, "toggle ignored block visibility")
+            }
+            KernelIntent::ForkFromEntry => write!(f, "fork from entry"),
+            KernelIntent::NewSessionFromEntry => write!(f, "new session from entry"),
+            KernelIntent::YankSelectedEntry => write!(f, "yank entry"),
+            KernelIntent::ChatEntryIgnoreSelected => write!(f, "toggle entry in/out of context"),
+            KernelIntent::ChatEntryResetSelected => write!(f, "reset entry to default context"),
+            KernelIntent::ChatEntryIsolateSelected => {
+                write!(f, "isolate selected entry in context")
+            }
 
-            Intent::SessionLifecycleSetup { lifecycle_name, .. } => {
+            KernelIntent::SessionLifecycleSetup { lifecycle_name, .. } => {
                 write!(f, "session lifecycle setup: {lifecycle_name}")
             }
-            Intent::SessionClose => write!(f, "session close"),
-            Intent::ArgInputConfirm => write!(f, "arg input confirm"),
-            Intent::SidebarResizeEnter => write!(f, "enter 'resize sidebar' mode"),
-            Intent::SidebarResizeExpand => write!(f, "expand sidebar"),
-            Intent::SidebarResizeContract => write!(f, "contract sidebar"),
-            Intent::SidebarResizeLeave => write!(f, "exist resize sidebar mode"),
-            Intent::SidebarRenameSession => write!(f, "rename session"),
-            Intent::RenameSessionConfirm => write!(f, "rename session confirm"),
-            Intent::RenameSessionLeave => write!(f, "rename session leave"),
-            Intent::RenameInsertChar { ch } => write!(f, "rename insert '{ch}'"),
-            Intent::RenameCursorLeft => write!(f, "rename cursor left"),
-            Intent::RenameCursorRight => write!(f, "rename cursor right"),
-            Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
-            Intent::RenameDeleteForward => write!(f, "rename forward delete"),
-            Intent::OpenPrunerAccumulationInput => write!(f, "set pruner accumulation threshold"),
-            Intent::PrunerAccumulationConfirm => write!(f, "pruner accumulation confirm"),
-            Intent::PrunerAccumulationLeave => write!(f, "pruner accumulation leave"),
-            Intent::PrunerAccumulationInsertChar { ch } => {
-                write!(f, "pruner accumulation insert '{ch}'")
-            }
-            Intent::PrunerAccumulationCursorLeft => write!(f, "pruner accumulation cursor left"),
-            Intent::PrunerAccumulationCursorRight => write!(f, "pruner accumulation cursor right"),
-            Intent::PrunerAccumulationDeleteGrapheme => write!(f, "pruner accumulation delete"),
-            Intent::PrunerAccumulationDeleteForward => {
-                write!(f, "pruner accumulation forward delete")
-            }
-            Intent::OpenCwdInput => write!(f, "change cwd"),
-            Intent::CwdInputConfirm => write!(f, "cwd input confirm"),
-            Intent::CwdInputLeave => write!(f, "cwd input leave"),
-            Intent::ProjectAddInputConfirm => write!(f, "project-add input confirm"),
-            Intent::ProjectAddInputLeave => write!(f, "project-add input leave"),
+            KernelIntent::SessionClose => write!(f, "session close"),
 
-            Intent::ChangeCwd { root } => write!(f, "change cwd from '{root}'"),
+            KernelIntent::ChangeCwd { root } => write!(f, "change cwd from '{root}'"),
 
-            Intent::Dynamic(dynamic) => write!(f, "{dynamic}"),
-            Intent::TaskListPreviewScrollUp => write!(f, "task list preview scroll up"),
-            Intent::TaskListPreviewScrollDown => write!(f, "task list preview scroll down"),
-            Intent::SwitchTab => write!(f, "switch tab"),
-            Intent::ToggleTerminalOverlay { session_id } => match session_id {
-                Some(id) => write!(f, "toggle terminal overlay for session {id}"),
-                None => write!(f, "toggle terminal overlay"),
-            },
-            Intent::ToggleTerminalOverlayForSelected => {
-                write!(f, "toggle terminal overlay for selected session")
-            }
-            Intent::TerminalTakeControl => write!(f, "terminal take control"),
-            Intent::TerminalHandback => write!(f, "terminal control toggle exit"),
-            Intent::TerminalYank => write!(f, "terminal yank screen"),
-            Intent::TerminalPushScreen => write!(f, "terminal push screen"),
-            Intent::TerminalSendKey { label, .. } => {
-                write!(f, "terminal send key ({label})")
-            }
+            KernelIntent::Dynamic(dynamic) => write!(f, "{dynamic}"),
+            KernelIntent::SwitchTab => write!(f, "switch tab"),
         }
     }
 }
@@ -563,8 +349,8 @@ impl std::fmt::Display for Intent {
 /// so behavior is unchanged; only the definition's home moved.
 ///
 /// Carries typed message closures to be dispatched to the actor system
-/// via the kameo message bus, plus an optional scope transition. The
-/// scope signal is applied by the handler (an exempt `scope_stack`
+/// onto the message fabric, plus an optional scope transition. The
+/// scope signal is applied by the handler (an exempt scope-stack
 /// writer) *before* the messages publish, so a slice that opens itself
 /// pushes its scope before any bus message a subscriber could observe.
 pub use jinn_slices::RouteResult as IntentResult;
@@ -573,5 +359,5 @@ pub use jinn_slices::RouteResult as IntentResult;
 ///
 /// Slices declare their transitions as data; the composition-side
 /// handler applies them. Ownership stays single-writer: only the
-/// handler mutates `scope_stack`, and it does so only on these signals.
+/// handler mutates the scope stack, and it does so only on these signals.
 pub use jinn_slices::ScopeSignal;

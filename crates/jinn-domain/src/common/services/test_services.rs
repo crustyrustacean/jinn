@@ -3,20 +3,20 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use error_stack::Report;
-use kameo::actor::Spawn;
 use tokio::runtime::{Handle, Runtime};
 
-use crate::feat::preferences_actor::{
+use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService};
+use jinn_core_types::SessionId;
+use jinn_preferences_config::{
     AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
     UserPreferencesStorageService,
 };
-use crate::feat::provider_infra::{
+use jinn_provider_config::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, InMemoryConfigStorage,
     LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService, SessionSummary};
-use crate::protocol::SessionId;
+use jinn_session_state::SessionSnapshot;
+use jinn_session_store_msg::SessionSummary;
 
 use super::Services;
 /// Single shared tokio runtime for the entire test binary.
@@ -55,7 +55,7 @@ impl SessionStore for FakeSessionStore {
         "fake"
     }
 
-    async fn save(&self, _session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
+    async fn save(&self, _snapshot: &SessionSnapshot) -> Result<(), Report<SessionStoreError>> {
         Ok(())
     }
 
@@ -66,7 +66,7 @@ impl SessionStore for FakeSessionStore {
     async fn load_session(
         &self,
         _session_id: &SessionId,
-    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
+    ) -> Result<Option<SessionSnapshot>, Report<SessionStoreError>> {
         Ok(None)
     }
 
@@ -122,9 +122,9 @@ impl SessionStore for FakeSessionStore {
 
     async fn search(
         &self,
-        _params: crate::feat::session_search::SearchParams,
-    ) -> Result<crate::feat::session_search::SearchOutcome, Report<SessionStoreError>> {
-        Ok(crate::feat::session_search::SearchOutcome {
+        _params: jinn_session_store_msg::SearchParams,
+    ) -> Result<jinn_session_store_msg::SearchOutcome, Report<SessionStoreError>> {
+        Ok(jinn_session_store_msg::SearchOutcome {
             total_matches: 0,
             per_session: Vec::new(),
             hits: Vec::new(),
@@ -136,8 +136,7 @@ impl SessionStore for FakeSessionStore {
         _session_id: &SessionId,
         _anchor: &crate::protocol::ChatEntryId,
         _context: usize,
-    ) -> Result<Option<crate::feat::session_search::TranscriptWindow>, Report<SessionStoreError>>
-    {
+    ) -> Result<Option<jinn_session_store_msg::TranscriptWindow>, Report<SessionStoreError>> {
         Ok(None)
     }
 
@@ -145,8 +144,7 @@ impl SessionStore for FakeSessionStore {
         &self,
         _session_id: &SessionId,
         _limit: usize,
-    ) -> Result<Option<crate::feat::session_search::TranscriptWindow>, Report<SessionStoreError>>
-    {
+    ) -> Result<Option<jinn_session_store_msg::TranscriptWindow>, Report<SessionStoreError>> {
         Ok(None)
     }
 }
@@ -272,39 +270,15 @@ impl TestServices {
         let bus = if let Some(override_bus) = self.bus_override {
             override_bus
         } else {
-            let bus_actor = kameo_actors::message_bus::MessageBus::new(
-                kameo_actors::DeliveryStrategy::BestEffort,
-            );
-            // MessageBus::spawn calls tokio::spawn internally.
-            // If we're already inside a tokio runtime, use it directly.
-            // Otherwise, enter the shared test runtime via block_on.
-            let bus_ref = if tokio::runtime::Handle::try_current().is_ok() {
-                kameo_actors::message_bus::MessageBus::spawn(bus_actor)
-            } else {
-                TEST_RUNTIME
-                    .block_on(async { kameo_actors::message_bus::MessageBus::spawn(bus_actor) })
-            };
-            super::bus_service::BusService::new(bus_ref)
+            super::bus_service::BusService::new_trouper(trouper::system::ActorSystem::new(
+                trouper::system::SystemConfig::production(),
+            ))
         };
         let bridge = if bus.is_recording() {
             // Recording mode — no real bus, no bridge needed.
             crate::common::bridge::Bridge::new_dummy(&handle)
         } else {
-            crate::common::bridge::Bridge::with_handle(bus.actor_ref().clone(), &handle)
-        };
-
-        // RootSupervisor::spawn calls tokio::spawn internally — same runtime
-        // detection as the bus spawn above.
-        let root_supervisor = if tokio::runtime::Handle::try_current().is_ok() {
-            crate::common::root_supervisor::RootSupervisor::spawn(
-                crate::common::root_supervisor::RootSupervisor,
-            )
-        } else {
-            TEST_RUNTIME.block_on(async {
-                crate::common::root_supervisor::RootSupervisor::spawn(
-                    crate::common::root_supervisor::RootSupervisor,
-                )
-            })
+            crate::common::bridge::Bridge::with_handle(bus.clone(), &handle)
         };
 
         Services {
@@ -338,15 +312,14 @@ impl TestServices {
             tempdir,
             bus,
             bridge,
-            root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: crate::common::request_dump::RequestDumpService::default(),
-            task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry::default(),
-            slices: crate::common::slices::Slices::new(),
-            key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
-            viewport: crate::common::slices::view::Viewport::new(),
-            overlay_views: crate::common::overlay_views::OverlayViews::new(),
+            task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
+            slices: jinn_slices::Slices::new(),
+            key_routes: jinn_slices::route::KeyRoutes::new(),
+            viewport: jinn_slices::view::Viewport::new(),
+            overlay_views: jinn_slices::OverlayViews::new(),
             trouper_system: trouper::system::ActorSystem::new(
                 trouper::system::SystemConfig::production(),
             ),

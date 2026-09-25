@@ -4,6 +4,14 @@
 # caller-provided RUSTC_WRAPPER (set, or explicitly empty to disable) wins.
 export RUSTC_WRAPPER := env_var_or_default('RUSTC_WRAPPER', `command -v sccache 2>/dev/null || true`)
 
+# Default per-test timeout (seconds) for every #[rstest::rstest] test.
+# rstest reads this at COMPILE TIME (the proc macro bakes Duration::from_secs(N)
+# into the generated test), so it must be present whenever rustc runs — hence an
+# export here, and a mirror in .cargo/config.toml [env] for entrypoints that
+# bypass just (rust-analyzer, bare cargo in CI). Explicit #[timeout(...)] on a
+# test overrides this default; use that only when a test genuinely needs >10s.
+export RSTEST_TIMEOUT := "10"
+
 COPYRIGHT_NAME := "Jayson Lennon"
 COPYRIGHT_YEAR := "2026"
 
@@ -95,78 +103,6 @@ size-report:
         echo '    (upx not installed; skipping packed-size estimate)'
     fi
 
-# Build + install every in-tree plugin via `jinn plugin add` (interleaved per plugin; aborts at first failure)
-install-plugins:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    if ! command -v cargo >/dev/null 2>&1; then
-        echo "Error: cargo is not installed." >&2; exit 1
-    fi
-    if ! rustup target list --installed 2>/dev/null | grep -q 'wasm32-wasip2'; then
-        echo "Error: wasm32-wasip2 target not installed." >&2
-        echo "  Run: rustup target add wasm32-wasip2" >&2
-        exit 1
-    fi
-
-    echo '==> Ensuring jinn binary'
-    [ -x target/release/jinn ] || cargo build --release -p jinn
-
-    shopt -s nullglob
-    manifests=(plugins/*/Cargo.toml)
-    if [ ${#manifests[@]} -eq 0 ]; then
-        echo "No plugins found under plugins/" >&2; exit 1
-    fi
-    for manifest in "${manifests[@]}"; do
-        dir="$(dirname "$manifest")"
-        echo "==> Installing $dir"
-        target/release/jinn plugin add "$dir"
-    done
-
-# Build every in-tree wasm plugin (needs wasm32-wasip2 target + jinn binary); see plugins/*/Cargo.toml
-build-plugins:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    if ! command -v cargo >/dev/null 2>&1; then
-        echo "Error: cargo is not installed." >&2; exit 1
-    fi
-    if ! rustup target list --installed 2>/dev/null | grep -q 'wasm32-wasip2'; then
-        echo "Error: wasm32-wasip2 target not installed." >&2
-        echo "  Run: rustup target add wasm32-wasip2" >&2
-        exit 1
-    fi
-
-    echo '==> Ensuring jinn binary'
-    [ -x target/release/jinn ] || cargo build --release -p jinn
-
-    shopt -s nullglob
-    manifests=(plugins/*/Cargo.toml)
-    if [ ${#manifests[@]} -eq 0 ]; then
-        echo "No plugins found under plugins/" >&2; exit 1
-    fi
-    for manifest in "${manifests[@]}"; do
-        dir="$(dirname "$manifest")"
-        echo "==> Building $dir"
-        target/release/jinn plugin build "$dir"
-    done
-
-# Rebuild plugins and copy artifacts into res/plugins/ (embedded payloads; run before `just release`)
-refresh-plugins: build-plugins
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    mkdir -p res/plugins
-    shopt -s nullglob
-    manifests=(plugins/*/Cargo.toml)
-    for manifest in "${manifests[@]}"; do
-        name="$(basename "$(dirname "$manifest")")"
-        artifact="target/wasm32-wasip2/release/${name}.wasm"
-        echo "==> Refreshing res/plugins/${name}.wasm"
-        cp "$artifact" "res/plugins/${name}.wasm"
-    done
-
-
 clippy:
     cargo clippy --workspace --all-targets
 
@@ -190,9 +126,7 @@ lint-testattr:
    import re
    import sys
 
-   ALLOWLIST = {
-       os.path.normpath("crates/jinn-domain/tests/tcaps_compile_fail.rs"),
-   }
+   ALLOWLIST = set()
    SKIP_DIRS = {"target", "vendor"}
 
    def is_test_attr(s):
@@ -261,10 +195,6 @@ lint-testattr:
 ci: lint test
     cargo test --workspace --doc --exclude llm
     cargo doc --workspace --no-deps
-
-# Run all cucumber tests
-cucumber:
-    cargo test --test e2e -p jinn-e2e
 
 # Rebuild the dao compile-time validation DB (forces jinn-domain build.rs on next check)
 dao-db-rebuild:
@@ -1070,18 +1000,14 @@ release TAG:
     echo '==> Mirroring trunk to GitHub...'
     just sync-github
 
-    # --- 2. Refresh bundled plugin payloads (embedded into the binary) ---
-    # MUST run before both target builds: the wasm payloads are compiled in.
-    just refresh-plugins
-
-    # --- 3. Build the cargo-binstall tarballs (linux + windows) ---
+    # --- 2. Build the cargo-binstall tarballs (linux + windows) ---
     just build-release-tarball "${LINUX_TARGET}"
     just build-release-tarball "${WINDOWS_TARGET}"
 
     TARBALL_LINUX="jinn-x86_64-unknown-linux-gnu-v${VERSION}.tgz"
     TARBALL_WINDOWS="jinn-x86_64-pc-windows-msvc-v${VERSION}.tgz"
 
-    # --- 4. Create the release if it doesn't exist, else upload ---
+    # --- 3. Create the release if it doesn't exist, else upload ---
     if gh release view "{{TAG}}" --repo "${REPO}" >/dev/null 2>&1; then
         echo "==> Uploading tarballs to existing release {{TAG}}"
         gh release upload "{{TAG}}" "${TARBALL_LINUX}" "${TARBALL_WINDOWS}" --repo "${REPO}" --clobber
@@ -1090,7 +1016,7 @@ release TAG:
         gh release create "{{TAG}}" "${TARBALL_LINUX}" "${TARBALL_WINDOWS}" --repo "${REPO}" --generate-notes
     fi
 
-    # --- 5. Verify the uploaded artifacts locally ---
+    # --- 4. Verify the uploaded artifacts locally ---
     # The [package.metadata.binstall] templates resolve
     # jinn-<target>-v<version>.tgz -> jinn-<target>-v<version>/<bin><binary-ext>,
     # so the tarball member path IS what binstall looks up. Checking the

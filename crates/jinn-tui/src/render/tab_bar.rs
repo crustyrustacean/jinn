@@ -57,11 +57,11 @@ fn capitalize(word: &str) -> String {
 /// chat. The terminal is an overlay (`<M-t>`), not a tab, so it never
 /// highlights a tab.
 fn active_tab_index(slices: &jinn_slices::Slices, ctx: &RenderCtx) -> usize {
-    match ctx.state.frontend.scope_stack.base() {
-        jinn_domain::FocusScope::Dynamic(id) => slices
+    match ctx.state.frontend.scope_base() {
+        jinn_slices::FocusScope::Dynamic(id) => slices
             .tab_scopes()
             .iter()
-            .position(|scope| scope == id)
+            .position(|scope| *scope == id)
             .map_or(0, |idx| idx + 1),
         _ => 0,
     }
@@ -99,18 +99,13 @@ pub fn render_tab_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-    use jinn_domain::FocusScope;
+    use jinn_slices::FocusScope;
     use jinn_testutil::setup_term;
     use ratatui::style::Color;
 
     async fn build_app_with_scope(scope: FocusScope) -> crate::TuiApp {
         let app = crate::TuiApp::test_builder().build().await;
-        app.core
-            .state
-            .write_test_no_cap()
-            .frontend
-            .scope_stack
-            .swap_base(scope);
+        app.core.state.write().frontend.scope_swap_base(scope);
         app
     }
 

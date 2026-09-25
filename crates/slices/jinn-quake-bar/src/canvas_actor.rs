@@ -1,13 +1,9 @@
 //! The quake bar's canvas actor — the log writer on trouper.
 //!
-//! The kameo counterpart of this actor was the first port to the
-//! the `trouper` runtime ([`ServiceActor`] tier: stateless
-//! side-effectful fold, no journaling). It subscribes to the
-//! `jinn.quake-bar` trouper topic — fed by the kameo→trouper bridge
-//! (`jinn.quake-bar`) — and appends each
-//! [`SubmitQuakeBarCommand`] to the slice cell's log, exactly as the
-//! kameo actor did. The cell handle cannot ride the runtime's JSON
-//! start args, so it is injected through the builder's
+//! A [`ServiceActor`] (stateless side-effectful fold, no journaling).
+//! It subscribes to `SubmitQuakeBarCommand` broadcasts and appends
+//! each to the slice cell's log. The cell handle cannot ride the
+//! runtime's JSON start args, so it is injected through the builder's
 //! [`start_with`](trouper::builder::ServiceBuilder::start_with)
 //! override.
 
@@ -32,8 +28,12 @@ pub struct QuakeBarCanvasActor {
 }
 
 impl ServiceActor for QuakeBarCanvasActor {
-    async fn start(_args: &serde_json::Value) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the cell via `start_with`.
+    // Never invoked: the spawn helper injects the cell via `start_with`,
+    // and the trait-required signature has nothing to await.
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
+        async {}.await;
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
                 "QuakeBarCanvasActor is spawned via start_with; start requires the typed cell",
@@ -43,7 +43,7 @@ impl ServiceActor for QuakeBarCanvasActor {
 }
 
 impl MsgHandler<SubmitQuakeBarCommand> for QuakeBarCanvasActor {
-    async fn handle(&mut self, msg: SubmitQuakeBarCommand, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, msg: &SubmitQuakeBarCommand, _ctx: &mut MsgCtx<'_>) {
         self.apply_submit(msg);
     }
 }
@@ -60,27 +60,19 @@ impl QuakeBarCanvasActor {
     /// Panics if the topic subscription fails — a broken actor system;
     /// the activation ordering relies on the cursor being registered.
     pub fn spawn(system: &ActorSystem, cell: &TypedCell<QuakeBarState>) -> ActorPath {
-        let path = trouper::builder::spawn_service_builder::<Self>(system)
+        trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("quake-bar"))
             .start_with({
                 let cell = cell.clone();
                 move || Box::pin(async move { Ok(Self { cell }) })
             })
             .handles::<SubmitQuakeBarCommand>()
-            .start();
-        #[expect(
-            clippy::expect_used,
-            reason = "subscription failure is a broken actor system, not a caller bug"
-        )]
-        system
-            .subscribe(&path, &crate::command::quake_bar_topic(), None)
-            .expect("quake-bar actor subscribes to its topic");
-        path
+            .start()
     }
 
     /// Appends the submitted text to the command log.
-    fn apply_submit(&self, msg: SubmitQuakeBarCommand) {
-        self.cell.update(|s| s.log.push(msg.text));
+    fn apply_submit(&self, msg: &SubmitQuakeBarCommand) {
+        self.cell.update(|s| s.log.push(msg.text.clone()));
     }
 }
 
@@ -123,7 +115,7 @@ mod tests {
         let actor = QuakeBarCanvasActor { cell: cell.clone() };
 
         // When applying a SubmitQuakeBarCommand.
-        actor.apply_submit(SubmitQuakeBarCommand {
+        actor.apply_submit(&SubmitQuakeBarCommand {
             text: "hello".to_owned(),
         });
 
@@ -146,12 +138,9 @@ mod tests {
 
         // When a SubmitQuakeBarCommand envelope lands on the topic.
         fabric
-            .send_to_topic(
-                &SubmitQuakeBarCommand {
-                    text: "hello".to_owned(),
-                },
-                &crate::command::quake_bar_topic(),
-            )
+            .send_to_topic(SubmitQuakeBarCommand {
+                text: "hello".to_owned(),
+            })
             .await;
 
         // Then the command reaches the cell log through the canvas.

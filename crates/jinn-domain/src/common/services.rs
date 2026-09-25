@@ -15,19 +15,18 @@
 use std::sync::Arc;
 
 use derive_more::Debug;
-use kameo::actor::Spawn;
 
-use crate::feat::preferences_actor::{
+use jinn_preferences_config::{
     AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
     UserPreferencesStorageService,
 };
 
-pub use crate::feat::provider_infra;
-use crate::feat::provider_infra::{
+use crate::feat::session::SessionStoreService;
+pub use jinn_provider_config;
+use jinn_provider_config::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use crate::feat::session::SessionStoreService;
 use tokio::runtime::Handle;
 
 use crate::common::request_dump::RequestDumpService;
@@ -37,7 +36,7 @@ pub mod test_services;
 pub mod bus_service;
 pub use bus_service::BusService;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-harness"))]
 pub use bus_service::{BusAudit, RecordedMessage};
 
 /// Runtime services shared across the application.
@@ -78,36 +77,22 @@ pub struct Services {
     #[debug(skip)]
     pub tempdir: Option<Arc<tempfile::TempDir>>,
 
-    /// Kameo message bus for type-based pub/sub routing.
+    /// Message fabric for schema-based pub/sub routing.
     #[debug(skip)]
     pub bus: bus_service::BusService,
 
     /// Kanal closure bridge from sync TUI to async bus.
     pub bridge: crate::common::bridge::Bridge,
 
-    /// Root supervision-tree actor.
-    ///
-    /// `Some` in production (spawned in `actor_wiring::build`) so the TUI
-    /// can gracefully shut down the actor system on exit. `None` in tests
-    /// that don't exercise the full shutdown path.
     #[debug(skip)]
-    pub root_supervisor: crate::common::root_supervisor::RootSupervisorRef,
+    pub mcp_coordinator:
+        Arc<std::sync::OnceLock<std::sync::Arc<dyn jinn_mcp_msg::McpCoordinatorHandle>>>,
 
-    pub mcp_coordinator: Arc<
-        std::sync::OnceLock<
-            kameo::actor::ActorRef<crate::feat::mcp_coordinator_actor::McpCoordinatorActor>,
-        >,
-    >,
-
-    /// Interactive-term coordinator actor ref, exposed to the tool layer
-    /// (the `interactive_term*` tools) after actor wiring spawns it.
-    pub interactive_term: Arc<
-        std::sync::OnceLock<
-            kameo::actor::ActorRef<
-                crate::feat::interactive_term::interactive_term_actor::InteractiveTermActor,
-            >,
-        >,
-    >,
+    /// Interactive-term coordinator handle, exposed to the tool layer
+    /// (the `interactive_term*` tools) after actor wiring spawns the
+    /// term slice's coordinator and mints the implementation.
+    #[debug(skip)]
+    pub interactive_term: Arc<std::sync::OnceLock<std::sync::Arc<dyn jinn_term_msg::TermHandle>>>,
 
     /// Request dump directory. `None` disables dumping (default).
     pub request_dump: RequestDumpService,
@@ -115,44 +100,44 @@ pub struct Services {
     /// In-flight subagent registry: parent → child sessions spawned by the
     /// `task` tool. Read by the stall watchdog to skip waiting parents.
     #[debug(skip)]
-    pub task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry,
+    pub task_spawns: jinn_tools_msg::TaskSpawnRegistry,
 
     /// Dynamic registry of per-slice render cells.
     ///
     /// `register` mints the one write handle for a slice; the renderer
     /// and intent router hold read handles only. Shared by all clones.
     #[debug(skip)]
-    pub slices: crate::common::slices::Slices,
+    pub slices: jinn_slices::Slices,
 
     /// Feature-registered keybind routes (intent → message).
     ///
     /// The intent handler consults this table before its own arms; rows
-    /// attach after startup wiring as features and plugins register.
+    /// attach after startup wiring as features register.
     #[debug(skip)]
-    pub key_routes: crate::common::slices::key_routes::KeyRoutes,
+    pub key_routes: jinn_slices::route::KeyRoutes,
 
     /// Erased slice views, one per rendered slot. Views pair with their
     /// slice at registration (type-checked at startup); the renderer asks
     /// the viewport for the active slot's view instead of hand-written
     /// tab code.
-    pub viewport: crate::common::slices::view::Viewport,
+    pub viewport: jinn_slices::view::Viewport,
 
     /// Slice-registered overlay renderers for dynamic scopes. Written at
     /// activation; the generic overlay pass resolves the active scope's
     /// renderer.
     #[debug(skip)]
-    pub overlay_views: crate::common::overlay_views::OverlayViews<jinn_slices::RenderFacts>,
+    pub overlay_views: jinn_slices::OverlayViews<jinn_slices::RenderFacts>,
 
     /// Actor-canvas runtime system hosting the ported slice actors
     /// (dashboard, quake-bar). Built once here; slice `activate` functions
     /// spawn their canvas actors onto it and subscribe them to topics fed
-    /// by the kameo→trouper bridge. See `.plans/actor-canvas/plan.md`.
+    /// by the fabric canvas actor. See `.plans/actor-canvas/plan.md`.
     #[debug(skip)]
     pub trouper_system: trouper::system::ActorSystem,
 
-    /// Generic picker spec registry. Populated by domain composition
-    /// (feat/picker/registry) after construction; specs register as they
-    /// migrate off the legacy per-kind handlers.
+    /// Generic picker spec registry. Built once by composition
+    /// (`jinn_picker_specs::build_picker_registry`) and shared by the
+    /// keymap generator, the intent handler, and the render pass.
     #[debug(skip)]
     pub picker_registry: jinn_picker::PickerRegistry,
 }
@@ -172,26 +157,33 @@ impl Services {
         clippy::expect_used,
         reason = "test-only defaults, panics are acceptable"
     )]
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "async signature symmetry; body has no await"
+    )]
+    #[expect(
+        clippy::unused_async,
+        reason = "async signature symmetry; body has no await"
+    )]
     pub async fn new_fake() -> Self {
         let handle = test_services::shared_test_handle();
 
         let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
 
-        let bus = {
-            let bus_actor = kameo_actors::message_bus::MessageBus::new(
-                kameo_actors::DeliveryStrategy::BestEffort,
-            );
-            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
-            bus_service::BusService::new(bus_ref)
+        // Create the fabric once; the bus publishes through it and the
+        // `Services` container carries it for actor spawns — one system.
+        let (bus, trouper_system) = {
+            let system =
+                trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
+            (bus_service::BusService::new_trouper(system.clone()), system)
         };
-        let bridge = crate::common::bridge::Bridge::new(bus.actor_ref().clone());
-        let root_supervisor = crate::common::root_supervisor::RootSupervisor::spawn_root().await;
+        let bridge = crate::common::bridge::Bridge::new(bus.clone());
 
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
             handle,
             llm_service: LlmServiceFactoryService::new(Arc::new(
-                crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
+                jinn_provider_config::FakeLlmServiceFactory::new(vec![]),
             )),
             provider_registry: ProviderRegistryService::new(
                 ProviderRegistry::from_config(ProvidersConfig {
@@ -219,37 +211,64 @@ impl Services {
             tempdir: Some(tempdir),
             bus,
             bridge,
-            root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
-            task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry::default(),
-            slices: crate::common::slices::Slices::new(),
-            key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
-            viewport: crate::common::slices::view::Viewport::new(),
-            overlay_views:
-                crate::common::overlay_views::OverlayViews::<jinn_slices::RenderFacts>::new(),
-            trouper_system: trouper::system::ActorSystem::new(
-                trouper::system::SystemConfig::production(),
-            ),
+            task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
+            slices: {
+                let slices = jinn_slices::Slices::new();
+                let _ = slices.register(
+                    jinn_persona_msg::personas_slot(),
+                    jinn_persona_msg::Personas::default(),
+                );
+                let _ = slices.register(
+                    jinn_tools_msg::tools_registry_slot(),
+                    jinn_tools_msg::ToolRegistry::default(),
+                );
+                let _ = slices.register(
+                    jinn_term_msg::term_tabs_slot(),
+                    jinn_term_msg::TerminalTabState::default(),
+                );
+                slices
+            },
+            key_routes: jinn_slices::route::KeyRoutes::new(),
+            viewport: jinn_slices::view::Viewport::new(),
+            overlay_views: jinn_slices::OverlayViews::<jinn_slices::RenderFacts>::new(),
+            // The same fabric the bus publishes through: one `Services`,
+            // one trouper system.
+            trouper_system,
             picker_registry: jinn_picker::PickerRegistry::new(),
         }
     }
 
     /// Construct a fake Services with a pre-built bus (e.g. BusService::new_recording()).
-    #[cfg(test)]
+    /// # Panics
+    ///
+    /// Panics if the embedded temp dir, provider registry, or storage
+    /// reloads fail — test infrastructure initialization must abort.
+    #[cfg(any(test, feature = "test-harness"))]
+    #[expect(clippy::expect_used, reason = "test infrastructure initialization")]
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "async signature symmetry; body has no await"
+    )]
+    #[expect(
+        clippy::unused_async,
+        reason = "async signature symmetry; body has no await"
+    )]
     pub async fn new_fake_with_bus(bus: bus_service::BusService) -> Self {
         let handle = test_services::shared_test_handle();
         let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
 
         let bridge = crate::common::bridge::Bridge::new_for_test();
-        let root_supervisor = crate::common::root_supervisor::RootSupervisor::spawn_root().await;
+        let trouper_system =
+            trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
 
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
             handle,
             llm_service: LlmServiceFactoryService::new(Arc::new(
-                crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
+                jinn_provider_config::FakeLlmServiceFactory::new(vec![]),
             )),
             provider_registry: ProviderRegistryService::new(
                 ProviderRegistry::from_config(ProvidersConfig {
@@ -277,20 +296,48 @@ impl Services {
             tempdir: Some(tempdir),
             bus,
             bridge,
-            root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
-            task_spawns: crate::feat::tools_actor::task_registry::TaskSpawnRegistry::default(),
-            slices: crate::common::slices::Slices::new(),
-            key_routes: crate::common::slices::key_routes::KeyRoutes::new(),
-            viewport: crate::common::slices::view::Viewport::new(),
-            overlay_views:
-                crate::common::overlay_views::OverlayViews::<jinn_slices::RenderFacts>::new(),
-            trouper_system: trouper::system::ActorSystem::new(
-                trouper::system::SystemConfig::production(),
-            ),
+            task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
+            slices: {
+                let slices = jinn_slices::Slices::new();
+                let _ = slices.register(
+                    jinn_persona_msg::personas_slot(),
+                    jinn_persona_msg::Personas::default(),
+                );
+                let _ = slices.register(
+                    jinn_tools_msg::tools_registry_slot(),
+                    jinn_tools_msg::ToolRegistry::default(),
+                );
+                let _ = slices.register(
+                    jinn_term_msg::term_tabs_slot(),
+                    jinn_term_msg::TerminalTabState::default(),
+                );
+                slices
+            },
+            key_routes: jinn_slices::route::KeyRoutes::new(),
+            viewport: jinn_slices::view::Viewport::new(),
+            overlay_views: jinn_slices::OverlayViews::<jinn_slices::RenderFacts>::new(),
+            // The same fabric the bus publishes through: one `Services`,
+            // one trouper system.
+            trouper_system,
             picker_registry: jinn_picker::PickerRegistry::new(),
         }
+    }
+}
+
+#[cfg(test)]
+impl Services {
+    /// Test wiring: spawn the context-assembly service on this fake
+    /// services' trouper system, mirroring production composition.
+    /// (The slice crate is a dev-dependency; the production spawn lives
+    /// in `src/actor_wiring.rs`.)
+    #[expect(
+        clippy::unused_async,
+        reason = "async for API symmetry with production wiring"
+    )]
+    pub async fn spawn_context_assembly_for_test(&mut self) {
+        let _ = jinn_context_assembly::service::spawn(&self.trouper_system);
     }
 }

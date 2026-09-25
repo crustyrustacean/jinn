@@ -30,11 +30,12 @@
 )]
 
 use crate::AppState;
-use crate::feat::interactive_term::protocol::command::ControlHolder;
+use jinn_status_bar_msg::{StatusBarState, status_bar_slot};
+use jinn_term_msg::command::ControlHolder;
 
-use crate::protocol::{PickerKind, PinPosition, ScopeSignal};
+use crate::protocol::{PickerKind, ScopeSignal};
 
-use crate::Intent;
+use crate::KernelIntent;
 use crate::feat;
 
 use crate::IntentResult;
@@ -44,26 +45,25 @@ use crate::IntentResult;
 /// For each [`Intent`] variant: call the validator, then act.
 /// On validation failure, the handler does nothing (no-op).
 ///
-/// Some intents set "TUI signals" on `state.frontend.tui_signals` - flags that the
+/// Some intents raise TUI signals through the frontend facade — flags that the
 /// outer platform layer reads after `handle()` returns and acts upon
 /// (e.g., opening an external editor, toggling a popup).
 pub struct IntentHandler;
 
 /// Applies a route result's scope signal to the scope stack.
 ///
-/// The handler is the exempt single-writer of `scope_stack`; slices
+/// The handler is the exempt single-writer of the scope stack; slices
 /// request transitions as data ([`ScopeSignal`]) and this is where they
 /// land. Runs before the result's messages publish (see
 /// [`IntentResult::scope_signal`]).
 fn apply_scope_signal(result: &mut IntentResult, state: &mut AppState) {
-    use crate::common::app_state::FocusScope;
+    use jinn_slices::FocusScope;
     if let Some(signal) = result.scope_signal.take() {
         match signal {
-            ScopeSignal::Push(id) => state.frontend.scope_stack.push(FocusScope::Dynamic(id)),
+            ScopeSignal::Push(id) => state.frontend.scope_push(FocusScope::Dynamic(id)),
             ScopeSignal::PopIf(id) => {
-                if matches!(state.frontend.scope_stack.current(), FocusScope::Dynamic(cur) if *cur == id)
-                {
-                    state.frontend.scope_stack.pop();
+                if matches!(&state.frontend.scope(), FocusScope::Dynamic(cur) if *cur == id) {
+                    state.frontend.scope_pop();
                 }
             }
         }
@@ -78,12 +78,12 @@ fn apply_scope_signal(result: &mut IntentResult, state: &mut AppState) {
 /// (or the hook declines the intent) — the caller falls through to the
 /// built-in arms.
 fn try_slice_input_hook(
-    intent: &Intent,
+    intent: &KernelIntent,
     state: &mut AppState,
-    routes: &crate::common::slices::key_routes::KeyRoutes,
+    routes: &jinn_slices::route::KeyRoutes,
 ) -> Option<IntentResult> {
-    use crate::common::app_state::FocusScope;
-    let FocusScope::Dynamic(scope) = state.frontend.scope_stack.current() else {
+    use jinn_slices::FocusScope;
+    let FocusScope::Dynamic(scope) = &state.frontend.scope() else {
         return None;
     };
     let hook = routes.input_hook(scope)?;
@@ -101,11 +101,8 @@ fn try_slice_input_hook(
 /// activation); composition keeps the ordered list on `Slices`. With no
 /// dynamic tab registered, `<Tab>` is a no-op round-trip to Normal —
 /// the chat tab is the only tab.
-fn next_tab_base(
-    state: &AppState,
-    slices: &crate::common::slices::Slices,
-) -> crate::common::app_state::FocusScope {
-    use crate::common::app_state::FocusScope;
+fn next_tab_base(state: &AppState, slices: &jinn_slices::Slices) -> jinn_slices::FocusScope {
+    use jinn_slices::FocusScope;
 
     // The chat tab (Normal) is always first in the cycle, so the walk
     // is: Normal → tab[0] → … → tab[n-1] → Normal.
@@ -113,9 +110,8 @@ fn next_tab_base(
     if tabs.is_empty() {
         return FocusScope::Normal;
     }
-    let current = state.frontend.scope_stack.base();
-    let position = match current {
-        FocusScope::Dynamic(id) => tabs.iter().position(|tab| tab == id),
+    let position = match state.frontend.scope_base() {
+        FocusScope::Dynamic(id) => tabs.iter().position(|tab| tab == &id),
         _ => None,
     };
     match position {
@@ -134,7 +130,7 @@ fn next_tab_base(
 }
 
 /// The registered tab scope ids, in tab order.
-fn tab_scopes(slices: &crate::common::slices::Slices) -> Vec<jinn_slices::SliceScopeId> {
+fn tab_scopes(slices: &jinn_slices::Slices) -> Vec<jinn_slices::SliceScopeId> {
     slices.tab_scopes()
 }
 
@@ -152,14 +148,18 @@ fn tab_scopes(slices: &crate::common::slices::Slices) -> Vec<jinn_slices::SliceS
 /// wired (unit tests leave it unset, making this a pure state transition).
 fn close_terminal_overlay_on_switch(
     state: &mut AppState,
-    prev_active: &crate::protocol::SessionId,
+    slices: &jinn_slices::Slices,
+    prev_active: &jinn_core_types::SessionId,
 ) {
-    if let Some(registry) = crate::feat::interactive_term::takeover_intent::TERM_CONTROLS.get() {
+    if let Some(registry) = jinn_term_msg::TERM_CONTROLS.get() {
         registry.set(prev_active, ControlHolder::Agent);
     }
-    state.frontend.scope_stack.clear_overlays();
-    state.frontend.status_hint =
-        Some("terminal overlay closed — active session changed".to_owned());
+    state.frontend.scope_clear_overlays();
+    if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+        status.update(|state| {
+            state.hint = Some("terminal overlay closed — active session changed".to_owned());
+        });
+    }
 }
 
 impl IntentHandler {
@@ -173,16 +173,20 @@ impl IntentHandler {
     /// into `frontend` directly.
     /// Returns commands and events for the actor system.
     pub fn handle(
-        intent: &Intent,
+        intent: &KernelIntent,
         state: &mut AppState,
-        slices: &crate::common::slices::Slices,
-        routes: &crate::common::slices::key_routes::KeyRoutes,
+        slices: &jinn_slices::Slices,
+        routes: &jinn_slices::route::KeyRoutes,
         pickers: &jinn_picker::PickerRegistry,
     ) -> IntentResult {
-        state.frontend.tui_signals.clear();
+        state
+            .frontend
+            .update_scope(|s| s.signals = jinn_slices::TuiSignals::new());
         // Status hints are transient: any fresh intent dismisses the previous
         // one (the handler arms that raise one run after this line).
-        state.frontend.status_hint = None;
+        if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+            status.update(|state| state.hint = None);
+        }
 
         // Capture active session ID before processing for diff-after check.
         let prev_active = state.session.active_session_id().clone();
@@ -191,9 +195,9 @@ impl IntentHandler {
         // intent that both activates and opens (sidebar `T`) is not closed by
         // its own switch.
         let terminal_overlay_open = matches!(
-            state.frontend.scope_stack.current(),
-            crate::common::app_state::FocusScope::TerminalView
-                | crate::common::app_state::FocusScope::TerminalControl
+            state.frontend.scope(),
+            jinn_slices::FocusScope::Dynamic(id)
+                if jinn_term_msg::is_overlay_scope(&id)
         );
 
         // Process the intent and get the result.
@@ -201,7 +205,7 @@ impl IntentHandler {
 
         if state.session.active_session_id() != &prev_active {
             if terminal_overlay_open {
-                close_terminal_overlay_on_switch(state, &prev_active);
+                close_terminal_overlay_on_switch(state, slices, &prev_active);
             }
             result = result.with_message(crate::protocol::system::ActiveSessionChanged {
                 session_id: state.session.active_session_id().clone(),
@@ -225,12 +229,18 @@ impl IntentHandler {
         reason = "exhaustive match on all Intent variants"
     )]
     fn handle_inner(
-        intent: &Intent,
+        intent: &KernelIntent,
         state: &mut AppState,
-        slices: &crate::common::slices::Slices,
-        routes: &crate::common::slices::key_routes::KeyRoutes,
+        slices: &jinn_slices::Slices,
+        routes: &jinn_slices::route::KeyRoutes,
         pickers: &jinn_picker::PickerRegistry,
     ) -> IntentResult {
+        // Session prompts live in the sidebar slice, which owns the route
+        // actions that arm and confirm them. Before dispatch, dismiss an armed
+        // prompt only when the incoming action is unrelated; the owning route
+        // action performs matching revalidation and confirmation.
+        dismiss_unrelated_session_prompts(intent, state);
+
         // Slice-registered routes go first: a dynamic intent is
         // delegated to its slice's action and never reaches the
         // built-in arms. An unregistered dynamic intent resolves to
@@ -239,10 +249,14 @@ impl IntentHandler {
         // against the handler's own borrows (`ActionCtx`): it writes
         // the same `&mut AppState` guard — never a second lock — and
         // resolves slice cells through the same registry.
-        if let Intent::Dynamic(dynamic) = intent
+        if let KernelIntent::Dynamic(dynamic) = intent
             && let Some(mut result) = routes.action_for(
                 dynamic,
-                crate::common::slices::key_routes::ActionCtx { state, slices },
+                jinn_slices::route::ActionCtx {
+                    state,
+                    slices,
+                    key_bytes: dynamic.bytes.clone(),
+                },
             )
         {
             // Scope transitions apply before the messages publish so a
@@ -262,7 +276,7 @@ impl IntentHandler {
         // Clear ignore sweep state when the user performs any action other than
         // pressing x. This ensures the sweep only continues during consecutive
         // x presses within 100ms.
-        if !matches!(intent, Intent::ChatEntryIgnoreSelected) {
+        if !matches!(intent, KernelIntent::ChatEntryIgnoreSelected) {
             state.active_session_mut().clear_ignore_sweep();
         }
 
@@ -273,257 +287,96 @@ impl IntentHandler {
             return result;
         }
 
-        // Close session confirmation intercept: if the prompt is showing,
-        // x (SidebarSessionClose) confirms the close;
-        // any other intent dismisses the prompt and continues processing.
-        if let Some(result) = try_handle_close_session_prompt(intent, state) {
-            return result;
-        }
-
-        // Archive-tree confirmation intercept: if the prompt is showing,
-        // A (SidebarSessionArchiveTree) re-validates and confirms (or flips
-        // the prompt to the busy notice); any other intent dismisses the
-        // prompt and continues processing.
-        if let Some(result) = try_handle_archive_tree_prompt(intent, state) {
-            return result;
-        }
-
         match intent {
-            Intent::InsertChar { ch }
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ArgInput
-                ) =>
-            {
-                feat::session_lifecycle::intent::handle_arg_input_insert_char(state, *ch)
+            KernelIntent::InsertChar { ch } => {
+                feat::chat_input::intent::handle_insert_char(*ch, state)
             }
-            Intent::DeleteGrapheme
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ArgInput
-                ) =>
-            {
-                feat::session_lifecycle::intent::handle_arg_input_delete(state)
-            }
-            Intent::MoveCursorLeft
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ArgInput
-                ) =>
-            {
-                feat::session_lifecycle::intent::handle_arg_input_cursor_left(state)
-            }
-            Intent::MoveCursorRight
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ArgInput
-                ) =>
-            {
-                feat::session_lifecycle::intent::handle_arg_input_cursor_right(state)
-            }
-            Intent::DeleteGraphemeForward
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ArgInput
-                ) =>
-            {
-                feat::session_lifecycle::intent::handle_arg_input_delete_forward(state)
-            }
-            Intent::EnterNormalMode
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ArgInput
-                ) =>
-            {
-                // ESC cancels arg input - pop scope, clear state.
-                state.frontend.scope_stack.pop();
-                state.frontend.arg_input = crate::common::app_state::ArgInputState::default();
-                crate::protocol::IntentResult::empty()
-            }
-
-            Intent::InsertChar { ch }
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::CwdInput
-                ) =>
-            {
-                feat::cwd_input::intent::handle_insert_char(state, *ch)
-            }
-            Intent::DeleteGrapheme
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::CwdInput
-                ) =>
-            {
-                feat::cwd_input::intent::handle_delete(state)
-            }
-            Intent::DeleteGraphemeForward
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::CwdInput
-                ) =>
-            {
-                feat::cwd_input::intent::handle_delete_forward(state)
-            }
-            Intent::MoveCursorLeft
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::CwdInput
-                ) =>
-            {
-                feat::cwd_input::intent::handle_cursor_left(state)
-            }
-            Intent::MoveCursorRight
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::CwdInput
-                ) =>
-            {
-                feat::cwd_input::intent::handle_cursor_right(state)
-            }
-            Intent::EnterNormalMode
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::CwdInput
-                ) =>
-            {
-                // ESC cancels cwd input - pop scope, clear state.
-                feat::cwd_input::intent::handle_cwd_input_leave(state)
-            }
-
-            Intent::InsertChar { ch }
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ProjectAddInput
-                ) =>
-            {
-                feat::project_add_input::intent::handle_insert_char(state, *ch)
-            }
-            Intent::DeleteGrapheme
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ProjectAddInput
-                ) =>
-            {
-                feat::project_add_input::intent::handle_delete(state)
-            }
-            Intent::DeleteGraphemeForward
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ProjectAddInput
-                ) =>
-            {
-                feat::project_add_input::intent::handle_delete_forward(state)
-            }
-            Intent::MoveCursorLeft
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ProjectAddInput
-                ) =>
-            {
-                feat::project_add_input::intent::handle_cursor_left(state)
-            }
-            Intent::MoveCursorRight
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ProjectAddInput
-                ) =>
-            {
-                feat::project_add_input::intent::handle_cursor_right(state)
-            }
-            Intent::EnterNormalMode
-                if matches!(
-                    state.frontend.scope_stack.current(),
-                    crate::common::app_state::FocusScope::ProjectAddInput
-                ) =>
-            {
-                // ESC cancels project-add input - pop scope, clear state.
-                feat::project_add_input::intent::handle_project_add_input_leave(state)
-            }
-
-            // Editing intents are no-ops when the active session's input box is disabled.
-            _ if is_chat_input_editing(intent) && state.active_chat_input().disabled() => {
-                IntentResult::empty()
-            }
-            Intent::InsertChar { ch } => feat::chat_input::intent::handle_insert_char(*ch, state),
-            Intent::DeleteGrapheme => feat::chat_input::intent::handle_delete_grapheme(state),
-            Intent::DeleteGraphemeForward => {
+            KernelIntent::DeleteGrapheme => feat::chat_input::intent::handle_delete_grapheme(state),
+            KernelIntent::DeleteGraphemeForward => {
                 feat::chat_input::intent::handle_delete_grapheme_forward(state)
             }
-            Intent::SubmitMessage => feat::chat_input::intent::handle_submit_message(state),
-            Intent::ToggleInputMode => feat::chat_input::intent::handle_toggle_input_mode(state),
-            Intent::AutocompleteConfirm => {
+            KernelIntent::SubmitMessage => feat::chat_input::intent::handle_submit_message(state),
+            KernelIntent::ToggleInputMode => {
+                feat::chat_input::intent::handle_toggle_input_mode(state)
+            }
+            KernelIntent::AutocompleteConfirm => {
                 feat::chat_input::intent::handle_autocomplete_confirm(state)
             }
-            Intent::MoveCursorLeft => feat::chat_input::intent::handle_move_cursor_left(state),
-            Intent::MoveCursorRight => feat::chat_input::intent::handle_move_cursor_right(state),
-            Intent::MoveCursorToStart => {
+            KernelIntent::MoveCursorLeft => {
+                feat::chat_input::intent::handle_move_cursor_left(state)
+            }
+            KernelIntent::MoveCursorRight => {
+                feat::chat_input::intent::handle_move_cursor_right(state)
+            }
+            KernelIntent::MoveCursorToStart => {
                 feat::chat_input::intent::handle_move_cursor_to_start(state)
             }
-            Intent::MoveCursorToEnd => feat::chat_input::intent::handle_move_cursor_to_end(state),
-            Intent::MoveCursorWordLeft => {
+            KernelIntent::MoveCursorToEnd => {
+                feat::chat_input::intent::handle_move_cursor_to_end(state)
+            }
+            KernelIntent::MoveCursorWordLeft => {
                 feat::chat_input::intent::handle_move_cursor_word_left(state)
             }
-            Intent::MoveCursorWordRight => {
+            KernelIntent::MoveCursorWordRight => {
                 feat::chat_input::intent::handle_move_cursor_word_right(state)
             }
-            Intent::MoveCursorUp => feat::chat_input::intent::handle_move_cursor_up(state),
-            Intent::MoveCursorDown => feat::chat_input::intent::handle_move_cursor_down(state),
+            KernelIntent::MoveCursorUp => feat::chat_input::intent::handle_move_cursor_up(state),
+            KernelIntent::MoveCursorDown => {
+                feat::chat_input::intent::handle_move_cursor_down(state)
+            }
 
-            Intent::PasteText { text } => match state.frontend.scope_stack.current() {
-                crate::common::app_state::FocusScope::Input => {
+            KernelIntent::PasteText { text } => match state.frontend.scope() {
+                jinn_slices::FocusScope::Input => {
                     feat::chat_input::intent::handle_paste_text(text, state)
                 }
-                crate::common::app_state::FocusScope::Picker { .. } => {
-                    feat::picker::intent::handle_picker_paste(state, text)
-                }
-                crate::common::app_state::FocusScope::ArgInput => {
-                    feat::session_lifecycle::intent::handle_arg_input_paste(state, text)
-                }
-                crate::common::app_state::FocusScope::RenameSessionInput => {
-                    feat::rename_session_input::intent::handle_paste(state, text)
-                }
-                crate::common::app_state::FocusScope::CwdInput => {
-                    feat::cwd_input::intent::handle_paste(state, text)
-                }
-                crate::common::app_state::FocusScope::ProjectAddInput => {
-                    feat::project_add_input::intent::handle_paste(state, text)
+                jinn_slices::FocusScope::Picker { .. } => {
+                    crate::feat::picker::intent::handle_picker_paste(state, text)
                 }
                 _ => IntentResult::empty(),
             },
-            Intent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
-            Intent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
-            Intent::MouseScrollUp => feat::navigation::intent::handle_mouse_scroll_up(state),
-            Intent::MouseScrollDown => feat::navigation::intent::handle_mouse_scroll_down(state),
-            Intent::ScrollToTop => feat::navigation::intent::handle_scroll_to_top(state),
-            Intent::ScrollToBottom => feat::navigation::intent::handle_scroll_to_bottom(state),
+            KernelIntent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
+            KernelIntent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
+            KernelIntent::MouseScrollUp => feat::navigation::intent::handle_mouse_scroll_up(state),
+            KernelIntent::MouseScrollDown => {
+                feat::navigation::intent::handle_mouse_scroll_down(state)
+            }
+            KernelIntent::ScrollToTop => feat::navigation::intent::handle_scroll_to_top(state),
+            KernelIntent::ScrollToBottom => {
+                feat::navigation::intent::handle_scroll_to_bottom(state)
+            }
 
-            Intent::EditInput => feat::navigation::intent::handle_edit_input(state),
+            KernelIntent::EditInput => feat::navigation::intent::handle_edit_input(state),
 
-            Intent::Quit => feat::global::intent::handle_quit(state),
-            Intent::Interrupt { session_id } => {
+            KernelIntent::Quit => feat::global::intent::handle_quit(state),
+            KernelIntent::Interrupt { session_id } => {
                 feat::global::intent::handle_interrupt(state, session_id.as_ref())
             }
-            Intent::EnterInsertMode => feat::chat_input::intent::handle_enter_insert_mode(state),
-            Intent::EnterNormalMode => {
+            KernelIntent::EnterInsertMode => {
+                feat::chat_input::intent::handle_enter_insert_mode(state)
+            }
+            KernelIntent::EnterNormalMode => {
                 feat::chat_input::intent::handle_enter_normal_mode_with_pickers(state, pickers)
             }
-            Intent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
-            Intent::ToggleAuditPopup => feat::global::intent::handle_toggle_audit_popup(state),
-            Intent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
-            Intent::NoOp => IntentResult::empty(),
+            KernelIntent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
+            KernelIntent::ToggleAuditPopup => {
+                feat::global::intent::handle_toggle_audit_popup(state)
+            }
+            KernelIntent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
+            KernelIntent::NoOp => IntentResult::empty(),
 
-            Intent::OpenPicker { kind } => {
-                feat::picker::intent::handle_open_picker(state, *kind, pickers)
+            KernelIntent::OpenPicker { kind } => {
+                crate::feat::picker::intent::handle_open_picker(state, *kind, pickers)
             }
-            Intent::PickerAction { picker, action } => {
-                feat::picker::action::run_action(state, pickers, picker, action)
+            KernelIntent::PickerAction { picker, action } => {
+                crate::feat::picker::action::run_action(state, pickers, picker, action)
             }
-            Intent::PickerInsertChar { ch } => feat::picker::intent::handle_insert_char(state, *ch),
-            Intent::PickerBackspace => feat::picker::intent::handle_backspace(state),
-            Intent::PickerConfirm => {
+            KernelIntent::PickerInsertChar { ch } => {
+                crate::feat::picker::intent::handle_insert_char(state, *ch)
+            }
+            KernelIntent::PickerBackspace => crate::feat::picker::intent::handle_backspace(state),
+            KernelIntent::PickerConfirm => {
                 let (result, maybe_intent) =
-                    feat::picker::intent::handle_picker_confirm(state, pickers);
+                    crate::feat::picker::intent::handle_picker_confirm(state, pickers);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state, slices, routes, pickers);
                     result.merge(redispatch)
@@ -531,7 +384,7 @@ impl IntentHandler {
                     result
                 }
             }
-            Intent::CtrlClear => {
+            KernelIntent::CtrlClear => {
                 let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state, slices, routes, pickers);
@@ -540,188 +393,113 @@ impl IntentHandler {
                     result
                 }
             }
-            Intent::PickerMoveUp => feat::picker::intent::handle_move_up(state, pickers),
-            Intent::PickerMoveDown => feat::picker::intent::handle_move_down(state, pickers),
-            Intent::PickerPageUp => feat::picker::intent::handle_page_up(state, pickers),
-            Intent::PickerPageDown => feat::picker::intent::handle_page_down(state, pickers),
-            Intent::PickerMoveCursorLeft => feat::picker::intent::handle_move_cursor_left(state),
-            Intent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
-            Intent::SessionNew => feat::session::intent::handle_session_new(state),
-            Intent::RefreshModels => feat::session::intent::handle_refresh_models(state),
-            Intent::RescanPromptTemplates => {
+            KernelIntent::PickerMoveUp => {
+                crate::feat::picker::intent::handle_move_up(state, pickers)
+            }
+            KernelIntent::PickerMoveDown => {
+                crate::feat::picker::intent::handle_move_down(state, pickers)
+            }
+            KernelIntent::PickerPageUp => {
+                crate::feat::picker::intent::handle_page_up(state, pickers)
+            }
+            KernelIntent::PickerPageDown => {
+                crate::feat::picker::intent::handle_page_down(state, pickers)
+            }
+            KernelIntent::PickerMoveCursorLeft => {
+                crate::feat::picker::intent::handle_move_cursor_left(state)
+            }
+            KernelIntent::PickerMoveCursorRight => {
+                crate::feat::picker::intent::handle_move_cursor_right(state)
+            }
+            KernelIntent::SessionNew => feat::session::intent::handle_session_new(state),
+            KernelIntent::RefreshModels => feat::session::intent::handle_refresh_models(state),
+            KernelIntent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)
             }
 
-            Intent::SidebarFocus => feat::ui::sidebar::intent::handle_sidebar_focus(state),
-            Intent::SidebarFocusSessions => {
-                feat::ui::sidebar::intent::handle_sidebar_focus_sessions(state)
-            }
-            Intent::SidebarLeave => feat::ui::sidebar::intent::handle_sidebar_leave(state),
-            Intent::SidebarMoveDown => {
-                feat::ui::sidebar::navigate_sidebar(
-                    &feat::ui::sidebar::SidebarIntent::MoveDown,
+            KernelIntent::SessionNewWithLifecycle => {
+                crate::feat::picker::intent::handle_open_picker(
                     state,
-                );
-                IntentResult::empty()
-            }
-            Intent::SidebarMoveUp => {
-                feat::ui::sidebar::navigate_sidebar(
-                    &feat::ui::sidebar::SidebarIntent::MoveUp,
-                    state,
-                );
-                IntentResult::empty()
-            }
-            Intent::SidebarSectionNext => {
-                feat::ui::sidebar::jump_to_section(
-                    &feat::ui::sidebar::SidebarIntent::MoveDown,
-                    state,
-                );
-                IntentResult::empty()
-            }
-            Intent::SidebarSectionPrev => {
-                feat::ui::sidebar::jump_to_section(
-                    &feat::ui::sidebar::SidebarIntent::MoveUp,
-                    state,
-                );
-                IntentResult::empty()
-            }
-            Intent::PinsUnpin => feat::ui::sidebar::pins::pins_section::handle_pins_unpin(state),
-            Intent::PinsPinTop => {
-                feat::ui::sidebar::pins::pins_section::handle_pins_pin(state, PinPosition::Top)
-            }
-            Intent::PinsPinBottom => {
-                feat::ui::sidebar::pins::pins_section::handle_pins_pin(state, PinPosition::Bottom)
-            }
-            Intent::PinsPinRelative => {
-                feat::ui::sidebar::pins::pins_section::handle_pins_pin(state, PinPosition::Relative)
-            }
-            Intent::PinsPinCycle => {
-                feat::ui::sidebar::pins::pins_section::handle_pins_pin_cycle(state)
-            }
-            Intent::SidebarPersonaEdit => {
-                feat::ui::sidebar::pins::pins_section::handle_sidebar_persona_edit(state, pickers)
-            }
-            Intent::SessionNewWithLifecycle => feat::picker::intent::handle_open_picker(
-                state,
-                PickerKind::SessionLifecycle,
-                pickers,
-            ),
-            Intent::SidebarSessionClose => {
-                // First press - show confirmation prompt.
-                // The interceptor (try_handle_close_session_prompt) handles the second press.
-                state.frontend.close_session_prompt = true;
-                IntentResult::empty()
-            }
-            Intent::SidebarSessionTeardown => {
-                feat::ui::sidebar::sessions::handle_session_teardown(state)
-            }
-            Intent::SidebarSessionRerunSetup => {
-                feat::session_lifecycle::intent::handle_session_rerun_setup(state)
-            }
-            Intent::SidebarSessionArchive => {
-                feat::ui::sidebar::sessions::handle_session_archive(state)
-            }
-            Intent::SidebarSessionArchiveTree => {
-                feat::ui::sidebar::sessions::handle_session_tree_action_arm(
-                    state,
-                    feat::ui::sidebar::sessions::archive_tree::TreePromptAction::Archive,
+                    PickerKind::SessionLifecycle,
+                    pickers,
                 )
             }
-            Intent::SidebarSessionTeardownTree => {
-                feat::ui::sidebar::sessions::handle_session_tree_action_arm(
-                    state,
-                    feat::ui::sidebar::sessions::archive_tree::TreePromptAction::TeardownAndArchive,
-                )
-            }
-            Intent::SidebarSessionContinue => {
-                feat::ui::sidebar::sessions::handle_session_continue(state)
-            }
 
-            Intent::SidebarSessionConfirm => {
-                feat::ui::sidebar::sessions::handle_session_activate(state)
-            }
-            Intent::LoadSubagentSession => {
-                feat::ui::sidebar::sessions::handle_load_subagent_session(state)
-            }
-            Intent::SidebarConfirmInsert => {
-                feat::ui::sidebar::sessions::handle_session_activate_insert(state)
-            }
-
-            Intent::ChatEntrySelectNext => {
+            KernelIntent::ChatEntrySelectNext => {
                 feat::chat_entry_selection::intent::handle_select_next(state)
             }
-            Intent::ChatEntrySelectPrev => {
+            KernelIntent::ChatEntrySelectPrev => {
                 feat::chat_entry_selection::intent::handle_select_prev(state)
             }
-            Intent::ChatEntryJumpNextCompaction => {
+            KernelIntent::ChatEntryJumpNextCompaction => {
                 feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_compaction()
                 })
             }
-            Intent::ChatEntryJumpPrevCompaction => {
+            KernelIntent::ChatEntryJumpPrevCompaction => {
                 feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_compaction()
                 })
             }
-            Intent::ChatEntryJumpNextUserEntry => {
+            KernelIntent::ChatEntryJumpNextUserEntry => {
                 feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_user()
                 })
             }
-            Intent::ChatEntryJumpPrevUserEntry => {
+            KernelIntent::ChatEntryJumpPrevUserEntry => {
                 feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_user()
                 })
             }
-            Intent::ChatEntryJumpNextPinned => {
+            KernelIntent::ChatEntryJumpNextPinned => {
                 feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_pinned()
                 })
             }
-            Intent::ChatEntryJumpPrevPinned => {
+            KernelIntent::ChatEntryJumpPrevPinned => {
                 feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_pinned()
                 })
             }
-            Intent::ChatEntryJumpNextSources => {
+            KernelIntent::ChatEntryJumpNextSources => {
                 feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_annotation()
                 })
             }
-            Intent::ChatEntryJumpPrevSources => {
+            KernelIntent::ChatEntryJumpPrevSources => {
                 feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_annotation()
                 })
             }
-            Intent::ChatEntryPinSelected => {
+            KernelIntent::ChatEntryPinSelected => {
                 feat::chat_entry_selection::intent::handle_pin_selected(state)
             }
-            Intent::ExpandToolEntry => {
+            KernelIntent::ExpandToolEntry => {
                 feat::chat_entry_selection::intent::handle_expand_tool_entry(state)
             }
-            Intent::ToggleIgnoredBlockVisibility => {
+            KernelIntent::ToggleIgnoredBlockVisibility => {
                 feat::chat_entry_selection::intent::handle_toggle_ignored_block(state)
             }
-            Intent::ForkFromEntry => {
+            KernelIntent::ForkFromEntry => {
                 feat::chat_entry_selection::intent::handle_fork_from_entry(state)
             }
-            Intent::NewSessionFromEntry => {
+            KernelIntent::NewSessionFromEntry => {
                 feat::chat_entry_selection::intent::handle_new_session_from_entry(state)
             }
-            Intent::YankSelectedEntry => {
+            KernelIntent::YankSelectedEntry => {
                 feat::chat_entry_selection::intent::handle_yank_selected(state)
             }
-            Intent::ChatEntryIgnoreSelected => {
+            KernelIntent::ChatEntryIgnoreSelected => {
                 feat::chat_entry_selection::intent::handle_ignore_selected(state)
             }
-            Intent::ChatEntryResetSelected => {
+            KernelIntent::ChatEntryResetSelected => {
                 feat::chat_entry_selection::intent::handle_reset_selected(state)
             }
-            Intent::ChatEntryIsolateSelected => {
+            KernelIntent::ChatEntryIsolateSelected => {
                 feat::chat_entry_selection::isolate::handle_isolate_selected(state)
             }
 
-            Intent::SessionLifecycleSetup {
+            KernelIntent::SessionLifecycleSetup {
                 lifecycle_name,
                 args,
             } => feat::session_lifecycle::intent::handle_session_lifecycle_setup(
@@ -730,107 +508,22 @@ impl IntentHandler {
                 args,
                 None,
             ),
-            Intent::SessionClose => feat::session_lifecycle::intent::handle_session_close(state),
-            Intent::ArgInputConfirm => {
-                feat::session_lifecycle::intent::handle_arg_input_confirm(state)
+            KernelIntent::SessionClose => {
+                feat::session_lifecycle::intent::handle_session_close(state)
             }
-
-            Intent::SidebarResizeEnter => feat::sidebar_resize::intent::handle_resize_enter(state),
-            Intent::SidebarResizeExpand => {
-                feat::sidebar_resize::intent::handle_resize_expand(state)
-            }
-            Intent::SidebarResizeContract => {
-                feat::sidebar_resize::intent::handle_resize_contract(state)
-            }
-            Intent::SidebarResizeLeave => feat::sidebar_resize::intent::handle_resize_leave(state),
-
-            Intent::SidebarRenameSession => {
-                // Rename the selected session (if any).
-                let index = state.frontend.sessions_section.selected_index;
-                if index.is_some() {
-                    feat::rename_session_input::intent::handle_rename_session_enter(state)
-                } else {
-                    IntentResult::empty()
-                }
-            }
-            Intent::RenameSessionConfirm => {
-                feat::rename_session_input::intent::handle_rename_session_confirm(state)
-            }
-            Intent::RenameSessionLeave => {
-                feat::rename_session_input::intent::handle_rename_session_leave(state)
-            }
-            Intent::RenameInsertChar { ch } => {
-                feat::rename_session_input::intent::handle_insert_char(state, *ch)
-            }
-            Intent::RenameCursorLeft => {
-                feat::rename_session_input::intent::handle_cursor_left(state)
-            }
-            Intent::RenameCursorRight => {
-                feat::rename_session_input::intent::handle_cursor_right(state)
-            }
-            Intent::RenameDeleteGrapheme => {
-                feat::rename_session_input::intent::handle_delete(state)
-            }
-            Intent::RenameDeleteForward => {
-                feat::rename_session_input::intent::handle_delete_forward(state)
-            }
-
-            Intent::OpenPrunerAccumulationInput => {
-                feat::pruner_accumulation_input::intent::handle_enter(state)
-            }
-            Intent::PrunerAccumulationConfirm => {
-                feat::pruner_accumulation_input::intent::handle_confirm(state)
-            }
-            Intent::PrunerAccumulationLeave => {
-                feat::pruner_accumulation_input::intent::handle_leave(state)
-            }
-            Intent::PrunerAccumulationInsertChar { ch } => {
-                feat::pruner_accumulation_input::intent::handle_insert_char(state, *ch)
-            }
-            Intent::PrunerAccumulationCursorLeft => {
-                feat::pruner_accumulation_input::intent::handle_cursor_left(state)
-            }
-            Intent::PrunerAccumulationCursorRight => {
-                feat::pruner_accumulation_input::intent::handle_cursor_right(state)
-            }
-            Intent::PrunerAccumulationDeleteGrapheme => {
-                feat::pruner_accumulation_input::intent::handle_delete(state)
-            }
-            Intent::PrunerAccumulationDeleteForward => {
-                feat::pruner_accumulation_input::intent::handle_delete_forward(state)
-            }
-
-            Intent::OpenCwdInput => feat::cwd_input::intent::handle_cwd_input_enter(state),
-            Intent::CwdInputConfirm => feat::cwd_input::intent::handle_cwd_input_confirm(state),
-            Intent::CwdInputLeave => feat::cwd_input::intent::handle_cwd_input_leave(state),
-
-            Intent::ProjectAddInputConfirm => {
-                feat::project_add_input::intent::handle_project_add_input_confirm(state)
-            }
-            Intent::ProjectAddInputLeave => {
-                feat::project_add_input::intent::handle_project_add_input_leave(state)
-            }
-
-            Intent::Dynamic(_) => {
+            KernelIntent::Dynamic(_) => {
                 // Unregistered dynamic intents are inert by construction:
                 // a slice that never attached a route row for this action
                 // must not fall into a built-in arm.
                 tracing::debug!("dynamic intent arrived with no route row attached");
                 IntentResult::empty()
             }
-            Intent::TaskListPreviewScrollUp => {
-                feat::ui::sidebar::task_list_section::handle_preview_scroll_up(state)
-            }
-            Intent::TaskListPreviewScrollDown => {
-                feat::ui::sidebar::task_list_section::handle_preview_scroll_down(state)
-            }
-
-            Intent::ChangeCwd { root } => {
+            KernelIntent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
             }
 
             // ── Tabs ──
-            Intent::SwitchTab => {
+            KernelIntent::SwitchTab => {
                 // Tab cycle across the registered tab scopes: the
                 // composition-owned helper resolves the next base scope
                 // from the slices' tab registry (chat when no dynamic
@@ -839,90 +532,28 @@ impl IntentHandler {
                 // open closes it first (Esc semantics). While the user
                 // holds control, Tab is inert — handback is the only
                 // exit.
-                match state.frontend.scope_stack.current() {
-                    crate::common::app_state::FocusScope::TerminalView => {
-                        state.frontend.scope_stack.pop();
-                        return IntentResult::empty();
-                    }
-                    crate::common::app_state::FocusScope::TerminalControl => {
+                match state.frontend.scope() {
+                    jinn_slices::FocusScope::Dynamic(id)
+                        if jinn_term_msg::is_overlay_scope(&id) =>
+                    {
+                        // The terminal is an overlay (<M-t>), not a tab.
+                        // In capture mode Tab is inert — handback is the
+                        // only exit; in view mode switching tabs closes
+                        // the overlay first (Esc semantics).
+                        if id == jinn_term_msg::control_scope() {
+                            return IntentResult::empty();
+                        }
+                        state.frontend.scope_pop();
                         return IntentResult::empty();
                     }
                     _ => {}
                 }
                 let new_base = next_tab_base(state, slices);
-                state.frontend.scope_stack.swap_base(new_base);
+                state.frontend.scope_swap_base(new_base);
                 IntentResult::empty()
-            }
-            Intent::ToggleTerminalOverlay { session_id } => {
-                crate::feat::interactive_term::overlay_intent::handle_toggle_overlay(
-                    state,
-                    session_id.as_ref(),
-                )
-            }
-            Intent::ToggleTerminalOverlayForSelected => {
-                let selected =
-                    crate::feat::interactive_term::overlay_intent::selected_sessions_sidebar_target(
-                        state,
-                    );
-                // Activate the selected session first, so the overlay (which
-                // renders the *active* session's terminal) and the live-term
-                // check below always target the same session. When nothing is
-                // selectable, fall through targeting the active session —
-                // identical to the global toggle key.
-                if let Some(selected) = selected
-                    && selected != *state.session.active_session_id()
-                {
-                    state.session.set_active(selected);
-                }
-                crate::feat::interactive_term::overlay_intent::handle_toggle_overlay(state, None)
-            }
-            Intent::TerminalTakeControl => {
-                crate::feat::interactive_term::takeover_intent::handle_take_control(state)
-            }
-            Intent::TerminalHandback => {
-                crate::feat::interactive_term::takeover_intent::handle_handback(state)
-            }
-            Intent::TerminalYank => {
-                crate::feat::interactive_term::takeover_intent::handle_yank(state)
-            }
-            Intent::TerminalPushScreen => {
-                crate::feat::interactive_term::takeover_intent::handle_push_screen(state)
-            }
-            Intent::TerminalSendKey { bytes, label } => {
-                crate::feat::interactive_term::takeover_intent::handle_send_key(
-                    state,
-                    bytes.clone(),
-                    label.clone(),
-                )
             }
         }
     }
-}
-
-/// Returns `true` for intents that edit the chat input box (typing, deletion,
-/// cursor movement, paste, submit, mode toggle). Used by the disabled-input guard.
-///
-/// Navigation and other Normal-scope intents are NOT editing intents — they must
-/// still route (e.g. model picker, sidebar navigation) when the input box is disabled.
-fn is_chat_input_editing(intent: &Intent) -> bool {
-    matches!(
-        intent,
-        Intent::InsertChar { .. }
-            | Intent::DeleteGrapheme
-            | Intent::DeleteGraphemeForward
-            | Intent::SubmitMessage
-            | Intent::ToggleInputMode
-            | Intent::AutocompleteConfirm
-            | Intent::MoveCursorLeft
-            | Intent::MoveCursorRight
-            | Intent::MoveCursorToStart
-            | Intent::MoveCursorToEnd
-            | Intent::MoveCursorWordLeft
-            | Intent::MoveCursorWordRight
-            | Intent::MoveCursorUp
-            | Intent::MoveCursorDown
-            | Intent::PasteText { .. }
-    )
 }
 
 /// Cancel stream prompt intercept.
@@ -932,7 +563,10 @@ fn is_chat_input_editing(intent: &Intent) -> bool {
 /// - Any other intent dismisses the prompt and returns `None` (fall through to normal processing).
 ///
 /// Returns `None` if the prompt is not showing or was dismissed.
-fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Option<IntentResult> {
+fn try_handle_cancel_stream_prompt(
+    intent: &KernelIntent,
+    state: &mut AppState,
+) -> Option<IntentResult> {
     if !state.frontend.cancel_stream_prompt {
         return None;
     }
@@ -940,7 +574,7 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
     // Dismiss the prompt regardless of which intent triggered it.
     state.frontend.cancel_stream_prompt = false;
 
-    if !matches!(intent, Intent::NormalEscape) {
+    if !matches!(intent, KernelIntent::NormalEscape) {
         // Any other key — dismiss prompt, fall through to normal processing.
         return None;
     }
@@ -957,118 +591,44 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
     // Cancel stream.
     state.active_session_mut().cancel_stream_and_drain();
-    let mut result = IntentResult::empty().with_message(
-        crate::feat::provider::protocol::command::CancelStream {
-            session_id: session_id.clone(),
-        },
-    );
+    let mut result = IntentResult::empty().with_message(jinn_inference_msg::CancelStream {
+        session_id: session_id.clone(),
+    });
 
     // Also cancel any running lifecycle command.
     if was_busy {
-        result = result.with_message(
-            crate::feat::session_lifecycle::protocol::CancelLifecycleCommand { session_id },
-        );
+        result =
+            result.with_message(jinn_session_lifecycle_msg::CancelLifecycleCommand { session_id });
     }
 
     Some(result)
 }
 
-/// Close session confirmation prompt intercept.
+/// Dismisses armed sidebar-session prompts when an unrelated action arrives.
 ///
-/// If the close-session confirmation prompt is showing:
-/// - `SidebarSessionClose` confirms the close (re-validates, emits CloseSession).
-/// - Any other intent dismisses the prompt and returns `None` (fall through to normal processing).
-///
-/// Returns `None` if the prompt is not showing or was dismissed.
-fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Option<IntentResult> {
-    if !state.frontend.close_session_prompt {
-        return None;
-    }
-
-    // Dismiss the prompt regardless of which intent triggered it.
-    state.frontend.close_session_prompt = false;
-
-    if !matches!(intent, Intent::SidebarSessionClose) {
-        // Any other key - dismiss prompt, fall through to normal processing.
-        return None;
-    }
-
-    // Second x press - perform the close.
-    // Re-validates in case session became busy between taps.
-    Some(feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state))
-}
-
-/// Tree-action confirmation prompt intercept (`A` archive / `X` teardown).
-///
-/// If the archive-tree prompt is showing:
-/// - Its own arming key (`SidebarSessionArchiveTree` for an archive prompt,
-///   `SidebarSessionTeardownTree` for a teardown prompt) re-validates the
-///   subtree: a still-idle subtree confirms (emits `ArchiveSessionTree` or
-///   `TeardownSessionTree`); a member that became busy flips the prompt to
-///   the busy notice and consumes the key; a vanished selection dismisses
-///   the prompt.
-/// - Any other intent dismisses the prompt and returns `None` (fall through
-///   to normal processing).
-///
-/// Returns `None` if the prompt is not showing or was dismissed.
-fn try_handle_archive_tree_prompt(intent: &Intent, state: &mut AppState) -> Option<IntentResult> {
-    use crate::feat::ui::sidebar::sessions::archive_tree::{
-        ArchiveTreeError, ArchiveTreePrompt, TreePromptAction, archive_tree_members,
-        handle_session_tree_action_confirm,
+/// Matching sidebar route actions keep the prompt intact and perform their own
+/// revalidation and confirmation inside `jinn-sidebar`.
+fn dismiss_unrelated_session_prompts(intent: &KernelIntent, state: &mut AppState) {
+    let sidebar_action = match intent {
+        KernelIntent::Dynamic(dynamic)
+            if dynamic.slice == jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id() =>
+        {
+            Some(dynamic.action.as_str())
+        }
+        _ => None,
     };
 
-    let prompt = state.frontend.archive_tree_prompt.as_ref()?;
-
-    // Which tree key was pressed, if either.
-    let pressed = if matches!(intent, Intent::SidebarSessionArchiveTree) {
-        Some(TreePromptAction::Archive)
-    } else if matches!(intent, Intent::SidebarSessionTeardownTree) {
-        Some(TreePromptAction::TeardownAndArchive)
-    } else {
-        None
-    };
-
-    // Only the prompt's own arming key confirms it; any other key (including
-    // the sibling tree key) dismisses the prompt and falls through — the
-    // normal match arm then arms that key's own prompt.
-    let action = match prompt {
-        ArchiveTreePrompt::Confirm { action, .. } => *action,
-        ArchiveTreePrompt::Busy => {
-            if pressed.is_none() {
-                // Any non-tree key dismisses the busy notice too.
-                state.frontend.archive_tree_prompt = None;
-            }
-            pressed?
-        }
-    };
-    if pressed != Some(action) {
-        // Any other key - dismiss prompt, fall through to normal processing.
-        state.frontend.archive_tree_prompt = None;
-        return None;
+    if state.frontend.close_session_prompt && sidebar_action != Some("session-close") {
+        state.frontend.close_session_prompt = false;
     }
 
-    // Second press - re-validate in case the subtree changed between taps.
-    match archive_tree_members(state) {
-        Ok(members) => {
-            // The selection is always the first member of a successful
-            // validation; an empty member list cannot occur.
-            let root = members.first()?.clone();
-            Some(handle_session_tree_action_confirm(state, action, root))
-        }
-        Err(ArchiveTreeError::SubtreeBusy) => {
-            // A member became busy between taps - consume the key and show
-            // the busy notice instead (never train spam-to-force).
-            state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
-            Some(IntentResult::empty())
-        }
-        // Selection vanished between taps - dismiss and process normally.
-        Err(
-            ArchiveTreeError::WrongSection
-            | ArchiveTreeError::NoSelection
-            | ArchiveTreeError::NotASession,
-        ) => {
+    if state.frontend.archive_tree_prompt.is_some() {
+        let matching_tree_action = matches!(
+            sidebar_action,
+            Some(jinn_sidebar_msg::TREE_ARCHIVE_ACTION | jinn_sidebar_msg::TREE_TEARDOWN_ACTION)
+        );
+        if !matching_tree_action {
             state.frontend.archive_tree_prompt = None;
-            None
         }
     }
 }
@@ -1083,33 +643,96 @@ mod tests {
         reason = "test code"
     )]
 
+    use jinn_status_bar_msg::{StatusBarState, status_bar_slot};
+
     /// Empty slice registry + route table for handler tests that don't
     /// exercise slices or route rows.
-    fn empty_slices() -> crate::common::slices::Slices {
-        crate::common::slices::Slices::new()
+    fn empty_slices() -> jinn_slices::Slices {
+        jinn_slices::Slices::new()
     }
 
     fn empty_pickers() -> jinn_picker::PickerRegistry {
         jinn_picker::PickerRegistry::new()
     }
 
-    fn empty_routes() -> crate::common::slices::key_routes::KeyRoutes {
-        crate::common::slices::key_routes::KeyRoutes::new()
+    /// `Slices` with the status-bar cell registered (as the slice's
+    /// `activate` does), for hint write/read assertions.
+    fn status_bar_slices() -> jinn_slices::Slices {
+        let slices = jinn_slices::Slices::new();
+        #[expect(
+            clippy::expect_used,
+            reason = "test seam: a fresh Slices never has the status-bar cell registered"
+        )]
+        {
+            slices
+                .register(status_bar_slot(), StatusBarState::default())
+                .expect("fresh Slices never has the status-bar cell registered");
+        }
+        slices
     }
-    use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
+
+    fn status_hint(slices: &jinn_slices::Slices) -> Option<String> {
+        slices
+            .reader::<StatusBarState>(&status_bar_slot())?
+            .read()
+            .hint
+            .clone()
+    }
+
+    fn empty_routes() -> jinn_slices::route::KeyRoutes {
+        jinn_slices::route::KeyRoutes::new()
+    }
+
+    fn activate_child_route(child_id: jinn_core_types::SessionId) -> jinn_slices::route::KeyRoutes {
+        use jinn_slices::route::{ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
+
+        let routes = empty_routes();
+        routes.attach(RouteRow {
+            route_id: RouteId::new("test:activate-child"),
+            scope: jinn_slices::SliceScopeId::navigation("test", "activate-child"),
+            key: "<enter>",
+            category: "general",
+            site: BindSite::StaticScopes(&["Normal"]),
+            feature: "test",
+            outcome: RouteOutcome::Action {
+                action: "activate-child",
+                display: "activate child",
+                run: ActionFn::new(move |ctx| {
+                    let state = ctx
+                        .state
+                        .as_any_mut()
+                        .and_then(|state| state.downcast_mut::<AppState>())
+                        .expect("test route runs against AppState");
+                    state.session.set_active(child_id.clone());
+                    IntentResult::empty()
+                }),
+            },
+        });
+        routes
+    }
+
+    fn activate_child_intent() -> KernelIntent {
+        KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            jinn_slices::SliceScopeId::navigation("test", "activate-child"),
+            "activate-child",
+            "activate child",
+        ))
+    }
+    use crate::common::app_state::AppState;
     use crate::feat::intent::IntentHandler;
-    use crate::feat::interactive_term::emulator::ScreenCells;
-    use crate::protocol::{ChatEntry, Intent};
+    use crate::protocol::IntentResult;
+    use crate::protocol::{ChatEntry, KernelIntent};
+    use jinn_slices::FocusScope;
 
     #[rstest::rstest]
     fn paste_text_ignored_in_normal_scope() {
         // Given an AppState in Normal scope.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.clear_overlays();
+        let mut state = AppState::default_with_scope_focus();
+        state.frontend.scope_clear_overlays();
 
         // When handling PasteText.
         let result = IntentHandler::handle(
-            &Intent::PasteText {
+            &KernelIntent::PasteText {
                 text: "hello".into(),
             },
             &mut state,
@@ -1119,22 +742,23 @@ mod tests {
         );
 
         // Then the buffer is empty and no commands are emitted.
-        assert!(state.active_chat_input().is_empty());
+        assert!(
+            state
+                .active_session()
+                .with_input(jinn_chat_input_msg::ChatInputBoxState::is_empty, || true)
+        );
         assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
     fn paste_text_inserts_in_input_scope() {
         // Given an AppState in Input scope.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(crate::common::app_state::FocusScope::Input);
+        let mut state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
         // When handling PasteText.
         let result = IntentHandler::handle(
-            &Intent::PasteText {
+            &KernelIntent::PasteText {
                 text: "hello\nworld".into(),
             },
             &mut state,
@@ -1144,48 +768,24 @@ mod tests {
         );
 
         // Then the buffer has the pasted text.
-        assert_eq!(state.active_chat_input().text(), "hello\nworld");
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn disabled_input_box_rejects_insert_char() {
-        // Given an AppState in Input scope with the input box disabled.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(crate::common::app_state::FocusScope::Input);
-        state.active_chat_input_mut().set_enabled(false);
-
-        // When handling InsertChar.
-        let result = IntentHandler::handle(
-            &Intent::InsertChar { ch: 'x' },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
+        assert_eq!(
+            state
+                .active_session()
+                .with_input(|i| i.text().to_owned(), String::new),
+            "hello\nworld"
         );
-
-        // Then the buffer is empty (edit rejected) and no commands are emitted.
-        assert!(state.active_chat_input().is_empty());
         assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
-    fn enabled_input_box_accepts_insert_char() {
-        // Given an AppState in Input scope with the input box enabled.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(crate::common::app_state::FocusScope::Input);
-        state.active_chat_input_mut().set_enabled(false);
-        state.active_chat_input_mut().set_enabled(true);
+    fn input_box_accepts_insert_char() {
+        // Given an AppState in Input scope.
+        let mut state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
         // When handling InsertChar.
         let _result = IntentHandler::handle(
-            &Intent::InsertChar { ch: 'x' },
+            &KernelIntent::InsertChar { ch: 'x' },
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1193,213 +793,11 @@ mod tests {
         );
 
         // Then the buffer has the inserted char.
-        assert_eq!(state.active_chat_input().text(), "x");
-    }
-
-    #[rstest::rstest]
-    fn disabled_input_box_does_not_block_normal_scope() {
-        // Given an AppState in Normal scope with the input box disabled.
-        let mut state = AppState::default();
-        state.active_chat_input_mut().set_enabled(false);
-
-        // When handling EnterNormalMode (a non-editing intent).
-        let result = IntentHandler::handle(
-            &Intent::EnterNormalMode,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then the intent still routes — the gate is editing-only.
-        assert!(
-            matches!(
-                state.frontend.scope_stack.current(),
-                crate::common::app_state::FocusScope::Normal
-            ),
-            "Normal intent should still route when input box is disabled"
-        );
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn rename_insert_char_inserts_into_rename_input() {
-        // Given state in RenameSessionInput scope with partial input.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::RenameSessionInput);
-        state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput {
-                input: "Hel".to_owned(),
-                cursor_pos: 3,
-            },
-        };
-
-        // When handling RenameInsertChar { ch: 'o' }.
-        let result = IntentHandler::handle(
-            &Intent::RenameInsertChar { ch: 'o' },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then rename input is "Helo" (not chat input).
-        assert_eq!(state.frontend.rename_session_input.text.input, "Helo");
-        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
-        assert!(state.active_chat_input().is_empty());
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn rename_cursor_left_moves_cursor_in_rename_input() {
-        // Given state in RenameSessionInput scope with cursor at end.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::RenameSessionInput);
-        state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput {
-                input: "Hello".to_owned(),
-                cursor_pos: 5,
-            },
-        };
-
-        // When handling RenameCursorLeft.
-        let result = IntentHandler::handle(
-            &Intent::RenameCursorLeft,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then cursor moved left.
-        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn rename_cursor_right_moves_cursor_in_rename_input() {
-        // Given state in RenameSessionInput scope with cursor at start.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::RenameSessionInput);
-        state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput {
-                input: "Hi".to_owned(),
-                cursor_pos: 0,
-            },
-        };
-
-        // When handling RenameCursorRight.
-        let result = IntentHandler::handle(
-            &Intent::RenameCursorRight,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then cursor moved right.
-        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn rename_delete_grapheme_deletes_in_rename_input() {
-        // Given state in RenameSessionInput scope with cursor at end.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::RenameSessionInput);
-        state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput {
-                input: "Hello".to_owned(),
-                cursor_pos: 5,
-            },
-        };
-
-        // When handling RenameDeleteGrapheme.
-        let result = IntentHandler::handle(
-            &Intent::RenameDeleteGrapheme,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then last char deleted.
-        assert_eq!(state.frontend.rename_session_input.text.input, "Hell");
-        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn rename_delete_forward_deletes_in_rename_input() {
-        // Given state in RenameSessionInput scope with cursor at position 1.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::RenameSessionInput);
-        state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput {
-                input: "Hello".to_owned(),
-                cursor_pos: 1,
-            },
-        };
-
-        // When handling RenameDeleteForward.
-        let result = IntentHandler::handle(
-            &Intent::RenameDeleteForward,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then char after cursor deleted.
-        assert_eq!(state.frontend.rename_session_input.text.input, "Hllo");
-        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn insert_char_routes_to_arg_input_when_scope_is_arg_input() {
-        // Given ArgInput scope is active.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput {
-                input: "hel".to_owned(),
-                cursor_pos: 3,
-            },
-        };
-
-        // When handling InsertChar.
-        let _result = IntentHandler::handle(
-            &Intent::InsertChar { ch: 'o' },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then arg_input received the char, not the chat input.
-        assert_eq!(state.frontend.arg_input.text.input, "helo");
-        assert!(
-            state.active_chat_input().is_empty(),
-            "chat input should be empty"
+        assert_eq!(
+            state
+                .active_session()
+                .with_input(|i| i.text().to_owned(), String::new),
+            "x"
         );
     }
 
@@ -1407,12 +805,12 @@ mod tests {
     #[test]
     fn insert_char_routes_to_chat_input_when_scope_is_normal() {
         // Given Normal scope (default) with Input overlay.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Input);
+        let mut state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(FocusScope::Input);
 
         // When handling InsertChar.
         let _result = IntentHandler::handle(
-            &Intent::InsertChar { ch: 'x' },
+            &KernelIntent::InsertChar { ch: 'x' },
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1420,169 +818,26 @@ mod tests {
         );
 
         // Then the chat input received the char.
-        assert_eq!(state.active_chat_input().text(), "x");
-        assert!(
-            state.frontend.arg_input.text.input.is_empty(),
-            "arg input should be empty"
+        assert_eq!(
+            state
+                .active_session()
+                .with_input(|i| i.text().to_owned(), String::new),
+            "x"
         );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn delete_grapheme_routes_to_arg_input_when_scope_is_arg_input() {
-        // Given ArgInput scope with some text.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput {
-                input: "abc".to_owned(),
-                cursor_pos: 3,
-            },
-        };
-
-        // When handling DeleteGrapheme.
-        let _result = IntentHandler::handle(
-            &Intent::DeleteGrapheme,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then arg_input had a char deleted.
-        assert_eq!(state.frontend.arg_input.text.input, "ab");
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn move_cursor_left_routes_to_arg_input_when_scope_is_arg_input() {
-        // Given ArgInput scope with cursor at end.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput {
-                input: "ab".to_owned(),
-                cursor_pos: 2,
-            },
-        };
-
-        // When handling MoveCursorLeft.
-        let _result = IntentHandler::handle(
-            &Intent::MoveCursorLeft,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then arg_input cursor moved.
-        assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn move_cursor_right_routes_to_arg_input_when_scope_is_arg_input() {
-        // Given ArgInput scope with cursor at start.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput {
-                input: "ab".to_owned(),
-                cursor_pos: 0,
-            },
-        };
-
-        // When handling MoveCursorRight.
-        let _result = IntentHandler::handle(
-            &Intent::MoveCursorRight,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then arg_input cursor moved.
-        assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn delete_forward_routes_to_arg_input_when_scope_is_arg_input() {
-        // Given ArgInput scope with cursor at start.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput {
-                input: "abc".to_owned(),
-                cursor_pos: 1,
-            },
-        };
-
-        // When handling DeleteGraphemeForward.
-        let _result = IntentHandler::handle(
-            &Intent::DeleteGraphemeForward,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then the char after cursor was deleted from arg_input.
-        assert_eq!(state.frontend.arg_input.text.input, "ac");
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn enter_normal_mode_pops_arg_input_scope() {
-        // Given ArgInput scope is active.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::ArgInput);
-        state.frontend.arg_input = crate::common::app_state::ArgInputState {
-            lifecycle_name: "test".to_owned(),
-            template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput {
-                input: "partial".to_owned(),
-                cursor_pos: 7,
-            },
-        };
-
-        // When handling EnterNormalMode.
-        let _result = IntentHandler::handle(
-            &Intent::EnterNormalMode,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then ArgInput scope is popped and state cleared.
-        assert!(!matches!(
-            state.frontend.scope_stack.current(),
-            FocusScope::ArgInput
-        ));
-        assert!(state.frontend.arg_input.text.input.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn paste_text_in_picker_scope_routes_to_picker() {
         // Given Picker scope is active.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Picker {
+        let mut state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(FocusScope::Picker {
             kind: crate::protocol::PickerKind::Persona,
         });
 
         // When handling PasteText.
         let _result = IntentHandler::handle(
-            &Intent::PasteText {
+            &KernelIntent::PasteText {
                 text: "hello".into(),
             },
             &mut state,
@@ -1597,45 +852,14 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn paste_text_in_rename_session_scope_routes_to_rename() {
-        // Given RenameSessionInput scope is active.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::RenameSessionInput);
-        state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput {
-                input: "old".to_owned(),
-                cursor_pos: 3,
-            },
-        };
-
-        // When handling PasteText.
-        let _result = IntentHandler::handle(
-            &Intent::PasteText {
-                text: " new".into(),
-            },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then rename input received the paste.
-        assert_eq!(state.frontend.rename_session_input.text.input, "old new");
-    }
-
-    #[rstest::rstest]
-    #[test]
     fn cancel_stream_prompt_esc_confirms() {
         // Given cancel_stream_prompt is showing.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         state.frontend.cancel_stream_prompt = true;
 
         // When handling NormalEscape.
         let result = IntentHandler::handle(
-            &Intent::NormalEscape,
+            &KernelIntent::NormalEscape,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1658,12 +882,12 @@ mod tests {
     #[test]
     fn cancel_stream_prompt_other_intent_dismisses() {
         // Given cancel_stream_prompt is showing.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         state.frontend.cancel_stream_prompt = true;
 
         // When handling a different intent (InsertChar).
         let _result = IntentHandler::handle(
-            &Intent::InsertChar { ch: 'a' },
+            &KernelIntent::InsertChar { ch: 'a' },
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1678,12 +902,12 @@ mod tests {
     #[test]
     fn cancel_stream_prompt_not_showing_returns_none() {
         // Given cancel_stream_prompt is NOT showing.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         state.frontend.cancel_stream_prompt = false;
 
         // When handling NormalEscape.
         let _result = IntentHandler::handle(
-            &Intent::NormalEscape,
+            &KernelIntent::NormalEscape,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1697,34 +921,14 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn close_session_prompt_sidebar_close_confirms() {
-        // Given close_session_prompt is showing.
-        let mut state = AppState::default();
-        state.frontend.close_session_prompt = true;
-
-        // When handling SidebarSessionClose.
-        let _result = IntentHandler::handle(
-            &Intent::SidebarSessionClose,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then the prompt is dismissed.
-        assert!(!state.frontend.close_session_prompt);
-    }
-
-    #[rstest::rstest]
-    #[test]
     fn close_session_prompt_other_intent_dismisses() {
         // Given close_session_prompt is showing.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         state.frontend.close_session_prompt = true;
 
         // When handling a different intent (ScrollUp).
         let _result = IntentHandler::handle(
-            &Intent::ScrollUp,
+            &KernelIntent::ScrollUp,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1739,12 +943,12 @@ mod tests {
     #[test]
     fn cancel_stream_prompt_noop_dismisses() {
         // Given cancel_stream_prompt is showing.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         state.frontend.cancel_stream_prompt = true;
 
         // When handling NoOp (unmapped key).
         let result = IntentHandler::handle(
-            &Intent::NoOp,
+            &KernelIntent::NoOp,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1767,12 +971,12 @@ mod tests {
     #[test]
     fn close_session_prompt_noop_dismisses() {
         // Given close_session_prompt is showing.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         state.frontend.close_session_prompt = true;
 
         // When handling NoOp (unmapped key).
         let _result = IntentHandler::handle(
-            &Intent::NoOp,
+            &KernelIntent::NoOp,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1787,11 +991,11 @@ mod tests {
     #[test]
     fn noop_is_empty_when_no_prompt() {
         // Given default state with no prompts showing.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
 
         // When handling NoOp.
         let result = IntentHandler::handle(
-            &Intent::NoOp,
+            &KernelIntent::NoOp,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1805,9 +1009,9 @@ mod tests {
     #[rstest::rstest]
     fn active_session_changed_emitted_on_session_switch() {
         // Given a state with two sessions.
-        use crate::feat::session::chat_session::ChatSessionState;
+        use jinn_session_state::ChatSessionState;
 
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         let first_id = state.session.active_session_id().clone();
 
         let mut second = ChatSessionState::new();
@@ -1824,7 +1028,7 @@ mod tests {
         // verify no event. Then manually switch and verify event.
         state.session.set_active(first_id);
         let result = IntentHandler::handle(
-            &Intent::ChatEntrySelectNext,
+            &KernelIntent::ChatEntrySelectNext,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -1845,204 +1049,98 @@ mod tests {
     #[rstest::rstest]
     fn switch_tab_is_inert_while_user_holds_terminal_control() {
         // Given the terminal-control overlay open (user holds control).
-        let mut state = AppState::default();
-        state.frontend.scope_stack.clear_overlays();
-        state.frontend.scope_stack.push(FocusScope::TerminalControl);
+        let mut state = AppState::default_with_scope_focus();
+        state.frontend.scope_clear_overlays();
+        state
+            .frontend
+            .scope_push(FocusScope::Dynamic(jinn_term_msg::control_scope()));
 
         // When switching tabs.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
         );
 
-        // Then the scope stays TerminalControl — handback is the only exit.
+        // Then the scope stays on term:control — handback is the only exit.
         assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::TerminalControl
+            state.frontend.scope(),
+            FocusScope::Dynamic(jinn_term_msg::control_scope())
         );
     }
 
     #[rstest::rstest]
-    fn take_control_pushes_control_scope_and_flags_user() {
-        // Given an AppState whose terminal tab shows a session.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalView);
+    fn status_hint_write_is_a_noop_without_the_status_bar_cell() {
+        // Given a slice registry without the status-bar cell.
+        let slices = empty_slices();
 
-        // When handling TerminalTakeControl.
-        IntentHandler::handle(
-            &Intent::TerminalTakeControl,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
+        // When attempting a hint write.
+        if let Some(status) = slices.reader::<StatusBarState>(&status_bar_slot()) {
+            status.update(|state| state.hint = Some("should be dropped".to_owned()));
+        }
 
-        // Then the scope is TerminalControl.
-        assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::TerminalControl
-        );
-        // And the shared registry records the user as control holder (the
-        // static is unwired in unit tests, so the flip is a no-op; the
-        // observable behavior here is the scope push itself).
+        // Then no status state is available to expose a hint.
+        assert!(status_hint(&slices).is_none());
     }
 
     #[rstest::rstest]
-    fn toggle_opens_view_overlay_for_live_session() {
-        // Given default state whose active session has a live terminal.
-        let mut state = AppState::default();
-        let chat = state.session.active_session_id().clone();
-        state.frontend.terminal.set_live(&chat, true);
+    fn default_scope_is_input_through_the_facade() {
+        // Given a default state (no scope-focus wiring attached).
+        let state = AppState::default();
 
-        // When toggling the terminal overlay.
-        IntentHandler::handle(
-            &Intent::ToggleTerminalOverlay { session_id: None },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
+        // When reading the current scope through the facade.
+        let scope = state.frontend.scope();
 
-        // Then the overlay opens in view mode.
-        assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::TerminalView
-        );
+        // Then it is Input — the historical default boot scope.
+        assert_eq!(scope, FocusScope::Input);
     }
 
     #[rstest::rstest]
-    fn toggle_without_live_term_is_inert() {
-        // Given default state with no live terminals.
-        let mut state = AppState::default();
+    fn scope_writes_are_noop_without_the_cell() {
+        // Given a state whose scope-focus cell was never minted.
+        let state = AppState::default();
 
-        // When toggling the terminal overlay.
-        IntentHandler::handle(
-            &Intent::ToggleTerminalOverlay { session_id: None },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
+        // When pushing a scope through the facade.
+        state.frontend.scope_push(FocusScope::Normal);
 
-        // Then the scope stays Input (default scope; no overlay opened).
-        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
-    }
-
-    #[rstest::rstest]
-    fn toggle_without_live_term_sets_a_status_hint() {
-        // Given default state with no live terminals.
-        let mut state = AppState::default();
-
-        // When toggling the terminal overlay.
-        IntentHandler::handle(
-            &Intent::ToggleTerminalOverlay { session_id: None },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then no overlay opened (still the default scope).
-        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
-        // And a status hint explains the inert press.
-        assert!(
-            state
-                .frontend
-                .status_hint
-                .as_deref()
-                .is_some_and(|h| h.contains("no live terminal")),
-            "expected a no-live-terminal hint, got: {:?}",
-            state.frontend.status_hint
-        );
+        // Then the read still returns the unattached default (no panic,
+        // no storage) — the removability property.
+        assert_eq!(state.frontend.scope(), FocusScope::Input);
     }
 
     #[rstest::rstest]
     fn next_intent_dismisses_a_raised_status_hint() {
         // Given a state carrying a hint from a failed overlay toggle.
-        let mut state = AppState::default();
-        state.frontend.status_hint = Some("stale hint".to_owned());
+        let mut state = AppState::default_with_scope_focus();
+        let slices = status_bar_slices();
+        slices
+            .reader::<StatusBarState>(&status_bar_slot())
+            .expect("status-bar cell registered by test setup")
+            .update(|status| status.hint = Some("stale hint".to_owned()));
 
         // When handling any other intent.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
-            &empty_slices(),
+            &slices,
             &empty_routes(),
             &empty_pickers(),
         );
 
         // Then the hint is cleared.
-        assert!(state.frontend.status_hint.is_none());
-    }
-
-    #[rstest::rstest]
-    fn toggle_closes_an_open_overlay() {
-        // Given an open terminal overlay (view mode).
-        let mut state = AppState::default();
-        let chat = state.session.active_session_id().clone();
-        state.frontend.terminal.set_live(&chat, true);
-        IntentHandler::handle(
-            &Intent::ToggleTerminalOverlay { session_id: None },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // When toggling again.
-        IntentHandler::handle(
-            &Intent::ToggleTerminalOverlay { session_id: None },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then the overlay closes back to the base scope (the input scope the
-        // overlay replaced does not resurrect).
-        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
-    }
-
-    #[rstest::rstest]
-    fn toggle_with_explicit_session_targets_that_session() {
-        // Given a state where the *selected* session (not the active one) has
-        // a live terminal.
-        let mut state = AppState::default();
-        let selected = crate::protocol::SessionId::new();
-        state.frontend.terminal.set_live(&selected, true);
-
-        // When toggling with the explicit session id.
-        IntentHandler::handle(
-            &Intent::ToggleTerminalOverlay {
-                session_id: Some(selected.clone()),
-            },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then the overlay opens.
-        assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::TerminalView
-        );
+        assert!(status_hint(&slices).is_none());
     }
 
     #[rstest::rstest]
     fn switch_tab_with_no_registered_tab_stays_normal() {
         // Given default (Normal) state and no dynamic tab registered.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
 
         // When switching tabs.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -2050,23 +1148,23 @@ mod tests {
         );
 
         // Then the base is Normal (chat is the only tab).
-        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::Normal);
+        assert_eq!(state.frontend.scope_base(), FocusScope::Normal);
     }
 
     #[rstest::rstest]
     fn switch_tab_cycles_through_registered_tabs() {
         // Given a slices registry with one dynamic tab registered.
-        let slices = crate::common::slices::Slices::new();
+        let slices = jinn_slices::Slices::new();
         let tab = jinn_slices::SliceScopeId::new("dashboard", "tab");
         slices.register_tab_scope(
             tab.clone(),
             jinn_slices::SlotKey::builtin("dashboard", "tab"),
         );
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
 
         // When switching tabs twice.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &slices,
             &empty_routes(),
@@ -2074,43 +1172,39 @@ mod tests {
         );
         // Then the base is the registered tab.
         assert_eq!(
-            state.frontend.scope_stack.base(),
-            &FocusScope::Dynamic(tab.clone())
+            state.frontend.scope_base(),
+            FocusScope::Dynamic(tab.clone())
         );
 
         // When switching tabs again.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &slices,
             &empty_routes(),
             &empty_pickers(),
         );
         // Then the cycle wraps to Normal.
-        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::Normal);
+        assert_eq!(state.frontend.scope_base(), FocusScope::Normal);
     }
 
     #[rstest::rstest]
     fn switch_tab_while_overlay_open_closes_it() {
         // Given an open terminal overlay over the Normal base.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         let chat = state.session.active_session_id().clone();
-        state.frontend.terminal.set_live(&chat, true);
-        IntentHandler::handle(
-            &Intent::ToggleTerminalOverlay { session_id: None },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-        assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::TerminalView
-        );
+        state
+            .term_tabs()
+            .expect("term tabs cell")
+            .update(|t| t.set_live(&chat, true));
+        state.frontend.scope_swap_base(FocusScope::Normal);
+        state
+            .frontend
+            .scope_push(FocusScope::Dynamic(jinn_term_msg::view_scope()));
 
         // When switching tabs.
         IntentHandler::handle(
-            &Intent::SwitchTab,
+            &KernelIntent::SwitchTab,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -2118,337 +1212,19 @@ mod tests {
         );
 
         // Then the overlay closed (back to base, not a tab flip).
-        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
-        assert_eq!(state.frontend.scope_stack.base(), &FocusScope::Normal);
-    }
-
-    #[rstest::rstest]
-    fn send_key_outside_control_scope_is_inert() {
-        // Given an AppState in TerminalView (no control).
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalView);
-
-        // When handling TerminalSendKey.
-        let result = IntentHandler::handle(
-            &Intent::TerminalSendKey {
-                bytes: b"a".to_vec(),
-                label: String::new(),
-            },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then no pty write command is published.
-        assert!(result.messages.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn handback_releases_flag_pops_scope_and_sends_nothing() {
-        // Given an AppState where the user holds control with a screen mirror.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalView);
-        state.frontend.terminal.apply_screen(
-            state.session.active_session_id(),
-            "handback-screen-marker".to_owned(),
-            ScreenCells::default(),
-            (0, 0),
-            false,
-        );
-        IntentHandler::handle(
-            &Intent::TerminalTakeControl,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // When handling TerminalHandback.
-        let result = IntentHandler::handle(
-            &Intent::TerminalHandback,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then the scope pops back to TerminalView.
-        assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::TerminalView
-        );
-        // And no message is published to the model (release is silent; `I` pushes).
-        assert!(
-            result.messages.is_empty(),
-            "handback must not message the model; got {:?}",
-            result.message_names
-        );
-        // And the status hint advertises the push key.
-        assert!(
-            state
-                .frontend
-                .status_hint
-                .as_deref()
-                .is_some_and(|h| h.contains('I')),
-            "handback hint must advertise I; got {:?}",
-            state.frontend.status_hint
-        );
-    }
-
-    #[rstest::rstest]
-    fn push_screen_when_idle_enqueues_user_message() {
-        // Given an AppState in the TerminalView overlay with a screen mirror,
-        // and the session is idle.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalView);
-        state.frontend.terminal.apply_screen(
-            state.session.active_session_id(),
-            "idle-screen-marker".to_owned(),
-            ScreenCells::default(),
-            (0, 0),
-            false,
-        );
-
-        // When handling TerminalPushScreen.
-        let result = IntentHandler::handle(
-            &Intent::TerminalPushScreen,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then an enqueue message is published (idle dispatch path).
-        assert!(
-            result
-                .message_names
-                .iter()
-                .any(|name| name.ends_with("EnqueueUserMessage")),
-            "idle push must publish EnqueueUserMessage; got {:?}",
-            result.message_names
-        );
-    }
-
-    #[rstest::rstest]
-    fn push_screen_while_busy_steers_via_buffer() {
-        // Given an AppState in the TerminalView overlay with a screen mirror,
-        // while the session is mid-turn (Streaming).
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalView);
-        state.frontend.terminal.apply_screen(
-            state.session.active_session_id(),
-            "busy-screen-marker".to_owned(),
-            ScreenCells::default(),
-            (0, 0),
-            false,
-        );
-        {
-            let sid = state.session.active_session_id().clone();
-            if let Some(session) = state.session.get_mut(&sid) {
-                session.begin_streaming();
-            }
-        }
-
-        // When handling TerminalPushScreen.
-        let result = IntentHandler::handle(
-            &Intent::TerminalPushScreen,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then a steering message is published (buffer drains at next
-        // dispatch-resume).
-        assert!(
-            result
-                .message_names
-                .iter()
-                .any(|name| name.ends_with("SubmitSteeringMessage")),
-            "busy push must publish SubmitSteeringMessage; got {:?}",
-            result.message_names
-        );
-    }
-
-    #[rstest::rstest]
-    fn push_screen_yanks_the_screen_text() {
-        // Given an AppState in the TerminalView overlay with a screen mirror.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalView);
-        state.frontend.terminal.apply_screen(
-            state.session.active_session_id(),
-            "yank-and-push-marker".to_owned(),
-            ScreenCells::default(),
-            (0, 0),
-            false,
-        );
-
-        // When handling TerminalPushScreen.
-        IntentHandler::handle(
-            &Intent::TerminalPushScreen,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then the screen text was also staged for the clipboard.
-        assert_eq!(
-            state.frontend.tui_signals.yank_text.as_deref(),
-            Some("yank-and-push-marker"),
-            "push must also yank (I = yank + push)"
-        );
-    }
-
-    #[rstest::rstest]
-    fn yank_stages_screen_text_and_sets_line_count_hint() {
-        // Given an AppState in the TerminalView overlay with a multi-line mirror.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalView);
-        state.frontend.terminal.apply_screen(
-            state.session.active_session_id(),
-            "line one\nline two\nline three".to_owned(),
-            ScreenCells::default(),
-            (0, 0),
-            false,
-        );
-
-        // When handling TerminalYank.
-        IntentHandler::handle(
-            &Intent::TerminalYank,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then the screen text was staged for the clipboard.
-        assert_eq!(
-            state.frontend.tui_signals.yank_text.as_deref(),
-            Some("line one\nline two\nline three")
-        );
-        // And the status hint reports the copied line count.
-        assert!(
-            state
-                .frontend
-                .status_hint
-                .as_deref()
-                .is_some_and(|h| h.contains('3')),
-            "yank hint must report the line count; got {:?}",
-            state.frontend.status_hint
-        );
-    }
-
-    #[rstest::rstest]
-    fn yank_without_live_terminal_sets_a_hint_and_stages_nothing() {
-        // Given an AppState in the TerminalView overlay with no mirror.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalView);
-
-        // When handling TerminalYank.
-        IntentHandler::handle(
-            &Intent::TerminalYank,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then nothing was staged for the clipboard.
-        assert!(state.frontend.tui_signals.yank_text.is_none());
-        // And a status hint explains the inert press.
-        assert!(
-            state
-                .frontend
-                .status_hint
-                .as_deref()
-                .is_some_and(|h| h.contains("no live terminal")),
-            "expected a no-live-terminal hint, got: {:?}",
-            state.frontend.status_hint
-        );
-    }
-
-    #[rstest::rstest]
-    fn push_screen_wording_speaks_as_the_user_not_about_them() {
-        // Given a captured screen.
-        let screen = "shared-marker";
-
-        // When building the push message text.
-        let text = crate::feat::interactive_term::takeover_intent::push_screen_text(screen);
-
-        // Then the text opens with the first-person screen offer.
-        assert!(text.contains("Here is the current terminal screen"));
-        assert!(text.contains(screen));
-        // And it never speaks about the user in third person, never claims
-        // a handback, and never embeds the refusal note.
-        assert!(!text.contains("The user"));
-        assert!(!text.contains("handed"));
-        assert!(
-            !text
-                .contains(crate::feat::tools_actor::interactive_term_send::USER_HAS_CONTROL_NOTICE),
-            "push wording must not embed the user-control notice"
-        );
-    }
-
-    #[rstest::rstest]
-    fn close_overlay_from_view_leaves_control_with_agent() {
-        // Given an AppState with the overlay open in view mode (the shared
-        // control registry unwired, so control stays with the agent).
-        let mut state = AppState::default();
-        let chat = state.session.active_session_id().clone();
-        state.frontend.terminal.set_live(&chat, true);
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalView);
-
-        // When toggling the overlay closed.
-        IntentHandler::handle(
-            &Intent::ToggleTerminalOverlay { session_id: None },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then the overlay closed (pop on a base-only stack is a no-op, so
-        // the view scope remains as the base).
-        assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::TerminalView
-        );
+        assert_eq!(state.frontend.scope(), FocusScope::Normal);
+        assert_eq!(state.frontend.scope_base(), FocusScope::Normal);
     }
 
     #[rstest::rstest]
     fn active_session_switch_closes_terminal_overlay() {
         // Given a state with two sessions, the overlay open over the first.
-        use crate::feat::session::chat_entry::ChatEntryKind;
-        use crate::feat::session::chat_session::ChatSessionState;
-        use crate::feat::tools_actor::task::TASK_TOOL_NAME;
-        use crate::protocol::SessionId;
-        let mut state = AppState::default();
+        use crate::protocol::ChatEntryKind;
+        use jinn_core_types::SessionId;
+        use jinn_session_state::ChatSessionState;
+        use jinn_tools_msg::TASK_TOOL_NAME;
+        let mut state = AppState::default_with_scope_focus();
+        let slices = status_bar_slices();
         let first_id = state.session.active_session_id().clone();
         let child_id = SessionId::new();
         let mut child = ChatSessionState::new_child(&first_id, false);
@@ -2462,21 +1238,24 @@ mod tests {
         state.active_session_mut().push_entry(entry);
         state.active_session_mut().select_prev_entry();
 
-        state.frontend.terminal.set_live(&first_id, true);
+        state
+            .term_tabs()
+            .expect("term tabs cell")
+            .update(|t| t.set_live(&first_id, true));
         // The real overlay opens on top of the base scope
         // (clear_overlays + push); the guard clears overlays, so the
         // overlay must not be the base itself.
-        state.frontend.scope_stack.swap_base(FocusScope::Normal);
-        state.frontend.scope_stack.push(FocusScope::TerminalView);
+        state.frontend.scope_swap_base(FocusScope::Normal);
+        state
+            .frontend
+            .scope_push(FocusScope::Dynamic(jinn_term_msg::view_scope()));
 
-        // When handling LoadSubagentSession — an intent that switches the
-        // active session directly (set_active on a loaded child) regardless
-        // of the open overlay.
+        // When a route-owned action switches the active session.
         IntentHandler::handle(
-            &Intent::LoadSubagentSession,
+            &activate_child_intent(),
             &mut state,
-            &empty_slices(),
-            &empty_routes(),
+            &slices,
+            &activate_child_route(child_id.clone()),
             &empty_pickers(),
         );
 
@@ -2488,19 +1267,15 @@ mod tests {
         );
         // And the previously-open terminal overlay did not survive the switch.
         assert_ne!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::TerminalView,
+            state.frontend.scope(),
+            FocusScope::Dynamic(jinn_term_msg::view_scope()),
             "a switch under an open overlay must not carry it to the new session"
         );
         // And the hint explains the abrupt close.
+        let hint = status_hint(&slices);
         assert!(
-            state
-                .frontend
-                .status_hint
-                .as_deref()
-                .is_some_and(|h| h.contains("closed")),
-            "expected an overlay-closed hint, got: {:?}",
-            state.frontend.status_hint
+            hint.as_deref().is_some_and(|h| h.contains("closed")),
+            "expected an overlay-closed hint, got: {hint:?}"
         );
     }
 
@@ -2508,12 +1283,12 @@ mod tests {
     fn active_session_switch_releases_user_control() {
         // Given a state with a linked child session, the overlay open in
         // control mode (user holds the previous session's terminal).
-        use crate::feat::interactive_term::protocol::command::ControlHolder;
-        use crate::feat::session::chat_entry::ChatEntryKind;
-        use crate::feat::session::chat_session::ChatSessionState;
-        use crate::feat::tools_actor::task::TASK_TOOL_NAME;
-        use crate::protocol::SessionId;
-        let mut state = AppState::default();
+        use crate::protocol::ChatEntryKind;
+        use jinn_core_types::SessionId;
+        use jinn_session_state::ChatSessionState;
+        use jinn_term_msg::command::ControlHolder;
+        use jinn_tools_msg::TASK_TOOL_NAME;
+        let mut state = AppState::default_with_scope_focus();
         let first_id = state.session.active_session_id().clone();
         let child_id = SessionId::new();
         let mut child = ChatSessionState::new_child(&first_id, false);
@@ -2528,38 +1303,41 @@ mod tests {
         state.active_session_mut().push_entry(entry);
         state.active_session_mut().select_prev_entry();
 
-        state.frontend.terminal.set_live(&first_id, true);
-        state.frontend.scope_stack.swap_base(FocusScope::Normal);
-        state.frontend.scope_stack.push(FocusScope::TerminalControl);
-        if let Some(registry) = crate::feat::interactive_term::takeover_intent::TERM_CONTROLS.get()
-        {
-            registry.set(&first_id, ControlHolder::User);
-        }
+        state
+            .term_tabs()
+            .expect("term tabs cell")
+            .update(|t| t.set_live(&first_id, true));
+        state.frontend.scope_swap_base(FocusScope::Normal);
+        state
+            .frontend
+            .scope_push(FocusScope::Dynamic(jinn_term_msg::control_scope()));
+        // Mint the registry (idempotent: a no-op when already present) so
+        // the release assertion below is unconditional — production always
+        // has the registry wired, and this test must prove the flip.
+        let _ = jinn_term_msg::TERM_CONTROLS.set(jinn_term_msg::TermControls::default());
+        let registry = jinn_term_msg::TERM_CONTROLS.get().expect("minted above");
+        registry.set(&first_id, ControlHolder::User);
 
-        // When switching the active session.
+        // When switching the active session through a route-owned action.
         IntentHandler::handle(
-            &Intent::LoadSubagentSession,
+            &activate_child_intent(),
             &mut state,
             &empty_slices(),
-            &empty_routes(),
+            &activate_child_route(child_id.clone()),
             &empty_pickers(),
         );
 
         // Then the switched-from session's control is released back to the
-        // agent — a stuck User holder would refuse every future agent send
-        // (only reachable when the wired registry is present).
-        if let Some(registry) = crate::feat::interactive_term::takeover_intent::TERM_CONTROLS.get()
-        {
-            assert_eq!(
-                registry.holder_for(&first_id),
-                ControlHolder::Agent,
-                "control must not stick on User after a switch"
-            );
-        }
+        // agent — a stuck User holder would refuse every future agent send.
+        assert_eq!(
+            registry.holder_for(&first_id),
+            ControlHolder::Agent,
+            "control must not stick on User after a switch"
+        );
         // And the overlay is closed.
         assert_ne!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::TerminalControl
+            state.frontend.scope(),
+            FocusScope::Dynamic(jinn_term_msg::control_scope())
         );
     }
 
@@ -2567,25 +1345,79 @@ mod tests {
     fn overlay_opened_by_the_switch_intent_survives_the_guard() {
         // Given a state with two sessions where the *second* holds the live
         // terminal, and no overlay open yet.
-        use crate::feat::session::chat_session::ChatSessionState;
-        let mut state = AppState::default();
-        let mut second = ChatSessionState::new();
+        use jinn_session_state::ChatSessionState;
+        let mut state = AppState::default_with_scope_focus();
+        let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         state.session.insert(second);
-        state.frontend.terminal.set_live(&second_id, true);
+        state
+            .term_tabs()
+            .expect("term tabs cell")
+            .update(|t| t.set_live(&second_id, true));
         state
             .frontend
-            .scope_stack
-            .swap_base(FocusScope::SidebarSessions);
-        state.frontend.sessions_section.selected_index = Some(0);
+            .scope_swap_base(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_index = Some(0));
 
         // When the sidebar toggle activates the session and opens the overlay
         // in the same intent.
+        let intent = KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            jinn_term_msg::view_scope(),
+            "toggle-for-selected",
+            "toggle terminal",
+        ));
+        let routes = jinn_slices::route::KeyRoutes::new();
+        routes.attach(jinn_slices::route::RouteRow {
+            route_id: jinn_slices::route::RouteId::new("term:toggle-for-selected"),
+            scope: jinn_term_msg::view_scope(),
+            key: "T",
+            category: "general",
+            site: jinn_slices::route::BindSite::OwnScope,
+            feature: "term",
+            outcome: jinn_slices::route::RouteOutcome::Action {
+                action: "toggle-for-selected",
+                display: "toggle terminal",
+                run: jinn_slices::route::ActionFn::new(move |ctx| {
+                    let Some(state) = ctx
+                        .state
+                        .as_any_mut()
+                        .and_then(|a| a.downcast_mut::<AppState>())
+                    else {
+                        return crate::protocol::IntentResult::empty();
+                    };
+                    // Inline term-slice semantics: activate the target
+                    // session, then toggle the overlay for the active one.
+                    if state.frontend.sidebar_section()
+                        == Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
+                    {
+                        state.session.set_active(second_id.clone());
+                    }
+                    let chat = state.session.active_session_id().clone();
+                    let live = state
+                        .term_tabs()
+                        .is_some_and(|cell| cell.read().live_terms.contains(&chat));
+                    if !live {
+                        return crate::protocol::IntentResult::empty();
+                    }
+                    if state.frontend.scope() == FocusScope::Dynamic(jinn_term_msg::view_scope()) {
+                        state.frontend.scope_pop();
+                    } else {
+                        state.frontend.scope_clear_overlays();
+                        state
+                            .frontend
+                            .scope_push(FocusScope::Dynamic(jinn_term_msg::view_scope()));
+                    }
+                    crate::protocol::IntentResult::empty()
+                }),
+            },
+        });
         IntentHandler::handle(
-            &Intent::ToggleTerminalOverlayForSelected,
+            &intent,
             &mut state,
             &empty_slices(),
-            &empty_routes(),
+            &routes,
             &empty_pickers(),
         );
 
@@ -2593,57 +1425,21 @@ mod tests {
         // — the guard captured "overlay closed" before the intent and must
         // not close what its own intent opened.
         assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::TerminalView,
+            state.frontend.scope(),
+            FocusScope::Dynamic(jinn_term_msg::view_scope()),
             "activate-then-open must survive the switch guard"
         );
     }
 
     #[rstest::rstest]
-    fn terminal_send_key_targets_the_active_session() {
-        // Given the user holding terminal control.
-        let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .swap_base(FocusScope::TerminalView);
-        state.frontend.scope_stack.push(FocusScope::TerminalControl);
-
-        // When pressing a key in control mode.
-        let result = IntentHandler::handle(
-            &Intent::TerminalSendKey {
-                bytes: b"x".to_vec(),
-                label: "x".to_owned(),
-            },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then a SendTermKey command is emitted (targeting the active
-        // session's terminal — the payload is built from the active session
-        // id by the takeover arm, which is the only session it can name).
-        let names: Vec<&str> = result
-            .message_names
-            .iter()
-            .filter(|n| n.ends_with("SendTermKey"))
-            .copied()
-            .collect();
-        assert!(
-            !names.is_empty(),
-            "expected a SendTermKey command; got {:?}",
-            result.message_names
-        );
-    }
-
-    #[rstest::rstest]
     fn handback_screen_survives_drain_as_user_entry() {
-        use crate::feat::session::steering_buffer::SteeringBuffer;
+        use jinn_session_state::steering_buffer::SteeringBuffer;
 
         // Given the push message text for a captured screen.
-        let text =
-            crate::feat::interactive_term::takeover_intent::push_screen_text("drain-chain-marker");
+        let text = format!(
+            "Here is the current terminal screen:\n\n```\n{}\n```",
+            "drain-chain-marker"
+        );
 
         // When routing the text through the steering buffer and draining it
         // (the session actor's busy-path behavior).

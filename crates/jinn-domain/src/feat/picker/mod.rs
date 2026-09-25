@@ -1,29 +1,22 @@
-//! Picker - fuzzy search picker for providers, strategies, and sessions.
+//! Picker dispatch: intent handling, validation, the `AppState` host lens, and
+//! geometry.
 //!
-//! Handles all picker intents (open, insert char, backspace, confirm, move,
-//! cursor movement), their validators, and rendering.
+//! The twelve feature *specs* live in `jinn_picker_specs` so each can follow
+//! its owning slice; this module keeps the generic dispatch layer that bridges
+//! kernel intents to those specs. The split is forced by the dependency
+//! direction: specs read `AppState` through the host lens below, so they
+//! depend on the kernel, and the kernel's `IntentHandler` dispatches into the
+//! same lens — the two cannot be one crate without a cycle.
+//!
+//! Kernel-side entry writers wrap their items through
+//! `jinn_picker::make_items_with_hooks`, never through a spec registry, so no
+//! code in this module depends on `jinn_picker_specs`.
 
 pub mod action;
-pub mod endpoint_spec;
 pub mod geometry;
 pub mod host_impl;
 pub mod intent;
-pub mod mcp_server_spec;
-pub mod persona_spec;
-pub mod picker_kind;
-pub mod plugin_spec;
-pub mod project_spec;
-pub mod provider_spec;
-pub mod reasoning_effort_spec;
-pub mod registry;
-pub mod session_lifecycle_spec;
-pub mod session_spec;
-pub mod skill_spec;
-pub mod task_list_spec;
-pub mod theme_spec;
-pub mod tool_spec;
-
-pub mod style;
 pub mod validator;
 
-pub use picker_kind::PickerKind;
+#[cfg(test)]
+mod test_registry;

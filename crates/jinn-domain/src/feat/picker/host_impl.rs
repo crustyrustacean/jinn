@@ -12,20 +12,19 @@ use jinn_picker::PickerHost;
 use jinn_picker::PickerId;
 
 use crate::common::app_state::AppState;
-use crate::feat::picker::registry::ENDPOINT_ID;
-use crate::feat::picker::registry::MCP_SERVER_ID;
-use crate::feat::picker::registry::PERSONA_ID;
-use crate::feat::picker::registry::PLUGIN_ID;
-use crate::feat::picker::registry::PROJECT_ID;
-use crate::feat::picker::registry::PROVIDER_ID;
-use crate::feat::picker::registry::REASONING_EFFORT_ID;
-use crate::feat::picker::registry::SESSION_ID;
-use crate::feat::picker::registry::SESSION_LIFECYCLE_ID;
-use crate::feat::picker::registry::SKILL_ID;
-use crate::feat::picker::registry::TASK_LIST_ID;
-use crate::feat::picker::registry::THEME_ID;
-use crate::feat::picker::registry::TOOL_ID;
 use crate::feat::ui::picker_states::PickerExt;
+use jinn_picker::ENDPOINT_ID;
+use jinn_picker::MCP_SERVER_ID;
+use jinn_picker::PERSONA_ID;
+use jinn_picker::PROJECT_ID;
+use jinn_picker::PROVIDER_ID;
+use jinn_picker::REASONING_EFFORT_ID;
+use jinn_picker::SESSION_ID;
+use jinn_picker::SESSION_LIFECYCLE_ID;
+use jinn_picker::SKILL_ID;
+use jinn_picker::TASK_LIST_ID;
+use jinn_picker::THEME_ID;
+use jinn_picker::TOOL_ID;
 
 /// The host lens over the kernel state. Constructed transiently at
 /// dispatch/render with `&mut AppState` — it never outlives the guard.
@@ -57,12 +56,13 @@ impl PickerHost for AppStatePickerHost<'_> {
             REASONING_EFFORT_ID => {
                 Some(self.state.frontend.reasoning_effort_picker_mut() as &mut dyn std::any::Any)
             }
-            PLUGIN_ID => Some(self.state.frontend.plugin_picker_mut() as &mut dyn std::any::Any),
             TASK_LIST_ID => {
                 Some(self.state.frontend.task_list_picker_mut() as &mut dyn std::any::Any)
             }
             SESSION_ID => Some(self.state.frontend.session_picker_mut() as &mut dyn std::any::Any),
-            PROVIDER_ID => Some(&mut self.state.provider.provider_picker as &mut dyn std::any::Any),
+            PROVIDER_ID => {
+                Some(&mut self.state.frontend.pickers.provider_picker as &mut dyn std::any::Any)
+            }
             ENDPOINT_ID => {
                 Some(self.state.frontend.endpoint_picker_mut() as &mut dyn std::any::Any)
             }
@@ -84,7 +84,6 @@ impl PickerHost for AppStatePickerHost<'_> {
             REASONING_EFFORT_ID => {
                 Some(self.state.frontend.reasoning_effort_picker() as &dyn std::any::Any)
             }
-            PLUGIN_ID => Some(self.state.frontend.plugin_picker() as &dyn std::any::Any),
             TASK_LIST_ID => Some(self.state.frontend.task_list_picker() as &dyn std::any::Any),
             SESSION_ID => Some(self.state.frontend.session_picker() as &dyn std::any::Any),
             _ => None,
@@ -177,16 +176,19 @@ impl PickerHost for AppStateRenderHost<'_> {
             REASONING_EFFORT_ID => {
                 Some(self.state.frontend.reasoning_effort_picker() as &dyn std::any::Any)
             }
-            PLUGIN_ID => Some(self.state.frontend.plugin_picker() as &dyn std::any::Any),
             TASK_LIST_ID => Some(self.state.frontend.task_list_picker() as &dyn std::any::Any),
             SESSION_ID => Some(self.state.frontend.session_picker() as &dyn std::any::Any),
-            PROVIDER_ID => Some(&self.state.provider.provider_picker as &dyn std::any::Any),
+            PROVIDER_ID => Some(&self.state.frontend.pickers.provider_picker as &dyn std::any::Any),
             ENDPOINT_ID => Some(self.state.frontend.endpoint_picker() as &dyn std::any::Any),
             PROJECT_ID => Some(self.state.frontend.project_picker() as &dyn std::any::Any),
             _ => None,
         }
     }
 
+    #[expect(
+        clippy::unreachable,
+        reason = "trait contract: render host is read-only; render specs must not mutate state"
+    )]
     fn state_any(&mut self) -> &mut dyn std::any::Any {
         unreachable!("AppStateRenderHost is read-only; specs must not call state_any in render")
     }
@@ -247,16 +249,15 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use crate::feat::picker::registry::ENDPOINT_ID;
-    use crate::feat::picker::registry::PERSONA_ID;
-    use crate::feat::picker::registry::PROJECT_ID;
+    use jinn_persona_msg::{PersonaEntry, persona_row};
+    use jinn_picker::PERSONA_ID;
 
-    fn test_persona(name: &str) -> crate::feat::persona::PersonaEntry {
-        crate::feat::persona::PersonaEntry {
+    fn test_persona(name: &str) -> PersonaEntry {
+        PersonaEntry {
             name: name.to_owned(),
             description: String::new(),
             is_active: false,
-            theme: crate::feat::theme::default_theme(),
+            theme: jinn_theme::default_theme(),
         }
     }
 
@@ -264,16 +265,13 @@ mod tests {
     #[test]
     fn selection_state_lends_typed_storage_by_id() {
         // Given a host state whose persona picker holds items.
-        let mut state = AppState::default();
-        let items = {
-            let registry = crate::feat::picker::registry::build_picker_registry();
-            registry
-                .make_items(
-                    crate::feat::picker::registry::PERSONA_ID,
-                    vec![test_persona("a")],
-                )
-                .expect("persona spec is registered")
-        };
+        let mut state = AppState::default_with_scope_focus();
+        let items = jinn_picker::make_items_with_hooks(
+            vec![test_persona("a")],
+            jinn_picker::PickerItemHooks::new()
+                .row(persona_row)
+                .search(|entry| entry.name.clone()),
+        );
         state.frontend.persona_picker_mut().set_items(items);
 
         // When lending the selection state for the persona id.
@@ -282,7 +280,7 @@ mod tests {
             host.selection_state(PickerId::new(PERSONA_ID))
                 .expect("persona is mapped")
                 .downcast_ref::<jinn_selection_widget::SelectionState<
-                    jinn_picker::PickerEntry<crate::feat::persona::PersonaEntry>,
+                    jinn_picker::PickerEntry<PersonaEntry>,
                 >>()
                 .is_some()
         };
@@ -298,7 +296,7 @@ mod tests {
     #[test]
     fn unmapped_ids_lend_nothing() {
         // Given a default host state.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         let mut host = AppStatePickerHost::new(&mut state);
 
         // When lending an id no picker claims.
@@ -310,7 +308,7 @@ mod tests {
     #[test]
     fn skill_scrolls_use_the_legacy_slot_until_migration() {
         // Given a host state.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         let skill = PickerId::new(SKILL_ID);
         let other = PickerId::new("other");
 

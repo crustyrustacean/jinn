@@ -41,14 +41,6 @@ pub struct Cli {
     #[arg(long, value_hint = clap::ValueHint::FilePath)]
     pub db_path: Option<PathBuf>,
 
-    /// Base directory for persistent browser profiles (headless/headed).
-    ///
-    /// Per-mode profiles live under `<dir>/headless` and `<dir>/headed`.
-    /// Defaults to the platform data directory
-    /// (`~/.local/share/jinn/browser-profile`).
-    #[arg(long, value_hint = clap::ValueHint::DirPath)]
-    pub browser_profile: Option<PathBuf>,
-
     /// Dump every provider generation request to <dir> as a separate JSON file.
     /// Each file contains the complete request payload verbatim.
     #[arg(long, value_hint = clap::ValueHint::DirPath)]
@@ -93,8 +85,8 @@ pub enum Commands {
         shell: clap_complete::Shell,
     },
 
-    /// Install default themes, personas, prompts, skills, and prebuilt
-    /// plugins to user directories.
+    /// Install default themes, personas, prompts, and skills to user
+    /// directories.
     Install {
         /// Overwrite existing resources if they already exist.
         #[arg(long)]
@@ -113,13 +105,6 @@ pub enum Commands {
         /// The config subcommand to run.
         #[command(subcommand)]
         subcommand: ConfigCommands,
-    },
-
-    /// Author, install, and manage wasm plugins.
-    Plugin {
-        /// The plugin subcommand to run.
-        #[command(subcommand)]
-        subcommand: PluginCommands,
     },
 }
 
@@ -164,80 +149,6 @@ pub enum ConfigCommands {
         #[arg(long)]
         force: bool,
     },
-}
-
-/// Plugin subcommands.
-#[derive(Debug, Subcommand)]
-pub enum PluginCommands {
-    /// Scaffold a new plugin cargo project in the current directory.
-    New {
-        /// The plugin name (crate name; also the `[[plugin]]` entry name).
-        name: String,
-
-        /// SDK source: a jinn checkout path (absolute or relative) for
-        /// local development, a git URL (optionally `@rev`-pinned), or
-        /// omitted for the default jinn repo.
-        #[arg(long = "sdk", value_name = "PATH|GIT_URL[@REV]")]
-        sdk: Option<String>,
-    },
-
-    /// Build a plugin crate to a jinn-installable `.wasm` payload.
-    Build {
-        /// Path to the plugin crate directory (default: current dir).
-        dir: Option<String>,
-    },
-    /// Install a built `.wasm` payload as a jinn plugin.
-    Install {
-        /// Path to the built `.wasm` file.
-        wasm: String,
-
-        /// The plugin name (defaults to the embedded manifest's name, then
-        /// the file stem).
-        name: Option<String>,
-
-        /// Grant a preopened directory path (`<config_dir>`/`<data_dir>`
-        /// variables allowed). Repeatable; suffix `:w` for writable.
-        /// Overrides the plugin's embedded manifest grants.
-        #[arg(long = "grant", value_name = "PATH[:w]")]
-        grants: Vec<String>,
-
-        /// Allow network access (overrides the embedded manifest).
-        #[arg(long = "http", conflicts_with = "no_http")]
-        http: bool,
-
-        /// Deny network access (overrides the embedded manifest).
-        #[arg(long = "no-http")]
-        no_http: bool,
-    },
-
-    /// Build a plugin from source and install it in one command.
-    Add {
-        /// Path to the plugin crate directory (default: current dir).
-        dir: Option<String>,
-
-        /// The plugin name (defaults to the embedded manifest's name, then
-        /// the crate name).
-        name: Option<String>,
-
-        /// Grant a preopened directory path (`<config_dir>`/`<data_dir>`
-        /// variables allowed). Repeatable; suffix `:w` for writable.
-        /// Overrides the plugin's embedded manifest grants.
-        #[arg(long = "grant", value_name = "PATH[:w]")]
-        grants: Vec<String>,
-
-        /// Allow network access (overrides the embedded manifest).
-        #[arg(long = "http", conflicts_with = "no_http")]
-        http: bool,
-
-        /// Deny network access (overrides the embedded manifest).
-        #[arg(long = "no-http")]
-        no_http: bool,
-    },
-
-    /// Install (overwrite) all builtin plugin payloads and register any
-    /// builtin plugin missing from jinn.toml. Existing [plugin.<name>]
-    /// entries are never modified. Plugins activate on the next jinn start.
-    InstallBuiltins,
 }
 
 #[cfg(test)]
@@ -356,33 +267,6 @@ mod tests {
         assert_eq!(
             cli.db_path_opt().map(std::path::PathBuf::as_path),
             Some(std::path::Path::new("/tmp/test.db"))
-        );
-    }
-
-    // Given no --browser-profile argument.
-    // Then Cli.browser_profile is None (defaults to AppPaths).
-    #[rstest::rstest]
-    #[test]
-    fn browser_profile_flag_defaults_to_none() {
-        let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
-        assert!(cli.browser_profile.is_none());
-    }
-
-    // Given a --browser-profile argument.
-    // Then Cli.browser_profile captures the override.
-    #[rstest::rstest]
-    #[test]
-    fn browser_profile_flag_parses_to_path() {
-        let cli = Cli::parse_from([
-            "jinn",
-            "--db-path",
-            "/tmp/test.db",
-            "--browser-profile",
-            "/tmp/jinn-profiles",
-        ]);
-        assert_eq!(
-            cli.browser_profile.as_deref(),
-            Some(std::path::Path::new("/tmp/jinn-profiles"))
         );
     }
 }

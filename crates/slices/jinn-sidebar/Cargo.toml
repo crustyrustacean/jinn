@@ -1,0 +1,48 @@
+[package]
+name = "jinn-sidebar"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+jinn-mcp-msg = { workspace = true }
+jinn-chat-log-view = { workspace = true }
+jinn-chat-log-view-msg = { workspace = true }
+jinn-chat-input-msg = { workspace = true }
+jinn-persona-msg = { workspace = true }
+jinn-sidebar-msg = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+jinn-session-list = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-term-msg = { workspace = true }
+jinn-theme = { workspace = true }
+# The trouper runtime: ServiceActors, topics, schemas.
+trouper = { workspace = true }
+# Slice → kernel edge (established by jinn-dashboard): the sidebar's
+# trouper actor folds kernel session events into state through the
+# kernel's shared `State` handle, and the route actions reuse kernel
+# feature helpers. The kernel never depends back on this crate.
+jinn-core-types = { workspace = true }
+jinn-skills = { workspace = true }
+jinn-domain = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-tools-msg = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-picker-specs = { workspace = true }
+error-stack = { workspace = true }
+serde_json = { workspace = true }
+wherror = { workspace = true }
+ratatui = { workspace = true }
+textwrap = { workspace = true }
+throbber-widgets-tui = { workspace = true }
+unicode-segmentation = { workspace = true }
+jiff = { workspace = true }
+unicode-width = { workspace = true }
+rstest = { workspace = true }
+
+[dev-dependencies]
+jinn-testutil = { workspace = true }
+tokio = { workspace = true }

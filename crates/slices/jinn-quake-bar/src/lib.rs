@@ -21,7 +21,6 @@ pub use state::quake_scope;
 
 use jinn_slices::SliceHost;
 use jinn_slices::SliceScopeId;
-use trouper::schema::Schema;
 
 /// The dynamic focus scope the quake bar's rows live under.
 ///
@@ -54,9 +53,6 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
         .register_cell(quake_bar_slot(), QuakeBarState::default())
         .expect("quake-bar slot is registered exactly once at wiring");
     canvas_actor::QuakeBarCanvasActor::spawn(host.system(), &cell);
-    host.forward::<SubmitQuakeBarCommand, _>(command::quake_bar_topic(), || {
-        <SubmitQuakeBarCommand as Schema>::schema_def()
-    });
     intent::attach_quake_bar_rows(host.key_routes(), &cell);
     intent::register_quake_input_hook(host.key_routes(), &cell);
     host.register_overlay(quake_scope(), std::sync::Arc::new(quake_overlay_rect));

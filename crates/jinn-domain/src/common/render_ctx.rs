@@ -8,11 +8,11 @@
 //! [`RenderCtx::slices`] instead of reading `FrontendState` fields.
 
 use crate::common::app_state::AppState;
-use crate::common::overlay_views::OverlayViewFn;
-use crate::common::overlay_views::OverlayViews;
-use crate::feat::session::prune_report::prune_report;
+use jinn_context_curation_msg::prune_report;
 use jinn_picker::PickerRegistry;
 use jinn_slices::AppFact;
+use jinn_slices::OverlayViewFn;
+use jinn_slices::OverlayViews;
 use jinn_slices::Slices;
 use jinn_slices::render_facts::RenderFacts as SliceFacts;
 
@@ -83,6 +83,22 @@ impl<'a> RenderCtx<'a> {
         let session = self.state.active_session();
         let report = prune_report(session.history());
         let mut facts = SliceFacts::new(self.state.frontend.theme.clone(), self.slices);
+        // The term overlay's facts: the mirror key, the capture flag, and
+        // the configured toggle key (the border hint's capture glyph).
+        // Consumed by the term slice's overlay renderer (`term:capture`
+        // styling and hints); absent facts degrade chrome, never panic.
+        let capturing = matches!(
+            self.state.frontend.scope(),
+            jinn_slices::FocusScope::Dynamic(id)
+                if id == jinn_term_msg::control_scope()
+        );
+        let toggle_key = self
+            .state
+            .frontend
+            .preferences
+            .interactive_term
+            .control_toggle_key
+            .clone();
         facts.set_facts([
             AppFact {
                 key: "session.prune-pending",
@@ -99,6 +115,10 @@ impl<'a> RenderCtx<'a> {
                 ),
             },
             AppFact {
+                key: "session.cwd",
+                value: session.cwd().display().to_string(),
+            },
+            AppFact {
                 key: "session.lifecycle",
                 value: match session.lifecycle_name() {
                     None => "Lifecycle: <none>".to_owned(),
@@ -106,6 +126,18 @@ impl<'a> RenderCtx<'a> {
                         format!("Lifecycle: {name} ({})", session.lifecycle_script_state())
                     }
                 },
+            },
+            AppFact {
+                key: jinn_term_msg::overlay_facts::SESSION_ID,
+                value: session.session_id().to_string(),
+            },
+            AppFact {
+                key: jinn_term_msg::overlay_facts::CAPTURING,
+                value: if capturing { "1" } else { "0" }.to_owned(),
+            },
+            AppFact {
+                key: jinn_term_msg::overlay_facts::TOGGLE_KEY,
+                value: toggle_key,
             },
         ]);
         facts
@@ -118,12 +150,12 @@ mod tests {
 
     use super::RenderCtx;
     use crate::common::app_state::AppState;
-    use crate::common::overlay_views::OverlayViews;
-    use crate::common::slices::Slices;
-    use crate::feat::session::chat_entry::ChangeSource;
-    use crate::feat::session::chat_entry::ChatEntry;
-    use crate::feat::session::chat_entry::ChatEntryId;
-    use crate::feat::session::chat_entry::ContextOverride;
+    use crate::protocol::ChangeSource;
+    use crate::protocol::ChatEntry;
+    use crate::protocol::ChatEntryId;
+    use crate::protocol::ContextOverride;
+    use jinn_slices::OverlayViews;
+    use jinn_slices::Slices;
 
     fn ctx_for<'a>(
         state: &'a AppState,

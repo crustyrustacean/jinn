@@ -9,12 +9,12 @@
 //! chosen lifecycle name, it reports how many args the bot must collect and
 //! the prompt text to show.
 //!
-//! It reuses [`CommandTemplate`] from `jinn-domain` so the Discord prompt and
+//! It reuses [`CommandTemplate`] from `jinn-session-lifecycle-msg` so the Discord prompt and
 //! arg-count semantics match the TUI path exactly.
 
-use jinn_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
-use jinn_domain::feat::session_lifecycle::builtin::LifecycleCommand;
-use jinn_domain::feat::session_lifecycle::command_template::{CommandTemplate, Param};
+use jinn_preferences_config::schemas::LifecycleCommand;
+use jinn_preferences_config::schemas::SessionLifecycle;
+use jinn_session_lifecycle_msg::command_template::{CommandTemplate, Param};
 
 /// The resolved input requirements for a lifecycle's `setup_command`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,8 +96,9 @@ mod tests {
     )]
 
     use super::*;
-    use jinn_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
-    use jinn_domain::feat::session_lifecycle::builtin::{BuiltinId, LifecycleCommand};
+    use jinn_preferences_config::schemas::LifecycleCommand;
+    use jinn_preferences_config::schemas::SessionLifecycle;
+    use jinn_session_lifecycle_msg::builtin::BuiltinId;
 
     fn shell_lifecycle(name: &str, setup: &str) -> SessionLifecycle {
         SessionLifecycle {

@@ -1,0 +1,229 @@
+//! Sidebar state actor — keeps sidebar cursor in sync after session removal.
+//!
+//! A trouper [`ServiceActor`] subscribed to the slice's `jinn.sidebar`
+//! topic (fed by the kernel bridge's forward routes). It folds
+//! [`SessionRemoved`] into the sidebar cursor and active session.
+
+use trouper::actor::ActorPath;
+use trouper::actor::{MsgHandler, ServiceActor};
+use trouper::context::MsgCtx;
+use trouper::registry::RegistryError;
+use trouper::system::ActorSystem;
+
+use crate::sections::sessions;
+use jinn_domain::common::state::State;
+use jinn_session_msg::SessionRemoved;
+
+/// The sidebar state actor's static trouper path.
+pub const SIDEBAR_STATE_PATH: &str = "sidebar-state";
+
+/// Actor that adjusts sidebar cursor state in response to session close.
+///
+/// Holds the shared [`State`] handle, injected at spawn via `start_with`
+/// because it cannot ride trouper's JSON args.
+pub struct SidebarStateActor {
+    state: State,
+}
+
+impl ServiceActor for SidebarStateActor {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: the spawn helper injects the state handle via
+        // `start_with`.
+        Err(
+            error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
+                .attach("SidebarStateActor is spawned via start_with"),
+        )
+    }
+}
+
+impl SidebarStateActor {
+    /// Spawns the actor at its static path. The caller subscribes the
+    /// returned path to the sidebar topic (composition's
+    /// `SliceHost::subscribe_service`) — subscribe is the readiness
+    /// point, so it must follow this call before any publish.
+    pub fn spawn(system: &ActorSystem, state: State) -> ActorPath {
+        trouper::builder::spawn_service_builder::<Self>(system)
+            .at(ActorPath::new(SIDEBAR_STATE_PATH))
+            .start_with({
+                move || {
+                    let state = state.clone();
+                    Box::pin(async move { Ok(Self { state }) })
+                }
+            })
+            .handles::<SessionRemoved>()
+            .start()
+    }
+
+    /// Reconcile sidebar cursor and active session after a session is removed.
+    fn handle_session_removed(&self, payload: &SessionRemoved) {
+        self.state.with_session_sidebar(|view| {
+            sessions::state::repair_visual_parents_after_removal(
+                view.session.map(),
+                view.frontend,
+                &payload.session_id,
+                payload.removed_parent.as_ref(),
+            );
+            sessions::reconcile_split(view.session.map(), view.frontend);
+        });
+    }
+}
+
+impl MsgHandler<SessionRemoved> for SidebarStateActor {
+    async fn handle(&mut self, msg: &SessionRemoved, _ctx: &mut MsgCtx<'_>) {
+        self.handle_session_removed(msg);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        unused_mut,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::common::state::State;
+    use jinn_session_state::ChatSessionState;
+
+    fn test_actor() -> SidebarStateActor {
+        SidebarStateActor {
+            state: State::new(AppState::default_with_scope_focus()),
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn clamps_selected_index_after_session_removed() {
+        // Given a sidebar actor with three sessions and cursor at index 2.
+        let actor = test_actor();
+        let removed_id = {
+            let mut state = actor.state.write();
+            // Remove default session so we control exact count.
+            let default_id = state.session.active_session_id().clone();
+            state.session.remove_without_replacement(&default_id);
+
+            let s1 = ChatSessionState::new();
+            let s2 = ChatSessionState::new();
+            let s3 = ChatSessionState::new();
+            let id3 = s3.session_id().clone();
+            state.session.insert(s1);
+            state.session.insert(s2);
+            state.session.insert(s3);
+            state.session.set_active(id3.clone());
+            state
+                .frontend
+                .update_sections(|s| s.sessions.selected_index = Some(2));
+            id3
+        };
+
+        // Simulate the session being removed (as the session actor would do).
+        {
+            let mut state = actor.state.write();
+            state.session.remove_without_replacement(&removed_id);
+        }
+
+        // When handling SessionClosed.
+        let payload = jinn_session_msg::SessionRemoved {
+            session_id: removed_id,
+            removed_parent: None,
+        };
+        actor.handle_session_removed(&payload);
+
+        // Then selected_index is clamped to 1 (max valid index).
+        let state = actor.state.read();
+        assert_eq!(
+            state
+                .frontend
+                .with_sections(|s| s.sessions.selected_index, || None),
+            Some(1)
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn handles_removal_of_last_session_cursor_at_zero() {
+        // Given a sidebar actor with one session and cursor at 0.
+        let actor = test_actor();
+        let removed_id = {
+            let mut state = actor.state.write();
+            let id = state.session.active_session_id().clone();
+            state
+                .frontend
+                .update_sections(|s| s.sessions.selected_index = Some(0));
+            id
+        };
+
+        // Simulate session close + new session creation (as session actor would do).
+        {
+            let mut state = actor.state.write();
+            state
+                .session
+                .remove_and_replace(&removed_id, ChatSessionState::new());
+        }
+
+        // When handling SessionClosed.
+        let payload = jinn_session_msg::SessionRemoved {
+            session_id: removed_id,
+            removed_parent: None,
+        };
+        actor.handle_session_removed(&payload);
+
+        // Then cursor stays at 0.
+        let state = actor.state.read();
+        assert_eq!(
+            state
+                .frontend
+                .with_sections(|s| s.sessions.selected_index, || None),
+            Some(0)
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cursor_stays_when_index_still_valid() {
+        // Given a sidebar actor with three sessions and cursor at index 0.
+        let actor = test_actor();
+        let removed_id = {
+            let mut state = actor.state.write();
+            let s1 = ChatSessionState::new();
+            let s2 = ChatSessionState::new();
+            let s3 = ChatSessionState::new();
+            let id3 = s3.session_id().clone();
+            state.session.insert(s1);
+            state.session.insert(s2);
+            state.session.insert(s3);
+            state
+                .frontend
+                .update_sections(|s| s.sessions.selected_index = Some(0));
+            id3
+        };
+
+        // Simulate removal of the last session (cursor at 0 is still valid).
+        {
+            let mut state = actor.state.write();
+            state.session.remove_without_replacement(&removed_id);
+        }
+
+        // When handling SessionClosed.
+        let payload = jinn_session_msg::SessionRemoved {
+            session_id: removed_id,
+            removed_parent: None,
+        };
+        actor.handle_session_removed(&payload);
+
+        // Then cursor stays at 0.
+        let state = actor.state.read();
+        assert_eq!(
+            state
+                .frontend
+                .with_sections(|s| s.sessions.selected_index, || None),
+            Some(0)
+        );
+    }
+}

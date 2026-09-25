@@ -16,12 +16,12 @@
 //! Cache invalidation:
 //! - **Theme change** (`FrontendCaches::invalidate_all`): rendered lines embed
 //!   theme colors → cleared.
-//! - **Rescan** (`SkillsScanActor`): NOT cleared. A changed body hashes to a new
+//! - **Rescan** (the session-init discovery worker): NOT cleared. A changed body hashes to a new
 //!   key, so stale markdown is never redisplayed.
 //! - **Picker open/close**: cache is preserved so the user does not pay a
 //!   re-render cost when reopening the picker.
 //!
-//! [`SessionPreviewCache`]: crate::feat::ui::sidebar::sessions::preview::SessionPreviewCache
+//! [`SessionPreviewCache`]: jinn_sidebar_msg::SessionPreviewCache
 
 use parking_lot::Mutex;
 use std::collections::HashMap;

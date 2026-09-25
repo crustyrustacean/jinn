@@ -8,17 +8,17 @@ use futures::StreamExt as _;
 use reqwest::Client;
 
 use crate::ModelInfo;
-use crate::llm_message::LlmMessage;
 use crate::openai_compat::models;
 use crate::openai_compat::provider_config::ProviderConfig;
 use crate::openai_compat::reasoning_body::emit_reasoning_into;
 use crate::openai_compat::request;
 use crate::openai_compat::response::StreamResponseParser;
 use crate::openai_compat::sse::{SseEvent, SseParser};
-use crate::reasoning::ReasoningEffort;
 use crate::service::{ChatStream, LlmService, LlmServiceError, ToolStream};
 use crate::stream_event::StreamEvent;
-use crate::tool_types::ToolDefinition;
+use jinn_core_types::llm_message::LlmMessage;
+use jinn_core_types::reasoning::ReasoningEffort;
+use jinn_core_types::tool_types::ToolDefinition;
 
 /// An LLM service that talks to an OpenAI-compatible API.
 pub struct OpenAiCompatibleService {

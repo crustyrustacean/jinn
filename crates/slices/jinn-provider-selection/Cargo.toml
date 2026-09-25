@@ -1,0 +1,47 @@
+[package]
+name = "jinn-provider-selection"
+version.workspace = true
+edition.workspace = true
+description = "The provider-selection slice: the provider actor (switch, refresh, picker loads, endpoint fetch), the discover actor, and the provider cell."
+
+[features]
+test-harness = ["jinn-domain/test-harness"]
+
+[dependencies]
+jinn-provider-selection-msg = { workspace = true }
+# The trouper runtime: ServiceActors, topics, schemas.
+trouper = { workspace = true }
+# Kernel dep (turn-dispatch/watchdog precedent): the provider actor
+# writes AppState through named `State` projections for session model
+# changes and picker render state, loads entries
+# through the kernel picker registry's spec hooks, and reads services
+# (registry, api keys, paths). The kernel
+# re-exports the slice's contracts so the long-standing jinn_domain::X
+# paths keep resolving.
+jinn-domain = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-provider = { workspace = true }
+jinn-provider-config = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-picker-specs = { workspace = true }
+jiff = { workspace = true }
+ratatui = { workspace = true }
+unicode-segmentation = { workspace = true }
+humantime = { workspace = true }
+serde = { workspace = true }
+error-stack = { workspace = true }
+wherror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+rstest = { workspace = true }
+jinn-domain = { workspace = true, features = ["test-harness"] }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

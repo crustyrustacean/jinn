@@ -11,11 +11,11 @@ use crate::ModelInfo;
 use crate::anthropic::models;
 use crate::anthropic::request;
 use crate::anthropic::response::AnthropicStreamParser;
-use crate::llm_message::LlmMessage;
 use crate::openai_compat::sse::{SseEvent, SseParser};
 use crate::service::{ChatStream, LlmService, LlmServiceError, ToolStream};
 use crate::stream_event::StreamEvent;
-use crate::tool_types::ToolDefinition;
+use jinn_core_types::llm_message::LlmMessage;
+use jinn_core_types::tool_types::ToolDefinition;
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1/messages";
 const PROVIDER_NAME: &str = "Anthropic";

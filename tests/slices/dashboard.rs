@@ -11,8 +11,8 @@
 
 use crate::common::{composed_keymap, test_app, wait_for, wait_for_bounded};
 use jinn_dashboard::dashboard_scope;
-use jinn_domain::common::slices::TypedCell;
-use jinn_domain::{Bridge, Intent, Key, KeyEvent, Modifiers};
+use jinn_domain::{Bridge, KernelIntent, Key, KeyEvent, Modifiers};
+use jinn_slices::TypedCell;
 use jinn_tui::Scope;
 
 /// The composed keymap carries the terminal-overlay toggle in the
@@ -36,13 +36,15 @@ fn alt_t_resolves_in_the_dashboard_dynamic_scope() {
     };
     let intent = wk.handle_key(alt_t);
 
-    // Then the terminal overlay toggle fires.
+    // Then the terminal overlay toggle fires (the term slice's
+    // GlobalToggle row, materialized by composition).
     assert!(
         matches!(
-            intent,
-            Some(Intent::ToggleTerminalOverlay { session_id: None })
+            &intent,
+            Some(KernelIntent::Dynamic(d))
+                if d.slice == jinn_term_msg::view_scope() && d.action == "toggle-overlay"
         ),
-        "dashboard scope: expected ToggleTerminalOverlay, got {intent:?}"
+        "dashboard scope: expected the term toggle-overlay dynamic intent, got {intent:?}"
     );
 }
 
@@ -80,10 +82,9 @@ async fn j_keypress_routes_to_dashboard_actor_and_moves_selection() {
     let mut app = test_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
-        .scope_stack
-        .swap_base(jinn_domain::FocusScope::Dynamic(
+        .scope_swap_base(jinn_slices::FocusScope::Dynamic(
             jinn_dashboard::dashboard_scope(),
         ));
     let slot = jinn_dashboard::dashboard_slot();
@@ -155,10 +156,9 @@ async fn dashboard_app() -> jinn_tui::TuiApp {
     let app = test_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
-        .scope_stack
-        .swap_base(jinn_domain::FocusScope::Dynamic(
+        .scope_swap_base(jinn_slices::FocusScope::Dynamic(
             jinn_dashboard::dashboard_scope(),
         ));
     app
@@ -202,10 +202,9 @@ async fn registered_tab_stays_highlighted_when_another_overlay_opens() {
     let mut app = dashboard_app().await;
     app.core
         .state
-        .write_test_no_cap()
+        .write()
         .frontend
-        .scope_stack
-        .push(jinn_domain::FocusScope::Dynamic(
+        .scope_push(jinn_slices::FocusScope::Dynamic(
             jinn_slices::SliceScopeId::new("quake-bar", "bar"),
         ));
     let (mut terminal, _area) = jinn_testutil::setup_term(80, 24);
@@ -348,7 +347,7 @@ async fn dashboard_tab_has_no_em_dash_separator() {
 /// kernel's `spawn_tracked!` (the **kernel** `ActorStarting`/
 /// `ActorStarted` types from `protocol::event`) must reach the
 /// dashboard actor's rows. The slice used to subscribe to
-/// schema-identical but distinct Rust types — kameo dispatches by
+/// schema-identical but distinct Rust types — trouper dispatches by
 /// `TypeId`, so every lifecycle event silently dropped and only
 /// `ServiceStatusUpdate` rows ever appeared.
 #[rstest::rstest]
@@ -403,7 +402,7 @@ async fn kernel_lifecycle_events_drive_the_dashboard_rows() {
 }
 
 /// REGRESSION (BestEffort drop): a startup-scale flood of lifecycle
-/// events (more than kameo's default bounded-64 mailbox) must arrive
+/// events (more than a small default mailbox) must arrive
 /// complete at the dashboard. The forward relays used to spawn with
 /// the default bounded mailbox, so the bus's BestEffort `try_send`
 /// silently dropped events under the burst and the affected actors

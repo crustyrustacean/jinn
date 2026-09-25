@@ -9,18 +9,13 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
     // Every picker kind is spec-driven: render through the registry. With
     // an empty registry (test seams) there is nothing to draw. `None`
     // (no picker scope) is also a no-op here.
-    if let Some(kind) = ctx.state.frontend.scope_stack.picker_kind().copied()
-        && let Some(id) = jinn_domain::feat::picker::registry::spec_id_for_kind(&kind)
+    if let Some(kind) = ctx.state.frontend.picker_kind()
+        && let Some(id) = jinn_picker::spec_id_for_kind(&kind)
         && let Some(spec) = ctx.pickers.get(id)
     {
         let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(ctx.state);
         spec.render(frame, area, &host);
     }
-}
-
-/// Renders the arg input popup (delegates to domain render).
-pub(super) fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-    jinn_domain::feat::session_lifecycle::render::render_arg_input(frame, area, ctx);
 }
 
 #[cfg(test)]
@@ -31,10 +26,10 @@ mod tests {
         reason = "test code, panics are acceptable"
     )]
     use jinn_domain::AppState;
-    use jinn_domain::FocusScope;
     use jinn_domain::PickerKind;
     use jinn_domain::feat::ui::picker_states::PickerExt as _;
     use jinn_selection_widget::compute_popup_rect;
+    use jinn_slices::FocusScope;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
@@ -89,13 +84,12 @@ mod tests {
     #[case::task_list(PickerKind::TaskList)]
     #[case::project(PickerKind::Project)]
     #[case::mcp_server(PickerKind::McpServer)]
-    #[case::plugin(PickerKind::Plugin)]
     fn picker_draws_footer_rows_matching_kind_declaration(#[case] kind: PickerKind) {
         // Given a picker scope of this kind with the default (empty) state,
         // and the domain's picker registry.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Picker { kind });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(FocusScope::Picker { kind });
+        let pickers = jinn_picker_specs::build_picker_registry();
 
         // When rendering the picker overlay.
         let area = Rect::new(0, 0, 100, 30);
@@ -104,7 +98,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
@@ -135,7 +129,7 @@ mod tests {
         }
 
         // The declared footer count is spec-owned (every kind has a spec).
-        let declared = jinn_domain::feat::picker::registry::spec_id_for_kind(&kind)
+        let declared = jinn_picker::spec_id_for_kind(&kind)
             .and_then(|id| pickers.get(id))
             .map_or(1, |spec| spec.bottom_rows());
 
@@ -149,11 +143,11 @@ mod tests {
     #[test]
     fn persona_picker_draws_status_and_keybind_rows_via_spec() {
         // Given a persona picker open, rendered through its spec.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Picker {
+        let state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Persona,
         });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
 
         // When rendering.
         let area = Rect::new(0, 0, 100, 30);
@@ -162,7 +156,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
@@ -194,11 +188,11 @@ mod tests {
     #[test]
     fn theme_picker_draws_status_and_keybind_rows_via_spec() {
         // Given a theme picker open, rendered through its spec.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Picker {
+        let state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Theme,
         });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
 
         // When rendering.
         let area = Rect::new(0, 0, 100, 30);
@@ -207,7 +201,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
@@ -239,11 +233,11 @@ mod tests {
     #[test]
     fn mcp_picker_draws_status_and_keybind_rows_via_spec() {
         // Given an MCP server picker open, rendered through its spec.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Picker {
+        let state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::McpServer,
         });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
 
         // When rendering.
         let area = Rect::new(0, 0, 100, 30);
@@ -252,7 +246,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
@@ -293,15 +287,15 @@ mod tests {
     fn theme_picker_draws_swatch_rows_via_the_spec_row_hook() {
         // Given an open theme picker whose storage holds wrapped entries
         // (the same shape the spec's open hook produces).
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Picker {
+        let mut state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Theme,
         });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
         let wrapped = pickers
             .make_items(
-                jinn_domain::feat::picker::registry::THEME_ID,
-                vec![jinn_domain::feat::theme::ThemeEntry {
+                jinn_picker::THEME_ID,
+                vec![jinn_theme::ThemeEntry {
                     name: "gruvbox".to_owned(),
                     theme: state.frontend.theme.clone(),
                 }],
@@ -316,7 +310,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);
@@ -343,15 +337,15 @@ mod tests {
     fn persona_picker_draws_entry_rows_via_the_spec_row_hook() {
         // Given an open persona picker whose storage holds wrapped entries
         // (the same shape the session actor's loader produces).
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Picker {
+        let mut state = AppState::default_with_scope_focus();
+        state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Persona,
         });
-        let pickers = jinn_domain::feat::picker::registry::build_picker_registry();
+        let pickers = jinn_picker_specs::build_picker_registry();
         let wrapped = pickers
             .make_items(
-                jinn_domain::feat::picker::registry::PERSONA_ID,
-                vec![jinn_domain::feat::persona::PersonaEntry {
+                jinn_picker::PERSONA_ID,
+                vec![jinn_persona_msg::PersonaEntry {
                     name: "coder".to_owned(),
                     description: "code helper".to_owned(),
                     is_active: false,
@@ -368,7 +362,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx =
                     jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
                 super::render_picker(frame, area, &ctx);

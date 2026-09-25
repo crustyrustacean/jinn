@@ -6,13 +6,14 @@
     reason = "test code"
 )]
 
-use crate::common::app_state::{AppState, FocusScope};
+use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
-use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::ui::chat_log::history::ChatLogElement;
-use crate::feat::ui::chat_log::shared::GUTTER_WIDTH;
+use crate::protocol::ToolResultStatus;
 use crate::protocol::{ChatEntry, PinPosition};
+use jinn_chat_log_view::chat_log::GUTTER_WIDTH;
+use jinn_slices::FocusScope;
 use jinn_testutil::setup_term;
 use ratatui::style::Color;
 
@@ -23,15 +24,15 @@ const G: u16 = GUTTER_WIDTH; // = 2
 /// Chat log rendering tests need Normal scope so that the gutter cursor
 /// bar and selection highlighting are active.
 fn normal_state() -> AppState {
-    let mut s = AppState::default();
-    s.frontend.scope_stack.clear_overlays();
+    let s = AppState::default_with_scope_focus();
+    s.frontend.scope_clear_overlays();
     s
 }
 
 /// Build a compaction entry with the given summary (struct literal — no
 /// `ChatEntry::compaction(...)` constructor exists).
 fn compaction_entry(summary: &str) -> ChatEntry {
-    use crate::feat::session::chat_entry::{ChatEntryId, ChatEntryKind};
+    use crate::protocol::{ChatEntryId, ChatEntryKind};
     use crate::protocol::{ContextOverride, EntryTiming};
     ChatEntry {
         id: ChatEntryId::new(),
@@ -67,7 +68,7 @@ fn render_few_messages_bottom_aligned() {
     // Given a ChatLogElement with one user entry in a 40x10 viewport.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut().push_entry(ChatEntry::user("hello"));
         s
     };
@@ -78,7 +79,7 @@ fn render_few_messages_bottom_aligned() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -121,7 +122,7 @@ fn selected_entry_gutter_col0_has_context_fg_and_col1_has_cursor_bg() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -133,7 +134,7 @@ fn selected_entry_gutter_col0_has_context_fg_and_col1_has_cursor_bg() {
     let gutter_col0 = buffer.cell((0, 5)).expect("cell should exist");
     assert_eq!(
         gutter_col0.style().fg,
-        Some(crate::feat::theme::default_theme().gutter_context_included)
+        Some(jinn_theme::default_theme().gutter_context_included)
     );
 
     // And the selected entry's gutter col 1 has yellow fg (cursor).
@@ -144,7 +145,7 @@ fn selected_entry_gutter_col0_has_context_fg_and_col1_has_cursor_bg() {
     let unselected_col0 = buffer.cell((0, 8)).expect("cell should exist");
     assert_eq!(
         unselected_col0.style().fg,
-        Some(crate::feat::theme::default_theme().gutter_context_included)
+        Some(jinn_theme::default_theme().gutter_context_included)
     );
 
     // And the unselected entry's gutter col 1 has no yellow fg.
@@ -157,7 +158,7 @@ fn unselected_not_ignored_entry_shows_context_color() {
     // Given a ChatLogElement with 2 entries, second selected, first not ignored.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut().push_entry(ChatEntry::user("hello"));
         s.active_session_mut().push_entry(ChatEntry::user("world"));
         // push_entry auto-selects last (index 1). Entry 0 is unselected, not ignored.
@@ -170,7 +171,7 @@ fn unselected_not_ignored_entry_shows_context_color() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -182,7 +183,7 @@ fn unselected_not_ignored_entry_shows_context_color() {
     let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
     assert_eq!(
         gutter_cell.style().fg,
-        Some(crate::feat::theme::default_theme().gutter_context_included)
+        Some(jinn_theme::default_theme().gutter_context_included)
     );
 }
 
@@ -191,7 +192,7 @@ fn unselected_ignored_entry_shows_gray() {
     // Given a ChatLogElement with 2 entries, first ignored, second selected.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut()
             .push_entry(ChatEntry::user("hello").with_ignored(true));
         s.active_session_mut().push_entry(ChatEntry::user("world"));
@@ -205,7 +206,7 @@ fn unselected_ignored_entry_shows_gray() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -217,7 +218,7 @@ fn unselected_ignored_entry_shows_gray() {
     let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
     assert_eq!(
         gutter_cell.style().fg,
-        Some(crate::feat::theme::default_theme().border_unfocused)
+        Some(jinn_theme::default_theme().border_unfocused)
     );
 }
 
@@ -226,7 +227,7 @@ fn unselected_ignored_pinned_entry_shows_context_color() {
     // Given a ChatLogElement with 2 entries: first ignored+pinned, second selected.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut().push_entry(
             ChatEntry::user("hello")
                 .with_ignored(true)
@@ -243,7 +244,7 @@ fn unselected_ignored_pinned_entry_shows_context_color() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -258,7 +259,7 @@ fn unselected_ignored_pinned_entry_shows_context_color() {
     let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
     assert_eq!(
         gutter_cell.style().fg,
-        Some(crate::feat::theme::default_theme().gutter_context_included)
+        Some(jinn_theme::default_theme().gutter_context_included)
     );
 }
 
@@ -267,11 +268,12 @@ fn selected_entry_gutter_is_dark_gray_when_unfocused() {
     // Given a ChatLogElement with a selected entry, sidebar focused.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut().push_entry(ChatEntry::user("hello"));
         s.active_session_mut().push_entry(ChatEntry::user("world"));
         s.active_session_mut().select_prev_entry(); // index 0
-        s.frontend.scope_stack.push(FocusScope::SidebarPersona);
+        s.frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope());
         s
     };
 
@@ -281,7 +283,7 @@ fn selected_entry_gutter_is_dark_gray_when_unfocused() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -294,7 +296,7 @@ fn selected_entry_gutter_is_dark_gray_when_unfocused() {
     let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
     assert_eq!(
         gutter_cell.style().fg,
-        Some(crate::feat::theme::default_theme().gutter_context_included)
+        Some(jinn_theme::default_theme().gutter_context_included)
     );
 }
 
@@ -303,11 +305,11 @@ fn selected_entry_gutter_is_dark_gray_when_input_focused() {
     // Given a ChatLogElement with a selected entry, input focused.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut().push_entry(ChatEntry::user("hello"));
         s.active_session_mut().push_entry(ChatEntry::user("world"));
         s.active_session_mut().select_prev_entry(); // index 0
-        s.frontend.scope_stack.push(FocusScope::Input);
+        s.frontend.scope_push(FocusScope::Input);
         s
     };
 
@@ -317,7 +319,7 @@ fn selected_entry_gutter_is_dark_gray_when_input_focused() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -330,7 +332,7 @@ fn selected_entry_gutter_is_dark_gray_when_input_focused() {
     let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
     assert_eq!(
         gutter_cell.style().fg,
-        Some(crate::feat::theme::default_theme().gutter_context_included)
+        Some(jinn_theme::default_theme().gutter_context_included)
     );
 }
 
@@ -339,7 +341,7 @@ fn render_stores_viewport_state() {
     // Given a ChatLogElement with entries.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut().push_entry(ChatEntry::user("hello"));
         s.active_session_mut().push_entry(ChatEntry::user("world"));
         s
@@ -351,7 +353,7 @@ fn render_stores_viewport_state() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -370,7 +372,7 @@ fn render_pinned_entry_shows_pin_in_gutter() {
     // Given a ChatLogElement with one pinned user entry.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut()
             .push_entry(ChatEntry::user("hello").with_pin(PinPosition::Top));
         s
@@ -382,7 +384,7 @@ fn render_pinned_entry_shows_pin_in_gutter() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -408,7 +410,7 @@ fn render_unpinned_entry_has_no_pin_icon() {
     // Given a ChatLogElement with one unpinned user entry.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut().push_entry(ChatEntry::user("hello"));
         s
     };
@@ -419,7 +421,7 @@ fn render_unpinned_entry_has_no_pin_icon() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -445,7 +447,7 @@ fn render_pinned_multi_line_entry_shows_exactly_one_pin() {
     // Given a ChatLogElement with one pinned multi-line user entry.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut().push_entry(
             ChatEntry::user("line one\nline two\nline three").with_pin(PinPosition::Top),
         );
@@ -458,7 +460,7 @@ fn render_pinned_multi_line_entry_shows_exactly_one_pin() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -504,7 +506,7 @@ fn render_scroll_to_selected_keeps_entry_visible() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -528,7 +530,7 @@ fn render_thinking_entry_appears_above_assistant() {
     // Given a ChatLogElement with thinking then assistant entries.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut()
             .push_entry(ChatEntry::thinking("reasoning"));
         s.active_session_mut()
@@ -542,7 +544,7 @@ fn render_thinking_entry_appears_above_assistant() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -577,7 +579,7 @@ fn render_pinned_selected_entry_gutter_has_focus_accent_bg() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -600,7 +602,7 @@ fn render_pinned_unselected_entry_gutter_has_default_bg() {
     // Given a ChatLogElement with a pinned entry and an unpinned entry (unpinned selected).
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut()
             .push_entry(ChatEntry::user("pinned").with_pin(PinPosition::Top));
         s.active_session_mut()
@@ -615,7 +617,7 @@ fn render_pinned_unselected_entry_gutter_has_default_bg() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -649,7 +651,7 @@ fn render_unpinned_selected_entry_gutter_col0_no_bg_col1_has_cursor_bg() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -661,7 +663,7 @@ fn render_unpinned_selected_entry_gutter_col0_no_bg_col1_has_cursor_bg() {
     let gutter_col0 = buffer.cell((0, 9)).expect("cell should exist");
     assert_eq!(
         gutter_col0.style().fg,
-        Some(crate::feat::theme::default_theme().gutter_context_included),
+        Some(jinn_theme::default_theme().gutter_context_included),
         "unpinned selected entry gutter col 0 should have context fg"
     );
 
@@ -679,10 +681,11 @@ fn render_pinned_selected_unfocused_entry_gutter_has_border_unfocused_bg() {
     // Given a ChatLogElement with one pinned entry selected, sidebar focused.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut()
             .push_entry(ChatEntry::user("hello").with_pin(PinPosition::Top));
-        s.frontend.scope_stack.push(FocusScope::SidebarPersona);
+        s.frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope());
         s
     };
 
@@ -692,7 +695,7 @@ fn render_pinned_selected_unfocused_entry_gutter_has_border_unfocused_bg() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -716,7 +719,7 @@ fn render_long_session_shows_last_entry_at_bottom() {
     // Assistant entries are not padded, so they wrap at word boundaries.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         for i in 0..20 {
             s.active_session_mut()
                 .push_entry(ChatEntry::assistant(format!(
@@ -733,7 +736,7 @@ fn render_long_session_shows_last_entry_at_bottom() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -760,7 +763,7 @@ fn render_scroll_to_bottom_shows_full_last_entry() {
     // Given a ChatLogElement with assistant entries containing word-wrapping text.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         for i in 0..15 {
             s.active_session_mut()
                 .push_entry(ChatEntry::assistant(format!(
@@ -780,7 +783,7 @@ fn render_scroll_to_bottom_shows_full_last_entry() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -824,7 +827,7 @@ fn render_scroll_to_selected_middle_entry_adjusts_viewport() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -860,7 +863,7 @@ fn render_scroll_down_through_tall_entry_works() {
     // Given a tall entry (50 lines) in a small (10-line) viewport, scrolled to show
     // the middle of the entry.
     let mut element = ChatLogElement::new();
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     let long_text: String = (0..50)
         .map(|i| format!("line {i}"))
         .collect::<Vec<_>>()
@@ -873,7 +876,7 @@ fn render_scroll_down_through_tall_entry_works() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -883,7 +886,7 @@ fn render_scroll_down_through_tall_entry_works() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -909,7 +912,7 @@ fn render_tall_entry_snaps_when_completely_below_viewport() {
     // Given a tall entry at the end and the viewport scrolled to the top,
     // with the tall entry selected.
     let mut element = ChatLogElement::new();
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     // Push 20 short entries to fill space.
     for i in 0..20 {
         state
@@ -932,7 +935,7 @@ fn render_tall_entry_snaps_when_completely_below_viewport() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -943,7 +946,7 @@ fn render_tall_entry_snaps_when_completely_below_viewport() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -969,7 +972,7 @@ fn virtualization_populates_cache_after_render() {
     // Given a ChatLogElement with many entries.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         for i in 0..30 {
             s.active_session_mut()
                 .push_entry(ChatEntry::assistant(format!("msg {i}")));
@@ -983,7 +986,7 @@ fn virtualization_populates_cache_after_render() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1007,7 +1010,7 @@ fn expand_collapse_invalidates_and_rerenders() {
         .join("\n");
     let entry = ChatEntry::tool_result("call1", "bash", &long_content, ToolResultStatus::Success);
     let entry_id = entry.id.clone();
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().push_entry(entry);
 
     let (mut terminal, area) = setup_term(80, 30);
@@ -1016,7 +1019,7 @@ fn expand_collapse_invalidates_and_rerenders() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1040,7 +1043,7 @@ fn expand_collapse_invalidates_and_rerenders() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1065,7 +1068,7 @@ fn resize_clears_cache_and_rerenders() {
     // Given a ChatLogElement rendered at width 40.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         for i in 0..5 {
             s.active_session_mut()
                 .push_entry(ChatEntry::assistant(format!("message {i}")));
@@ -1077,7 +1080,7 @@ fn resize_clears_cache_and_rerenders() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1088,7 +1091,7 @@ fn resize_clears_cache_and_rerenders() {
     terminal2
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area2, &ctx);
         })
@@ -1121,7 +1124,7 @@ fn streaming_content_change_invalidates_cache() {
     let mut element = ChatLogElement::new();
     let (mut terminal, area) = setup_term(40, 10);
 
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().begin_streaming();
     state
         .active_session_mut()
@@ -1132,7 +1135,7 @@ fn streaming_content_change_invalidates_cache() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1153,7 +1156,7 @@ fn streaming_content_change_invalidates_cache() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1185,7 +1188,7 @@ fn render_transient_entry_has_muted_text_color() {
     // Given a ChatLogElement with a transient entry.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut()
             .push_entry(ChatEntry::transient("Welcome to jinn!"));
         s
@@ -1197,7 +1200,7 @@ fn render_transient_entry_has_muted_text_color() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1239,7 +1242,7 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1252,13 +1255,10 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
 
     // When jumping to the previous compaction from the last entry (no selection
     // -> anchor on last entry; the prev jump lands on the only compaction at index 0).
-    handle_jump_prev_entry(
-        &mut state,
-        crate::feat::session::chat_entry::ChatEntry::is_compaction,
-    );
+    handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
     assert_eq!(
         state.active_session().selected_cursor_id(),
-        Some(&compaction_id),
+        Some(compaction_id),
         "prev jump must land on the compaction entry"
     );
 
@@ -1266,7 +1266,7 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1298,7 +1298,7 @@ fn render_annotation_entry_collapsed_by_default_shows_hint() {
     use jinn_provider::UrlCitation;
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         s.active_session_mut()
             .push_entry(ChatEntry::annotation(vec![UrlCitation {
                 url: "https://example.com/a".to_owned(),
@@ -1316,7 +1316,7 @@ fn render_annotation_entry_collapsed_by_default_shows_hint() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1349,7 +1349,7 @@ fn render_annotation_entry_expanded_shows_source_title_and_url() {
     use jinn_provider::UrlCitation;
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         let entry = ChatEntry::annotation(vec![UrlCitation {
             url: "https://example.com/a".to_owned(),
             title: "Source A".to_owned(),
@@ -1369,7 +1369,7 @@ fn render_annotation_entry_expanded_shows_source_title_and_url() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1399,13 +1399,13 @@ fn render_annotation_entry_expanded_shows_source_title_and_url() {
 /// Seeds a `task` tool call entry (linked to `child_id` when given) plus an
 /// optional child session in the given phase.
 fn task_waiting_fixture(
-    child_id: Option<crate::protocol::SessionId>,
-    child_phase: Option<crate::feat::session::phase_machine::PhaseKind>,
+    child_id: Option<jinn_core_types::SessionId>,
+    child_phase: Option<jinn_session_msg::PhaseKind>,
 ) -> AppState {
-    use crate::feat::session::chat_entry::ChatEntryKind;
-    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+    use crate::protocol::ChatEntryKind;
+    use jinn_tools_msg::TASK_TOOL_NAME;
 
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     let call_id = "tc_task_render";
     let entry = ChatEntry::tool_call(call_id, TASK_TOOL_NAME, r#"{"prompt": "hi"}"#);
     let entry = {
@@ -1421,10 +1421,10 @@ fn task_waiting_fixture(
     if let (Some(child), Some(phase)) = (child_id, child_phase) {
         let child_session = state.session.get_or_create(&child);
         match phase {
-            crate::feat::session::phase_machine::PhaseKind::Sending => {
+            jinn_session_msg::PhaseKind::Sending => {
                 child_session.begin_sending();
             }
-            crate::feat::session::phase_machine::PhaseKind::Streaming => {
+            jinn_session_msg::PhaseKind::Streaming => {
                 child_session.begin_sending();
                 child_session.begin_streaming();
             }
@@ -1440,11 +1440,11 @@ fn buffer_contains(buffer: &ratatui::buffer::Buffer, needle: &str) -> bool {
 
 #[rstest::rstest]
 fn waiting_line_renders_for_pending_task_call_with_running_child() {
-    use crate::feat::session::phase_machine::PhaseKind;
+    use jinn_session_msg::PhaseKind;
 
     // Given a pending task call linked to an in-memory child in Sending phase.
     let mut element = ChatLogElement::new();
-    let child_id = crate::protocol::SessionId::new();
+    let child_id = jinn_core_types::SessionId::new();
     let state = task_waiting_fixture(Some(child_id), Some(PhaseKind::Sending));
 
     let (mut terminal, area) = setup_term(80, 12);
@@ -1453,7 +1453,7 @@ fn waiting_line_renders_for_pending_task_call_with_running_child() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1471,7 +1471,7 @@ fn waiting_line_renders_for_pending_task_call_with_running_child() {
 fn waiting_line_absent_for_non_task_tool_call() {
     // Given a pending non-task tool call entry.
     let mut element = ChatLogElement::new();
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().push_entry(ChatEntry::tool_call(
         "tc_read",
         "read",
@@ -1484,7 +1484,7 @@ fn waiting_line_absent_for_non_task_tool_call() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1500,11 +1500,11 @@ fn waiting_line_absent_for_non_task_tool_call() {
 
 #[rstest::rstest]
 fn waiting_line_absent_when_task_call_has_paired_result() {
-    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+    use jinn_tools_msg::TASK_TOOL_NAME;
 
     // Given a task call with its completed (paired) result.
     let mut element = ChatLogElement::new();
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     {
         let s = state.active_session_mut();
         s.push_entry(ChatEntry::tool_call("tc_done", TASK_TOOL_NAME, "{}"));
@@ -1522,7 +1522,7 @@ fn waiting_line_absent_when_task_call_has_paired_result() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1538,18 +1538,18 @@ fn waiting_line_absent_when_task_call_has_paired_result() {
 
 #[rstest::rstest]
 fn waiting_line_absent_when_child_not_in_memory() {
-    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+    use jinn_tools_msg::TASK_TOOL_NAME;
 
     // Given a linked task call whose child session is not loaded.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = AppState::default_with_scope_focus();
         let entry = ChatEntry::tool_call("tc_orphan", TASK_TOOL_NAME, "{}");
         let entry = {
-            use crate::feat::session::chat_entry::ChatEntryKind;
+            use crate::protocol::ChatEntryKind;
             let mut e = entry;
             if let ChatEntryKind::ToolCall { child_session, .. } = &mut e.kind {
-                *child_session = Some(crate::protocol::SessionId::new());
+                *child_session = Some(jinn_core_types::SessionId::new());
             }
             e
         };
@@ -1563,7 +1563,7 @@ fn waiting_line_absent_when_child_not_in_memory() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1581,10 +1581,10 @@ fn waiting_line_absent_when_child_not_in_memory() {
 fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
     // Given a rendered pending task call whose linked child is running.
     let mut element = ChatLogElement::new();
-    let child_id = crate::protocol::SessionId::new();
+    let child_id = jinn_core_types::SessionId::new();
     let mut state = task_waiting_fixture(
         Some(child_id.clone()),
-        Some(crate::feat::session::phase_machine::PhaseKind::Streaming),
+        Some(jinn_session_msg::PhaseKind::Streaming),
     );
 
     let (mut terminal, area) = setup_term(80, 12);
@@ -1592,7 +1592,7 @@ fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1609,7 +1609,7 @@ fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1641,15 +1641,15 @@ fn content_row(
 
 #[rstest::rstest]
 fn task_call_entry_renders_on_subagent_block() {
-    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+    use jinn_tools_msg::TASK_TOOL_NAME;
 
     // Given a session containing only a pending task call.
     let mut element = ChatLogElement::new();
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .push_entry(ChatEntry::tool_call("tc_block", TASK_TOOL_NAME, "{}"));
-    let theme = crate::feat::theme::default_theme();
+    let theme = jinn_theme::default_theme();
 
     let (mut terminal, area) = setup_term(80, 12);
 
@@ -1657,7 +1657,7 @@ fn task_call_entry_renders_on_subagent_block() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1687,13 +1687,13 @@ fn task_call_entry_renders_on_subagent_block() {
 fn non_task_call_entry_does_not_use_subagent_block() {
     // Given a session containing a non-task tool call.
     let mut element = ChatLogElement::new();
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().push_entry(ChatEntry::tool_call(
         "tc_plain",
         "read",
         r#"{"path":"a.rs"}"#,
     ));
-    let theme = crate::feat::theme::default_theme();
+    let theme = jinn_theme::default_theme();
 
     let (mut terminal, area) = setup_term(80, 12);
 
@@ -1701,7 +1701,7 @@ fn non_task_call_entry_does_not_use_subagent_block() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })
@@ -1720,11 +1720,11 @@ fn non_task_call_entry_does_not_use_subagent_block() {
 
 #[rstest::rstest]
 fn completed_task_result_shows_finished_status_row() {
-    use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+    use jinn_tools_msg::TASK_TOOL_NAME;
 
     // Given a task call with its completed success result.
     let mut element = ChatLogElement::new();
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     {
         let s = state.active_session_mut();
         s.push_entry(ChatEntry::tool_call("tc_status", TASK_TOOL_NAME, "{}"));
@@ -1735,7 +1735,7 @@ fn completed_task_result_shows_finished_status_row() {
             ToolResultStatus::Success,
         ));
     }
-    let theme = crate::feat::theme::default_theme();
+    let theme = jinn_theme::default_theme();
 
     let (mut terminal, area) = setup_term(80, 12);
 
@@ -1743,7 +1743,7 @@ fn completed_task_result_shows_finished_status_row() {
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
-            let overlay_views = crate::common::overlay_views::OverlayViews::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new(&state, &slices, &overlay_views);
             element.render(frame, area, &ctx);
         })

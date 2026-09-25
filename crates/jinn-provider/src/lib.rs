@@ -16,19 +16,15 @@ fn install_rustls_provider_for_tests() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
-mod attachment;
 mod backend;
 mod fake;
 mod input_modalities;
-mod llm_message;
 mod no_providers;
 mod openai_compat;
-mod reasoning;
 mod retry;
 mod sample;
 mod service;
 mod stream_event;
-pub mod tool_types;
 
 // Custom provider implementations (not OpenAI-compatible).
 pub mod anthropic;
@@ -37,21 +33,22 @@ pub mod google;
 pub use anthropic::AnthropicFactory;
 pub use google::GoogleFactory;
 
-pub use attachment::Attachment;
 pub use backend::{Backend, BackendError};
-pub use fake::{FakeLlmServiceFactory, ScriptedResponse, TOOL_LOOP_TRIGGER};
+pub use fake::{FakeLlmServiceFactory, HungStreamFactory, ScriptedResponse, TOOL_LOOP_TRIGGER};
 pub use input_modalities::{InputModalities, Modality};
-pub use llm_message::LlmMessage;
-pub use no_providers::{NO_PROVIDER_ID, NoProvidersAvailableFactory};
+pub use jinn_core_types::attachment::Attachment;
+pub use jinn_core_types::llm_message::LlmMessage;
+pub use jinn_core_types::reasoning::ReasoningEffort;
+pub use jinn_core_types::tool_types::{ServerToolType, ToolCall, ToolDefinition, ToolResult};
+pub use jinn_core_types::url_citation::UrlCitation;
+pub use no_providers::NoProvidersAvailableFactory;
 pub use openai_compat::{
     EndpointInfo, OpenAiCompatibleFactory, OpenAiCompatibleService, ProviderConfig, list_endpoints,
     list_endpoints_default_client,
 };
-pub use reasoning::ReasoningEffort;
 pub use sample::SampleLlmServiceFactory;
 pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
-pub use stream_event::{StopReason, StreamEvent, StreamUsage, UrlCitation};
-pub use tool_types::{ServerToolType, ToolCall, ToolDefinition, ToolResult};
+pub use stream_event::{StopReason, StreamEvent, StreamUsage};
 
 pub use retry::{NoOpOnRetry, OnRetry, RetryConfig, RetryingLlmService};
 

@@ -32,26 +32,22 @@ use std::sync::Arc;
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
-use crate::feat::session::phase_machine::PhaseKind;
-use crate::feat::session::tool_result_status::ToolResultStatus;
-use crate::feat::theme::Theme;
-use crate::feat::tools_actor::task::TASK_TOOL_NAME;
+use crate::protocol::ToolResultStatus;
 use crate::protocol::{ChatEntry, ChatEntryKind};
+use jinn_chat_log_view_msg::{
+    DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
+};
+use jinn_session_msg::PhaseKind;
+use jinn_theme::Theme;
+use jinn_tools_msg::TASK_TOOL_NAME;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use super::line_count_cache::EntryLineCache;
-use super::shared::{GUTTER_WIDTH, RenderContext};
-use super::visual_item::{
-    DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
-};
-use super::{
-    actor, annotation, assistant, compaction, error_entry, system, thinking, tool_call,
-    tool_result, transient, user,
-};
+use jinn_chat_log_view::chat_log::EntryLineCache;
+use jinn_chat_log_view::chat_log::{GUTTER_WIDTH, RenderContext, entry_to_lines};
 use viewport::ScrollState;
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.
@@ -231,7 +227,7 @@ impl<'a> HistoryRender<'a> {
     /// Must be called before `compute_line_ranges`.
     fn compute_visual_items(&mut self) {
         let session = self.state.active_session();
-        let shown_ignored_blocks = &session.ui.shown_ignored_blocks;
+        let shown_ignored_blocks = session.shown_ignored_blocks_snapshot();
         let min_collapse = self
             .state
             .frontend
@@ -240,7 +236,7 @@ impl<'a> HistoryRender<'a> {
             .unwrap_or(DEFAULT_MIN_COLLAPSE_COUNT);
         let visual_items = build_visual_items(
             self.history,
-            shown_ignored_blocks,
+            &shown_ignored_blocks,
             PROXIMITY_COUNT,
             min_collapse,
         );
@@ -472,10 +468,8 @@ impl<'a> HistoryRender<'a> {
     #[expect(clippy::expect_used, reason = "infallible")]
     fn render_visible_entries(&mut self) {
         let viewport_top = self.scroll.clamped;
-        let chat_log_active = matches!(
-            self.state.frontend.scope_stack.current(),
-            crate::common::app_state::FocusScope::Normal
-        );
+        let chat_log_active =
+            matches!(self.state.frontend.scope(), jinn_slices::FocusScope::Normal);
         let cursor_color = self.theme.focus_accent;
 
         for &vi_idx in &self.visible_indices {
@@ -609,53 +603,5 @@ impl<'a> HistoryRender<'a> {
             self.scroll.max_offset,
             &self.theme,
         );
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Entry dispatch
-// ---------------------------------------------------------------------------
-
-/// Convert a chat entry into one or more visual lines, splitting on `\n`.
-///
-/// Each entry type is delegated to its own submodule. Lines returned here are
-/// content-width only - the gutter is rendered as a separate column.
-pub fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'static>> {
-    match &entry.kind {
-        ChatEntryKind::User {
-            display, outcome, ..
-        } => user::to_lines(display, outcome, ctx),
-        ChatEntryKind::System(text) => system::to_lines(text, ctx),
-        ChatEntryKind::Error(text) => error_entry::to_lines(text, ctx),
-        ChatEntryKind::Actor { source, text } => actor::to_lines(source, text, ctx),
-        ChatEntryKind::Assistant(text) => assistant::to_lines(text, ctx),
-        ChatEntryKind::ToolCall {
-            name, arguments, ..
-        } => tool_call::to_lines(name, arguments, ctx),
-        ChatEntryKind::ToolResult {
-            name,
-            content,
-            status,
-            truncation,
-            is_alert,
-            ..
-        } => tool_result::to_lines(name, content, *status, truncation.as_ref(), *is_alert, ctx),
-        ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
-        ChatEntryKind::Annotation { citations } => annotation::to_lines(citations, ctx),
-
-        ChatEntryKind::Transient(text) => transient::to_lines(text, ctx),
-        ChatEntryKind::Compaction {
-            summary,
-            entries_compacted,
-            tokens_before,
-            tokens_after,
-            ..
-        } => compaction::to_lines(
-            summary,
-            *entries_compacted,
-            *tokens_before,
-            *tokens_after,
-            ctx,
-        ),
     }
 }

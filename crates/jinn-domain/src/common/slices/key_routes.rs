@@ -1,30 +1,15 @@
-//! Kernel re-exports of the slice keybind routing mechanics.
+//! Kernel glue for the shared slice route mechanics.
 //!
-//! The route table moved to [`jinn_slices::route`] so slice crates can
-//! register rows without depending on the kernel; this module is the
-//! historical import path inside `jinn-domain`. It also provides the
-//! kernel-side glue the mechanics cannot own: the [`Intent`] →
-//! [`EditIntent`] translation and [`AppState`]'s implementation of
-//! [`SliceActionState`].
+//! The route table and vocabulary live in [`jinn_slices::route`]. This module
+//! provides only the kernel-side [`KernelIntent`] → [`EditIntent`] translation
+//! and [`AppState`]'s implementation of [`SliceActionState`].
 
-pub use jinn_slices::route::ActionCtx;
-pub use jinn_slices::route::ActionFn;
-pub use jinn_slices::route::BindSite;
-use jinn_slices::route::EditIntent;
-pub use jinn_slices::route::InputHook;
-pub use jinn_slices::route::KeyRoutes;
-pub use jinn_slices::route::PublishClosure;
-pub use jinn_slices::route::RouteId;
-pub use jinn_slices::route::RouteOutcome;
-pub use jinn_slices::route::RouteResult;
-pub use jinn_slices::route::RouteRow;
-pub use jinn_slices::route::ScopeSignal;
-pub use jinn_slices::route::SliceActionState;
+use jinn_slices::FocusScope;
+use jinn_slices::route::{EditIntent, RouteResult, ScopeSignal, SliceActionState};
 
 use crate::common::app_state::AppState;
-use crate::common::app_state::FocusScope;
-use crate::protocol::intent::Intent;
 use crate::protocol::intent::IntentResult;
+use crate::protocol::intent::KernelIntent;
 
 impl SliceActionState for AppState {
     fn active_session_title(&self) -> Option<String> {
@@ -37,7 +22,26 @@ impl SliceActionState for AppState {
 
     fn push_session_error(&mut self, message: &str) {
         self.active_session_mut()
-            .push_entry(crate::feat::session::chat_entry::ChatEntry::error(message));
+            .push_entry(crate::protocol::ChatEntry::error(message));
+    }
+
+    fn active_session_cwd(&self) -> std::path::PathBuf {
+        self.active_session().cwd().to_owned()
+    }
+
+    fn publish_session_cwd(
+        &self,
+        session_id: jinn_core_types::SessionId,
+        cwd: std::path::PathBuf,
+    ) -> jinn_slices::PublishClosure {
+        crate::common::bridge::Bridge::publish_closure(jinn_session_lifecycle_msg::SetSessionCwd {
+            session_id,
+            cwd,
+        })
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
@@ -47,15 +51,16 @@ impl SliceActionState for AppState {
 /// `None` means the intent is not an editing surface action — hooks are
 /// never consulted for it.
 #[must_use]
-pub fn as_edit_intent(intent: &Intent) -> Option<EditIntent> {
+pub fn as_edit_intent(intent: &KernelIntent) -> Option<EditIntent> {
     match intent {
-        Intent::InsertChar { ch } => Some(EditIntent::InsertChar(*ch)),
-        Intent::DeleteGrapheme => Some(EditIntent::DeleteBackward),
-        Intent::DeleteGraphemeForward => Some(EditIntent::DeleteForward),
-        Intent::MoveCursorLeft => Some(EditIntent::CursorLeft),
-        Intent::MoveCursorRight => Some(EditIntent::CursorRight),
-        Intent::MoveCursorToStart => Some(EditIntent::CursorHome),
-        Intent::MoveCursorToEnd => Some(EditIntent::CursorEnd),
+        KernelIntent::InsertChar { ch } => Some(EditIntent::InsertChar(*ch)),
+        KernelIntent::DeleteGrapheme => Some(EditIntent::DeleteBackward),
+        KernelIntent::DeleteGraphemeForward => Some(EditIntent::DeleteForward),
+        KernelIntent::MoveCursorLeft => Some(EditIntent::CursorLeft),
+        KernelIntent::MoveCursorRight => Some(EditIntent::CursorRight),
+        KernelIntent::MoveCursorToStart => Some(EditIntent::CursorHome),
+        KernelIntent::MoveCursorToEnd => Some(EditIntent::CursorEnd),
+        KernelIntent::PasteText { text } => Some(EditIntent::Paste(text.clone())),
         _ => None,
     }
 }
@@ -84,18 +89,17 @@ pub fn from_route_result(result: RouteResult) -> IntentResult {
 
 /// Applies a route action's scope transition to the scope stack.
 ///
-/// The handler is the exempt `scope_stack` writer; this is the only
+/// The handler is the exempt scope-stack writer; this is the only
 /// place a slice-requested transition lands.
 pub fn apply_scope_signal(result: &mut IntentResult, state: &mut AppState) {
     let Some(signal) = result.scope_signal.take() else {
         return;
     };
     match signal {
-        ScopeSignal::Push(id) => state.frontend.scope_stack.push(FocusScope::Dynamic(id)),
+        ScopeSignal::Push(id) => state.frontend.scope_push(FocusScope::Dynamic(id)),
         ScopeSignal::PopIf(id) => {
-            if matches!(state.frontend.scope_stack.current(), FocusScope::Dynamic(cur) if *cur == id)
-            {
-                state.frontend.scope_stack.pop();
+            if matches!(&state.frontend.scope(), FocusScope::Dynamic(cur) if *cur == id) {
+                state.frontend.scope_pop();
             }
         }
     }

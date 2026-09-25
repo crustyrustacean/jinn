@@ -9,81 +9,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session::token_stats::TokenStats;
-use crate::feat::ui::status_bar::turn_counter;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
+use jinn_session_state::ChatSessionState;
+use jinn_session_state::compute_turn_count;
+use jinn_token_count_msg::{TokenStats, TreeAggregateStats};
 
-/// Aggregate statistics for an entire session tree.
-///
-/// Sums tokens, cost, and turns across ALL sessions in the tree (root + all
-/// descendants), regardless of which session is currently active.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct TreeAggregateStats {
-    /// Total tokens sent across all sessions in the tree.
-    pub total_sent: u64,
-    /// Total tokens received across all sessions in the tree.
-    pub total_received: u64,
-    /// Total cost across all sessions in the tree.
-    pub total_cost: f64,
-    /// Total turns across all sessions in the tree.
-    pub total_turns: u32,
-    /// Number of sessions in the tree.
-    pub session_count: usize,
-    /// Effective sent total (provider-reported prompt_tokens else estimate).
-    pub effective_sent: u64,
-    /// Sum of provider-reported prompt_tokens over measured turns.
-    pub measured_sent: u64,
-    /// Sum of provider-reported cache-hit counts.
-    pub cached_total: u64,
-}
-
-/// A lightweight snapshot of an archived session's stats.
-///
-/// Created at archive time, before the session is removed from the in-memory
-/// `SessionMap`. Used by [`aggregate_tree_stats`] to include archived sessions
-/// in the tree summary without requiring disk I/O.
-#[derive(Debug, Clone)]
-pub struct FrozenTreeNode {
-    /// The archived session's ID.
-    pub session_id: SessionId,
-    /// Parent session ID - `None` for root sessions.
-    pub parent_session_id: Option<SessionId>,
-    /// Total tokens sent across all requests in this session.
-    pub total_sent: u64,
-    /// Total tokens received across all responses in this session.
-    pub total_received: u64,
-    /// Total cost in USD across all requests in this session.
-    pub total_cost: f64,
-    /// Total turns (user messages) in this session.
-    pub total_turns: u32,
-    /// Effective sent total (provider-reported prompt_tokens else estimate).
-    pub effective_sent: u64,
-    /// Sum of provider-reported prompt_tokens over measured turns.
-    pub measured_sent: u64,
-    /// Sum of provider-reported cache-hit counts.
-    pub cached_total: u64,
-}
-
-/// Create a `FrozenTreeNode` snapshot from a live session.
-///
-/// Computes token stats, cost, and turn count from the session's current state.
-/// Used by the archive flow to preserve stats before the session is removed
-/// from memory.
-pub fn snapshot_frozen_node(session: &ChatSessionState) -> FrozenTreeNode {
-    let token_stats = TokenStats::from_ledger(session.token_ledger());
-    FrozenTreeNode {
-        session_id: session.session_id().clone(),
-        parent_session_id: session.parent_session().clone(),
-        total_sent: token_stats.total_sent,
-        total_received: token_stats.total_received,
-        total_cost: TokenStats::total_cost(session.token_ledger()),
-        total_turns: turn_counter::compute_turn_count(session.history(), session.fork_ordinal()),
-        effective_sent: token_stats.effective_sent,
-        measured_sent: token_stats.measured_sent,
-        cached_total: token_stats.cached_total,
-    }
-}
+pub use jinn_session_state::{snapshot_frozen_node, snapshot_frozen_node_from_snapshot};
+pub use jinn_session_store_msg::FrozenTreeNode;
 
 /// Find the root of the session tree containing `session_id`.
 ///
@@ -200,8 +132,7 @@ pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
         stats.total_sent += token_stats.total_sent;
         stats.total_received += token_stats.total_received;
         stats.total_cost += TokenStats::total_cost(session.token_ledger());
-        stats.total_turns +=
-            turn_counter::compute_turn_count(session.history(), session.fork_ordinal());
+        stats.total_turns += compute_turn_count(session.history(), session.fork_ordinal());
         stats.effective_sent += token_stats.effective_sent;
         stats.measured_sent += token_stats.measured_sent;
         stats.cached_total += token_stats.cached_total;

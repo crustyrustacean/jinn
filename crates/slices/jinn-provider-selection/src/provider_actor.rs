@@ -1,0 +1,1563 @@
+//! Provider actor — applies model switches, merges model caches, and
+//! loads picker entries.
+//!
+//! Subscribes to provider-related commands and events, writes the
+//! provider cell (model cache, alloy mode, endpoint fetch state) and the
+//! provider/endpoint picker fields (the picker render/navigation surface
+//! on `FrontendState`), and emits events for other actors to react to.
+//!
+//! # State ownership
+//!
+//! This actor **owns** the provider cell
+//! ([`ProviderCell`](jinn_provider_selection_msg::ProviderCell)) and is
+//! the writer of the provider/endpoint picker `SelectionState`s on
+//! `FrontendState` (the IntentHandler is the exempt sync writer for
+//! navigation).
+//!
+//! # Lock discipline
+//!
+//! All handlers follow the same pattern: snapshot what is needed under
+//! the state read lock → release → mutate the cell → then emit. Never
+//! hold a lock during emission, and never hold the state guard across
+//! the async endpoint fetch.
+
+use error_stack::Report;
+use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_domain::common::state::State;
+use jinn_picker::ENDPOINT_ID;
+use jinn_picker_specs::build_picker_registry;
+use jinn_provider_config::ModelCache;
+use jinn_provider_config::ProviderRegistry;
+use jinn_provider_config::{InputModalities, Modality, ModelInfo, ProvidersConfig};
+use jinn_provider_selection_msg::endpoint::EndpointEntry;
+use jinn_provider_selection_msg::{
+    LoadEndpointPickerEntries, LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed,
+    ProviderCell, ProviderSwitch, ProviderSwitched, RefreshEndpointPickerEntries,
+};
+use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
+use trouper::context::MsgCtx;
+use trouper::registry::RegistryError;
+
+use crate::endpoint_loader::{
+    build_endpoint_entries, fetch_endpoints, resolve_openrouter_target,
+    unavailable_endpoint_entries,
+};
+use crate::loader::load_provider_picker_items;
+
+/// The provider actor.
+///
+/// Subscribes to provider-related commands, mutates the provider cell and
+/// the picker fields, and emits events via the bus.
+pub struct ProviderActor {
+    /// Shared application state.
+    state: State,
+    /// Runtime services (provider registry, API keys, LLM service factory).
+    deps: ActorDeps,
+    /// The provider cell — the shared model-cache + endpoint-fetch payload.
+    provider_cell: jinn_slices::TypedCell<ProviderCell>,
+    /// In-memory, per-model cache of OpenRouter routing endpoints for the
+    /// application's lifetime (not persisted to disk). Keyed by resolved model
+    /// id; value is the parsed upstream list plus the fetch timestamp. The
+    /// picker serves from this on open and re-fetches on-demand via `<c-r>`.
+    endpoints_cache:
+        std::collections::HashMap<String, (Vec<jinn_provider::EndpointInfo>, jiff::Timestamp)>,
+}
+
+/// Dependencies for [`ProviderActor`].
+#[derive(Clone)]
+pub struct ProviderActorDeps {
+    /// Shared application state.
+    pub state: State,
+    /// Actor dependencies (services including bus).
+    pub deps: ActorDeps,
+    /// The provider cell handle.
+    pub provider_cell: jinn_slices::TypedCell<ProviderCell>,
+}
+
+impl ServiceActor for ProviderActor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "ServiceActor::start is async by trait contract"
+    )]
+    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
+        // Never called: spawned via `spawn`'s start_with (typed deps can't
+        // ride the JSON args).
+        Err(Report::new(RegistryError::InvalidSpec).attach("ProviderActor spawns via start_with"))
+    }
+}
+
+/// Builds the transient transcript message for a model refresh.
+fn models_refresh_transcript(event: &ModelsRefreshed) -> String {
+    if event.results.is_empty() && event.errors.is_empty() {
+        return "Models refreshed: no providers found".to_owned();
+    }
+
+    let mut providers: Vec<&str> = event
+        .results
+        .keys()
+        .chain(event.errors.keys())
+        .map(String::as_str)
+        .collect();
+    providers.sort_unstable();
+    providers.dedup();
+
+    let rows = providers
+        .into_iter()
+        .map(|provider| {
+            if let Some(models) = event.results.get(provider) {
+                format!("| {provider} | {} | ✅ |", models.len())
+            } else if let Some(error) = event.errors.get(provider) {
+                format!("| {provider} | 0 | ❌ {error} |")
+            } else {
+                String::new()
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut body = String::new();
+    for row in rows {
+        body.push_str(&row);
+        body.push('\n');
+    }
+    format!("| Provider | Models | Status |\n|----------|--------|--------|\n{body}")
+}
+
+/// Static path the provider actor spawns at (one instance per process).
+pub const PROVIDER_ACTOR_PATH: &str = "jinn.provider.actor";
+
+impl ProviderActor {
+    /// Spawns the provider actor onto the trouper system; subscriptions
+    /// are live when this returns.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "port convention: spawn takes owned deps and clones into start_with"
+    )]
+    /// # Panics
+    ///
+    /// Panics if the actor's path is already taken or its topic
+    /// subscription fails — both mean a wiring bug at composition.
+    pub fn spawn(system: &trouper::system::ActorSystem, deps: ProviderActorDeps) -> ActorPath {
+        let path = ActorPath::new(PROVIDER_ACTOR_PATH);
+        trouper::builder::spawn_service_builder::<Self>(system)
+            .at(path.clone())
+            .start_with({
+                let deps = deps.clone();
+                move || {
+                    let deps = deps.clone();
+                    Box::pin(async move {
+                        Ok(Self {
+                            state: deps.state,
+                            deps: deps.deps,
+                            provider_cell: deps.provider_cell,
+                            endpoints_cache: std::collections::HashMap::new(),
+                        })
+                    })
+                }
+            })
+            .handles::<ProviderSwitch>()
+            .handles::<LoadProviderPickerEntries>()
+            .handles::<LoadEndpointPickerEntries>()
+            .handles::<RefreshEndpointPickerEntries>()
+            .handles::<ModelsRefreshed>()
+            .handles::<ModelCacheLoaded>()
+            .mailbox(64, trouper::inbox::OverloadPolicy::Block)
+            .start();
+        path
+    }
+}
+
+impl MsgHandler<ProviderSwitch> for ProviderActor {
+    async fn handle(&mut self, msg: &ProviderSwitch, _ctx: &mut MsgCtx<'_>) {
+        self.handle_provider_switch(msg);
+        self.publish(ProviderSwitched {
+            session_id: msg.session_id.clone(),
+            provider_name: msg.provider_id.to_string(),
+        })
+        .await;
+    }
+}
+
+impl MsgHandler<LoadProviderPickerEntries> for ProviderActor {
+    async fn handle(&mut self, _msg: &LoadProviderPickerEntries, _ctx: &mut MsgCtx<'_>) {
+        self.handle_load_provider_picker_entries();
+    }
+}
+
+impl MsgHandler<LoadEndpointPickerEntries> for ProviderActor {
+    async fn handle(&mut self, _msg: &LoadEndpointPickerEntries, _ctx: &mut MsgCtx<'_>) {
+        self.handle_load_endpoint_picker_entries(false).await;
+    }
+}
+
+impl MsgHandler<RefreshEndpointPickerEntries> for ProviderActor {
+    async fn handle(&mut self, _msg: &RefreshEndpointPickerEntries, _ctx: &mut MsgCtx<'_>) {
+        self.handle_load_endpoint_picker_entries(true).await;
+    }
+}
+
+impl MsgHandler<ModelsRefreshed> for ProviderActor {
+    async fn handle(&mut self, msg: &ModelsRefreshed, _ctx: &mut MsgCtx<'_>) {
+        self.handle_models_refreshed(msg);
+    }
+}
+
+impl MsgHandler<ModelCacheLoaded> for ProviderActor {
+    async fn handle(&mut self, msg: &ModelCacheLoaded, _ctx: &mut MsgCtx<'_>) {
+        self.handle_model_cache_loaded(&msg.cache);
+    }
+}
+
+impl BusPublish for ProviderActor {
+    fn bus(&self) -> &jinn_domain::common::services::bus_service::BusService {
+        &self.deps.services.bus
+    }
+}
+
+impl ProviderActor {
+    /// ProviderSwitch: update session profile and emit ProviderSwitched event.
+    fn handle_provider_switch(&self, payload: &ProviderSwitch) {
+        self.state.with_session(|view| {
+            view.session
+                .map()
+                .get_or_create(&payload.session_id)
+                .set_model(payload.provider_id.clone());
+        });
+    }
+
+    /// LoadProviderPickerEntries: reload the provider picker entries from
+    /// the current model cache + registry.
+    fn handle_load_provider_picker_entries(&self) {
+        let (model_cache, theme, model_selection, alloy_mode) = {
+            let s = self.state.read();
+            let theme = s.frontend.theme.clone();
+            let model_selection = s.active_session().profile().model.clone();
+            (None, theme, model_selection, self.alloy_mode())
+        };
+        let model_cache = model_cache.or_else(|| self.model_cache());
+        let picker = build_provider_picker(
+            &self.deps.services,
+            model_cache.as_ref(),
+            &theme,
+            &model_selection,
+            alloy_mode,
+        );
+        self.state.with_pickers(|p| {
+            p.provider_picker = picker;
+        });
+    }
+
+    /// ModelsRefreshed: update model cache and reload provider picker entries.
+    fn handle_models_refreshed(&self, event: &ModelsRefreshed) {
+        let now = jiff::Timestamp::now();
+        let mut cache = ModelCache {
+            entries: event.results.clone(),
+            last_updated_at: Some(now),
+        };
+        {
+            let registry = self.deps.services.provider_registry.read();
+            merge_context_lengths_from_registry(&mut cache, &registry);
+        }
+        let models_dev = jinn_provider_config::ModelsDevData::load(
+            &self.deps.services.paths.models_dev_user_path(),
+            &self.deps.services.paths.models_dev_system_path(),
+        );
+        merge_models_dev_data(&mut cache, &models_dev);
+        // Config overrides apply last so explicit per-model values beat
+        // models.dev enrichment (which unconditionally stamps the Image bit).
+        {
+            let registry = self.deps.services.provider_registry.read();
+            apply_config_overrides(&mut cache, registry.config());
+        }
+        // Merge remote models into the registry so create_factory() can find them.
+        self.deps.services.provider_registry.merge_cache(&cache);
+        self.store_model_cache(cache);
+        self.handle_load_provider_picker_entries();
+        self.state.with_session(|view| {
+            let session = view.session.map().get_or_create(&event.session_id);
+            session.push_entry(jinn_core_types::ChatEntry::transient(
+                models_refresh_transcript(event),
+            ));
+        });
+    }
+
+    /// ModelCacheLoaded: restore model cache from disk and reload picker entries.
+    fn handle_model_cache_loaded(&self, cache: &ModelCache) {
+        let mut cache = cache.clone();
+        {
+            let registry = self.deps.services.provider_registry.read();
+            merge_context_lengths_from_registry(&mut cache, &registry);
+        }
+        let models_dev = jinn_provider_config::ModelsDevData::load(
+            &self.deps.services.paths.models_dev_user_path(),
+            &self.deps.services.paths.models_dev_system_path(),
+        );
+        merge_models_dev_data(&mut cache, &models_dev);
+        // Config overrides apply last so explicit per-model values beat
+        // models.dev enrichment (which unconditionally stamps the Image bit).
+        {
+            let registry = self.deps.services.provider_registry.read();
+            apply_config_overrides(&mut cache, registry.config());
+        }
+        // Merge remote models into the registry so create_factory() can find them.
+        self.deps.services.provider_registry.merge_cache(&cache);
+        self.store_model_cache(cache);
+        self.handle_load_provider_picker_entries();
+    }
+
+    /// Writes the merged cache into the provider cell.
+    fn store_model_cache(&self, cache: ModelCache) {
+        self.provider_cell.update(|cell| {
+            cell.model_cache = Some(cache);
+        });
+    }
+
+    /// The current model cache, if the cell carries one.
+    fn model_cache(&self) -> Option<ModelCache> {
+        self.provider_cell.read().model_cache.clone()
+    }
+
+    /// The current alloy-selection mode.
+    fn alloy_mode(&self) -> bool {
+        self.provider_cell.read().is_alloy_mode()
+    }
+
+    /// Resolve the active model's backend and either serve OpenRouter routing
+    /// endpoints from the in-memory cache or fetch them, then write the picker
+    /// entries, fetch timestamp, and clear the loading flag.
+    ///
+    /// `force` is true for `<c-r>` refresh (always re-fetch) and false for picker
+    /// open (serve from cache when present). The backend gate lives here (the
+    /// actor owns `Services`); the picker-open validator only checks `Single`.
+    ///
+    /// Every terminal branch writes back all three: items, fetched_at, and
+    /// loading=false — so the spinner never sticks on success, error, or the
+    /// non-OpenRouter placeholder path.
+    async fn handle_load_endpoint_picker_entries(&mut self, force: bool) {
+        // Snapshot what we need under the read lock, then release it before
+        // the async network fetch.
+        let (model, pinned, theme) = {
+            let s = self.state.read();
+            let session = s.active_session();
+            let model = session.profile().model.clone();
+            let pinned = session.profile().endpoint.clone();
+            let theme = s.frontend.theme.clone();
+            (model, pinned, theme)
+        };
+
+        let Some(target) = resolve_openrouter_target(&self.deps.services, &model) else {
+            // Not served via OpenRouter (or an alloy): render the placeholder,
+            // clear loading, and leave both the cache and fetched_at untouched
+            // (this path never fetched anything).
+            let entries = unavailable_endpoint_entries(theme, pinned.as_ref());
+            self.write_endpoint_items(entries);
+            self.provider_cell.update(|cell| {
+                cell.endpoint_loading = false;
+            });
+            return;
+        };
+
+        let key = target.model_id().to_owned();
+
+        // Cache hit on a non-forced open: rebuild entries from the cached
+        // upstream list (theme/pin re-derived), no network call.
+        if !force && let Some((endpoints, ts)) = self.endpoints_cache.get(&key).cloned() {
+            let entries = build_endpoint_entries(&endpoints, &theme, pinned.as_ref());
+            self.write_endpoint_items(entries);
+            self.provider_cell.update(|cell| {
+                cell.endpoint_fetched_at = Some(ts);
+                cell.endpoint_loading = false;
+            });
+            return;
+        }
+
+        // Cache miss or forced refresh: fetch, store on success, build.
+        let now = jiff::Timestamp::now();
+        let (entries, fetched_at) = match fetch_endpoints(&target).await {
+            Ok(endpoints) => {
+                self.endpoints_cache.insert(key, (endpoints.clone(), now));
+                (
+                    build_endpoint_entries(&endpoints, &theme, pinned.as_ref()),
+                    Some(now),
+                )
+            }
+            // On error: sentinel only, cache untouched, keep prior fetched_at.
+            Err(()) => (
+                vec![EndpointEntry::auto_route(pinned.is_none(), theme)],
+                None,
+            ),
+        };
+
+        self.write_endpoint_items(entries);
+        self.provider_cell.update(|cell| {
+            // Only stamp fetched_at on a successful fetch; on error leave it.
+            if let Some(at) = fetched_at {
+                cell.endpoint_fetched_at = Some(at);
+            }
+            cell.endpoint_loading = false;
+        });
+    }
+
+    /// Wraps `entries` through the endpoint spec's hooks and writes them
+    /// into the endpoint picker (the render/navigation surface).
+    fn write_endpoint_items(&self, entries: Vec<EndpointEntry>) {
+        let wrapped = build_picker_registry()
+            .make_items(ENDPOINT_ID, entries)
+            .unwrap_or_default();
+        self.state.with_pickers(|p| {
+            p.endpoint_picker.set_items(wrapped);
+        });
+    }
+}
+
+/// Builds the provider picker items from the registry/cache/theme/model
+/// snapshot and returns them wrapped through the spec's hooks.
+fn build_provider_picker(
+    services: &jinn_domain::Services,
+    model_cache: Option<&ModelCache>,
+    theme: &jinn_theme::Theme,
+    model_selection: &jinn_core_types::ModelSelection,
+    alloy_mode: bool,
+) -> jinn_selection_widget::SelectionState<
+    jinn_picker::PickerEntry<jinn_provider_selection_msg::ProviderPickerEntry>,
+> {
+    let mut picker = jinn_selection_widget::SelectionState::new();
+    load_provider_picker_items(
+        services,
+        &mut picker,
+        model_cache,
+        theme,
+        model_selection,
+        alloy_mode,
+    );
+    picker
+}
+
+/// Merge `context_length` from the registry's resolved providers into the
+/// model cache, overwriting API-discovered values.
+///
+/// Config precedence: `providers.toml` values (per-model `model_info`, then
+/// block-level) beat API-discovered values, which in turn beat models.dev.
+/// The registry's resolved providers already carry the config-side value, so
+/// a `Some` here always wins; registry `None` leaves the cache value alone.
+fn merge_context_lengths_from_registry(cache: &mut ModelCache, registry: &ProviderRegistry) {
+    for provider in registry.providers() {
+        let Some(registry_ctx) = provider.context_length else {
+            continue;
+        };
+        let Some(models) = cache.entries.get_mut(&provider.name) else {
+            continue;
+        };
+        for model in models.iter_mut() {
+            if model.id == provider.model {
+                model.context_length = Some(registry_ctx);
+            }
+        }
+    }
+}
+
+/// Merge `context_length` and input modalities from the models.dev reference
+// data into the model cache, filling in `None` slots where neither the API nor
+// `providers.toml` provided a value.
+//
+// This is the lowest-priority merge: only `None` entries are filled,
+// and existing values from the API or `providers.toml` are never overwritten.
+//
+// Modality stamping is unconditional (idempotent `insert`): a stale on-disk
+// cache that predates the modalities field gets re-enriched from models.dev
+// on every load, so the Image bit is never permanently lost across upgrades.
+fn merge_models_dev_data(cache: &mut ModelCache, models_dev: &jinn_provider_config::ModelsDevData) {
+    for models in cache.entries.values_mut() {
+        for model in models.iter_mut() {
+            models_dev.enrich(model);
+        }
+    }
+}
+
+/// Apply hand-authored per-model overrides from `providers.toml` onto the
+/// model cache, and inject entries for static models that discovery never returned.
+///
+/// This is the highest-priority merge: explicit config values replace both
+/// API-discovered and models.dev values. Config `context_length` fills `None`
+/// slots (falling back to what discovery produced); config `input_modalities`
+/// replace the discovered value outright when set.
+///
+/// Models that never appear in the cache get a new entry (so the status bar,
+/// compaction gate, and attachment gate can resolve them); find-or-insert
+/// semantics keep repeated applications idempotent.
+fn apply_config_overrides(cache: &mut ModelCache, config: &ProvidersConfig) {
+    for (name, entry) in &config.providers {
+        for info in &entry.model_info {
+            let block_ctx = info.context_length.or(entry.context_length);
+            let models = cache.entries.entry(name.clone()).or_default();
+            match models.iter_mut().find(|m| m.id == info.id) {
+                Some(model) => {
+                    if block_ctx.is_some() {
+                        model.context_length = block_ctx;
+                    }
+                    if let Some(modalities) = parse_modalities(info.input_modalities.as_deref()) {
+                        model.input_modalities = modalities;
+                    }
+                }
+                None => {
+                    models.push(ModelInfo {
+                        id: info.id.clone(),
+                        context_length: block_ctx,
+                        input_modalities: parse_modalities(info.input_modalities.as_deref())
+                            .unwrap_or_else(InputModalities::text),
+                    });
+                }
+            }
+        }
+
+        // Static models with only a block-level context_length (no
+        // `model_info` entry) still need a cache entry so the status bar and
+        // compaction gate can resolve them when discovery never returned them.
+        if entry.context_length.is_some() {
+            inject_block_level_static_models(cache, name, entry);
+        }
+    }
+}
+
+/// Inserts cache entries for configured models that discovery never returned,
+/// carrying the block-level `context_length`.
+///
+/// Text-only modalities are the conservative default; models.dev enrichment
+/// (applied earlier in the pipeline) has already stamped the `Image` bit for
+/// any model it knows.
+fn inject_block_level_static_models(
+    cache: &mut ModelCache,
+    name: &str,
+    entry: &jinn_provider_config::ProviderEntry,
+) {
+    let models = cache.entries.entry(name.to_owned()).or_default();
+    for id in &entry.models {
+        if !models.iter().any(|m| &m.id == id) {
+            models.push(ModelInfo {
+                id: id.clone(),
+                context_length: entry.context_length,
+                input_modalities: InputModalities::text(),
+            });
+        }
+    }
+}
+
+/// Parses config modality strings ("text", "image") into `InputModalities`.
+/// Unknown strings log a warning and are ignored; `None` (field unset)
+/// returns `None` so the discovered value is kept.
+fn parse_modalities(spec: Option<&[String]>) -> Option<InputModalities> {
+    let spec = spec?;
+    let mut out = InputModalities::default();
+    for s in spec {
+        match s.as_str() {
+            "text" => out.insert(Modality::Text),
+            "image" => out.insert(Modality::Image),
+            other => tracing::warn!(
+                modality = other,
+                "unknown input modality in providers.toml model_info"
+            ),
+        }
+    }
+    Some(out)
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use std::collections::BTreeMap;
+
+    use jinn_domain::AppState;
+    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_domain::common::state::State;
+    use jinn_domain::feat::ui::picker_states::PickerExt;
+    use jinn_provider_config::{
+        InputModalities, Modality, ModelCache, ModelInfo, ProviderEntry, ProviderRegistry,
+        ProvidersConfig,
+    };
+    use jinn_provider_selection_msg::{ProviderCell, provider_state_slot};
+
+    use super::{
+        ModelCacheLoaded, ModelsRefreshed, PROVIDER_ACTOR_PATH, ProviderActor, ProviderActorDeps,
+    };
+    use jinn_core_types::model_selection::ModelSelection;
+    use jinn_domain::common::actor_deps::ActorDeps;
+    use jinn_provider_selection_msg::LoadProviderPickerEntries;
+    use jinn_provider_selection_msg::ProviderSwitched;
+    use trouper::actor::ActorPath;
+
+    /// The harness + state + deps pair, with the provider cell registered
+    /// on the SAME `Services` the actor holds (harness `services()` mints a
+    /// fresh registry per call, so the cell must be seeded once and the
+    /// resulting `Services` threaded through).
+    struct Ctx {
+        harness: TestHarness,
+        state: State,
+        deps: ActorDeps,
+    }
+
+    impl Ctx {
+        fn cell(&self) -> jinn_slices::TypedCell<ProviderCell> {
+            self.deps
+                .services
+                .slices
+                .reader(&provider_state_slot())
+                .expect("provider cell registered")
+        }
+
+        fn spawn_provider_actor(&self) {
+            ProviderActor::spawn(
+                &self.deps.services.trouper_system,
+                ProviderActorDeps {
+                    deps: self.deps.clone(),
+                    state: self.state.clone(),
+                    provider_cell: self.cell(),
+                },
+            );
+        }
+
+        fn cell_model_cache(&self) -> Option<ModelCache> {
+            self.cell().read().model_cache.clone()
+        }
+    }
+
+    async fn create_ctx() -> Ctx {
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        let _ = deps
+            .services
+            .slices
+            .register(provider_state_slot(), ProviderCell::default());
+        let state = State::new(AppState::default());
+        Ctx {
+            harness,
+            state,
+            deps,
+        }
+    }
+
+    fn sample_config() -> ProvidersConfig {
+        ProvidersConfig {
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                },
+            )]),
+            aliases: vec![],
+            default_provider: None,
+        }
+    }
+
+    fn cache_with_ollama_llama3(ctx: Option<u32>) -> ModelCache {
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: ctx,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+        cache
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_sets_model_cache_in_cell() {
+        // Given a provider actor and a registry with a provider.
+        let ctx = create_ctx().await;
+        let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
+        ctx.deps.services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        let cache = cache_with_ollama_llama3(Some(8192));
+
+        // When publishing ModelCacheLoaded via bus.
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
+
+        // Then the model cache is set in the cell.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let loaded = ctx
+            .cell_model_cache()
+            .expect("actor should have processed the event");
+        assert_eq!(loaded.entries["ollama"].len(), 1);
+        assert_eq!(loaded.entries["ollama"][0].id, "llama3");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_preserves_timestamp() {
+        // Given a provider actor with a cache that has a timestamp.
+        let ctx = create_ctx().await;
+        let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
+        ctx.deps.services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        let ts = jiff::Timestamp::now();
+        let mut cache = cache_with_ollama_llama3(None);
+        cache.last_updated_at = Some(ts);
+
+        // When publishing ModelCacheLoaded via bus.
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the timestamp is preserved in the cell.
+        let loaded = ctx.cell_model_cache().expect("cache set");
+        assert!(loaded.last_updated_at.is_some());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_fills_context_length_from_registry_when_api_returns_none() {
+        // Given a registry with zai provider that has context_length: Some(128_000).
+        let config = ProvidersConfig {
+            providers: BTreeMap::from([(
+                "zai".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "zai".to_owned(),
+                    models: vec!["zai-1.5".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: Some(128_000),
+                },
+            )]),
+            aliases: vec![],
+            default_provider: None,
+        };
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
+        let registry = ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        // When publishing ModelsRefreshed with zai model that has context_length: None.
+        let mut results = std::collections::HashMap::new();
+        results.insert(
+            "zai".to_owned(),
+            vec![ModelInfo {
+                id: "zai-1.5".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        let event = ModelsRefreshed {
+            session_id: ctx.state.read().session.active_session_id().clone(),
+            results,
+            errors: std::collections::HashMap::new(),
+        };
+        ctx.harness.publish(event).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the model cache has context_length from the registry.
+        let cache = ctx.cell_model_cache().expect("cache should be set");
+        assert_eq!(cache.entries["zai"][0].context_length, Some(128_000));
+
+        // And the model is registered in the provider registry.
+        let resolved = services
+            .provider_registry
+            .get(&jinn_provider_config::ProviderId::new(
+                "zai/zai-1.5".to_owned(),
+            ));
+        assert!(
+            resolved.is_some(),
+            "model should be in registry after ModelsRefreshed"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_appends_transient_result_to_session_history() {
+        // Given a provider actor and an empty session.
+        let ctx = create_ctx().await;
+        ctx.spawn_provider_actor();
+        let session_id = ctx.state.read().session.active_session_id().clone();
+        let event = ModelsRefreshed {
+            session_id: session_id.clone(),
+            results: std::collections::HashMap::from([(
+                "ollama".to_owned(),
+                vec![ModelInfo {
+                    id: "llama3".to_owned(),
+                    context_length: Some(8192),
+                    input_modalities: InputModalities::text(),
+                }],
+            )]),
+            errors: std::collections::HashMap::new(),
+        };
+
+        // When publishing the refresh result.
+        ctx.harness.publish(event).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the session history contains one transient refresh entry.
+        let state = ctx.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert_eq!(session.history().len(), 1);
+        assert!(matches!(
+            &session.history()[0].kind,
+            jinn_core_types::ChatEntryKind::Transient(content)
+                if content.contains("ollama") && content.contains('1')
+        ));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_block_config_beats_api_value() {
+        // Given a registry with ollama provider that has context_length: Some(4096).
+        let config = ProvidersConfig {
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: Some(4096),
+                },
+            )]),
+            aliases: vec![],
+            default_provider: None,
+        };
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
+        let registry = ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        // When publishing ModelsRefreshed where API returns context_length: Some(8192).
+        let mut results = std::collections::HashMap::new();
+        results.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: Some(8192),
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        let event = ModelsRefreshed {
+            session_id: ctx.state.read().session.active_session_id().clone(),
+            results,
+            errors: std::collections::HashMap::new(),
+        };
+        ctx.harness.publish(event).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the block config value wins (4096), not the API value (8192) —
+        // unified precedence: per-model config > block config > API > models.dev.
+        let cache = ctx.cell_model_cache().expect("cache should be set");
+        assert_eq!(cache.entries["ollama"][0].context_length, Some(4096));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_leaves_none_when_neither_source_has_context_length() {
+        // Given a provider actor.
+        let ctx = create_ctx().await;
+        ctx.spawn_provider_actor();
+
+        // When publishing ModelsRefreshed where API also returns context_length: None.
+        let mut results = std::collections::HashMap::new();
+        results.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        let event = ModelsRefreshed {
+            session_id: ctx.state.read().session.active_session_id().clone(),
+            results,
+            errors: std::collections::HashMap::new(),
+        };
+        ctx.harness.publish(event).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the cache entry stays None.
+        let cache = ctx.cell_model_cache().expect("cache should be set");
+        assert_eq!(cache.entries["ollama"][0].context_length, None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_does_not_touch_provider_not_in_registry() {
+        // Given a provider actor.
+        let ctx = create_ctx().await;
+        ctx.spawn_provider_actor();
+
+        // When publishing ModelsRefreshed with results for groq (not in registry).
+        let mut results = std::collections::HashMap::new();
+        results.insert(
+            "groq".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        let event = ModelsRefreshed {
+            session_id: ctx.state.read().session.active_session_id().clone(),
+            results,
+            errors: std::collections::HashMap::new(),
+        };
+        ctx.harness.publish(event).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the cache entry is stored as-is, no panic.
+        let cache = ctx.cell_model_cache().expect("cache should be set");
+        assert_eq!(cache.entries["groq"][0].context_length, None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_fills_context_length_from_registry_when_cache_has_none() {
+        // Given a registry with zai provider that has context_length: Some(128_000).
+        let config = ProvidersConfig {
+            providers: BTreeMap::from([(
+                "zai".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "zai".to_owned(),
+                    models: vec!["zai-1.5".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: Some(128_000),
+                },
+            )]),
+            aliases: vec![],
+            default_provider: None,
+        };
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
+        let registry = ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        // When publishing ModelCacheLoaded with cache that has context_length: None.
+        let cache = cache_with_ollama_llama3(None);
+        let mut cache = cache;
+        cache.entries.clear();
+        cache.entries.insert(
+            "zai".to_owned(),
+            vec![ModelInfo {
+                id: "zai-1.5".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the model cache in the cell has context_length from the registry.
+        let loaded = ctx.cell_model_cache().expect("cache should be set");
+        assert_eq!(loaded.entries["zai"][0].context_length, Some(128_000));
+
+        // And the model is registered in the provider registry.
+        let resolved = services
+            .provider_registry
+            .get(&jinn_provider_config::ProviderId::new(
+                "zai/zai-1.5".to_owned(),
+            ));
+        assert!(
+            resolved.is_some(),
+            "model should be in registry after ModelCacheLoaded"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_block_config_beats_api_value() {
+        // Given a registry with ollama provider that has context_length: Some(4096).
+        let config = ProvidersConfig {
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: Some(4096),
+                },
+            )]),
+            aliases: vec![],
+            default_provider: None,
+        };
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
+        let registry = ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        // When publishing ModelCacheLoaded with cache that has context_length: Some(8192).
+        let cache = cache_with_ollama_llama3(Some(8192));
+
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the block config value wins (4096), not the API value (8192) —
+        // unified precedence: per-model config > block config > API > models.dev.
+        let loaded = ctx.cell_model_cache().expect("cache should be set");
+        assert_eq!(loaded.entries["ollama"][0].context_length, Some(4096));
+    }
+
+    /// Seeds a minimal models.dev user file into the harness's temp cache dir
+    /// marking `model_id` image-capable (or not). Without this, the harness's
+    /// temp-root `AppPaths` has no models.dev data and precedence over
+    /// models.dev would go untested.
+    fn seed_models_dev(
+        services: &jinn_domain::common::services::Services,
+        model_id: &str,
+        image: bool,
+    ) {
+        let inputs: Vec<&str> = if image {
+            vec!["text", "image"]
+        } else {
+            vec!["text"]
+        };
+        let body = serde_json::json!({
+            "data": {
+                "ollama": {
+                    "models": {
+                        model_id: { "modality": { "input": inputs } }
+                    }
+                }
+            }
+        });
+        let path = services.paths.models_dev_user_path();
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("create cache dir");
+        std::fs::write(path, body.to_string()).expect("write models.dev");
+    }
+
+    fn config_with_model_info() -> ProvidersConfig {
+        config_with_model_info_modalities(vec!["text".to_owned(), "image".to_owned()])
+    }
+
+    fn config_with_model_info_modalities(modalities: Vec<String>) -> ProvidersConfig {
+        use jinn_provider_config::ModelInfoEntry;
+        ProvidersConfig {
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    model_info: vec![ModelInfoEntry {
+                        id: "llama3".to_owned(),
+                        context_length: Some(16384),
+                        input_modalities: Some(modalities),
+                        extra_body: None,
+                    }],
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                },
+            )]),
+            aliases: vec![],
+            default_provider: None,
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_per_model_config_beats_api_value() {
+        // Given a registry with a per-model context_length of 16384 and
+        // models.dev data that would leave the model text-only.
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
+        seed_models_dev(&services, "llama3", false);
+        let registry = ProviderRegistry::from_config(config_with_model_info()).expect("registry");
+        services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        // When publishing ModelCacheLoaded with an API-discovered value of 8192.
+        let cache = cache_with_ollama_llama3(Some(8192));
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the per-model config value wins.
+        let loaded = ctx.cell_model_cache().expect("cache set");
+        assert_eq!(loaded.entries["ollama"][0].context_length, Some(16384));
+        // And the configured modalities replace the discovered text-only value.
+        assert!(
+            loaded.entries["ollama"][0]
+                .input_modalities
+                .contains(Modality::Image)
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_injects_static_only_model() {
+        // Given a registry whose model_info targets a model with no cache entry.
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
+        let registry = ProviderRegistry::from_config(config_with_model_info()).expect("registry");
+        services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        // When publishing a ModelCacheLoaded that lacks the configured model.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "mistral".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the static-only model is injected with its config values.
+        let loaded = ctx.cell_model_cache().expect("cache set");
+        let injected = loaded.entries["ollama"]
+            .iter()
+            .find(|m| m.id == "llama3")
+            .expect("injected entry");
+        assert_eq!(injected.context_length, Some(16384));
+        assert!(injected.input_modalities.contains(Modality::Image));
+        // And no duplicate entries were created.
+        assert_eq!(loaded.entries["ollama"].len(), 2);
+    }
+
+    fn sample_config_with_block_ctx() -> ProvidersConfig {
+        ProvidersConfig {
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: Some(4096),
+                },
+            )]),
+            aliases: vec![],
+            default_provider: None,
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_injects_block_level_only_static_model() {
+        // Given a registry with a block-level context_length and no model_info.
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
+        let registry =
+            ProviderRegistry::from_config(sample_config_with_block_ctx()).expect("registry");
+        services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        // When publishing a ModelCacheLoaded that lacks the static model entirely.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "mistral".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the static model is injected carrying the block-level value.
+        let loaded = ctx.cell_model_cache().expect("cache set");
+        let injected = loaded.entries["ollama"]
+            .iter()
+            .find(|m| m.id == "llama3")
+            .expect("injected entry");
+        assert_eq!(injected.context_length, Some(4096));
+        // And no duplicate entries.
+        assert_eq!(loaded.entries["ollama"].len(), 2);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_config_modalities_beat_models_dev_enrichment() {
+        // Given a config that explicitly declares llama3 text-only while the
+        // seeded models.dev data marks it image-capable.
+        let config = config_with_model_info_modalities(vec!["text".to_owned()]);
+        let ctx = create_ctx().await;
+        let services = ctx.deps.services.clone();
+        seed_models_dev(&services, "llama3", true);
+        let registry = ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        // When publishing ModelCacheLoaded for that model.
+        let cache = cache_with_ollama_llama3(Some(8192));
+        ctx.harness.publish(ModelCacheLoaded { cache }).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the config modalities win: the loaded cache stays text-only even
+        // though models.dev enrichment (run before the overlay) stamps Image.
+        let loaded = ctx.cell_model_cache().expect("cache set");
+        assert!(
+            !loaded.entries["ollama"][0]
+                .input_modalities
+                .contains(Modality::Image),
+            "config [\"text\"] must beat models.dev image stamping"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn merge_from_models_dev_fills_none() {
+        // Given a cache with context_length: None and models.dev data.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "zai".to_owned(),
+            vec![ModelInfo {
+                id: "glm-5.1".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+
+        let mut models_dev = jinn_provider_config::ModelsDevData::new();
+        models_dev
+            .context_lengths
+            .insert("glm-5.1".to_owned(), 200_000);
+
+        // When merging.
+        super::merge_models_dev_data(&mut cache, &models_dev);
+
+        // Then the model now has context_length from models.dev.
+        assert_eq!(cache.entries["zai"][0].context_length, Some(200_000));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn merge_from_models_dev_does_not_overwrite_existing() {
+        // Given a cache with context_length: Some(100000) and models.dev has 200000.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "openai".to_owned(),
+            vec![ModelInfo {
+                id: "gpt-4o".to_owned(),
+                context_length: Some(100_000),
+                input_modalities: InputModalities::text(),
+            }],
+        );
+
+        let mut models_dev = jinn_provider_config::ModelsDevData::new();
+        models_dev
+            .context_lengths
+            .insert("gpt-4o".to_owned(), 200_000);
+
+        // When merging.
+        super::merge_models_dev_data(&mut cache, &models_dev);
+
+        // Then the existing value is preserved.
+        assert_eq!(cache.entries["openai"][0].context_length, Some(100_000));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn merge_from_models_dev_leaves_none_when_not_in_data() {
+        // Given a cache with an unknown model.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "local".to_owned(),
+            vec![ModelInfo {
+                id: "my-custom-llama".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+
+        let models_dev = jinn_provider_config::ModelsDevData::new();
+
+        // When merging with empty models.dev data.
+        super::merge_models_dev_data(&mut cache, &models_dev);
+
+        // Then it stays None.
+        assert_eq!(cache.entries["local"][0].context_length, None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn merge_priority_is_api_then_config_then_models_dev() {
+        // Given three models with different source scenarios.
+        let mut cache = ModelCache::new();
+        // Model A: API returned a value.
+        cache.entries.insert(
+            "provider-a".to_owned(),
+            vec![ModelInfo {
+                id: "model-a".to_owned(),
+                context_length: Some(100_000),
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        // Model B: API returned None, config will fill it.
+        cache.entries.insert(
+            "provider-b".to_owned(),
+            vec![ModelInfo {
+                id: "model-b".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        // Model C: API returned None, no config, models.dev should fill it.
+        cache.entries.insert(
+            "provider-c".to_owned(),
+            vec![ModelInfo {
+                id: "model-c".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        // Model D: API returned None, no config, not in models.dev.
+        cache.entries.insert(
+            "provider-d".to_owned(),
+            vec![ModelInfo {
+                id: "model-d".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+
+        // Simulate config merge: set model-b to 64000.
+        cache.entries.get_mut("provider-b").unwrap()[0].context_length = Some(64_000);
+
+        let mut models_dev = jinn_provider_config::ModelsDevData::new();
+        models_dev
+            .context_lengths
+            .insert("model-a".to_owned(), 999_999);
+        models_dev
+            .context_lengths
+            .insert("model-b".to_owned(), 999_999);
+        models_dev
+            .context_lengths
+            .insert("model-c".to_owned(), 300_000);
+
+        // When merging from models.dev.
+        super::merge_models_dev_data(&mut cache, &models_dev);
+
+        // Then: A keeps API value, B keeps config value, C gets models.dev, D stays None.
+        assert_eq!(cache.entries["provider-a"][0].context_length, Some(100_000));
+        assert_eq!(cache.entries["provider-b"][0].context_length, Some(64_000));
+        assert_eq!(cache.entries["provider-c"][0].context_length, Some(300_000));
+        assert_eq!(cache.entries["provider-d"][0].context_length, None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn merge_from_models_dev_handles_multiple_providers() {
+        // Given two providers with models that have None.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "zai".to_owned(),
+            vec![ModelInfo {
+                id: "glm-5.1".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        cache.entries.insert(
+            "anthropic".to_owned(),
+            vec![ModelInfo {
+                id: "claude-sonnet-4-20250514".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+
+        let mut models_dev = jinn_provider_config::ModelsDevData::new();
+        models_dev
+            .context_lengths
+            .insert("glm-5.1".to_owned(), 200_000);
+        models_dev
+            .context_lengths
+            .insert("claude-sonnet-4-20250514".to_owned(), 200_000);
+
+        // When merging.
+        super::merge_models_dev_data(&mut cache, &models_dev);
+
+        // Then both providers get filled.
+        assert_eq!(cache.entries["zai"][0].context_length, Some(200_000));
+        assert_eq!(cache.entries["anthropic"][0].context_length, Some(200_000));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn merge_from_models_dev_stamps_image_bit_on_disk_loaded_cache() {
+        // Given a stale cache (as loaded from disk) whose model is image-capable
+        // in models.dev but carries only the text-only default.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "openrouter".to_owned(),
+            vec![ModelInfo {
+                id: "xiaomi/mimo-v2.5".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        let mut models_dev = jinn_provider_config::ModelsDevData::new();
+        models_dev
+            .image_support
+            .insert("xiaomi/mimo-v2.5".to_owned(), true);
+
+        // When merging (the disk-load path re-enriches from models.dev).
+        super::merge_models_dev_data(&mut cache, &models_dev);
+
+        // Then the image bit is stamped despite the stale text-only cache.
+        assert!(
+            cache.entries["openrouter"][0]
+                .input_modalities
+                .contains(Modality::Image),
+            "disk-loaded cache should gain the image bit via re-enrichment"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn handle_dispatches_provider_switch_command() {
+        // Given a provider actor.
+        let ctx = create_ctx().await;
+        let recorder = ctx.harness.spawn_recorder::<ProviderSwitched>().await;
+        ctx.spawn_provider_actor();
+        let session_id = ctx.state.read().session.active_session_id().clone();
+
+        // When telling the actor to switch (ProviderSwitch is a COMMAND:
+        // point-to-point to the actor's path).
+        ctx.deps
+            .services
+            .trouper_system
+            .tell(
+                ActorPath::new(PROVIDER_ACTOR_PATH),
+                jinn_provider_selection_msg::ProviderSwitch {
+                    session_id: session_id.clone(),
+                    provider_id: ModelSelection::Single("ollama/llama3".to_owned()),
+                },
+            )
+            .await
+            .expect("switch command delivers");
+
+        // Then the session model is updated.
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].provider_name, "ollama/llama3");
+
+        let s = ctx.state.read();
+        assert_eq!(
+            s.session.active_session().profile().model,
+            ModelSelection::Single("ollama/llama3".to_owned())
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn handle_dispatches_load_provider_picker_entries_command() {
+        // Given a provider actor with a registry.
+        let ctx = create_ctx().await;
+        let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
+        ctx.deps.services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        // When telling the actor to load (a COMMAND: point-to-point).
+        ctx.deps
+            .services
+            .trouper_system
+            .tell(
+                ActorPath::new(PROVIDER_ACTOR_PATH),
+                LoadProviderPickerEntries,
+            )
+            .await
+            .expect("load command delivers");
+
+        // Give the actor time to process.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // Then the provider picker has entries.
+        let s = ctx.state.read();
+        let items = s.frontend.pickers.provider_picker.items();
+        assert!(
+            !items.is_empty(),
+            "picker should have entries after loading"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn endpoint_load_for_non_openrouter_model_clears_loading_and_shows_placeholder() {
+        // Given a provider actor whose registry has an ollama (non-OpenRouter) model,
+        // and the loading flag pre-set as the open intent would.
+        let ctx = create_ctx().await;
+        let registry = ProviderRegistry::from_config(sample_config()).expect("registry");
+        ctx.deps.services.provider_registry.replace(registry);
+        ctx.spawn_provider_actor();
+
+        ctx.state
+            .write()
+            .active_session_mut()
+            .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+        let cell = ctx.cell();
+        cell.update(|c| c.endpoint_loading = true);
+
+        // When telling the actor to load (a COMMAND: point-to-point).
+        ctx.deps
+            .services
+            .trouper_system
+            .tell(
+                ActorPath::new(PROVIDER_ACTOR_PATH),
+                jinn_provider_selection_msg::LoadEndpointPickerEntries,
+            )
+            .await
+            .expect("load command delivers");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then loading is cleared (no stuck spinner) and a placeholder row shows.
+        assert!(
+            !cell.read().endpoint_loading,
+            "non-OpenRouter load must clear the loading flag"
+        );
+        let s = ctx.state.read();
+        assert!(
+            !s.frontend.endpoint_picker().items().is_empty(),
+            "non-OpenRouter load must still show the placeholder row"
+        );
+    }
+}

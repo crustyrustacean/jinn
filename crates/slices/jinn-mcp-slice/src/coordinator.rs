@@ -1,0 +1,1222 @@
+//! MCP lifecycle actor — spawns and kills `McpActor`s.
+//!
+//! One instance lives for the whole app. It watches session lifecycle events
+//! and the per-session enablement command, keeping exactly one `McpActor` alive
+//! per (session × enabled-server) pair:
+//!
+//! - [`SessionLoadCompleted`] — a session restored from disk; spawn actors for
+//!   its persisted `enabled_mcp_servers`.
+//! - [`SessionCreated`] — a freshly created session; reconcile against its
+//!   actual `enabled_mcp_servers` (empty for legacy sessions, possibly
+//!   config-seeded via `auto_enable`).
+//! - [`McpEnablementChanged`] — the picker committed a new desired set; diff
+//!   against the spawned map and spawn/kill the delta.
+//! - [`SessionClosed`] / [`SessionArchived`] / [`SessionTeardownFinished`] —
+//!   the session is gone; kill all its actors.
+//!
+//! Each `McpActor` is spawned on the trouper system with no restart
+//! policy, so a single dead server's crash never cascades and never
+//! restarts (the user re-enables it). Disabling a server (or closing the
+//! session) kills the actor, which triggers the `McpActor::on_stop` hook
+//! that shuts the child process down.
+
+use std::collections::{BTreeSet, HashMap};
+
+use parking_lot::Mutex;
+use trouper::actor::ActorPath;
+use trouper::actor::MsgHandler;
+use trouper::actor::ServiceActor;
+use trouper::context::MsgCtx;
+use trouper::registry::RegistryError;
+
+use crate::connection::{McpActor, McpActorDeps, McpConnectionStateProbe, McpConnectionStateReply};
+use jinn_core_types::SessionId;
+use jinn_domain::Services;
+use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_domain::common::services::bus_service::BusService;
+use jinn_mcp_msg::McpServerConfig;
+use jinn_mcp_msg::{McpEnablementChanged, McpRuntimeState, RestartError, RestartMcpServer};
+use jinn_mcp_msg::{McpServerLog, McpServerStatus};
+use jinn_session_lifecycle_msg::SessionCreated;
+use jinn_session_msg::SessionArchived;
+use jinn_session_msg::SessionClosed;
+use jinn_session_msg::SessionTeardownFinished;
+use jinn_session_store_msg::SessionLoadCompleted;
+use jinn_slices::TypedCell;
+
+/// Key into the spawned-actor map: one `McpActor` per (session × server).
+type SpawnKey = (SessionId, String);
+
+/// Maximum time to wait for a restarted `McpActor`'s `on_start` to connect.
+///
+/// Slow-to-boot HTTP/Python servers can legitimately take tens of seconds;
+/// this bounds the tool loop so a wedged server doesn't hang it forever.
+/// On timeout the tool reports failure with the STOP-and-wait instruction.
+const RESTART_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Static path the coordinator spawns at (one instance per process).
+pub const MCP_COORDINATOR_PATH: &str = "jinn.mcp.coordinator";
+
+/// The MCP lifecycle actor.
+pub struct McpCoordinatorActor {
+    deps: ActorDeps,
+    system: trouper::system::ActorSystem,
+    state: jinn_domain::common::state::State,
+    runtime: TypedCell<McpRuntimeState>,
+    /// Tracks every live `McpActor` by (session_id, server_name).
+    /// Guarded by a mutex so spawn/kill helpers can borrow `self` while
+    /// mutating the map without fighting the borrow checker.
+    spawned: Mutex<HashMap<SpawnKey, ActorPath>>,
+}
+
+/// Dependencies for [`McpCoordinatorActor`].
+#[derive(Clone)]
+pub struct McpCoordinatorActorDeps {
+    /// Common actor dependencies (services + bus).
+    pub deps: ActorDeps,
+    /// Shared application state used for durable session enablement.
+    pub state: jinn_domain::common::state::State,
+    /// Runtime-only status and stderr projection written by the coordinator.
+    pub runtime: TypedCell<McpRuntimeState>,
+}
+
+impl ServiceActor for McpCoordinatorActor {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: spawned via `start_with` (typed deps cannot ride
+        // JSON args).
+        Err(error_stack::Report::new(RegistryError::InvalidSpec)
+            .attach("McpCoordinatorActor spawns via start_with"))
+    }
+}
+
+impl McpCoordinatorActor {
+    /// Spawns the coordinator onto the trouper system.
+    ///
+    /// Returns only after all subscriptions are live, so composition's
+    /// orchestrator-before-coordinator and coordinator-before-EnvironmentLoaded
+    /// contracts hold by construction.
+    pub async fn spawn(
+        system: &trouper::system::ActorSystem,
+        deps: McpCoordinatorActorDeps,
+    ) -> ActorPath {
+        let path = ActorPath::new(MCP_COORDINATOR_PATH);
+        let system_for_start = system.clone();
+        let builder = trouper::builder::spawn_service_builder::<Self>(system)
+            .at(path.clone())
+            .start_with({
+                move || {
+                    let deps = deps.clone();
+                    let system = system_for_start.clone();
+                    Box::pin(async move {
+                        Ok(Self {
+                            deps: deps.deps,
+                            system,
+                            state: deps.state,
+                            runtime: deps.runtime,
+                            spawned: Mutex::new(HashMap::new()),
+                        })
+                    })
+                }
+            })
+            .handles::<SessionLoadCompleted>()
+            .handles::<SessionCreated>()
+            .handles::<McpEnablementChanged>()
+            .handles::<SessionClosed>()
+            .handles::<SessionArchived>()
+            .handles::<SessionTeardownFinished>()
+            .handles::<RestartMcpServer>()
+            .handles::<McpServerStatus>()
+            .handles::<McpServerLog>()
+            // Restart-ask replies leave the handler through ctx.reply; the
+            // flush gate drops any outbound type not declared here.
+            .emits::<McpRestartOutcome>()
+            .mailbox(64, trouper::inbox::OverloadPolicy::Block);
+        // Test-only ask surface: `RestartForTest` carries the injectable
+        // startup budget the production `RestartMcpServer` message has no
+        // field for. Without the entry the loop drops the ask silently
+        // (no adapter for its schema) and the asker waits out its timeout.
+        #[cfg(test)]
+        let builder = builder.handles::<McpRestartForTest>();
+        builder.start();
+        path
+    }
+}
+
+impl BusPublish for McpCoordinatorActor {
+    fn bus(&self) -> &BusService {
+        &self.deps.services.bus
+    }
+}
+
+impl McpCoordinatorActor {
+    /// Clears all runtime-only status and stderr for one session.
+    fn clear_runtime_for_session(&self, session_id: &SessionId) {
+        self.runtime
+            .update(|runtime| runtime.clear_session(session_id));
+    }
+
+    /// Reconciles the spawned-actor map for one session against a desired set.
+    ///
+    /// Spawns actors for newly-enabled servers, kills actors for
+    /// newly-disabled servers. Idempotent: calling with the current set is a
+    /// no-op.
+    async fn reconcile(&self, session_id: &SessionId, desired: &BTreeSet<String>) {
+        let configs = configured_servers(&self.deps.services);
+
+        // Partition the current spawned entries for this session into
+        // to-keep and to-kill, based on the desired set.
+        let to_kill: Vec<SpawnKey> = {
+            let spawned = self.spawned.lock();
+            spawned
+                .keys()
+                .filter(|(sid, _)| sid == session_id)
+                .filter(|(_, server)| !desired.contains(server))
+                .cloned()
+                .collect()
+        };
+
+        // Spawn any desired server not yet running. Guarded against duplicate
+        // spawns: if an entry already exists for this key, skip it.
+        let to_spawn: Vec<String> = {
+            let spawned = self.spawned.lock();
+            desired
+                .iter()
+                .filter(|server| !spawned.contains_key(&(session_id.clone(), (*server).clone())))
+                .cloned()
+                .collect()
+        };
+
+        for server in to_spawn {
+            if let Some((name, config)) = configs.iter().find(|(n, _)| n == &server) {
+                let _ = self.spawn_one(session_id, name, config).await;
+            } else {
+                tracing::warn!(
+                    server = %server,
+                    %session_id,
+                    "MCP lifecycle: enabled server not found in jinn.toml [mcp_server.<name>], skipping spawn"
+                );
+            }
+        }
+
+        for key in to_kill {
+            self.kill_one(&key).await;
+        }
+    }
+
+    /// Spawns a single `McpActor` for a (session, server) pair and records it.
+    ///
+    /// Returns the spawned actor's ref so the caller can `wait_for_startup`
+    /// and query its connection state (used by [`restart_one`](Self::restart_one)).
+    /// `None` if a duplicate-spawn guard fires (another reconcile already
+    /// inserted this key).
+    async fn spawn_one(
+        &self,
+        session_id: &SessionId,
+        name: &str,
+        config: &McpServerConfig,
+    ) -> Option<ActorPath> {
+        let key = (session_id.clone(), name.to_owned());
+        // Duplicate-spawn guard: another in-flight reconcile may have inserted
+        // this key between the snapshot and now.
+        if self.spawned.lock().contains_key(&key) {
+            return None;
+        }
+
+        let path = McpActor::spawn(
+            &self.system,
+            McpActorDeps::new(
+                self.deps.clone(),
+                session_id.clone(),
+                name.to_owned(),
+                config.clone(),
+            ),
+        )
+        .await;
+
+        self.spawned.lock().insert(key, path.clone());
+        tracing::info!(
+            server = %name,
+            %session_id,
+            "MCP lifecycle: spawned McpActor"
+        );
+        Some(path)
+    }
+
+    /// Stops a single tracked `McpActor` and removes it from the map.
+    ///
+    /// `stop_gracefully` triggers `McpActor::on_stop`, which shuts the child
+    /// process down.
+    async fn kill_one(&self, key: &SpawnKey) {
+        let path = self.spawned.lock().remove(key);
+        if let Some(path) = path {
+            self.system.stop(&path).await;
+            tracing::info!(
+                server = %key.1,
+                session_id = %key.0,
+                "MCP lifecycle: stopped McpActor"
+            );
+        }
+    }
+
+    /// Kills every `McpActor` for a session (used on close/archive/teardown).
+    async fn kill_all_for_session(&self, session_id: &SessionId) {
+        let keys: Vec<SpawnKey> = self
+            .spawned
+            .lock()
+            .keys()
+            .filter(|(sid, _)| sid == session_id)
+            .cloned()
+            .collect();
+        for key in keys {
+            self.kill_one(&key).await;
+        }
+    }
+
+    /// Restarts a single (session × server) `McpActor`: kills the running one
+    /// (if any) and respawns it from its configured server entry, then awaits
+    /// the new actor's `on_start` and asks it whether it connected.
+    ///
+    /// This is **deterministic** — unlike the old bus-event approach, the
+    /// result reflects the new actor's actual connection state, queried
+    /// directly via [`McpActor`]'s `ConnectionState` message after
+    /// `wait_for_startup`. No event-ordering race.
+    async fn restart_one(&self, session_id: &SessionId, server: &str) -> Result<(), RestartError> {
+        self.restart_one_with_timeout(session_id, server, RESTART_TIMEOUT)
+            .await
+    }
+
+    /// Same as [`restart_one`](Self::restart_one) but with an injectable
+    /// `on_start`+connect timeout (for tests).
+    async fn restart_one_with_timeout(
+        &self,
+        session_id: &SessionId,
+        server: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(), RestartError> {
+        let key = (session_id.clone(), server.to_owned());
+        self.kill_one(&key).await;
+
+        let config = configured_servers(&self.deps.services)
+            .into_iter()
+            .find(|(n, _)| n == server)
+            .ok_or(RestartError::UnknownServer)?;
+
+        let actor_path = self.spawn_one(session_id, &config.0, &config.1).await;
+
+        let actor_path = actor_path.ok_or(RestartError::UnknownServer)?;
+
+        // `on_start` blocks on acquire_client (connect + tools/list); we wait
+        // for it to complete, bounded by the restart timeout so a slow-boot
+        // server can't hang the tool loop forever. The trouper ask carries
+        // its own MANDATORY timeout — the outer bound covers startup too.
+        let reply = self
+            .system
+            .ask(actor_path, McpConnectionStateProbe, timeout)
+            .await;
+        let connected = match reply {
+            Ok(value) => value
+                .decode::<McpConnectionStateReply>()
+                .map(|r| r.connected)
+                .unwrap_or(false),
+            Err(_) => return Err(RestartError::Timeout),
+        };
+
+        if connected {
+            Ok(())
+        } else {
+            Err(RestartError::ConnectFailed)
+        }
+    }
+}
+
+/// Reads the configured `[mcp_server.<name>]` entries from user preferences.
+fn configured_servers(services: &Services) -> Vec<(String, McpServerConfig)> {
+    let prefs = services.user_preferences_storage.read();
+    prefs
+        .mcp_server
+        .iter()
+        .map(|(n, c)| (n.clone(), c.clone()))
+        .collect()
+}
+
+// ── Message handlers ─────────────────────────────────────────────────────
+
+impl MsgHandler<SessionLoadCompleted> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: &SessionLoadCompleted, _ctx: &mut MsgCtx<'_>) {
+        // Given a session restored from disk.
+        self.clear_runtime_for_session(msg.session_id());
+        let enabled = self
+            .state
+            .read()
+            .session
+            .get(msg.session_id())
+            .map(|session| session.enabled_mcp_servers().clone());
+
+        // When reconciling its enablement.
+        if let Some(enabled) = enabled {
+            self.reconcile(msg.session_id(), &enabled).await;
+        }
+    }
+}
+
+impl MsgHandler<SessionCreated> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: &SessionCreated, _ctx: &mut MsgCtx<'_>) {
+        // Given a freshly created session.
+        // Sessions may carry config-seeded enablement (`auto_enable` in
+        // jinn.toml); reconcile against the session's actual set rather than
+        // assuming empty. Mirrors the `SessionLoadCompleted` sibling: for
+        // legacy sessions the set is empty and this is a no-op; when
+        // `McpEnablementChanged` also arrives with the same desired set,
+        // reconciliation is diff-based so the duplicate converges harmlessly.
+        let enabled = self
+            .state
+            .read()
+            .session
+            .get(&msg.session_id)
+            .map(|s| s.enabled_mcp_servers().clone())
+            .unwrap_or_default();
+        self.reconcile(&msg.session_id, &enabled).await;
+    }
+}
+
+impl MsgHandler<McpEnablementChanged> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: &McpEnablementChanged, _ctx: &mut MsgCtx<'_>) {
+        // Given a new desired enablement set for a session.
+        // When reconciling.
+        self.reconcile(&msg.session_id, &msg.enabled).await;
+    }
+}
+
+impl MsgHandler<SessionClosed> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: &SessionClosed, _ctx: &mut MsgCtx<'_>) {
+        self.kill_all_for_session(&msg.session_id).await;
+        self.clear_runtime_for_session(&msg.session_id);
+    }
+}
+
+impl MsgHandler<SessionArchived> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: &SessionArchived, _ctx: &mut MsgCtx<'_>) {
+        self.kill_all_for_session(&msg.session_id).await;
+        self.clear_runtime_for_session(&msg.session_id);
+    }
+}
+
+impl MsgHandler<SessionTeardownFinished> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: &SessionTeardownFinished, _ctx: &mut MsgCtx<'_>) {
+        self.kill_all_for_session(&msg.session_id).await;
+        self.clear_runtime_for_session(&msg.session_id);
+    }
+}
+
+impl MsgHandler<RestartMcpServer> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: &RestartMcpServer, ctx: &mut MsgCtx<'_>) {
+        let outcome = self.restart_one(&msg.session_id, &msg.server).await;
+        ctx.reply(McpRestartOutcome {
+            ok: outcome.is_ok(),
+            error: outcome.err().map(|e| {
+                match e {
+                    RestartError::UnknownServer => "UnknownServer",
+                    RestartError::ConnectFailed => "ConnectFailed",
+                    RestartError::Timeout => "Timeout",
+                    RestartError::Mailbox => "Mailbox",
+                }
+                .to_owned()
+            }),
+        });
+    }
+}
+
+/// Wire payload for the restart ask's reply (a JSON-friendly
+/// success/error pair).
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, trouper::schema::Event)]
+#[schema(description = "Reply payload for the restart ask.")]
+pub struct McpRestartOutcome {
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
+impl jinn_slices::BusMessage for McpRestartOutcome {}
+
+#[cfg(test)]
+/// Test-only message: restart with an injectable timeout so tests can
+/// exercise the `Err(Timeout)` path without a 60s wait.
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, trouper::schema::Command)]
+#[schema(description = "Test-only restart ask with an injectable timeout.")]
+pub struct McpRestartForTest {
+    pub session_id: SessionId,
+    pub server: String,
+    pub timeout: std::time::Duration,
+}
+
+#[cfg(test)]
+impl MsgHandler<McpRestartForTest> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: &McpRestartForTest, ctx: &mut MsgCtx<'_>) {
+        let outcome = self
+            .restart_one_with_timeout(&msg.session_id, &msg.server, msg.timeout)
+            .await;
+        ctx.reply(McpRestartOutcome {
+            ok: outcome.is_ok(),
+            error: outcome.err().map(|e| {
+                match e {
+                    RestartError::UnknownServer => "UnknownServer",
+                    RestartError::ConnectFailed => "ConnectFailed",
+                    RestartError::Timeout => "Timeout",
+                    RestartError::Mailbox => "Mailbox",
+                }
+                .to_owned()
+            }),
+        });
+    }
+}
+
+/// Writes a `McpServerStatus` transition into the MCP runtime cell.
+///
+/// The coordinator is the sole writer of status and stderr projections. They
+/// remain outside the durable session aggregate and snapshot.
+impl MsgHandler<McpServerStatus> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: &McpServerStatus, _ctx: &mut MsgCtx<'_>) {
+        self.runtime.update(|runtime| {
+            runtime.set_status(&msg.session_id, &msg.server, msg.status);
+        });
+    }
+}
+
+/// Writes a captured stderr tail into the MCP runtime cell.
+impl MsgHandler<McpServerLog> for McpCoordinatorActor {
+    async fn handle(&mut self, msg: &McpServerLog, _ctx: &mut MsgCtx<'_>) {
+        self.runtime.update(|runtime| {
+            runtime.set_stderr(&msg.session_id, &msg.server, msg.tail.clone());
+        });
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        reason = "test code"
+    )]
+
+    use std::collections::BTreeSet;
+
+    use jinn_core_types::SessionId;
+    use jinn_domain::common::actor_deps::ActorDeps;
+    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_mcp_msg::McpServerConfig;
+    use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
+    use jinn_preferences_config::user_preferences::UserPreferences;
+
+    use super::{McpCoordinatorActor, McpCoordinatorActorDeps};
+    use jinn_mcp_msg::McpEnablementChanged;
+    use jinn_session_msg::SessionClosed;
+    use jinn_session_store_msg::SessionLoadCompleted;
+
+    /// A configured MCP server whose command will never spawn successfully,
+    /// so the spawned `McpActor` publishes Starting then Dead (never Running).
+    fn unrunnable_server() -> McpServerConfig {
+        McpServerConfig {
+            command: Some("/this/command/does/not/exist".to_owned()),
+            args: vec![],
+            ..Default::default()
+        }
+    }
+
+    /// A server whose command starts but never speaks the MCP protocol: the
+    /// `initialize` handshake hangs forever, so `on_start` never completes.
+    /// Used to exercise the `Err(Timeout)` path deterministically.
+    fn hanging_server() -> McpServerConfig {
+        McpServerConfig {
+            command: Some("sleep".to_owned()),
+            args: vec!["60".to_owned()],
+            ..Default::default()
+        }
+    }
+
+    async fn spawn_lifecycle(
+        harness: &TestHarness,
+        servers: &[(&str, McpServerConfig)],
+    ) -> (
+        trouper::actor::ActorPath,
+        jinn_domain::Services,
+        jinn_domain::common::state::State,
+    ) {
+        let services = harness.services().await;
+        let mcp_server = servers
+            .iter()
+            .map(|(name, config)| ((*name).to_owned(), config.clone()))
+            .collect();
+        services
+            .user_preferences_storage
+            .save(&UserPreferences {
+                mcp_server,
+                ..UserPreferences::default()
+            })
+            .expect("seed prefs");
+        let state = jinn_domain::common::state::State::new(
+            jinn_domain::common::app_state::AppState::default(),
+        );
+        let runtime = crate::activate_runtime(&services.slices)
+            .expect("MCP runtime cell is registered exactly once");
+        let path = McpCoordinatorActor::spawn(
+            &services.trouper_system,
+            McpCoordinatorActorDeps {
+                deps: ActorDeps {
+                    services: services.clone(),
+                },
+                state: state.clone(),
+                runtime,
+            },
+        )
+        .await;
+        (path, services, state)
+    }
+
+    fn single_enabled(server: &str) -> BTreeSet<String> {
+        let mut s = BTreeSet::new();
+        s.insert(server.to_owned());
+        s
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn enabling_a_configured_server_spawns_an_mcp_actor() {
+        // Given a lifecycle actor with one configured server and a status recorder.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, _state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id = SessionId::new();
+
+        // When enabling that server for the session.
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+
+        // Then the lifecycle actor spawned an McpActor that emitted a status event.
+        // (The command is unrunnable, so the actor goes Starting -> Dead, but the
+        //  fact that a status event arrived proves an McpActor was spawned.)
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(3)).await;
+        assert!(
+            !events.is_empty(),
+            "enabling a configured server must spawn an McpActor that publishes a status"
+        );
+        assert_eq!(events[0].server, "unrunnable");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn enabling_unknown_server_spawns_nothing() {
+        // Given a lifecycle actor with no configured servers.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, _state) = spawn_lifecycle(&harness, &[]).await;
+        let session_id = SessionId::new();
+
+        // When enabling a server that is not configured.
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("ghost"),
+            })
+            .await;
+
+        // Then no McpActor is spawned (no status event arrives within a grace window).
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_millis(300)).await;
+        assert!(
+            events.is_empty(),
+            "unknown server should spawn no actor, but got: {events:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn closing_a_session_does_not_panic_after_enable() {
+        // Given a lifecycle actor with an enabled server for a session.
+        let harness = TestHarness::new().await;
+        let _recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, _state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id = SessionId::new();
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        // When closing the session.
+        harness.publish(SessionClosed { session_id }).await;
+
+        // Then the lifecycle actor does not panic and the test completes.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // (The observable behavior is clean teardown; a panic would surface here.)
+    }
+
+    /// Disabling a server tears down its actor: re-enabling afterwards must
+    /// spawn a *fresh* actor (a new `Starting` status).
+    ///
+    /// Why this works with an unrunnable server: spawn#1's failed-connect leaves
+    /// the entry in the spawned map (the actor stops itself, but nothing removes
+    /// the map entry). Only `reconcile`/`kill_one` on disable removes it. So if
+    /// disable works, re-enable's duplicate-spawn guard sees an empty slot and
+    /// respawns — producing a second `Starting`. If disable were a no-op, the
+    /// stale entry would block respawn and we'd see only one `Starting`.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn disabling_then_re_enabling_respawns_the_actor() {
+        // Given a lifecycle actor with one configured server.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, _state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id = SessionId::new();
+
+        // When enabling the server (spawn #1: Starting + Dead on failed connect).
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // And disabling it (must remove the map entry via kill_one).
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: BTreeSet::new(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // And re-enabling it (spawn #2 — only possible if disable freed the slot).
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+        // Let the full enable→disable→re-enable sequence settle so no events
+        // are still in flight when we read the recorder. GetRecorded drains, so
+        // settling first ensures await_recorded's first poll sees the whole
+        // sequence at once and returns it intact (no mid-flight draining).
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
+        // Then two distinct `Starting` statuses arrived (one per spawn) — the
+        // second only exists because disable freed the spawned-map slot.
+        let events = await_recorded(&recorder, 3, std::time::Duration::from_secs(2)).await;
+        let starting_count = events
+            .iter()
+            .filter(|e| e.status == McpConnectionStatus::Starting)
+            .count();
+        assert!(
+            starting_count >= 2,
+            "disable must tear down the actor so re-enable respawns it; \
+             expected >=2 Starting events, got {starting_count}: {events:?}"
+        );
+    }
+
+    /// A 1ms `restart_one` timeout fires before the new actor can finish
+    /// `on_start` (connect + tools/list), so it returns `Err(Timeout)`.
+    ///
+    /// `#[timeout]` is load-bearing: the `sleep 60` handshake never
+    /// completes, so any unbounded await in the restart path would wedge
+    /// the whole test binary without it.
+    #[rstest::rstest]
+    #[timeout(std::time::Duration::from_secs(20))]
+    #[tokio::test]
+    async fn restart_one_times_out_when_startup_exceeds_the_timeout() {
+        // Given a coordinator with a server that hangs forever on the MCP handshake.
+        let harness = TestHarness::new().await;
+        let (actor, services, _state) =
+            spawn_lifecycle(&harness, &[("hanging", hanging_server())]).await;
+        let session_id = SessionId::new();
+
+        // When restarting with a 1ms timeout (a direct system ask — the
+        // seam route does not expose the injectable-timeout variant).
+        let reply = services
+            .trouper_system
+            .ask(
+                actor,
+                super::McpRestartForTest {
+                    session_id,
+                    server: "hanging".to_owned(),
+                    timeout: std::time::Duration::from_millis(1),
+                },
+                std::time::Duration::from_secs(10),
+            )
+            .await;
+        // The handler replies with RestartOutcome even on failure.
+        let timed_out: bool = match &reply {
+            Ok(value) => {
+                let outcome: super::McpRestartOutcome = value.clone().decode().unwrap();
+                !outcome.ok && outcome.error.as_deref() == Some("Timeout")
+            }
+            Err(_) => false,
+        };
+
+        // Then it returns Timeout (startup couldn't complete in 1ms).
+        assert!(
+            timed_out,
+            "startup exceeding the timeout should yield Timeout; got: {reply:?}"
+        );
+    }
+
+    /// Inserts a fresh session carrying `enabled` into the harness's shared
+    /// state and returns its id.
+    fn insert_session_with_enablement(
+        state: &jinn_domain::common::state::State,
+        enabled: &BTreeSet<String>,
+    ) -> SessionId {
+        let mut session = jinn_session_state::ChatSessionState::new();
+        session.set_enabled_mcp_servers(enabled.clone());
+        let session_id = session.session_id().clone();
+        let mut app_state = state.write();
+        app_state.session.insert(session);
+        drop(app_state);
+        session_id
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_created_spawns_actors_for_prepopulated_enablement() {
+        // Given a coordinator with one configured server and a session whose
+        // enabled set already contains it (config-seeded via auto_enable).
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
+
+        // When publishing SessionCreated for that session.
+        harness
+            .publish(jinn_session_lifecycle_msg::SessionCreated {
+                session_id,
+                cwd: std::env::temp_dir(),
+            })
+            .await;
+
+        // Then an McpActor was spawned for the seeded server (a Starting
+        // status arrives; Dead follows from the unrunnable command).
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(3)).await;
+        assert!(
+            !events.is_empty(),
+            "SessionCreated must reconcile against the session's actual set"
+        );
+        assert_eq!(events[0].server, "unrunnable");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_load_completed_spawns_actors_for_loaded_enablement() {
+        // Given a coordinator with one configured server and a loaded session
+        // whose enabled set contains it (the SessionLoadCompleted reconcile
+        // path — a session restored from disk).
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
+
+        // When publishing SessionLoadCompleted for that session.
+        harness
+            .publish(SessionLoadCompleted {
+                session_id: session_id.clone(),
+            })
+            .await;
+
+        // Then an McpActor was spawned for the loaded server (a Starting
+        // status arrives; Dead follows from the unrunnable command).
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(3)).await;
+        assert!(
+            !events.is_empty(),
+            "SessionLoadCompleted must reconcile against the loaded session's enabled set"
+        );
+        assert_eq!(events[0].server, "unrunnable");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn duplicate_created_and_enablement_messages_spawn_only_once() {
+        // Given a coordinator, a server, and a pre-populated session.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
+
+        // When both SessionCreated and McpEnablementChanged carry the same
+        // desired set (the common seeding flow emits both).
+        harness
+            .publish(jinn_session_lifecycle_msg::SessionCreated {
+                session_id: session_id.clone(),
+                cwd: std::env::temp_dir(),
+            })
+            .await;
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
+        // Then exactly one spawn happened (a single Starting status): the
+        // second reconciliation saw its slot already filled and was a no-op.
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        let starting_count = events
+            .iter()
+            .filter(|e| e.status == McpConnectionStatus::Starting)
+            .count();
+        assert_eq!(
+            starting_count, 1,
+            "duplicate notifications must converge to one spawn; got {events:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn created_reconcile_against_shrunk_set_kills_leftover_actor() {
+        // Given a coordinator with an already-spawned actor for a session.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services, state) =
+            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let session_id = {
+            let sid = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
+            harness
+                .publish(McpEnablementChanged {
+                    session_id: sid.clone(),
+                    enabled: single_enabled("unrunnable"),
+                })
+                .await;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            sid
+        };
+
+        // When the session's enablement shrinks to empty and SessionCreated
+        // reconciles against the shrunken set.
+        {
+            let mut app_state = state.write();
+            if let Some(s) = app_state.session.get_mut(&session_id) {
+                s.set_enabled_mcp_servers(BTreeSet::new());
+            }
+        }
+        harness
+            .publish(jinn_session_lifecycle_msg::SessionCreated {
+                session_id: session_id.clone(),
+                cwd: std::env::temp_dir(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // And the server is enabled again.
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
+        // Then two distinct spawns happened (two Starting statuses) — the
+        // second only exists because the shrink-to-empty reconcile killed the
+        // first actor and freed its slot.
+        let events = await_recorded(&recorder, 3, std::time::Duration::from_secs(2)).await;
+        let starting_count = events
+            .iter()
+            .filter(|e| e.status == McpConnectionStatus::Starting)
+            .count();
+        assert!(
+            starting_count >= 2,
+            "shrink-to-empty must kill the leftover actor so re-enable respawns; \
+             expected >=2 Starting events, got {starting_count}: {events:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
+    use jinn_core_types::SessionId;
+    use jinn_domain::common::actor_deps::ActorDeps;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::common::bus::test_harness::TestHarness;
+    use jinn_domain::common::state::State;
+    use jinn_mcp_msg::{McpConnectionStatus, McpRuntimeState, McpServerLog, McpServerStatus};
+    use jinn_preferences_config::user_preferences::UserPreferences;
+    use jinn_session_msg::{SessionArchived, SessionClosed, SessionTeardownFinished};
+    use jinn_session_store_msg::SessionLoadCompleted;
+    use jinn_slices::TypedCell;
+
+    use super::McpCoordinatorActor;
+    use crate::coordinator::McpCoordinatorActorDeps;
+
+    /// Spawns a coordinator with a dedicated MCP runtime cell.
+    async fn spawn_with_session(harness: &TestHarness) -> (TypedCell<McpRuntimeState>, SessionId) {
+        let services = harness.services().await;
+        services
+            .user_preferences_storage
+            .save(&UserPreferences::default())
+            .expect("seed prefs");
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        let runtime = crate::activate_runtime(&services.slices)
+            .expect("MCP runtime cell is registered exactly once");
+        let _path = McpCoordinatorActor::spawn(
+            &services.trouper_system,
+            McpCoordinatorActorDeps {
+                deps: ActorDeps {
+                    services: services.clone(),
+                },
+                state,
+                runtime: runtime.clone(),
+            },
+        )
+        .await;
+        (runtime, session_id)
+    }
+
+    fn status_of(
+        runtime: &TypedCell<McpRuntimeState>,
+        sid: &SessionId,
+        server: &str,
+    ) -> Option<McpConnectionStatus> {
+        runtime.read().status(sid, server)
+    }
+
+    fn tail_of(
+        runtime: &TypedCell<McpRuntimeState>,
+        sid: &SessionId,
+        server: &str,
+    ) -> Option<String> {
+        runtime.read().stderr(sid, server).map(str::to_owned)
+    }
+
+    fn seed_runtime(runtime: &TypedCell<McpRuntimeState>, session_id: &SessionId) {
+        runtime.update(|runtime| {
+            runtime.set_status(session_id, "excalimate", McpConnectionStatus::Running);
+            runtime.set_stderr(session_id, "excalimate", "stale".to_owned());
+        });
+    }
+
+    fn assert_runtime_is_empty(runtime: &TypedCell<McpRuntimeState>, session_id: &SessionId) {
+        let runtime = runtime.read();
+        assert_eq!(runtime.status(session_id, "excalimate"), None);
+        assert_eq!(runtime.stderr(session_id, "excalimate"), None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_closed_clears_runtime_data() {
+        // Given stale runtime data for a session.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+        seed_runtime(&runtime, &session_id);
+
+        // When the session closes.
+        harness
+            .publish(SessionClosed {
+                session_id: session_id.clone(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then its runtime status and stderr are absent.
+        assert_runtime_is_empty(&runtime, &session_id);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_archived_clears_runtime_data() {
+        // Given stale runtime data for a session.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+        seed_runtime(&runtime, &session_id);
+
+        // When the session is archived.
+        harness
+            .publish(SessionArchived {
+                session_id: session_id.clone(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then its runtime status and stderr are absent.
+        assert_runtime_is_empty(&runtime, &session_id);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_teardown_finished_clears_runtime_data() {
+        // Given stale runtime data for a session.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+        seed_runtime(&runtime, &session_id);
+
+        // When lifecycle teardown finishes.
+        harness
+            .publish(SessionTeardownFinished {
+                session_id: session_id.clone(),
+                error: None,
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then its runtime status and stderr are absent.
+        assert_runtime_is_empty(&runtime, &session_id);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_load_completed_clears_stale_runtime_data() {
+        // Given stale runtime data for a session being initialized.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+        seed_runtime(&runtime, &session_id);
+
+        // When load completion is published.
+        harness
+            .publish(SessionLoadCompleted {
+                session_id: session_id.clone(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then only the newly initialized session has no stale runtime data.
+        assert_runtime_is_empty(&runtime, &session_id);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn dead_status_is_written_to_runtime_cell() {
+        // Given a coordinator with a seeded session.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+
+        // When publishing a Dead status for one server.
+        harness
+            .publish(McpServerStatus {
+                session_id: session_id.clone(),
+                server: "excalimate".to_owned(),
+                status: McpConnectionStatus::Dead,
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then the runtime cell status shows Dead.
+        assert_eq!(
+            status_of(&runtime, &session_id, "excalimate"),
+            Some(McpConnectionStatus::Dead)
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn running_status_is_written_to_runtime_cell() {
+        // Given a coordinator with a seeded session.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+
+        // When publishing a Running status for one server.
+        harness
+            .publish(McpServerStatus {
+                session_id: session_id.clone(),
+                server: "excalimate".to_owned(),
+                status: McpConnectionStatus::Running,
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then the runtime cell status shows Running.
+        assert_eq!(
+            status_of(&runtime, &session_id, "excalimate"),
+            Some(McpConnectionStatus::Running)
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn status_for_one_session_is_not_visible_in_another() {
+        // Given a coordinator with two seeded sessions.
+        let harness = TestHarness::new().await;
+        let (runtime, session_a) = spawn_with_session(&harness).await;
+        let session_b = SessionId::new();
+
+        // When publishing a Running status for session A only.
+        harness
+            .publish(McpServerStatus {
+                session_id: session_a.clone(),
+                server: "excalimate".to_owned(),
+                status: McpConnectionStatus::Running,
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then session A shows Running, but session B has no status for it.
+        assert_eq!(
+            status_of(&runtime, &session_a, "excalimate"),
+            Some(McpConnectionStatus::Running)
+        );
+        assert_eq!(status_of(&runtime, &session_b, "excalimate"), None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stderr_tail_is_written_to_runtime_cell() {
+        // Given a coordinator with a seeded session.
+        let harness = TestHarness::new().await;
+        let (runtime, session_id) = spawn_with_session(&harness).await;
+
+        // When publishing a stderr tail for one server.
+        harness
+            .publish(McpServerLog {
+                session_id: session_id.clone(),
+                server: "excalimate".to_owned(),
+                tail: "npm warn something".to_owned(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then the runtime cell stderr shows the latest tail.
+        assert_eq!(
+            tail_of(&runtime, &session_id, "excalimate"),
+            Some("npm warn something".to_owned())
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stderr_tail_for_one_session_is_not_visible_in_another() {
+        // Given a coordinator with two seeded sessions.
+        let harness = TestHarness::new().await;
+        let (runtime, session_a) = spawn_with_session(&harness).await;
+        let session_b = SessionId::new();
+
+        // When publishing a stderr tail for session A only.
+        harness
+            .publish(McpServerLog {
+                session_id: session_a.clone(),
+                server: "excalimate".to_owned(),
+                tail: "only-in-a".to_owned(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then session A shows the tail, but session B has none.
+        assert_eq!(
+            tail_of(&runtime, &session_a, "excalimate"),
+            Some("only-in-a".to_owned())
+        );
+        assert_eq!(tail_of(&runtime, &session_b, "excalimate"), None);
+    }
+}

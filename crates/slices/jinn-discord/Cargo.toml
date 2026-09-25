@@ -1,22 +1,25 @@
 [package]
 name = "jinn-discord"
-version = "0.116.1"
 edition.workspace = true
-publish.workspace = true
+version.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
 daow = { workspace = true }
+jinn-chat-input-msg = { workspace = true }
+jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
-jinn-dashboard = { workspace = true }
 jinn-discord-msg = { workspace = true }
 # The bridge subscriber folds trouper topic events (session lifecycle
 # family) into the gateway channels; the session slices have not
-# graduated to crates yet, so State and the session capability still
-# live in jinn-domain. This edge survives the cut (slice → domain is
-# the legal direction).
+# graduated to crates yet, so shared `State` still lives in jinn-domain.
+# This edge survives the cut (slice → domain is the legal direction).
 jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-preferences-config = { workspace = true }
 jinn-session-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-session-store-msg = { workspace = true }
 jinn-slices = { workspace = true }
 kanal = { workspace = true }
 parking_lot = { workspace = true }
@@ -39,5 +42,4 @@ jinn-session-schema = { workspace = true }
 [dev-dependencies]
 jinn-testutil = { workspace = true }
 tempfile = { workspace = true }
-kameo = { workspace = true }
-kameo_actors = { workspace = true }
+jinn-session-store = { workspace = true }

@@ -1,0 +1,688 @@
+//! Sidebar keybind rows on the shared route table.
+//!
+//! Every sidebar key resolves here instead of a kernel keymap table:
+//! entry keys bind in the composition scopes that can open the sidebar,
+//! in-section keys bind in the section's own dynamic scope, and the
+//! resize mode binds in `sidebar:resize`. A de-activated slice attaches
+//! no rows, so the keys stay unbound — the sidebar is inert by
+//! construction.
+
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::protocol::IntentResult;
+use jinn_slices::SliceScopeId;
+use jinn_slices::route::{
+    ActionCtx, ActionFn, BindSite, KeyRoutes, RouteId, RouteOutcome, RouteRow, ScopeSignal,
+};
+
+use crate::sections::intent as sidebar_intent;
+use crate::sections::pins::pins_section as pins;
+use crate::sections::rename_input::intent as rename;
+use crate::sections::resize::intent as resize;
+use crate::sections::section_trait::SidebarIntent;
+use crate::sections::sessions;
+use crate::sections::sidebar::{jump_to_section, navigate_sidebar};
+use crate::sections::task_list_section as task_list;
+
+/// The sidebar's resize-mode dynamic scope.
+#[must_use]
+pub fn resize_scope() -> SliceScopeId {
+    jinn_sidebar_msg::SidebarSectionId::resize_scope_id()
+}
+
+/// The rename popup's dynamic scope (input-capturing).
+#[must_use]
+pub fn rename_scope() -> SliceScopeId {
+    rename::rename_scope()
+}
+
+/// Downcasts the action context's state to the kernel's application
+/// state. Sidebar actions drive concrete session behavior (activate,
+/// close, archive), which needs the full state surface.
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> &'a mut AppState {
+    ctx.state
+        .as_any_mut()
+        .and_then(|any| any.downcast_mut::<AppState>())
+        .expect("sidebar route action dispatched against a non-AppState state")
+}
+
+/// Wraps a synchronous sidebar function into an [`ActionFn`].
+fn sync<F>(f: F) -> ActionFn
+where
+    F: Fn(&mut AppState) -> IntentResult + Send + Sync + 'static,
+{
+    ActionFn::new(move |mut ctx| f(app(&mut ctx)))
+}
+
+/// Builds one `Action` row binding `key` in `scope`. `action`/`display`
+/// must be `'static` (they are the route-table key and which-key label).
+fn row(
+    action: &'static str,
+    scope: SliceScopeId,
+    key: &'static str,
+    category: &'static str,
+    display: &'static str,
+    run: ActionFn,
+) -> RouteRow {
+    RouteRow {
+        // Route ids are only diagnostics/composition keys here; actions
+        // dispatch by (scope, action).
+        route_id: RouteId::new("sidebar:row"),
+        scope,
+        key,
+        category,
+        site: BindSite::OwnScope,
+        feature: "sidebar",
+        outcome: RouteOutcome::Action {
+            action,
+            display,
+            run,
+        },
+    }
+}
+
+/// Attaches the sidebar's keybind rows onto the shared route table.
+/// Called once from the slice's `activate()`.
+pub fn attach_sidebar_rows(routes: &KeyRoutes) {
+    let persona = jinn_sidebar_msg::SidebarSectionId::Persona.scope_id();
+    let pins_scope = jinn_sidebar_msg::SidebarSectionId::Pins.scope_id();
+    let task_list_scope = jinn_sidebar_msg::SidebarSectionId::TaskList.scope_id();
+    let sessions_scope = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
+    let mcp = jinn_sidebar_msg::SidebarSectionId::McpServers.scope_id();
+    let resize = resize_scope();
+    let sections = [
+        persona.clone(),
+        pins_scope.clone(),
+        task_list_scope.clone(),
+        sessions_scope.clone(),
+        mcp.clone(),
+    ];
+
+    // ---- Shared base keys (every section) ----
+    for scope in &sections {
+        routes.attach(row(
+            "move-down",
+            scope.clone(),
+            "j",
+            "navigation",
+            "cursor down",
+            sync(|state| {
+                navigate_sidebar(&SidebarIntent::MoveDown, state);
+                IntentResult::empty()
+            }),
+        ));
+        routes.attach(row(
+            "move-up",
+            scope.clone(),
+            "k",
+            "navigation",
+            "cursor up",
+            sync(|state| {
+                navigate_sidebar(&SidebarIntent::MoveUp, state);
+                IntentResult::empty()
+            }),
+        ));
+        routes.attach(row(
+            "section-next",
+            scope.clone(),
+            "J",
+            "navigation",
+            "next section",
+            sync(|state| {
+                jump_to_section(&SidebarIntent::MoveDown, state);
+                IntentResult::empty()
+            }),
+        ));
+        routes.attach(row(
+            "section-prev",
+            scope.clone(),
+            "K",
+            "navigation",
+            "previous section",
+            sync(|state| {
+                jump_to_section(&SidebarIntent::MoveUp, state);
+                IntentResult::empty()
+            }),
+        ));
+        routes.attach(row(
+            "leave",
+            scope.clone(),
+            "<esc>",
+            "general",
+            "return to chat",
+            sync(sidebar_intent::handle_sidebar_leave),
+        ));
+        routes.attach(row(
+            "leave-chat",
+            scope.clone(),
+            "<c-h>",
+            "navigation",
+            "return to chat",
+            sync(sidebar_intent::handle_sidebar_leave),
+        ));
+        routes.attach(RouteRow {
+            route_id: RouteId::new("sidebar:quit"),
+            scope: scope.clone(),
+            key: "q",
+            category: "general",
+            site: BindSite::OwnScope,
+            feature: "sidebar",
+            outcome: RouteOutcome::StaticIntent(RouteId::new("sidebar:quit")),
+        });
+        routes.attach(RouteRow {
+            route_id: RouteId::new("sidebar:ctrl-clear"),
+            scope: scope.clone(),
+            key: "<c-c>",
+            category: "general",
+            site: BindSite::OwnScope,
+            feature: "sidebar",
+            outcome: RouteOutcome::StaticIntent(RouteId::new("sidebar:ctrl-clear")),
+        });
+        routes.attach(RouteRow {
+            route_id: RouteId::new("sidebar:which-key"),
+            scope: scope.clone(),
+            key: "?",
+            category: "general",
+            site: BindSite::OwnScope,
+            feature: "sidebar",
+            outcome: RouteOutcome::StaticIntent(RouteId::new("sidebar:which-key")),
+        });
+        routes.attach(row(
+            "resize-enter",
+            scope.clone(),
+            "<c-w>",
+            "navigation",
+            "resize sidebar",
+            sync(move |state| {
+                let mut result = resize::handle_resize_enter(state);
+                result.scope_signal = Some(ScopeSignal::Push(resize_scope()));
+                result
+            }),
+        ));
+    }
+
+    // ---- Persona section ----
+    routes.attach(row(
+        "persona-edit",
+        persona,
+        "c",
+        "general",
+        "change persona",
+        sync(|state| {
+            let pickers = jinn_picker_specs::build_picker_registry();
+            pins::handle_sidebar_persona_edit(state, &pickers)
+        }),
+    ));
+
+    // ---- Pins section ----
+    routes.attach(row(
+        "unpin",
+        pins_scope.clone(),
+        "u",
+        "general",
+        "unpin entry",
+        sync(pins::handle_pins_unpin),
+    ));
+    routes.attach(row(
+        "pin-top",
+        pins_scope.clone(),
+        "t",
+        "general",
+        "pin to top",
+        sync(|state| pins::handle_pins_pin(state, jinn_domain::protocol::PinPosition::Top)),
+    ));
+    routes.attach(row(
+        "pin-bottom",
+        pins_scope.clone(),
+        "b",
+        "general",
+        "pin to bottom",
+        sync(|state| pins::handle_pins_pin(state, jinn_domain::protocol::PinPosition::Bottom)),
+    ));
+    routes.attach(row(
+        "pin-relative",
+        pins_scope.clone(),
+        "r",
+        "general",
+        "pin above/below",
+        sync(|state| pins::handle_pins_pin(state, jinn_domain::protocol::PinPosition::Relative)),
+    ));
+    routes.attach(row(
+        "pin-cycle",
+        pins_scope.clone(),
+        "m",
+        "general",
+        "cycle pin position",
+        sync(pins::handle_pins_pin_cycle),
+    ));
+    routes.attach(row(
+        "leave-enter",
+        pins_scope.clone(),
+        "<enter>",
+        "general",
+        "return to chat",
+        sync(sidebar_intent::handle_sidebar_leave),
+    ));
+
+    // ---- Sessions section ----
+    routes.attach(RouteRow {
+        route_id: RouteId::new("sidebar:load-subagent"),
+        scope: sessions_scope.clone(),
+        key: "<enter>",
+        category: "general",
+        site: BindSite::StaticScopes(&["Normal"]),
+        feature: "sidebar",
+        outcome: RouteOutcome::Action {
+            action: "load-subagent",
+            display: "open subagent session",
+            run: sync(sessions::handle_load_subagent_session),
+        },
+    });
+    routes.attach(row(
+        "session-close",
+        sessions_scope.clone(),
+        "x",
+        "general",
+        "close session",
+        sync(sessions::handle_session_close_arm),
+    ));
+    routes.attach(row(
+        jinn_sidebar_msg::TREE_TEARDOWN_ACTION,
+        sessions_scope.clone(),
+        "X",
+        "general",
+        "teardown+archive tree",
+        sync(|state| {
+            sessions::handle_session_tree_action_arm(
+                state,
+                sessions::TreePromptAction::TeardownAndArchive,
+            )
+        }),
+    ));
+    routes.attach(row(
+        "session-teardown",
+        sessions_scope.clone(),
+        "t",
+        "general",
+        "run teardown",
+        sync(sessions::handle_session_teardown),
+    ));
+    routes.attach(row(
+        "session-confirm",
+        sessions_scope.clone(),
+        "<enter>",
+        "general",
+        "activate session",
+        sync(sessions::handle_session_activate),
+    ));
+    routes.attach(row(
+        "session-new",
+        sessions_scope.clone(),
+        "n",
+        "general",
+        "new session",
+        sync(|_state| IntentResult::empty()),
+    ));
+    routes.attach(row(
+        "session-new-lifecycle",
+        sessions_scope.clone(),
+        "N",
+        "general",
+        "new session (setup)",
+        sync(|_state| IntentResult::empty()),
+    ));
+    routes.attach(row(
+        "session-rename",
+        sessions_scope.clone(),
+        "r",
+        "general",
+        "rename session",
+        // The enter handler pushes the popup's dynamic scope itself.
+        sync(rename::handle_rename_session_enter),
+    ));
+
+    routes.attach(row(
+        "rename-confirm",
+        rename_scope(),
+        "<enter>",
+        "input",
+        "rename the session",
+        sync(rename::handle_rename_session_confirm),
+    ));
+    routes.attach(row(
+        "rename-leave",
+        rename_scope(),
+        "<esc>",
+        "general",
+        "cancel rename",
+        sync(rename::handle_rename_session_leave),
+    ));
+    routes.attach(row(
+        "rename-clear-or-leave",
+        rename_scope(),
+        "<c-c>",
+        "general",
+        "clear the title, or leave when already empty",
+        sync(rename::handle_rename_session_clear_or_leave),
+    ));
+    routes.attach(row(
+        "session-archive",
+        sessions_scope.clone(),
+        "a",
+        "general",
+        "archive session",
+        sync(sessions::handle_session_archive),
+    ));
+    routes.attach(row(
+        jinn_sidebar_msg::TREE_ARCHIVE_ACTION,
+        sessions_scope.clone(),
+        "A",
+        "general",
+        "archive subtree",
+        sync(|state| {
+            sessions::handle_session_tree_action_arm(state, sessions::TreePromptAction::Archive)
+        }),
+    ));
+    routes.attach(row(
+        "session-continue",
+        sessions_scope.clone(),
+        "c",
+        "general",
+        "continue session",
+        sync(sessions::handle_session_continue),
+    ));
+    routes.attach(row(
+        "session-rerun-setup",
+        sessions_scope.clone(),
+        "s",
+        "general",
+        "rerun setup",
+        sync(sessions::handle_session_rerun_setup),
+    ));
+    routes.attach(row(
+        "session-terminal",
+        sessions_scope.clone(),
+        "T",
+        "general",
+        "toggle terminal",
+        sync(|_state| {
+            IntentResult::new_message(jinn_domain::protocol::intent::KernelIntent::Dynamic(
+                jinn_slices::DynamicIntent::new(
+                    jinn_term_msg::view_scope(),
+                    "toggle-for-selected",
+                    "toggle terminal",
+                ),
+            ))
+        }),
+    ));
+    routes.attach(row(
+        "session-insert",
+        sessions_scope.clone(),
+        "i",
+        "general",
+        "activate + insert",
+        sync(sessions::handle_session_activate_insert),
+    ));
+
+    // ---- Task list section ----
+    routes.attach(row(
+        "task-open-picker",
+        task_list_scope.clone(),
+        "s",
+        "general",
+        "browse task list",
+        sync(move |state| {
+            let pickers = jinn_picker_specs::build_picker_registry();
+            jinn_domain::feat::picker::intent::handle_open_picker(
+                state,
+                jinn_slices::picker_kind::PickerKind::TaskList,
+                &pickers,
+            )
+        }),
+    ));
+    routes.attach(row(
+        "task-preview-up",
+        task_list_scope.clone(),
+        "<pgup>",
+        "navigation",
+        "preview up",
+        sync(task_list::handle_preview_scroll_up),
+    ));
+    routes.attach(row(
+        "task-preview-down",
+        task_list_scope.clone(),
+        "<pgdn>",
+        "navigation",
+        "preview down",
+        sync(task_list::handle_preview_scroll_down),
+    ));
+
+    // ---- Resize mode ----
+    routes.attach(row(
+        "resize-expand",
+        resize.clone(),
+        "h",
+        "general",
+        "widen sidebar",
+        sync(resize::handle_resize_expand),
+    ));
+    routes.attach(row(
+        "resize-contract",
+        resize.clone(),
+        "l",
+        "general",
+        "narrow sidebar",
+        sync(resize::handle_resize_contract),
+    ));
+    routes.attach(row(
+        "resize-leave",
+        resize.clone(),
+        "<esc>",
+        "general",
+        "leave resize",
+        sync(move |state| {
+            let mut result = resize::handle_resize_leave(state);
+            result.scope_signal = Some(ScopeSignal::PopIf(resize_scope()));
+            result
+        }),
+    ));
+    routes.attach(RouteRow {
+        route_id: RouteId::new("sidebar:resize-mode"),
+        scope: resize,
+        key: "<c-c>",
+        category: "general",
+        site: BindSite::OwnScope,
+        feature: "sidebar",
+        outcome: RouteOutcome::StaticIntent(RouteId::new("sidebar:quit")),
+    });
+
+    // ---- Entry keys (Normal + Input scopes) ----
+    routes.attach(RouteRow {
+        route_id: RouteId::new("sidebar:focus"),
+        scope: sessions_scope.clone(),
+        key: "<c-l>",
+        category: "navigation",
+        site: BindSite::StaticScopes(&["Normal", "Input"]),
+        feature: "sidebar",
+        outcome: RouteOutcome::Action {
+            action: "focus",
+            display: "focus sidebar",
+            run: sync(sidebar_intent::handle_sidebar_focus),
+        },
+    });
+    routes.attach(RouteRow {
+        route_id: RouteId::new("sidebar:focus-sessions"),
+        scope: sessions_scope,
+        key: "<M-s>",
+        category: "navigation",
+        site: BindSite::StaticScopes(&["Normal", "Input"]),
+        feature: "sidebar",
+        outcome: RouteOutcome::Action {
+            action: "focus-sessions",
+            display: "focus session list",
+            run: sync(sidebar_intent::handle_sidebar_focus_sessions),
+        },
+    });
+    routes.attach(RouteRow {
+        route_id: RouteId::new("sidebar:resize-mode"),
+        scope: resize_scope(),
+        key: "<c-w>",
+        category: "navigation",
+        site: BindSite::StaticScopes(&["Normal", "Input"]),
+        feature: "sidebar",
+        outcome: RouteOutcome::Action {
+            action: "resize-mode",
+            display: "resize sidebar",
+            run: sync(move |state| {
+                let mut result = resize::handle_resize_enter(state);
+                result.scope_signal = Some(ScopeSignal::Push(resize_scope()));
+                result
+            }),
+        },
+    });
+}
+
+/// Registers the rename popup's input hook on the shared route table:
+/// within the rename scope, ordinary typing and paste edit the popup's
+/// in-progress text directly in the sections cell — no kernel state
+/// access needed.
+pub fn register_rename_input_hook(
+    routes: &KeyRoutes,
+    cell: &jinn_slices::cell::TypedCell<jinn_sidebar_msg::SidebarSections>,
+) {
+    use jinn_slices::route::{EditIntent, InputHook};
+
+    let cell = cell.clone();
+    let hook: InputHook = std::sync::Arc::new(move |intent: &EditIntent| {
+        let cell = cell.clone();
+        let result = match intent {
+            EditIntent::InsertChar(ch) => {
+                cell.update(|s| rename::insert_char(&mut s.rename_input, *ch));
+                IntentResult::empty()
+            }
+            EditIntent::DeleteBackward => {
+                cell.update(|s| rename::delete(&mut s.rename_input));
+                IntentResult::empty()
+            }
+            EditIntent::DeleteForward => {
+                cell.update(|s| rename::delete_forward(&mut s.rename_input));
+                IntentResult::empty()
+            }
+            EditIntent::CursorLeft => {
+                cell.update(|s| rename::cursor_left(&mut s.rename_input));
+                IntentResult::empty()
+            }
+            EditIntent::CursorRight => {
+                cell.update(|s| rename::cursor_right(&mut s.rename_input));
+                IntentResult::empty()
+            }
+            EditIntent::CursorHome => {
+                cell.update(|s| rename::cursor_home(&mut s.rename_input));
+                IntentResult::empty()
+            }
+            EditIntent::CursorEnd => {
+                cell.update(|s| rename::cursor_end(&mut s.rename_input));
+                IntentResult::empty()
+            }
+            EditIntent::Paste(text) => {
+                cell.update(|s| rename::paste(&mut s.rename_input, text));
+                IntentResult::empty()
+            }
+        };
+        Some(result)
+    });
+    routes.register_input_hook(&rename_scope(), hook);
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use super::*;
+    use jinn_slices::route::EditIntent;
+
+    fn rename_cell() -> (
+        jinn_slices::Slices,
+        jinn_slices::TypedCell<jinn_sidebar_msg::SidebarSections>,
+    ) {
+        let slices = jinn_slices::Slices::new();
+        let cell = slices
+            .register(
+                crate::sidebar_sections_slot(),
+                jinn_sidebar_msg::SidebarSections::default(),
+            )
+            .expect("fresh registry has the sidebar slot free");
+        (slices, cell)
+    }
+
+    #[rstest::rstest]
+    fn rename_input_hook_pastes_unicode_at_cursor() {
+        // Given a rename cell containing Unicode text with the cursor at its start.
+        let routes = KeyRoutes::new();
+        let (_slices, cell) = rename_cell();
+        cell.update(|sections| sections.rename_input.text.set("é界".to_owned()));
+        cell.update(|sections| sections.rename_input.text.cursor_home());
+        register_rename_input_hook(&routes, &cell);
+        let hook = routes
+            .input_hook(&rename_scope())
+            .expect("rename hook is registered");
+
+        // When bracketed paste is handled.
+        let result = hook(&EditIntent::Paste("🙂".to_owned()));
+
+        // Then the paste is consumed and inserted at the cursor.
+        assert!(result.is_some());
+        assert_eq!(cell.read().rename_input.text.input, "🙂é界");
+    }
+
+    #[rstest::rstest]
+    fn rename_input_hook_consumes_home_and_end() {
+        // Given a rename cell with the cursor at the start.
+        let routes = KeyRoutes::new();
+        let (_slices, cell) = rename_cell();
+        cell.update(|sections| sections.rename_input.text.set("héllo".to_owned()));
+        cell.update(|sections| sections.rename_input.text.cursor_home());
+        register_rename_input_hook(&routes, &cell);
+        let hook = routes
+            .input_hook(&rename_scope())
+            .expect("rename hook is registered");
+
+        // When End and Home are handled.
+        let end = hook(&EditIntent::CursorEnd);
+        let end_position = cell.read().rename_input.text.cursor_pos;
+        let home = hook(&EditIntent::CursorHome);
+
+        // Then both intents are consumed and the cursor reaches each boundary.
+        assert!(end.is_some());
+        assert_eq!(end_position, "héllo".len());
+        assert!(home.is_some());
+        assert_eq!(cell.read().rename_input.text.cursor_pos, 0);
+    }
+
+    /// The rename popup's `<c-c>` route is a slice action rather than a
+    /// static kernel intent, so its clear/leave behavior stays owned here.
+    #[rstest::rstest]
+    #[test]
+    fn attach_sidebar_rows_binds_action_for_ctrl_clear_in_rename_scope() {
+        // Given an empty shared route table.
+        let routes = KeyRoutes::new();
+
+        // When the sidebar's rows are attached.
+        attach_sidebar_rows(&routes);
+
+        // Then <c-c> resolves to the rename clear-or-leave action.
+        assert!(routes.rows().iter().any(|row| {
+            row.scope == rename_scope()
+                && row.key == "<c-c>"
+                && matches!(
+                    &row.outcome,
+                    RouteOutcome::Action { action, .. } if *action == "rename-clear-or-leave"
+                )
+        }));
+    }
+}

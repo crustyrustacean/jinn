@@ -1,0 +1,64 @@
+[package]
+name = "jinn-session-store"
+version.workspace = true
+edition.workspace = true
+description = """
+The session-store slice: session persistence/restoration actor, SQLite backend,
+and background FTS search-index maintenance actor.
+
+Kernel dependency: the shared `SessionStore` service seam and `State` live in
+`jinn-domain`; session snapshots and reconstruction
+contracts come from `jinn-session-state`.
+"""
+
+[dependencies]
+jinn-domain = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-provider = { workspace = true }
+jinn-provider-config = { workspace = true }
+jinn-common = { workspace = true }
+jinn-session-schema = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-chat-input-msg = { workspace = true }
+jinn-chat-log-view-msg = { workspace = true }
+jinn-token-count-msg = { workspace = true }
+jinn-tools-msg = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-boot-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-mcp-msg = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-picker = { workspace = true }
+daow = { workspace = true }
+rusqlite = { workspace = true }
+async-trait = { workspace = true }
+parking_lot = { workspace = true }
+# The search-index actor runs on the trouper fabric (actor-migration big bang).
+serde = { workspace = true }
+serde_json = { workspace = true }
+jiff = { workspace = true }
+error-stack = { workspace = true }
+wherror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+trouper = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+jinn-domain = { workspace = true, features = ["test-harness"] }
+
+# The build script creates the compile-time SQL validation DB (schema-crate
+# pattern; mirrors jinn-domain/build.rs).
+[build-dependencies]
+rusqlite = { workspace = true }
+jinn-session-schema = { workspace = true }
+
+[target.'cfg(windows)'.build-dependencies]
+rusqlite = { workspace = true, features = ["bundled"] }
+
+[lints]
+workspace = true

@@ -16,13 +16,13 @@ use crate::slice_scope::SliceScopeId;
 
 /// Uniquely addresses one slice cell.
 ///
-/// `namespace` separates built-ins from plugin contributions
-/// (`builtin` vs the plugin's name); `name` is the feature-chosen slice
-/// name; `version` lets a slice payload evolve under a new key instead
-/// of migrating in place.
+/// `namespace` is the feature's own namespace (e.g. the slice crate's
+/// domain, or `builtin`); `name` is the feature-chosen slice name;
+/// `version` lets a slice payload evolve under a new key instead of
+/// migrating in place.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SlotKey {
-    /// Namespace owning the slot: `builtin` or a plugin name.
+    /// Namespace owning the slot (e.g. `builtin`).
     namespace: String,
     /// Feature-chosen slice name, e.g. `status`.
     name: String,
@@ -36,19 +36,6 @@ impl SlotKey {
     pub fn builtin(namespace: &str, name: &str) -> Self {
         Self {
             namespace: namespace.to_owned(),
-            name: name.to_owned(),
-            version: 1,
-        }
-    }
-
-    /// A key for a plugin-contributed slice.
-    ///
-    /// Guest slices are namespaced by plugin name so two plugins can
-    /// never collide with each other or with built-ins.
-    #[must_use]
-    pub fn plugin(plugin_name: &str, name: &str) -> Self {
-        Self {
-            namespace: plugin_name.to_owned(),
             name: name.to_owned(),
             version: 1,
         }
@@ -98,8 +85,8 @@ impl std::error::Error for SlotTaken {}
 ///
 /// Cheap to clone: every clone shares the same cells, so a handle
 /// obtained before cloning still observes updates made through the
-/// clone's registry (and vice versa). Cloning a `Slices` does **not**
-/// mint new write capabilities — [`TypedCell`]s are minted only by
+/// clone's registry (and vice versa). Cloning a `Slices` does not
+/// register a new slot; [`TypedCell`] handles are returned by
 /// [`register`](Self::register).
 #[derive(Clone, Debug, Default)]
 pub struct Slices {
@@ -117,6 +104,8 @@ pub struct Slices {
     /// Overlay scope → the slot backing the overlay's content, so the
     /// render pass can resolve the scope's view through the viewport.
     overlay_slots: Arc<RwLock<HashMap<SliceScopeId, SlotKey>>>,
+    /// Overlay scopes whose rect registers as a selectable region.
+    overlay_selectable: Arc<RwLock<HashMap<SliceScopeId, bool>>>,
     /// Slice feature flags, set at activation from the slice's own
     /// config section. Read-model for gating decisions (e.g. a route
     /// action asking "is this slice enabled?").
@@ -294,6 +283,23 @@ impl Slices {
     pub fn overlay(&self, scope: &SliceScopeId) -> Option<OverlayFn> {
         self.overlays.read().get(scope).map(|e| e.0.clone())
     }
+
+    /// Returns whether `scope`'s overlay rect registers as a selectable
+    /// region. Popups that render focusable content opt in at activation
+    /// (`register_overlay_selectable`); drawers default to `false`.
+    #[must_use]
+    pub fn overlay_selectable(&self, scope: &SliceScopeId) -> bool {
+        self.overlay_selectable
+            .read()
+            .get(scope)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// Marks `scope`'s overlay rect as selectable.
+    pub fn register_overlay_selectable(&self, scope: &SliceScopeId) {
+        self.overlay_selectable.write().insert(scope.clone(), true);
+    }
 }
 
 #[cfg(test)]
@@ -354,7 +360,7 @@ mod tests {
         // Given a registry with two registered slots.
         let slices = Slices::new();
         let a = SlotKey::builtin("a", "one");
-        let b = SlotKey::plugin("plug", "two");
+        let b = SlotKey::builtin("b", "two");
         let _ = slices
             .register(a.clone(), Payload::default())
             .expect("register a");

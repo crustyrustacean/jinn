@@ -1,8 +1,6 @@
 [package]
 name = "jinn-discord-msg"
-version = "0.116.1"
 edition.workspace = true
-publish.workspace = true
 
 [dependencies]
 jinn-core-types = { workspace = true }

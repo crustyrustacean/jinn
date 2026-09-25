@@ -1,0 +1,20 @@
+[package]
+name = "jinn-project-msg"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+jinn-cwd-msg = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
+
+[dev-dependencies]
+dirs = { workspace = true }
+rstest = { workspace = true }
+
+[lints]
+workspace = true

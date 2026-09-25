@@ -47,6 +47,10 @@ impl ServerHandler for EchoServer {
         InitializeResult::new(ServerCapabilities::default())
     }
 
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "rmcp service contract requires async fn; the body never awaits"
+    )]
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
@@ -69,6 +73,10 @@ impl ServerHandler for EchoServer {
         Ok(ListToolsResult::with_all_items(vec![tool]))
     }
 
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "rmcp service contract requires async fn; the body never awaits"
+    )]
     async fn call_tool(
         &self,
         request: CallToolRequestParams,

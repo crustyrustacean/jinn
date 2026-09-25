@@ -6,9 +6,9 @@
 //! chat-log area and vertically anchored to the top of the selected entry.
 //! It tracks the cursor live as the user navigates.
 
+use jinn_chat_log_view::chat_log::{audit_popup_rect, format_audit_lines};
 use jinn_domain::RenderCtx;
-use jinn_domain::common::focus::FocusScope;
-use jinn_domain::feat::ui::chat_log::audit_popup::{audit_popup_rect, format_audit_lines};
+use jinn_slices::FocusScope;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -82,13 +82,13 @@ pub(super) fn render_audit_popup(
 
 /// Returns true if a higher-priority overlay is currently active.
 fn overlay_active(ctx: &RenderCtx) -> bool {
-    matches!(
-        ctx.state.frontend.scope_stack.current(),
-        FocusScope::Picker { .. }
-            | FocusScope::ArgInput
-            | FocusScope::RenameSessionInput
-            | FocusScope::SidebarSessions
-    )
+    match ctx.state.frontend.scope() {
+        FocusScope::Picker { .. } => true,
+        FocusScope::Dynamic(id) => {
+            id.slice() == "sidebar" && (id.name() == "sessions" || id.name() == "rename")
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -114,10 +114,10 @@ mod tests {
     //!
     //! Together they pin the contract that the popup paints at the computed
     //! rect with the expected text and is registered as a selectable region.
-    use jinn_domain::FocusScope;
+    use jinn_chat_log_view::chat_log::AUDIT_POPUP_WIDTH;
     use jinn_domain::RenderCtx;
-    use jinn_domain::feat::session::chat_entry::{ChangeSource, ChatEntry, ContextOverride};
-    use jinn_domain::feat::ui::chat_log::audit_popup::AUDIT_POPUP_WIDTH;
+    use jinn_domain::protocol::{ChangeSource, ChatEntry, ContextOverride};
+    use jinn_slices::FocusScope;
     use jinn_testutil::setup_term;
     use ratatui::layout::Rect;
 
@@ -129,14 +129,10 @@ mod tests {
         let app = crate::TuiApp::test_builder().build().await;
         let mut entry = ChatEntry::user("hello");
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+        app.core.state.write().frontend.audit_popup_visible = true;
         app.core
             .state
-            .write_test_no_cap()
-            .frontend
-            .audit_popup_visible = true;
-        app.core
-            .state
-            .write_test_no_cap()
+            .write()
             .active_session_mut()
             .push_entry(entry);
         app
@@ -176,7 +172,7 @@ mod tests {
         // Pre-populate the line-range cache that render_chat_log normally fills.
         // The selected entry occupies wrapped-line 0..=0 (one line).
         {
-            let mut wstate = app.core.state.write_test_no_cap();
+            let mut wstate = app.core.state.write();
             let session = wstate.active_session_mut();
             session.set_entry_line_ranges(vec![(0, 0)]);
             session.set_rendered_scroll_offset(0);
@@ -194,7 +190,7 @@ mod tests {
             .draw(|frame| {
                 let guard = app.core.state.read();
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&guard, &slices, &views);
                 render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
             })
@@ -283,7 +279,7 @@ mod tests {
         let (mut terminal, _area) = setup_term(100, 24);
 
         {
-            let mut wstate = app.core.state.write_test_no_cap();
+            let mut wstate = app.core.state.write();
             let session = wstate.active_session_mut();
             session.set_entry_line_ranges(vec![(0, 0)]);
             session.set_rendered_scroll_offset(0);
@@ -298,7 +294,7 @@ mod tests {
             .draw(|frame| {
                 let guard = app.core.state.read();
                 let slices = jinn_slices::Slices::new();
-                let views = jinn_domain::common::overlay_views::OverlayViews::new();
+                let views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&guard, &slices, &views);
                 render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
             })
@@ -379,7 +375,7 @@ mod tests {
         // audit_popup_visible stays at default (false)
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .active_session_mut()
             .push_entry(entry);
         let (mut terminal, _area) = setup_term(80, 24);
@@ -420,10 +416,9 @@ mod tests {
         let mut app = app_with_audit_visible().await;
         app.core
             .state
-            .write_test_no_cap()
+            .write()
             .frontend
-            .scope_stack
-            .push(FocusScope::Picker {
+            .scope_push(FocusScope::Picker {
                 kind: jinn_domain::PickerKind::Provider,
             });
         let (mut terminal, _area) = setup_term(80, 24);

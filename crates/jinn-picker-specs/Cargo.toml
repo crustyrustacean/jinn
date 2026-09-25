@@ -1,0 +1,46 @@
+[package]
+name = "jinn-picker-specs"
+version.workspace = true
+edition.workspace = true
+description = "Picker specs and the AppState host lens: the kernel's picker adapter, hosted outside the kernel so specs can follow their owning slices."
+
+[dependencies]
+# The kernel's picker adapter. This crate reads and writes `AppState` through
+# the specs' `state_any` bridge, so it depends on the kernel one way only:
+# `jinn-domain` must never depend on this crate, or the cycle is immediate.
+jinn-domain = { workspace = true }
+# The kernel-free picker framework: specs, registry, ids, entry hooks, styles.
+jinn-picker = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-theme = { workspace = true }
+
+# Message crates whose payload types the specs construct or read.
+jinn-mcp-msg = { workspace = true }
+jinn-theme-msg = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-session-init-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-persona-msg = { workspace = true }
+jinn-project-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-skills-msg = { workspace = true }
+jinn-provider-selection-msg = { workspace = true }
+jinn-tools-msg = { workspace = true }
+jinn-preferences-config = { workspace = true }
+
+ratatui = { workspace = true }
+jiff = { workspace = true }
+wherror = { workspace = true }
+unicode-segmentation = { workspace = true }
+serde_json = { workspace = true }
+humantime = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+jinn-testutil = { workspace = true }
+
+[lints]
+workspace = true

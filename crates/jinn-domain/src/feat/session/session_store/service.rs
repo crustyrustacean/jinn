@@ -7,10 +7,11 @@ use std::sync::Arc;
 
 use error_stack::Report;
 
-use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session::session_summary::SessionSummary;
-use crate::feat::session_search::{SearchOutcome, SearchParams, TranscriptWindow};
-use crate::protocol::{ChatEntryId, SessionId};
+use crate::protocol::ChatEntryId;
+use jinn_core_types::SessionId;
+use jinn_session_state::SessionSnapshot;
+use jinn_session_store_msg::SessionSummary;
+use jinn_session_store_msg::{SearchOutcome, SearchParams, TranscriptWindow};
 
 use super::{SessionStore, SessionStoreError};
 
@@ -36,8 +37,20 @@ impl SessionStoreService {
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if the write fails.
-    pub async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
-        self.svc.save(session).await
+    pub async fn save(&self, snapshot: &SessionSnapshot) -> Result<(), Report<SessionStoreError>> {
+        self.svc.save(snapshot).await
+    }
+
+    /// Archive one or more complete session snapshots.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if any archive write fails.
+    pub async fn archive_snapshots(
+        &self,
+        snapshots: &[SessionSnapshot],
+    ) -> Result<(), Report<SessionStoreError>> {
+        self.svc.archive_snapshots(snapshots).await
     }
 
     /// Load lightweight summaries for all sessions.
@@ -57,7 +70,7 @@ impl SessionStoreService {
     pub async fn load_session(
         &self,
         session_id: &SessionId,
-    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
+    ) -> Result<Option<SessionSnapshot>, Report<SessionStoreError>> {
         self.svc.load_session(session_id).await
     }
 

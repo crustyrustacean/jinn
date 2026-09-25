@@ -10,19 +10,19 @@ use error_stack::{Report, ResultExt};
 use jinn_cli::Cli;
 use jinn_domain::ApiKeys;
 use jinn_domain::ApiKeysService;
-use jinn_domain::AppStateStorageService;
 use jinn_domain::ConfigStorageService;
-use jinn_domain::FilesystemAppStateStorage;
 use jinn_domain::FilesystemConfigStorage;
-use jinn_domain::FilesystemUserPreferencesStorage;
 use jinn_domain::LlmServiceFactoryService;
 use jinn_domain::NoProvidersAvailableFactory;
 use jinn_domain::ProviderRegistry;
 use jinn_domain::ProviderRegistryService;
 use jinn_domain::SessionStoreService;
-use jinn_domain::SqliteSessionStore;
+use jinn_preferences_config::AppStateStorageService;
+use jinn_preferences_config::FilesystemAppStateStorage;
+use jinn_preferences_config::FilesystemUserPreferencesStorage;
+use jinn_session_store::sqlite::SqliteSessionStore;
 
-use jinn_domain::UserPreferencesStorageService;
+use jinn_preferences_config::UserPreferencesStorageService;
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -82,9 +82,9 @@ impl App {
         runner: crate::runner::Runner,
         store: &jinn_domain::SessionStoreService,
     ) -> Result<(), Report<AppError>> {
-        // Extract the root supervisor ref before the runner is consumed, so we
-        // can coordinate actor shutdown after the event loop exits.
-        let root = runner.root_supervisor();
+        // Extract the trouper system handle before the runner is consumed,
+        // so the graceful shutdown sweep can run after the event loop exits.
+        let trouper_system = runner.trouper_system();
 
         // Run the runner, but don't short-circuit shutdown on its error.
         // The WAL checkpoint is non-destructive and must run whenever the actor
@@ -94,22 +94,21 @@ impl App {
         // trouble the caller should see).
         let run_result = runner.run().change_context(AppError);
 
-        // Coordinated actor shutdown: signal the root supervisor to stop, which
-        // cascades a graceful shutdown to every supervised child actor (kameo's
-        // lifecycle calls each child's `on_stop`). Race the barrier against a
-        // 20-second timeout; on timeout we proceed regardless so a wedged actor
-        // can't prevent process exit.
-        if let Some(root) = root {
+        // Graceful shutdown: the trouper sweep fires every supervised
+        // child's shutdown watcher (each loop drains, runs its `on_stop`
+        // hook, and tears down), races the drain against a 10s deadline,
+        // then flushes the store. A wedged actor can't prevent process
+        // exit — the sweep hard-stops stragglers at the deadline.
+        if let Some(trouper_system) = trouper_system {
             self.runtime.block_on(async {
-                root.stop_gracefully().await.ok();
                 if tokio::time::timeout(
                     std::time::Duration::from_secs(20),
-                    root.wait_for_shutdown(),
+                    trouper_system.shutdown_graceful(std::time::Duration::from_secs(10)),
                 )
                 .await
                 .is_err()
                 {
-                    tracing::warn!("actor shutdown timed out after 20s; proceeding");
+                    tracing::warn!("trouper shutdown timed out after 20s; proceeding");
                 }
             });
         }
@@ -158,7 +157,7 @@ impl App {
         // auto-creates the file on first run) — and it needs no session store.
         if let Some(Commands::Config { subcommand }) = &cli.command {
             use jinn_cli::cli::ConfigCommands;
-            use jinn_domain::{InitOutcome, init_default_config_to, preferences_path};
+            use jinn_preferences_config::{InitOutcome, init_default_config_to, preferences_path};
 
             match subcommand {
                 ConfigCommands::Init { force } => {
@@ -202,182 +201,15 @@ impl App {
             }
         }
 
-        // `plugin new` scaffolds a plugin project. It needs no preferences
-        // or DB and runs fully offline, so it dispatches before both.
-        if let Some(Commands::Plugin { subcommand }) = &cli.command {
-            use jinn_cli::cli::PluginCommands;
-            use jinn_cli::plugin_build;
-            use jinn_cli::plugin_new;
-            match subcommand {
-                PluginCommands::New { name, sdk } => {
-                    let cwd = std::env::current_dir()
-                        .change_context(AppError)
-                        .attach("resolving current directory")?;
-                    let source = match sdk.as_deref() {
-                        None => plugin_new::SdkSource::DefaultGit,
-                        Some(value) => plugin_new::parse_sdk(value).map_err(|report| {
-                            eprintln!("{report:?}");
-                            report.change_context(AppError)
-                        })?,
-                    };
-                    match plugin_new::scaffold(&cwd, name, &source) {
-                        Ok(dir) => plugin_new::report_success(&dir, name, &source),
-                        Err(report) => {
-                            eprintln!("{report:?}");
-                            return Err(report.change_context(AppError));
-                        }
-                    }
-                }
-                PluginCommands::Build { dir } => {
-                    let target = dir.as_deref().map_or_else(
-                        || {
-                            std::env::current_dir()
-                                .change_context(AppError)
-                                .attach("resolving current directory")
-                        },
-                        |d| {
-                            std::path::PathBuf::from(d)
-                                .canonicalize()
-                                .change_context(AppError)
-                                .attach("resolving plugin directory")
-                        },
-                    )?;
-                    match plugin_build::build(&target) {
-                        Ok(artifact) => {
-                            println!("built {}", artifact.display());
-                            println!("install with: jinn plugin install {}", artifact.display());
-                        }
-                        Err(report) => {
-                            eprintln!("{report:?}");
-                            return Err(report.change_context(AppError));
-                        }
-                    }
-                }
-                PluginCommands::Install {
-                    wasm,
-                    name,
-                    grants,
-                    http,
-                    no_http,
-                } => {
-                    use jinn_domain::feat::plugin::manifest::extract_manifest;
-
-                    let wasm_path = std::path::PathBuf::from(wasm);
-                    let bytes = std::fs::read(&wasm_path).map_err(|e| {
-                        Report::new(AppError)
-                            .attach(e.to_string())
-                            .attach(wasm_path.to_string_lossy().to_string())
-                    })?;
-                    let manifest = extract_manifest(&bytes).map_err(|report| {
-                        eprintln!("{report:?}");
-                        report.change_context(AppError)
-                    })?;
-                    let resolved = resolve_install(
-                        name.clone(),
-                        grants.clone(),
-                        *http,
-                        *no_http,
-                        &manifest,
-                        &wasm_path,
-                    );
-                    run_install(&resolved, &wasm_path)?;
-                    return Ok(());
-                }
-                PluginCommands::Add {
-                    dir,
-                    name,
-                    grants,
-                    http,
-                    no_http,
-                } => {
-                    use jinn_domain::feat::plugin::manifest::{extract_manifest, read_manifest};
-
-                    let dir = std::path::PathBuf::from(dir.as_deref().unwrap_or("."));
-                    let cargo_toml = dir.join("Cargo.toml");
-                    let _ = std::fs::read_to_string(&cargo_toml)
-                        .change_context(AppError)
-                        .attach(cargo_toml.to_string_lossy().to_string())
-                        .and_then(|content| {
-                            read_manifest(&content).map_err(|r| r.change_context(AppError))
-                        })?;
-                    let artifact = plugin_build::build(&dir).map_err(|report| {
-                        eprintln!("{report:?}");
-                        report.change_context(AppError)
-                    })?;
-                    let manifest =
-                        extract_manifest(&std::fs::read(&artifact).change_context(AppError)?)
-                            .map_err(|report| {
-                                eprintln!("{report:?}");
-                                report.change_context(AppError)
-                            })?;
-                    let resolved = resolve_install(
-                        name.clone(),
-                        grants.clone(),
-                        *http,
-                        *no_http,
-                        &manifest,
-                        &artifact,
-                    );
-                    run_install(&resolved, &artifact)?;
-                    return Ok(());
-                }
-                // `install-builtins` overwrites every builtin plugin payload
-                // and registers only entries missing from jinn.toml. It needs
-                // no DB and runs before actor wiring, so it dispatches here.
-                PluginCommands::InstallBuiltins => {
-                    use jinn_domain::{
-                        AppPaths, BuiltinPluginInstall, FilesystemUserPreferencesStorage,
-                        InstallOutcome, install_builtin_plugins_to,
-                    };
-
-                    let app_paths = AppPaths::default();
-                    let storage = FilesystemUserPreferencesStorage::default_path();
-                    match install_builtin_plugins_to(&app_paths.plugins_dir(), &storage) {
-                        Ok(installs) => {
-                            for BuiltinPluginInstall {
-                                name,
-                                payload,
-                                entry_registered,
-                            } in installs
-                            {
-                                match &payload {
-                                    InstallOutcome::Created(path) => {
-                                        println!("Installed {}", path.display());
-                                    }
-                                    InstallOutcome::Overwritten(path) => {
-                                        println!("Overwrote {}", path.display());
-                                    }
-                                    InstallOutcome::Skipped(path) => {
-                                        println!("Already present, skipped {}", path.display());
-                                    }
-                                }
-                                if entry_registered {
-                                    println!("Registered {name}");
-                                } else {
-                                    println!("Already registered, skipped {name}");
-                                }
-                            }
-                            println!("Restart jinn to activate plugins.");
-                            return Ok(());
-                        }
-                        Err(report) => {
-                            eprintln!("error: failed to install builtin plugins:");
-                            eprintln!("  {report:?}");
-                            return Err(report.change_context(AppError));
-                        }
-                    }
-                }
-            }
-        }
         // `install` seeds default resources into user dirs. Like `config`, it
         // must run before any actor wiring — and it needs no preferences/DB,
         // so it dispatches before the session store is opened.
         if let Some(Commands::Install { force }) = &cli.command {
-            use jinn_domain::feat::preferences_actor::FilesystemUserPreferencesStorage;
             use jinn_domain::{
                 AppPaths, Destinations, InstallOutcome, InstallReport, JinnTomlOutcome,
                 install_defaults_to,
             };
+            use jinn_preferences_config::FilesystemUserPreferencesStorage;
 
             let app_paths = AppPaths::default();
             let storage = FilesystemUserPreferencesStorage::default_path();
@@ -386,7 +218,6 @@ impl App {
                 app_paths.personas_dir(),
                 app_paths.prompts_dir(),
                 app_paths.skills_dir(),
-                app_paths.plugins_dir(),
             );
             match install_defaults_to(&destinations, *force, storage.path(), &storage) {
                 Ok(report) => {
@@ -394,7 +225,6 @@ impl App {
                         outcomes,
                         jinn_toml,
                     } = report;
-                    let mut plugins_touched = false;
                     for outcome in outcomes {
                         match &outcome {
                             InstallOutcome::Created(path) => {
@@ -407,11 +237,6 @@ impl App {
                                 println!("Overwrote {}", path.display());
                             }
                         }
-                        if !matches!(outcome, InstallOutcome::Skipped(_))
-                            && outcome.path().extension().is_some_and(|e| e == "wasm")
-                        {
-                            plugins_touched = true;
-                        }
                     }
                     match &jinn_toml {
                         JinnTomlOutcome::Created(path) => {
@@ -420,14 +245,6 @@ impl App {
                         JinnTomlOutcome::Untouched(path) => {
                             println!("Already present, skipped {}", path.display());
                         }
-                    }
-                    if plugins_touched {
-                        if matches!(jinn_toml, JinnTomlOutcome::Untouched(_)) {
-                            println!(
-                                "note: payloads installed while jinn.toml exists are not registered; run \"jinn plugin install-builtins\" to add any missing [plugin.<name>] entries"
-                            );
-                        }
-                        println!("Restart jinn to activate plugins.");
                     }
                     return Ok(());
                 }
@@ -508,8 +325,11 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let intent_handler_cap =
-                    jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
+                let compaction_prompt = jinn_tui::load_compaction_prompt(
+                    &jinn_domain::AppPaths::default().prompts_dir(),
+                    &jinn_domain::AppPaths::default().system_prompts_dir(),
+                )
+                .change_context(AppError)?;
                 let (core, services, discord_activated) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
@@ -521,8 +341,8 @@ impl App {
                         user_preferences_storage: user_preferences_storage.clone(),
                         app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
-                        browser_profile_override: cli.browser_profile.clone(),
                         dump_requests: cli.dump_requests.clone(),
+                        compaction_prompt,
                     })
                     .build()
                     .await
@@ -536,7 +356,6 @@ impl App {
                     &services,
                     session_pool.clone(),
                     discord_activated,
-                    &intent_handler_cap,
                 );
 
                 let app = jinn_tui::launch(core, services).change_context(AppError)?;
@@ -545,9 +364,12 @@ impl App {
             }
             #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
-                let intent_handler_cap =
-                    jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
                 let store_for_shutdown = session_store.clone();
+                let compaction_prompt = jinn_tui::load_compaction_prompt(
+                    &jinn_domain::AppPaths::default().prompts_dir(),
+                    &jinn_domain::AppPaths::default().system_prompts_dir(),
+                )
+                .change_context(AppError)?;
                 let (core, services, _discord_activated) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
@@ -559,25 +381,17 @@ impl App {
                         user_preferences_storage: user_preferences_storage.clone(),
                         app_state_storage,
                         paths: jinn_domain::AppPaths::default(),
-                        browser_profile_override: cli.browser_profile.clone(),
                         dump_requests: cli.dump_requests.clone(),
+                        compaction_prompt,
                     })
                     .build()
                     .await
                 });
 
-                jinn_tui::load_compaction_prompt(
-                    &core.state,
-                    &services.paths.prompts_dir(),
-                    &services.paths.system_prompts_dir(),
-                    &intent_handler_cap,
-                )
-                .change_context(AppError)?;
                 jinn_tui::load_theme(
                     &core.state,
                     &services.paths.themes_dir(),
                     &services.paths.system_themes_dir(),
-                    &intent_handler_cap,
                 );
                 let mut headless = HeadlessApp::new(core, services);
                 match command {
@@ -610,9 +424,6 @@ impl App {
             // preferences parse. Reaching this match arm is impossible.
             Commands::Config { .. } => {}
             Commands::Install { .. } => {}
-            // `plugin` subcommands are dispatched above, before the early
-            // preferences parse. Reaching this match arm is impossible.
-            Commands::Plugin { .. } => {}
         }
 
         Ok(())
@@ -724,129 +535,6 @@ async fn fetch_models_from_url(
     Ok(())
 }
 
-/// The effective values an install applies, after manifest-vs-flag
-/// precedence.
-struct ResolvedInstall {
-    name: String,
-    grants: Vec<jinn_domain::feat::plugin::PluginPathGrant>,
-    http: bool,
-    /// True when the grants came from the embedded manifest (not flags) —
-    /// drives the mandatory override hint.
-    grants_from_manifest: bool,
-}
-
-/// Resolves `--name`/`--grant`/`--http` flags against the plugin's embedded
-/// manifest: flags win when present, manifest values otherwise, file/crate
-/// stem as the final name fallback.
-fn resolve_install(
-    name_flag: Option<String>,
-    grant_flags: Vec<String>,
-    http_flag: bool,
-    no_http_flag: bool,
-    manifest: &jinn_domain::feat::plugin::manifest::PluginManifest,
-    artifact: &std::path::Path,
-) -> ResolvedInstall {
-    use jinn_domain::feat::plugin::manifest::parse_grant_str;
-
-    let name = name_flag
-        .or_else(|| manifest.name.clone())
-        .or_else(|| {
-            artifact
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(str::to_owned)
-        })
-        .unwrap_or_default();
-    let (grants, grants_from_manifest) = if grant_flags.is_empty() {
-        (manifest.grants.clone(), true)
-    } else {
-        (
-            grant_flags.iter().map(|g| parse_grant_str(g)).collect(),
-            false,
-        )
-    };
-    let http = if http_flag {
-        true
-    } else if no_http_flag {
-        false
-    } else {
-        manifest.http
-    };
-    ResolvedInstall {
-        name,
-        grants,
-        http,
-        grants_from_manifest,
-    }
-}
-
-/// Runs the install with the resolved values and prints the loud outcome:
-/// payload, each grant (read-only/writable), http, and — when grants were
-/// auto-applied from the manifest — the `--grant` override hint.
-fn run_install(
-    resolved: &ResolvedInstall,
-    wasm_path: &std::path::Path,
-) -> Result<(), Report<AppError>> {
-    use jinn_domain::AppPaths;
-    use jinn_domain::feat::plugin::install::{PluginInstallOutcome, install};
-    use jinn_domain::feat::preferences_actor::FilesystemUserPreferencesStorage;
-
-    let paths = AppPaths::default();
-    let storage = FilesystemUserPreferencesStorage::default_path();
-    let ResolvedInstall {
-        name,
-        grants,
-        http,
-        grants_from_manifest,
-    } = resolved;
-    match install(
-        wasm_path,
-        name,
-        &paths.plugins_dir(),
-        grants.clone(),
-        *http,
-        &storage,
-    ) {
-        Ok(PluginInstallOutcome::Installed { wasm_path, name }) => {
-            println!("Installed plugin {name}");
-            println!("  payload: {}", wasm_path.display());
-        }
-        Ok(PluginInstallOutcome::Updated { wasm_path, name }) => {
-            println!("Updated plugin {name}");
-            println!("  payload: {}", wasm_path.display());
-        }
-        Err(report) => {
-            eprintln!("{report:?}");
-            return Err(report.change_context(AppError));
-        }
-    }
-    // A plugin installed with no grants sees no directories at all —
-    // almost always an oversight worth naming.
-    if grants.is_empty() {
-        eprintln!(
-            "note: {name} declares no grants — it cannot read any directory.\nIf it should see files, reinstall with --grant '<config_dir>/…'\n(repeatable, :w for writable; '<plugin_data_dir>:w' for a scratch dir)."
-        );
-    } else {
-        println!("  grants:");
-        for grant in grants {
-            let mode = if grant.writable {
-                "writable"
-            } else {
-                "read-only"
-            };
-            println!("    {} ({mode})", grant.path);
-        }
-    }
-    println!("  http: {}", if *http { "yes" } else { "no" });
-    if *grants_from_manifest {
-        println!(
-            "To override these grants: jinn plugin install <wasm> --grant '<path>' (repeatable, :w for writable)"
-        );
-    }
-    println!("Restart jinn to activate the plugin.");
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use jinn_domain::{AppState, State};
@@ -868,100 +556,6 @@ mod tests {
     //  2. The checkpoint itself is proven by `shutdown_truncates_wal_file` and
     //     `shutdown_makes_db_self_contained_for_backup` in the session store tests.
 
-    fn sample_manifest() -> jinn_domain::feat::plugin::manifest::PluginManifest {
-        use jinn_domain::feat::plugin::manifest::{PluginManifest, parse_grant_str};
-        PluginManifest {
-            name: Some("embedded-name".to_owned()),
-            grants: vec![parse_grant_str("<config_dir>/themes")],
-            http: true,
-        }
-    }
-
-    // Given a manifest with grants and no --grant flag.
-    // When resolving.
-    // Then the embedded grants apply and carry grants_from_manifest.
-    #[rstest::rstest]
-    #[test]
-    fn resolve_install_applies_manifest_grants_by_default() {
-        let resolved = resolve_install(
-            None,
-            vec![],
-            false,
-            false,
-            &sample_manifest(),
-            std::path::Path::new("/tmp/x.wasm"),
-        );
-
-        assert_eq!(resolved.grants.len(), 1);
-        assert_eq!(resolved.grants[0].path, "<config_dir>/themes");
-        assert!(resolved.grants_from_manifest);
-        assert_eq!(resolved.name, "embedded-name");
-        assert!(resolved.http);
-    }
-
-    // Given a --grant flag alongside embedded grants.
-    // When resolving.
-    // Then the flag wins and the manifest grants are discarded.
-    #[rstest::rstest]
-    #[test]
-    fn resolve_install_grant_flag_overrides_manifest() {
-        let resolved = resolve_install(
-            None,
-            vec!["<data_dir>/notes:w".to_owned()],
-            false,
-            false,
-            &sample_manifest(),
-            std::path::Path::new("/tmp/x.wasm"),
-        );
-
-        assert_eq!(resolved.grants.len(), 1);
-        assert_eq!(resolved.grants[0].path, "<data_dir>/notes");
-        assert!(resolved.grants[0].writable);
-        assert!(!resolved.grants_from_manifest);
-    }
-
-    // Given an embedded manifest with http = true and a --no-http flag.
-    // When resolving.
-    // Then http is denied.
-    #[rstest::rstest]
-    #[test]
-    fn resolve_install_no_http_overrides_manifest() {
-        let resolved = resolve_install(
-            None,
-            vec![],
-            false,
-            true,
-            &sample_manifest(),
-            std::path::Path::new("/tmp/x.wasm"),
-        );
-
-        assert!(!resolved.http);
-    }
-
-    // Given a manifest with no name and no --name flag.
-    // When resolving against an artifact path.
-    // Then the file stem is the name.
-    #[rstest::rstest]
-    #[test]
-    fn resolve_install_name_falls_back_to_file_stem() {
-        use jinn_domain::feat::plugin::manifest::PluginManifest;
-        let manifest = PluginManifest {
-            name: None,
-            ..sample_manifest()
-        };
-
-        let resolved = resolve_install(
-            None,
-            vec![],
-            false,
-            false,
-            &manifest,
-            std::path::Path::new("/tmp/theme-loader.wasm"),
-        );
-
-        assert_eq!(resolved.name, "theme-loader");
-    }
-
     #[rstest::rstest]
     fn load_compaction_prompt_populates_state() {
         // Given a user dir with a compaction prompt file.
@@ -969,16 +563,13 @@ mod tests {
         std::fs::write(dir.path().join("_compaction.md"), "test compaction prompt")
             .expect("write compaction prompt");
 
-        let state = State::new(AppState::default());
         let empty = PathBuf::from("/nonexistent");
-        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
 
         // When loading the compaction prompt.
-        load_compaction_prompt(&state, dir.path(), &empty, &cap).expect("load");
+        let prompt = load_compaction_prompt(dir.path(), &empty).expect("load");
 
-        // Then the state contains the prompt text.
-        let state = state.read();
-        assert_eq!(state.context.compaction_prompt, "test compaction prompt");
+        // Then the loader returns the prompt text.
+        assert_eq!(prompt, "test compaction prompt");
     }
 
     #[rstest::rstest]
@@ -987,11 +578,8 @@ mod tests {
         let user_dir = tempfile::tempdir().expect("temp dir");
         let system_dir = tempfile::tempdir().expect("temp dir");
 
-        let state = State::new(AppState::default());
-        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
-
         // When loading the compaction prompt with no file present.
-        let result = load_compaction_prompt(&state, user_dir.path(), system_dir.path(), &cap);
+        let result = load_compaction_prompt(user_dir.path(), system_dir.path());
 
         // Then an error is returned (hard-fail semantics).
         assert!(
@@ -999,9 +587,8 @@ mod tests {
             "expected error when compaction prompt is missing"
         );
 
-        // And the state compaction prompt remains empty.
-        let state = state.read();
-        assert!(state.context.compaction_prompt.is_empty());
+        // And the loader does not touch any state (pure function — nothing
+        // to assert beyond the error).
     }
 
     #[rstest::rstest]
@@ -1014,15 +601,14 @@ mod tests {
         let state = State::new(AppState::default());
 
         // Set the theme name in preferences.
-        state.write_test_no_cap().frontend.app_state.theme_name = Some("custom".to_owned());
+        state.write().frontend.app_state.theme_name = Some("custom".to_owned());
 
         // Capture the initial focus_accent color.
         let initial_focus = state.read().frontend.theme.focus_accent;
 
         // When loading the theme.
         let empty = PathBuf::from("/nonexistent");
-        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
-        load_theme(&state, dir.path(), &empty, &cap);
+        load_theme(&state, dir.path(), &empty);
 
         // Then the theme in state was updated (focus_accent changed to magenta).
         // This kills: replace load_theme with ().
@@ -1037,14 +623,13 @@ mod tests {
     fn load_theme_falls_back_gracefully_on_missing() {
         // Given a state with a theme name that doesn't exist.
         let state = State::new(AppState::default());
-        state.write_test_no_cap().frontend.app_state.theme_name = Some("nonexistent".to_owned());
+        state.write().frontend.app_state.theme_name = Some("nonexistent".to_owned());
 
         let empty = PathBuf::from("/nonexistent");
 
         // When loading the theme (no matching file).
         // Then it should not panic - the function logs a warning and returns.
-        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
-        load_theme(&state, &empty, &empty, &cap);
+        load_theme(&state, &empty, &empty);
     }
 
     #[rstest::rstest]

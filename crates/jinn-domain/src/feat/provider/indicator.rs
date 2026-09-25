@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
-use crate::feat::session::phase_machine::PhaseKind;
+use jinn_session_msg::PhaseKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -125,7 +125,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 element.render(frame, area, &ctx);
             })
@@ -151,7 +151,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 element.render(frame, area, &ctx);
             })
@@ -180,7 +180,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
-                let overlay_views = crate::common::overlay_views::OverlayViews::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(&state, &slices, &overlay_views);
                 element.render(frame, area, &ctx);
             })

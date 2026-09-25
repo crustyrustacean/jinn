@@ -12,7 +12,6 @@ mod config_storage;
 mod generic_factory;
 mod model_cache;
 mod models_dev;
-mod no_providers;
 mod provider_id;
 mod registry;
 
@@ -22,10 +21,8 @@ mod registry_service_tests;
 #[cfg(test)]
 mod registry_tests;
 mod resolved_provider;
-mod sample;
-mod service;
+mod retry;
 mod service_wrapper;
-mod stream_event;
 #[cfg(test)]
 mod template_validation_tests;
 
@@ -41,18 +38,15 @@ pub use config_storage::{
 };
 pub use generic_factory::GenericLlmServiceFactory;
 pub use jinn_provider::{
-    FakeLlmServiceFactory, InputModalities, Modality, ModelInfo, ScriptedResponse,
-    TOOL_LOOP_TRIGGER,
+    ChatStream, FakeLlmServiceFactory, InputModalities, LlmService, LlmServiceError,
+    LlmServiceFactory, Modality, ModelInfo, NoProvidersAvailableFactory, SampleLlmServiceFactory,
+    ScriptedResponse, StopReason, StreamEvent, TOOL_LOOP_TRIGGER, ToolStream,
 };
 pub use model_cache::{ModelCache, ModelCacheError, cache_path};
 pub use models_dev::ModelsDevData;
-pub use no_providers::{NO_PROVIDER_ID, NoProvidersAvailableFactory};
 pub use provider_id::ProviderId;
 pub use registry::ProviderRegistry;
 pub use registry_service::ProviderRegistryService;
 pub use resolved_provider::ResolvedProvider;
-pub use sample::SampleLlmServiceFactory;
-pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
+pub use retry::request_retry_to_provider_config;
 pub use service_wrapper::LlmServiceFactoryService;
-pub use stream_event::StopReason;
-pub use stream_event::StreamEvent;

@@ -1,48 +1,10 @@
-//! Session lifecycle management - setup/teardown command templates for sessions.
+//! Session lifecycle setup and teardown intent handling.
 //!
-//! Provides [`CommandTemplate`] for parsing and rendering shell command strings
-//! that contain positional parameters (`$1`, `$2`, `$@`). Used by session
-//! lifecycle recipes to bootstrap and tear down working directories.
+//! The lifecycle command, event, and shared vocabulary contracts live in
+//! `jinn-session-lifecycle-msg`. This module owns only the synchronous
+//! kernel behavior that prepares sessions and renders lifecycle commands.
 
-pub mod arg_input_state;
-pub mod builtin;
-pub mod command_runner;
-pub mod command_template;
 pub mod intent;
-pub mod picker_entry;
-pub mod protocol;
-pub mod render;
-
-use serde::{Deserialize, Serialize};
-
-/// A named session lifecycle recipe — paired setup and teardown commands.
-///
-/// Defined in `jinn.toml` under `[[session_lifecycle]]`. The setup command
-/// runs when creating a new session; the teardown command runs when closing it.
-/// Commands may contain positional parameters (`$1`, `$2`) that are collected
-/// from the user before execution.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SessionLifecycle {
-    /// Human-readable name shown in the lifecycle picker.
-    pub name: String,
-    /// Optional description shown below the name in the picker.
-    #[serde(default)]
-    pub description: Option<String>,
-    /// Command to run when creating a session. Last line of stdout becomes the CWD.
-    /// May contain `$1`, `$2` positional args. `None` means no setup (blank lifecycle).
-    ///
-    /// Supports both shell commands and builtin handlers.
-    /// See [`LifecycleCommand`] for details.
-    #[serde(rename = "setup_command", default)]
-    pub setup: Option<builtin::LifecycleCommand>,
-    /// Command to run when closing a session. Receives the same args as setup.
-    /// `None` means no teardown needed.
-    ///
-    /// Supports both shell commands and builtin handlers.
-    /// See [`LifecycleCommand`] for details.
-    #[serde(rename = "teardown_command", default)]
-    pub teardown: Option<builtin::LifecycleCommand>,
-}
 
 #[cfg(test)]
 mod tests {
@@ -54,11 +16,9 @@ mod tests {
     )]
     use tempfile::TempDir;
 
-    use super::SessionLifecycle;
     use crate::common::app_info::PREFS_FILE_NAME;
-    use crate::feat::preferences_actor::user_preferences::{
-        load_preferences_from, save_preferences_to,
-    };
+    use jinn_preferences_config::schemas::SessionLifecycle;
+    use jinn_preferences_config::user_preferences::{load_preferences_from, save_preferences_to};
 
     #[rstest::rstest]
     fn load_parses_table_array_session_lifecycle() {
@@ -86,7 +46,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert_eq!(prefs.session_lifecycles[0].name, "fossil branch");
         assert!(matches!(
             prefs.session_lifecycles[0].setup,
-            Some(super::builtin::LifecycleCommand::Shell(ref s)) if s == "~/.config/jinn/scripts/fossil-branch.sh $1"
+            Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(ref s)) if s == "~/.config/jinn/scripts/fossil-branch.sh $1"
         ));
     }
 

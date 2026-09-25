@@ -1,0 +1,753 @@
+//! Stall watchdog actor — restarts turns whose LLM stream went silent.
+//!
+//! Verbatim trouper port of the dormant `stall-watchdog` plugin's state
+//! machine (`plugins/stall-watchdog/src/watchdog.rs`): one timer per
+//! session, armed by [`SendToLlmProvider`] and reset by every
+//! [`StreamToken`]. When the actor's own [`StallTick`] reveals a session
+//! has been silent past the configured timeout, the watchdog pushes the
+//! visible retry marker ([`PushChatEntry`]) and re-dispatches the turn
+//! ([`RetryStalledSession`]) — up to `max_restarts` consecutive times.
+//! Beyond the budget it gives up instead: a surrender entry followed by
+//! [`CancelStream`].
+//!
+//! Budget semantics (unchanged from the plugin): a stream ending in
+//! `Finished` clears the session entirely (genuine completion — fresh
+//! budget next turn); `ToolUse`, `Canceled`, and `Error` merely disarm
+//! the timer while retaining the count (the same turn or its retry
+//! continues). Any stream event after a restart proves the retry
+//! connected and resets the budget to zero — the budget counts
+//! *consecutive* silent stalls.
+//!
+//! The tick is self-addressed ([`StallTick`], kicked by a detached task
+//! after spawn and re-delivered after each processed tick — the
+//! `SearchIndexActor` heartbeat pattern). It cannot live inside the
+//! session actor: that actor's mailbox is the single sink for token
+//! bursts, so an in-actor timer would queue behind the very activity it
+//! is measuring. Token deliveries only touch recency here, so this
+//! actor's own mailbox runs `DropNew` — backpressuring the inference
+//! actor over *this* actor's slack would be the one failure mode a
+//! watchdog must never cause; the newest token is the only fact that
+//! matters and older ones carry no information.
+//!
+//! Kernel dependency (see Cargo.toml): publishes through `Services`'
+//! bus, granted at slice activation.
+
+use std::collections::HashMap;
+use std::time::Duration;
+
+use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
+use trouper::context::MsgCtx;
+use trouper::registry::RegistryError;
+use trouper::system::ActorSystem;
+
+use jinn_core_types::SessionId;
+use jinn_domain::Services;
+use jinn_inference_msg::CancelStream;
+use jinn_inference_msg::SendToLlmProvider;
+use jinn_inference_msg::StreamCompleted;
+use jinn_inference_msg::StreamCompletedReason;
+use jinn_inference_msg::StreamToken;
+use jinn_session_history_msg::PushChatEntry;
+use jinn_session_msg::RetryStalledSession;
+
+/// Production tick cadence. The stall window is seconds-scale, so a
+/// 1-second heartbeat adds at most that much detection latency.
+pub const STALL_TICK_INTERVAL: Duration = Duration::from_secs(1);
+
+/// The stall watchdog actor's static trouper path.
+pub const STALL_WATCHDOG_PATH: &str = "stall-watchdog";
+
+/// Per-session stall timer and restart budget.
+#[derive(Default)]
+struct SessionStall {
+    /// Whether an LLM stream is believed to be in flight.
+    armed: bool,
+    /// Monotonic-ish wall-clock timestamp of the last stream activity
+    /// (or arm time), in milliseconds.
+    last_event_ms: u64,
+    /// Consecutive stall restarts since the last observed stream output.
+    restarts: u32,
+}
+
+/// Dependencies for [`StallWatchdogActor`].
+#[derive(Clone)]
+pub struct StallWatchdogActorDeps {
+    /// Application-wide runtime services (bus publish).
+    pub services: Services,
+    /// Silence window before a restart, in milliseconds.
+    pub timeout_ms: u64,
+    /// Consecutive restarts allowed before giving up.
+    pub max_restarts: u32,
+    /// Tick cadence. Production uses [`STALL_TICK_INTERVAL`]; tests
+    /// inject a small value.
+    pub tick_interval: Duration,
+}
+
+/// Milliseconds since the Unix epoch, from the system clock.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// The stall watchdog actor.
+///
+/// Event-driven: one timer per session, self-tick driven.
+pub struct StallWatchdogActor {
+    services: Services,
+    /// The system this actor runs on — captured at spawn so the tick can
+    /// self-address. (The services container may carry a different system
+    /// in tests, where the harness spawns on its own.)
+    system: ActorSystem,
+    timeout_ms: u64,
+    max_restarts: u32,
+    tick_interval: Duration,
+    /// Timers keyed by session id.
+    sessions: HashMap<SessionId, SessionStall>,
+}
+
+impl ServiceActor for StallWatchdogActor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "trait contract: start is never called (spawn uses start_with)"
+    )]
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: the spawn helper injects the deps via `start_with`
+        // (Services carries typed handles that cannot ride JSON args).
+        Err(
+            error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
+                .attach("StallWatchdogActor is spawned via start_with"),
+        )
+    }
+}
+
+impl StallWatchdogActor {
+    /// Spawns the actor at its static trouper path and returns the path.
+    ///
+    /// Subscriptions: the three stream contracts plus the self-addressed
+    /// [`StallTick`]. The tick self-addresses through the same path, so
+    /// the first tick is kicked by a detached task **after** this call
+    /// resolves: the wiring moves on while the tick processes
+    /// concurrently.
+    ///
+    /// The mailbox runs `DropNew` (see the module docs for why a
+    /// watchdog must never backpressure its feed).
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "port convention: spawn takes owned deps and clones into start_with"
+    )]
+    pub fn spawn(system: &ActorSystem, deps: StallWatchdogActorDeps) -> ActorPath {
+        let path = ActorPath::new(STALL_WATCHDOG_PATH);
+        trouper::builder::spawn_service_builder::<Self>(system)
+            .at(path.clone())
+            .start_with({
+                let deps = deps.clone();
+                let system = system.clone();
+                move || {
+                    let deps = deps.clone();
+                    let system = system.clone();
+                    Box::pin(async move {
+                        Ok(Self {
+                            services: deps.services,
+                            system,
+                            timeout_ms: deps.timeout_ms,
+                            max_restarts: deps.max_restarts,
+                            tick_interval: deps.tick_interval,
+                            sessions: HashMap::new(),
+                        })
+                    })
+                }
+            })
+            .handles::<SendToLlmProvider>()
+            .handles::<StreamToken>()
+            .handles::<StreamCompleted>()
+            .handles::<StallTick>()
+            .mailbox(64, trouper::inbox::OverloadPolicy::DropNew)
+            .start();
+        // Kick the first tick. A failed send only means the actor is
+        // already stopping.
+        let kicker = system.clone();
+        let kick_path = path.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+            let _ = kicker.tell(kick_path, StallTick).await;
+        });
+        path
+    }
+
+    /// Re-delivers one tick to this actor after `tick_interval`.
+    ///
+    /// The self-addressed tick keeps the "tick processes concurrently"
+    /// semantics: the next tick is queued while the current one may
+    /// still be running, and `DropNew` guarantees the mailbox never
+    /// accumulates stale ticks.
+    fn reschedule(&self) {
+        let system = self.system.clone();
+        let path = ActorPath::new(STALL_WATCHDOG_PATH);
+        let interval = self.tick_interval;
+        tokio::spawn(async move {
+            tokio::time::sleep(interval).await;
+            let _ = system.tell(path, StallTick).await;
+        });
+    }
+
+    /// Publishes the watchdog's actions on the fabric, in order.
+    ///
+    /// The bus broadcasts by schema; a command with no subscriber (or an
+    /// event with none) is a silent no-op, so the watchdog stays correct
+    /// regardless of what else is wired.
+    async fn publish_actions(&self, actions: Vec<StallAction>) {
+        for action in actions {
+            match action {
+                StallAction::Marker(session_id, text) => {
+                    self.services
+                        .bus
+                        .publish(PushChatEntry {
+                            session_id,
+                            entry: jinn_core_types::ChatEntry::system(text),
+                        })
+                        .await;
+                }
+                StallAction::RetryStalledSession(command) => {
+                    self.services.bus.publish(command).await;
+                }
+                StallAction::CancelStream(session_id) => {
+                    self.services.bus.publish(CancelStream { session_id }).await;
+                }
+            }
+        }
+    }
+}
+
+/// One watchdog output: a system-entry marker (text), the retry command,
+/// or a cancel. Returned by [`StallWatchdogActor::on_tick`] in publish
+/// order so tests can assert the pair sequencing without a bus.
+#[derive(Debug)]
+pub enum StallAction {
+    Marker(SessionId, String),
+    RetryStalledSession(RetryStalledSession),
+    CancelStream(SessionId),
+}
+
+/// The actor's self-addressed heartbeat: advances time and publishes
+/// the resulting actions, then schedules the next tick.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Command)]
+#[schema(description = "Stall watchdog heartbeat: trip silent armed sessions, then reschedule.")]
+pub struct StallTick;
+
+impl MsgHandler<StallTick> for StallWatchdogActor {
+    async fn handle(&mut self, _msg: &StallTick, _ctx: &mut MsgCtx<'_>) {
+        let actions = self.on_tick(now_ms());
+        self.publish_actions(actions).await;
+        self.reschedule();
+    }
+}
+
+impl MsgHandler<SendToLlmProvider> for StallWatchdogActor {
+    async fn handle(&mut self, msg: &SendToLlmProvider, _ctx: &mut MsgCtx<'_>) {
+        self.on_stream_start(&msg.session_id, now_ms());
+    }
+}
+
+impl MsgHandler<StreamToken> for StallWatchdogActor {
+    async fn handle(&mut self, msg: &StreamToken, _ctx: &mut MsgCtx<'_>) {
+        self.on_stream_event(&msg.session_id, now_ms());
+    }
+}
+
+impl MsgHandler<StreamCompleted> for StallWatchdogActor {
+    async fn handle(&mut self, msg: &StreamCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.on_stream_end(&msg.session_id, msg.reason);
+    }
+}
+
+impl StallWatchdogActor {
+    /// Arms (or re-arms) the session's timer at dispatch time.
+    ///
+    /// Arming at dispatch — not first token — covers the silent
+    /// HTTP-handshake gap. A tool-loop turn produces one dispatch per
+    /// generation, so each re-dispatch re-arms naturally. The restart
+    /// budget survives the re-arm: consecutive stalls within one turn
+    /// accumulate.
+    pub fn on_stream_start(&mut self, session_id: &SessionId, now_ms: u64) {
+        let stall = self.sessions.entry(session_id.clone()).or_default();
+        stall.armed = true;
+        stall.last_event_ms = now_ms;
+    }
+
+    /// Records stream output — the timer resets, and a recovered stall
+    /// clears the restart budget.
+    ///
+    /// Tokens for sessions with no timer are harmless (the session may
+    /// have been disarmed between publication and this event arriving).
+    pub fn on_stream_event(&mut self, session_id: &SessionId, now_ms: u64) {
+        if let Some(stall) = self.sessions.get_mut(session_id) {
+            stall.last_event_ms = now_ms;
+            stall.restarts = 0;
+        }
+    }
+
+    /// Applies the stream-end policy per terminal reason.
+    ///
+    /// `Finished` removes the session entirely (budget reset — the turn
+    /// completed genuinely). Every other reason disarms the timer while
+    /// retaining the budget: `ToolUse` because the same turn continues
+    /// after the tool batch, `Canceled`/`Error` because the retry
+    /// inherits the turn's stall history.
+    pub fn on_stream_end(&mut self, session_id: &SessionId, reason: StreamCompletedReason) {
+        match reason {
+            StreamCompletedReason::Finished => {
+                self.sessions.remove(session_id);
+            }
+            StreamCompletedReason::Canceled
+            | StreamCompletedReason::ToolUse
+            | StreamCompletedReason::Error => {
+                if let Some(stall) = self.sessions.get_mut(session_id) {
+                    stall.armed = false;
+                }
+            }
+        }
+    }
+
+    /// Advances time and returns the actions to publish, in order.
+    ///
+    /// Every armed session silent past the timeout trips exactly once per
+    /// window: within budget it yields one restart (and the window
+    /// restarts from the tick); past budget it yields the give-up pair —
+    /// system entry first, then cancel — and disarms so it cannot fire
+    /// again until the next dispatch.
+    #[must_use]
+    pub fn on_tick(&mut self, now_ms: u64) -> Vec<StallAction> {
+        let timeout_ms = self.timeout_ms;
+        let max_restarts = self.max_restarts;
+        self.sessions
+            .iter_mut()
+            .filter(|(_, stall)| {
+                stall.armed && now_ms.saturating_sub(stall.last_event_ms) >= timeout_ms
+            })
+            .flat_map(|(session, stall)| trip(session.clone(), stall, max_restarts, now_ms))
+            .collect()
+    }
+}
+
+/// Trips one stalled session: a restart within budget, otherwise the
+/// give-up pair. Mutates the stall so the next tick cannot re-fire
+/// early — a restart re-windows from the tick, the give-up disarms
+/// entirely.
+fn trip(
+    session: SessionId,
+    stall: &mut SessionStall,
+    max_restarts: u32,
+    now_ms: u64,
+) -> Vec<StallAction> {
+    if stall.restarts < max_restarts {
+        stall.restarts += 1;
+        stall.last_event_ms = now_ms;
+        return vec![
+            StallAction::Marker(session.clone(), retry_text(stall.restarts, max_restarts)),
+            StallAction::RetryStalledSession(RetryStalledSession {
+                session_id: session.clone(),
+                attempt: stall.restarts,
+                max_restarts,
+            }),
+        ];
+    }
+    stall.armed = false;
+    vec![
+        StallAction::Marker(session.clone(), give_up_text(max_restarts)),
+        StallAction::CancelStream(session),
+    ]
+}
+
+/// The per-attempt retry marker pushed before each restart.
+fn retry_text(attempt: u32, max: u32) -> String {
+    format!("\u{21bb} LLM stream stalled, retrying (attempt {attempt} of {max})\u{2026}")
+}
+
+/// The surrender system-entry text after exhausting `max` restarts.
+fn give_up_text(max: u32) -> String {
+    format!(
+        "\u{23f9} stall-watchdog: the LLM stream stalled {max} times without recovery; giving up — cancelling the turn."
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        reason = "test code"
+    )]
+
+    use super::*;
+
+    /// A fresh actor with the given window and budget, over a private
+    /// fake `Services` (struct-direct tests never publish through the
+    /// real fabric — they assert on `on_tick`'s returned actions).
+    async fn watchdog(timeout_secs: u64, max_restarts: u32) -> StallWatchdogActor {
+        let services = Services::new_fake().await;
+        let system = services.trouper_system.clone();
+        StallWatchdogActor {
+            services,
+            system,
+            timeout_ms: timeout_secs * 1_000,
+            max_restarts,
+            tick_interval: STALL_TICK_INTERVAL,
+            sessions: HashMap::new(),
+        }
+    }
+
+    /// Asserts the actions are exactly the retry pair (marker entry, then
+    /// restart) for `session`.
+    fn assert_restart(actions: &[StallAction], session: &SessionId, attempt: u32) {
+        assert_eq!(
+            actions.len(),
+            2,
+            "expected the retry pair, got: {actions:?}"
+        );
+        let StallAction::Marker(marker_session, text) = &actions[0] else {
+            panic!("first action must be the system entry, got: {actions:?}");
+        };
+        assert_eq!(marker_session, session);
+        assert!(
+            text.contains(&format!("attempt {attempt} of")),
+            "retry marker must name the attempt, got: {text:?}"
+        );
+        let StallAction::RetryStalledSession(restart) = &actions[1] else {
+            panic!("second action must be a RetryStalledSession, got: {actions:?}");
+        };
+        assert_eq!(&restart.session_id, session);
+        // And the reported attempt matches the restart ordinal within the
+        // stall lineage.
+        assert_eq!(restart.attempt, attempt);
+    }
+
+    /// Asserts the actions are exactly the give-up pair (entry then cancel).
+    fn assert_give_up(actions: &[StallAction], session: &SessionId) {
+        assert_eq!(
+            actions.len(),
+            2,
+            "expected the give-up pair, got: {actions:?}"
+        );
+        let StallAction::Marker(marker_session, text) = &actions[0] else {
+            panic!("first action must be the system entry, got: {actions:?}");
+        };
+        assert_eq!(marker_session, session);
+        assert!(
+            text.contains("stall-watchdog:"),
+            "surrender marker must carry the watchdog prefix, got: {text:?}"
+        );
+        let StallAction::CancelStream(cancel_session) = &actions[1] else {
+            panic!("second action must be a CancelStream, got: {actions:?}");
+        };
+        assert_eq!(cancel_session, session);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tick_inside_the_window_pushes_nothing() {
+        // Given a watchdog armed for a session at t=0 with a 60s window.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+
+        // When a tick arrives 59.9 seconds later.
+        let actions = actor.on_tick(60_999);
+
+        // Then nothing was produced — the stream is not yet silent long enough.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn dispatch_to_first_token_gap_counts_as_stall_time() {
+        // Given a watchdog armed by dispatch alone — no token ever arrived.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+
+        // When a tick arrives past the window.
+        let actions = actor.on_tick(61_000);
+
+        // Then the session restarts — the silent handshake gap is covered.
+        assert_restart(&actions, &session, 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_event_resets_the_window() {
+        // Given a stream that produced output 50 seconds into its window.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+        actor.on_stream_event(&session, 51_000);
+
+        // When a tick arrives 60 seconds after the original dispatch.
+        let actions = actor.on_tick(61_000);
+
+        // Then nothing was produced — the window runs from the last event.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn restart_rewindows_so_one_stall_trips_once() {
+        // Given a stalled stream that tripped once at t=61s.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+        assert_restart(&actor.on_tick(61_000), &session, 1);
+
+        // When the next tick arrives 4 seconds later (1s cadence).
+        let actions = actor.on_tick(65_000);
+
+        // Then the same stall does not re-fire — the window restarted.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn consecutive_stall_windows_accumulate_budget() {
+        // Given a stream that stalled and was restarted once.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+        assert_restart(&actor.on_tick(61_000), &session, 1);
+        // And the retry re-armed the session (the dispatch the session
+        // actor emits in response).
+        actor.on_stream_start(&session, 61_500);
+
+        // When the retried stream also goes silent past the window.
+        let actions = actor.on_tick(121_500);
+
+        // Then a second restart fires — consecutive stalls count against
+        // the budget.
+        assert_restart(&actions, &session, 2);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn budget_exhaustion_gives_up_with_entry_then_cancel() {
+        // Given a watchdog at its budget of 3 that already restarted 3 times.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 0);
+        for window in 1..=3 {
+            assert_restart(&actor.on_tick(window * 60_000), &session, window as u32);
+        }
+
+        // When the fourth window also goes silent.
+        let actions = actor.on_tick(240_000);
+
+        // Then the watchdog surrenders: the system entry first, then the
+        // cancel.
+        assert_give_up(&actions, &session);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn give_up_fires_only_once() {
+        // Given a watchdog that already surrendered for a session.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 0);
+        for window in 1..=3 {
+            let _ = actor.on_tick(window * 60_000);
+        }
+        let _ = actor.on_tick(240_000);
+
+        // When more ticks arrive.
+        let actions = actor.on_tick(300_000);
+
+        // Then nothing is produced again — the session is disarmed.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_use_boundary_retains_the_budget() {
+        // Given a watchdog at a budget of 2 that restarted once, then the
+        // stream paused for a tool batch and re-dispatched.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 2).await;
+        actor.on_stream_start(&session, 0);
+        assert_restart(&actor.on_tick(60_000), &session, 1);
+        actor.on_stream_end(&session, StreamCompletedReason::ToolUse);
+        actor.on_stream_start(&session, 61_000);
+        assert_restart(&actor.on_tick(121_000), &session, 2);
+        actor.on_stream_end(&session, StreamCompletedReason::ToolUse);
+        actor.on_stream_start(&session, 122_000);
+
+        // When the third generation also goes silent past the window.
+        let actions = actor.on_tick(182_000);
+
+        // Then it gives up — the tool-loop boundaries did not reset the
+        // consecutive-stall budget.
+        assert_give_up(&actions, &session);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn finished_end_resets_the_budget() {
+        // Given a watchdog at a budget of 2 that restarted once, then the
+        // turn genuinely completed.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 2).await;
+        actor.on_stream_start(&session, 0);
+        assert_restart(&actor.on_tick(60_000), &session, 1);
+        actor.on_stream_end(&session, StreamCompletedReason::Finished);
+
+        // When a fresh turn stalls past the window.
+        actor.on_stream_start(&session, 120_000);
+        let actions = actor.on_tick(180_000);
+
+        // Then it restarts again — the completion restored the full budget
+        // (a give-up pair here would mean the budget carried over).
+        assert_restart(&actions, &session, 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn finished_end_removes_the_timer_entirely() {
+        // Given a stream that ended in a genuine completion.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 0);
+        actor.on_stream_end(&session, StreamCompletedReason::Finished);
+
+        // When ticks arrive far into the future.
+        let actions = actor.on_tick(600_000);
+
+        // Then nothing is produced — a finished stream has no timer to trip.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn canceled_end_disarms_the_timer() {
+        // Given a stream that was canceled mid-flight.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 0);
+        actor.on_stream_end(&session, StreamCompletedReason::Canceled);
+
+        // When ticks arrive past the window.
+        let actions = actor.on_tick(120_000);
+
+        // Then nothing is produced — a canceled turn must not be restarted.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn error_end_disarms_the_timer() {
+        // Given a stream that failed mid-flight.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 0);
+        actor.on_stream_end(&session, StreamCompletedReason::Error);
+
+        // When ticks arrive past the window.
+        let actions = actor.on_tick(120_000);
+
+        // Then nothing is produced — an errored turn re-dispatches through
+        // the request-retry path, not the stall watchdog.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn recovered_stream_clears_the_budget() {
+        // Given a watchdog at a budget of 1 that restarted once and then saw
+        // the retry produce output (the retry connected).
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 1).await;
+        actor.on_stream_start(&session, 0);
+        assert_restart(&actor.on_tick(60_000), &session, 1);
+        actor.on_stream_start(&session, 61_000);
+        actor.on_stream_event(&session, 62_000);
+
+        // When the stream later stalls again past the window.
+        let actions = actor.on_tick(122_000);
+
+        // Then it restarts rather than giving up — the observed recovery
+        // reset the consecutive-stall budget.
+        assert_restart(&actions, &session, 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn sessions_are_tracked_independently() {
+        // Given two sessions: one stalled, one actively streaming.
+        let stalled = SessionId::new();
+        let streaming = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&stalled, 0);
+        actor.on_stream_start(&streaming, 0);
+        actor.on_stream_event(&streaming, 55_000);
+
+        // When a tick arrives past the window.
+        let actions = actor.on_tick(61_000);
+
+        // Then only the silent session tripped — the streaming one stays quiet.
+        assert_restart(&actions, &stalled, 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn unknown_session_events_are_harmless() {
+        // Given a watchdog with no state for a session.
+        let ghost = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+
+        // When tokens and stream ends arrive for that unknown session.
+        actor.on_stream_event(&ghost, 0);
+        actor.on_stream_end(&ghost, StreamCompletedReason::Error);
+
+        // Then nothing panics and an unrelated session still trips normally.
+        let known = SessionId::new();
+        actor.on_stream_start(&known, 0);
+        let actions = actor.on_tick(60_000);
+        assert_restart(&actions, &known, 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn configured_window_overrides_the_default() {
+        // Given a watchdog configured with a 5-second window.
+        let session = SessionId::new();
+        let mut actor = watchdog(5, 3).await;
+        actor.on_stream_start(&session, 0);
+
+        // When ticks arrive at 4.9s and then 5s.
+        let early = actor.on_tick(4_999);
+        let on_time = actor.on_tick(5_000);
+
+        // Then the trip lands exactly at the configured window, where the
+        // 60s default would still be silent.
+        assert!(early.is_empty());
+        assert_restart(&on_time, &session, 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn configured_budget_of_one_gives_up_after_the_first_restart() {
+        // Given a watchdog configured with a budget of 1.
+        let session = SessionId::new();
+        let mut actor = watchdog(1, 1).await;
+        actor.on_stream_start(&session, 0);
+
+        // When two stall windows pass.
+        let first = actor.on_tick(1_000);
+        actor.on_stream_start(&session, 1_500);
+        let second = actor.on_tick(2_500);
+
+        // Then the first window restarts and the second gives up — the
+        // default budget of 3 would still have restarts left.
+        assert_restart(&first, &session, 1);
+        assert_give_up(&second, &session);
+    }
+}

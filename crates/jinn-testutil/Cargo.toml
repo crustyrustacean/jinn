@@ -5,8 +5,6 @@ edition.workspace = true
 
 [dependencies]
 ratatui = { workspace = true }
-kameo = { workspace = true }
-kameo_actors = { workspace = true }
 trouper = { workspace = true }
 jinn-slices = { workspace = true }
 serde = { workspace = true }

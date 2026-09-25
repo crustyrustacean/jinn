@@ -13,10 +13,10 @@
 
 use super::validator;
 use crate::common::app_state::AppState;
-use crate::feat::context::protocol::event::ContextOverrideChanged;
-use crate::feat::session::history_editor::tool_group_end;
-use crate::feat::session_lifecycle::protocol::command::PersistSession;
 use crate::protocol::{ChatEntryId, ContextOverride, IntentResult};
+use jinn_context_assembly_msg::ContextOverrideChanged;
+use jinn_session_history::history_editor::tool_group_end;
+use jinn_session_store_msg::PersistSession;
 
 /// Walk the history chunk by chunk and set each chunk's context override:
 /// [`ContextOverride::ForcedInclude`] for the chunk containing
@@ -128,8 +128,8 @@ mod tests {
         reason = "test code"
     )]
     use crate::common::app_state::AppState;
-    use crate::feat::session::chat_entry::PinPosition;
-    use crate::feat::session::tool_result_status::ToolResultStatus;
+    use crate::protocol::PinPosition;
+    use crate::protocol::ToolResultStatus;
     use crate::protocol::{ChatEntry, ContextOverride};
 
     use super::*;
@@ -157,7 +157,7 @@ mod tests {
             .active_session()
             .history()
             .iter()
-            .map(crate::feat::session::chat_entry::ChatEntry::context_override)
+            .map(crate::protocol::ChatEntry::context_override)
             .collect()
     }
 
@@ -325,7 +325,7 @@ mod tests {
         // Then the cursor still rests on the highlighted entry.
         assert_eq!(
             state.active_session().selected_cursor_id(),
-            Some(&opener_id),
+            Some(opener_id),
             "cursor stays on the highlighted entry"
         );
     }
@@ -405,8 +405,7 @@ mod tests {
         assert!(
             state
                 .active_session()
-                .ui
-                .shown_ignored_blocks
+                .shown_ignored_blocks_snapshot()
                 .contains(&opener_id),
             "block is shown before isolate"
         );
@@ -423,8 +422,7 @@ mod tests {
         assert!(
             state
                 .active_session()
-                .ui
-                .shown_ignored_blocks
+                .shown_ignored_blocks_snapshot()
                 .contains(&opener_id),
             "forward sub-block is tracked as shown"
         );

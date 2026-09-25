@@ -6,13 +6,15 @@
     reason = "test code"
 )]
 
-use crate::common::app_state::*;
-use crate::protocol::{ChatEntry, Mode, PickerKind, SessionId};
+use crate::common::app_state::AppState;
+use crate::protocol::{ChatEntry, Mode, PickerKind};
+use jinn_core_types::SessionId;
+use jinn_slices::{FocusScope, ScopeStack};
 
 #[rstest::rstest]
 fn push_entry_adds_to_history() {
     // Given a new AppState.
-    let mut data = AppState::default();
+    let mut data = AppState::default_with_scope_focus();
     let entry = ChatEntry::user("hello");
 
     // When pushing an entry via the active session.
@@ -146,9 +148,9 @@ fn picker_kind_returns_none_when_not_picker() {
 
 #[rstest::rstest]
 fn is_sidebar_returns_true_when_sidebar_active() {
-    // Given a ScopeStack with SidebarPersona on top.
+    // Given a ScopeStack with the persona section scope on top.
     let mut stack = ScopeStack::default();
-    stack.push(FocusScope::SidebarPersona);
+    stack.push(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope());
 
     // Then is_sidebar is true.
     assert!(stack.is_sidebar());
@@ -166,11 +168,16 @@ fn is_sidebar_returns_false_when_normal() {
 #[rstest::rstest]
 #[case(FocusScope::Normal, Mode::Normal)]
 #[case(FocusScope::Input, Mode::Input)]
-#[case(FocusScope::SidebarPersona, Mode::Normal)]
-#[case(FocusScope::TerminalView, Mode::Normal)]
+#[case(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope(), Mode::Normal)]
+// Capturing slice scopes (quake bar, popups) light up input UI.
+#[case(
+    FocusScope::Dynamic(jinn_slices::SliceScopeId::new("quake-bar", "bar")),
+    Mode::Input
+)]
+#[case(FocusScope::Dynamic(jinn_term_msg::view_scope()), Mode::Normal)]
 // Capture mode routes keystrokes to the pty, so it must not count as
 // input mode (which would light up the chat input as focused).
-#[case(FocusScope::TerminalControl, Mode::Normal)]
+#[case(FocusScope::Dynamic(jinn_term_msg::control_scope()), Mode::Normal)]
 #[case(FocusScope::Picker { kind: PickerKind::Provider }, Mode::Picker)]
 fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
     // Given a FocusScope variant.
@@ -182,7 +189,7 @@ fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
 #[rstest::rstest]
 #[case(FocusScope::Normal, "Normal")]
 #[case(FocusScope::Input, "Input")]
-#[case(FocusScope::SidebarPersona, "SidebarPersona")]
+#[case(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope(), "Dynamic(sidebar:persona)")]
 #[case(FocusScope::Picker { kind: PickerKind::Provider }, "Picker(models)")]
 fn focus_scope_display(#[case] scope: FocusScope, #[case] expected: &str) {
     // Given a FocusScope variant.
@@ -194,7 +201,7 @@ fn focus_scope_display(#[case] scope: FocusScope, #[case] expected: &str) {
 #[rstest::rstest]
 fn session_mut_or_create_sets_cwd_from_default_cwd() {
     // Given an AppState with a custom default CWD.
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .session
         .set_default_cwd(std::path::PathBuf::from("/custom/cwd"));
@@ -242,8 +249,8 @@ fn len_increases_after_push() {
 #[rstest::rstest]
 fn active_picker_ops_returns_some_when_picker_active() {
     // Given an AppState with a Picker scope pushed.
-    let mut state = AppState::default();
-    state.frontend.scope_stack.push(FocusScope::Picker {
+    let mut state = AppState::default_with_scope_focus();
+    state.frontend.scope_push(FocusScope::Picker {
         kind: PickerKind::Provider,
     });
 
@@ -257,7 +264,7 @@ fn active_picker_ops_returns_some_when_picker_active() {
 #[rstest::rstest]
 fn active_picker_ops_returns_none_when_no_picker() {
     // Given an AppState in Input mode (default, no picker).
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
 
     // When getting active picker ops.
     let ops = state.active_picker_ops();
@@ -269,7 +276,7 @@ fn active_picker_ops_returns_none_when_no_picker() {
 #[rstest::rstest]
 fn session_mut_or_create_does_not_overwrite_existing_session_cwd() {
     // Given an AppState with a session that has a specific CWD.
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state
         .session
         .set_default_cwd(std::path::PathBuf::from("/new/default"));

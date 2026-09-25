@@ -7,17 +7,15 @@ pub mod picker;
 pub mod selection_highlight;
 pub mod status_bar;
 pub mod tab_bar;
-pub mod terminal_tab;
 
 pub mod too_small;
 pub mod which_key;
 
 pub use app_layout::{AppFrameLayout, AppLayout, MIN_HEIGHT, MIN_WIDTH, TabLayout};
 
-use jinn_domain::{
-    AppUiRegistry, FocusScope, Mode, RenderCtx, feat::ui::picker_states::PickerExt,
-    feat::ui::sidebar::Sidebar,
-};
+use jinn_domain::{AppUiRegistry, FocusScope, Mode, RenderCtx, feat::ui::picker_states::PickerExt};
+use jinn_mcp::provider_prefix;
+use jinn_sidebar::sections::Sidebar;
 use ratatui::{Frame, layout::Rect};
 
 use crate::TuiApp;
@@ -42,13 +40,20 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // scopes.
     let layout = AppFrameLayout::new(
         area,
-        state.active_chat_input().visual_line_count() as u16,
+        state.active_session().with_input(
+            jinn_chat_input_msg::ChatInputBoxState::visual_line_count,
+            || 0,
+        ) as u16,
         area.height / 2,
         state.frontend.sidebar_width,
-        is_full_width_tab(&app.services.slices, state.frontend.scope_stack.base()),
+        is_full_width_tab(&app.services.slices, &state.frontend.scope_base()),
     );
-    let sidebar_focused = state.frontend.scope_stack.is_sidebar();
-    let active_scope = state.frontend.scope_stack.current();
+    let sidebar_focused = state.frontend.is_sidebar();
+    let active_scope = state.frontend.with_scope(
+        |s| s.stack.current().clone(),
+        || jinn_slices::FocusScope::Input,
+    );
+    let active_scope_ref = &active_scope;
 
     let mut rects = vec![];
     render_base_layers(
@@ -63,7 +68,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         sidebar_focused,
         &mut rects,
     );
-    if let Some(rect) = render_active_overlay(frame, area, &ctx, active_scope) {
+    if let Some(rect) = render_active_overlay(frame, area, &ctx, active_scope_ref) {
         rects.push(rect);
     }
     // The which-key help popup paints last so it sits above every overlay
@@ -79,7 +84,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
 /// Sets wrap width and scroll offset before layout, using a write lock.
 fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
-    let mut wstate = app.core.state.write(&app.intent_handler_cap);
+    let mut wstate = app.core.state.write();
 
     // Measure the active picker's results viewport every frame so navigation
     // intents scroll against the real on-screen height instead of a stale
@@ -90,10 +95,13 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         &app.services.picker_registry,
     );
     wstate.frontend.set_picker_results_viewport(picker_viewport);
-    let full_width = is_full_width_tab(&app.services.slices, wstate.frontend.scope_stack.base());
+    let full_width = is_full_width_tab(&app.services.slices, &wstate.frontend.scope_base());
     let pre_layout = AppFrameLayout::new(
         area,
-        wstate.active_chat_input().visual_line_count() as u16,
+        wstate.active_session().with_input(
+            jinn_chat_input_msg::ChatInputBoxState::visual_line_count,
+            || 0,
+        ) as u16,
         area.height / 2,
         wstate.frontend.sidebar_width,
         full_width,
@@ -101,17 +109,19 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
     // The terminal overlay's inner rect sizes the pty (WYSIWYG). Computed
     // every frame while open; deduped by the mirror, sent through the bridge.
     if matches!(
-        wstate.frontend.scope_stack.current(),
-        jinn_domain::FocusScope::TerminalView | jinn_domain::FocusScope::TerminalControl
+        wstate.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(id) if jinn_term_msg::is_overlay_scope(&id)
     ) {
-        let inner =
-            jinn_domain::feat::interactive_term::overlay_geometry::terminal_overlay_inner_rect(
-                area,
-            );
+        let inner = jinn_term_msg::geometry::terminal_overlay_inner_rect(area);
         let (rows, cols) = (inner.height, inner.width);
-        if wstate.frontend.terminal.record_layout_size(rows, cols) {
+        let layout_changed = wstate.term_tabs().is_some_and(|cell| {
+            let mut changed = false;
+            cell.update(|t| changed = t.record_layout_size(rows, cols));
+            changed
+        });
+        if layout_changed {
             let closure = jinn_domain::common::bridge::Bridge::publish_closure(
-                jinn_domain::feat::interactive_term::protocol::command::ResizeTerm {
+                jinn_term_msg::command::ResizeTerm {
                     chat_session_id: Some(wstate.session.active_session_id().clone()),
                     size: (rows, cols),
                 },
@@ -125,14 +135,16 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         AppFrameLayout::Tab(_) => {}
         AppFrameLayout::Chat(chat) => {
             let text_width = chat.main.width.saturating_sub(2) as usize;
-            wstate.active_chat_input_mut().set_wrap_width(text_width);
-            if wstate.frontend.scope_stack.current().mode() == Mode::Input {
+            wstate
+                .active_session()
+                .update_input(|i| i.set_wrap_width(text_width));
+            if wstate.frontend.scope().mode() == Mode::Input {
                 let inner_height = chat.input.height.saturating_sub(1) as usize;
                 wstate
-                    .active_chat_input_mut()
-                    .scroll_to_cursor(inner_height);
+                    .active_session()
+                    .update_input(|i| i.scroll_to_cursor(inner_height));
             }
-            jinn_domain::feat::ui::sidebar::task_list_section::preview::write_preview_geometry(
+            jinn_sidebar::sections::task_list_section::preview::write_preview_geometry(
                 &mut wstate,
                 area,
                 chat.sidebar,
@@ -140,16 +152,15 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         }
     }
 
-    refresh_mcp_inspector_snapshot(&mut wstate);
+    refresh_mcp_inspector_snapshot(&mut wstate, &app.services.slices);
 }
 
-/// Refreshes the selected MCP server picker entry's live status/stderr/tools
-/// snapshot from the active session's maps before render reads it. No-op
-/// unless the MCP server inspector is the active overlay.
-fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
-    use jinn_domain::FocusScope;
+/// Refreshes the selected MCP server picker entry's live runtime projection.
+/// No-op unless the MCP server inspector is the active overlay.
+fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState, slices: &jinn_slices::Slices) {
+    use jinn_slices::FocusScope;
     let is_mcp_picker = matches!(
-        state.frontend.scope_stack.current(),
+        &state.frontend.scope(),
         FocusScope::Picker {
             kind: jinn_domain::PickerKind::McpServer
         },
@@ -163,20 +174,23 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
     };
     let session_id = state.active_session().session_id().clone();
     let (status, stderr_tail, tools) = {
-        let session = state.active_session();
-        let status = session.mcp_server_status().get(&server_name).copied();
-        let stderr_tail = session
-            .mcp_server_stderr()
-            .get(&server_name)
-            .cloned()
+        let runtime =
+            slices.reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot());
+        let (status, stderr_tail) = runtime.as_ref().map_or((None, String::new()), |runtime| {
+            let runtime = runtime.read();
+            (
+                runtime.status(&session_id, &server_name),
+                runtime
+                    .stderr(&session_id, &server_name)
+                    .map(str::to_owned)
+                    .unwrap_or_default(),
+            )
+        });
+        let defs = state
+            .tool_registry()
+            .map(|cell| cell.read().tools_for_session(&session_id))
             .unwrap_or_default();
-        let defs = state.context.tools_for_session(&session_id);
-        jinn_domain::feat::mcp::picker_entry::refresh_snapshot(
-            &server_name,
-            status,
-            &stderr_tail,
-            &defs,
-        )
+        refresh_snapshot(&server_name, status, &stderr_tail, &defs)
     };
     state
         .frontend
@@ -189,6 +203,36 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
         });
 }
 
+/// Computes the selected MCP server's live inspector snapshot.
+#[must_use]
+fn refresh_snapshot(
+    server_name: &str,
+    status: Option<jinn_mcp_msg::McpConnectionStatus>,
+    stderr_tail: &str,
+    defs: &[jinn_core_types::ToolDefinition],
+) -> (
+    Option<jinn_mcp_msg::McpConnectionStatus>,
+    String,
+    Vec<(String, String)>,
+) {
+    let prefix = provider_prefix(server_name);
+    let tools = defs
+        .iter()
+        .filter(|definition| definition.name.starts_with(&prefix))
+        .map(|definition| {
+            (
+                definition
+                    .name
+                    .strip_prefix(prefix.as_str())
+                    .unwrap_or(&definition.name)
+                    .to_owned(),
+                definition.description.clone(),
+            )
+        })
+        .collect();
+    (status, stderr_tail.to_owned(), tools)
+}
+
 /// Renders the base layers for the active tab. In Chat mode: tab bar, border,
 /// sidebar, chat tab, session/task-list previews, and status bar. In a
 /// full-width dynamic tab: tab bar and the registered slice view only. The
@@ -199,8 +243,8 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
     reason = "all inputs are single-use render pass params"
 )]
 fn render_base_layers(
-    slices: &jinn_domain::common::slices::Slices,
-    viewport: &mut jinn_domain::common::slices::view::Viewport,
+    slices: &jinn_slices::Slices,
+    viewport: &mut jinn_slices::view::Viewport,
     sidebar: &mut Sidebar,
     ui_registry: &mut AppUiRegistry,
     frame: &mut Frame<'_>,
@@ -217,11 +261,11 @@ fn render_base_layers(
             // scope's slot resolves through the viewport. An unregistered
             // slot renders nothing (blank tab — a wiring bug caught by
             // the startup pairing check, not silently here).
-            let base = ctx.state.frontend.scope_stack.base();
-            if let FocusScope::Dynamic(id) = base
+            let base = ctx.state.frontend.scope_base();
+            if let FocusScope::Dynamic(ref id) = base
                 && let Some(slot) = slices.tab_slot(id)
             {
-                let cx = jinn_domain::common::slices::ViewCx {
+                let cx = jinn_slices::ViewCx {
                     theme: &ctx.state.frontend.theme,
                 };
                 viewport.render_slot(frame, dash.content, &slot, &cx, slices);
@@ -239,25 +283,25 @@ fn render_base_layers(
                 rects,
             );
             chat_tab::render_chat_tab(ui_registry, frame, chat, ctx, rects);
-            jinn_domain::feat::ui::sidebar::sessions::render_archive_tree_prompt_for_state(
+            jinn_sidebar::sections::sessions::render_archive_tree_prompt_for_state(
                 frame,
                 chat.sidebar,
                 frame_area,
                 ctx,
             );
-            jinn_domain::feat::ui::sidebar::sessions::render_close_session_prompt_for_state(
+            jinn_sidebar::sections::sessions::render_close_session_prompt_for_state(
                 frame,
                 chat.sidebar,
                 frame_area,
                 ctx,
             );
-            jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
+            jinn_sidebar::sections::sessions::render_session_preview_for_state(
                 frame,
                 chat.sidebar,
                 frame_area,
                 ctx,
             );
-            jinn_domain::feat::ui::sidebar::task_list_section::preview::render_task_list_preview_for_state(
+            jinn_sidebar::sections::task_list_section::preview::render_task_list_preview_for_state(
                 frame,
                 chat.sidebar,
                 frame_area,
@@ -281,50 +325,17 @@ fn render_active_overlay(
             picker::render_picker(frame, area, ctx);
             Some(jinn_selection_widget::compute_popup_rect(area))
         }
-        FocusScope::ArgInput => {
-            picker::render_arg_input(frame, area, ctx);
-            Some(jinn_domain::feat::session_lifecycle::render::arg_input_popup_rect(area, ctx))
-        }
-        FocusScope::RenameSessionInput => {
-            jinn_domain::feat::rename_session_input::render::render_rename_session_input(
-                frame, area, ctx,
-            );
-            Some(jinn_domain::feat::rename_session_input::render::rename_session_popup_rect(area))
-        }
-        FocusScope::PrunerAccumulationInput => {
-            jinn_domain::feat::pruner_accumulation_input::render::render_pruner_accumulation_input(
-                frame, area, ctx,
-            );
-            Some(jinn_domain::feat::pruner_accumulation_input::render::pruner_accumulation_popup_rect(area))
-        }
-        FocusScope::CwdInput => {
-            jinn_domain::feat::cwd_input::render::render_cwd_input(frame, area, ctx);
-            Some(jinn_domain::feat::cwd_input::render::cwd_input_popup_rect(
-                area,
-            ))
-        }
-        FocusScope::ProjectAddInput => {
-            jinn_domain::feat::project_add_input::render::render_project_add_input(
-                frame, area, ctx,
-            );
-            Some(jinn_domain::feat::project_add_input::render::project_add_input_popup_rect(area))
-        }
-        FocusScope::TerminalView | FocusScope::TerminalControl => {
-            let overlay_rect =
-                jinn_domain::feat::interactive_term::overlay_geometry::terminal_overlay_rect(area);
-            crate::render::terminal_tab::render_terminal_tab(frame, overlay_rect, ctx);
-            Some(overlay_rect)
-        }
         FocusScope::Dynamic(id) => {
             // Slice overlays: consult the geometry fn + renderer the
             // scope's slice registered at activation. A dynamic scope
-            // without either renders nothing.
+            // without either renders nothing. The rect is selectable only
+            // when the slice opted in at activation.
             let overlay = ctx.slices.overlay(id)?;
             let overlay_area = overlay(&area)?;
             let view = ctx.overlay_view(id)?;
             let facts = ctx.facts();
             view(frame, overlay_area, &facts);
-            None
+            ctx.slices.overlay_selectable(id).then_some(overlay_area)
         }
         _ => None,
     }
@@ -338,5 +349,73 @@ fn is_full_width_tab(slices: &jinn_slices::Slices, scope: &FocusScope) -> bool {
     match scope {
         FocusScope::Dynamic(id) => slices.tab_scopes().contains(id),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod mcp_snapshot_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use super::*;
+
+    fn tool_def(name: &str, description: &str) -> jinn_core_types::ToolDefinition {
+        jinn_core_types::ToolDefinition {
+            name: name.to_owned(),
+            description: description.to_owned(),
+            parameters: serde_json::Value::Object(serde_json::Map::new()),
+            prompt_snippet: None,
+            prompt_guidelines: Vec::new(),
+            server_tool_type: None,
+        }
+    }
+
+    #[rstest::rstest]
+    fn refresh_snapshot_filters_and_strips_prefix() {
+        // Given tool definitions from this server, another server, and a builtin.
+        let definitions = vec![
+            tool_def("mcp__excalimate__create_scene", "Create a scene"),
+            tool_def("mcp__excalimate__auto_animate", "Auto-animate"),
+            tool_def("mcp__other__create_scene", "Other server"),
+            tool_def("file_read", "A builtin"),
+        ];
+
+        // When refreshing the snapshot for "excalimate".
+        let (_status, _stderr, tools) = refresh_snapshot("excalimate", None, "", &definitions);
+
+        // Then only excalimate's tools are collected, with prefixes stripped.
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].0, "create_scene");
+        assert_eq!(tools[0].1, "Create a scene");
+        assert_eq!(tools[1].0, "auto_animate");
+    }
+
+    #[rstest::rstest]
+    fn refresh_snapshot_passes_status_and_stderr_through() {
+        // Given a status and stderr tail.
+        let status = jinn_mcp_msg::McpConnectionStatus::Dead;
+
+        // When refreshing.
+        let (actual_status, stderr, _tools) = refresh_snapshot("srv", Some(status), "boom", &[]);
+
+        // Then they pass through unchanged.
+        assert_eq!(actual_status, Some(status));
+        assert_eq!(stderr, "boom");
+    }
+
+    #[rstest::rstest]
+    fn refresh_snapshot_no_matching_tools_returns_empty() {
+        // Given definitions with no matching prefix.
+        let definitions = vec![tool_def("file_read", "builtin")];
+
+        // When refreshing for an unknown server.
+        let (_status, _stderr, tools) = refresh_snapshot("ghost", None, "", &definitions);
+
+        // Then no tools are collected.
+        assert!(tools.is_empty());
     }
 }

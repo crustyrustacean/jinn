@@ -11,10 +11,11 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::llm_message::LlmMessage;
-use crate::tool_types::ToolCall;
 use error_stack::Report;
+use futures::StreamExt;
 use futures::stream;
+use jinn_core_types::llm_message::LlmMessage;
+use jinn_core_types::tool_types::ToolCall;
 
 use crate::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
 use crate::stream_event::StopReason;
@@ -381,7 +382,7 @@ impl LlmService for FakeLlmService {
         &self,
         system_prompt: Option<&str>,
         messages: Vec<LlmMessage>,
-        _tools: Vec<crate::tool_types::ToolDefinition>,
+        _tools: Vec<jinn_core_types::tool_types::ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
         // Record the messages and system prompt for test observability.
         self.received_calls.lock().push(messages.clone());
@@ -448,5 +449,82 @@ impl LlmService for FakeLlmService {
         }
 
         Ok(Box::pin(stream::iter(events)))
+    }
+}
+
+/// A factory whose streams hang forever after one token.
+///
+/// For watchdog/silence tests: the yielded token proves the stream is
+/// genuinely in flight, then the stream never produces `Done` — no
+/// `StreamCompleted` ever fires and the turn stays open. Pair with a
+/// short stall-watchdog window to test the trip-and-restart path
+/// end-to-end.
+#[derive(Debug, Clone)]
+pub struct HungStreamFactory;
+
+impl HungStreamFactory {
+    /// Create the factory. No configuration: every service hangs the
+    /// same way.
+    #[must_use]
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for HungStreamFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LlmServiceFactory for HungStreamFactory {
+    fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
+        Ok(Box::new(HungStreamService))
+    }
+    fn name(&self) -> &'static str {
+        "HungStream"
+    }
+}
+
+/// The service behind [`HungStreamFactory`]: one token, then silence.
+#[derive(Debug, Clone)]
+struct HungStreamService;
+
+#[async_trait::async_trait]
+impl LlmService for HungStreamService {
+    fn name(&self) -> &'static str {
+        "HungStream"
+    }
+
+    async fn chat_stream(
+        &self,
+        _system_prompt: Option<&str>,
+        _messages: Vec<LlmMessage>,
+    ) -> Result<ChatStream, Report<LlmServiceError>> {
+        let prefix: Vec<Result<String, Report<LlmServiceError>>> = vec![Ok("hung".to_owned())];
+        Ok(Box::pin(
+            stream::iter(prefix).chain(stream::poll_fn(|_cx| std::task::Poll::Pending)),
+        ))
+    }
+
+    async fn chat_stream_with_tools(
+        &self,
+        _system_prompt: Option<&str>,
+        _messages: Vec<LlmMessage>,
+        _tools: Vec<jinn_core_types::tool_types::ToolDefinition>,
+    ) -> Result<ToolStream, Report<LlmServiceError>> {
+        Ok(Box::pin(Self::hung_stream()))
+    }
+}
+
+impl HungStreamService {
+    /// One text token, then a stream that never yields again.
+    fn hung_stream() -> ToolStream {
+        let prefix: Vec<Result<StreamEvent, Report<LlmServiceError>>> =
+            vec![Ok(StreamEvent::Text("hung".to_owned()))];
+        Box::pin(stream::iter(prefix).chain(stream::poll_fn(
+            // Pending forever: the polled closure never resolves.
+            |_cx| std::task::Poll::Pending,
+        )))
     }
 }

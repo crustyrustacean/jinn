@@ -12,14 +12,13 @@ use error_stack::Report;
 use parking_lot::RwLock;
 use parking_lot::RwLockReadGuard;
 
-use jinn_provider::ReasoningEffort;
+use jinn_provider::{LlmServiceError, LlmServiceFactory, ReasoningEffort};
 
 use super::api_keys::ApiKeys;
 use super::config::{AliasEntry, ProvidersConfig};
 use super::provider_id::ProviderId;
 use super::registry::ProviderRegistry;
 use super::resolved_provider::ResolvedProvider;
-use super::service::{LlmServiceError, LlmServiceFactory};
 
 /// Shared service wrapper for the provider registry.
 ///
