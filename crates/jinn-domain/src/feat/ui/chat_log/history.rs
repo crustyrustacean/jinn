@@ -174,7 +174,7 @@ struct HistoryRender<'a> {
     miss_lines: HashMap<usize, Vec<Line<'static>>>,
     #[expect(
         clippy::rc_buffer,
-        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
+        reason = "Arc keeps cloning a rendered entry's line buffer O(1) where a plain Vec would deep-copy every line on each cache hit"
     )]
     cached_lines: HashMap<usize, Arc<Vec<Line<'static>>>>,
     total_wrapped: u32,

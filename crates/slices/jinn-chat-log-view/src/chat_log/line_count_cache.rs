@@ -50,7 +50,7 @@ pub struct CachedEntryCount {
     /// `Some` when inserted via [`EntryLineCache::insert_with_lines`].
     #[expect(
         clippy::rc_buffer,
-        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
+        reason = "Arc keeps cloning a rendered entry's line buffer O(1) where a plain Vec would deep-copy every line on each cache hit"
     )]
     pub lines: Option<Arc<Vec<Line<'static>>>>,
     /// The `touch_counter` value when this entry's lines were last used.
@@ -67,7 +67,7 @@ pub struct CacheHit {
     /// Pre-rendered lines for this entry, if they were cached.
     #[expect(
         clippy::rc_buffer,
-        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
+        reason = "Arc keeps cloning a rendered entry's line buffer O(1) where a plain Vec would deep-copy every line on each cache hit"
     )]
     pub lines: Option<Arc<Vec<Line<'static>>>>,
 }
@@ -412,7 +412,7 @@ mod tests {
     /// Store rendered lines the way the render pass does, via a probe.
     #[expect(
         clippy::rc_buffer,
-        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
+        reason = "Arc keeps cloning a rendered entry's line buffer O(1) where a plain Vec would deep-copy every line on each cache hit"
     )]
     fn insert_with_lines(
         entry: &ChatEntry,

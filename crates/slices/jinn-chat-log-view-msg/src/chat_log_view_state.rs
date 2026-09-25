@@ -57,6 +57,10 @@ pub struct SavedHistoryPosition {
 ///
 /// Defaults match the historical `SessionUi` defaults exactly: auto-scroll
 /// (`scroll_offset: None`), no selection, empty caches and sets.
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "the view state stays public for the renderer while its write counters stay private to the compare-then-swap"
+)]
 #[derive(Debug, Default)]
 pub struct ChatLogViewUi {
     /// Number of lines to skip from the top when rendering (ratatui scroll
@@ -132,13 +136,13 @@ pub struct ChatLogViewUi {
     ///
     /// The renderer recomputes the visual item list every frame but only
     /// replaces the stored one when it differs, so this counts real writes
-    /// rather than frames. Exposed for tests that assert the renderer is
-    /// reusing the stored list.
+    /// rather than frames. Read through [`Self::visual_items_writes`].
     visual_items_writes: u64,
     /// How many times `entry_line_ranges` was actually replaced.
     ///
     /// Counts real writes rather than frames, for the same reason as
-    /// `visual_items_writes`.
+    /// `visual_items_writes`. Read through
+    /// [`Self::entry_line_ranges_writes`].
     entry_line_ranges_writes: u64,
 }
 

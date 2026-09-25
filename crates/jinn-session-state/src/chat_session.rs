@@ -2635,7 +2635,7 @@ impl ChatSessionState {
     #[must_use]
     pub fn visual_items_writes(&self) -> u64 {
         self.with_view(
-            |v| v.visual_items_writes(),
+            jinn_chat_log_view_msg::ChatLogViewUi::visual_items_writes,
             || 0,
         )
     }
@@ -2646,7 +2646,10 @@ impl ChatSessionState {
     /// frame over unchanged history reused the stored ranges.
     #[must_use]
     pub fn entry_line_ranges_writes(&self) -> u64 {
-        self.with_view(|v| v.entry_line_ranges_writes(), || 0)
+        self.with_view(
+            jinn_chat_log_view_msg::ChatLogViewUi::entry_line_ranges_writes,
+            || 0,
+        )
     }
 
     /// A snapshot copy of the visual items list computed by the last render.
