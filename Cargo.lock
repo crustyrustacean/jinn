@@ -2636,6 +2636,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-project"
+version = "0.118.0"
+dependencies = [
+ "jinn-core-types",
+ "jinn-cwd-msg",
+ "jinn-domain",
+ "jinn-preferences-config",
+ "jinn-project-msg",
+ "jinn-slices",
+ "jinn-theme",
+ "ratatui",
+ "rstest",
+ "tempfile",
+ "tracing",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "jinn-project-msg"
+version = "0.118.0"
+dependencies = [
+ "jinn-slices",
+]
+
+[[package]]
 name = "jinn-provider"
 version = "0.118.0"
 dependencies = [
