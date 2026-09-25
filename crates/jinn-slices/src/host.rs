@@ -224,6 +224,22 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         self.sections.add_typed::<T>(key)
     }
 
+    /// Reads the slice's config section as a typed value where absence
+    /// is legal. A missing table resolves to `T::default()`; a present
+    /// but malformed table still aborts launch.
+    ///
+    /// This is the right face for a section a stock configuration does
+    /// not carry. A slice staged with [`Self::config_section`] is a
+    /// claim that the document always has the section, and a stock
+    /// `jinn.toml` that does not will abort the launch instead.
+    #[must_use]
+    pub fn config_section_optional<T>(&mut self, key: &str) -> ConfigSection<T>
+    where
+        T: serde::de::DeserializeOwned + Default + Send + 'static,
+    {
+        self.sections.add_typed_optional::<T>(key)
+    }
+
     /// Reads the slice's config section as a raw TOML table — the
     /// WASM-shaped dynamic face, snapshotted under the same gate.
     #[must_use]
