@@ -2235,3 +2235,66 @@ fn gutter_padding_matches_content_rows_for_a_wrapping_entry() {
         "a wrapping entry should produce more than one gutter row, got {gutter_rows}"
     );
 }
+
+/// Times the per-frame cache probe for a large session, and separately times
+/// what the pre-signature path cost: a full fingerprint per entry per frame.
+#[rstest::rstest]
+fn a_large_session_frame_avoids_rehashing_its_content() {
+    // Given a session whose total text is large (many multi-KB entries).
+    let state = {
+        let mut s = normal_state();
+        // ~4KB per entry, 600 entries => ~2.4MB of tool-result text.
+        let big = "x".repeat(4_000);
+        for _ in 0..600 {
+            s.active_session_mut().push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                &big,
+                ToolResultStatus::Success,
+            ));
+        }
+        s
+    };
+    let mut element = ChatLogElement::new();
+    let (mut terminal, area) = setup_term(100, 40);
+
+    // Warm the cache with one frame.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // When the cache is probed for the same entries 20 more times — the work a
+    // second through twentieth frame would repeat.
+    let entry_count = 600usize;
+    let start = std::time::Instant::now();
+    for _ in 0..20 {
+        for entry in state.active_session().history() {
+            let _ = entry.content_signature();
+        }
+    }
+    let signature_elapsed = start.elapsed();
+
+    // And when the equivalent volume of full-fingerprint work runs — what the
+    // pre-signature path did on every one of those frames.
+    let start = std::time::Instant::now();
+    for _ in 0..20 {
+        for entry in state.active_session().history() {
+            let _ = entry.content_fingerprint();
+        }
+    }
+    let fingerprint_elapsed = start.elapsed();
+
+    // Then the signature path is cheaper, and the avoided hashing scales with
+    // session bytes rather than entry count.
+    assert_eq!(entry_count, state.active_session().history().len());
+    let ratio = fingerprint_elapsed.as_secs_f64() / signature_elapsed.as_secs_f64().max(1e-9);
+    assert!(
+        ratio > 1.0,
+        "the signature path should beat full fingerprinting, got {ratio:.1}x"
+    );
+}
