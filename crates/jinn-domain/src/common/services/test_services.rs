@@ -304,6 +304,10 @@ impl TestServices {
                 svc.reload().expect("test prefs storage initial reload");
                 svc
             },
+            config: jinn_config::ConfigLayer::load(Arc::new(
+                jinn_config::InMemoryConfigStorage::default(),
+            ))
+            .expect("test config layer initial load"),
             app_state_storage: {
                 let svc = AppStateStorageService::new(Arc::new(InMemoryAppStateStorage::new()));
                 svc.reload().expect("test app state storage initial reload");

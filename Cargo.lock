@@ -1924,6 +1924,7 @@ dependencies = [
  "jinn-chat-log-view-msg",
  "jinn-citations",
  "jinn-cli",
+ "jinn-config",
  "jinn-context-assembly",
  "jinn-context-curation",
  "jinn-context-curation-msg",
@@ -2145,6 +2146,22 @@ dependencies = [
  "tempfile",
  "toml",
  "toml_edit 0.22.27",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-config"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "jinn-common",
+ "parking_lot",
+ "rstest",
+ "serde",
+ "tempfile",
+ "toml",
+ "toml_edit 0.22.27",
+ "tracing",
  "wherror",
 ]
 
@@ -2384,6 +2401,7 @@ dependencies = [
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-common",
+ "jinn-config",
  "jinn-context",
  "jinn-context-assembly",
  "jinn-context-assembly-msg",

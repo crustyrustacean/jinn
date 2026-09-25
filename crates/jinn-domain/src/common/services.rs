@@ -66,6 +66,9 @@ pub struct Services {
     pub session_store: SessionStoreService,
     /// User preferences storage for persisting `jinn.toml`.
     pub user_preferences_storage: UserPreferencesStorageService,
+    /// The configuration layer: every `jinn.toml` value is read and
+    /// written through this handle, and none is cached anywhere else.
+    pub config: jinn_config::ConfigLayer,
     /// App state storage for persisting `state.toml`.
     pub app_state_storage: AppStateStorageService,
     /// Test-only owned temp directory. `None` in production.
@@ -203,6 +206,10 @@ impl Services {
                 svc.reload().expect("test prefs storage initial reload");
                 svc
             },
+            config: jinn_config::ConfigLayer::load(Arc::new(
+                jinn_config::InMemoryConfigStorage::default(),
+            ))
+            .expect("test config layer initial load"),
             app_state_storage: {
                 let svc = AppStateStorageService::new(Arc::new(InMemoryAppStateStorage::new()));
                 svc.reload().expect("test app state storage initial reload");
@@ -288,6 +295,10 @@ impl Services {
                 svc.reload().expect("test prefs storage initial reload");
                 svc
             },
+            config: jinn_config::ConfigLayer::load(Arc::new(
+                jinn_config::InMemoryConfigStorage::default(),
+            ))
+            .expect("test config layer initial load"),
             app_state_storage: {
                 let svc = AppStateStorageService::new(Arc::new(InMemoryAppStateStorage::new()));
                 svc.reload().expect("test app state storage initial reload");

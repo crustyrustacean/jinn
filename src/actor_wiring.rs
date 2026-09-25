@@ -47,6 +47,8 @@ pub struct ActorSystemBuilderArgs {
     pub session_store: SessionStoreService,
     /// User preferences storage service.
     pub user_preferences_storage: UserPreferencesStorageService,
+    /// The configuration layer: the live `jinn.toml` every consumer reads.
+    pub config: jinn_config::ConfigLayer,
     /// App state storage service.
     pub app_state_storage: jinn_preferences_config::AppStateStorageService,
     /// Application paths.
@@ -82,6 +84,7 @@ impl ActorSystemBuilder {
             config_storage,
             session_store,
             user_preferences_storage,
+            config,
             app_state_storage,
             paths,
             dump_requests,
@@ -137,6 +140,7 @@ impl ActorSystemBuilder {
             config_storage: config_storage.clone(),
             session_store: session_store.clone(),
             user_preferences_storage: user_preferences_storage.clone(),
+            config,
             app_state_storage: app_state_storage.clone(),
             tempdir: None,
             bus,

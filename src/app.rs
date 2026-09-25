@@ -290,6 +290,35 @@ impl App {
             svc
         };
 
+        // The configuration layer over the same document. Loaded here so
+        // a malformed file aborts before any actor wiring runs, exactly
+        // as the storage service's reload does.
+        let config = {
+            let backend = jinn_config::FilesystemConfigStorage::new(
+                FilesystemUserPreferencesStorage::default_path()
+                    .path()
+                    .to_path_buf(),
+            );
+            match jinn_config::ConfigLayer::load(Arc::new(backend)) {
+                Ok(layer) => layer,
+                Err(report) => {
+                    tracing::error!("failed to load the jinn.toml configuration layer");
+                    eprintln!("error: failed to parse jinn.toml:");
+                    eprintln!("  {report:?}");
+                    std::process::exit(1);
+                }
+            }
+        };
+
+        // Fail-fast on a malformed section before any actor wiring runs.
+        // A section is only checked once it has been registered, so this
+        // is the gate for the sections that opt in.
+        if let Err(error) = config.validate() {
+            tracing::error!(%error, "jinn.toml section failed validation");
+            eprintln!("error: {error}");
+            std::process::exit(1);
+        }
+
         // Load providers.toml early — fail-fast on a malformed file BEFORE
         // any actor wiring runs, with a report naming the file and TOML detail.
         // Config subcommands have already dispatched above, so `jinn config
@@ -339,6 +368,7 @@ impl App {
                         config_storage: config_storage.clone(),
                         session_store: session_store.clone(),
                         user_preferences_storage: user_preferences_storage.clone(),
+                        config: config.clone(),
                         app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                         dump_requests: cli.dump_requests.clone(),
@@ -379,6 +409,7 @@ impl App {
                         config_storage,
                         session_store,
                         user_preferences_storage: user_preferences_storage.clone(),
+                        config: config.clone(),
                         app_state_storage,
                         paths: jinn_domain::AppPaths::default(),
                         dump_requests: cli.dump_requests.clone(),
