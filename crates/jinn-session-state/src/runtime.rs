@@ -4,7 +4,7 @@ use jiff::Timestamp;
 use jinn_context::{ContextFile, PromptTemplateStore};
 use jinn_core_types::{HistoryMutation, tool_types::ToolResult};
 use jinn_session_msg::phase_machine::SessionPhaseMachine;
-use jinn_skills::Skill;
+use jinn_skills_msg::Skill;
 use jinn_turn_dispatch_msg::TurnQueue;
 use serde::{Deserialize, Serialize};
 

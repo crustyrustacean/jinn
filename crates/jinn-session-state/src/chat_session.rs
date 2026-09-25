@@ -34,6 +34,7 @@ use jinn_session_msg::PhaseKind;
 use jinn_session_msg::phase_machine::PhaseTransitions;
 use jinn_session_store_msg::SessionState;
 use jinn_skills::parse_loaded_skill_name;
+use jinn_skills_msg::Skill;
 use jinn_token_count_msg::TokenRecord;
 
 use jinn_chat_log_view_msg::SavedHistoryPosition;
@@ -2796,7 +2797,7 @@ impl ChatSessionState {
     // decision D3 for the per-session isolation rationale.
 
     /// Returns the skills discovered for this session's cwd tree.
-    pub fn discovered_skills(&self) -> &[jinn_skills::Skill] {
+    pub fn discovered_skills(&self) -> &[Skill] {
         &self.core.ephemeral.discovered_skills
     }
 
@@ -2811,7 +2812,7 @@ impl ChatSessionState {
     }
 
     /// Replaces the discovered skills set for this session (scan-actor write path).
-    pub fn set_discovered_skills(&mut self, skills: Vec<jinn_skills::Skill>) {
+    pub fn set_discovered_skills(&mut self, skills: Vec<Skill>) {
         self.core.ephemeral.discovered_skills = skills;
     }
 

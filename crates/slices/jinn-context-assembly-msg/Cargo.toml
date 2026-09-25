@@ -1,11 +1,14 @@
 [package]
-name = "jinn-skills-msg"
+name = "jinn-context-assembly-msg"
 version.workspace = true
 edition.workspace = true
-description = "Skills crossing contracts: SkillsLoaded event and ScanSkills command."
+description = "Context-assembly commands, events, and shared input vocabulary."
 
 [dependencies]
 jinn-core-types = { workspace = true }
+jinn-context = { workspace = true }
+jinn-persona-msg = { workspace = true }
+jinn-skills-msg = { workspace = true }
 jinn-slices = { workspace = true }
 serde = { workspace = true }
 trouper = { workspace = true }

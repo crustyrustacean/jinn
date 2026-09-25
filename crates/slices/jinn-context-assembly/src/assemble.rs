@@ -319,7 +319,7 @@ mod tests {
     use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
     use jinn_domain::protocol::ChatEntry;
     use jinn_domain::protocol::ToolResultStatus;
-    use jinn_skills::Skill;
+    use jinn_skills_msg::Skill;
     use jinn_tools_msg::TASK_TOOL_NAME;
 
     /// Test bridge: build inputs from an AppState the way production
@@ -346,7 +346,7 @@ mod tests {
             body: String::new(),
             file_path: std::path::PathBuf::from(format!("/skills/{name}/SKILL.md")),
             base_dir: std::path::PathBuf::from(format!("/skills/{name}")),
-            source: jinn_skills::SkillSource::Global,
+            source: jinn_skills_msg::SkillSource::Global,
         }
     }
 

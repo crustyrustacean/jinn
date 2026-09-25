@@ -5206,21 +5206,21 @@ fn discovered_sets_are_independent_between_sessions() {
     // Given two sessions with different discovered skills.
     let mut a = ChatSessionState::new();
     let mut b = ChatSessionState::new();
-    a.set_discovered_skills(vec![jinn_skills::Skill {
+    a.set_discovered_skills(vec![jinn_skills_msg::Skill {
         name: "session-a-only".into(),
         description: String::new(),
         body: String::new(),
         file_path: PathBuf::new(),
         base_dir: PathBuf::new(),
-        source: jinn_skills::SkillSource::Global,
+        source: jinn_skills_msg::SkillSource::Global,
     }]);
-    b.set_discovered_skills(vec![jinn_skills::Skill {
+    b.set_discovered_skills(vec![jinn_skills_msg::Skill {
         name: "session-b-only".into(),
         description: String::new(),
         body: String::new(),
         file_path: PathBuf::new(),
         base_dir: PathBuf::new(),
-        source: jinn_skills::SkillSource::Global,
+        source: jinn_skills_msg::SkillSource::Global,
     }]);
 
     // Then session A sees only its skill, B sees only its own — no clobbering.

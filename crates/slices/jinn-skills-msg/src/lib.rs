@@ -8,9 +8,13 @@
 
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+mod frontmatter;
+mod skill;
 
-use jinn_skills::Skill;
+pub use frontmatter::SkillFrontmatter;
+pub use skill::{Skill, SkillSource};
+
+use serde::{Deserialize, Serialize};
 
 /// Emitted when skills have been scanned and loaded.
 ///

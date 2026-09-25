@@ -45,7 +45,7 @@ use jinn_context::PromptTemplateStore;
 use jinn_context::env_context::ContextFile;
 use jinn_core_types::SessionId;
 use jinn_domain::common::state::State;
-use jinn_skills::Skill;
+use jinn_skills_msg::Skill;
 
 use crate::commands::{RescanContext, RescanPrompts, RescanSkills, RunDiscovery};
 use crate::contracts::{DiscoverySnapshot, SessionDiscoverySettled};

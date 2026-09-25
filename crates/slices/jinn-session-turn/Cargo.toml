@@ -18,6 +18,7 @@ jinn-provider = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-state = { workspace = true }
+jinn-skills-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-token-count-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }

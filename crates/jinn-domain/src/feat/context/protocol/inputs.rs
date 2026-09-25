@@ -13,7 +13,7 @@ use crate::protocol::ChatEntry;
 use jinn_context::ContextFile;
 use jinn_core_types::ToolDefinition;
 use jinn_persona_msg::Persona;
-use jinn_skills::Skill;
+use jinn_skills_msg::Skill;
 
 /// Everything assembly needs, provided by the caller.
 ///

@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use crate::common::state::State;
 use crate::feat::file_lister::FilePickerState;
 use crate::feat::persona::PersonaEntry;
-use crate::feat::skills::Skill;
+use jinn_skills_msg::Skill;
 use crate::feat::ui::frontend_state::FrontendState;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_preferences_config::app_state_file::AppStateFile;

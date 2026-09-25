@@ -4,7 +4,7 @@ use jinn_picker::RowCtx;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use jinn_skills::SkillSource;
+use jinn_skills_msg::SkillSource;
 use jinn_theme::Theme;
 
 /// A skill entry ready for display in the skill picker.

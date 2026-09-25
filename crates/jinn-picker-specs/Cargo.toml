@@ -24,6 +24,7 @@ jinn-session-state = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-persona-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }
+jinn-skills-msg = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-preferences-config = { workspace = true }

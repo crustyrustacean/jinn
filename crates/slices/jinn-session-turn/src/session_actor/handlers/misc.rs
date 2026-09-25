@@ -4,6 +4,7 @@ use super::super::SessionPersistenceActor;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::context::protocol::event::ContextOverrideChanged;
 use jinn_session_history_msg::SubmitHistoryMutations;
+use jinn_skills_msg::Skill;
 use jinn_session_msg::PhaseKind;
 
 use jinn_domain::protocol::{ChatEntry, PickerKind};
@@ -199,7 +200,7 @@ fn is_compaction_source(source: &jinn_domain::protocol::ChangeSource) -> bool {
     matches!(source, jinn_domain::protocol::ChangeSource::Worker { name } if name == "compaction")
 }
 /// Builds a markdown message listing discovered skills.
-fn build_skills_refresh_message(skills: &[jinn_domain::feat::skills::Skill]) -> String {
+fn build_skills_refresh_message(skills: &[Skill]) -> String {
     let mut msg = format!("Skills refreshed: {} found\n\n", skills.len());
     for skill in skills {
         msg.push_str("- ");
