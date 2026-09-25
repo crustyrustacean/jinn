@@ -12,9 +12,10 @@
 //!   writes the slice cell synchronously — the sanctioned carve-out for
 //!   per-keystroke typing.
 //!
-//! The command log is owned by the [`QuakeBarActor`]; submit clears the
-//! input in the hook action and emits [`SubmitQuakeBarCommand`] so the
-//! actor remains the single writer of the log.
+//! The command log is owned by the
+//! [`QuakeBarCanvasActor`](super::canvas_actor::QuakeBarCanvasActor); submit
+//! clears the input in the hook action and emits [`SubmitQuakeBarCommand`] so
+//! the actor remains the single writer of the log.
 
 use jinn_slices::TypedCell;
 
@@ -241,7 +242,7 @@ pub fn register_quake_input_hook(routes: &KeyRoutes, cell: &TypedCell<QuakeBarSt
 ///
 /// Reads and trims the input text, clears the input buffer, and — if
 /// the text is non-empty — emits a [`SubmitQuakeBarCommand`] so the
-/// [`QuakeBarActor`](super::quake_bar_actor::QuakeBarActor) appends it
+/// [`QuakeBarCanvasActor`](super::canvas_actor::QuakeBarCanvasActor) appends it
 /// to the log. Empty input is a no-op (no command emitted).
 fn handle_submit(cell: &TypedCell<QuakeBarState>, _ctx: ActionCtx<'_>) -> IntentResult {
     let text = {

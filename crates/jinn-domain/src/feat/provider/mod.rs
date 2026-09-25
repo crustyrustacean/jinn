@@ -4,8 +4,8 @@
 //! provider cell) lives in the `jinn-provider-selection` slice and its
 //! `jinn-provider-selection-msg` crate. What remains here: the
 //! streaming indicator (a session-*phase* visual) and the provider UI
-//! registration. The chat-entry → LLM-message converter
-//! (context-assembly's vocabulary) now lives in `jinn-llm-support`.
+//! registration. The chat-entry → LLM-message converter lives in
+//! `jinn-llm-support`.
 
 pub mod indicator;
 

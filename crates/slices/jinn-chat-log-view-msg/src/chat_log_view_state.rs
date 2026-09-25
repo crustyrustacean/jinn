@@ -8,8 +8,7 @@
 //!
 //! Writers are the exempt IntentHandler (scroll/selection/expand/ignore
 //! arms, via `ChatSession`'s semantic methods) and the renderer (per-frame
-//! write-back through the same methods). There is no actor and no route row:
-//! exactly as the migration docs prescribe for this slice.
+//! write-back through the same methods). There is no actor and no route row.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU32, Ordering};

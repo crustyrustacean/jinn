@@ -29,7 +29,7 @@ fn install_rustls_provider_for_tests() {
 pub mod common;
 pub mod feat;
 
-// Not yet reorganized (handled in later phases)
+// Kernel-side protocol vocabulary: intents, keys, and system events.
 pub mod protocol;
 
 // Re-export actor types that are still in use

@@ -48,7 +48,7 @@ pub struct ProvidersConfig {
 /// A single configured provider.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderEntry {
-    /// Backend type string, parsed via `LLMBackend::from_str`.
+    /// Backend type string, parsed via `Backend::from_str`.
     /// E.g. `"openrouter"`, `"ollama"`, `"openai"`.
     pub backend: String,
     /// Model identifiers available under this provider.
@@ -279,9 +279,10 @@ where
 
 /// Saves the config back to disk.
 ///
-/// Serializes the full config as pretty-printed TOML. Note: this may
-/// reorder or remove user comments. Comment preservation is a future
-/// improvement.
+/// When the file already exists it is patched in place through the
+/// comment-preserving `DocumentPatcher`, so user comments, blank lines, and
+/// field ordering survive. A first save (no existing file) writes a clean,
+/// comment-free serialization.
 ///
 /// # Errors
 ///

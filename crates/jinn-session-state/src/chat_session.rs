@@ -821,16 +821,14 @@ impl ChatSessionState {
     }
 
     /// Begin a new streaming response.
-    //
-    // Phase 1 wiring: delegates to machine.on_first_token() and syncs the
-    // legacy phase field. If the machine rejects the transition (e.g. not in
-    // Sending), logs a warning and returns without changing state - matching
-    // the old soft-guard behavior.
-    //
-    // Note: The old code accepted both `Sending` and `Idle` phases. The machine
-    // only accepts `Sending → Streaming`. To maintain backward compat during the
-    // migration, we also accept `Idle → Streaming` by first transitioning to
-    // `Sending` then to `Streaming`.
+    ///
+    /// Delegates to [`PhaseTransitions::on_first_token`]. If the machine
+    /// rejects the transition (e.g. not in `Sending`), it logs a warning and
+    /// returns without changing state.
+    ///
+    /// The machine only accepts `Sending → Streaming`, so a session still in
+    /// `Idle` (a caller that skipped `begin_sending`) is first transitioned to
+    /// `Sending`.
     pub fn begin_streaming(&mut self) {
         // If Idle, first transition to Sending (some callers skip begin_sending()).
         if matches!(self.core.ephemeral.machine.kind(), PhaseKind::Idle)
@@ -987,9 +985,8 @@ impl ChatSessionState {
     }
 
     /// Mark streaming as finished (normal completion).
-    //
-    // Phase 1 wiring: delegates to machine.on_stream_completed_finished()
-    // and syncs legacy phase field.
+    ///
+    /// Delegates to [`PhaseTransitions::on_stream_completed_finished`].
     pub fn finish_streaming(&mut self, preserve_assistant: bool, dispatched_at: jiff::Timestamp) {
         if preserve_assistant {
             self.ensure_assistant_entry(dispatched_at);
@@ -1017,8 +1014,8 @@ impl ChatSessionState {
     }
 
     /// Cancel streaming but keep partial text in history.
-    //
-    // Phase 1 wiring: delegates to machine.cancel() and syncs legacy phase.
+    ///
+    /// Delegates to [`PhaseTransitions::cancel`].
     pub fn cancel_streaming(&mut self, dispatched_at: jiff::Timestamp) {
         self.ensure_assistant_entry(dispatched_at);
 
@@ -1653,9 +1650,8 @@ impl ChatSessionState {
     }
 
     /// Mark the session as having dispatched a message to the LLM.
-    //
-    // Phase 1 wiring: delegates to machine.on_dispatch_message() and syncs
-    // the legacy phase field.
+    ///
+    /// Delegates to [`PhaseTransitions::on_dispatch_message`].
     pub fn begin_sending(&mut self) {
         if let Err(e) = self.core.ephemeral.machine.on_dispatch_message() {
             tracing::warn!(

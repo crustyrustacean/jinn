@@ -117,8 +117,7 @@ fn kill_process_tree_windows(pid: u32) {
 /// nor useful. Failures (the process already exited → `ESRCH` on Unix, a
 /// missing tree on Windows) are logged at `warn` level and otherwise
 /// swallowed. Performs **no async operations** and touches no `Child`, so it
-/// is safe to call from a tokio runtime worker thread (unlike the removed
-/// `SharedChild::blocking_lock` path that panicked there).
+/// is safe to call from a tokio runtime worker thread.
 pub fn kill_process_group_by_pid(pid: u32) {
     #[cfg(unix)]
     {

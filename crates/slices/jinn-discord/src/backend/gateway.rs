@@ -69,8 +69,10 @@ pub struct BotData {
 /// spawns the bridge-event drain loop. Blocks the calling task until the
 /// gateway shuts down.
 ///
-/// `rx` is the receiving half of the channel fed by `DiscordBridgeActor`; the
-/// drain loop consumes [`BridgeEvent`]s and posts the bot's replies to Discord.
+/// `rx` is the receiving half of the channel fed by
+/// [`DiscordBridgeSubscriber`](crate::bridge_subscriber::DiscordBridgeSubscriber);
+/// the drain loop consumes [`BridgeEvent`]s and posts the bot's replies to
+/// Discord.
 ///
 /// # Errors
 ///

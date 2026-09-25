@@ -66,7 +66,7 @@ fn state_ref_of<'a>(ctx: &'a StatusCtx<'_>) -> &'a AppState {
 
 /// Renders one picker row: the theme's focus-accent swatch followed by the
 /// name (selected rows carry the selection background). Filter matches are
-/// not highlighted — identical to the legacy theme row rendering.
+/// not highlighted.
 fn theme_row(entry: &ThemeEntry, ctx: &RowCtx<'_>) -> Line<'static> {
     let style = if ctx.is_selected {
         Style::default()

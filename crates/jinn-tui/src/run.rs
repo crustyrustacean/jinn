@@ -337,8 +337,8 @@ fn shell_escape(s: &str) -> String {
 /// `bridge`; `false` if the path was rejected (non-directory or
 /// canonicalization failure).
 ///
-/// Routing through the [`Bridge`] (not the legacy `AppMsg` channel) is what
-/// makes the selection actually reach the session actor.
+/// Routing through the [`Bridge`] is what makes the selection actually
+/// reach the session actor.
 fn apply_selected_cwd(
     bridge: &jinn_domain::common::bridge::Bridge,
     session_id: jinn_core_types::SessionId,

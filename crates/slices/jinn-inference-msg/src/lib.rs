@@ -14,9 +14,7 @@
 //!
 //! The stream-phase tool events (`ToolUseStarted`/`ToolCallReceived`/
 //! `ToolCallStreaming`) are *also* published by the inference actor but
-//! live in `jinn-tools-msg` — an accepted divergence (see
-//! actor-migration/slices.md §4), avoided here to keep the tools crate
-//! from depending on this one.
+//! live in `jinn-tools-msg`, so the tools crate does not depend on this one.
 
 use jinn_core_types::SessionId;
 use jinn_core_types::llm_message::LlmMessage;

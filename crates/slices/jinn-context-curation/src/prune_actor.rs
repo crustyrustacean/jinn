@@ -3,11 +3,9 @@
 //! A trouper [`ServiceActor`] subscribed to the slice's
 //! `jinn.context-curation` topic (fed by the kernel bridge's forward
 //! routes). On each `HistoryAppended` it takes a brief read lock, clones
-//! the session history into an `Arc<[ChatEntry]>` (the allocation the old
-//! kernel `HistorySnapshotActor` used to fan out to N workers —
-//! dissolved into this actor), then evaluates each strategy outside any
-//! lock and publishes every non-empty mutation batch as
-//! `SubmitHistoryMutations`.
+//! the session history into an `Arc<[ChatEntry]>`, then evaluates each
+//! strategy outside any lock and publishes every non-empty mutation batch
+//! as `SubmitHistoryMutations`.
 //!
 //! Per-strategy enablement is a construction-time decision: the wiring
 //! helper builds the worker list from user preferences, so a disabled

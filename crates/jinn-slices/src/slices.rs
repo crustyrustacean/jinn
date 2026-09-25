@@ -18,8 +18,8 @@ use crate::slice_scope::SliceScopeId;
 ///
 /// `namespace` is the feature's own namespace (e.g. the slice crate's
 /// domain, or `builtin`); `name` is the feature-chosen slice name;
-/// `version` lets a slice payload evolve under a new key instead of
-/// migrating in place.
+/// `version` lets a slice payload evolve under a new key rather than
+/// changing an existing key's meaning.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SlotKey {
     /// Namespace owning the slot (e.g. `builtin`).
@@ -206,8 +206,8 @@ impl Slices {
 
     /// Enumerates every registered slot, sorted for stable display.
     ///
-    /// Backs the dashboard's dynamic slice list and the future canvas
-    /// export; a slice nobody registered simply doesn't appear.
+    /// Backs the dashboard's dynamic slice list; a slice nobody registered
+    /// simply doesn't appear.
     #[must_use]
     pub fn slots(&self) -> Vec<SlotKey> {
         let cells = self.cells.read();
