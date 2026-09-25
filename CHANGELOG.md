@@ -23,6 +23,8 @@
   - Count now includes tool results, tool guidelines, tool schemas.
 - Steering/queue ordering behaves as intended.
   - Previously the queue buffer would get dumped at the end of a turn even if there were messages in the steering buffer. This would occur in situations where both the queue buffer and steering buffer had messages, but the agent was already on their last message (hence no time to "steer" it). Now, anything in the steering buffer gets dumped first regardless of the state of the agent turn.
+- `task` (subagent) tool now has stronger instructions to encourage concurrent sessions and discourage individual sessions.
+- `task` (subagent) tool no longer propagates the Todo list to subagent sessions.
 
 - These plugins were move into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them. Please see the next section on plugin-related TOML configuration changes.
   - Deleted `persona-loader`
