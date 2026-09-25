@@ -1,6 +1,7 @@
 //! Activates the session under the cursor.
 
 use jinn_domain::common::app_state::AppState;
+use jinn_session_store_msg::ChatLogMeasureRequested;
 
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_domain::protocol::IntentResult;
@@ -15,28 +16,7 @@ use jinn_domain::protocol::IntentResult;
 ///   are ephemeral and persist across activation changes, and were
 ///   hydrated when the session was created/loaded.
 pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
-    use jinn_slices::FocusScope;
-
-    if !matches!(
-        state.frontend.sidebar_section(),
-        Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
-    ) {
-        return IntentResult::empty();
-    }
-    let Some(index) = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
-    else {
-        return IntentResult::empty();
-    };
-    let sessions = sorted_open_sessions(state);
-    let Some(entry) = sessions.get(index) else {
-        return IntentResult::empty();
-    };
-
-    state.session.set_active(entry.id.clone());
-    state.frontend.scope_swap_base(FocusScope::Normal);
-    IntentResult::empty()
+    activate_selected(state, false)
 }
 
 /// Activates the session under the cursor and enters Insert mode.
@@ -49,6 +29,21 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
 /// - For session entries: activates the session, swaps to Normal as the
 ///   base, then pushes Input.
 pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
+    activate_selected(state, true)
+}
+
+/// Switches to the session under the cursor, measuring it if it needs it.
+///
+/// Every session the sidebar lists is already in memory, so activation never
+/// reads from disk. It can still be slow: a session whose line counts are not
+/// cached makes the next frame lay out its whole history inline, which is what
+/// freezes the UI on a large session. So a session that is not yet measured is
+/// switched to behind the loading indication, and measured off the render
+/// thread — the same hand-off a session restored from the archive gets.
+///
+/// `enter_input` selects the scope the sidebar leaves behind: Normal for a
+/// plain activation, Input when the user asked to start typing.
+fn activate_selected(state: &mut AppState, enter_input: bool) -> IntentResult {
     use jinn_slices::FocusScope;
 
     if !matches!(
@@ -67,11 +62,38 @@ pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
     let Some(entry) = sessions.get(index) else {
         return IntentResult::empty();
     };
+    let target_id = entry.id.clone();
 
-    state.session.set_active(entry.id.clone());
+    // Read before the switch: the width the next frame will render at is the
+    // one the session on screen last used. The incoming session's own width is
+    // stale — it has never rendered — so asking it would check the wrong
+    // thing and dispatch a measurement the next frame could not use.
+    let content_width = state.session.active_session().content_width();
+    let needs_measurement = {
+        let mut cache = state.frontend.caches.entry_line_cache.write();
+        !jinn_domain::feat::ui::chat_log::is_session_measured(
+            &mut cache,
+            state,
+            &target_id,
+            content_width,
+        )
+    };
+
+    // Armed before the switch, so the very next frame sees the guard.
+    if needs_measurement {
+        state.session.begin_load(target_id.clone());
+    }
+    state.session.set_active(target_id.clone());
     state.frontend.scope_swap_base(FocusScope::Normal);
-    state.frontend.scope_push(FocusScope::Input);
-    IntentResult::empty()
+    if enter_input {
+        state.frontend.scope_push(FocusScope::Input);
+    }
+
+    if needs_measurement {
+        IntentResult::new_message(ChatLogMeasureRequested { session_id: target_id })
+    } else {
+        IntentResult::empty()
+    }
 }
 
 #[cfg(test)]
@@ -89,11 +111,18 @@ mod tests {
 
     use jinn_core_types::SessionId;
 
-    /// Two sessions exist in state; cursor points at the second-inserted session.
+    /// Two sessions exist in state; cursor points at the second-inserted
+    /// session.
+    ///
+    /// The second session holds history: an empty one has no lines to lay out,
+    /// so it is always already measured and would never exercise the
+    /// measurement path.
     fn state_with_two_sessions_cursor_on_second() -> (AppState, SessionId) {
         let mut state = AppState::default_with_scope_focus();
         let _first = state.session.active_session_id().clone();
-        let second_session = jinn_session_state::ChatSessionState::default();
+        let mut second_session = jinn_session_state::ChatSessionState::default();
+        second_session.push_entry(jinn_core_types::ChatEntry::user("an earlier question"));
+        second_session.push_entry(jinn_core_types::ChatEntry::assistant("an earlier answer"));
         let second = second_session.session_id().clone();
         state.session.insert(second_session);
         // Cursor points at the second session in sorted order.
@@ -111,19 +140,70 @@ mod tests {
         (state, second)
     }
 
+    /// Leaves the cache warm for the session under the cursor, as real chat log
+    /// frames at `width` would.
+    ///
+    /// Renders rather than inserting counts by hand, so the cache is filled
+    /// with exactly the keys the production render pass uses — hand-built
+    /// counts would test the coverage query against the helper instead of
+    /// against the renderer.
+    ///
+    /// The cursor's session is rendered *and* the session that was on screen
+    /// before, because the activation reads its width: the switch is only
+    /// considered free if the target's counts match the width the next frame
+    /// will use, and the on-screen session is the one that knows it.
+    fn with_measured_active_session(state: &mut AppState, width: u16) {
+        use jinn_domain::common::render_ctx::RenderCtx;
+        use jinn_domain::common::ui_element::UiElement;
+        use jinn_domain::feat::ui::chat_log::ChatLogElement;
+        use jinn_testutil::setup_term;
+
+        let target_id = {
+            let index = state
+                .frontend
+                .with_sections(|s| s.sessions.selected_index, || None)
+                .expect("the fixture puts the cursor on a session");
+            sorted_open_sessions(state)[index].id.clone()
+        };
+        let on_screen = state.session.active_session_id().clone();
+        let (mut terminal, area) = setup_term(width, 10);
+        let mut render_once = |session_id: &SessionId| {
+            state.session.set_active(session_id.clone());
+            terminal
+                .draw(|frame| {
+                    let slices = jinn_slices::Slices::new();
+                    let overlay_views = jinn_slices::OverlayViews::new();
+                    let mut element = ChatLogElement::new();
+                    let ctx = RenderCtx::new(state, &slices, &overlay_views);
+                    element.render(frame, area, &ctx);
+                })
+                .expect("measure a session");
+        };
+
+        render_once(&target_id);
+        render_once(&on_screen);
+        // The on-screen session is active again, as the user left it.
+        assert_eq!(
+            state.session.active_session_id(),
+            &on_screen,
+            "the helper must leave the on-screen session unchanged"
+        );
+    }
+
     #[rstest::rstest]
     fn activate_session_switches_active_session_and_emits_no_commands() {
-        // Given a sessions sidebar with cursor on a non-active session.
+        // Given a sessions sidebar with cursor on a measured session.
         let (mut state, expected_id) = state_with_two_sessions_cursor_on_second();
+        with_measured_active_session(&mut state, 60);
 
         // When activating.
         let result = handle_session_activate(&mut state);
 
         // Then the active session is now the one under the cursor.
         assert_eq!(state.session.active_session_id(), &expected_id);
-        // And no commands are emitted: each session's discovered
-        // skills/prompts/context-files are ephemeral and were hydrated when the
-        // session was created/loaded, so activation needs no re-scan.
+        // And no commands are emitted: a measured session needs no
+        // measurement, and skills/prompts/context-files are ephemeral and
+        // were hydrated when the session was created/loaded.
         assert!(result.message_names.is_empty());
     }
 
@@ -154,6 +234,91 @@ mod tests {
         // Then no commands emitted.
         assert!(result.message_names.is_empty());
     }
+
+    #[rstest::rstest]
+    fn activate_unmeasured_session_arms_the_load_guard() {
+        // Given a sessions sidebar with cursor on a session that has never
+        // been measured.
+        let (mut state, _expected_id) = state_with_two_sessions_cursor_on_second();
+
+        // When activating.
+        handle_session_activate(&mut state);
+
+        // Then the loading indication stands, so the next frame does not lay
+        // the whole history out inline.
+        assert!(
+            state.session.is_loading(),
+            "an unmeasured session must be measured before it is drawn"
+        );
+    }
+
+    #[rstest::rstest]
+    fn activate_unmeasured_session_requests_a_measurement() {
+        // Given a sessions sidebar with cursor on an unmeasured session.
+        let (mut state, _expected_id) = state_with_two_sessions_cursor_on_second();
+
+        // When activating.
+        let result = handle_session_activate(&mut state);
+
+        // Then a measurement is requested for it.
+        assert_eq!(
+            result.message_names,
+            vec!["ChatLogMeasureRequested".to_owned()],
+            "the session must be measured off the render thread"
+        );
+    }
+
+    #[rstest::rstest]
+    fn activate_measured_session_arms_no_load_guard() {
+        // Given a sessions sidebar with cursor on an already-measured session.
+        let (mut state, _expected_id) = state_with_two_sessions_cursor_on_second();
+        with_measured_active_session(&mut state, 60);
+
+        // When activating.
+        handle_session_activate(&mut state);
+
+        // Then no indication appears: the switch is immediate.
+        assert!(
+            !state.session.is_loading(),
+            "a measured session must switch without an indication"
+        );
+    }
+
+    #[rstest::rstest]
+    fn activate_measured_session_requests_no_measurement() {
+        // Given a sessions sidebar with cursor on an already-measured session.
+        let (mut state, _expected_id) = state_with_two_sessions_cursor_on_second();
+        with_measured_active_session(&mut state, 60);
+
+        // When activating.
+        let result = handle_session_activate(&mut state);
+
+        // Then nothing is dispatched.
+        assert!(
+            result.message_names.is_empty(),
+            "an already-measured session must not be measured again"
+        );
+    }
+
+    #[rstest::rstest]
+    fn activate_session_measured_at_another_width_is_measured_again() {
+        // Given a session measured at a width the chat log no longer uses.
+        let (mut state, _expected_id) = state_with_two_sessions_cursor_on_second();
+        with_measured_active_session(&mut state, 60);
+
+        // When activating, with the on-screen session's width changed since
+        // that measurement.
+        state.active_session_mut().set_content_width(90);
+        let result = handle_session_activate(&mut state);
+
+        // Then it is measured again, because those counts are wrong at the
+        // width the next frame will use.
+        assert_eq!(
+            result.message_names,
+            vec!["ChatLogMeasureRequested".to_owned()]
+        );
+    }
+
     #[rstest::rstest]
     fn activate_insert_switches_active_session() {
         // Given a sessions sidebar with cursor on a non-active session.
@@ -178,6 +343,18 @@ mod tests {
         assert_eq!(state.frontend.scope(), FocusScope::Input);
         // And the base is Normal so ESC can return there via clear_overlays.
         assert_eq!(state.frontend.scope_parent(), Some(FocusScope::Normal));
+    }
+
+    #[rstest::rstest]
+    fn activate_insert_arms_the_load_guard_for_an_unmeasured_session() {
+        // Given a sessions sidebar with cursor on an unmeasured session.
+        let (mut state, _expected_id) = state_with_two_sessions_cursor_on_second();
+
+        // When activating into insert mode.
+        handle_session_activate_insert(&mut state);
+
+        // Then the session is still measured before it is drawn.
+        assert!(state.session.is_loading());
     }
 
     #[rstest::rstest]
