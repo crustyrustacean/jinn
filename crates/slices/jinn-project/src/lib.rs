@@ -3,14 +3,17 @@
 //! Owns the project-add popup's state, dynamic scope, route rows, input hook,
 //! and overlay rendering. Confirming a valid path updates the open project
 //! picker optimistically and hands persistence to the preferences slice through
-//! `UpdatePreferences::AddProject`.
+//! `UpdatePreferences::AddProject`. Also owns the resolver seam that decides
+//! which past sessions belong to a project.
 
 mod project_add;
+pub mod scope_resolver;
 
 use jinn_slices::SliceHost;
 
 pub use jinn_project_msg::project_add_slot;
 pub use project_add::intent::project_add_scope;
+pub use scope_resolver::ProjectScopeResolver;
 
 /// Activates the project slice and registers the project-add popup.
 ///

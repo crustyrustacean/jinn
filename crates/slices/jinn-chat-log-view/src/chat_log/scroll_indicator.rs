@@ -11,7 +11,7 @@ use jinn_theme::Theme;
 /// Render the scroll indicator widget if the viewport is not at the bottom.
 ///
 /// Shows "↑ N lines above" in the bottom-right corner of the chat area.
-pub(crate) fn render_scroll_indicator(
+pub fn render_scroll_indicator(
     frame: &mut Frame<'_>,
     area: Rect,
     clamped: u16,

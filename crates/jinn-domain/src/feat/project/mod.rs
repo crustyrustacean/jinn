@@ -7,5 +7,7 @@
 //!
 //! Defined in `jinn.toml` under `[[project]]` and persisted comment-preserving
 //! via the [`DocumentPatcher`](crate::common::toml_patch::DocumentPatcher).
-
-pub mod resolver;
+//!
+//! The picker entry type, the add popup, and the project scope resolver all live
+//! in the `jinn-project` slice; the kernel retains only the persisted config and
+//! the intent that drives it.

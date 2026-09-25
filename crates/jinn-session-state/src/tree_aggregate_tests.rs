@@ -10,12 +10,9 @@
 
 use std::collections::HashMap;
 
-use crate::common::app_state::AppState;
-use crate::common::state::State;
-use crate::feat::session::{FrozenTreeNode, aggregate_tree_stats, find_tree_root};
-use crate::protocol::ChatEntry;
-use jinn_core_types::SessionId;
-use jinn_session_state::ChatSessionState;
+use crate::tree_aggregate::{FrozenTreeNode, aggregate_tree_stats, find_tree_root};
+use crate::{ChatSessionState, SessionMap};
+use jinn_core_types::{ChatEntry, SessionId};
 use jinn_token_count_msg::TokenRecord;
 
 /// Helper: create an empty session with the given ID.
@@ -784,27 +781,18 @@ fn tree_aggregate_includes_subagent_usage() {
 
 #[rstest::rstest]
 fn spawned_child_crosses_tree_display_threshold() {
-    // Given a state holding an active parent and one spawned subagent child.
-    let state = State::new(AppState::default());
-    let parent_id = {
-        let snapshot = state.read();
-        snapshot.session.active_session_id().clone()
-    };
-    {
-        let mut guard = state.write();
-        let child = ChatSessionState::new_child(&parent_id, true);
-        guard.session.insert(child);
-    }
+    // Given a session map holding an active parent and one spawned subagent child.
+    let mut session_map = SessionMap::default();
+    let parent_id = session_map.active_session_id().clone();
+    let child = ChatSessionState::new_child(&parent_id, true);
+    session_map.insert(child);
 
     // When aggregating tree stats from the active parent's context.
-    let tree = {
-        let snapshot = state.read();
-        crate::feat::session::tree_aggregate::aggregate_tree_stats(
-            snapshot.session.sessions(),
-            snapshot.session.frozen_nodes(),
-            snapshot.session.active_session_id(),
-        )
-    };
+    let tree = aggregate_tree_stats(
+        session_map.sessions(),
+        session_map.frozen_nodes(),
+        session_map.active_session_id(),
+    );
 
     // Then the count crosses the >1 display threshold of the status bar.
     assert!(
