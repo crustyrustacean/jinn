@@ -3040,7 +3040,6 @@ dependencies = [
  "jinn-session-lifecycle-msg",
  "jinn-session-msg",
  "jinn-session-store-msg",
- "jinn-skills",
  "jinn-skills-msg",
  "jinn-slices",
  "jinn-token-count-msg",

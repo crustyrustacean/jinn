@@ -67,11 +67,13 @@ pub fn handle_open_picker(
 /// A `None` here means the picker is still kernel-driven (a legacy
 /// `FocusScope::Picker` plus a spec). Each entry is a slice-owned scope the
 /// slice registered at activation; the kernel only relays the identity.
-fn slice_owned_picker_scope(kind: PickerKind) -> Option<jinn_slices::SliceScopeId> {
-    match kind {
-        PickerKind::Skill => Some(jinn_skills::skill_picker_scope()),
-        _ => None,
-    }
+///
+/// Slice-owned pickers no longer appear here at all: their own opener rows
+/// push their scope directly, so the kernel names no picker. The match is kept
+/// as a total function over the kinds it still handles, and will collapse to
+/// `None` entirely once the last kernel-driven picker is migrated.
+fn slice_owned_picker_scope(_kind: PickerKind) -> Option<jinn_slices::SliceScopeId> {
+    None
 }
 
 /// Resets the preview scroll offset when the active picker's spec opts in

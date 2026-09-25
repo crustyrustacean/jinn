@@ -6,6 +6,7 @@ description = "The skills slice: skill data model, frontmatter parsing, scanning
 
 [dependencies]
 jinn-chat-log-view = { workspace = true }
+jinn-domain = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-selection-widget = { workspace = true }
 jinn-slices = { workspace = true }
@@ -15,7 +16,6 @@ ratatui = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
-jinn-domain = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
