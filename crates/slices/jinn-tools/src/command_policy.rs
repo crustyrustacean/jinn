@@ -1,8 +1,14 @@
-//! Project command policy - resolution and matching for the bash tool.
+//! Command policy - resolution and matching for the bash tool.
 //!
-//! Resolves the blocked-command rules of the configured project containing a
-//! session's cwd (`~`-expanded lexical longest-prefix match) and compiles them
-//! into a matcher consulted by the bash tool before any child process spawns.
+//! Resolves the blocked-command rules that apply to a session's cwd: the
+//! global rules from `jinn.toml`'s `[[global_command_policy]]`, chained ahead
+//! of the rules of the configured project containing that cwd
+//! (`~`-expanded lexical longest-prefix match). The result is compiled into a
+//! matcher consulted by the bash tool before any child process spawns.
+//!
+//! Global-first ordering makes the global list a floor: since first match
+//! wins, a project policy can add blocks but never lift a global one, and the
+//! global rules still apply outside every configured project.
 //!
 //! Advisory-strength by design: rules exist to stop well-trained habits
 //! (like `cargo test -p` in a whole-workspace repo), not to resist a
@@ -62,19 +68,22 @@ impl CompiledCommandPolicy {
     }
 }
 
-/// Returns the command-policy rules of the configured project containing
-/// `cwd`, or an empty vec.
+/// Returns the command-policy rules that apply to `cwd`: the global rules
+/// configured in `jinn.toml` chained ahead of the rules of the configured
+/// project containing `cwd` (or an empty project tail when no project matches).
 ///
-/// Matching is a lexical, component-wise prefix between each `~`-expanded
-/// project path and `cwd`; the longest matching project path wins (nesting).
+/// Global rules come first because config order is precedence (first match
+/// wins) — a project policy can add blocks but never lift a global one.
 #[must_use]
-pub fn resolve_project_rules(
+pub fn resolve_rules(
+    global: &[CommandPolicyRule],
     projects: &[ProjectConfig],
     cwd: &Path,
     home: &Path,
 ) -> Vec<CommandPolicyRule> {
-    matching_project(projects, cwd, home)
-        .map_or_else(Vec::new, |project| project.command_policy.clone())
+    let project_rules =
+        matching_project(projects, cwd, home).map_or_else(Vec::new, |p| p.command_policy.clone());
+    global.iter().chain(project_rules.iter()).cloned().collect()
 }
 
 /// Returns the configured project with the longest `~`-expanded path that is
@@ -150,7 +159,7 @@ mod tests {
         let home = Path::new("/home/me");
 
         // When resolving rules for a cwd.
-        let rules = resolve_project_rules(&projects, Path::new(cwd), home);
+        let rules = resolve_rules(&[], &projects, Path::new(cwd), home);
 
         // Then membership follows the lexical prefix (component-wise).
         assert_eq!(rules.is_empty(), !expected);
@@ -165,7 +174,7 @@ mod tests {
         let home = Path::new("/home/me");
 
         // When resolving rules for a cwd directly inside home.
-        let rules = resolve_project_rules(&projects, Path::new("/home/me/notes"), home);
+        let rules = resolve_rules(&[], &projects, Path::new("/home/me/notes"), home);
 
         // Then the tilde expanded to home and the rules apply.
         assert_eq!(rules.len(), 1);
@@ -182,11 +191,93 @@ mod tests {
         let cwd = Path::new("/w/repo/src");
 
         // When resolving rules for a cwd inside the inner project.
-        let rules = resolve_project_rules(&projects, cwd, Path::new("/"));
+        let rules = resolve_rules(&[], &projects, cwd, Path::new("/"));
 
         // Then the inner (longest prefix) project's rules win.
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].pattern, "inner");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn global_rule_applies_outside_every_project() {
+        // Given a global rule and projects none of which contain the cwd.
+        let global = [rule("forbidden", "global msg")];
+        let projects = [project(
+            "/w/repo",
+            vec![rule("project-only", "project msg")],
+        )];
+        let cwd = Path::new("/elsewhere");
+
+        // When resolving rules for a cwd outside every configured project.
+        let rules = resolve_rules(&global, &projects, cwd, Path::new("/"));
+
+        // Then the global rule still applies.
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].pattern, "forbidden");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn global_rule_is_matched_before_a_matching_project_rule() {
+        // Given a global and a project rule that both match the same command.
+        let global = [rule("forbidden", "global msg")];
+        let projects = [project("/w/repo", vec![rule("forbidden", "project msg")])];
+        let cwd = Path::new("/w/repo/src");
+
+        // When resolving rules for a cwd inside the project.
+        let rules = resolve_rules(&global, &projects, cwd, Path::new("/"));
+
+        // Then first-match-wins picks the global rule's message.
+        let policy = CompiledCommandPolicy::compile(&rules);
+        assert_eq!(
+            policy.matched_message("run forbidden now"),
+            Some(("forbidden", "global msg"))
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn project_rule_still_applies_with_no_global_policy() {
+        // Given a project rule and an empty global policy.
+        let projects = [project(
+            "/w/repo",
+            vec![rule("project-only", "project msg")],
+        )];
+        let cwd = Path::new("/w/repo/src");
+
+        // When resolving rules for a cwd inside the project.
+        let rules = resolve_rules(&[], &projects, cwd, Path::new("/"));
+
+        // Then the project rules are returned unchanged.
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].pattern, "project-only");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn invalid_global_regex_is_inert_while_a_global_sibling_enforces() {
+        // Given a global policy with one invalid regex followed by a valid rule.
+        let global = [
+            rule("([unclosed", "never compiles"),
+            rule("forbidden", "global msg"),
+        ];
+
+        // When compiling the resolved global rules.
+        let policy = CompiledCommandPolicy::compile(&resolve_rules(
+            &global,
+            &[],
+            Path::new("/elsewhere"),
+            Path::new("/"),
+        ));
+
+        // Then the invalid rule is silently inert (warned at compile).
+        assert!(policy.matched_message("([unclosed thing").is_none());
+        // And the valid global rule still enforces.
+        assert_eq!(
+            policy.matched_message("run forbidden now"),
+            Some(("forbidden", "global msg"))
+        );
     }
 
     #[rstest::rstest]
