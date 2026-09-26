@@ -62,19 +62,34 @@ Status legend: `[ ]` pending · `[x]` done · `[!]` diverged (note the divergenc
 
 ## Phase 4 — In-flight state in the sidebar cell
 
-- [ ] Add `use std::collections::HashSet;` to `crates/slices/jinn-sidebar-msg/src/sidebar_sections.rs`
-- [ ] Add `pub in_flight: HashSet<SessionId>` to `SessionsSectionState`
-- [ ] Implement `SessionsSectionState::begin_in_flight` (semantic action, not a setter)
-- [ ] Implement `SessionsSectionState::end_in_flight` (idempotent no-op when the id is absent)
+- [x] Add `use std::collections::HashSet;` to `crates/slices/jinn-sidebar-msg/src/sidebar_sections.rs`
+- [x] Add `pub in_flight: HashSet<SessionId>` to `SessionsSectionState`
+- [x] Implement `SessionsSectionState::begin_in_flight` (semantic action, not a setter)
+- [x] Implement `SessionsSectionState::end_in_flight` (idempotent no-op when the id is absent)
+- [x] Implement `SessionsSectionState::is_in_flight` — a read accessor so the render path asks a question rather than poking the set
+- [x] `just check` clean — the struct derives `Default`, so no existing literals broke
 
 ## Phase 5 — Set the tint at dispatch
 
-- [ ] Add a `mark_in_flight(state, ids)` helper in the sidebar sessions module
-- [ ] Call it in `handle_session_archive` after every early return, before building the result
-- [ ] Call it in `handle_session_close_with_lifecycle` — **not** in `handle_session_close_arm`'s first press
-- [ ] Refactor `archive_tree.rs`: add `emit_tree_command(state, action, &members)` that marks then delegates to `command_for`
-- [ ] Route all 3 archive-tree dispatch sites through `emit_tree_command` (lines ~71, ~99, ~131)
-- [ ] Confirm every `Err` arm (including `SubtreeBusy`) marks nothing
+- [x] Add a `mark_in_flight(state, ids)` helper in `sessions/state.rs`, plus `clear_in_flight` / `is_in_flight` for the clearing and render phases
+- [x] Call it in `handle_session_archive` after every early return, before building the result
+- [x] Call it in `handle_session_close_with_lifecycle` — the first `x` press only arms the prompt and marks nothing
+- [x] Add `emit_tree_command(state, action, &members)` in `archive_tree.rs` that marks then delegates to `command_for`
+- [x] Route both tree dispatch sites (lines 71, 99) through `emit_tree_command`
+- [x] Confirm every `Err` arm (including `SubtreeBusy`) marks nothing — it returns before `emit_tree_command`
+- [x] `just check` clean
+
+### Phase 5 notes
+
+- Only **two** tree dispatch sites call `command_for`, not the three the spec predicted. The third
+  (`handle_session_tree_action_confirm`) is dead code: re-exported from `sessions.rs` but called
+  nowhere in the repo. Its signature also took only a `root`, so it could not know the member list.
+  Changed it to take `&[SessionId]` and route it through `emit_tree_command`, so if it is ever wired
+  up it cannot emit a command that leaves the tint unset. It is still unused — flagged for the user
+  rather than deleted, since removing public API is out of scope here.
+- The spec predicted 3 or 4 call sites; routing all of them through one `emit_tree_command` is what
+  makes the invariant hold, so the count mattered less than the consolidation.
+- Fixed an authoring slip: `with_sections` takes a fallback *thunk*, not a value (`|| false`, not `false`).
 
 ## Phase 6 — Clear the tint on completion
 

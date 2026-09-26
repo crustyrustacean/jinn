@@ -149,6 +149,32 @@ pub fn sorted_open_sessions_split(
     jinn_session_list::visible_session_tree(entries, &visual_parents)
 }
 
+/// Marks sessions as having a disposal operation dispatched and unfinished.
+///
+/// Called at the moment the disposal command is dispatched, never at keypress
+/// time, so a rejected validation leaves no in-flight indication behind.
+pub fn mark_in_flight(state: &AppState, ids: &[SessionId]) {
+    state
+        .frontend
+        .update_sections(|sections| sections.sessions.begin_in_flight(ids.iter().cloned()));
+}
+
+/// Clears the in-flight mark for a session whose disposal has concluded.
+pub fn clear_in_flight(
+    frontend: &jinn_domain::feat::ui::frontend_state::FrontendState,
+    id: &SessionId,
+) {
+    frontend.update_sections(|sections| sections.sessions.end_in_flight(id));
+}
+
+/// Whether a session currently has a disposal operation in flight.
+pub fn is_in_flight(
+    frontend: &jinn_domain::feat::ui::frontend_state::FrontendState,
+    id: &SessionId,
+) -> bool {
+    frontend.with_sections(|sections| sections.sessions.is_in_flight(id), || false)
+}
+
 /// Repairs visual parents before a sidebar-owned removal operation.
 pub fn update_visual_parents_on_removal(
     state: &mut AppState,
