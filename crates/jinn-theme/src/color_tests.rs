@@ -117,7 +117,7 @@ mod style_map_integration_tests {
         // When building the style map.
         let map = theme.style_map();
         // Then it has one entry per Theme field.
-        assert_eq!(map.len(), 44, "style_map should cover all Theme fields");
+        assert_eq!(map.len(), 46, "style_map should cover all Theme fields");
     }
 
     #[rstest::rstest]
@@ -143,6 +143,77 @@ mod style_map_integration_tests {
         assert_eq!(
             map.get("subagent_fg"),
             Some(&Style::default().fg(theme.subagent_fg))
+        );
+        assert_eq!(
+            map.get("in_flight_bg"),
+            Some(&Style::default().fg(theme.in_flight_bg))
+        );
+        assert_eq!(
+            map.get("in_flight_fg"),
+            Some(&Style::default().fg(theme.in_flight_fg))
+        );
+    }
+}
+
+#[cfg(test)]
+mod in_flight_tint_tests {
+    use crate::theme::ThemeFile;
+
+    #[rstest::rstest]
+    #[case(include_str!("../../../res/themes/default.toml"), "default")]
+    #[case(
+        include_str!("../../../res/themes/catppuccin-mocha.toml"),
+        "catppuccin-mocha"
+    )]
+    #[case(
+        include_str!("../../../res/themes/gruvbox-dark.toml"),
+        "gruvbox-dark"
+    )]
+    #[case(include_str!("../../../res/themes/nord-light.toml"), "nord-light")]
+    #[case(include_str!("../../../res/themes/sonokai.toml"), "sonokai")]
+    fn shipped_theme_defines_in_flight_colors(#[case] contents: &str, #[case] name: &str) {
+        // Given a bundled theme file.
+        let file: ThemeFile = toml::from_str(contents).expect("parse");
+
+        // When reading its in-flight tint colors.
+        let bg = file.in_flight_bg;
+        let fg = file.in_flight_fg;
+
+        // Then both are authored, so the tint is never invisible.
+        assert!(
+            bg.is_some(),
+            "theme '{name}' must define in_flight_bg for the in-flight tint to render"
+        );
+        assert!(
+            fg.is_some(),
+            "theme '{name}' must define in_flight_fg for the in-flight tint to render"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case(include_str!("../../../res/themes/nord-light.toml"), "nord-light")]
+    fn light_theme_tint_is_legible_against_its_pale_gutter(
+        #[case] contents: &str,
+        #[case] _name: &str,
+    ) {
+        // Given a bundled light theme.
+        let file: ThemeFile = toml::from_str(contents).expect("parse");
+
+        // When resolving its in-flight tint and gutter colors.
+        let theme = file.resolve();
+        let tint_bg = theme.in_flight_bg;
+        let gutter = theme.gutter_bg;
+
+        // Then the wash is distinguishable from the gutter behind it.
+        assert_ne!(
+            tint_bg, gutter,
+            "a tint matching the gutter would be invisible on the sidebar"
+        );
+        // And the text reads against the wash.
+        assert_eq!(
+            theme.in_flight_fg,
+            crate::contrast::ensure_contrast(theme.in_flight_fg, tint_bg),
+            "in_flight_fg should already be legible against in_flight_bg"
         );
     }
 }
