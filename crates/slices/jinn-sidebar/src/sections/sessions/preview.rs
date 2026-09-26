@@ -358,12 +358,7 @@ fn build_preview_lines(
             is_streaming: false,
             is_waiting_on_subagent: false,
         };
-        render_preview(
-            history,
-            &render_ctx,
-            PREVIEW_ENTRY_COUNT,
-            PREVIEW_MAX_LINES,
-        )
+        render_preview(history, &render_ctx, PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES)
     };
 
     // Store in cache.

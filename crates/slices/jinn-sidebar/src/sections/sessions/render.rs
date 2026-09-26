@@ -25,7 +25,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use throbber_widgets_tui::ThrobberState;
 
-use super::ANIMATION_INTERVAL;
 use crate::sections::sessions::state::sorted_open_sessions;
 use entry_line::assemble_entry_line;
 use jinn_sidebar_msg::{ArchiveTreePrompt, TreePromptAction};
@@ -109,7 +108,7 @@ impl SessionsSection {
 
     /// Advances the animation frame if enough time has elapsed.
     fn maybe_advance_animation(&mut self) {
-        if self.last_animation_step.elapsed() >= ANIMATION_INTERVAL {
+        if self.last_animation_step.elapsed() >= jinn_slices::SPINNER_INTERVAL {
             self.throbber_state.calc_next();
             self.last_animation_step = Instant::now();
         }

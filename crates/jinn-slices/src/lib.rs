@@ -42,6 +42,7 @@ pub mod scope_focus_state;
 pub mod service_status;
 pub mod slice_scope;
 pub mod slices;
+pub mod spinner;
 pub mod tui_signals;
 pub mod view;
 
@@ -94,5 +95,8 @@ pub use slice_scope::SliceScopeId;
 pub use slices::Slices;
 pub use slices::SlotKey;
 pub use slices::SlotTaken;
+pub use spinner::SPINNER_INTERVAL;
+pub use spinner::spinner_glyph;
+pub use spinner::spinner_index;
 pub use view::SliceView;
 pub use view::ViewCx;
