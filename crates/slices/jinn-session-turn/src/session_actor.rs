@@ -36,7 +36,7 @@ use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
 use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
 use jinn_llm_support::token_estimator::TiktokenCounter;
-use jinn_persona_msg::{LoadPersonaPickerEntries, PersonasLoaded};
+use jinn_persona_msg::PersonasLoaded;
 use jinn_session_history_msg::CitationsReceived;
 use jinn_session_history_msg::SubmitHistoryMutations;
 use jinn_session_history_msg::TaskListUpdated;
@@ -169,7 +169,6 @@ impl SessionPersistenceActor {
             // Context-related.
             .handles::<PinChatEntry>()
             .handles::<UnpinChatEntry>()
-            .handles::<LoadPersonaPickerEntries>()
             // Events (also broadcast targets — every publish of these
             // schemas reaches this actor, whatever slice emitted it).
             .handles::<StreamToken>()
@@ -236,12 +235,6 @@ impl MsgHandler<PinChatEntry> for SessionPersistenceActor {
 impl MsgHandler<UnpinChatEntry> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &UnpinChatEntry, _ctx: &mut MsgCtx<'_>) {
         self.handle_unpin_chat_entry(msg).await;
-    }
-}
-
-impl MsgHandler<LoadPersonaPickerEntries> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &LoadPersonaPickerEntries, _ctx: &mut MsgCtx<'_>) {
-        self.handle_load_persona_picker_entries(msg);
     }
 }
 

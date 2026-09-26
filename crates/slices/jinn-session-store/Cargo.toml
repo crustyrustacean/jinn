@@ -45,7 +45,12 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 trouper = { workspace = true }
 
+ratatui = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-selection-widget = { workspace = true }
+
 [dev-dependencies]
+uuid = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

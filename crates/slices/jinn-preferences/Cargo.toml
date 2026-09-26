@@ -12,13 +12,18 @@ jinn-config = { workspace = true }
 # reload after a preference save. See AGENTS.md §3 "one boundary = one
 # actor": these are the authoritative writers for those fields.
 jinn-domain = { workspace = true, features = ["test-harness"] }
-jinn-picker-specs = { workspace = true }
 jinn-preferences-config = { workspace = true }
+jinn-project = { workspace = true }
+jinn-project-msg = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-theme = { workspace = true }
 jinn-theme-msg = { workspace = true }
 jinn-persona-msg = { workspace = true }
+# The skills picker's cell: a theme change must drop the preview lines it has
+# already rendered in the old palette, and the cache now lives with the picker.
+jinn-skills-msg = { workspace = true }
+jinn-selection-widget = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }
 serde_json = { workspace = true }

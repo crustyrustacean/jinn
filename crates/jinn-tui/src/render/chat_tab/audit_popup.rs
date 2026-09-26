@@ -418,9 +418,7 @@ mod tests {
             .state
             .write()
             .frontend
-            .scope_push(FocusScope::Picker {
-                kind: jinn_domain::PickerKind::Provider,
-            });
+            .scope_push(FocusScope::Dynamic(jinn_project_msg::project_picker_scope()));
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.

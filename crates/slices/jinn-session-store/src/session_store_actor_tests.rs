@@ -14,7 +14,6 @@ use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
 use jinn_domain::common::state::State;
 use jinn_domain::feat::session::{SessionStore, SessionStoreService};
-use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_provider_config::ProvidersConfig;
 use jinn_session_msg::{SessionArchived, SessionClosed};
 use jinn_session_state::ChatSessionState;
@@ -44,12 +43,22 @@ async fn actor_fixture() -> ActorFixture {
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;
     services.session_store = SessionStoreService::new(store.clone());
+    // The picker cell production's `activate` mints before the spawn; a
+    // fixture that skipped it would fail at construction, not at use.
+    let session_picker_cell = services
+        .slices
+        .register(
+            jinn_session_store_msg::session_picker_slot(),
+            jinn_session_store_msg::SessionPickerState::default(),
+        )
+        .expect("session picker slot is free in a fresh harness");
     let state = State::new(AppState::default());
     let _actor = SessionStoreActor::spawn(
         harness.system(),
         SessionStoreActorDeps {
             services,
             state: state.clone(),
+            session_picker_cell: session_picker_cell.clone(),
         },
     );
     ActorFixture {
@@ -60,19 +69,33 @@ async fn actor_fixture() -> ActorFixture {
     }
 }
 
-async fn controlled_actor_fixture(store: Arc<ControlledStartupStore>) -> (TestHarness, State) {
+type ControlledFixture = (
+    TestHarness,
+    State,
+    jinn_slices::cell::TypedCell<jinn_session_store_msg::SessionPickerState>,
+);
+
+async fn controlled_actor_fixture(store: Arc<ControlledStartupStore>) -> ControlledFixture {
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;
     services.session_store = SessionStoreService::new(store);
+    let session_picker_cell = services
+        .slices
+        .register(
+            jinn_session_store_msg::session_picker_slot(),
+            jinn_session_store_msg::SessionPickerState::default(),
+        )
+        .expect("session picker slot is free in a fresh harness");
     let state = State::new(AppState::default());
     let _actor = SessionStoreActor::spawn(
         harness.system(),
         SessionStoreActorDeps {
             services,
             state: state.clone(),
+            session_picker_cell: session_picker_cell.clone(),
         },
     );
-    (harness, state)
+    (harness, state, session_picker_cell)
 }
 
 fn empty_providers_config() -> ProvidersConfig {
@@ -101,7 +124,7 @@ async fn the_picker_is_served_while_startup_session_loads_are_still_outstanding(
     ]));
     store.gate_session_load(first_id.clone());
     store.gate_session_load(second_id.clone());
-    let (harness, state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, picker_cell) = controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration is triggered, and the picker's message is
     // published behind it on the same mailbox.
@@ -113,8 +136,7 @@ async fn the_picker_is_served_while_startup_session_loads_are_still_outstanding(
     store.wait_for_session_load(&first_id).await;
     store.wait_for_session_load(&second_id).await;
     harness.publish(LoadSessionPickerEntries).await;
-    let picker_served =
-        poll_until(|| async { !state.read().frontend.session_picker().items().is_empty() }).await;
+    let picker_served = poll_until(|| async { !picker_cell.read().tree.items().is_empty() }).await;
 
     // Then the picker is served even though not one session read has finished.
     // Under the old inline loop this message sat in the mailbox until every
@@ -145,7 +167,7 @@ async fn the_hydration_flag_clears_only_after_the_last_completion() {
         ),
     ]));
     store.gate_session_load(gated_id.clone());
-    let (harness, state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
 
     // When the ungated session's read completes while the other is still out.
     harness
@@ -195,7 +217,7 @@ async fn a_frozen_tree_member_is_stored_without_reopening_the_hydration_flag() {
             .push(member_id.clone());
         store
     });
-    let (harness, state) = controlled_actor_fixture(store).await;
+    let (harness, state, _picker_cell) = controlled_actor_fixture(store).await;
 
     // When startup hydration runs to completion.
     harness
@@ -230,7 +252,7 @@ async fn every_dispatched_load_produces_exactly_one_completion() {
             jiff::Timestamp::from_second(2).expect("valid timestamp"),
         ),
     ]));
-    let (harness, _state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, _state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
     let completed = harness.spawn_recorder::<SessionLoadCompleted>().await;
 
     // When startup hydration completes.
@@ -263,7 +285,7 @@ async fn startup_hydration_is_visible_before_first_snapshot_completes() {
         jiff::Timestamp::from_second(1).expect("valid timestamp"),
     )]));
     store.gate_session_load(session_id.clone());
-    let (harness, state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration begins.
     harness
@@ -295,7 +317,7 @@ async fn first_startup_session_is_visible_before_second_snapshot_load() {
     ]));
     store.gate_session_load(newer_id.clone());
     store.gate_session_load(older_id.clone());
-    let (harness, state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
 
     // When the newer snapshot is released but the older snapshot remains gated.
     harness
@@ -329,7 +351,7 @@ async fn startup_sessions_are_inserted_in_existing_recency_order() {
             jiff::Timestamp::from_second(2).expect("valid timestamp"),
         ),
     ]));
-    let (harness, _state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, _state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration completes.
     harness
@@ -366,7 +388,7 @@ async fn startup_publishes_one_completion_event_per_loaded_session() {
             jiff::Timestamp::from_second(2).expect("valid timestamp"),
         ),
     ]));
-    let (harness, _state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, _state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
     let completed = harness.spawn_recorder::<SessionLoadCompleted>().await;
 
     // When startup hydration completes.
@@ -393,7 +415,7 @@ async fn startup_hydration_clears_before_archived_tree_hydration() {
         jiff::Timestamp::from_second(1).expect("valid timestamp"),
     )]));
     store.gate_tree_summary_load();
-    let (harness, state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
 
     // When the unarchived session is inserted and tree hydration begins.
     harness
@@ -413,7 +435,7 @@ async fn startup_hydration_clears_before_archived_tree_hydration() {
 async fn empty_startup_clears_hydration() {
     // Given a store with no unarchived sessions.
     let store = Arc::new(ControlledStartupStore::new(&[]));
-    let (harness, state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration completes.
     harness
@@ -437,7 +459,7 @@ async fn summary_query_failure_clears_hydration() {
     // Given a store whose unarchived summary query fails.
     let store = Arc::new(ControlledStartupStore::new(&[]));
     store.fail_summaries();
-    let (harness, state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration is attempted.
     harness
@@ -472,7 +494,7 @@ async fn individual_load_failure_does_not_abort_remaining_startup_loads() {
         ),
     ]));
     store.fail_session(failed_id);
-    let (harness, state) = controlled_actor_fixture(store).await;
+    let (harness, state, _picker_cell) = controlled_actor_fixture(store).await;
 
     // When startup hydration continues past the failed snapshot.
     harness
@@ -496,7 +518,7 @@ async fn startup_preserves_welcome_session_as_active() {
         persisted_id.clone(),
         jiff::Timestamp::from_second(1).expect("valid timestamp"),
     )]));
-    let (harness, state) = controlled_actor_fixture(store).await;
+    let (harness, state, _picker_cell) = controlled_actor_fixture(store).await;
     let welcome_id = state.read().session.active_session_id().clone();
 
     // When startup hydration completes.
@@ -520,7 +542,7 @@ async fn startup_does_not_persist_hydrated_sessions() {
         persisted_id.clone(),
         jiff::Timestamp::from_second(1).expect("valid timestamp"),
     )]));
-    let (harness, _state) = controlled_actor_fixture(store.clone()).await;
+    let (harness, _state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration completes.
     harness

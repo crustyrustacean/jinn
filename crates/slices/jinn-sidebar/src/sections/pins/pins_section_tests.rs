@@ -48,24 +48,15 @@ fn sidebar_persona_edit_opens_picker_when_persona_focused() {
         .scope_set_sidebar_section(jinn_sidebar_msg::SidebarSectionId::Persona);
 
     // When handling sidebar persona edit.
-    let result = handle_sidebar_persona_edit(
-        &mut state,
-        &jinn_picker_specs::build_picker_registry(),
-        jinn_slices::empty_config_layer(),
-    );
+    let result = handle_sidebar_persona_edit(&mut state, jinn_slices::empty_config_layer());
 
-    // Then the persona picker is active.
+    // Then the persona picker's scope is on top of the stack.
     assert_eq!(
-        state.frontend.picker_kind(),
-        Some(jinn_domain::protocol::PickerKind::Persona)
+        state.frontend.scope(),
+        jinn_domain::FocusScope::Dynamic(jinn_persona_msg::persona_picker_scope())
     );
-    // And a LoadPersonaPickerEntries command is returned.
-    assert!(
-        result
-            .message_names
-            .iter()
-            .any(|n| n.contains("LoadPersonaPickerEntries"))
-    );
+    // And no loader command is needed: the picker seeds itself from the slice.
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -80,11 +71,7 @@ fn sidebar_persona_edit_noop_when_pins_focused() {
         .scope_set_sidebar_section(jinn_sidebar_msg::SidebarSectionId::Pins);
 
     // When handling sidebar persona edit.
-    let result = handle_sidebar_persona_edit(
-        &mut state,
-        &jinn_picker_specs::build_picker_registry(),
-        jinn_slices::empty_config_layer(),
-    );
+    let result = handle_sidebar_persona_edit(&mut state, jinn_slices::empty_config_layer());
 
     // Then nothing changed.
     assert!(!state.frontend.is_picker());
@@ -472,7 +459,6 @@ fn session_new_works_when_sidebar_sessions_focused() {
         &mut state,
         &empty_slices(),
         &empty_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -505,7 +491,6 @@ fn session_new_works_when_not_in_sidebar() {
         &mut state,
         &empty_slices(),
         &empty_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -665,10 +650,6 @@ use jinn_domain::protocol::ToolResultStatus;
 /// exercise slices or route rows.
 fn empty_slices() -> jinn_slices::Slices {
     jinn_slices::Slices::new()
-}
-
-fn empty_pickers() -> jinn_picker::PickerRegistry {
-    jinn_picker::PickerRegistry::new()
 }
 
 fn empty_routes() -> jinn_slices::route::KeyRoutes {

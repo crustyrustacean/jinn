@@ -5,9 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::common::app_state::AppState;
 use crate::common::services::Services;
-use crate::feat::ui::picker_states::PickerExt;
 use jinn_core_types::SessionId;
 use jinn_session_store_msg::SessionTreeEntry;
 use jinn_theme::Theme;
@@ -157,29 +155,6 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
     }
 }
 
-/// Wraps raw session entries as kernel `PickerEntry` items via the session
-/// spec's search hook (the single wrap point for every picker write).
-pub(crate) fn wrap_session_entries(
-    entries: Vec<SessionTreeEntry>,
-) -> Vec<jinn_picker::PickerEntry<SessionTreeEntry>> {
-    jinn_picker::make_items_with_hooks(
-        entries,
-        jinn_picker::PickerItemHooks::new()
-            .row(jinn_session_store_msg::session_row)
-            .search(|entry: &SessionTreeEntry| entry.title.clone()),
-    )
-}
-
-/// Loads session tree entries into the picker state, ready for display.
-///
-/// Reads from the session store via services and stores the entries via
-/// `TreePickerState::set_items`.
-pub async fn load_session_picker_items(services: &Services, state: &mut AppState) {
-    let entries = load_session_entries(services, &state.frontend.theme).await;
-    let wrapped = wrap_session_entries(entries);
-    state.frontend.session_picker_mut().set_items(wrapped);
-}
-
 /// Loads session tree entries from a session store service directly.
 ///
 /// Same as [`load_session_entries`] but accepts the store service directly
@@ -215,16 +190,6 @@ pub async fn load_session_entries_from_store(
             vec![]
         }
     }
-}
-
-/// Loads session tree entries into the picker state from a session store service.
-pub async fn load_session_picker_items_from_store(
-    store: &SessionStoreService,
-    state: &mut AppState,
-) {
-    let entries = load_session_entries_from_store(store, &state.frontend.theme).await;
-    let wrapped = wrap_session_entries(entries);
-    state.frontend.session_picker_mut().set_items(wrapped);
 }
 
 #[cfg(test)]
@@ -304,7 +269,12 @@ mod tests {
         );
 
         // When wrapping it for picker storage.
-        let wrapped = wrap_session_entries(vec![entry]);
+        let wrapped = jinn_picker::make_items_with_hooks(
+            vec![entry],
+            jinn_picker::PickerItemHooks::new()
+                .row(jinn_session_store_msg::session_row)
+                .search(|entry: &SessionTreeEntry| entry.title.clone()),
+        );
 
         // Then the wrapped item renders through the spec's row hook
         // (date, project, and title columns), not the plain search label.
@@ -694,13 +664,13 @@ mod tests {
                 summary,
             }));
         let services = TestServices::builder().session_store(store).build();
-        let mut state = AppState::default();
+        let state = AppState::default();
 
-        // When loading picker items.
-        load_session_picker_items(&services, &mut state).await;
+        // When reading the history the picker shows.
+        let entries = load_session_entries(&services, &state.frontend.theme).await;
 
-        // Then items are set in the picker state.
-        assert!(!state.frontend.session_picker().items().is_empty());
+        // Then the read produced a row.
+        assert!(!entries.is_empty(), "the history read must produce a row");
     }
 
     #[rstest::rstest]
@@ -720,12 +690,12 @@ mod tests {
             crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
                 summary,
             }));
-        let mut state = AppState::default();
+        let state = AppState::default();
 
-        // When loading picker items from store.
-        load_session_picker_items_from_store(&store, &mut state).await;
+        // When reading the history from the store directly.
+        let entries = load_session_entries_from_store(&store, &state.frontend.theme).await;
 
-        // Then items are set in the picker state.
-        assert!(!state.frontend.session_picker().items().is_empty());
+        // Then the read produced a row.
+        assert!(!entries.is_empty(), "the history read must produce a row");
     }
 }

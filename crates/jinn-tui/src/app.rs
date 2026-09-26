@@ -10,7 +10,7 @@ use derive_more::Debug;
 use jinn_domain::AppCore;
 use jinn_domain::AppUiRegistry;
 use jinn_domain::IntentHandler;
-use jinn_domain::{FocusScope, KernelIntent, PickerKind};
+use jinn_domain::{FocusScope, KernelIntent};
 use jinn_sidebar::sections::Sidebar;
 use ratatui::Frame;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
@@ -206,7 +206,6 @@ impl TuiApp {
                 &mut state,
                 &self.services.slices,
                 &self.services.key_routes,
-                &self.services.picker_registry,
                 &self.services.config,
             );
 
@@ -288,22 +287,16 @@ impl TuiApp {
 /// Returns the keymap scope corresponding to the given focus scope.
 pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
     match focus {
-        FocusScope::Picker { kind } => match kind {
-            PickerKind::Provider | PickerKind::CompactionModel => Scope::PickerProvider,
-            PickerKind::Session => Scope::PickerSession,
-            PickerKind::Persona => Scope::PickerPersona,
-            PickerKind::Theme => Scope::PickerTheme,
-            PickerKind::SessionLifecycle => Scope::PickerLifecycle,
-            PickerKind::ReasoningEffort => Scope::PickerReasoningEffort,
-            PickerKind::Endpoint => Scope::PickerEndpoint,
-            PickerKind::Tool => Scope::PickerTool,
-            PickerKind::Skill => Scope::PickerSkill,
-            PickerKind::TaskList => Scope::PickerTaskList,
-            PickerKind::Project => Scope::PickerProject,
-            PickerKind::McpServer => Scope::PickerMcpServer,
-            // CompactionModel has no picker state (the kind is retired); it
-            // is never pushed as a scope.
-        },
+        // A `Picker` focus scope is a legacy name that no longer resolves:
+        // every picker pushes a dynamic slice scope instead. Normal is the
+        // honest fallback for a saved scope that predates the migration.
+        // A saved scope predating the picker migration. Kept as an explicit
+        // fallback rather than deleted: persisted sessions still name it.
+        #[expect(
+            clippy::match_same_arms,
+            reason = "the Input arm below has the same body by design; see the comment"
+        )]
+        FocusScope::Picker { .. } => Scope::Normal,
         FocusScope::Input => Scope::Input,
         // Dynamic slice scopes pass their identity through unchanged.
         FocusScope::Dynamic(id) => Scope::Dynamic(id.clone()),

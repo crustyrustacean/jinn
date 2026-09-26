@@ -7,7 +7,6 @@
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
 use jinn_domain::KernelIntent;
-use jinn_domain::PickerKind;
 use jinn_domain::protocol::CwdRoot;
 use jinn_domain::{Key, KeyEvent};
 use ratatui_which_key::CrosstermKeymapExt as _;
@@ -36,61 +35,9 @@ pub enum KeyCategory {
     ChatHistory,
 }
 
-/// Adds shared picker keybindings common to all picker scopes.
-///
-/// Includes: escape, confirm, navigation (up/down), cursor (left/right),
-/// backspace, new session, and catch-all char input.
-fn add_picker_base(
-    b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, KernelIntent, KeyCategory>,
-) {
-    b.bind("<esc>", KernelIntent::EnterNormalMode, KeyCategory::General)
-        .bind("<enter>", KernelIntent::PickerConfirm, KeyCategory::Model)
-        .bind("<up>", KernelIntent::PickerMoveUp, KeyCategory::Navigation)
-        .bind(
-            "<down>",
-            KernelIntent::PickerMoveDown,
-            KeyCategory::Navigation,
-        )
-        .bind(
-            "<pgup>",
-            KernelIntent::PickerPageUp,
-            KeyCategory::Navigation,
-        )
-        .bind(
-            "<pgdn>",
-            KernelIntent::PickerPageDown,
-            KeyCategory::Navigation,
-        )
-        .bind(
-            "<left>",
-            KernelIntent::PickerMoveCursorLeft,
-            KeyCategory::Input,
-        )
-        .bind(
-            "<right>",
-            KernelIntent::PickerMoveCursorRight,
-            KeyCategory::Input,
-        )
-        .bind(
-            "<backspace>",
-            KernelIntent::PickerBackspace,
-            KeyCategory::Input,
-        )
-        .bind("<c-n>", KernelIntent::SessionNew, KeyCategory::General)
-        .bind("<c-c>", KernelIntent::CtrlClear, KeyCategory::General)
-        .catch_all(|key: KeyEvent| {
-            if let Key::Char(c) = key.key {
-                Some(KernelIntent::PickerInsertChar { ch: c })
-            } else {
-                None
-            }
-        });
-}
-
 /// Builds and returns the full keymap with all scope bindings.
 #[must_use]
 #[rustfmt::skip]
-#[expect(clippy::too_many_lines, reason = "declarative keymap table; splitting it would obscure the binding overview")]
 pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
     let mut keymap = Keymap::new();
 
@@ -103,18 +50,11 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("<c-c>", KernelIntent::Quit, KeyCategory::General)
             .bind("?", KernelIntent::ToggleWhichkey, KeyCategory::General)
             .describe_group_with_category("<leader>s", "search", KeyCategory::General)
-            .bind("<leader>sm", KernelIntent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
-            .bind("<leader>ss", KernelIntent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
-            .bind("<leader>se", KernelIntent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
-            .bind("<leader>st", KernelIntent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
-            .bind("<leader>sk", KernelIntent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
-            .bind("<leader>sM", KernelIntent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
-            .bind("<leader>sh", KernelIntent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
-            .bind("<leader>sr", KernelIntent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
-            // OpenRouter routing endpoint pin (Single + OpenRouter models only).
-            .bind("<leader>sE", KernelIntent::OpenPicker { kind: PickerKind::Endpoint }, KeyCategory::General)
-            // Projects - curated directory list for quick session creation
-            .bind("<leader>so", KernelIntent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
+            // Every picker is slice-owned and declares its own opener row, so
+            // no picker keybind belongs here. The rows in each slice's
+            // `*_picker_routes.rs` carry the description text that which-key
+            // shows; duplicating them here would shadow the slice's row
+            // (dispatch is first-match-wins) and freeze the footer labels.
             // Input - enter input mode
             .bind("i", KernelIntent::EnterInsertMode, KeyCategory::Input)
             .bind("<c-j>", KernelIntent::EnterInsertMode, KeyCategory::Input)
@@ -133,7 +73,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .describe_group_with_category("g", "general", KeyCategory::General)
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
-            .bind("<leader>sl", KernelIntent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
             .describe_group_with_category("<leader>c", "change", KeyCategory::General)
             .bind("gg", KernelIntent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", KernelIntent::ScrollToBottom, KeyCategory::Navigation)
@@ -173,7 +112,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("[s", KernelIntent::ChatEntryJumpPrevSources, KeyCategory::ChatHistory)
             // Session creation
             .bind("n", KernelIntent::SessionNew, KeyCategory::General)
-            .bind("N", KernelIntent::SessionNewWithLifecycle, KeyCategory::General)
             // Escape: cancel selection
             .bind("<esc>", KernelIntent::NormalEscape, KeyCategory::General)
             // Unmapped character keys produce NoOp to dismiss confirmation prompts
@@ -235,64 +173,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             });
         });
 
-    // Picker scopes - each picker kind has its own scope for kind-specific bindings.
-    // Shared bindings (navigation, confirm, escape, char input) are in add_picker_base.
-    keymap
-        .scope(Scope::PickerProvider, |b| {
-            // The provider spec's TAB/CTRL+A/CTRL+R rows land here via
-            // bind_picker_spec_rows.
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerSession, |b| {
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerPersona, |b| {
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerTheme, |b| {
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerLifecycle, |b| {
-            add_picker_base(b);
-        })
-
-        .scope(Scope::PickerReasoningEffort, |b| {
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerEndpoint, |b| {
-            // The endpoint spec's CTRL+R row lands here via
-            // bind_picker_spec_rows.
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerTool, |b| {
-            // The tool spec's TAB toggle row lands here via
-            // bind_picker_spec_rows.
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerSkill, |b| {
-            // Skill spec rows (TAB toggle, CTRL+L load, CTRL+U/D preview
-            // paging, CTRL+R refresh) land here via bind_picker_spec_rows.
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerTaskList, |b| {
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerProject, |b| {
-            // The project spec's rows (<c-enter> new+lifecycle, <c-n> add
-            // dir, <c-d> remove) land here via bind_picker_spec_rows.
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerMcpServer, |b| {
-            // The MCP spec's rows (TAB toggle, CTRL+R restart, CTRL+T
-            // logs/tools) land here via bind_picker_spec_rows.
-            add_picker_base(b);
-        });
-
     // No global bindings by design: globals survive every scope's catch-all
     // and would pierce slice capture-mode hooks (stranding the control flag
     // on User) and overlay views (popping overlays mid-composition). The
     // would-be globals are per-scope slice rows — see `keymap_gen`.
-
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
         match mouse.kind {
             MouseEventKind::ScrollUp => Some(KernelIntent::MouseScrollUp),
@@ -306,46 +190,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
-
-    /// Drift guard: every `PickerKind` must map to a keymap scope that has
-    /// at least one binding. A kind whose scope is missing from the keymap
-    /// opens a picker that ignores all input (perceived freeze) — this
-    /// catches a forgotten `.scope(Scope::Picker..., ...)` registration the
-    /// moment a variant is added or a scope is dropped.
-    #[rstest::rstest]
-    fn every_picker_kind_maps_to_a_scope_with_bindings(
-        #[values(
-            PickerKind::Provider,
-            PickerKind::Session,
-            PickerKind::Persona,
-            PickerKind::Theme,
-            PickerKind::SessionLifecycle,
-            PickerKind::ReasoningEffort,
-            PickerKind::Tool,
-            PickerKind::Skill,
-            PickerKind::TaskList,
-            PickerKind::Project,
-            PickerKind::McpServer,
-            PickerKind::Endpoint
-        )]
-        kind: PickerKind,
-    ) {
-        use crate::app::scope_for_focus;
-
-        // Given the default keymap.
-        let keymap = init();
-
-        // When mapping the picker's focus scope to a keymap scope.
-        let scope = scope_for_focus(&jinn_slices::FocusScope::Picker { kind });
-
-        // Then that scope has at least one binding group with a binding.
-        let groups = keymap.bindings_for_scope(scope.clone());
-        let binding_count: usize = groups.iter().map(|g| g.bindings.len()).sum();
-        assert!(
-            binding_count > 0,
-            "scope {scope:?} for picker {kind} has no bindings — the picker would ignore all input"
-        );
-    }
 
     /// Regression test for ratatui-which-key v0.12.1: when a key is bound as a
     /// leaf in one scope (Normal) and used as a describe_group prefix in
@@ -379,249 +223,16 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[test]
-    fn ctrl_d_in_project_picker_removes_highlighted() {
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, Modifiers};
-
-        // Given a keymap with the domain's spec rows bound.
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
-
-        // When pressing Ctrl+D.
-        let intent = wk.handle_key(jinn_domain::KeyEvent {
-            key: Key::Char('d'),
-            modifiers: Modifiers::ctrl(),
-        });
-
-        // Then it fires the project spec's remove action.
-        let Some(jinn_domain::KernelIntent::PickerAction { picker, action }) = intent else {
-            panic!("<c-d> in PickerProject should fire the project remove action; got {intent:?}");
-        };
-        assert_eq!(picker, "project");
-        assert_eq!(action, "<c-d>");
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn bare_d_in_project_picker_types_into_filter() {
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, Modifiers};
-
-        // Given a fresh keymap.
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
-
-        // When pressing bare 'd'.
-        let intent = wk.handle_key(jinn_domain::KeyEvent {
-            key: Key::Char('d'),
-            modifiers: Modifiers::none(),
-        });
-
-        // Then it falls through to the catch-all and types into the filter.
+    fn the_kernel_defines_no_static_scope_for_the_reasoning_picker() {
+        // The reasoning picker is slice-owned: its own scope is a
+        // `Dynamic` scope its keys are attached to, not a static one the
+        // kernel keymap enumerates. This guard pins the flip side of that
+        // migration — the kernel must not have kept a static scope for it.
         assert!(
-            matches!(
-                intent,
-                Some(jinn_domain::KernelIntent::PickerInsertChar { ch: 'd' })
-            ),
-            "bare 'd' in PickerProject should type into the filter; got {intent:?}",
+            "Picker(reasoning-effort)".parse::<Scope>().is_err(),
+            "the kernel must not define a static scope for the slice-owned \
+             reasoning picker"
         );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn bare_a_in_project_picker_types_into_filter_not_add_cwd() {
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, Modifiers};
-
-        // Given a fresh keymap.
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
-
-        // When pressing bare 'a'.
-        let intent = wk.handle_key(jinn_domain::KeyEvent {
-            key: Key::Char('a'),
-            modifiers: Modifiers::none(),
-        });
-
-        // Then it types into the filter (the unapproved 'a' add-cwd bind is gone).
-        assert!(
-            matches!(
-                intent,
-                Some(jinn_domain::KernelIntent::PickerInsertChar { ch: 'a' })
-            ),
-            "bare 'a' in PickerProject should type into the filter, not add cwd; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    fn leader_sr_resolves_to_reasoning_effort_picker() {
-        // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-        let leader = KeyEvent {
-            key: Key::Char(' '),
-            modifiers: Modifiers::none(),
-        };
-
-        // When navigating the <leader>sr sequence.
-        let path = [
-            leader,
-            KeyEvent {
-                key: Key::Char('s'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('r'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
-
-        // Then it resolves to OpenPicker{ReasoningEffort}.
-        match result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(
-                    action,
-                    KernelIntent::OpenPicker {
-                        kind: PickerKind::ReasoningEffort
-                    }
-                ),
-                "<leader>sr must resolve to OpenPicker{{ReasoningEffort}}; got {action:?}",
-            ),
-            other => panic!("<leader>sr must be a leaf, got branch: {other:?}"),
-        }
-    }
-    #[rstest::rstest]
-    fn reasoning_effort_picker_scope_binds_base_intents() {
-        // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-        let esc = KeyEvent {
-            key: Key::Esc,
-            modifiers: Modifiers::none(),
-        };
-        let enter = KeyEvent {
-            key: Key::Enter,
-            modifiers: Modifiers::none(),
-        };
-
-        // When navigating the two explicit base keys within the ReasoningEffort picker scope.
-        let esc_res = keymap
-            .navigate(&[esc], &Scope::PickerReasoningEffort)
-            .expect("esc bound");
-        let enter_res = keymap
-            .navigate(&[enter], &Scope::PickerReasoningEffort)
-            .expect("enter bound");
-
-        // Then each resolves to a real picker base intent (the bug: scope had no bindings).
-        let NodeResult::Leaf { action: esc_action } = esc_res else {
-            panic!("esc must be a leaf");
-        };
-        assert!(
-            matches!(esc_action, KernelIntent::EnterNormalMode),
-            "esc must resolve to EnterNormalMode, got {esc_action:?}"
-        );
-
-        let NodeResult::Leaf {
-            action: enter_action,
-        } = enter_res
-        else {
-            panic!("enter must be a leaf");
-        };
-        assert!(
-            matches!(enter_action, KernelIntent::PickerConfirm),
-            "enter must resolve to PickerConfirm, got {enter_action:?}"
-        );
-    }
-
-    #[rstest::rstest]
-    fn endpoint_picker_scope_binds_base_intents() {
-        // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-        let esc = KeyEvent {
-            key: Key::Esc,
-            modifiers: Modifiers::none(),
-        };
-        let enter = KeyEvent {
-            key: Key::Enter,
-            modifiers: Modifiers::none(),
-        };
-
-        // When navigating the two explicit base keys within the Endpoint picker scope.
-        let esc_res = keymap
-            .navigate(&[esc], &Scope::PickerEndpoint)
-            .expect("esc bound");
-        let enter_res = keymap
-            .navigate(&[enter], &Scope::PickerEndpoint)
-            .expect("enter bound");
-
-        // Then each resolves to a real picker base intent (regression: scope once had no bindings, freezing the popup).
-        let NodeResult::Leaf { action: esc_action } = esc_res else {
-            panic!("esc must be a leaf");
-        };
-        assert!(
-            matches!(esc_action, KernelIntent::EnterNormalMode),
-            "esc must resolve to EnterNormalMode, got {esc_action:?}"
-        );
-
-        let NodeResult::Leaf {
-            action: enter_action,
-        } = enter_res
-        else {
-            panic!("enter must be a leaf");
-        };
-        assert!(
-            matches!(enter_action, KernelIntent::PickerConfirm),
-            "enter must resolve to PickerConfirm, got {enter_action:?}"
-        );
-    }
-
-    #[rstest::rstest]
-    fn leader_se_resolves_to_persona_picker() {
-        // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-        let path = [
-            KeyEvent {
-                key: Key::Char(' '),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('s'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('e'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-
-        // When navigating the <leader>se sequence.
-        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
-
-        // Then it resolves to OpenPicker{Persona} (rebound from <leader>sp).
-        match result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(
-                    action,
-                    KernelIntent::OpenPicker {
-                        kind: PickerKind::Persona
-                    }
-                ),
-                "<leader>se must resolve to OpenPicker{{Persona}}; got {action:?}",
-            ),
-            other => panic!("<leader>se must be a leaf, got branch: {other:?}"),
-        }
     }
 
     #[rstest::rstest]
@@ -857,336 +468,6 @@ mod leak_check {
         );
     }
 
-    #[rstest::rstest]
-    #[test]
-    fn picker_scope_pgup_fires_picker_page_up() {
-        // Given a keymap queried in a generic picker scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerPersona);
-
-        // When pressing PageUp.
-        let pgup = KeyEvent {
-            key: Key::PageUp,
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(pgup);
-
-        // Then it resolves to PickerPageUp.
-        let intent = intent.expect("PageUp in PickerPersona must fire an intent");
-        assert!(
-            matches!(intent, jinn_domain::KernelIntent::PickerPageUp),
-            "PageUp must resolve to PickerPageUp; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn picker_scope_pgdn_fires_picker_page_down() {
-        // Given a keymap queried in a generic picker scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerPersona);
-
-        // When pressing PageDown.
-        let pgdn = KeyEvent {
-            key: Key::PageDown,
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(pgdn);
-
-        // Then it resolves to PickerPageDown.
-        let intent = intent.expect("PageDown in PickerPersona must fire an intent");
-        assert!(
-            matches!(intent, jinn_domain::KernelIntent::PickerPageDown),
-            "PageDown must resolve to PickerPageDown; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn skill_scope_pgup_fires_picker_page_up_not_preview_scroll() {
-        // Given a keymap queried in the skill picker scope.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
-
-        // When pressing PageUp.
-        let pgup = KeyEvent {
-            key: Key::PageUp,
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(pgup);
-
-        // Then it resolves to PickerPageUp (list paging), not a picker action.
-        let intent = intent.expect("PageUp in PickerSkill must fire an intent");
-        assert!(
-            matches!(intent, jinn_domain::KernelIntent::PickerPageUp),
-            "PageUp in PickerSkill must route to list paging; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn tool_scope_tab_fires_the_spec_toggle_action() {
-        // Given a keymap with the domain's tool spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTool);
-
-        // When pressing Tab.
-        let tab = KeyEvent {
-            key: Key::Tab,
-            modifiers: Modifiers::none(),
-        };
-        let intent = wk.handle_key(tab);
-
-        // Then it resolves to the tool spec's toggle action.
-        let intent = intent.expect("Tab in PickerTool must fire an intent");
-        assert!(
-            matches!(
-                &intent,
-                jinn_domain::KernelIntent::PickerAction { picker, action }
-                    if picker == "tool" && action == "<tab>"
-            ),
-            "Tab in PickerTool must fire the spec toggle action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn lifecycle_scope_binds_base_intents() {
-        // Given the default keymap.
-        use jinn_domain::KernelIntent;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-        let esc = KeyEvent {
-            key: Key::Esc,
-            modifiers: Modifiers::none(),
-        };
-        let enter = KeyEvent {
-            key: Key::Enter,
-            modifiers: Modifiers::none(),
-        };
-
-        // When navigating the base keys within the lifecycle picker scope.
-        let esc_res = keymap
-            .navigate(&[esc], &Scope::PickerLifecycle)
-            .expect("esc bound");
-        let enter_res = keymap
-            .navigate(&[enter], &Scope::PickerLifecycle)
-            .expect("enter bound");
-
-        // Then each resolves to a real picker base intent (the confirm
-        // dispatch routes through the session-lifecycle spec's hook).
-        let NodeResult::Leaf { action: esc_action } = esc_res else {
-            panic!("esc must be a leaf");
-        };
-        assert!(
-            matches!(esc_action, KernelIntent::EnterNormalMode),
-            "esc must resolve to EnterNormalMode, got {esc_action:?}"
-        );
-        let NodeResult::Leaf {
-            action: enter_action,
-        } = enter_res
-        else {
-            panic!("enter must be a leaf");
-        };
-        assert!(
-            matches!(enter_action, KernelIntent::PickerConfirm),
-            "enter must resolve to PickerConfirm, got {enter_action:?}"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn mcp_scope_tab_fires_the_spec_toggle_action() {
-        // Given a keymap with the domain's mcp-server spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
-
-        // When pressing Tab.
-        let tab = KeyEvent {
-            key: Key::Tab,
-            modifiers: Modifiers::none(),
-        };
-        let intent = wk.handle_key(tab);
-
-        // Then it resolves to the mcp-server spec's toggle action.
-        let intent = intent.expect("Tab in PickerMcpServer must fire an intent");
-        assert!(
-            matches!(
-                &intent,
-                jinn_domain::KernelIntent::PickerAction { picker, action }
-                    if picker == "mcp-server" && action == "<tab>"
-            ),
-            "Tab in PickerMcpServer must fire the spec toggle action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn mcp_scope_ctrl_r_fires_the_spec_restart_action() {
-        // Given a keymap with the domain's mcp-server spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
-
-        // When pressing Ctrl+R.
-        let c_r = KeyEvent {
-            key: Key::Char('r'),
-            modifiers: Modifiers::ctrl(),
-        };
-        let intent = wk.handle_key(c_r);
-
-        // Then it resolves to the mcp-server spec's restart action.
-        let intent = intent.expect("Ctrl+R in PickerMcpServer must fire an intent");
-        assert!(
-            matches!(
-                &intent,
-                jinn_domain::KernelIntent::PickerAction { picker, action }
-                    if picker == "mcp-server" && action == "<c-r>"
-            ),
-            "Ctrl+R in PickerMcpServer must fire the spec restart action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn mcp_scope_ctrl_t_fires_the_spec_preview_action() {
-        // Given a keymap with the domain's mcp-server spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
-
-        // When pressing Ctrl+T.
-        let c_t = KeyEvent {
-            key: Key::Char('t'),
-            modifiers: Modifiers::ctrl(),
-        };
-        let intent = wk.handle_key(c_t);
-
-        // Then it resolves to the mcp-server spec's logs/tools action.
-        let intent = intent.expect("Ctrl+T in PickerMcpServer must fire an intent");
-        assert!(
-            matches!(
-                &intent,
-                jinn_domain::KernelIntent::PickerAction { picker, action }
-                    if picker == "mcp-server" && action == "<c-t>"
-            ),
-            "Ctrl+T in PickerMcpServer must fire the spec logs/tools action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn skill_scope_ctrl_u_fires_the_spec_paging_action() {
-        // Given a keymap with the domain's skill spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
-
-        // When pressing Ctrl+U.
-        let c_u = KeyEvent {
-            key: Key::Char('u'),
-            modifiers: Modifiers::ctrl(),
-        };
-        let intent = wk.handle_key(c_u);
-
-        // Then it resolves to the skill spec's paging action.
-        let intent = intent.expect("Ctrl+U in PickerSkill must fire an intent");
-        assert!(
-            matches!(
-                &intent,
-                jinn_domain::KernelIntent::PickerAction { picker, action }
-                    if picker == "skill" && action == "<c-u>"
-            ),
-            "Ctrl+U in PickerSkill must fire the spec paging action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn skill_scope_ctrl_l_fires_the_spec_load_action() {
-        // Given a keymap with the domain's skill spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
-
-        // When pressing Ctrl+L.
-        let c_l = KeyEvent {
-            key: Key::Char('l'),
-            modifiers: Modifiers::ctrl(),
-        };
-        let intent = wk.handle_key(c_l);
-
-        // Then it resolves to the skill spec's load action.
-        assert!(
-            matches!(
-                &intent,
-                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "skill" && action == "<c-l>"
-            ),
-            "Ctrl+L in PickerSkill should fire the spec load action; got {intent:?}",
-        );
-    }
-
     /// Normal-mode <enter> opens the selected task call's subagent session.
     /// Also guards against accidental rebinding: nothing else may claim
     /// <enter> in the Normal scope.
@@ -1213,13 +494,11 @@ mod leak_check {
         // Then it resolves to the sidebar's load-subagent dynamic action.
         assert!(
             matches!(
-                intent,
-                Some(jinn_domain::KernelIntent::Dynamic(ref dynamic))
-                    if dynamic.slice
-                        == jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id()
-                        && dynamic.action == "load-subagent"
+            intent,
+            Some(jinn_domain::KernelIntent::Dynamic(ref dynamic))
+                if dynamic.action == "load-subagent"
             ),
-            "<enter> in Normal scope should fire the sidebar load-subagent action; got {intent:?}",
+            "enter must open the subagent session for the selected task; got {intent:?}",
         );
     }
 }

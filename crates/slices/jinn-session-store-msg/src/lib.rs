@@ -9,6 +9,7 @@ pub mod command;
 pub mod event;
 pub mod measure;
 pub mod projections;
+pub mod session_picker_state;
 pub mod session_search;
 pub mod session_state;
 pub mod session_tree_entry;
@@ -26,3 +27,8 @@ pub use session_search::{
 };
 pub use session_state::SessionState;
 pub use session_tree_entry::{SessionTreeEntry, apply_project_column_width, session_row};
+
+pub use session_picker_state::{
+    RESULTS_VIEWPORT_FALLBACK as SESSION_PICKER_RESULTS_VIEWPORT_FALLBACK, SessionPickerState,
+    session_picker_scope, session_picker_slot,
+};

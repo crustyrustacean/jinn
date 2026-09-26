@@ -1,7 +1,6 @@
 //! The [`Intent`] enum - one variant per user-initiated action.
 use std::sync::Arc;
 
-use crate::protocol::PickerKind;
 use jinn_core_types::SessionId;
 
 /// The search root for the directory picker (shared vocabulary from
@@ -92,43 +91,6 @@ pub enum KernelIntent {
     /// Dismisses any active confirmation prompt via the pre-match interceptors.
     NoOp,
 
-    /// Open a picker of the specified kind.
-    OpenPicker {
-        /// Which picker to open.
-        kind: PickerKind,
-    },
-    /// Insert a character into the picker filter.
-    PickerInsertChar {
-        /// The character to insert.
-        ch: char,
-    },
-    /// Delete the last character from the picker filter.
-    PickerBackspace,
-    /// Confirm the current picker selection.
-    PickerConfirm,
-    /// Run a spec-driven picker's declared bind action.
-    ///
-    /// One data-carried intent covers every picker's binds: `picker` is the
-    /// spec's registry id, `action` the bind row's notation. Resolved
-    /// through the picker's own bind table.
-    PickerAction {
-        /// The picker spec's registry id (e.g. `"skill"`).
-        picker: String,
-        /// The bind row's action (e.g. `"<tab>"`).
-        action: String,
-    },
-    /// Move the picker selection up.
-    PickerMoveUp,
-    /// Move the picker selection down.
-    PickerMoveDown,
-    /// Page the picker selection up by half the visible window.
-    PickerPageUp,
-    /// Page the picker selection down by half the visible window.
-    PickerPageDown,
-    /// Move the picker filter cursor left.
-    PickerMoveCursorLeft,
-    /// Move the picker filter cursor right.
-    PickerMoveCursorRight,
     /// Create a new session.
     SessionNew,
     /// Refresh the model list from all providers.
@@ -136,7 +98,6 @@ pub enum KernelIntent {
     /// Rescan the prompt templates directory.
     RescanPromptTemplates,
     /// Open the session lifecycle picker from the sidebar sessions section.
-    SessionNewWithLifecycle,
 
     /// Select the next chat entry.
     ChatEntrySelectNext,
@@ -283,23 +244,9 @@ impl std::fmt::Display for KernelIntent {
             KernelIntent::ToggleWhichkey => write!(f, "toggle which-key"),
             KernelIntent::NormalEscape => write!(f, "escape"),
             KernelIntent::NoOp => write!(f, "no-op"),
-            KernelIntent::OpenPicker { kind } => write!(f, "search {kind}"),
-            KernelIntent::PickerInsertChar { ch } => write!(f, "picker insert '{ch}'"),
-            KernelIntent::PickerBackspace => write!(f, "picker backspace"),
-            KernelIntent::PickerConfirm => write!(f, "picker confirm"),
-            KernelIntent::PickerAction { picker, action } => {
-                write!(f, "picker action {action} ({picker})")
-            }
-            KernelIntent::PickerMoveUp => write!(f, "picker move up"),
-            KernelIntent::PickerMoveDown => write!(f, "picker move down"),
-            KernelIntent::PickerPageUp => write!(f, "picker page up"),
-            KernelIntent::PickerPageDown => write!(f, "picker page down"),
-            KernelIntent::PickerMoveCursorLeft => write!(f, "picker cursor left"),
-            KernelIntent::PickerMoveCursorRight => write!(f, "picker cursor right"),
             KernelIntent::SessionNew => write!(f, "new session"),
             KernelIntent::RefreshModels => write!(f, "refresh models"),
             KernelIntent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
-            KernelIntent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
 
             KernelIntent::ChatEntrySelectNext => write!(f, "select next entry"),
             KernelIntent::ChatEntrySelectPrev => write!(f, "select prev entry"),

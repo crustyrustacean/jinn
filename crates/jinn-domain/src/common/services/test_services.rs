@@ -315,7 +315,7 @@ impl TestServices {
             trouper_system: trouper::system::ActorSystem::new(
                 trouper::system::SystemConfig::production(),
             ),
-            picker_registry: jinn_picker::PickerRegistry::new(),
+            project_picker: None,
         }
     }
 }

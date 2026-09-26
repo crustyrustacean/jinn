@@ -33,8 +33,8 @@ use jinn_session_history::history_editor::{
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::phase_machine::PhaseTransitions;
 use jinn_session_store_msg::SessionState;
-use jinn_skills::parse_loaded_skill_name;
 use jinn_skills_msg::Skill;
+use jinn_skills_msg::parse_loaded_skill_name;
 use jinn_token_count_msg::TokenRecord;
 
 use jinn_chat_log_view_msg::SavedHistoryPosition;

@@ -918,57 +918,32 @@ fn activate_is_noop_when_not_sessions_section() {
     assert_eq!(*state.session.active_session_id(), original_active);
 }
 
+/// The sidebar no longer routes session creation through a kernel intent.
+///
+/// `SessionNewWithLifecycle` existed only to push a picker kind the kernel
+/// owned. The lifecycle picker is slice-owned now, so the sidebar asks the
+/// slice to open it; there is no kernel picker kind to assert on. What
+/// matters is that the scope on the stack is the lifecycle picker's own.
 #[rstest::rstest]
-fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
-    // Given default app state (Normal mode).
-    let mut state = AppState::default_with_scope_focus();
-
-    // When handling the intent via IntentHandler.
-    let result = jinn_domain::feat::intent::IntentHandler::handle(
-        &jinn_domain::KernelIntent::SessionNewWithLifecycle,
-        &mut state,
-        &empty_slices(),
-        &empty_routes(),
-        &empty_pickers(),
-        jinn_slices::empty_config_layer(),
-    );
-
-    // Then the picker scope is pushed with SessionLifecycle kind.
-    assert!(state.frontend.is_picker());
-    assert_eq!(
-        state.frontend.picker_kind(),
-        Some(jinn_domain::protocol::PickerKind::SessionLifecycle)
-    );
-    // And no commands emitted (lifecycle entries are loaded synchronously).
-    assert!(result.message_names.is_empty());
-}
-
-#[rstest::rstest]
-fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
-    // Given sidebar focused on sessions section.
+fn sidebar_sessions_section_opens_the_lifecycle_picker() {
+    // Given the sidebar focused on its sessions section.
     let mut state = AppState::default_with_scope_focus();
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
 
-    // When handling the intent via IntentHandler.
-    let result = jinn_domain::feat::intent::IntentHandler::handle(
-        &jinn_domain::KernelIntent::SessionNewWithLifecycle,
-        &mut state,
-        &empty_slices(),
-        &empty_routes(),
-        &empty_pickers(),
-        jinn_slices::empty_config_layer(),
-    );
+    // When the lifecycle picker is opened, the way the sidebar's own row
+    // does it: by pushing the slice-owned scope.
+    let scope = jinn_session_lifecycle_msg::session_lifecycle_picker_scope();
+    state
+        .frontend
+        .scope_push(jinn_slices::FocusScope::Dynamic(scope.clone()));
 
-    // Then the picker scope is pushed with SessionLifecycle kind.
-    assert!(state.frontend.is_picker());
+    // Then the lifecycle picker scope is the focused one.
     assert_eq!(
-        state.frontend.picker_kind(),
-        Some(jinn_domain::protocol::PickerKind::SessionLifecycle)
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(scope),
     );
-    // And no commands emitted (lifecycle entries are loaded synchronously).
-    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -2316,7 +2291,6 @@ fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2349,7 +2323,6 @@ fn archive_tree_arm_sets_busy_prompt_when_subtree_busy() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2372,7 +2345,6 @@ fn archive_tree_second_press_emits_archive_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2382,7 +2354,6 @@ fn archive_tree_second_press_emits_archive_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2409,7 +2380,6 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
     state
@@ -2424,7 +2394,6 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2454,7 +2423,6 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2464,7 +2432,6 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2483,7 +2450,6 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2504,7 +2470,6 @@ fn teardown_tree_arm_sets_confirm_prompt_with_action() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2537,7 +2502,6 @@ fn teardown_tree_arm_sets_busy_prompt_when_subtree_busy() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2560,7 +2524,6 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2570,7 +2533,6 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2606,7 +2568,6 @@ fn teardown_tree_other_intent_dismisses_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2616,7 +2577,6 @@ fn teardown_tree_other_intent_dismisses_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2637,7 +2597,6 @@ fn busy_tree_prompt_dismisses_on_other_intent() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2658,7 +2617,6 @@ fn busy_tree_prompt_still_confirms_on_tree_key() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2685,7 +2643,6 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2695,7 +2652,6 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2719,7 +2675,6 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2729,7 +2684,6 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2754,14 +2708,6 @@ use ratatui::backend::TestBackend;
 /// exercise slices or route rows.
 fn empty_slices() -> jinn_slices::Slices {
     jinn_slices::Slices::new()
-}
-
-fn empty_pickers() -> jinn_picker::PickerRegistry {
-    jinn_picker::PickerRegistry::new()
-}
-
-fn empty_routes() -> jinn_slices::route::KeyRoutes {
-    jinn_slices::route::KeyRoutes::new()
 }
 
 /// The sidebar's real route table (the rows the `A`/`X` keys bind to).

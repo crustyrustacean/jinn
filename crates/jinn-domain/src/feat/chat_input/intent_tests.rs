@@ -19,10 +19,6 @@ fn empty_slices() -> jinn_slices::Slices {
     jinn_slices::Slices::new()
 }
 
-fn empty_pickers() -> jinn_picker::PickerRegistry {
-    jinn_picker::PickerRegistry::new()
-}
-
 fn empty_routes() -> jinn_slices::route::KeyRoutes {
     jinn_slices::route::KeyRoutes::new()
 }
@@ -827,13 +823,12 @@ fn enter_normal_mode_from_input_emits_no_commands() {
 #[rstest::rstest]
 fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
     // Given a state in Picker mode with active picker kind.
-    use crate::protocol::PickerKind;
     use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.scope_push(FocusScope::Picker {
-        kind: PickerKind::Provider,
-    });
+    state
+        .frontend
+        .scope_push(FocusScope::Dynamic(jinn_project_msg::project_picker_scope()));
 
     // When handling EnterNormalMode.
     let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
@@ -849,13 +844,12 @@ fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
 #[rstest::rstest]
 fn enter_normal_mode_from_picker_emits_no_commands() {
     // Given a state in Picker mode with active picker kind.
-    use crate::protocol::PickerKind;
     use jinn_slices::FocusScope;
 
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.scope_push(FocusScope::Picker {
-        kind: PickerKind::Provider,
-    });
+    state
+        .frontend
+        .scope_push(FocusScope::Dynamic(jinn_project_msg::project_picker_scope()));
 
     // When handling EnterNormalMode.
     let result = crate::feat::chat_input::intent::handle_enter_normal_mode(
@@ -2087,7 +2081,6 @@ fn ctrl_clear_input_empties_chat_input_via_handler() {
         &mut state,
         &empty_slices(),
         &empty_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 
@@ -2135,7 +2128,6 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
         &mut state,
         &empty_slices(),
         &empty_routes(),
-        &empty_pickers(),
         jinn_slices::empty_config_layer(),
     );
 

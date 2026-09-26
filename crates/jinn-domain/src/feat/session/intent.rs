@@ -55,7 +55,7 @@ mod tests {
         reason = "test code"
     )]
     use crate::common::app_state::AppState;
-    use crate::protocol::{ChatEntry, ChatEntryKind, PickerKind};
+    use crate::protocol::{ChatEntry, ChatEntryKind};
 
     use jinn_core_types::model_selection::ModelSelection;
 
@@ -86,9 +86,9 @@ mod tests {
     fn session_new_closes_picker_and_creates_session() {
         // Given a state with an active picker.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(jinn_slices::FocusScope::Picker {
-            kind: PickerKind::Provider,
-        });
+        state.frontend.scope_push(jinn_slices::FocusScope::Dynamic(
+            jinn_project_msg::project_picker_scope(),
+        ));
         let old_id = state.session.active_session_id().clone();
 
         // When handling SessionNew.

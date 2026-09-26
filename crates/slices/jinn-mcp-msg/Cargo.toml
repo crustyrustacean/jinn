@@ -5,6 +5,7 @@ edition.workspace = true
 [dependencies]
 jinn-config = { workspace = true }
 jinn-core-types = { workspace = true }
+jinn-picker = { workspace = true }
 jinn-selection-widget = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }

@@ -32,7 +32,6 @@ mod boot;
 mod composition;
 mod dashboard;
 mod discord;
-mod picker;
 mod preferences;
 mod project;
 mod provider_selection;

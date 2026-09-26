@@ -276,7 +276,9 @@ impl SessionDiscoveryWorker {
     }
 
     /// The skills resource scan (blocking), with the state write +
-    /// picker reload + `SkillsLoaded` publication on completion.
+    /// `SkillsLoaded` publication on completion. The picker repaints from
+    /// that broadcast — the picker is slice-owned, so the worker has no
+    /// reason to know it exists.
     fn spawn_skills_task(&self, cwd: &std::path::Path) -> tokio::task::JoinHandle<ResourceOutcome> {
         if !Self::cwd_gate_open(cwd) {
             return skipped();
@@ -645,30 +647,18 @@ async fn join_outcome(handle: tokio::task::JoinHandle<ResourceOutcome>) -> Resou
     ))
 }
 
-/// Writes the discovered skills into the session and reloads the picker.
+/// Writes the discovered skills into the session.
+///
+/// The picker is repainted by the skills slice itself: it subscribes to the
+/// [`SkillsLoaded`](jinn_skills_msg::SkillsLoaded) event this worker's scan
+/// broadcasts and rebuilds its own rows from session state. The worker holds no
+/// handle to the picker and names no part of it, so the picker stays entirely
+/// inside its owning slice.
 fn write_skills(state: &State, session_id: &SessionId, skills: &[Skill]) {
     state.with_session(|view| {
         if let Some(session) = view.session.map().get_mut(session_id) {
             session.set_discovered_skills(skills.to_vec());
         }
-    });
-
-    // Reload the picker from the now-updated session data.
-    let (discovered, disabled, sample_theme) = {
-        let r = state.read();
-        let session = r.session.get(session_id);
-        (
-            session
-                .map(|s| s.discovered_skills().to_vec())
-                .unwrap_or_default(),
-            session
-                .map(|s| s.disabled_skills().clone())
-                .unwrap_or_default(),
-            r.frontend.theme.clone(),
-        )
-    };
-    state.with_skills_frontend(|ops| {
-        ops.reload_picker(&discovered, &disabled, &sample_theme);
     });
 }
 

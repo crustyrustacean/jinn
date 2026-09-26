@@ -40,12 +40,19 @@ pub struct SessionStoreActorDeps {
     pub services: Services,
     /// Shared application state.
     pub state: State,
+    /// The session picker's cell, so the history read can install rows into
+    /// the menu that shows them instead of the kernel's frontend state.
+    pub session_picker_cell:
+        jinn_slices::cell::TypedCell<jinn_session_store_msg::SessionPickerState>,
 }
 
 /// Actor that owns session persistence, loading, hydration, and archiving.
 pub struct SessionStoreActor {
     services: Services,
     state: State,
+    /// The session picker's cell, so the history read can install rows into
+    /// the menu that shows them instead of the kernel's frontend state.
+    session_picker_cell: jinn_slices::cell::TypedCell<jinn_session_store_msg::SessionPickerState>,
     /// Loads dispatched to the hydration pool that have not reported back.
     ///
     /// The startup handler no longer knows when hydration ends — it dispatches
@@ -100,6 +107,7 @@ impl SessionStoreActor {
                         Ok(Self {
                             services: deps.services,
                             state: deps.state,
+                            session_picker_cell: deps.session_picker_cell,
                             pending_hydrations: 0,
                             pending_frozen_hydrations: 0,
                         })

@@ -11,11 +11,10 @@
 
 pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
 
-use crate::protocol::{ChatEntryId, PickerKind, PinPosition};
+use crate::protocol::{ChatEntryId, PinPosition};
 use jinn_core_types::SessionId;
 
 pub use crate::feat::chat_input::ChatInputBoxState;
-use crate::feat::ui::picker_states::PickerExt;
 use jinn_session_state::ChatSessionState;
 use jinn_session_state::SessionMap;
 
@@ -35,38 +34,6 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Returns a mutable reference to the active picker's navigation interface.
-    ///
-    /// Returns `None` if no picker is currently active.
-    /// Use for operations that work the same way on all picker types
-    /// (insert char, backspace, move up/down, cursor left/right).
-    pub fn active_picker_ops(&mut self) -> Option<&mut dyn jinn_selection_widget::PickerOps> {
-        let kind = self.frontend.picker_kind()?;
-        match kind {
-            PickerKind::Provider => Some(&mut self.frontend.pickers.provider_picker),
-            PickerKind::Session => Some(self.frontend.session_picker_mut()),
-            PickerKind::Persona => Some(self.frontend.persona_picker_mut()),
-            PickerKind::Theme => Some(self.frontend.theme_picker_mut()),
-
-            // CompactionModel has no picker state (the kind is retired); no
-            // navigation interface exists for it.
-            PickerKind::CompactionModel => None,
-
-            PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker_mut()),
-            PickerKind::ReasoningEffort => Some(self.frontend.reasoning_effort_picker_mut()),
-            PickerKind::Tool => Some(self.frontend.tool_picker_mut()),
-            PickerKind::Skill => Some(self.frontend.skill_picker_mut()),
-            PickerKind::TaskList => Some(self.frontend.task_list_picker_mut()),
-            PickerKind::Project => Some(self.frontend.project_picker_mut()),
-            PickerKind::McpServer => Some(self.frontend.mcp_server_picker_mut()),
-            PickerKind::Endpoint => Some(self.frontend.endpoint_picker_mut()),
-        }
-    }
-    /// Read-only access to the active picker's navigation interface.
-    ///
-    /// Returns `None` if no picker is currently active.
-    /// Companion to [`AppState::active_picker_ops`] for the read-only
-    /// `is_filter_empty` check used by the `CtrlClear` intent.
     /// TEST-ONLY: an `AppState` whose scope-focus and chat-log-view cells
     /// are activated and attached, so facade writes/reads behave like
     /// production wiring.
@@ -210,28 +177,6 @@ impl AppState {
         match self.frontend.slices() {
             Some(s) => s.reader(&jinn_persona_msg::personas_slot()),
             None => None,
-        }
-    }
-
-    pub fn active_picker_ops_ref(&self) -> Option<&dyn jinn_selection_widget::PickerOps> {
-        let kind = self.frontend.picker_kind()?;
-        match kind {
-            PickerKind::Provider => Some(&self.frontend.pickers.provider_picker),
-            PickerKind::Session => Some(self.frontend.session_picker()),
-            PickerKind::Persona => Some(self.frontend.persona_picker()),
-            PickerKind::Theme => Some(self.frontend.theme_picker()),
-
-            // CompactionModel has no picker state (the kind is retired).
-            PickerKind::CompactionModel => None,
-
-            PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker()),
-            PickerKind::ReasoningEffort => Some(self.frontend.reasoning_effort_picker()),
-            PickerKind::Tool => Some(self.frontend.tool_picker()),
-            PickerKind::Skill => Some(self.frontend.skill_picker()),
-            PickerKind::TaskList => Some(self.frontend.task_list_picker()),
-            PickerKind::Project => Some(self.frontend.project_picker()),
-            PickerKind::McpServer => Some(self.frontend.mcp_server_picker()),
-            PickerKind::Endpoint => Some(self.frontend.endpoint_picker()),
         }
     }
 

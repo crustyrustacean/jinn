@@ -242,9 +242,9 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "c",
         "general",
         "change persona",
-        sync(|state| {
-            let pickers = jinn_picker_specs::build_picker_registry();
-            pins::handle_sidebar_persona_edit(state, &pickers, jinn_slices::empty_config_layer())
+        ActionFn::new(|mut ctx| {
+            let config = ctx.config;
+            pins::handle_sidebar_persona_edit(app(&mut ctx), config)
         }),
     ));
 
@@ -441,14 +441,16 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "T",
         "general",
         "toggle terminal",
-        sync(|_state| {
-            IntentResult::new_message(jinn_domain::protocol::intent::KernelIntent::Dynamic(
-                jinn_slices::DynamicIntent::new(
-                    jinn_term_msg::view_scope(),
-                    "toggle-for-selected",
-                    "toggle terminal",
-                ),
-            ))
+        // Runs the term slice's handler inline. This used to publish a
+        // `KernelIntent::Dynamic` message naming the term slice's action, but
+        // a published message goes to the bus and no actor subscribes to
+        // `KernelIntent` -- so `T` did nothing at all. `RouteResult` has no
+        // local-dispatch channel, so the sidebar calls the handler the same
+        // way it reaches any other cross-slice action: over `AppState`.
+        ActionFn::new(|mut ctx| {
+            let slices = ctx.slices;
+            jinn_term::route_rows::handle_toggle_for_selected(app(&mut ctx), slices);
+            IntentResult::empty()
         }),
     ));
     routes.attach(row(
@@ -467,15 +469,12 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "s",
         "general",
         "browse task list",
-        sync(move |state| {
-            let pickers = jinn_picker_specs::build_picker_registry();
-            jinn_domain::feat::picker::intent::handle_open_picker(
-                state,
-                jinn_slices::picker_kind::PickerKind::TaskList,
-                &pickers,
-                jinn_slices::empty_config_layer(),
-            )
-        }),
+        // Opens the task-list browser through the tools slice's own opener
+        // action. A published `DynamicIntent` would go to the bus and never
+        // return through route dispatch, so the action would never run; the
+        // action is called directly instead. The sidebar still holds no
+        // handle to the picker's cell.
+        jinn_tools::task_list_picker_opener(),
     ));
     routes.attach(row(
         "task-preview-up",
@@ -723,4 +722,64 @@ mod tests {
                 )
         }));
     }
+}
+
+/// The sidebar's `T` actually toggles the terminal overlay.
+///
+/// This row used to publish a `KernelIntent::Dynamic` message naming the term
+/// slice's `toggle-for-selected` action. A published message goes to the bus,
+/// and no actor subscribes to `KernelIntent` — so the message was dropped and
+/// `T` did nothing. The row is now a direct call, and this test dispatches it
+/// the way the composed keymap does.
+#[rstest::rstest]
+fn session_terminal_row_toggles_the_overlay() {
+    // Given a session holding a live terminal, with the Sessions section
+    // selected in the sidebar.
+    use jinn_domain::AppState;
+    use jinn_session_state::ChatSessionState;
+    let _ = jinn_term_msg::TERM_CONTROLS.set(jinn_term_msg::TermControls::default());
+    let mut state = AppState::default_with_scope_focus();
+    let slices = jinn_slices::Slices::new();
+    let routes = KeyRoutes::new();
+    attach_sidebar_rows(&routes);
+    let session = ChatSessionState::new();
+    let session_id = session.session_id().clone();
+    state.session.insert(session);
+    state
+        .term_tabs()
+        .expect("the term tabs cell is registered by wiring")
+        .update(|tabs| tabs.set_live(&session_id, true));
+    state
+        .frontend
+        .scope_swap_base(jinn_slices::FocusScope::Dynamic(
+            jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
+        ));
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+
+    // When `T` is pressed in the sidebar's sessions section.
+    let intent = jinn_slices::DynamicIntent::new(
+        jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
+        "session-terminal",
+        "toggle terminal",
+    );
+    routes
+        .action_for(
+            &intent,
+            ActionCtx {
+                state: &mut state,
+                slices: &slices,
+                config: jinn_slices::empty_config_layer(),
+                key_bytes: Vec::new(),
+            },
+        )
+        .expect("the sessions section binds a `T` row");
+
+    // Then the terminal overlay is open.
+    assert_eq!(
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(jinn_term_msg::view_scope()),
+        "`T` must open the terminal overlay, not publish a message nobody reads"
+    );
 }

@@ -70,18 +70,9 @@ pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<KernelIn
             state.update_active_input(ChatInputBoxState::reset);
             (IntentResult::empty(), None)
         }
-        FocusScope::Picker { .. } => {
-            if let Some(picker) = state.active_picker_ops() {
-                if picker.is_filter_empty() {
-                    (IntentResult::empty(), Some(KernelIntent::EnterNormalMode))
-                } else {
-                    picker.clear_filter();
-                    (IntentResult::empty(), None)
-                }
-            } else {
-                (IntentResult::empty(), None)
-            }
-        }
+        // No kernel picker exists: every picker is slice-owned and binds
+        // <c-c> in its own scope, so a `Picker` focus scope here means a
+        // legacy scope name that no longer resolves. The slice-owned key wins.
         _ => (IntentResult::empty(), None),
     }
 }
@@ -97,19 +88,6 @@ mod tests {
         reason = "test code"
     )]
 
-    /// Empty slice registry + route table for handler tests that don't
-    /// exercise slices or route rows.
-    fn empty_slices() -> jinn_slices::Slices {
-        jinn_slices::Slices::new()
-    }
-
-    fn empty_pickers() -> jinn_picker::PickerRegistry {
-        jinn_picker::PickerRegistry::new()
-    }
-
-    fn empty_routes() -> jinn_slices::route::KeyRoutes {
-        jinn_slices::route::KeyRoutes::new()
-    }
     use super::*;
     use jinn_session_msg::PhaseKind;
     use jinn_slices::FocusScope;
@@ -350,104 +328,24 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn ctrl_clear_picker_filter_nonempty_clears_filter() {
-        // Given a state in Picker scope with a non-empty filter.
+    fn ctrl_clear_in_a_legacy_picker_scope_is_a_no_op() {
+        // Given a state pushed into a legacy `Picker` focus scope — a scope
+        // name no kernel picker resolves any more.
         use crate::protocol::PickerKind;
         let mut state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Provider,
+            kind: PickerKind::CompactionModel,
         });
-        {
-            let picker = state.active_picker_ops().expect("picker active");
-            picker.insert_char('a');
-            picker.insert_char('b');
-            assert!(!picker.is_filter_empty());
-        }
 
         // When handling CtrlClear.
         let (result, maybe_intent) = handle_ctrl_clear(&mut state);
 
-        // Then the filter is cleared and no redispatch is requested.
-        let picker = state.active_picker_ops().expect("picker still active");
-        assert!(picker.is_filter_empty());
+        // Then nothing happens: the kernel does not close it, and it does not
+        // claim the filter either. Every real picker clears its own filter in
+        // its own scope, so the kernel staying out of it is the contract.
         assert!(result.message_names.is_empty());
         assert!(maybe_intent.is_none());
+        // And the scope is untouched, so the slice's own key stays in charge.
         assert!(state.frontend.is_picker());
-    }
-
-    #[rstest::rstest]
-    fn ctrl_clear_picker_filter_empty_closes_picker() {
-        // Given a state in Picker scope with an empty filter.
-        use crate::feat::intent::handler::IntentHandler;
-        use crate::protocol::PickerKind;
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Provider,
-        });
-
-        // When handling CtrlClear via the IntentHandler (exercises redispatch).
-        let result = IntentHandler::handle(
-            &KernelIntent::CtrlClear,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then scope is back to Normal (picker closed).
-        assert!(!state.frontend.is_picker());
-        assert_eq!(state.frontend.scope(), FocusScope::Normal);
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    #[rstest::rstest]
-    fn ctrl_clear_picker_two_presses_clears_then_closes() {
-        // First <c-c> on a populated picker clears the filter;
-        // the second <c-c> closes the picker (equivalent to <esc>).
-        use crate::feat::intent::handler::IntentHandler;
-        use crate::protocol::PickerKind;
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Provider,
-        });
-        {
-            let picker = state.active_picker_ops().expect("picker active");
-            picker.insert_char('a');
-            picker.insert_char('b');
-            assert!(!picker.is_filter_empty());
-        }
-
-        // First press: filter is non-empty, so it should be cleared.
-        let result1 = IntentHandler::handle(
-            &KernelIntent::CtrlClear,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-            jinn_slices::empty_config_layer(),
-        );
-        assert!(state.frontend.is_picker());
-        assert!(
-            state
-                .active_picker_ops()
-                .expect("picker still active")
-                .is_filter_empty()
-        );
-        assert!(result1.messages.is_empty());
-
-        // Second press: filter is now empty, so picker should close.
-        let result2 = IntentHandler::handle(
-            &KernelIntent::CtrlClear,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-            jinn_slices::empty_config_layer(),
-        );
-        assert!(!state.frontend.is_picker());
-        assert_eq!(state.frontend.scope(), FocusScope::Normal);
-        assert!(result2.messages.is_empty());
     }
 }

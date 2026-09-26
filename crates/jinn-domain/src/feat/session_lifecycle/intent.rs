@@ -536,9 +536,9 @@ mod tests {
     fn session_lifecycle_setup_clears_overlays_and_pushes_input() {
         // Given a state with a picker overlay.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(jinn_slices::FocusScope::Picker {
-            kind: crate::protocol::PickerKind::Provider,
-        });
+        state.frontend.scope_push(jinn_slices::FocusScope::Dynamic(
+            jinn_project_msg::project_picker_scope(),
+        ));
 
         // When handling SessionLifecycleSetup.
         let _result = handle_session_lifecycle_setup(

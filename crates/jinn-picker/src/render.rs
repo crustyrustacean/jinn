@@ -67,13 +67,39 @@ pub fn keybind_line(rows: &[BindRow], tail: Tail, palette: &Palette) -> KeybindL
     KeybindLine(spans)
 }
 
+/// The result of a render attempt for one spec.
+///
+/// The distinction matters because a spec whose lent storage is the wrong
+/// shape draws *nothing* — no partial frame, no error. Reporting that as a
+/// bare `false` let that blank frame reach the screen unnoticed, because the
+/// one production caller discarded the return value entirely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderOutcome {
+    /// The spec drove its widget and drew into `area`.
+    Drew,
+    /// The host lent no storage the spec could drive. The frame is untouched.
+    ///
+    /// A tree spec landing here was handed a flat `SelectionState`: it must
+    /// report the mismatch rather than silently produce an empty popup.
+    NoCompatibleStorage,
+}
+
+impl RenderOutcome {
+    /// Whether the spec actually drew. `false` means `area` is untouched,
+    /// which callers must treat as a defect worth reporting.
+    #[must_use]
+    pub fn drew(self) -> bool {
+        matches!(self, Self::Drew)
+    }
+}
+
 /// Renders the spec's picker into `area` using the host lens.
 pub(crate) fn render_spec<T>(
     spec: &crate::registry::TypedSpec<T>,
     frame: &mut Frame<'_>,
     area: Rect,
     host: &dyn PickerHost,
-) -> bool
+) -> RenderOutcome
 where
     T: jinn_selection_widget::TreeItem + std::fmt::Debug + Send + Sync + 'static,
 {
@@ -86,9 +112,9 @@ where
         let Some(tree_state) = host.selection_state_ref(id).and_then(|any| {
             any.downcast_ref::<jinn_selection_widget::TreePickerState<crate::entry::PickerEntry<T>>>()
         }) else {
-            // No compatible tree storage lent — draw nothing. (A Tree spec
-            // must not silently render as a flat list.)
-            return false;
+            // A tree spec must not silently render as a flat list — report
+            // the storage mismatch instead of drawing an empty popup.
+            return RenderOutcome::NoCompatibleStorage;
         };
         let status_line = {
             let ctx = StatusCtx::new(id, host);
@@ -106,14 +132,13 @@ where
             .colors(palette.selection_colors())
             .tree_prefix_color(palette.muted_text)
             .render(frame, area);
-        return true;
+        return RenderOutcome::Drew;
     }
 
     let Some(selection) = host.selection_state_ref(id).and_then(|any| {
         any.downcast_ref::<jinn_selection_widget::SelectionState<crate::entry::PickerEntry<T>>>()
     }) else {
-        // No compatible storage lent — draw nothing.
-        return false;
+        return RenderOutcome::NoCompatibleStorage;
     };
 
     // Status line (or blank placeholder) above the keybind line.
@@ -156,7 +181,7 @@ where
         crate::widget::WidgetKind::Tree => {}
     }
 
-    true
+    RenderOutcome::Drew
 }
 
 #[cfg(test)]
@@ -370,13 +395,17 @@ mod tree_tests {
         let _ = spec_handle;
         let backend = TestBackend::new(60, 20);
         let mut terminal = Terminal::new(backend).expect("terminal");
-        let mut drew = true;
+        let mut drew = RenderOutcome::Drew;
         terminal
             .draw(|frame| {
                 drew = spec_handle.render(frame, frame.area(), host);
             })
             .expect("draw");
-        assert!(drew, "Tree spec must render against tree storage");
+        assert_eq!(
+            drew,
+            RenderOutcome::Drew,
+            "Tree spec must render against tree storage"
+        );
         terminal.backend().buffer().clone()
     }
 
@@ -473,7 +502,7 @@ mod tree_tests {
 
     #[rstest::rstest]
     #[test]
-    fn tree_spec_renders_false_without_tree_storage() {
+    fn tree_spec_reports_no_compatible_storage_given_flat_storage() {
         // Given the host lends a flat SelectionState (wrong storage).
         let mut host = FakeHost::new();
         let registry = PickerRegistry::new();
@@ -490,18 +519,46 @@ mod tree_tests {
         let spec = tree_registry.get("tree-test").expect("registered");
         let backend = TestBackend::new(60, 20);
         let mut terminal = Terminal::new(backend).expect("terminal");
-        let mut drew = true;
+        let mut outcome = RenderOutcome::Drew;
         terminal
             .draw(|frame| {
-                drew = spec.render(frame, frame.area(), &host);
+                outcome = spec.render(frame, frame.area(), &host);
             })
             .expect("draw");
 
-        // Then the render call reports no compatible storage (false), the
-        // documented draw-nothing signal.
-        assert!(
-            !drew,
-            "Tree spec with flat storage must signal incompatibility"
+        // Then the render reports the storage mismatch rather than drawing a
+        // tree spec from flat storage.
+        assert_eq!(
+            outcome,
+            RenderOutcome::NoCompatibleStorage,
+            "Tree spec with flat storage must report incompatible storage"
         );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn list_spec_reports_drew_given_matching_storage() {
+        // Given the host lends the flat storage a list spec drives.
+        let mut host = FakeHost::new();
+        let mut list_registry = PickerRegistry::new();
+        list_registry.register(PickerSpec::<Node>::new(PickerId::new("list-test")));
+        let spec = list_registry.get("list-test").expect("registered");
+        host.set_selection::<crate::entry::PickerEntry<Node>>(
+            PickerId::new("list-test"),
+            jinn_selection_widget::SelectionState::new(),
+        );
+
+        // When rendering the list spec.
+        let backend = TestBackend::new(60, 20);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        let mut outcome = RenderOutcome::NoCompatibleStorage;
+        terminal
+            .draw(|frame| {
+                outcome = spec.render(frame, frame.area(), &host);
+            })
+            .expect("draw");
+
+        // Then the render reports that it drew.
+        assert_eq!(outcome, RenderOutcome::Drew);
     }
 }

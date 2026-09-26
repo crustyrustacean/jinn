@@ -144,7 +144,7 @@ impl ActorSystemBuilder {
             key_routes: jinn_slices::route::KeyRoutes::new(),
             viewport: jinn_slices::view::Viewport::new(),
             overlay_views: jinn_slices::OverlayViews::new(),
-            picker_registry: jinn_picker_specs::build_picker_registry(),
+            project_picker: None,
         };
 
         let actor_deps = ActorDeps {
@@ -191,6 +191,7 @@ impl ActorSystemBuilder {
         jinn_chat_log_view_activate(&mut services, &state);
         jinn_chat_input_activate(&mut services);
         jinn_cwd_activate(&mut services);
+        jinn_skills_activate(&mut services);
         jinn_project_activate(&mut services);
         jinn_preferences_activate(&mut services, state.clone()).await;
         jinn_sidebar_activate(&mut services, state.clone());
@@ -215,6 +216,10 @@ impl ActorSystemBuilder {
         // the orchestrator actor is spawned below (explicit ordering vs.
         // the MCP coordinator — B1).
         jinn_tools::activate(&mut services, &state);
+        // The tool picker is registered by the same slice, after the registry
+        // cell it seeds its rows from exists.
+        jinn_tools_picker_activate(&mut services);
+        jinn_mcp_picker_activate(&mut services);
 
         // Quake bar slice: activation mints the cell, spawns the actor
         // (submit-log writer), attaches rows, and registers the input
@@ -312,10 +317,15 @@ impl ActorSystemBuilder {
         // keeps turn progression and context folds; the store actor owns load,
         // fork, archive, and persist; the lifecycle actor owns setup, teardown,
         // close, and working-directory changes. Each contract has exactly one owner.
-        jinn_session_store::activate(&services, state.clone());
+        // The session picker's overlay and keys are attached later, where the
+        // composition `SliceHost` exists; `activate` only mints the cell the
+        // store actor publishes into, which the lifecycle activation threads
+        // through to that later pass.
+        let session_store_handles = jinn_session_store::activate(&services, state.clone());
         jinn_session_lifecycle_activate(
             &mut services,
             state.clone(),
+            &session_store_handles,
             jinn_session_lifecycle_msg::BuiltinRegistry::new(),
             std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
         );
@@ -582,6 +592,7 @@ fn jinn_sidebar_activate(services: &mut Services, state: jinn_domain::common::st
 fn jinn_session_lifecycle_activate(
     services: &mut Services,
     state: jinn_domain::common::state::State,
+    session_store_handles: &jinn_session_store::SessionStoreHandles,
     builtin_registry: jinn_session_lifecycle_msg::BuiltinRegistry,
     shell: String,
 ) {
@@ -600,6 +611,14 @@ fn jinn_session_lifecycle_activate(
         builtin_registry,
         shell,
     );
+    jinn_session_lifecycle::activate_picker(&mut host);
+    // The session picker: its cell was minted by the store slice's `activate`
+    // (the store actor publishes loaded rows into it), so only the overlay,
+    // keys, and filter hook are attached here.
+    jinn_session_store::activate_session_picker(
+        &mut host,
+        &session_store_handles.session_picker_cell,
+    );
 }
 
 fn jinn_cwd_activate(services: &mut Services) {
@@ -613,6 +632,22 @@ fn jinn_cwd_activate(services: &mut Services) {
     jinn_cwd::activate(&mut host);
 }
 
+/// Activates the skills slice: mints the skill picker's cell and overlay.
+///
+/// The skill picker is the first picker the slice owns outright — its state
+/// lives in a slice cell, its scope is a dynamic `SliceScopeId`, and it
+/// renders from that cell rather than through the kernel's picker host.
+fn jinn_skills_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_skills::activate(&mut host);
+}
+
 /// Activates the project slice's project-add popup over the kernel registries.
 fn jinn_project_activate(services: &mut Services) {
     let mut host = jinn_slices::SliceHost::new(
@@ -622,7 +657,7 @@ fn jinn_project_activate(services: &mut Services) {
         &services.key_routes,
         &services.trouper_system,
     );
-    jinn_project::activate(&mut host);
+    services.project_picker = Some(jinn_project::activate(&mut host).project_picker);
 }
 
 async fn jinn_preferences_activate(
@@ -776,7 +811,11 @@ fn jinn_persona_activate(services: &mut Services) -> jinn_persona_msg::Personas 
         &services.key_routes,
         &services.trouper_system,
     );
-    jinn_persona::activate(&mut host, &services.paths.personas_dir())
+    let personas = jinn_persona::activate(&mut host, &services.paths.personas_dir());
+    // The persona picker is registered by the same slice, after discovery: its
+    // rows are seeded from the personas cell activate just minted.
+    jinn_persona::activate_picker(&mut host);
+    personas
 }
 
 /// Activates the turn-dispatch slice: spawns the queue actor (trouper
@@ -863,6 +902,69 @@ fn jinn_theme_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_theme_slice::activate(&mut host, &themes_dir, &system_themes_dir);
+    // The theme picker is registered by the same slice, after discovery: its
+    // rows are seeded from the theme-entries cell activate just minted.
+    jinn_theme_slice::activate_picker(&mut host);
+}
+
+fn jinn_provider_selection_activate(
+    services: &mut Services,
+    state: jinn_domain::common::state::State,
+) -> jinn_provider_selection::ProviderSelectionHandles {
+    // `Services` is cheap to clone (Arc fields); the clone side-steps
+    // the host's mutable viewport borrow for the activation call
+    // (discord-activation pattern).
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    let handles = jinn_provider_selection::activate(&mut host, &services_snapshot, state);
+    // The reasoning-effort picker is registered by the same slice, after the
+    // actors: it spawns nothing, and its rows are built from the session's
+    // own effort when it opens.
+    jinn_provider_selection::activate_picker(&mut host);
+    // The provider picker mints its own cell here - nothing earlier needs a
+    // handle to it - so the activation is self-contained.
+    jinn_provider_selection::activate_provider_picker(&mut host, &handles.provider_picker_cell);
+    // The endpoint picker continues the same activation: its cell was minted
+    // by `activate` (the provider actor needs a handle to publish fetches
+    // into), so only the overlay, keys, and filter hook are attached here.
+    jinn_provider_selection::activate_endpoint_picker(&mut host, &handles.endpoint_picker_cell);
+    handles
+}
+
+/// Registers the tool picker: its cell, overlay, keys, and filter hook.
+///
+/// Separate from `jinn_tools::activate` because that one mints the
+/// registry cell the picker's rows are seeded from, so it must run first.
+fn jinn_tools_picker_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_tools::activate_picker(&mut host);
+}
+
+/// Registers the MCP server inspector: its cell, overlay, keys, and hook.
+///
+/// Separate from `activate_runtime`, which registers only the status and
+/// stderr projection cells the coordinator writes to.
+fn jinn_mcp_picker_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_mcp_slice::activate_picker(&mut host);
 }
 
 fn jinn_status_bar_activate(services: &mut Services) {
@@ -890,8 +992,8 @@ fn jinn_quake_bar_activate(services: &mut Services) {
 /// Activates the discord slice over the kernel's registries.
 ///
 /// Composition assembles the `SliceHost` borrows plus the services the
-/// slice's gateway task needs; the slice returns the parked
-/// gateway channels and its validated config for the frontend spawn.
+/// slice's gateway task needs; the slice returns the parked gateway
+/// channels and its validated config for the frontend spawn.
 async fn jinn_discord_activate(
     services: &mut Services,
     state: jinn_domain::common::state::State,
@@ -899,11 +1001,6 @@ async fn jinn_discord_activate(
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
     let services_snapshot = services.clone();
-    // Config-section resolution sink: reads the user-preferences
-    // document's raw tables (slice-owned sections survive there). Built
-    // before activation — the slice applies its sections during
-    // `activate` — the slice reads its `[discord]` section from the
-    // layer itself, so no document sink is threaded through here.
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -917,38 +1014,10 @@ async fn jinn_discord_activate(
 }
 
 /// Activates the session-init slice over the kernel's registries.
-///
-/// The slice installs the discovery partition set, spawns its trouper
-/// actors, and stages the crossing routes; `finalize` collects the
-/// staged set so the drain's relays match. Slice integration is
-/// exactly this call plus `bridge::drain_routes`.
 fn jinn_session_init_activate(services: &mut Services, state: jinn_domain::common::state::State) {
     if let Err(error) = jinn_session_init::activate(services, state) {
         panic!("session-init slice activation failed: {error}");
     }
-}
-
-/// Activates the provider-selection slice: mints the provider cell,
-/// spawns the provider + discover actors (trouper), attaches the
-/// keybind rows. Returns the cell handle so wiring can hand it to the
-/// boot slice (its provider-init actor writes the disk-loaded cache
-/// through the same cell).
-fn jinn_provider_selection_activate(
-    services: &mut Services,
-    state: jinn_domain::common::state::State,
-) -> jinn_provider_selection::ProviderSelectionHandles {
-    // `Services` is cheap to clone (Arc fields); the clone side-steps
-    // the host's mutable viewport borrow for the activation call
-    // (discord-activation pattern).
-    let services_snapshot = services.clone();
-    let mut host = jinn_slices::SliceHost::new(
-        &services.slices,
-        &mut services.viewport,
-        &services.overlay_views,
-        &services.key_routes,
-        &services.trouper_system,
-    );
-    jinn_provider_selection::activate(&mut host, &services_snapshot, state)
 }
 
 /// The `TermHandle` implementation over the coordinator's trouper path.

@@ -33,7 +33,6 @@ impl FocusScope {
             // surfaces (chat, terminal, the base scope).
             Self::Dynamic(id) if id.captures_input() => Mode::Input,
             Self::Input => Mode::Input,
-            Self::Picker { .. } => Mode::Picker,
             // Normal (capture-mode dynamic scopes route keystrokes to
             // their slice, not the chat input) and navigation-only
             // dynamic scopes are all non-input modes.

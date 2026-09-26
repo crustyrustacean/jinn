@@ -33,7 +33,7 @@ use crate::AppState;
 use jinn_status_bar_msg::{StatusBarState, status_bar_slot};
 use jinn_term_msg::command::ControlHolder;
 
-use crate::protocol::{PickerKind, ScopeSignal};
+use crate::protocol::ScopeSignal;
 
 use crate::KernelIntent;
 use crate::feat;
@@ -177,7 +177,6 @@ impl IntentHandler {
         state: &mut AppState,
         slices: &jinn_slices::Slices,
         routes: &jinn_slices::route::KeyRoutes,
-        pickers: &jinn_picker::PickerRegistry,
         config: &jinn_config::ConfigLayer,
     ) -> IntentResult {
         state
@@ -202,7 +201,7 @@ impl IntentHandler {
         );
 
         // Process the intent and get the result.
-        let mut result = Self::handle_inner(intent, state, slices, routes, pickers, config);
+        let mut result = Self::handle_inner(intent, state, slices, routes, config);
 
         if state.session.active_session_id() != &prev_active {
             if terminal_overlay_open {
@@ -234,7 +233,6 @@ impl IntentHandler {
         state: &mut AppState,
         slices: &jinn_slices::Slices,
         routes: &jinn_slices::route::KeyRoutes,
-        pickers: &jinn_picker::PickerRegistry,
         config: &jinn_config::ConfigLayer,
     ) -> IntentResult {
         // Session prompts live in the sidebar slice, which owns the route
@@ -334,9 +332,8 @@ impl IntentHandler {
                 jinn_slices::FocusScope::Input => {
                     feat::chat_input::intent::handle_paste_text(text, state)
                 }
-                jinn_slices::FocusScope::Picker { .. } => {
-                    crate::feat::picker::intent::handle_picker_paste(state, text)
-                }
+                // Both a saved pre-migration `Picker` scope and any other
+                // scope are no-ops: a paste targets only the input scope.
                 _ => IntentResult::empty(),
             },
             KernelIntent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
@@ -360,9 +357,7 @@ impl IntentHandler {
                 feat::chat_input::intent::handle_enter_insert_mode(state)
             }
             KernelIntent::EnterNormalMode => {
-                feat::chat_input::intent::handle_enter_normal_mode_with_pickers(
-                    state, pickers, config,
-                )
+                feat::chat_input::intent::handle_enter_normal_mode(state, config)
             }
             KernelIntent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
             KernelIntent::ToggleAuditPopup => {
@@ -371,68 +366,21 @@ impl IntentHandler {
             KernelIntent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
             KernelIntent::NoOp => IntentResult::empty(),
 
-            KernelIntent::OpenPicker { kind } => {
-                crate::feat::picker::intent::handle_open_picker(state, *kind, pickers, config)
-            }
-            KernelIntent::PickerAction { picker, action } => {
-                crate::feat::picker::action::run_action(state, pickers, picker, action, config)
-            }
-            KernelIntent::PickerInsertChar { ch } => {
-                crate::feat::picker::intent::handle_insert_char(state, *ch)
-            }
-            KernelIntent::PickerBackspace => crate::feat::picker::intent::handle_backspace(state),
-            KernelIntent::PickerConfirm => {
-                let (result, maybe_intent) =
-                    crate::feat::picker::intent::handle_picker_confirm(state, pickers, config);
-                if let Some(intent) = maybe_intent {
-                    let redispatch =
-                        IntentHandler::handle(&intent, state, slices, routes, pickers, config);
-                    result.merge(redispatch)
-                } else {
-                    result
-                }
-            }
+            // <c-c>: every picker that filters binds it in its own scope, so
+            // the only kernel-side job is resetting the chat input box.
             KernelIntent::CtrlClear => {
                 let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);
                 if let Some(intent) = maybe_intent {
-                    let redispatch =
-                        IntentHandler::handle(&intent, state, slices, routes, pickers, config);
+                    let redispatch = IntentHandler::handle(&intent, state, slices, routes, config);
                     result.merge(redispatch)
                 } else {
                     result
                 }
-            }
-            KernelIntent::PickerMoveUp => {
-                crate::feat::picker::intent::handle_move_up(state, pickers, config)
-            }
-            KernelIntent::PickerMoveDown => {
-                crate::feat::picker::intent::handle_move_down(state, pickers, config)
-            }
-            KernelIntent::PickerPageUp => {
-                crate::feat::picker::intent::handle_page_up(state, pickers, config)
-            }
-            KernelIntent::PickerPageDown => {
-                crate::feat::picker::intent::handle_page_down(state, pickers, config)
-            }
-            KernelIntent::PickerMoveCursorLeft => {
-                crate::feat::picker::intent::handle_move_cursor_left(state)
-            }
-            KernelIntent::PickerMoveCursorRight => {
-                crate::feat::picker::intent::handle_move_cursor_right(state)
             }
             KernelIntent::SessionNew => feat::session::intent::handle_session_new(state, config),
             KernelIntent::RefreshModels => feat::session::intent::handle_refresh_models(state),
             KernelIntent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)
-            }
-
-            KernelIntent::SessionNewWithLifecycle => {
-                crate::feat::picker::intent::handle_open_picker(
-                    state,
-                    PickerKind::SessionLifecycle,
-                    pickers,
-                    config,
-                )
             }
 
             KernelIntent::ChatEntrySelectNext => {
@@ -662,10 +610,6 @@ mod tests {
         jinn_slices::Slices::new()
     }
 
-    fn empty_pickers() -> jinn_picker::PickerRegistry {
-        jinn_picker::PickerRegistry::new()
-    }
-
     /// `Slices` with the status-bar cell registered (as the slice's
     /// `activate` does), for hint write/read assertions.
     fn status_bar_slices() -> jinn_slices::Slices {
@@ -749,7 +693,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -776,7 +719,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -802,7 +744,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -828,7 +769,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -846,9 +786,9 @@ mod tests {
     fn paste_text_in_picker_scope_routes_to_picker() {
         // Given Picker scope is active.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Picker {
-            kind: crate::protocol::PickerKind::Persona,
-        });
+        state
+            .frontend
+            .scope_push(FocusScope::Dynamic(jinn_project_msg::project_picker_scope()));
 
         // When handling PasteText.
         let _result = IntentHandler::handle(
@@ -858,7 +798,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -879,7 +818,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -908,7 +846,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -929,7 +866,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -951,7 +887,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -972,7 +907,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -1001,7 +935,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -1021,7 +954,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -1055,7 +987,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -1085,7 +1016,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -1151,7 +1081,6 @@ mod tests {
             &mut state,
             &slices,
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -1170,7 +1099,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -1195,7 +1123,6 @@ mod tests {
             &mut state,
             &slices,
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
         // Then the base is the registered tab.
@@ -1210,7 +1137,6 @@ mod tests {
             &mut state,
             &slices,
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
         // Then the cycle wraps to Normal.
@@ -1237,7 +1163,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &empty_routes(),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -1286,7 +1211,6 @@ mod tests {
             &mut state,
             &slices,
             &activate_child_route(child_id.clone()),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -1355,7 +1279,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &activate_child_route(child_id.clone()),
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 
@@ -1450,7 +1373,6 @@ mod tests {
             &mut state,
             &empty_slices(),
             &routes,
-            &empty_pickers(),
             jinn_slices::empty_config_layer(),
         );
 

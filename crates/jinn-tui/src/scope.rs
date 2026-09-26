@@ -17,40 +17,6 @@
 pub enum Scope {
     /// Normal mode - navigation and commands.
     Normal,
-    /// Sidebar - Persona section.
-
-    /// Sidebar - Pins section.
-
-    /// Sidebar - Sessions section.
-
-    /// Sidebar - Task list section.
-
-    /// Sidebar - MCP servers section.
-
-    /// Picker - Provider/model selection.
-    PickerProvider,
-    /// Picker - Session browser.
-    PickerSession,
-    /// Picker - Persona selection.
-    PickerPersona,
-    /// Picker - Theme selection.
-    PickerTheme,
-    /// Picker - Session lifecycle recipe selection.
-    PickerLifecycle,
-    /// Picker - Reasoning effort selection.
-    PickerReasoningEffort,
-    /// Picker - OpenRouter routing endpoint selection.
-    PickerEndpoint,
-    /// Picker - Tool toggle selection.
-    PickerTool,
-    /// Picker - Skill toggle selection.
-    PickerSkill,
-    /// Picker - Read-only task list browser.
-    PickerTaskList,
-    /// Picker - Curated project directory selection.
-    PickerProject,
-    /// Picker - MCP server toggle selection.
-    PickerMcpServer,
     /// Input mode - typing into the input buffer.
     Input,
     /// A dynamically-registered slice's scope.
@@ -65,19 +31,7 @@ impl std::fmt::Display for Scope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Normal => write!(f, "Normal"),
-            Self::PickerProvider => write!(f, "Picker(provider)"),
-            Self::PickerSession => write!(f, "Picker(session)"),
-            Self::PickerPersona => write!(f, "Picker(persona)"),
-            Self::PickerTheme => write!(f, "Picker(theme)"),
-            Self::PickerLifecycle => write!(f, "Picker(lifecycle)"),
 
-            Self::PickerReasoningEffort => write!(f, "Picker(reasoning-effort)"),
-            Self::PickerEndpoint => write!(f, "Picker(endpoint)"),
-            Self::PickerTool => write!(f, "Picker(tool)"),
-            Self::PickerSkill => write!(f, "Picker(skill)"),
-            Self::PickerTaskList => write!(f, "Picker(task-list)"),
-            Self::PickerProject => write!(f, "Picker(project)"),
-            Self::PickerMcpServer => write!(f, "Picker(mcp-server)"),
             Self::Input => write!(f, "Input"),
             Self::Dynamic(id) => write!(f, "dynamic:{id}"),
         }
@@ -96,19 +50,7 @@ impl std::str::FromStr for Scope {
         }
         match s {
             "Normal" => Ok(Self::Normal),
-            "Picker(provider)" => Ok(Self::PickerProvider),
-            "Picker(session)" => Ok(Self::PickerSession),
-            "Picker(persona)" => Ok(Self::PickerPersona),
-            "Picker(theme)" => Ok(Self::PickerTheme),
-            "Picker(lifecycle)" => Ok(Self::PickerLifecycle),
 
-            "Picker(reasoning-effort)" => Ok(Self::PickerReasoningEffort),
-            "Picker(endpoint)" => Ok(Self::PickerEndpoint),
-            "Picker(tool)" => Ok(Self::PickerTool),
-            "Picker(skill)" => Ok(Self::PickerSkill),
-            "Picker(task-list)" => Ok(Self::PickerTaskList),
-            "Picker(project)" => Ok(Self::PickerProject),
-            "Picker(mcp-server)" => Ok(Self::PickerMcpServer),
             "Input" => Ok(Self::Input),
             _ => Err(()),
         }
@@ -121,20 +63,6 @@ mod tests {
 
     use super::Scope;
     use std::str::FromStr;
-
-    #[rstest::rstest]
-    fn picker_reasoning_effort_scope_round_trips() {
-        // Given the PickerReasoningEffort scope variant.
-        // When formatting then parsing back.
-        // Then the round-trip preserves the variant.
-        let s = Scope::PickerReasoningEffort.to_string();
-        assert_eq!(s, "Picker(reasoning-effort)");
-        assert_eq!(
-            Scope::from_str(&s),
-            Ok(Scope::PickerReasoningEffort),
-            "Display/FromStr should round-trip"
-        );
-    }
 
     #[rstest::rstest]
     #[test]

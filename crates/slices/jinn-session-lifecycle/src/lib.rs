@@ -8,6 +8,10 @@ pub mod arg_input;
 pub mod arg_input_render;
 pub mod command_runner;
 pub mod session_lifecycle_actor;
+mod session_lifecycle_picker_actions;
+pub mod session_lifecycle_picker_render;
+mod session_lifecycle_picker_routes;
+mod session_lifecycle_picker_viewport;
 
 pub use command_runner::{
     LifecycleCancelHandle, LifecycleCommandError, spawn_setup_command, spawn_teardown_command,
@@ -83,5 +87,52 @@ pub fn activate(
     SessionLifecycleHandles { lifecycle }
 }
 
+/// Registers the session-lifecycle picker: its cell, its overlay, its keys, and
+/// its filter hook.
+///
+/// Split from [`activate`] because the picker is a menu over configured
+/// lifecycles while `activate` owns the actor that runs setup and teardown.
+/// Called from composition right after `activate`.
+///
+/// # Panics
+///
+/// Panics if the picker slot is already registered — double activation is a
+/// wiring bug.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
+    let cell = host
+        .register_cell(
+            jinn_session_lifecycle_msg::session_lifecycle_picker_slot(),
+            jinn_session_lifecycle_msg::SessionLifecyclePickerState::default(),
+        )
+        .expect("session lifecycle picker slot is registered exactly once at wiring");
+
+    let scope = jinn_session_lifecycle_msg::session_lifecycle_picker_scope();
+    host.register_overlay(
+        scope.clone(),
+        std::sync::Arc::new(session_lifecycle_picker_render::session_lifecycle_picker_overlay_rect),
+    );
+    host.register_overlay_selectable(&scope);
+    host.register_overlay_slot(
+        scope.clone(),
+        jinn_session_lifecycle_msg::session_lifecycle_picker_slot(),
+    );
+    host.register_overlay_view(
+        scope,
+        std::sync::Arc::new(session_lifecycle_picker_render::render_session_lifecycle_picker),
+    );
+
+    session_lifecycle_picker_routes::attach_session_lifecycle_picker_rows(host.key_routes(), &cell);
+    session_lifecycle_picker_routes::register_session_lifecycle_picker_input_hook(
+        host.key_routes(),
+        &cell,
+    );
+}
+
 #[cfg(test)]
 mod session_lifecycle_actor_tests;
+#[cfg(test)]
+mod session_lifecycle_picker_tests;

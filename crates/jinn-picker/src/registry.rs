@@ -27,53 +27,24 @@ use crate::hooks::PickerStatusFn;
 use crate::host::PickerHost;
 use crate::id::PickerId;
 use crate::outcome::PickerOutcome;
+use crate::render::RenderOutcome;
 use crate::widget::WidgetKind;
 
-/// The id of the persona picker's spec.
-pub const PERSONA_ID: &str = "persona";
-/// The id of the skill picker's spec.
-pub const SKILL_ID: &str = "skill";
-/// The id of the theme picker's spec.
-pub const THEME_ID: &str = "theme";
-/// The id of the tool picker's spec.
-pub const TOOL_ID: &str = "tool";
-/// The id of the MCP server picker's spec.
-pub const MCP_SERVER_ID: &str = "mcp-server";
-/// The id of the session-lifecycle picker's spec.
-pub const SESSION_LIFECYCLE_ID: &str = "session-lifecycle";
-/// The id of the task-list picker's spec.
-pub const TASK_LIST_ID: &str = "task-list";
-/// The id of the session picker's spec.
-pub const SESSION_ID: &str = "session";
-/// The id of the reasoning-effort picker's spec.
-pub const REASONING_EFFORT_ID: &str = "reasoning-effort";
-/// The id of the provider picker's spec.
-pub const PROVIDER_ID: &str = "provider";
-/// The id of the endpoint picker's spec.
-pub const ENDPOINT_ID: &str = "endpoint";
-/// The id of the project picker's spec.
+/// The id of the project picker's spec — the last one the registry knows.
 pub const PROJECT_ID: &str = "project";
 
-/// Maps a picker kind onto its spec id. The retired `CompactionModel` kind has
-/// no spec.
+/// Maps a picker kind onto its spec id.
+///
+/// Every kind but `Project` has been migrated to a slice-owned picker, so
+/// there is no spec left to name; the migrated kinds resolve to `None` and
+/// the caller falls through to the slice's own scope.
 #[must_use]
 pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&'static str> {
     use jinn_slices::picker_kind::PickerKind;
 
     match kind {
-        PickerKind::Persona => Some(PERSONA_ID),
-        PickerKind::Skill => Some(SKILL_ID),
-        PickerKind::Theme => Some(THEME_ID),
-        PickerKind::Tool => Some(TOOL_ID),
-        PickerKind::McpServer => Some(MCP_SERVER_ID),
-        PickerKind::SessionLifecycle => Some(SESSION_LIFECYCLE_ID),
-        PickerKind::ReasoningEffort => Some(REASONING_EFFORT_ID),
-        PickerKind::TaskList => Some(TASK_LIST_ID),
-        PickerKind::Session => Some(SESSION_ID),
-        PickerKind::Provider => Some(PROVIDER_ID),
-        PickerKind::Endpoint => Some(ENDPOINT_ID),
         PickerKind::Project => Some(PROJECT_ID),
-        PickerKind::CompactionModel => None,
+        PickerKind::CompactionModel | PickerKind::McpServer => None,
     }
 }
 
@@ -175,9 +146,13 @@ pub trait ErasedPickerSpec: Send + Sync {
 
     /// The erased render driver: dispatches on the widget kind and drives
     /// the corresponding selection widget with the spec's title, footers,
-    /// colors, preview scroll, and preview cache. Returns `false` when the
-    /// host lent no compatible storage — the caller draws nothing.
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, host: &dyn PickerHost) -> bool;
+    /// colors, preview scroll, and preview cache.
+    ///
+    /// Reports [`RenderOutcome::NoCompatibleStorage`] when the host lent
+    /// nothing this spec can drive, in which case `area` is left untouched.
+    /// There is no fallback renderer: a spec that cannot draw is a wiring
+    /// defect, and callers must report it rather than paper over it.
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, host: &dyn PickerHost) -> RenderOutcome;
 
     /// Downcast seam for the registry's typed window: the spec back as an
     /// `Any` handle so `make_items` can recover the entry type.
@@ -343,7 +318,7 @@ where
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, host: &dyn PickerHost) -> bool {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, host: &dyn PickerHost) -> RenderOutcome {
         crate::render::render_spec(self, frame, area, host)
     }
 

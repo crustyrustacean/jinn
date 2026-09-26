@@ -16,15 +16,16 @@ jinn-theme = { workspace = true }
 jinn-theme-msg = { workspace = true }
 jinn-token-count-msg = { workspace = true }
 jinn-mcp-msg = { workspace = true }
+jinn-project-msg = { workspace = true }
 jinn-mcp = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-sidebar = { workspace = true }
 jinn-cwd = { workspace = true }
 jinn-status-bar = { workspace = true }
 jinn-picker = { workspace = true }
-jinn-picker-specs = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-tools-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }

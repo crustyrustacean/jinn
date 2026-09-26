@@ -24,7 +24,7 @@
 
 use jinn_core_types::ToolResultStatus;
 use jinn_core_types::tool_types::TruncationMeta;
-use jinn_skills::loaded_skill_summary_label;
+use jinn_skills_msg::loaded_skill_summary_label;
 use jinn_tools_msg::TASK_TOOL_NAME;
 use jinn_tools_msg::truncation::format_size;
 use ratatui::style::{Color, Style};

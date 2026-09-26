@@ -5,12 +5,26 @@ edition.workspace = true
 description = "The skills slice: skill data model, frontmatter parsing, scanning, and prompt formatting."
 
 [dependencies]
+jinn-chat-log-view = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-domain = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-session-init-msg = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
 jinn-skills-msg = { workspace = true }
+ratatui = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+error-stack = { workspace = true }
+trouper = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
 tempfile = { workspace = true }
+tokio = { workspace = true }
 
 [lints]
 workspace = true

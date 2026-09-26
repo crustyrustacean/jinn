@@ -162,5 +162,4 @@ fn register_slice_wiring(
     crate::keymap_gen::bind_route_rows(&services.key_routes, keymap);
     // Picker spec rows: keymap bindings for migrated pickers derive from
     // the specs themselves (same data the footer/geometry use).
-    crate::keymap_gen::bind_picker_spec_rows(&services.picker_registry, keymap);
 }

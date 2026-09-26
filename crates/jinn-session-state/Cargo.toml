@@ -11,7 +11,6 @@ jinn-chat-log-view-msg = { workspace = true }
 jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-session-history = { workspace = true }
-jinn-skills = { workspace = true }
 jinn-skills-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }
 jinn-session-msg = { workspace = true }

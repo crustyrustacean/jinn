@@ -68,6 +68,7 @@ jinn-boot-msg = { workspace = true }
 jinn-cwd-msg = { workspace = true }
 jinn-persona-msg = { workspace = true }
 jinn-sidebar-msg = { workspace = true }
+jinn-project-msg = { workspace = true }
 jinn-status-bar-msg = { workspace = true }
 jinn-term = { workspace = true }
 jinn-tools = { workspace = true }
@@ -84,6 +85,7 @@ jinn-chat-log-view = { workspace = true }
 jinn-scope-focus = { workspace = true }
 jinn-sidebar = { workspace = true }
 jinn-cwd = { workspace = true }
+jinn-skills = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }
@@ -104,7 +106,6 @@ jinn-session-turn = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-picker = { workspace = true }
-jinn-picker-specs = { workspace = true }
 jinn-provider-config = { workspace = true }
 
 clap_complete = { workspace = true }
@@ -227,7 +228,6 @@ jinn-tui = { path = "crates/jinn-tui" }
 jinn-cli = { path = "crates/jinn-cli" }
 jinn-selection-widget = { path = "crates/jinn-selection-widget" }
 jinn-picker = { path = "crates/jinn-picker" }
-jinn-picker-specs = { path = "crates/jinn-picker-specs" }
 jinn-testutil = { path = "crates/jinn-testutil" }
 
 jinn-theme = { path = "crates/jinn-theme" }

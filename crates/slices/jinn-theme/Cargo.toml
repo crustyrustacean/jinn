@@ -8,12 +8,19 @@ description = "The theme slice: loads theme files into the theme-entries cell at
 jinn-theme-msg = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-preferences-config = { workspace = true }
+ratatui = { workspace = true }
 error-stack = { workspace = true }
 wherror = { workspace = true }
 
 [dev-dependencies]
+jinn-core-types = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
+tokio = { workspace = true }
 
 [lints]
 workspace = true

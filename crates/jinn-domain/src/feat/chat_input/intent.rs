@@ -651,25 +651,14 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
 ///
 /// Simply switches out of the current mode. Does NOT cancel streams or drain
 /// queues - the cancel confirmation prompt handles that via `NormalEscape`.
-/// Registry-less variant for internal callers that need no picker registry
-/// (the session-lifecycle chain); spec-driven
-/// close hooks need the app's registry via
-/// [`handle_enter_normal_mode_with_pickers`].
+///
+/// Slice-owned pickers bind `<esc>` in their own scope, so an escape that
+/// reaches here has already left any open picker and reverted its snapshot.
+/// The read-only task-list browser is the one exception: it is sidebar-opened
+/// and declares its own single-scope pop as a `ScopeSignal`.
 pub fn handle_enter_normal_mode(
     state: &mut AppState,
-    config: &jinn_config::ConfigLayer,
-) -> IntentResult {
-    handle_enter_normal_mode_with_pickers(state, &jinn_picker::PickerRegistry::new(), config)
-}
-
-/// Handles `EnterNormalMode` with the picker registry: spec-driven
-/// pickers run their `on_close` hook (snapshot revert) before the
-/// per-kind restores. The intent handler passes the app's registry so
-/// spec-driven pickers revert correctly.
-pub fn handle_enter_normal_mode_with_pickers(
-    state: &mut AppState,
-    pickers: &jinn_picker::PickerRegistry,
-    config: &jinn_config::ConfigLayer,
+    _config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     // If autocomplete is active, dismiss it and stay in the current scope.
     // Two-level ESC: first press closes popup, second press exits mode.
@@ -678,31 +667,16 @@ pub fn handle_enter_normal_mode_with_pickers(
         return IntentResult::empty();
     }
 
-    // Spec-driven pickers own their close behavior (snapshot revert).
-    if let Some(result) = crate::feat::picker::action::try_close_active(state, pickers, config) {
-        return result;
-    }
-
-    // TaskList picker is read-only and always opened from the sidebar task-list section.
-    // Pop only the picker to preserve the sidebar scope (rather than clearing all
-    // overlays, which would drop the task-list section and strand the user in Normal).
-    if state.frontend.picker_kind() == Some(crate::protocol::PickerKind::TaskList)
-        && state.frontend.is_picker()
-    {
-        state.frontend.scope_pop();
-        return IntentResult::empty();
-    }
-
-    // A pending session creation stash only matters between opening the
+    // A pending session creation stash only matters between opening a
     // project picker and confirming session creation. Returning to Normal
     // means that chain was abandoned, so clear any stale stash so it never
-    // leaks into a future `n`/`N`.
+    // leaks into a future `n`.
     state.frontend.pending_creation = None;
 
     // Clear all overlay scopes - always returns to Normal.
     // Using clear_overlays() instead of pop() ensures that ESC from Input mode
     // always lands in Normal, even when a sidebar scope is stacked below Input
-    // (e.g., [Normal, sidebar persona section, Input] → [Normal]).
+    // (e.g., [Normal, sidebar persona section, Input] -> [Normal]).
     state.frontend.scope_clear_overlays();
     IntentResult::empty()
 }

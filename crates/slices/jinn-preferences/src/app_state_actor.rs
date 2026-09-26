@@ -130,6 +130,19 @@ impl AppStateActor {
                 });
             }
         }
+
+        // The skills picker caches its preview lines already rendered in the
+        // old theme's colors, so a theme switch must drop them or the open
+        // menu keeps showing stale text. The cache lives in the skills slice's
+        // cell now, so the clear happens there rather than in the kernel's
+        // `invalidate_all` — a slice owns its own cached rendering.
+        if let Some(cell) = self
+            .services
+            .slices
+            .reader::<jinn_skills_msg::SkillPickerState>(&jinn_skills_msg::skill_picker_slot())
+        {
+            cell.update(|picker| picker.preview_cache.clear());
+        }
     }
 }
 
@@ -168,6 +181,7 @@ mod tests {
     use jinn_preferences_config::app_state_file::AppStateFile;
     use jinn_preferences_config::app_state_storage::InMemoryAppStateStorage;
     use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
+    use jinn_selection_widget::PreviewCache as _;
 
     async fn create_actor() -> (AppStateActor, Services) {
         let mut services = Services::new_fake().await;
@@ -205,6 +219,41 @@ mod tests {
         let loaded = services.app_state_storage.read();
         let expected = ModelSelection::from_single("anthropic/claude-sonnet-4".to_owned());
         assert_eq!(loaded.last_model, Some(expected));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn set_theme_clears_the_skills_picker_preview_cache() {
+        // Given an app-state actor with a skills picker whose preview cache
+        // holds lines rendered in the previous theme.
+        let (mut actor, services) = create_actor().await;
+        let cell = services
+            .slices
+            .register(
+                jinn_skills_msg::skill_picker_slot(),
+                jinn_skills_msg::SkillPickerState::default(),
+            )
+            .expect("skill picker slot is free in a fresh registry");
+        cell.update(|picker| {
+            picker.preview_cache.insert(
+                "12345".to_owned(),
+                80,
+                vec![ratatui::text::Line::raw("old-theme")].into(),
+            );
+        });
+        assert!(!cell.read().preview_cache.is_empty());
+
+        // When the theme changes.
+        actor.handle_update(&UpdateAppState {
+            updates: vec![AppStateUpdate::SetTheme(Some("dracula".to_owned()))],
+        });
+
+        // Then the cached preview lines are dropped, so the open picker cannot
+        // keep rendering the previous theme's colors.
+        assert!(
+            cell.read().preview_cache.is_empty(),
+            "a theme change must clear the skills picker's cached preview lines"
+        );
     }
 
     #[rstest::rstest]

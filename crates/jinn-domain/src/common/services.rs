@@ -135,11 +135,9 @@ pub struct Services {
     #[debug(skip)]
     pub trouper_system: trouper::system::ActorSystem,
 
-    /// Generic picker spec registry. Built once by composition
-    /// (`jinn_picker_specs::build_picker_registry`) and shared by the
-    /// keymap generator, the intent handler, and the render pass.
-    #[debug(skip)]
-    pub picker_registry: jinn_picker::PickerRegistry,
+    /// The project picker's cell, published by the project slice so the
+    /// preferences actor can refresh an open menu after a save.
+    pub project_picker: Option<jinn_slices::cell::TypedCell<jinn_project_msg::ProjectPickerState>>,
 }
 
 impl Services {
@@ -234,7 +232,7 @@ impl Services {
             // The same fabric the bus publishes through: one `Services`,
             // one trouper system.
             trouper_system,
-            picker_registry: jinn_picker::PickerRegistry::new(),
+            project_picker: None,
         }
     }
 
@@ -316,7 +314,7 @@ impl Services {
             // The same fabric the bus publishes through: one `Services`,
             // one trouper system.
             trouper_system,
-            picker_registry: jinn_picker::PickerRegistry::new(),
+            project_picker: None,
         }
     }
 }

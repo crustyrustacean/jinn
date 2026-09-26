@@ -9,7 +9,6 @@ use jinn_sidebar_msg::SidebarSectionId;
 use jinn_slices::FocusScope;
 use jinn_slices::TuiSignals;
 
-use crate::feat::ui::picker_states::PickerStates;
 pub use jinn_sidebar_msg::McpServersSectionState;
 pub use jinn_sidebar_msg::PersonaSectionState;
 pub use jinn_sidebar_msg::PinsState;
@@ -31,10 +30,6 @@ use jinn_theme::Theme;
 pub struct FrontendCaches {
     /// Cached wrapped line counts and rendered lines per chat entry.
     pub entry_line_cache: RwLock<jinn_chat_log_view::chat_log::EntryLineCache>,
-    /// Cached rendered lines for skill-preview popups. An `Arc` handle so
-    /// the skill picker's host lens can lend it to the spec's render path.
-    pub skill_preview_cache:
-        std::sync::Arc<crate::feat::skills::skill_preview_cache::SkillPreviewCache>,
     /// Cached rendered lines for session preview popups.
     pub session_preview_cache: RwLock<jinn_sidebar_msg::SessionPreviewCache>,
 }
@@ -44,7 +39,6 @@ impl FrontendCaches {
     pub fn invalidate_all(&self) {
         self.entry_line_cache.write().clear();
         self.session_preview_cache.write().clear();
-        self.skill_preview_cache.clear();
     }
 }
 
@@ -107,8 +101,6 @@ pub struct FrontendState {
     pub archive_tree_prompt: Option<jinn_sidebar_msg::ArchiveTreePrompt>,
 
     /// All picker state - grouped for independent evolution.
-    /// Use [`PickerExt`](super::picker_states::PickerExt) to access picker fields.
-    pub pickers: PickerStates,
 
     /// Creation stash for the next session from the projects UI.
     ///
@@ -148,7 +140,6 @@ impl Default for FrontendState {
             audit_popup_visible: false,
             close_session_prompt: false,
             archive_tree_prompt: None,
-            pickers: PickerStates::default(),
             pending_creation: None,
 
             sidebar_width: 30,
@@ -396,55 +387,5 @@ impl FrontendState {
         let taken = self.signals_snapshot();
         self.update_scope(|s| s.signals = TuiSignals::new());
         taken
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        reason = "test code"
-    )]
-
-    use super::*;
-    use jinn_selection_widget::PreviewCache;
-    use ratatui::text::Line;
-
-    /// `invalidate_all` (called on theme change) must clear the skill preview cache
-    /// so stale theme-colored lines are never displayed after a theme switch.
-    #[rstest::rstest]
-    #[test]
-    fn invalidate_all_clears_skill_preview_cache() {
-        // Given a populated skill preview cache.
-        let caches = FrontendCaches::default();
-        caches.skill_preview_cache.insert(
-            crate::feat::skills::skill_entry::body_signature("## body"),
-            80,
-            vec![Line::raw("old-theme")].into(),
-        );
-        assert_eq!(caches.skill_preview_cache.len(), 1);
-
-        // When the theme changes and all caches are invalidated.
-        caches.invalidate_all();
-
-        // Then the skill preview cache is empty (the AC under test).
-        assert!(
-            caches.skill_preview_cache.is_empty(),
-            "theme change must clear skill preview cache via invalidate_all"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn default_includes_empty_reasoning_effort_picker() {
-        // Given a default FrontendState.
-        let state = FrontendState::default();
-
-        // When accessing the reasoning effort picker.
-        // Then it exists and is empty (no items).
-        assert_eq!(state.pickers.reasoning_effort_picker.items().len(), 0);
     }
 }

@@ -1,20 +1,19 @@
 //! The theme slice's shared cell vocabulary.
 //!
 //! [`ThemeEntries`] lives in the slice-surface layer (not in the slice
-//! crate) because the *readers* include kernel-resident code: the theme
-//! picker spec (the picker framework's specs live in the kernel by
-//! design) and the app-state actor's persisted-theme resolution. The
-//! writer — the activation-time directory scan — lives in the slice
-//! crate. Both import this one type; neither depends on the other.
+//! crate) because the *readers* include kernel-resident code: the
+//! app-state actor's persisted-theme resolution. The writer — the
+//! activation-time directory scan — lives in the slice crate. Both
+//! import this one type; neither depends on the other.
 
 use jinn_slices::SlotKey;
 use jinn_theme::Theme;
 
 /// One selectable theme: its display name and resolved colors.
 ///
-/// A tuple rather than `jinn_theme::ThemeEntry` — that type sits behind
-/// the `entry` feature (pulling the picker widget stack) which this
-/// vocabulary layer does not enable.
+/// A tuple rather than `jinn_theme::ThemeEntry` — that type carries the
+/// picker widget stack behind its `entry` feature, and this cell feeds both
+/// the picker and the theme resolver.
 #[derive(Debug, Clone)]
 pub struct NamedTheme {
     /// The theme's display name ("default", "gruvbox-dark", …).

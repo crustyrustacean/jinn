@@ -7,7 +7,7 @@ use jinn_session_history_msg::SubmitHistoryMutations;
 use jinn_session_msg::PhaseKind;
 use jinn_skills_msg::{Skill, SkillsLoaded};
 
-use jinn_domain::protocol::{ChatEntry, PickerKind};
+use jinn_domain::protocol::ChatEntry;
 use jinn_preferences_config::schemas::AutoPruneConfig;
 
 impl SessionPersistenceActor {
@@ -15,9 +15,17 @@ impl SessionPersistenceActor {
     pub(in crate::session_actor) fn on_skills_loaded(&self, event: &SkillsLoaded) {
         // Only show a message when the skill picker is active (manual refresh).
         // Startup scans arrive while no picker is open.
+        //
+        // The picker is slice-owned, so its open state is a question about the
+        // focus scope rather than a picker kind: the skills slice pushes its
+        // own dynamic scope, and asking "is that scope on top?" keeps this
+        // handler free of any picker identity.
         let is_picker_active = {
             let state = self.state.read();
-            state.frontend.picker_kind() == Some(PickerKind::Skill)
+            matches!(
+                state.frontend.scope(),
+                jinn_domain::FocusScope::Dynamic(ref scope) if scope == &jinn_skills_msg::skill_picker_scope()
+            )
         };
 
         if !is_picker_active {
