@@ -4,48 +4,6 @@ use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent}
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_domain::common::app_state::AppState;
 
-use super::MAX_VISIBLE_SESSIONS;
-
-/// Adjusts scroll offset to ensure the selected index is visible within the window.
-///
-/// If no index is selected, does nothing.
-pub fn scroll_to_cursor(state: &mut AppState) {
-    let total = sorted_open_sessions(state).len();
-    scroll_to_cursor_split(&mut state.frontend, total);
-}
-
-/// Split-borrow variant of [`scroll_to_cursor`].
-pub fn scroll_to_cursor_split(
-    frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState,
-    total: usize,
-) {
-    let Some(index) = frontend.with_sections(|s| s.sessions.selected_index, || None) else {
-        return;
-    };
-    let visible = MAX_VISIBLE_SESSIONS.min(total);
-    if visible == 0 {
-        return;
-    }
-    frontend.update_sections(|s| {
-        let offset = &mut s.sessions.scroll_offset;
-
-        if index < *offset {
-            *offset = index;
-        } else if index >= *offset + visible {
-            *offset = index - visible + 1;
-        } else {
-            // index is already visible; no scroll needed.
-        }
-
-        // Clamp offset so the window doesn't extend past the end of the list.
-        // Without this, archiving sessions can leave the offset too large,
-        // causing fewer entries to render than content_height reports and
-        // the Sessions footer label to shift upward.
-        let max_offset = total.saturating_sub(visible);
-        s.sessions.scroll_offset = s.sessions.scroll_offset.min(max_offset);
-    });
-}
-
 /// No-op: session preview removed with node-graph.
 fn update_preview(_state: &mut AppState) {}
 
@@ -91,7 +49,6 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
         SidebarIntent::Action(_) => SectionNavResult::Moved,
     };
 
-    scroll_to_cursor(state);
     update_preview(state);
     result
 }
@@ -111,6 +68,6 @@ pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
     state
         .frontend
         .update_sections(|s| s.sessions.selected_index = Some(index));
-    scroll_to_cursor(state);
+
     update_preview(state);
 }

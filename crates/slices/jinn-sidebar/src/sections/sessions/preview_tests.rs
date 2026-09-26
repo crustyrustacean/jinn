@@ -399,7 +399,7 @@ fn badge_uses_streaming_color() {
 #[case::normal(30, 5)]
 #[case::content_exceeds_space(30, 20)]
 #[case::cursor_near_top(10, 5)]
-fn popup_bottom_edge_is_one_row_above_cursor(
+fn popup_bottom_edge_sits_two_rows_above_cursor(
     #[case] cursor_y: u16,
     #[case] content_line_count: usize,
 ) {
@@ -409,11 +409,11 @@ fn popup_bottom_edge_is_one_row_above_cursor(
     // When computing the popup rect.
     let popup_rect = session_preview_popup_rect(frame_area, cursor_y, content_line_count);
 
-    // Then the popup bottom edge + 1 = cursor_y.
+    // Then the popup bottom edge + 2 = cursor_y, leaving a one-row gap.
     assert_eq!(
-        popup_rect.y + popup_rect.height + 1,
+        popup_rect.y + popup_rect.height + 2,
         cursor_y,
-        "popup bottom edge + 1 should equal cursor_y ({cursor_y}), \
+        "popup bottom edge + 2 should equal cursor_y ({cursor_y}), \
          got popup_y={}, popup_height={}",
         popup_rect.y,
         popup_rect.height
@@ -432,14 +432,14 @@ fn popup_follows_cursor_not_section_top() {
 
     // Then each popup is anchored to its cursor (1-row gap invariant).
     assert_eq!(
-        rect_at_20.y + rect_at_20.height + 1,
+        rect_at_20.y + rect_at_20.height + 2,
         20,
-        "popup at cursor_y=20 should satisfy 1-row gap invariant"
+        "popup at cursor_y=20 should satisfy the gap invariant"
     );
     assert_eq!(
-        rect_at_25.y + rect_at_25.height + 1,
+        rect_at_25.y + rect_at_25.height + 2,
         25,
-        "popup at cursor_y=25 should satisfy 1-row gap invariant"
+        "popup at cursor_y=25 should satisfy the gap invariant"
     );
 
     // And the popup positions are different (cursor-relative, not fixed).
@@ -459,9 +459,9 @@ fn popup_height_capped_when_cursor_near_top() {
     // When computing the popup rect.
     let popup_rect = session_preview_popup_rect(frame_area, cursor_y, content_line_count);
 
-    // Then the popup height is capped (max_height = 7 - 0 - 1 = 6).
+    // Then the popup height is capped (max_height = 7 - 0 - 2 = 5).
     assert_eq!(
-        popup_rect.height, 6,
+        popup_rect.height, 5,
         "popup height should be capped when cursor is near top, \
          got: {}",
         popup_rect.height
@@ -470,6 +470,6 @@ fn popup_height_capped_when_cursor_near_top() {
     // And the popup does not extend past the gap boundary toward the cursor.
     assert!(
         popup_rect.y + popup_rect.height < cursor_y,
-        "popup should not encroach on the 1-row gap above cursor"
+        "popup should not encroach on the gap above cursor"
     );
 }
