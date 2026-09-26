@@ -37,16 +37,17 @@
 - There are now spinners while a session is being loaded.
 - The sidebar is now presented as one large scrollable area that keeps the cursor bounded.
   - Removed the scrolling capability of the sessions since now the entire sidebar scrolls.
-- The `jinn.toml` file was restructured. Recommend moving your existing `jinn.toml` to `jinn.toml.bak` and then running `jinn install` to get a new version.
+- The `jinn.toml` file was restructured dramatically. Recommend moving your existing `jinn.toml` to `jinn.toml.bak` and then running `jinn install` to get a new version.
+- Initial application loading responsiveness has been improved.
 
-- These plugins were move into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them. Please see the next section on plugin-related TOML configuration changes.
+- These plugins were moved into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them. Please see the next section on plugin-related TOML configuration changes.
   - Deleted `persona-loader`
   - Deleted `theme-loader`
   - Deleted `stall-watchdog`
   - Deleted `tool-call-watchdog`
   - Deleted `url-citations`
 
-### TOML plugin configuration changes
+### TOML plugin-specific configuration changes
 
 **theme-loader** is now always active. The TOML configuration is now ignored and should be deleted:
 
