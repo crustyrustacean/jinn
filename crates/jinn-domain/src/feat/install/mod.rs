@@ -334,7 +334,7 @@ pub fn install_defaults_to(
         // bytes. Deliberately NOT a round-trip through a config struct —
         // the template is documentation, and serializing a struct would
         // strip every comment it ships with.
-        jinn_preferences_config::user_preferences::create_default_preferences_to(prefs_path)
+        jinn_preferences_config::create_default_preferences_to(prefs_path)
             .change_context(InstallError)
             .attach("failed to create jinn.toml with the default template")?;
         JinnTomlOutcome::Created(prefs_path.to_path_buf())

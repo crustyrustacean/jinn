@@ -1,22 +1,21 @@
-//! `jinn.toml` default-config bootstrap.
+//! `jinn.toml` bootstrap: where it lives, and the template it is seeded from.
 //!
-//! `jinn.toml` has no aggregate schema struct. Each section is declared
-//! by its owning slice through a `Configurable` impl and read through
-//! the configuration layer. What lives here is the comment-rich template
-//! a fresh install is seeded from, and the helpers that write it.
+//! `jinn.toml` has no aggregate schema struct. Each section is declared by
+//! its owning slice through a `Configurable` impl and read through the
+//! configuration layer (`jinn_config::ConfigLayer`). This module owns the
+//! two things a section cannot provide: the canonical on-disk path, and
+//! the comment-rich template a fresh install is seeded from.
 //!
-//! The file lives at
-//! `~/.config/jinn/jinn.toml` and is auto-created on first run from
-//! [`DEFAULT_CONFIG`] (a comment-rich template embedded at compile time).
+//! The template is documentation, not authority — it is not consulted at
+//! read time. It is written as *bytes*, never serialized from a struct,
+//! because serializing would strip every comment it ships with.
 
 use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt as _};
 use jinn_common::app_info::{APP_NAME, PREFS_FILE_NAME};
-use serde::{Deserialize, Serialize};
 use wherror::Error;
 
-// ── Embedded config schemas ─────────────────────────────────────────────
 // The section types live in `crate::schemas` (co-located by feature
 // domain) and are re-exported so a consumer has one import home for
 // `jinn.toml` shapes.
@@ -28,23 +27,10 @@ pub use crate::schemas::{
 /// Canonical default `jinn.toml` embedded at compile time.
 ///
 /// Used both to auto-create the file on first run and to back the
-/// `jinn config init` subcommand. The template is independent of the
-/// struct's default values; `template_validation_tests` guarantees it
-/// parses, documents every config key, and activates into a valid
-/// config.
+/// `jinn config init` subcommand.
 pub const DEFAULT_CONFIG: &str = include_str!("default_jinn.toml");
-/// Default execution timeout (seconds) for all tool calls.
-///
-/// The model can override per-call via the reserved `max_duration_secs` argument
-/// (supported by `bash`); a value of `0` disables the timeout for that call.
-pub(crate) const DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS: u64 = 300;
 
-/// The built-in tool timeout a fresh install starts with.
-pub fn default_tool_default_timeout_secs() -> u64 {
-    DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS
-}
-
-/// Errors that can occur during user preferences I/O.
+/// Errors that can occur while seeding `jinn.toml` on disk.
 #[derive(Debug, Error)]
 pub enum UserPreferencesError {
     /// Filesystem I/O failure.
@@ -55,55 +41,7 @@ pub enum UserPreferencesError {
     Parse,
 }
 
-/// OpenRouter web search server tool configuration.
-///
-/// Serialized as `[openrouter_web_search]` in `jinn.toml`.
-/// Controls parameters sent to the `openrouter:web_search` server tool.
-/// All fields are optional - when `None`, the parameter is omitted from
-/// the request and OpenRouter uses its default.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OpenrouterWebSearchConfig {
-    /// Search engine: "auto", "native", "exa", "firecrawl", or "parallel".
-    /// Default: "exa".
-    #[serde(default)]
-    pub engine: Option<String>,
-
-    /// Maximum results per search call (1–25). `None` = OpenRouter default (5).
-    #[serde(default)]
-    pub max_results: Option<u32>,
-
-    /// Maximum total results across all searches in one request.
-    #[serde(default)]
-    pub max_total_results: Option<u32>,
-
-    /// How much context to retrieve: "low", "medium", or "high".
-    /// `None` = OpenRouter picks adaptively.
-    #[serde(default)]
-    pub search_context_size: Option<String>,
-
-    /// Only return results from these domains.
-    #[serde(default)]
-    pub allowed_domains: Option<Vec<String>>,
-
-    /// Exclude results from these domains.
-    #[serde(default)]
-    pub excluded_domains: Option<Vec<String>>,
-}
-
-impl Default for OpenrouterWebSearchConfig {
-    fn default() -> Self {
-        Self {
-            engine: Some("exa".to_owned()),
-            max_results: None,
-            max_total_results: None,
-            search_context_size: None,
-            allowed_domains: None,
-            excluded_domains: None,
-        }
-    }
-}
-
-/// Returns the path to the user preferences file.
+/// Returns the path to the user's `jinn.toml`.
 ///
 /// Uses `dirs::config_dir()` → `~/.config/jinn/jinn.toml`.
 #[must_use]
@@ -114,17 +52,12 @@ pub fn preferences_path() -> PathBuf {
         .join(PREFS_FILE_NAME)
 }
 
-/// Writes the canonical default preferences template to `path`.
-///
-/// Creates parent directories as needed.
-///
-/// Writes the template as bytes. It deliberately does not round-trip
-/// through [`UserPreferences`]: the template is documentation, and
-/// serializing a struct would strip every comment it ships with.
+/// Writes the canonical default template to `path`, creating parents.
 ///
 /// # Errors
 ///
-/// Returns [`UserPreferencesError::Io`] if directory creation or file writing fails.
+/// Returns [`UserPreferencesError::Io`] if directory creation or file
+/// writing fails.
 pub fn create_default_preferences_to<P>(path: P) -> Result<(), Report<UserPreferencesError>>
 where
     P: AsRef<Path>,

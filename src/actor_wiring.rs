@@ -628,7 +628,7 @@ async fn jinn_preferences_activate(
     // The two persistence actors spawn here with shared state and services,
     // then subscribe synchronously — this must complete before the env-init
     // tail publishes `EnvironmentLoaded`, which triggers publishes of
-    // `UpdateAppState`/`UpdatePreferences` on first boot.
+    // `UpdateAppState` on first boot.
     let system = services.trouper_system.clone();
     let services_handle = services.clone();
     let mut host = jinn_slices::SliceHost::new(

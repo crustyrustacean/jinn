@@ -183,7 +183,7 @@ pub fn handle_session_close(state: &mut AppState) -> IntentResult {
 /// Resolve and render the teardown command for a session by ID.
 ///
 /// Reads the session's `lifecycle_name` + `lifecycle_args`, looks up the named
-/// lifecycle in `frontend.preferences`, takes its `teardown` command, and renders
+/// lifecycle in the configuration layer, takes its `teardown` command, and renders
 /// it (replaying the stored args). Returns `None` when the session doesn't exist,
 /// has no lifecycle name, or the named lifecycle has no teardown command.
 ///

@@ -74,9 +74,6 @@ pub struct PendingSessionCreation {
 /// anti-pattern.
 #[derive(Debug)]
 pub struct FrontendState {
-    /// Updated by `PreferencesActor` inline after persisting to `jinn.toml` (authoritative),
-    /// and by the `IntentHandler` for immediate UI feedback (exempt).
-
     /// Cached copy of app state from `state.toml`.
     /// Updated by `AppStateActor` inline after persisting to `state.toml` (authoritative),
     /// and by the `IntentHandler` for immediate UI feedback (exempt).

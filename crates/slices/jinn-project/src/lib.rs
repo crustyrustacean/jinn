@@ -2,9 +2,9 @@
 //!
 //! Owns the project-add popup's state, dynamic scope, route rows, input hook,
 //! and overlay rendering. Confirming a valid path updates the open project
-//! picker optimistically and hands persistence to the preferences slice through
-//! `UpdatePreferences::AddProject`. Also owns the resolver seam that decides
-//! which past sessions belong to a project.
+//! picker optimistically and persists through the configuration layer. Also
+//! owns the resolver seam that decides which past sessions belong to a
+//! project.
 
 mod project_add;
 pub mod scope_resolver;

@@ -1,8 +1,9 @@
 //! [`McpServersSection`] — the MCP servers sidebar section.
 //!
 //! Implements [`SidebarSection`] for displaying the active session's MCP
-//! servers. Reads the global catalog from `frontend.preferences.mcp_server`
-//! and shows only the servers enabled for the active session, overlaying their
+//! servers. Reads the global catalog from the configuration layer's
+//! `[mcp]` section and shows only the servers enabled for the active
+//! session, overlaying their
 //! live connection status. Disabled servers are omitted entirely — they appear
 //! only once enabled. Each enabled server renders one row with a visual
 //! treatment matching its status:

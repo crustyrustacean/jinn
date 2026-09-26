@@ -4,10 +4,10 @@
 //! the active session's cwd and pushes the popup's dynamic scope; confirm
 //! resolves the typed path with the shared resolver, writes the optimistic
 //! `projects` append into the app state through
-//! [`jinn_slices::SliceActionState::as_any_mut`], and emits
-//! `UpdatePreferences { AddProject }` so the actor persists and broadcasts;
-//! leave discards. Editing lands in the cell through a route-table input
-//! hook — the same pattern as the cwd popup.
+//! [`jinn_slices::SliceActionState::as_any_mut`], and persists through the
+//! configuration layer's `put_list`; leave discards. Editing lands in the
+//! cell through a route-table input hook — the same pattern as the cwd
+//! popup.
 
 use jinn_cwd_msg::{CwdResolution, resolve_cwd_input};
 use jinn_preferences_config::schemas::ProjectConfig;

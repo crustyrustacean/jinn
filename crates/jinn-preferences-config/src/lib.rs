@@ -16,7 +16,7 @@ mod template_validation_tests;
 
 pub mod app_state_file;
 pub mod app_state_storage;
-pub mod user_preferences;
+pub mod config_template;
 
 pub mod protocol;
 pub mod schemas;
@@ -25,10 +25,9 @@ pub use app_state_file::{AppStateFile, AppStateFileError, load_app_state_from, s
 pub use app_state_storage::{
     AppStateStorage, AppStateStorageService, FilesystemAppStateStorage, InMemoryAppStateStorage,
 };
-pub use user_preferences::{
-    DEFAULT_CONFIG, InitDefaultConfigError, InitOutcome, OpenrouterWebSearchConfig,
-    UserPreferencesError, default_tool_default_timeout_secs, init_default_config_to,
-    preferences_path,
+pub use config_template::{
+    DEFAULT_CONFIG, InitDefaultConfigError, InitOutcome, UserPreferencesError,
+    create_default_preferences_to, init_default_config_to, preferences_path,
 };
 // The `todo` + `anchored_assistant` auto-prune child configs are schema
 // types re-exported so the kernel's workers and every consumer keep one

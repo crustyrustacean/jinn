@@ -11,9 +11,10 @@
 //! is the truth, and forcing every optional key into the template would
 //! bury the few that matter.
 //!
-//! The old aggregate-struct round-trip checks are gone with
-//! `UserPreferences`: a section is exercised by the layer's own tests, and
-//! a partial section is *not* required to parse into a full struct.
+//! The old aggregate-struct round-trip checks are gone with the deleted
+//! `UserPreferences` struct: a section is exercised by the layer's own
+//! tests, and a partial section is *not* required to parse into a full
+//! struct.
 
 #![allow(
     clippy::expect_used,
@@ -192,7 +193,7 @@ fn template_uses_no_pre_umbrella_spelling() {
 /// The shipped template loads into a real layer and every section reads
 /// cleanly.
 ///
-/// This is the guarantee the old "template parses as UserPreferences"
+/// This is the guarantee the old "template parses as the aggregate"
 /// test used to give. It is strictly stronger now: it exercises the real
 /// read path (walk the key, merge over the section's Default) for every
 /// registered section, rather than one aggregate struct's top-level keys.
