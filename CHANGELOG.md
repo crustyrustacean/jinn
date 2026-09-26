@@ -34,6 +34,8 @@
 - Overall performance improvement on Markdown rendering.
   - Chat log, session previews, and skill picker rendering is faster and uses significantly less memory.
   - There is no longer UI stuttering on gigantic sessions.
+- The sidebar is now presented as one large scrollable area that keeps the cursor bounded.
+  - Removed the scrolling capability of the sessions since now the entire sidebar scrolls.
 - Add new `global_command_policy` TOML config to block commands across all projects. Recommend adding the below to your `jinn.toml` (it ships by default with a fresh config):
 
 ```toml
