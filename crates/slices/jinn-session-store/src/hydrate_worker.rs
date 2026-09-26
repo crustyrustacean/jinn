@@ -138,14 +138,31 @@ impl HydrateWorkerActor {
 
 impl MsgHandler<HydrateSession> for HydrateWorkerActor {
     async fn handle(&mut self, msg: &HydrateSession, ctx: &mut MsgCtx<'_>) {
+        let read_start = std::time::Instant::now();
         let snapshot = self.read_session(&msg.session_id, msg.frozen).await;
+        let read_done = std::time::Instant::now();
+
         // Published on every path. The store actor counts completions to decide
         // when hydration has finished, so a return without publishing here
         // would strand that count and the hydration indicator with it.
-        ctx.publish(HydrateCompleted {
+        let completion = HydrateCompleted {
             session_id: msg.session_id.clone(),
             frozen: msg.frozen,
             snapshot,
-        });
+        };
+        let entries = completion
+            .snapshot
+            .as_ref()
+            .map_or(0, |s| s.history().len());
+        ctx.publish(completion);
+        let published = std::time::Instant::now();
+
+        tracing::warn!(
+            session_id = %msg.session_id,
+            entries,
+            read_ms = read_done.duration_since(read_start).as_millis(),
+            publish_ms = published.duration_since(read_done).as_millis(),
+            "hydration probe: worker-side"
+        );
     }
 }
