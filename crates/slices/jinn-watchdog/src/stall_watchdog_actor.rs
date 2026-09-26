@@ -3,12 +3,27 @@
 //! Verbatim trouper port of the dormant `stall-watchdog` plugin's state
 //! machine (`plugins/stall-watchdog/src/watchdog.rs`): one timer per
 //! session, armed by [`SendToLlmProvider`] and reset by every
-//! [`StreamToken`]. When the actor's own [`StallTick`] reveals a session
+//! [`StreamActivity`]. When the actor's own [`StallTick`] reveals a session
 //! has been silent past the configured timeout, the watchdog pushes the
 //! visible retry marker ([`PushChatEntry`]) and re-dispatches the turn
 //! ([`RetryStalledSession`]) — up to `max_restarts` consecutive times.
 //! Beyond the budget it gives up instead: a surrender entry followed by
 //! [`CancelStream`].
+//!
+//! **Liveness is one contract, not a list.** The inference actor publishes
+//! [`StreamActivity`] on *every* non-terminal provider event — text,
+//! reasoning, tool-call construction, citations — and this actor subscribes
+//! to that alone. An earlier port watched only [`StreamToken`], which made a
+//! tool call being constructed (arguments streaming in for minutes, no text
+//! at all) indistinguishable from a dead stream: the watchdog read minutes
+//! of real progress as silence, tripped, and discarded the partial turn.
+//! Owning the definition in the producer means a new provider event is
+//! covered by construction rather than by remembering to add a
+//! subscription.
+//!
+//! Supervision covers stream *construction*, never tool *execution*: the
+//! stream ends in `ToolUse` before the tools run, and the watchdog disarms
+//! there. A `bash` or a subagent may take as long as it needs.
 //!
 //! Budget semantics (unchanged from the plugin): a stream ending in
 //! `Finished` clears the session entirely (genuine completion — fresh
@@ -23,17 +38,26 @@
 //! `SearchIndexActor` heartbeat pattern). It cannot live inside the
 //! session actor: that actor's mailbox is the single sink for token
 //! bursts, so an in-actor timer would queue behind the very activity it
-//! is measuring. Token deliveries only touch recency here, so this
+//! is measuring. Liveness deliveries only touch recency here, so this
 //! actor's own mailbox runs `DropNew` — backpressuring the inference
 //! actor over *this* actor's slack would be the one failure mode a
-//! watchdog must never cause; the newest token is the only fact that
-//! matters and older ones carry no information.
+//! watchdog must never cause; the newest delivery is the only fact that
+//! matters and older ones carry no information. A dropped delivery merely
+//! delays a trip by one more activity, never causes a false one, which is
+//! why this is a documented property rather than a tested invariant.
+//!
+//! Elapsed time is measured from a monotonic [`std::time::Instant`]
+//! captured at spawn, never against the wall clock: an NTP step or a
+//! machine suspend would otherwise move the silence window in a direction
+//! the watchdog cannot compensate for. The pure `on_*` seam takes the
+//! timestamp as a parameter, so tests drive the state machine directly.
 //!
 //! Kernel dependency (see Cargo.toml): publishes through `Services`'
 //! bus, granted at slice activation.
 
 use std::collections::HashMap;
 use std::time::Duration;
+use std::time::Instant;
 
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -44,9 +68,9 @@ use jinn_core_types::SessionId;
 use jinn_domain::Services;
 use jinn_inference_msg::CancelStream;
 use jinn_inference_msg::SendToLlmProvider;
+use jinn_inference_msg::StreamActivity;
 use jinn_inference_msg::StreamCompleted;
 use jinn_inference_msg::StreamCompletedReason;
-use jinn_inference_msg::StreamToken;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_msg::RetryStalledSession;
 
@@ -62,8 +86,8 @@ pub const STALL_WATCHDOG_PATH: &str = "stall-watchdog";
 struct SessionStall {
     /// Whether an LLM stream is believed to be in flight.
     armed: bool,
-    /// Monotonic-ish wall-clock timestamp of the last stream activity
-    /// (or arm time), in milliseconds.
+    /// Elapsed-time timestamp of the last stream activity (or arm time),
+    /// in milliseconds since spawn, from the monotonic clock.
     last_event_ms: u64,
     /// Consecutive stall restarts since the last observed stream output.
     restarts: u32,
@@ -83,13 +107,6 @@ pub struct StallWatchdogActorDeps {
     pub tick_interval: Duration,
 }
 
-/// Milliseconds since the Unix epoch, from the system clock.
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as u64)
-}
-
 /// The stall watchdog actor.
 ///
 /// Event-driven: one timer per session, self-tick driven.
@@ -99,6 +116,10 @@ pub struct StallWatchdogActor {
     /// self-address. (The services container may carry a different system
     /// in tests, where the harness spawns on its own.)
     system: ActorSystem,
+    /// Monotonic base for [`Self::now_ms`], captured at spawn. Measuring
+    /// elapsed time against a wall clock would mis-fire on an NTP step or a
+    /// machine suspend; `Instant` counts real elapsed time through both.
+    started_at: Instant,
     timeout_ms: u64,
     max_restarts: u32,
     tick_interval: Duration,
@@ -124,6 +145,17 @@ impl ServiceActor for StallWatchdogActor {
 }
 
 impl StallWatchdogActor {
+    /// Milliseconds elapsed since spawn, from the monotonic system clock.
+    ///
+    /// Elapsed time measured against the wall clock would mis-fire in both
+    /// directions: an NTP step forward reads as a stall, a step backward (or
+    /// a machine suspend, on some clocks) reads as silence that never expires.
+    /// `Instant` counts real elapsed time through both, and only differences
+    /// are ever compared.
+    fn now_ms(&self) -> u64 {
+        self.started_at.elapsed().as_millis() as u64
+    }
+
     /// Spawns the actor at its static trouper path and returns the path.
     ///
     /// Subscriptions: the three stream contracts plus the self-addressed
@@ -152,6 +184,7 @@ impl StallWatchdogActor {
                         Ok(Self {
                             services: deps.services,
                             system,
+                            started_at: Instant::now(),
                             timeout_ms: deps.timeout_ms,
                             max_restarts: deps.max_restarts,
                             tick_interval: deps.tick_interval,
@@ -161,7 +194,7 @@ impl StallWatchdogActor {
                 }
             })
             .handles::<SendToLlmProvider>()
-            .handles::<StreamToken>()
+            .handles::<StreamActivity>()
             .handles::<StreamCompleted>()
             .handles::<StallTick>()
             .mailbox(64, trouper::inbox::OverloadPolicy::DropNew)
@@ -239,7 +272,7 @@ pub struct StallTick;
 
 impl MsgHandler<StallTick> for StallWatchdogActor {
     async fn handle(&mut self, _msg: &StallTick, _ctx: &mut MsgCtx<'_>) {
-        let actions = self.on_tick(now_ms());
+        let actions = self.on_tick(self.now_ms());
         self.publish_actions(actions).await;
         self.reschedule();
     }
@@ -247,13 +280,13 @@ impl MsgHandler<StallTick> for StallWatchdogActor {
 
 impl MsgHandler<SendToLlmProvider> for StallWatchdogActor {
     async fn handle(&mut self, msg: &SendToLlmProvider, _ctx: &mut MsgCtx<'_>) {
-        self.on_stream_start(&msg.session_id, now_ms());
+        self.on_stream_start(&msg.session_id, self.now_ms());
     }
 }
 
-impl MsgHandler<StreamToken> for StallWatchdogActor {
-    async fn handle(&mut self, msg: &StreamToken, _ctx: &mut MsgCtx<'_>) {
-        self.on_stream_event(&msg.session_id, now_ms());
+impl MsgHandler<StreamActivity> for StallWatchdogActor {
+    async fn handle(&mut self, msg: &StreamActivity, _ctx: &mut MsgCtx<'_>) {
+        self.on_stream_event(&msg.session_id, self.now_ms());
     }
 }
 
@@ -280,8 +313,10 @@ impl StallWatchdogActor {
     /// Records stream output — the timer resets, and a recovered stall
     /// clears the restart budget.
     ///
-    /// Tokens for sessions with no timer are harmless (the session may
-    /// have been disarmed between publication and this event arriving).
+    /// Reached from [`StreamActivity`], so *any* non-terminal provider event
+    /// counts, not only text. Activity for a session with no timer is
+    /// harmless (the session may have been disarmed between publication and
+    /// this delivery arriving).
     pub fn on_stream_event(&mut self, session_id: &SessionId, now_ms: u64) {
         if let Some(stall) = self.sessions.get_mut(session_id) {
             stall.last_event_ms = now_ms;
@@ -393,6 +428,7 @@ mod tests {
         StallWatchdogActor {
             services,
             system,
+            started_at: Instant::now(),
             timeout_ms: timeout_secs * 1_000,
             max_restarts,
             tick_interval: STALL_TICK_INTERVAL,
