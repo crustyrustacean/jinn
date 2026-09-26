@@ -76,7 +76,6 @@ pub fn bind_picker_spec_rows(
 /// scope-level mapping (a jinn-tui concern).
 fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
     match id.as_str() {
-        "persona" => Some(Scope::PickerPersona),
         "theme" => Some(Scope::PickerTheme),
         "tool" => Some(Scope::PickerTool),
         "mcp-server" => Some(Scope::PickerMcpServer),
@@ -135,7 +134,6 @@ fn scopes_for_row<'a>(
                 Scope::Input,
                 Scope::PickerProvider,
                 Scope::PickerSession,
-                Scope::PickerPersona,
                 Scope::PickerTheme,
                 Scope::PickerLifecycle,
                 Scope::PickerReasoningEffort,
@@ -837,7 +835,6 @@ mod tests {
     #[case("Input")]
     #[case("Picker(provider)")]
     #[case("Picker(session)")]
-    #[case("Picker(persona)")]
     #[case("Picker(theme)")]
     #[case("Picker(lifecycle)")]
     #[case("Picker(reasoning-effort)")]

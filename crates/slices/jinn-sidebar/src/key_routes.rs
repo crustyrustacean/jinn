@@ -207,12 +207,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "c",
         "general",
         "change persona",
-        sync(|state| {
-            let pickers = jinn_picker_specs::single_spec_registry(
-                jinn_picker_specs::persona_spec::persona_spec(),
-            );
-            pins::handle_sidebar_persona_edit(state, &pickers)
-        }),
+        sync(pins::handle_sidebar_persona_edit),
     ));
 
     // ---- Pins section ----

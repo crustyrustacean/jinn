@@ -7,6 +7,13 @@ description = "The persona slice: parses persona markdown into the personas cell
 [dependencies]
 jinn-persona-msg = { workspace = true }
 jinn-slices = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-preferences-config = { workspace = true }
+jinn-session-msg = { workspace = true }
+ratatui = { workspace = true }
 toml = { workspace = true, features = ["parse"] }
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
@@ -15,8 +22,8 @@ error-stack = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
+tokio = { workspace = true }
 tempfile = { workspace = true }
-jinn-domain = { workspace = true }
 
 [lints]
 workspace = true

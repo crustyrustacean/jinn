@@ -85,7 +85,6 @@ mod tests {
     #[rstest::rstest]
     #[case::provider(PickerKind::Provider)]
     #[case::session(PickerKind::Session)]
-    #[case::persona(PickerKind::Persona)]
     #[case::theme(PickerKind::Theme)]
     #[case::session_lifecycle(PickerKind::SessionLifecycle)]
     #[case::reasoning_effort(PickerKind::ReasoningEffort)]
@@ -194,51 +193,6 @@ mod tests {
         assert!(
             blank_specs.is_empty(),
             "specs that rendered nothing: {blank_specs:?}"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn persona_picker_draws_status_and_keybind_rows_via_spec() {
-        // Given a persona picker open, rendered through its spec.
-        let state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Persona,
-        });
-        let pickers = jinn_picker_specs::build_picker_registry();
-
-        // When rendering.
-        let area = Rect::new(0, 0, 100, 30);
-        let mut terminal =
-            Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let views = jinn_slices::OverlayViews::new();
-                let ctx =
-                    jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
-                super::render_picker(frame, area, &ctx);
-            })
-            .expect("draw");
-
-        // Then the popup draws the spec's two bottom rows: the "Active:"
-        // status line above the standard keybind line.
-        let popup = compute_popup_rect(area);
-        let inner_bottom = popup.y + popup.height.saturating_sub(2);
-        let buffer = terminal.backend().buffer();
-        let keybind_row: String = ((popup.x + 1)..(popup.x + popup.width - 1))
-            .map(|x| buffer[(x, inner_bottom)].symbol())
-            .collect();
-        let status_row: String = ((popup.x + 1)..(popup.x + popup.width - 1))
-            .map(|x| buffer[(x, inner_bottom - 1)].symbol())
-            .collect();
-        assert!(
-            keybind_row.contains("Enter confirm"),
-            "bottom row must be the keybind line; got {keybind_row:?}"
-        );
-        assert!(
-            status_row.contains("Active:"),
-            "row above must be the status line; got {status_row:?}"
         );
     }
 
@@ -387,57 +341,6 @@ mod tests {
         assert!(
             rendered.contains('\u{2588}') && rendered.contains("gruvbox"),
             "theme picker must draw its swatch + name rows; got {rendered:?}"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn persona_picker_draws_entry_rows_via_the_spec_row_hook() {
-        // Given an open persona picker whose storage holds wrapped entries
-        // (the same shape the session actor's loader produces).
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Persona,
-        });
-        let pickers = jinn_picker_specs::build_picker_registry();
-        let wrapped = pickers
-            .make_items(
-                jinn_picker::PERSONA_ID,
-                vec![jinn_persona_msg::PersonaEntry {
-                    name: "coder".to_owned(),
-                    description: "code helper".to_owned(),
-                    is_active: false,
-                    theme: state.frontend.theme.clone(),
-                }],
-            )
-            .expect("persona spec registered");
-        state.frontend.persona_picker_mut().set_items(wrapped);
-
-        // When rendering the picker.
-        let area = Rect::new(0, 0, 100, 30);
-        let mut terminal =
-            Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let views = jinn_slices::OverlayViews::new();
-                let ctx =
-                    jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
-                super::render_picker(frame, area, &ctx);
-            })
-            .expect("draw");
-
-        // Then the entry's name appears in the popup — rows are not blank.
-        let rendered: String = terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .map(ratatui::buffer::Cell::symbol)
-            .collect();
-        assert!(
-            rendered.contains("coder"),
-            "persona picker must draw its entry rows; got {rendered:?}"
         );
     }
 }

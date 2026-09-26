@@ -2,12 +2,12 @@
 //!
 //! Handles entry pinning (PinChatEntry/UnpinChatEntry), prompt template
 //! caching (PromptTemplatesLoaded), persona selection (PersonasLoaded), and
-//! persona picker population (LoadPersonaPickerEntries).
+//! persona catalog refresh.
 
 use jinn_core_types::DEFAULT_PERSONA_NAME;
 use jinn_domain::PromptTemplatesLoaded;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_persona_msg::{LoadPersonaPickerEntries, PersonaEntry, PersonasLoaded};
+use jinn_persona_msg::PersonasLoaded;
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 
@@ -148,44 +148,6 @@ impl SessionPersistenceActor {
             );
         });
     }
-
-    /// Loads persona picker entries into `AppState`.
-    pub(in crate::session_actor) fn handle_load_persona_picker_entries(
-        &self,
-        _payload: &LoadPersonaPickerEntries,
-    ) {
-        let state = self.state.read();
-        let selection = self
-            .services
-            .slices
-            .reader::<jinn_persona_msg::Personas>(&jinn_persona_msg::personas_slot())
-            .map(|cell| cell.read().clone());
-        drop(state);
-        let (_active_name, mut entries): (Option<String>, Vec<PersonaEntry>) = match selection {
-            Some(selection) => {
-                let active_name = selection.active.clone();
-                let theme = self.state.read().frontend.theme.clone();
-                let entries = selection
-                    .entries
-                    .iter()
-                    .map(|p| PersonaEntry {
-                        name: p.name.clone(),
-                        description: p.description.clone(),
-                        is_active: active_name.as_ref() == Some(&p.name),
-                        theme: theme.clone(),
-                    })
-                    .collect();
-                (active_name, entries)
-            }
-            None => (None, Vec::new()),
-        };
-
-        entries.sort_by_key(|e| e.name.to_lowercase());
-
-        self.state.with_persona_picker(|picker| {
-            picker.set_items(entries);
-        });
-    }
 }
 
 #[cfg(test)]
@@ -204,7 +166,6 @@ mod tests {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::services::BusAudit;
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_domain::protocol::{ChatEntryId, PinPosition};
     use jinn_persona_msg::Persona;
 
@@ -707,37 +668,5 @@ mod tests {
                 .with_sections(|s| s.pins.selected_id().cloned(), || None),
             Some(selected)
         );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn handle_load_persona_picker_entries_populates_picker() {
-        // Given a session actor with personas loaded.
-        let (actor, state, _audit) = create_actor().await;
-        actor
-            .services
-            .slices
-            .reader::<jinn_persona_msg::Personas>(&jinn_persona_msg::personas_slot())
-            .expect("personas cell seeded")
-            .update(|p| {
-                p.entries = vec![
-                    make_persona("coding-assistant"),
-                    make_persona("learning-tutor"),
-                ];
-                p.active = Some("learning-tutor".to_owned());
-            });
-
-        // When loading persona picker entries.
-        actor.handle_load_persona_picker_entries(&LoadPersonaPickerEntries);
-
-        // Then the picker has entries with correct active state.
-        let guard = state.read();
-        let items = guard.frontend.persona_picker().items();
-        assert_eq!(items.len(), 2, "expected 2 persona entries");
-        let active = items
-            .iter()
-            .find(|e| e.entry().is_active)
-            .expect("an active entry");
-        assert_eq!(active.entry().name, "learning-tutor");
     }
 }

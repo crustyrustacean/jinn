@@ -63,7 +63,6 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
             .selected_item()
             .is_some(),
         PickerKind::Session => state.frontend.session_picker().selected_item().is_some(),
-        PickerKind::Persona => state.frontend.persona_picker().selected_item().is_some(),
         PickerKind::Theme => state.frontend.theme_picker().selected_item().is_some(),
         PickerKind::SessionLifecycle => state
             .frontend

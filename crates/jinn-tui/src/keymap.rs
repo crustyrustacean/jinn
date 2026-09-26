@@ -105,7 +105,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .describe_group_with_category("<leader>s", "search", KeyCategory::General)
             .bind("<leader>sm", KernelIntent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
             .bind("<leader>ss", KernelIntent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
-            .bind("<leader>se", KernelIntent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
             .bind("<leader>st", KernelIntent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
             .bind("<leader>sM", KernelIntent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
             .bind("<leader>sh", KernelIntent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
@@ -245,9 +244,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
         .scope(Scope::PickerSession, |b| {
             add_picker_base(b);
         })
-        .scope(Scope::PickerPersona, |b| {
-            add_picker_base(b);
-        })
         .scope(Scope::PickerTheme, |b| {
             add_picker_base(b);
         })
@@ -311,7 +307,6 @@ mod tests {
         #[values(
             PickerKind::Provider,
             PickerKind::Session,
-            PickerKind::Persona,
             PickerKind::Theme,
             PickerKind::SessionLifecycle,
             PickerKind::ReasoningEffort,
@@ -579,45 +574,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn leader_se_resolves_to_persona_picker() {
-        // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-        let path = [
-            KeyEvent {
-                key: Key::Char(' '),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('s'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('e'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-
-        // When navigating the <leader>se sequence.
-        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
-
-        // Then it resolves to OpenPicker{Persona} (rebound from <leader>sp).
-        match result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(
-                    action,
-                    KernelIntent::OpenPicker {
-                        kind: PickerKind::Persona
-                    }
-                ),
-                "<leader>se must resolve to OpenPicker{{Persona}}; got {action:?}",
-            ),
-            other => panic!("<leader>se must be a leaf, got branch: {other:?}"),
-        }
-    }
-
-    #[rstest::rstest]
     fn bracket_c_chord_resolves_to_jump_compaction_intents() {
         // Given the default keymap.
         use jinn_domain::{Key, KeyEvent, Modifiers};
@@ -858,7 +814,7 @@ mod leak_check {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerPersona);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTheme);
 
         // When pressing PageUp.
         let pgup = KeyEvent {
@@ -872,7 +828,7 @@ mod leak_check {
         let intent = wk.handle_key(pgup);
 
         // Then it resolves to PickerPageUp.
-        let intent = intent.expect("PageUp in PickerPersona must fire an intent");
+        let intent = intent.expect("PageUp in PickerTheme must fire an intent");
         assert!(
             matches!(intent, jinn_domain::KernelIntent::PickerPageUp),
             "PageUp must resolve to PickerPageUp; got {intent:?}",
@@ -887,7 +843,7 @@ mod leak_check {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerPersona);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTheme);
 
         // When pressing PageDown.
         let pgdn = KeyEvent {
@@ -901,7 +857,7 @@ mod leak_check {
         let intent = wk.handle_key(pgdn);
 
         // Then it resolves to PickerPageDown.
-        let intent = intent.expect("PageDown in PickerPersona must fire an intent");
+        let intent = intent.expect("PageDown in PickerTheme must fire an intent");
         assert!(
             matches!(intent, jinn_domain::KernelIntent::PickerPageDown),
             "PageDown must resolve to PickerPageDown; got {intent:?}",

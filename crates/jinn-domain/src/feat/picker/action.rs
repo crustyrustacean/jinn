@@ -171,27 +171,27 @@ mod tests {
     )]
     use super::*;
     use crate::protocol::ChatEntryKind;
-    use jinn_picker::PERSONA_ID;
+    use jinn_picker::THEME_ID;
     use jinn_slices::FocusScope;
     use jinn_slices::ScopeSignal;
     use jinn_slices::SliceScopeId;
 
-    fn state_with_persona_picker() -> AppState {
+    fn state_with_theme_picker() -> AppState {
         let state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker {
-            kind: crate::PickerKind::Persona,
+            kind: crate::PickerKind::Theme,
         });
         state
     }
 
-    /// A test spec under the persona id with one `<tab>` bind that pushes a
+    /// A test spec under the theme id with one `<tab>` bind that pushes a
     /// transient entry, and one `<esc>` bind that closes the picker.
     ///
     /// Built here rather than imported from `jinn_picker_specs`: these tests
     /// exercise dispatch, and the kernel cannot depend on the specs crate.
-    fn registry_with_test_persona_spec() -> jinn_picker::PickerRegistry {
+    fn registry_with_test_theme_spec() -> jinn_picker::PickerRegistry {
         let spec = jinn_picker::PickerSpec::<super::super::test_registry::Entry>::new(
-            jinn_picker::PickerId::new(PERSONA_ID),
+            jinn_picker::PickerId::new(THEME_ID),
         )
         .bind("<tab>", "test", |ctx: &mut ActionCtx<'_>| {
             let state = ctx
@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn picker_action_unknown_id_is_a_no_op() {
         // Given an open persona picker and the domain registry.
-        let mut state = state_with_persona_picker();
+        let mut state = state_with_theme_picker();
         let registry = crate::feat::picker::test_registry::test_registry();
 
         // When running an action naming a picker id that doesn't exist.
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn picker_action_with_wrong_active_picker_is_ignored() {
         // Given an open persona picker.
-        let mut state = state_with_persona_picker();
+        let mut state = state_with_theme_picker();
         let registry = crate::feat::picker::test_registry::test_registry();
 
         // When running an action addressed to a different picker.
@@ -245,11 +245,11 @@ mod tests {
     fn picker_action_resolves_the_row_and_runs_it() {
         // Given an open persona picker whose test spec declares a `<tab>` row
         // that pushes a transient entry.
-        let mut state = state_with_persona_picker();
-        let registry = registry_with_test_persona_spec();
+        let mut state = state_with_theme_picker();
+        let registry = registry_with_test_theme_spec();
 
         // When running the `<tab>` action.
-        let _ = run_action(&mut state, &registry, PERSONA_ID, "<tab>");
+        let _ = run_action(&mut state, &registry, THEME_ID, "<tab>");
 
         // Then the action ran (transient entry pushed).
         let history = state.active_session().history();
@@ -266,11 +266,11 @@ mod tests {
     #[test]
     fn picker_action_close_outcome_pops_the_scope() {
         // Given an open persona picker.
-        let mut state = state_with_persona_picker();
-        let registry = registry_with_test_persona_spec();
+        let mut state = state_with_theme_picker();
+        let registry = registry_with_test_theme_spec();
 
         // When running an action whose outcome closes the picker.
-        let _ = run_action(&mut state, &registry, PERSONA_ID, "<esc>");
+        let _ = run_action(&mut state, &registry, THEME_ID, "<esc>");
 
         // Then the picker scope is popped.
         assert!(
@@ -283,7 +283,7 @@ mod tests {
     #[test]
     fn picker_close_is_applied_before_destination_push() {
         // Given an open picker and a destination scope.
-        let mut state = state_with_persona_picker();
+        let mut state = state_with_theme_picker();
         let destination = SliceScopeId::new("picker-test", "destination");
 
         // When folding an outcome that closes the picker and pushes the destination.

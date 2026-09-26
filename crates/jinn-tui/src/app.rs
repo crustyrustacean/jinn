@@ -311,7 +311,6 @@ pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
             // shares the provider scope so the match stays total.
             PickerKind::Provider | PickerKind::CompactionModel => Scope::PickerProvider,
             PickerKind::Session => Scope::PickerSession,
-            PickerKind::Persona => Scope::PickerPersona,
             PickerKind::Theme => Scope::PickerTheme,
             PickerKind::SessionLifecycle => Scope::PickerLifecycle,
             PickerKind::ReasoningEffort => Scope::PickerReasoningEffort,

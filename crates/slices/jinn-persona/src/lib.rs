@@ -13,6 +13,14 @@ use jinn_persona_msg::Persona;
 use jinn_slices::SliceHost;
 
 pub mod parse;
+mod persona_picker_actions;
+pub mod persona_picker_render;
+mod persona_picker_routes;
+#[cfg(test)]
+mod persona_picker_tests;
+mod persona_picker_viewport;
+pub use jinn_persona_msg::persona_picker_scope;
+pub use persona_picker_routes::open_from_scope as open_persona_picker_from_scope;
 
 pub use jinn_persona_msg::Personas;
 pub use jinn_persona_msg::personas_slot;
@@ -50,6 +58,45 @@ pub fn activate(
         .register_cell(personas_slot(), scanned.clone())
         .expect("personas slot is registered exactly once at wiring");
     scanned
+}
+
+/// Registers the persona picker: its cell, its overlay, its keys, and its
+/// filter hook.
+///
+/// Split from [`activate`] because the picker needs the same host but is not
+/// part of persona discovery. Called from composition right after `activate`.
+///
+/// # Panics
+///
+/// Panics if the picker slot is already registered — double activation is a
+/// wiring bug.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
+    let cell = host
+        .register_cell(
+            jinn_persona_msg::persona_picker_slot(),
+            jinn_persona_msg::PersonaPickerState::default(),
+        )
+        .expect("persona picker slot is registered exactly once at wiring");
+
+    let scope = persona_picker_scope();
+    host.register_overlay(
+        scope.clone(),
+        std::sync::Arc::new(persona_picker_render::persona_picker_overlay_rect),
+    );
+    host.register_overlay_selectable(&scope);
+    host.register_overlay_slot(scope.clone(), jinn_persona_msg::persona_picker_slot());
+    host.register_overlay_view(
+        scope,
+        std::sync::Arc::new(persona_picker_render::render_persona_picker),
+    );
+
+    // The picker's keys, and the filter's input hook, are this slice's own.
+    persona_picker_routes::attach_persona_picker_rows(host.key_routes(), &cell);
+    persona_picker_routes::register_persona_picker_input_hook(host.key_routes(), &cell);
 }
 
 /// Scans both directories into the name-sorted persona set.

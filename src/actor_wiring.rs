@@ -902,6 +902,9 @@ fn jinn_persona_activate(services: &mut Services) -> jinn_persona_msg::Personas 
         &services.trouper_system,
     );
     let scanned = jinn_persona::activate(&mut host, &services.paths.personas_dir());
+    // The persona picker is registered by the same slice, after discovery: its
+    // rows are seeded from the personas cell that activate just minted.
+    jinn_persona::activate_picker(&mut host);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("persona slice finalize failed: {error}");
     }

@@ -13,7 +13,7 @@ use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::app_state::pin_sort_key;
 use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_domain::protocol::ToolResultStatus;
-use jinn_domain::protocol::{ChatEntryId, ChatEntryKind, IntentResult, PickerKind, PinPosition};
+use jinn_domain::protocol::{ChatEntryId, ChatEntryKind, IntentResult, PinPosition};
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 use jinn_skills::loaded_skill_summary_label;
 use jinn_theme::Theme;
@@ -190,17 +190,16 @@ pub fn pins_section_content_height(state: &AppState) -> u16 {
 /// Handles the persona edit key - opens the persona picker when the persona section is focused.
 ///
 /// No-op if the pins section is focused.
-pub fn handle_sidebar_persona_edit(
-    state: &mut AppState,
-    pickers: &jinn_picker::PickerRegistry,
-) -> IntentResult {
+pub fn handle_sidebar_persona_edit(state: &mut AppState) -> IntentResult {
     if !matches!(
         state.frontend.sidebar_section(),
         Some(jinn_sidebar_msg::SidebarSectionId::Persona)
     ) {
         return IntentResult::empty();
     }
-    jinn_domain::feat::picker::intent::handle_open_picker(state, PickerKind::Persona, pickers)
+    // The persona picker is slice-owned: push its scope and let the render
+    // pass fill the rows. The sidebar names the picker only by its scope id.
+    jinn_persona::open_persona_picker_from_scope(state)
 }
 
 /// Handles `PinsUnpin`.

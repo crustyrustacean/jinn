@@ -15,7 +15,6 @@ use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::PickerKind;
 use jinn_picker::ENDPOINT_ID;
 use jinn_picker::MCP_SERVER_ID;
-use jinn_picker::PERSONA_ID;
 use jinn_picker::PROJECT_ID;
 use jinn_picker::PROVIDER_ID;
 use jinn_picker::REASONING_EFFORT_ID;
@@ -40,7 +39,6 @@ pub fn active_picker_ops(
     Some(match kind {
         PickerKind::Provider => &mut state.frontend.pickers.provider_picker,
         PickerKind::Session => state.frontend.session_picker_mut(),
-        PickerKind::Persona => state.frontend.persona_picker_mut(),
         PickerKind::Theme => state.frontend.theme_picker_mut(),
         PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker_mut(),
         PickerKind::ReasoningEffort => state.frontend.reasoning_effort_picker_mut(),
@@ -62,7 +60,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
     Some(match kind {
         PickerKind::Provider => &state.frontend.pickers.provider_picker,
         PickerKind::Session => state.frontend.session_picker(),
-        PickerKind::Persona => state.frontend.persona_picker(),
         PickerKind::Theme => state.frontend.theme_picker(),
         PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker(),
         PickerKind::ReasoningEffort => state.frontend.reasoning_effort_picker(),
@@ -87,7 +84,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
 #[must_use]
 pub fn selection_state_ref(state: &AppState, id: PickerId) -> Option<&dyn std::any::Any> {
     match id.as_str() {
-        PERSONA_ID => Some(state.frontend.persona_picker() as &dyn std::any::Any),
         THEME_ID => Some(state.frontend.theme_picker() as &dyn std::any::Any),
         TOOL_ID => Some(state.frontend.tool_picker() as &dyn std::any::Any),
         MCP_SERVER_ID => Some(state.frontend.mcp_server_picker() as &dyn std::any::Any),
@@ -121,7 +117,6 @@ impl<'a> AppStatePickerHost<'a> {
 impl PickerHost for AppStatePickerHost<'_> {
     fn selection_state(&mut self, id: PickerId) -> Option<&mut dyn std::any::Any> {
         match id.as_str() {
-            PERSONA_ID => Some(self.state.frontend.persona_picker_mut() as &mut dyn std::any::Any),
             THEME_ID => Some(self.state.frontend.theme_picker_mut() as &mut dyn std::any::Any),
             TOOL_ID => Some(self.state.frontend.tool_picker_mut() as &mut dyn std::any::Any),
             MCP_SERVER_ID => {
@@ -297,7 +292,6 @@ impl PickerHost for AppStateRenderHost<'_> {
         Some(match kind {
             PickerKind::Provider => &self.state.frontend.pickers.provider_picker,
             PickerKind::Session => self.state.frontend.session_picker(),
-            PickerKind::Persona => self.state.frontend.persona_picker(),
             PickerKind::Theme => self.state.frontend.theme_picker(),
             PickerKind::SessionLifecycle => self.state.frontend.session_lifecycle_picker(),
             PickerKind::ReasoningEffort => self.state.frontend.reasoning_effort_picker(),
@@ -320,14 +314,11 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use jinn_persona_msg::{PersonaEntry, persona_row};
-    use jinn_picker::PERSONA_ID;
+    use jinn_theme::ThemeEntry;
 
-    fn test_persona(name: &str) -> PersonaEntry {
-        PersonaEntry {
+    fn test_theme(name: &str) -> ThemeEntry {
+        ThemeEntry {
             name: name.to_owned(),
-            description: String::new(),
-            is_active: false,
             theme: jinn_theme::default_theme(),
         }
     }
@@ -338,20 +329,22 @@ mod tests {
         // Given a host state whose persona picker holds items.
         let mut state = AppState::default_with_scope_focus();
         let items = jinn_picker::make_items_with_hooks(
-            vec![test_persona("a")],
+            vec![test_theme("a")],
             jinn_picker::PickerItemHooks::new()
-                .row(persona_row)
-                .search(|entry| entry.name.clone()),
+                .row(|entry: &ThemeEntry, _ctx: &jinn_picker::RowCtx<'_>| {
+                    ratatui::text::Line::raw(entry.name.clone())
+                })
+                .search(|entry: &ThemeEntry| entry.name.clone()),
         );
-        state.frontend.persona_picker_mut().set_items(items);
+        state.frontend.theme_picker_mut().set_items(items);
 
         // When lending the selection state for the persona id.
         let mapped = {
             let mut host = AppStatePickerHost::new(&mut state);
-            host.selection_state(PickerId::new(PERSONA_ID))
-                .expect("persona is mapped")
+            host.selection_state(PickerId::new(THEME_ID))
+                .expect("theme is mapped")
                 .downcast_ref::<jinn_selection_widget::SelectionState<
-                    jinn_picker::PickerEntry<PersonaEntry>,
+                    jinn_picker::PickerEntry<ThemeEntry>,
                 >>()
                 .is_some()
         };
@@ -379,7 +372,6 @@ mod tests {
         // them keeps this guard a real compile-time-complete check of the
         // table above.
         let ids = [
-            jinn_picker::PERSONA_ID,
             jinn_picker::THEME_ID,
             jinn_picker::TOOL_ID,
             jinn_picker::MCP_SERVER_ID,
@@ -444,7 +436,7 @@ mod tests {
     fn preview_scrolls_are_stored_per_picker_id() {
         // Given a host state.
         let mut state = AppState::default_with_scope_focus();
-        let first = PickerId::new(PERSONA_ID);
+        let first = PickerId::new(THEME_ID);
         let other = PickerId::new("other");
 
         // When setting preview scrolls for one picker id and another id.

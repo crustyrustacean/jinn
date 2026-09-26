@@ -8,7 +8,6 @@
 use std::collections::HashSet;
 
 use jinn_mcp_msg::McpServerEntry;
-use jinn_persona_msg::PersonaEntry;
 use jinn_project_msg::ProjectEntry;
 use jinn_provider_selection_msg::ProviderPickerEntry;
 use jinn_provider_selection_msg::endpoint::EndpointEntry;
@@ -29,11 +28,6 @@ pub struct PickerStates {
     /// OWNER: IntentHandler (session picker navigation).
     pub session_picker:
         jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>,
-
-    /// Persona picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (persona picker navigation).
-    pub persona_picker:
-        jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<PersonaEntry>>,
 
     /// Theme picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (theme picker navigation).
@@ -123,15 +117,6 @@ pub trait PickerExt {
     fn session_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>;
-
-    /// Read-only access to the persona picker state.
-    fn persona_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<PersonaEntry>>;
-    /// Mutable access to the persona picker state.
-    fn persona_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<PersonaEntry>>;
 
     /// Read-only access to the theme picker state.
     fn theme_picker(
@@ -236,18 +221,6 @@ impl PickerExt for super::frontend_state::FrontendState {
     ) -> &mut jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>
     {
         &mut self.pickers.session_picker
-    }
-
-    fn persona_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<PersonaEntry>> {
-        &self.pickers.persona_picker
-    }
-
-    fn persona_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<PersonaEntry>> {
-        &mut self.pickers.persona_picker
     }
 
     fn theme_picker(

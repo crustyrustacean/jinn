@@ -825,7 +825,7 @@ mod tests {
         // Given Picker scope is active.
         let mut state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker {
-            kind: crate::protocol::PickerKind::Persona,
+            kind: crate::protocol::PickerKind::Theme,
         });
 
         // When handling PasteText.

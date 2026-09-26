@@ -10,8 +10,6 @@ pub enum PickerKind {
     Provider,
     /// Session browser picker.
     Session,
-    /// Persona picker.
-    Persona,
     /// Theme picker.
     Theme,
     /// Session lifecycle picker - select a lifecycle recipe for new session creation.
@@ -41,7 +39,6 @@ impl std::fmt::Display for PickerKind {
         match self {
             Self::Provider => write!(f, "models"),
             Self::Session => write!(f, "sessions"),
-            Self::Persona => write!(f, "personas"),
             Self::Theme => write!(f, "themes"),
 
             Self::SessionLifecycle => write!(f, "session-lifecycle"),
