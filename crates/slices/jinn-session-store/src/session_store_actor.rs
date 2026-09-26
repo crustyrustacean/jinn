@@ -75,6 +75,7 @@ impl SessionStoreActor {
     )]
     pub fn spawn(system: &ActorSystem, deps: SessionStoreActorDeps) -> ActorPath {
         let path = ActorPath::new(SESSION_STORE_PATH);
+        Self::spawn_hydration_pool(system, &deps.services);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
             .start_with({
@@ -109,6 +110,23 @@ impl SessionStoreActor {
             )
             .start();
         path
+    }
+
+    /// Spawns the hydration worker pool the startup path dispatches to.
+    ///
+    /// Spawned from here rather than by the caller so the pool exists wherever
+    /// the store actor does: a `send_to_any` with no worker to receive it would
+    /// drop every hydration job, and the sidebar would never finish filling in.
+    fn spawn_hydration_pool(system: &ActorSystem, services: &Services) {
+        for index in 0..crate::hydrate_worker::HYDRATE_WORKER_POOL_SIZE {
+            crate::hydrate_worker::HydrateWorkerActor::spawn(
+                system,
+                index,
+                crate::hydrate_worker::HydrateWorkerActorDeps {
+                    session_store: services.session_store.clone(),
+                },
+            );
+        }
     }
 }
 
