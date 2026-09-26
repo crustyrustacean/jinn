@@ -31,7 +31,6 @@ General / app:
 | `i`, `<c-j>` | Enter input mode (compose a message) |
 | `<esc>`      | Cancel selection / dismiss prompts   |
 | `n`          | New session                          |
-| `N`          | New session with a lifecycle recipe  |
 | `<Tab>`      | Cycle tabs (Dashboard ↔ Normal)      |
 
 Navigation:
@@ -172,7 +171,7 @@ to every section:
 | `X`       | Tear down the session **and its whole subtree** (press again to confirm) |
 | `c`       | Continue: switch to the session and re-run its setup command             |
 | `s`       | Re-run the session's setup command                                       |
-| `n` / `N` | New session / new with lifecycle recipe                                  |
+| `n`       | New session                                                          |
 | `T`       | Toggle the terminal overlay for the selected session                     |
 | `p`       | Prefix group for session actions (see the which-key popup)               |
 

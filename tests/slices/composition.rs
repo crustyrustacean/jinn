@@ -423,3 +423,26 @@ async fn sidebar_task_list_section_opens_the_task_list_picker() {
         other => panic!("the opener must push the picker scope, got {other:?}"),
     }
 }
+
+#[rstest::rstest]
+fn the_sessions_section_binds_no_dead_lifecycle_key() {
+    // Given the sidebar's real rows.
+    let routes = jinn_slices::route::KeyRoutes::new();
+    jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
+    let sessions = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
+
+    // When the rows bound in the sessions scope are listed.
+    let keys: Vec<&str> = routes
+        .rows()
+        .iter()
+        .filter(|row| row.scope == sessions)
+        .map(|row| row.key)
+        .collect();
+
+    // Then no row claims `N` — it used to be advertised as "new session
+    // (setup)" while its action did nothing.
+    assert!(
+        !keys.contains(&"N"),
+        "the sessions section must not bind a dead `N` row, got {keys:?}"
+    );
+}
