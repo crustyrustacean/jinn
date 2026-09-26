@@ -148,13 +148,26 @@ impl LayoutSupervisorActor {
     /// into the conversation: a measurement that could not be taken off-thread
     /// is not a conversation event.
     fn do_release_guard(&self, session_id: &jinn_core_types::SessionId, reason: &str) {
+        let released = self
+            .state
+            .with_session(|view| view.session.map().clear_load_for(session_id));
+        if !released {
+            // The guard belongs to a session that is no longer loading — the
+            // user switched away before this deadline or escalation landed.
+            // Releasing it anyway would strand that other session's spinner
+            // and make its next frame measure inline, so this is not an error.
+            tracing::debug!(
+                session_id = %session_id,
+                reason,
+                "layout release skipped; a different session holds the load guard"
+            );
+            return;
+        }
         tracing::warn!(
             session_id = %session_id,
             reason,
             "chat log layout abandoned; clearing the load guard"
         );
-        self.state
-            .with_session(|view| view.session.map().clear_load());
     }
 }
 

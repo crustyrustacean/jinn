@@ -218,7 +218,7 @@ impl SessionStoreActor {
                 session_id = %session_id,
                 "measure requested for a session that is not in memory"
             );
-            self.clear_load();
+            self.clear_load(&session_id);
             return;
         };
 
@@ -369,11 +369,11 @@ impl SessionStoreActor {
                     session_id = ?payload.session_id,
                     "session load returned None"
                 );
-                self.clear_load();
+                self.clear_load(&payload.session_id);
             }
             Err(error) => {
                 tracing::warn!(?error, "failed to load session");
-                self.clear_load();
+                self.clear_load(&payload.session_id);
             }
         }
     }
@@ -400,7 +400,9 @@ impl SessionStoreActor {
             Ok(id) => id,
             Err(error) => {
                 tracing::warn!(?error, "failed to fork session");
-                self.clear_load();
+                // The guard was armed for the session the user acted on, which
+                // is the fork's source — not the child that was never loaded.
+                self.clear_load(&payload.source_session_id);
                 return;
             }
         };
@@ -411,19 +413,24 @@ impl SessionStoreActor {
             }
             Ok(None) => {
                 tracing::warn!("forked session not found after creation");
-                self.clear_load();
+                self.clear_load(&new_id);
             }
             Err(error) => {
                 tracing::warn!(?error, "failed to load forked session");
-                self.clear_load();
+                self.clear_load(&new_id);
             }
         }
     }
 
-    /// Clears the global session loading guard.
-    fn clear_load(&self) {
+    /// Releases the loading session's guard, if that session still holds it.
+    ///
+    /// Addressed by id: the guard is one shared slot, and a failure or
+    /// timeout for a session the user has since left must not free the session
+    /// that is loading now — that would drop its spinner and send the next
+    /// frame back to measuring the whole history inline.
+    fn clear_load(&self, session_id: &SessionId) {
         self.state
-            .with_session(|view| view.session.map().clear_load());
+            .with_session(|view| view.session.map().clear_load_for(session_id));
     }
 
     /// Hydrates frozen nodes for the loaded session's whole tree.

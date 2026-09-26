@@ -133,9 +133,14 @@ impl LayoutCompletionActor {
         // outcome that belongs to the active session: the loading
         // indication must not outlive a measurement, even a discarded one,
         // or the user would sit in front of a spinner forever.
+        //
+        // Released by id: the guard is one shared slot, and a measurement that
+        // finishes after the user moved on must not free the session that is
+        // loading now.
         if matches!(outcome, Outcome::Current | Outcome::Stale) {
-            self.state
-                .with_session(|view| view.session.map().clear_load());
+            self.state.with_session(|view| {
+                view.session.map().clear_load_for(&computed.session_id);
+            });
         }
         match outcome {
             Outcome::Current => LayoutApplied::Applied,

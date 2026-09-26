@@ -409,6 +409,30 @@ impl SessionMap {
         self.session_load_guard = None;
     }
 
+    /// Clear the loading guard, but only if it belongs to `session_id`.
+    ///
+    /// The guard is a single slot shared by every session, so a release that
+    /// does not check which session it is releasing will free whichever
+    /// session happens to be loading now. A deadline armed for the session the
+    /// user just left is the common case: it fires while a *different*
+    /// session is loading, and releasing unconditionally drops that session's
+    /// guard mid-measurement, which drops the spinner and sends the frame
+    /// that follows back to measuring the whole history inline.
+    ///
+    /// Returns whether the guard was cleared.
+    pub fn clear_load_for(&mut self, session_id: &SessionId) -> bool {
+        if self
+            .session_load_guard
+            .as_ref()
+            .is_some_and(|g| &g.session_id == session_id)
+        {
+            self.session_load_guard = None;
+            true
+        } else {
+            false
+        }
+    }
+
     /// The loading guard, if active.
     pub fn session_load_guard(&self) -> Option<&SessionLoadGuard> {
         self.session_load_guard.as_ref()
@@ -780,6 +804,53 @@ mod tests {
 
         // Then is_loading is false again.
         assert!(!map.is_loading());
+    }
+
+    #[rstest::rstest]
+    fn clear_load_for_releases_the_guard_it_names() {
+        // Given a map loading one session.
+        let mut map = default_map();
+        let loading = SessionId::new();
+        map.begin_load(loading.clone());
+
+        // When clearing the load for that same session.
+        let released = map.clear_load_for(&loading);
+
+        // Then the guard is released and the call reports it.
+        assert!(released);
+        assert!(!map.is_loading());
+    }
+
+    #[rstest::rstest]
+    fn clear_load_for_ignores_a_different_session() {
+        // Given a map loading one session.
+        let mut map = default_map();
+        let loading = SessionId::new();
+        map.begin_load(loading.clone());
+
+        // When clearing the load for some other session.
+        let released = map.clear_load_for(&SessionId::new());
+
+        // Then the guard is untouched and the call reports it did nothing.
+        assert!(!released);
+        assert!(map.is_loading());
+        // And it still names the session that is actually loading.
+        assert_eq!(
+            map.session_load_guard().map(|g| &g.session_id),
+            Some(&loading)
+        );
+    }
+
+    #[rstest::rstest]
+    fn clear_load_for_reports_nothing_when_no_session_is_loading() {
+        // Given a map with no active load.
+        let mut map = default_map();
+
+        // When clearing the load for some session.
+        let released = map.clear_load_for(&SessionId::new());
+
+        // Then the call reports there was nothing to release.
+        assert!(!released);
     }
 
     #[rstest::rstest]

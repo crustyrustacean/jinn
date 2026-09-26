@@ -406,6 +406,50 @@ fn an_expired_layout_deadline_ends_the_loading_indicator() {
 }
 
 #[rstest::rstest]
+fn a_deadline_for_another_session_does_not_release_the_loading_guard() {
+    // Given a session that is loading.
+    let (state, session_id, supervisor) = loading_state_with_supervisor();
+    // And a different session whose deadline is still ticking — the session
+    // the user switched away from.
+    let departed = SessionId::new();
+
+    // When that other session's deadline expires.
+    supervisor.release_guard(&departed, "layout deadline expired");
+
+    // Then the loading session keeps its guard.
+    assert!(
+        state.read().session.is_loading(),
+        "a stale deadline must not release the session that is loading now"
+    );
+    // And the guard still names the session that is actually loading.
+    assert_eq!(
+        state
+            .read()
+            .session
+            .session_load_guard()
+            .map(|g| &g.session_id),
+        Some(&session_id)
+    );
+}
+
+#[rstest::rstest]
+fn a_deadline_for_another_session_does_not_end_the_loading_indicator() {
+    // Given a session that is still loading.
+    let (state, _session_id, supervisor) = loading_state_with_supervisor();
+
+    // When a stale deadline for a different session expires.
+    supervisor.release_guard(&SessionId::new(), "layout deadline expired");
+
+    // Then the user is still behind the loading indicator for the session
+    // that is genuinely being measured.
+    assert!(
+        state.read().session.is_loading(),
+        "releasing on a stale id would drop the spinner and send the next \
+         frame back to measuring the whole history inline"
+    );
+}
+
+#[rstest::rstest]
 fn an_expired_layout_deadline_writes_nothing_into_the_conversation() {
     // Given a session that is still loading.
     let (state, session_id, supervisor) = loading_state_with_supervisor();
