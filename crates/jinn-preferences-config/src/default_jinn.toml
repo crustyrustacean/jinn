@@ -457,3 +457,27 @@ enabled = true
 radius = 20
 # > Only apply pruning after there are this many messages ahead of the prune target.
 min_age = 50
+
+# ###########################################################################
+# Discord integration
+# ###########################################################################
+#
+# [discord]
+# > Whether the Discord bot is active.
+# enabled = true
+#
+# > Discord secret bot token.
+# > *** SECURITY NOTE ***
+# > You can omit this and set DISCORD_BOT_TOKEN env variable to avoid putting
+# > it in your config.
+# > *********************
+# bot_token = "<token>"
+#
+# > Discord guild (server) ID the bot operates in.
+# guild_id = "<id>"
+#
+# > Forum channel where the bot creates session threads.
+# forum_channel = "<channel id>"
+#
+# > Users that may access the bot
+# authorized_users = ["<user id>"]
