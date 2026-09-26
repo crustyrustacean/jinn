@@ -126,8 +126,8 @@ pub fn render_session_preview_for_state(
     let Some(lines) = cached else {
         // Nothing for this exact session, width, and content. `cached` returning
         // `None` is what distinguishes loading from empty — an empty session
-        // renders zero lines but is still `Ready`, so it takes the branch below
-        // and shows the empty state rather than spinning forever.
+        // renders zero lines but is still a cache hit, so it takes the branch
+        // below and shows the empty state rather than spinning forever.
         let popup_rect = session_preview_popup_rect(frame_area, cursor_y, LOADING_CONTENT_ROWS);
         render_session_preview_loading(frame, popup_rect, session, theme);
         return;
