@@ -171,7 +171,7 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # url = "http://127.0.0.1:<port>/mcp"
 #
 # > remote_http example (no process spawned, connect to url)
-# [mcp.remote]
+# [mcp.foo_remote]
 # transport = "remote_http"
 # url = "http://localhost:3001/mcp"
 #
@@ -181,7 +181,7 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # > A variable that is unset or empty keeps the server from connecting and
 # > names the variable in the failure; header values are never logged.
 #
-# [mcp.remote.headers]
+# [mcp.foo_remote.headers]
 # Authorization = "Bearer ${MY_API_KEY}"
 # X-Api-Key = "${OTHER_KEY}"
 
