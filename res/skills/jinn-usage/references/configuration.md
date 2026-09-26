@@ -7,15 +7,15 @@ the offer.
 
 ## File map
 
-| File | Location | Contents |
-| --- | --- | --- |
-| `jinn.toml` | `~/.config/jinn/jinn.toml` | User preferences: tools/skills defaults, session lifecycles, projects, MCP servers, compaction, auto-prune, web fetch/search, browser, Discord, interactive terminal |
-| `providers.toml` | `~/.config/jinn/providers.toml` | Providers, API keys, base URLs, per-model metadata |
-| themes | `~/.config/jinn/themes/*.toml` | Color themes (picked with `<leader>sh`) |
-| personas | `~/.config/jinn/personas/*.md` | Persona templates (markdown + TOML frontmatter) |
-| prompts | `~/.config/jinn/prompts/*.md` | Prompt templates (`#name` tokens in input) |
-| skills | `~/.agents/skills/*/SKILL.md` | Agent skills (project `.agents/skills/` override same-named globals) |
-| sessions | `~/.local/share/jinn/sessions.db` | SQLite — sessions, history, search index (do not hand-edit) |
+| File             | Location                          | Contents                                                                                                                                                             |
+| ---------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `jinn.toml`      | `~/.config/jinn/jinn.toml`        | User preferences: tools/skills defaults, session lifecycles, projects, MCP servers, compaction, auto-prune, web fetch/search, browser, Discord, interactive terminal |
+| `providers.toml` | `~/.config/jinn/providers.toml`   | Providers, API keys, base URLs, per-model metadata                                                                                                                   |
+| themes           | `~/.config/jinn/themes/*.toml`    | Color themes (picked with `<leader>sh`)                                                                                                                              |
+| personas         | `~/.config/jinn/personas/*.md`    | Persona templates (markdown + TOML frontmatter)                                                                                                                      |
+| prompts          | `~/.config/jinn/prompts/*.md`     | Prompt templates (`#name` tokens in input)                                                                                                                           |
+| skills           | `~/.agents/skills/*/SKILL.md`     | Agent skills (project `.agents/skills/` override same-named globals)                                                                                                 |
+| sessions         | `~/.local/share/jinn/sessions.db` | SQLite — sessions, history, search index (do not hand-edit)                                                                                                          |
 
 `jinn.toml` is auto-created with a fully commented default on first run; your
 comments are preserved across saves (jinn patches documents instead of
@@ -28,7 +28,7 @@ keys rather than breaking.
 launch.** There is no live reload. After applying a config edit, tell the
 user to quit (`q`) and relaunch. Per-session choices made in the UI (enabled
 tools/skills/MCP servers, model, persona) persist in the session database and
-do *not* need a restart or config edit.
+do _not_ need a restart or config edit.
 
 ## Offer-to-edit protocol
 
@@ -38,8 +38,8 @@ When the user's ask maps to a config change:
    sentences.
 2. Show a minimal snippet reflecting their ask (values they'd actually want —
    not the doc example verbatim).
-3. Ask: *"Want me to update `~/.config/jinn/jinn.toml` for you? You'll need
-   to restart jinn for it to take effect."*
+3. Ask: _"Want me to update `~/.config/jinn/jinn.toml` for you? You'll need
+   to restart jinn for it to take effect."_
 4. On acceptance, read the file first, apply the change surgically (preserve
    comments, ordering, and unknown keys), and confirm what you changed and
    where.
@@ -51,6 +51,7 @@ prefer the command over hand-editing.
 ## Common asks → settings
 
 **Disable a tool or skill by default**
+
 ```toml
 [tools]
 disabled = ["web-search", "mcp__context7__lookup"]
@@ -58,10 +59,12 @@ disabled = ["web-search", "mcp__context7__lookup"]
 [skills]
 disabled = ["svg-creator"]
 ```
+
 New sessions start with these disabled; per-session toggles (`<leader>st`,
 `<leader>sk`) override and persist in the session, never writing back here.
 
 **Timeouts / output caps**
+
 ```toml
 [tools]
 default_timeout_secs = 300       # safety ceiling for all builtin tools
@@ -74,6 +77,7 @@ tool_entry_max_lines = 12        # how much of a tool call renders in the TUI
 
 **Session lifecycles** (branch/worktree bootstrap; see
 `sessions-and-subagents.md`)
+
 ```toml
 [[session_lifecycle.script]]
 name = "git worktree"
@@ -82,8 +86,9 @@ setup_command = "cd <repo> && git worktree add -b <branch> ../<branch> && echo $
 teardown_command = "..."
 ```
 
-**Curated projects** (appear in the `<leader>so` picker) — optionally with a
+**Curated projects** (appear in the `<leader>sp` picker) — optionally with a
 command policy that blocks bash commands by regex inside that project:
+
 ```toml
 [[project.entry]]
 path = "~/code/myapp"
@@ -91,6 +96,7 @@ command_policy = [{ pattern = 'rm\s+-rf\s+/', message = "Never rm -rf from root 
 ```
 
 **MCP servers** — see `mcp-servers.md` for the full transport matrix:
+
 ```toml
 [mcp.context7]
 command = "npx"
@@ -99,6 +105,7 @@ auto_enable = true
 ```
 
 **Compaction** (a backstop — should almost never fire while coding):
+
 ```toml
 [context_curation.compaction]
 threshold = 0.7                      # usage fraction that triggers compaction
@@ -109,6 +116,7 @@ fallback_context_window = 150000     # used when the provider doesn't report one
 
 **Auto-prune** (context trimming workers; each has `enabled` + `min_age` and
 its own thresholds):
+
 ```toml
 [context_curation.auto_prune]
 accumulation_threshold_tokens = 150000   # batch context-mutations to protect prefix cache
@@ -121,12 +129,14 @@ tool_name = "bash"
 keep_last = 2
 min_age = 50
 ```
+
 Strategies include `edit_read`, `read_edit`, `double_edit`,
 `consecutive_reads`, `tool_age_window`, `trivial_assistant`,
 `anchored_assistant`, `broken_edit`, `todo`, and
 `regex` — all documented with comments in the default `jinn.toml`.
 
 **Web search tuning** (the provider-side `openrouter:web_search` tool):
+
 ```toml
 [provider.web_search]
 engine = "exa"          # "exa" | "firecrawl" | "parallel" | "native" | "auto"
@@ -138,6 +148,7 @@ engine = "exa"          # "exa" | "firecrawl" | "parallel" | "native" | "auto"
 ```
 
 **Interactive terminal** (see `terminal-overlay.md`):
+
 ```toml
 [term]
 control_toggle_key = "<c-g>"         # any keybind-notation key, e.g. "<m-g>"
@@ -146,12 +157,14 @@ settle_max_wait_ms = 3000
 ```
 
 **Minimap** (the chat-log token-density map):
+
 ```toml
 [ui.minimap]
 max_tokens = 2000     # entries at/above this size always render lightest
 ```
 
 **CWD picker command** (backs `<M-c>`/`<M-d>`; any fuzzy finder works):
+
 ```toml
 [ui.cwd_selector]
 command = "find -L {path} -type d 2>/dev/null | fzf --no-multi"
@@ -159,6 +172,7 @@ command = "find -L {path} -type d 2>/dev/null | fzf --no-multi"
 ```
 
 **Chat-log rendering caps:**
+
 ```toml
 [chat_log]
 tool_entry_max_lines = 12     # lines of a tool call/result before truncation
@@ -166,6 +180,7 @@ min_collapse_count = 5        # smallest collapsed run of excluded entries
 ```
 
 **Discord bot** (slice-owned section; see also `sessions-and-subagents.md`):
+
 ```toml
 [discord]
 enabled = false                    # with a token, runs a bot beside the TUI
@@ -177,6 +192,7 @@ authorized_users = []              # deny-by-default; empty authorizes nobody
 
 **Auto-prune per-strategy knobs** (every strategy takes `enabled` and
 `min_age`; the ones with extra tuning):
+
 ```toml
 [context_curation.auto_prune.double_edit]       max_file_edits = 2   # writes kept per file
 [context_curation.auto_prune.consecutive_reads] keep_last = 5        # reads kept per file
@@ -186,6 +202,7 @@ authorized_users = []              # deny-by-default; empty authorizes nobody
 ```
 
 **Request retries:**
+
 ```toml
 [provider.request_retry]
 max_retries = 5

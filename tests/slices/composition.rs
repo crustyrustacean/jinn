@@ -241,7 +241,7 @@ async fn every_picker_opener_key_has_exactly_one_claimant() {
         ("theme", "<leader>sh"),
         ("reasoning", "<leader>sr"),
         ("endpoint", "<leader>sE"),
-        ("project", "<leader>so"),
+        ("project", "<leader>sp"),
         ("lifecycle", "<leader>sl"),
     ] {
         let claimants: Vec<&str> = routes

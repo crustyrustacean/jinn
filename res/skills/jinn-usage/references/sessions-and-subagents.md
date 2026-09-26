@@ -7,13 +7,13 @@ symbol; forks get the fork origin even when forked from a subagent).
 
 ## Creating sessions
 
-| Key | Action |
-| --- | --- |
-| `n` | New session (immediately active) |
-| `N` | New session, choosing a **lifecycle recipe** first |
-| `<c-n>` | New session from most scopes (also inside pickers) |
-| `<leader>so` | Project picker — create a session in a curated project directory |
-| `<leader>sl` | Session lifecycle recipe picker |
+| Key          | Action                                                           |
+| ------------ | ---------------------------------------------------------------- |
+| `n`          | New session (immediately active)                                 |
+| `N`          | New session, choosing a **lifecycle recipe** first               |
+| `<c-n>`      | New session from most scopes (also inside pickers)               |
+| `<leader>sp` | Project picker — create a session in a curated project directory |
+| `<leader>sl` | Session lifecycle recipe picker                                  |
 
 A **lifecycle recipe** is a named pair of setup/teardown shell commands
 configured in `jinn.toml` (`[[session_lifecycle]]` — e.g. open a fossil branch
@@ -23,13 +23,13 @@ take positional arguments (jinn prompts for them).
 
 ## Navigating sessions
 
-| Key | Action |
-| --- | --- |
-| `<c-l>` → Sessions section | Focus the sidebar's session tree (`<M-s>` jumps straight there) |
-| `j` / `k` / `J` / `K` | Move within / between sidebar sections |
-| `<enter>` | Switch to the selected session (live preview while browsing) |
-| `i` | Switch to the session and enter input mode |
-| `<leader>ss` | Full-screen session browser (filter by name; shows date + project + tree) |
+| Key                        | Action                                                                    |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `<c-l>` → Sessions section | Focus the sidebar's session tree (`<M-s>` jumps straight there)           |
+| `j` / `k` / `J` / `K`      | Move within / between sidebar sections                                    |
+| `<enter>`                  | Switch to the selected session (live preview while browsing)              |
+| `i`                        | Switch to the session and enter input mode                                |
+| `<leader>ss`               | Full-screen session browser (filter by name; shows date + project + tree) |
 
 Sessions remember their own model, persona, cwd, enabled tools/skills, and
 context state. Switching is instant; work continues in the background.
@@ -38,16 +38,17 @@ context state. Switching is instant; work continues in the background.
 
 Within the sidebar Sessions section:
 
-| Key | Action |
-| --- | --- |
-| `r` | Rename the session (type, `<enter>` confirm, `<esc>` cancel) |
-| `a` | Archive the session (removed from the sidebar, kept on disk) |
-| `A` | Archive the session **and its entire subtree** |
-| `x` | Close the selected session |
-| `t` | **Tear down**: run the session's `teardown_command`, then archive |
+| Key | Action                                                                   |
+| --- | ------------------------------------------------------------------------ |
+| `r` | Rename the session (type, `<enter>` confirm, `<esc>` cancel)             |
+| `a` | Archive the session (removed from the sidebar, kept on disk)             |
+| `A` | Archive the session **and its entire subtree**                           |
+| `x` | Close the selected session                                               |
+| `t` | **Tear down**: run the session's `teardown_command`, then archive        |
 | `X` | Tear down the session **and its whole subtree** — press again to confirm |
 
 Notes:
+
 - Archiving the last active session creates a fresh one, so you're never
   stranded; archiving a never-used empty session simply removes it.
 - Teardown is all-or-nothing for the tree: if any member fails its teardown or
@@ -58,21 +59,21 @@ Notes:
 
 ## Continuing a session's environment
 
-| Key | Action |
-| --- | --- |
+| Key | Action                                                 |
+| --- | ------------------------------------------------------ |
 | `c` | Switch to the session **and** re-run its setup command |
-| `s` | Re-run the setup command (without switching) |
+| `s` | Re-run the setup command (without switching)           |
 
 Useful when a machine rebooted or you want the environment refreshed (branch
 re-checkout, dev servers, etc.).
 
 ## Changing a session's cwd
 
-| Key | Action |
-| --- | --- |
-| `<M-c>` | Change cwd, browsing from the session's current directory |
-| `<M-d>` | Change cwd, browsing from `$HOME` |
-| `<leader>cd` | Type a path directly |
+| Key          | Action                                                    |
+| ------------ | --------------------------------------------------------- |
+| `<M-c>`      | Change cwd, browsing from the session's current directory |
+| `<M-d>`      | Change cwd, browsing from `$HOME`                         |
+| `<leader>cd` | Type a path directly                                      |
 
 ## Forking
 

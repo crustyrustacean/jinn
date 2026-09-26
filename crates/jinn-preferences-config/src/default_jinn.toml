@@ -110,7 +110,7 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # ###########################################################################
 #
 # > Projects are curated directories you frequently start sessions in. They
-# > appear in the project picker (`<leader>so`) and let you create a session
+# > appear in the project picker (`<leader>sp`) and let you create a session
 # > directly at one of these paths without first changing the active session's
 # > directory.
 #
