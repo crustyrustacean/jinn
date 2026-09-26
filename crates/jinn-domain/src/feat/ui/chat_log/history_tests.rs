@@ -1771,3 +1771,530 @@ fn completed_task_result_shows_finished_status_row() {
         "status row should be white on success bg"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Streaming tool-call variant lookup
+// ---------------------------------------------------------------------------
+
+/// Renders `state` through a chat log element and returns each content row
+/// joined into a string, so tests can assert on visible text.
+fn rendered_content_rows(state: &AppState, width: u16, height: u16) -> Vec<String> {
+    let mut element = ChatLogElement::new();
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    (area.y..area.bottom())
+        .map(|row| {
+            content_row(&buffer, area.x + G, row)
+                .iter()
+                .map(|c| c.symbol().to_owned())
+                .collect()
+        })
+        .collect()
+}
+
+#[rstest::rstest]
+fn streaming_tool_call_ids_contains_only_the_streaming_entry() {
+    // Given a session with many completed tool calls and one streaming.
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().begin_streaming();
+    for i in 0..200 {
+        state.active_session_mut().push_entry(ChatEntry::tool_call(
+            format!("tc_done_{i}"),
+            "read_file",
+            "{}",
+        ));
+    }
+    state
+        .active_session_mut()
+        .begin_tool_call(200, "tc_live", "read_file", jiff::Timestamp::now());
+
+    // When reading the streaming tool-call ids.
+    let ids = state.active_session().streaming_tool_call_ids();
+
+    // Then exactly one id is reported, and it is the streaming entry's.
+    assert_eq!(ids.len(), 1);
+    let streaming_entry = state
+        .active_session()
+        .history()
+        .last()
+        .expect("history should not be empty");
+    assert!(ids.contains(&streaming_entry.id));
+}
+
+#[rstest::rstest]
+fn streaming_tool_call_ids_is_empty_when_not_streaming() {
+    // Given a session with a tool call but no active streaming phase.
+    let mut state = AppState::default_with_scope_focus();
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_call("tc_1", "read_file", "{}"));
+
+    // When reading the streaming tool-call ids.
+    let ids = state.active_session().streaming_tool_call_ids();
+
+    // Then the set is empty.
+    assert!(ids.is_empty());
+}
+
+#[rstest::rstest]
+fn streaming_tool_call_renders_multiline_arguments() {
+    // Given a session with a completed tool call and a streaming one whose
+    // arguments contain an escaped newline.
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().begin_streaming();
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_call("tc_done", "read_file", "{}"));
+    state
+        .active_session_mut()
+        .begin_tool_call(1, "tc_live", "read_file", jiff::Timestamp::now());
+    state
+        .active_session_mut()
+        .append_tool_call_delta(1, r#"line_one\nline_two"#)
+        .expect("append delta");
+
+    // When rendering.
+    let rows = rendered_content_rows(&state, 40, 10);
+
+    // Then the arguments split across two rows, which only the streaming
+    // variant does — the collapsed variant renders a single line.
+    assert!(
+        rows.iter().any(|r| r.contains("line_one")),
+        "streaming tool call should render the first argument line"
+    );
+    assert!(
+        rows.iter().any(|r| r.contains("line_two")),
+        "streaming tool call should render the second argument line"
+    );
+}
+
+#[rstest::rstest]
+fn completed_tool_call_renders_collapsed_after_streaming_finishes() {
+    // Given a session that streamed a tool call and has since finished.
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().begin_streaming();
+    state
+        .active_session_mut()
+        .begin_tool_call(0, "tc_live", "read_file", jiff::Timestamp::now());
+    state
+        .active_session_mut()
+        .append_tool_call_delta(0, r#"line_one\nline_two"#)
+        .expect("append delta");
+    state
+        .active_session_mut()
+        .finish_streaming(true, jiff::Timestamp::now());
+
+    // When rendering.
+    let rows = rendered_content_rows(&state, 40, 10);
+
+    // Then the entry is collapsed onto a single row, so the two argument
+    // lines no longer render as separate rows.
+    let first = rows
+        .iter()
+        .position(|r| r.contains("line_one"))
+        .unwrap_or_else(|| panic!("tool call should still render its arguments"));
+    let second = rows
+        .iter()
+        .position(|r| r.contains("line_two"))
+        .unwrap_or_else(|| panic!("tool call arguments should still be visible"));
+    assert_eq!(
+        first, second,
+        "a finished tool call collapses to one row, not two"
+    );
+}
+
+#[rstest::rstest]
+fn streaming_tool_call_renders_streaming_variant_after_many_completed_calls() {
+    // Given a session where 150 completed tool calls precede a streaming one.
+    // This guards the index-to-id resolution behind the streaming snapshot:
+    // a wrong index would pick the wrong entry and render the wrong variant.
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().begin_streaming();
+    for i in 0..150 {
+        state.active_session_mut().push_entry(ChatEntry::tool_call(
+            format!("tc_done_{i}"),
+            "read_file",
+            "{}",
+        ));
+    }
+    state
+        .active_session_mut()
+        .begin_tool_call(150, "tc_live", "read_file", jiff::Timestamp::now());
+    state
+        .active_session_mut()
+        .append_tool_call_delta(150, r#"alpha\nbeta"#)
+        .expect("append delta");
+
+    // When rendering.
+    let rows = rendered_content_rows(&state, 60, 20);
+
+    // Then the streaming entry renders as a multi-line block.
+    let alpha_row = rows
+        .iter()
+        .position(|r| r.contains("alpha"))
+        .unwrap_or_else(|| panic!("streaming entry should render its arguments"));
+    let beta_row = rows
+        .iter()
+        .position(|r| r.contains("beta"))
+        .unwrap_or_else(|| panic!("streaming entry should render its second line"));
+    assert_eq!(
+        beta_row,
+        alpha_row + 1,
+        "the streaming entry's arguments should be adjacent lines"
+    );
+}
+
+#[rstest::rstest]
+fn large_session_frame_does_not_refingerprint_unchanged_entries() {
+    // Given a session holding many large tool results, rendered once to warm
+    // the line cache.
+    let mut state = AppState::default_with_scope_focus();
+    for i in 0..120 {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result(
+                format!("tr_{i}"),
+                "bash",
+                format!("{} output line\n", "x".repeat(2_000)),
+                ToolResultStatus::Success,
+            ));
+    }
+    let (mut terminal, area) = setup_term(80, 24);
+    let mut element = ChatLogElement::new();
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    let after_warmup = state
+        .frontend
+        .caches
+        .entry_line_cache
+        .read()
+        .fingerprint_computations();
+
+    // When redrawing several times with nothing changed.
+    for _ in 0..5 {
+        terminal
+            .draw(|frame| {
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
+                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+                element.render(frame, area, &ctx);
+            })
+            .unwrap();
+    }
+
+    // Then no further full content fingerprints were computed.
+    let after_redraws = state
+        .frontend
+        .caches
+        .entry_line_cache
+        .read()
+        .fingerprint_computations();
+    assert_eq!(
+        after_redraws, after_warmup,
+        "redrawing an unchanged session should not rehash entry content"
+    );
+    assert!(
+        after_warmup <= 120,
+        "the first frame hashes at most one fingerprint per entry, got {after_warmup}"
+    );
+}
+
+#[rstest::rstest]
+fn streaming_tool_output_renders_the_appended_text() {
+    // Given a session streaming a bash tool result.
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().begin_streaming();
+    state
+        .active_session_mut()
+        .begin_tool_result("tr_live", "bash", jiff::Timestamp::now());
+    state.active_session_mut().append_tool_result_output(
+        "tr_live",
+        "first chunk of output",
+        jinn_tools_msg::ToolOutputKind::Normal,
+    );
+
+    let (mut terminal, area) = setup_term(60, 12);
+    let mut element = ChatLogElement::new();
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // When more output arrives, growing the entry's content.
+    state.active_session_mut().append_tool_result_output(
+        "tr_live",
+        "second chunk",
+        jinn_tools_msg::ToolOutputKind::Normal,
+    );
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the appended text is rendered, so the cached lines were invalidated.
+    let rows = rendered_content_rows(&state, 60, 12);
+    assert!(
+        rows.iter().any(|r| r.contains("second")),
+        "appended tool output should be rendered after re-render"
+    );
+}
+
+/// A session whose wrapped content exceeds `u16::MAX` (65,535) lines.
+///
+/// Each entry wraps to many rows at a narrow width, so only a few thousand
+/// entries are needed to overflow the old `u16` line math.
+fn oversized_session(entries: usize) -> AppState {
+    let mut s = normal_state();
+    // ~40 wrapped rows per entry at 36 content columns.
+    let body = "wrapped content line that is long enough to wrap repeatedly. ".repeat(10);
+    for i in 0..entries {
+        s.active_session_mut()
+            .push_entry(ChatEntry::user(format!("{i}: {body}")));
+    }
+    s
+}
+
+#[rstest::rstest]
+fn line_math_survives_a_session_past_65535_wrapped_lines() {
+    // Given a session long enough that its wrapped line total exceeds u16::MAX.
+    let state = oversized_session(4_000);
+    let mut element = ChatLogElement::new();
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the recorded total wrapped line count is the true value, not a u16
+    // wraparound, so the scroll math has something real to clamp against.
+    let total = state.active_session().rendered_max_offset();
+    assert!(
+        total > u32::from(u16::MAX),
+        "a 4000-entry wrapping session should exceed 65535 wrapped lines, got {total}"
+    );
+}
+
+#[rstest::rstest]
+fn an_oversized_session_scrolls_to_a_recent_entry() {
+    // Given a session past the old u16 wraparound point.
+    let state = oversized_session(4_000);
+    let mut element = ChatLogElement::new();
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When rendering and asking for the last entry's screen row.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the selected entry maps to a real row inside the viewport rather
+    // than a wrapped-around one.
+    let row = state
+        .active_session()
+        .selected_entry_screen_y(0)
+        .expect("selected entry should have a screen row");
+    assert!(
+        row < area.height,
+        "the selected entry should land inside the viewport, got row {row}"
+    );
+}
+
+/// Render every visible cell of the chat log as a comparable string.
+fn render_rows(
+    state: &AppState,
+    element: &mut ChatLogElement,
+    width: u16,
+    height: u16,
+) -> Vec<String> {
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..height)
+        .map(|y| {
+            (0..width)
+                .map(|x| {
+                    buffer
+                        .cell((x, y))
+                        .map_or(" ", ratatui::buffer::Cell::symbol)
+                        .to_owned()
+                })
+                .collect::<String>()
+        })
+        .collect()
+}
+
+/// A history mixing every entry kind the chat log renders differently.
+fn mixed_history() -> AppState {
+    let mut s = normal_state();
+    s.active_session_mut()
+        .push_entry(ChatEntry::system("system note"));
+    s.active_session_mut()
+        .push_entry(ChatEntry::user("hello world"));
+    s.active_session_mut()
+        .push_entry(ChatEntry::assistant("an answer"));
+    s.active_session_mut().push_entry(ChatEntry::tool_result(
+        "call-1",
+        "read",
+        "file contents",
+        ToolResultStatus::Success,
+    ));
+    s.active_session_mut().push_entry(ChatEntry::tool_result(
+        "call-2",
+        "write",
+        "wrote it",
+        ToolResultStatus::Failure,
+    ));
+    s.active_session_mut()
+        .push_entry(ChatEntry::error("it broke"));
+    s.active_session_mut().push_entry(ChatEntry::user(
+        "a long line that will wrap across the content width repeatedly for gutter padding",
+    ));
+    s
+}
+
+#[rstest::rstest]
+fn a_warm_cache_renders_identically_to_a_cold_one() {
+    // Given a mixed history, rendered once to warm every cache.
+    let state = mixed_history();
+    let mut element = ChatLogElement::new();
+    let cold = render_rows(&state, &mut element, 44, 14);
+
+    // When it is rendered again from the warm cache.
+    let warm = render_rows(&state, &mut element, 44, 14);
+
+    // Then the output is byte-identical — the fingerprint memo, the LRU, and
+    // the threaded gutter count must all preserve what is drawn.
+    assert_eq!(
+        cold, warm,
+        "a warm cache must render exactly like a cold one"
+    );
+}
+
+#[rstest::rstest]
+fn gutter_padding_matches_content_rows_for_a_wrapping_entry() {
+    // Given a single entry long enough to wrap several rows.
+    let mut s = normal_state();
+    s.active_session_mut()
+        .push_entry(ChatEntry::user("w ".repeat(200)));
+    let mut element = ChatLogElement::new();
+
+    // When rendered.
+    let rows = render_rows(&s, &mut element, 44, 14);
+
+    // Then the gutter is two columns wide — a non-space indicator then a
+    // cursor bar — and a wrapping entry produces one pair per content row.
+    let gutter_rows = rows
+        .iter()
+        .filter(|row| {
+            let mut chars = row.chars();
+            matches!(chars.next(), Some(c) if c != ' ') && matches!(chars.next(), Some('┃' | ' '))
+        })
+        .count();
+    assert!(
+        gutter_rows > 1,
+        "a wrapping entry should produce more than one gutter row, got {gutter_rows}"
+    );
+}
+
+/// Times the per-frame cache probe for a large session, and separately times
+/// what the pre-signature path cost: a full fingerprint per entry per frame.
+#[rstest::rstest]
+fn a_large_session_frame_avoids_rehashing_its_content() {
+    // Given a session whose total text is large (many multi-KB entries).
+    let state = {
+        let mut s = normal_state();
+        // ~4KB per entry, 600 entries => ~2.4MB of tool-result text.
+        let big = "x".repeat(4_000);
+        for _ in 0..600 {
+            s.active_session_mut().push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                &big,
+                ToolResultStatus::Success,
+            ));
+        }
+        s
+    };
+    let mut element = ChatLogElement::new();
+    let (mut terminal, area) = setup_term(100, 40);
+
+    // Warm the cache with one frame.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // When the cache is probed for the same entries 20 more times — the work a
+    // second through twentieth frame would repeat.
+    let entry_count = 600usize;
+    let start = std::time::Instant::now();
+    for _ in 0..20 {
+        for entry in state.active_session().history() {
+            let _ = entry.content_signature();
+        }
+    }
+    let signature_elapsed = start.elapsed();
+
+    // And when the equivalent volume of full-fingerprint work runs — what the
+    // pre-signature path did on every one of those frames.
+    let start = std::time::Instant::now();
+    for _ in 0..20 {
+        for entry in state.active_session().history() {
+            let _ = entry.content_fingerprint();
+        }
+    }
+    let fingerprint_elapsed = start.elapsed();
+
+    // Then the signature path is cheaper, and the avoided hashing scales with
+    // session bytes rather than entry count.
+    assert_eq!(entry_count, state.active_session().history().len());
+    let ratio = fingerprint_elapsed.as_secs_f64() / signature_elapsed.as_secs_f64().max(1e-9);
+    assert!(
+        ratio > 1.0,
+        "the signature path should beat full fingerprinting, got {ratio:.1}x"
+    );
+}

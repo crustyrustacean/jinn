@@ -740,10 +740,9 @@ impl ChatEntry {
         }
     }
 
-    /// Compatibility accessor: whether this entry has been forced out of context.
+    /// Whether this entry has been forced out of context.
     ///
-    /// Equivalent to `context_override == ForcedExclude`. Used during migration
-    /// from `ignored: bool` to `context_override: ContextOverride`.
+    /// Equivalent to `context_override == ForcedExclude`.
     ///
     /// Prefer `is_in_context()` or `context_override` directly.
     #[must_use]
@@ -984,6 +983,71 @@ impl ChatEntry {
                 for c in citations {
                     c.url.hash(&mut hasher);
                     c.title.hash(&mut hasher);
+                }
+            }
+        }
+        hasher.finish()
+    }
+
+    /// A cheap O(1) summary of everything [`Self::content_fingerprint`] reads.
+    ///
+    /// Callers that check for content changes on a hot path use this to skip
+    /// the full hash: when the signature is unchanged, the entry's text is
+    /// almost certainly unchanged too. It reads only field lengths and `Copy`
+    /// scalars, so its cost does not grow with the size of the content.
+    ///
+    /// Every field hashed by [`Self::content_fingerprint`] must be represented
+    /// here, or a change to that field would stop invalidating caches. Two
+    /// entries whose content differs but whose signature matches are possible
+    /// (a same-length content swap) — that is the accepted cost of not hashing.
+    #[must_use]
+    pub fn content_signature(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        std::mem::discriminant(&self.kind).hash(&mut hasher);
+        match &self.kind {
+            ChatEntryKind::User { display, .. } => display.len().hash(&mut hasher),
+            ChatEntryKind::System(t)
+            | ChatEntryKind::Error(t)
+            | ChatEntryKind::Assistant(t)
+            | ChatEntryKind::Thinking(t) => t.len().hash(&mut hasher),
+            ChatEntryKind::Transient(s) => s.len().hash(&mut hasher),
+            ChatEntryKind::Actor { text, .. } => text.len().hash(&mut hasher),
+            ChatEntryKind::ToolCall {
+                name, arguments, ..
+            } => {
+                name.len().hash(&mut hasher);
+                arguments.len().hash(&mut hasher);
+            }
+            ChatEntryKind::ToolResult {
+                name,
+                content,
+                status,
+                truncation,
+                ..
+            } => {
+                name.len().hash(&mut hasher);
+                status.hash(&mut hasher);
+                content.len().hash(&mut hasher);
+                truncation.is_some().hash(&mut hasher);
+            }
+            ChatEntryKind::Compaction {
+                summary,
+                tokens_after,
+                entries_compacted,
+                model_used,
+                ..
+            } => {
+                summary.len().hash(&mut hasher);
+                tokens_after.hash(&mut hasher);
+                entries_compacted.hash(&mut hasher);
+                model_used.len().hash(&mut hasher);
+            }
+            ChatEntryKind::Annotation { citations } => {
+                citations.len().hash(&mut hasher);
+                for c in citations {
+                    c.url.len().hash(&mut hasher);
+                    c.title.len().hash(&mut hasher);
                 }
             }
         }

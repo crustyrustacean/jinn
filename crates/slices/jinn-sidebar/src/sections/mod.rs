@@ -9,6 +9,7 @@
 //! next/previous section.
 
 pub mod intent;
+pub mod layout;
 pub mod mcp_servers_section;
 pub mod persona_section;
 pub mod pins;

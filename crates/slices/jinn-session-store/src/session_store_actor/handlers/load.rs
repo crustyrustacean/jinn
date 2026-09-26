@@ -8,7 +8,7 @@ use jinn_domain::feat::session::SessionStoreService;
 use jinn_domain::protocol::system::ActiveSessionChanged;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_session_store_msg::SessionForkRequested;
-use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested};
+use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested, SessionState};
 
 use crate::session_store_actor::SessionStoreActor;
 
@@ -40,6 +40,9 @@ impl SessionStoreActor {
         let mut session = snapshot.restore_live();
         session.set_model(model);
         session.mark_interacted();
+        // The snapshot may have been taken while the session was archived. Loading it
+        // makes it live again, and the sidebar lists only `Loaded` sessions.
+        session.set_session_state(SessionState::Loaded);
         let original_cwd = session.cwd().to_path_buf();
 
         self.state.with_frontend_state(|ops| {

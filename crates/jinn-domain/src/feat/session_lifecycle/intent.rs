@@ -75,7 +75,7 @@ pub fn handle_session_lifecycle_setup(
     //   1. explicit `cwd` override (e.g. scripted callers),
     //   2. the stashed creation's starting CWD
     //      (set by the project picker then consumed here),
-    //   3. inherit the active session's CWD (legacy behavior).
+    //   3. inherit the active session's CWD.
     //
     // The project stamp comes only from the stashed creation - the projects UI
     // is the sole source of a project association. The two are independent on

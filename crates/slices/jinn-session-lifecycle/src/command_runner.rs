@@ -150,14 +150,13 @@ pub async fn run_teardown_command(
 ///   reaches the leader _and_ any backgrounded descendants (grandchildren)
 ///   in a single syscall — without touching the reader task's owned `Child`.
 /// - `abort_handle`: the abort handle of the **inner reader task**. Aborting
-///   it makes the outer wrapper task (in `lifecycle.rs`) observe a `JoinError`
-///   and take its `Err(_)` arm, which emits the "cancelled" finish command. The
-///   finish handler then owns all cleanup (busy, cwd, chat entry, phase).
+///   it makes the caller's wrapper task (in `session_lifecycle_actor/handlers/setup.rs`)
+///   observe a `JoinError` and take its `Err(_)` arm, which publishes the
+///   "cancelled" finish event. The finish handler then owns all cleanup
+///   (busy, cwd, chat entry, phase).
 ///
 /// This is lock-free and await-free: the cancel handler can run on a tokio
-///   worker thread without panicking (the previous `SharedChild` +
-///   `blocking_lock` design crashed and would also have deadlocked, since the
-///   reader task held the lock across `child.wait().await`).
+/// worker thread without panicking.
 #[derive(Debug)]
 pub struct LifecycleCancelHandle {
     /// Process-group id of the running lifecycle command (also its pid).
@@ -810,9 +809,6 @@ mod tests {
         // or the abort won and produced a JoinError. Either way: not success.
         let outcome = join_handle.await;
         let failed = !matches!(outcome, Ok(Ok(_)));
-        // Outcome is timing-dependent (Edge Case #7): either the inner task
-        // observed the SIGKILL and returned CommandFailed, or the abort won
-        // and produced a JoinError. Both are valid "cancelled" outcomes.
         assert!(failed, "cancel must produce a non-success outcome");
     }
 

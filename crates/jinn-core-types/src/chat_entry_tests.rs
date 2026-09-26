@@ -10,6 +10,7 @@ use super::chat_entry::*;
 use super::tool_result_status::ToolResultStatus;
 use crate::ChatEntryId;
 use crate::ContextOverride;
+use crate::EntryTiming;
 use crate::SessionId;
 
 #[rstest::rstest]
@@ -1243,4 +1244,116 @@ fn tool_call_without_link_omits_child_session_key() {
     // Then the JSON omits the child_session key.
     let data = v.get("ToolCall").expect("ToolCall key");
     assert!(data.get("child_session").is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Content signature
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn content_signature_is_stable_for_identical_content() {
+    // Given two entries with identical content.
+    let entry1 = ChatEntry::assistant("hello");
+    let entry2 = ChatEntry::assistant("hello");
+
+    // Then their signatures match.
+    assert_eq!(entry1.content_signature(), entry2.content_signature());
+}
+
+#[rstest::rstest]
+fn content_signature_differs_across_kinds() {
+    // Given entries of different kinds carrying the same text.
+    let assistant = ChatEntry::assistant("hello");
+    let system = ChatEntry::system("hello");
+
+    // Then their signatures differ, so a kind change invalidates the cache.
+    assert_ne!(assistant.content_signature(), system.content_signature());
+}
+
+/// Every field `content_fingerprint` reads must also be read by
+/// `content_signature`, or a change to that field stops invalidating caches.
+/// Each case mutates exactly one fingerprinted field of a baseline entry.
+#[rstest::rstest]
+#[case::assistant_text(ChatEntry::assistant("hello"), ChatEntry::assistant("hello world"))]
+#[case::user_display(ChatEntry::user("hi"), ChatEntry::user("hi there"))]
+#[case::system_text(ChatEntry::system("s"), ChatEntry::system("s longer"))]
+#[case::thinking_text(ChatEntry::thinking("t"), ChatEntry::thinking("t longer"))]
+#[case::actor_text(ChatEntry::actor("src", "a"), ChatEntry::actor("src", "a longer"))]
+#[case::transient_text(ChatEntry::transient("x"), ChatEntry::transient("x longer"))]
+#[case::tool_call_name(
+    ChatEntry::tool_call("id", "ls", "{}"),
+    ChatEntry::tool_call("id", "read_file", "{}")
+)]
+#[case::tool_call_arguments(
+    ChatEntry::tool_call("id", "bash", "{}"),
+    ChatEntry::tool_call("id", "bash", r#"{"cmd": "ls"}"#)
+)]
+#[case::tool_result_name(
+    ChatEntry::tool_result("id", "bash", "out", ToolResultStatus::Success),
+    ChatEntry::tool_result("id", "cat", "out", ToolResultStatus::Success)
+)]
+#[case::tool_result_status(
+    ChatEntry::tool_result("id", "bash", "out", ToolResultStatus::Pending),
+    ChatEntry::tool_result("id", "bash", "out", ToolResultStatus::Success)
+)]
+#[case::compaction_model(
+    ChatEntry {
+        id: ChatEntryId::new(),
+        timing: EntryTiming::instant_now(),
+        kind: ChatEntryKind::Compaction {
+            summary: "summary".to_owned(),
+            tokens_before: 100,
+            tokens_after: 50,
+            entries_compacted: 5,
+            model_used: "short".to_owned(),
+        },
+        pin_position: None,
+        context_override: ContextOverride::Default,
+        context_history: Vec::new(),
+        token_count: None,
+    },
+    ChatEntry {
+        id: ChatEntryId::new(),
+        timing: EntryTiming::instant_now(),
+        kind: ChatEntryKind::Compaction {
+            summary: "summary".to_owned(),
+            tokens_before: 100,
+            tokens_after: 50,
+            entries_compacted: 5,
+            model_used: "a/much/longer/model".to_owned(),
+        },
+        pin_position: None,
+        context_override: ContextOverride::Default,
+        context_history: Vec::new(),
+        token_count: None,
+    }
+)]
+fn content_signature_changes_when_a_fingerprinted_field_changes(
+    #[case] base: ChatEntry,
+    #[case] varied: ChatEntry,
+) {
+    // Given two entries differing in exactly one fingerprinted field.
+    // And their fingerprints agree the change is real.
+    assert_ne!(base.content_fingerprint(), varied.content_fingerprint());
+
+    // Then the signature also reflects the change.
+    assert_ne!(base.content_signature(), varied.content_signature());
+}
+
+#[rstest::rstest]
+fn content_signature_is_unchanged_by_same_length_text_edits() {
+    // Given two assistant entries with different text of identical length.
+    let one = ChatEntry::assistant("hello");
+    let two = ChatEntry::assistant("world");
+
+    // Then their signatures match, even though the content differs.
+    //
+    // This pins the known limitation of the O(1) signature: it is a length
+    // summary, so a same-length content swap is invisible to it. Callers must
+    // treat a signature match as "probably unchanged" and keep the full
+    // fingerprint as the authority whenever a mismatch is detected. If this
+    // test ever needs to change, `content_signature` has grown to read more
+    // than lengths — check that it still covers every field
+    // `content_fingerprint` reads before relaxing it.
+    assert_eq!(one.content_signature(), two.content_signature());
 }

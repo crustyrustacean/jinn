@@ -242,7 +242,7 @@ fn section_id_is_pins() {
 #[rstest::rstest]
 fn content_height_is_zero_when_empty() {
     // Given a PinsSection and state with no pinned entries.
-    let section = PinsSection;
+    let mut section = PinsSection;
     let state = AppState::default_with_scope_focus();
 
     // When asking for content height.
@@ -261,7 +261,7 @@ fn content_height_is_zero_when_empty() {
 #[rstest::rstest]
 fn content_height_matches_entry_count() {
     // Given a PinsSection and state with 3 pinned entries.
-    let section = PinsSection;
+    let mut section = PinsSection;
     let state = state_with_pinned(3);
 
     // When asking for content height.
@@ -289,7 +289,7 @@ fn render_rows(
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer();
@@ -365,7 +365,7 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
 
@@ -389,7 +389,7 @@ fn render_selected_entry_has_darkgray_marker_when_not_focused() {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
             let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
 

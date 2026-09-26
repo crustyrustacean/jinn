@@ -145,7 +145,7 @@ impl SidebarSection for TaskListSection {
         jinn_sidebar_msg::SidebarSectionId::TaskList
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
         let state = ctx.state;
         let list = state.active_session().task_list();
         if list.is_empty() {
@@ -153,17 +153,12 @@ impl SidebarSection for TaskListSection {
         }
 
         let lines = build_render_lines(list, state);
-        let widget = Paragraph::new(lines);
+        let widget = Paragraph::new(lines).scroll((skip_rows, 0));
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, ctx: &RenderCtx) -> u16 {
-        let state = ctx.state;
-        let list = state.active_session().task_list();
-        if list.is_empty() {
-            return 0;
-        }
-        compute_height(list, state)
+    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
+        task_list_content_height(ctx.state)
     }
 }
 
@@ -367,6 +362,34 @@ fn compute_height(list: &TaskList, state: &AppState) -> u16 {
     height as u16
 }
 
+#[must_use]
+pub(crate) fn task_list_content_height(state: &AppState) -> u16 {
+    let list = state.active_session().task_list();
+    if list.is_empty() {
+        return 0;
+    }
+    compute_height(list, state)
+}
+
+/// The number of inline rows each phase header occupies, in phase order.
+///
+/// Phase headers wrap against the sidebar width, so a phase can take more than
+/// one row. Callers placing a cursor row use this prefix sum to find where a
+/// phase starts. Shares [`TaskListView`] with the render path so the two cannot
+/// disagree about how many rows a phase takes.
+#[must_use]
+pub(crate) fn phase_row_heights(state: &AppState) -> Vec<u16> {
+    let view = TaskListView::from_state(state);
+    state
+        .active_session()
+        .task_list()
+        .phases()
+        .iter()
+        .enumerate()
+        .map(|(index, phase)| u16::try_from(view.phase_height(phase, index)).unwrap_or(u16::MAX))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -424,7 +447,7 @@ mod tests {
     #[test]
     fn content_height_is_zero_when_empty() {
         let app = AppState::default_with_scope_focus();
-        let section = TaskListSection;
+        let mut section = TaskListSection;
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         assert_eq!(
@@ -441,7 +464,7 @@ mod tests {
     #[test]
     fn content_height_is_nonzero_when_has_phases() {
         let app = setup_with_tasks();
-        let section = TaskListSection;
+        let mut section = TaskListSection;
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let height = section.content_height(&RenderCtx::new_with_default_config(
@@ -481,7 +504,7 @@ mod tests {
         // Given a non-empty task list.
         let app = setup_with_tasks();
         let list = app.session.active_session().task_list().clone();
-        let section = TaskListSection;
+        let mut section = TaskListSection;
 
         // When computing the height and the render line count.
         let slices = jinn_slices::Slices::new();
@@ -593,7 +616,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn id_returns_task_list() {
-        let section = TaskListSection;
+        let mut section = TaskListSection;
         assert_eq!(section.id(), jinn_sidebar_msg::SidebarSectionId::TaskList);
     }
 

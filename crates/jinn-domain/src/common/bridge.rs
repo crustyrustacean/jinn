@@ -139,8 +139,6 @@ impl PublishSink for BusService {
     }
 }
 
-/// A [`MessageSink`](crate::common::actor_deps::BusPublish) adapter that
-/// publishes commands/events via the [`Bridge`].
 #[cfg(test)]
 mod tests {
     #![allow(

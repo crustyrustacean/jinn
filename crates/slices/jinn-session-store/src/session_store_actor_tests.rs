@@ -673,6 +673,106 @@ async fn load_completed_is_published_after_session_is_fully_initialized() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn restored_session_is_marked_loaded() {
+    // Given a session persisted to storage in the archived state.
+    let fixture = actor_fixture().await;
+    let session_id = SessionId::new();
+    let mut stored = ChatSessionState::new();
+    stored.set_session_id(session_id.clone());
+    stored.set_model(jinn_core_types::ModelSelection::Single(
+        "ollama/llama3".to_owned(),
+    ));
+    stored.set_session_state(SessionState::Archived);
+    fixture
+        .store
+        .save(&stored.capture_snapshot())
+        .await
+        .expect("save session");
+    fixture
+        .store
+        .set_archived(&session_id, true)
+        .await
+        .expect("archive session");
+
+    // When the session is loaded back.
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+        })
+        .await;
+    let restored = poll_until(|| async {
+        fixture
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .is_some_and(|session| session.session_state() == SessionState::Loaded)
+    })
+    .await;
+
+    // Then the in-memory session is no longer archived.
+    assert!(
+        restored,
+        "a loaded session must not stay archived in memory"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn loaded_from_archive_appears_in_the_session_list() {
+    // Given a session archived in storage and absent from the live map.
+    let fixture = actor_fixture().await;
+    let session_id = SessionId::new();
+    let mut stored = ChatSessionState::new();
+    stored.set_session_id(session_id.clone());
+    stored.set_model(jinn_core_types::ModelSelection::Single(
+        "ollama/llama3".to_owned(),
+    ));
+    stored.set_session_state(SessionState::Archived);
+    stored.push_entry(jinn_core_types::ChatEntry::user("archived work"));
+    fixture
+        .store
+        .save(&stored.capture_snapshot())
+        .await
+        .expect("save session");
+    fixture
+        .store
+        .set_archived(&session_id, true)
+        .await
+        .expect("archive session");
+    // Given the archived session is still present in the live map, as it is
+    // when a previous startup restore brought it back before archiving.
+    {
+        let mut state = fixture.state.write();
+        let restored = stored.clone();
+        state.session.insert(restored);
+    }
+
+    // When the session is loaded back.
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+        })
+        .await;
+    // When the session carries the state the sidebar lists.
+    let listed = poll_until(|| async {
+        fixture.state.read().session.iter().any(|(id, session)| {
+            id == &session_id && session.session_state() == SessionState::Loaded
+        })
+    })
+    .await;
+
+    // Then the sidebar's loaded-session filter includes it.
+    assert!(
+        listed,
+        "a session loaded from the archive must be Loaded and listed again"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn persist_session_writes_interacted_session_to_store() {
     // Given a running store actor and an interacted session.
     let fixture = actor_fixture().await;

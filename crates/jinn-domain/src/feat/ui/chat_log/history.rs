@@ -22,14 +22,15 @@
 //!
 //! Text wraps within the available space.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::protocol::ToolResultStatus;
-use crate::protocol::{ChatEntry, ChatEntryKind};
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_chat_log_view_msg::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
 };
@@ -41,6 +42,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse};
 
 use jinn_chat_log_view::chat_log::EntryLineCache;
 use jinn_chat_log_view::chat_log::{
@@ -73,13 +75,22 @@ fn render_variant(
 
 /// Display element for the full conversation history.
 #[derive(Debug, Default)]
-pub struct ChatLogElement;
+pub struct ChatLogElement {
+    /// Drives the loading throbber's animation.
+    throbber_state: ThrobberState,
+    /// Wall-clock of the last animation advance, so the spinner only steps
+    /// once the animation interval has elapsed.
+    last_advance: Option<Instant>,
+}
 
 impl ChatLogElement {
     /// Create a new chat log element.
     #[must_use]
     pub fn new() -> Self {
-        Self
+        Self {
+            throbber_state: ThrobberState::default(),
+            last_advance: None,
+        }
     }
 }
 
@@ -95,7 +106,13 @@ impl UiElement for ChatLogElement {
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         let state = ctx.state;
         if state.session.is_loading() {
-            render_loading(frame, area, &state.frontend.theme);
+            render_loading(
+                frame,
+                area,
+                &state.frontend.theme,
+                &mut self.throbber_state,
+                &mut self.last_advance,
+            );
             return;
         }
 
@@ -105,21 +122,21 @@ impl UiElement for ChatLogElement {
         {
             let mut cache = state.frontend.caches.entry_line_cache.write();
             render.compute_line_ranges(&mut cache);
-        }
-        render.compute_scroll();
+            render.compute_scroll();
 
-        {
-            let session = state.active_session();
-            session.set_last_max_offset(render.scroll.max_offset);
-            session.set_entry_line_ranges(render.entry_line_ranges.clone());
-            session.set_viewport_height(area.height);
-            session.set_blank_count(render.scroll.blank_count as u16);
-            session.set_rendered_scroll_offset(render.scroll.clamped);
-        }
+            {
+                let session = state.active_session();
+                session.set_last_max_offset(render.scroll.max_offset);
+                session.set_entry_line_ranges(render.entry_line_ranges.clone());
+                session.set_viewport_height(area.height);
+                session.set_blank_count(render.scroll.blank_count as u32);
+                session.set_rendered_scroll_offset(render.scroll.clamped);
+            }
 
-        render.find_visible_indices();
-        render.build_blank_lines();
-        render.render_visible_entries();
+            render.find_visible_indices();
+            render.build_blank_lines();
+            render.render_visible_entries(&mut cache);
+        }
         render.paint(frame);
     }
 }
@@ -128,13 +145,86 @@ impl UiElement for ChatLogElement {
 // Loading indicator
 // ---------------------------------------------------------------------------
 
-/// Render a centered "Loading session..." message while a session loads.
-fn render_loading(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-    let loading = Paragraph::new("Loading session...")
-        .alignment(ratatui::layout::Alignment::Center)
-        .style(Style::default().fg(theme.muted_text))
-        .block(Block::default().borders(Borders::NONE));
-    frame.render_widget(loading, area);
+/// Minimum time between loading-throbber animation frame advances.
+const ANIMATION_INTERVAL: Duration = Duration::from_millis(80);
+
+/// The text shown while a session is loading, with a leading space so it
+/// clears the spinner glyph.
+const LOADING_LABEL: &str = " Loading session...";
+
+/// The row the loading line is drawn on, counted up from the chat log's bottom.
+///
+/// The chat log's own area already excludes the indicator and bottom-line rows
+/// that `render_chat_tab` reserves, so its last row sits directly above the
+/// chat bar. Anchoring there keeps the message clear of both the indicator
+/// and the input box.
+const LOADING_ROW_FROM_BOTTOM: u16 = 1;
+
+/// Renders an animated "Loading session..." line while a session loads.
+///
+/// Drawn on the chat log's last row — the row directly above the chat bar — so
+/// the message reads as a status line under the conversation rather than
+/// floating in the middle of it. Coloured with the same theme color as the
+/// streaming indicator's spinner.
+fn render_loading(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    theme: &Theme,
+    throbber_state: &mut ThrobberState,
+    last_advance: &mut Option<Instant>,
+) {
+    let Some(row) = area
+        .height
+        .checked_sub(LOADING_ROW_FROM_BOTTOM)
+        .filter(|row| *row > 0)
+    else {
+        return;
+    };
+    let row_area = Rect {
+        y: area.y.saturating_add(row),
+        height: 1,
+        ..area
+    };
+
+    let style = Style::default().fg(theme.streaming);
+    let throbber = Throbber::default()
+        .label(LOADING_LABEL)
+        .style(style)
+        .throbber_style(style)
+        .throbber_set(throbber_widgets_tui::ASCII)
+        .use_type(WhichUse::Spin);
+
+    // `Throbber` renders left-aligned with no alignment option, so centre the
+    // line by starting it half the leftover space in. When the log is narrower
+    // than the label there is no slack, and it simply starts at the edge.
+    let glyph_and_label = u16::try_from(LOADING_LABEL.len())
+        .unwrap_or(u16::MAX)
+        .saturating_add(1);
+    let slack = row_area.width.saturating_sub(glyph_and_label);
+    let start = row_area.x.saturating_add(slack / 2);
+    let width = row_area.width.min(glyph_and_label).max(1).min(
+        row_area
+            .x
+            .saturating_add(row_area.width)
+            .saturating_sub(start),
+    );
+    if width == 0 {
+        return;
+    }
+    let centered = Rect {
+        x: start,
+        width,
+        ..row_area
+    };
+    frame.render_stateful_widget(throbber, centered, throbber_state);
+
+    // Advance the animation only once the interval has elapsed, matching the
+    // streaming indicator's pacing.
+    let now = Instant::now();
+    if last_advance.is_none_or(|last| now.duration_since(last) >= ANIMATION_INTERVAL) {
+        throbber_state.calc_next();
+        *last_advance = Some(now);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -170,20 +260,25 @@ struct HistoryRender<'a> {
 
     // Built by pipeline steps
     tool_result_statuses: HashMap<String, ToolResultStatus>,
+    /// Ids of the `ToolCall` entries streaming arguments right now.
+    ///
+    /// Snapshotted once per frame so layout can test membership per entry instead of
+    /// scanning the whole history for each tool call.
+    streaming_tool_call_ids: HashSet<ChatEntryId>,
     /// Per-visual-item wrapped line ranges: `entry_line_ranges[vi_idx] = (start, end)`.
-    entry_line_ranges: Vec<(u16, u16)>,
+    entry_line_ranges: Vec<(u32, u32)>,
     miss_lines: HashMap<usize, Vec<Line<'static>>>,
     #[expect(
         clippy::rc_buffer,
         reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
     )]
     cached_lines: HashMap<usize, Arc<Vec<Line<'static>>>>,
-    total_wrapped: u16,
+    total_wrapped: u32,
     scroll: ScrollState,
     visible_indices: Vec<usize>,
     content_lines: Vec<Line<'static>>,
     gutter_lines: Vec<Line<'static>>,
-    lines_before_viewport: u16,
+    lines_before_viewport: u32,
 }
 
 impl<'a> HistoryRender<'a> {
@@ -200,6 +295,7 @@ impl<'a> HistoryRender<'a> {
             width: area.width.saturating_sub(GUTTER_WIDTH),
             height: area.height,
         };
+        let streaming_tool_call_ids = state.active_session().streaming_tool_call_ids();
         Self {
             history: state.active_session().history(),
             selected_idx: state.active_session().selected_entry_index(),
@@ -211,6 +307,7 @@ impl<'a> HistoryRender<'a> {
             gutter_area,
             content_area,
             tool_result_statuses: HashMap::new(),
+            streaming_tool_call_ids,
             entry_line_ranges: Vec::new(),
             miss_lines: HashMap::new(),
             cached_lines: HashMap::new(),
@@ -254,6 +351,12 @@ impl<'a> HistoryRender<'a> {
     // Step 1: Build tool result status map
     // -----------------------------------------------------------------------
 
+    /// Whether `entry` is a `ToolCall` still streaming arguments.
+    fn is_streaming_tool_call(&self, entry: &ChatEntry) -> bool {
+        matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
+            && self.streaming_tool_call_ids.contains(&entry.id)
+    }
+
     /// Pair tool call IDs with their result status for background coloring.
     fn build_tool_result_map(&mut self) {
         self.tool_result_statuses = self
@@ -278,7 +381,7 @@ impl<'a> HistoryRender<'a> {
     /// (via `insert_with_lines`) and `miss_lines`.
     #[expect(clippy::expect_used, reason = "infallible")]
     fn compute_line_ranges(&mut self, cache: &mut EntryLineCache) {
-        let mut wrapped_cursor: u16 = 0;
+        let mut wrapped_cursor: u32 = 0;
 
         for (vi_idx, item) in self.visual_items.iter().enumerate() {
             match item {
@@ -294,14 +397,11 @@ impl<'a> HistoryRender<'a> {
                     // entry's content fingerprint is unchanged.
                     let variant = render_variant(
                         self.paired_status_for_entry(entry),
-                        matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                            && self
-                                .state
-                                .active_session()
-                                .is_tool_call_streaming(&entry.id),
+                        self.is_streaming_tool_call(entry),
                         self.is_task_waiting(entry),
                     );
-                    if let Some(hit) = cache.get(entry, is_expanded, variant, self.content_width) {
+                    let probe = cache.probe(entry, is_expanded, variant, self.content_width);
+                    if let Some(hit) = probe.hit {
                         let start = wrapped_cursor;
                         let end = wrapped_cursor + hit.wrapped_count;
                         self.entry_line_ranges.push((start, end));
@@ -316,11 +416,7 @@ impl<'a> HistoryRender<'a> {
                             .tool_entry_max_lines
                             .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                         let paired_status = self.paired_status_for_entry(entry);
-                        let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                            && self
-                                .state
-                                .active_session()
-                                .is_tool_call_streaming(&entry.id);
+                        let is_streaming = self.is_streaming_tool_call(entry);
                         let is_waiting_on_subagent = self.is_task_waiting(entry);
                         let variant =
                             render_variant(paired_status, is_streaming, is_waiting_on_subagent);
@@ -335,15 +431,16 @@ impl<'a> HistoryRender<'a> {
                             is_waiting_on_subagent,
                         };
                         let lines = entry_to_lines(entry, &ctx);
-                        let wrapped_count: u16 = if self.content_width == 0 {
-                            lines.len() as u16
+                        let wrapped_count: u32 = if self.content_width == 0 {
+                            lines.len() as u32
                         } else {
                             Paragraph::new(lines.clone())
                                 .wrap(Wrap { trim: false })
-                                .line_count(self.content_width) as u16
+                                .line_count(self.content_width) as u32
                         };
                         cache.insert_with_lines(
                             entry,
+                            probe.content,
                             is_expanded,
                             variant,
                             self.content_width,
@@ -370,6 +467,7 @@ impl<'a> HistoryRender<'a> {
         }
 
         self.total_wrapped = wrapped_cursor;
+        cache.evict_if_needed();
     }
 
     /// Look up the paired tool result status for an entry (if applicable).
@@ -449,7 +547,7 @@ impl<'a> HistoryRender<'a> {
         let blank_count = self.scroll.blank_count;
         let viewport_top = self.scroll.clamped;
 
-        if blank_count > 0 && viewport_top < blank_count as u16 {
+        if blank_count > 0 && viewport_top < blank_count as u32 {
             for _ in 0..blank_count {
                 self.content_lines.push(Line::from(""));
             }
@@ -466,21 +564,53 @@ impl<'a> HistoryRender<'a> {
     // Step 6: Pass 2 - render visible entries
     // -----------------------------------------------------------------------
 
+    /// Store freshly painted lines for an entry and mark them as recently used.
+    ///
+    /// The wrapped count is read back from the range Pass 1 computed, so the
+    /// cache never disagrees with the layout that was just used to paint.
+    fn cache_lines(
+        &self,
+        cache: &mut EntryLineCache,
+        entry: &ChatEntry,
+        vi_idx: usize,
+        is_expanded: bool,
+        variant: u64,
+        lines: Vec<Line<'static>>,
+    ) {
+        let wrapped_count = self
+            .entry_line_ranges
+            .get(vi_idx)
+            .map_or(0, |(start, end)| end - start);
+        let content = cache
+            .probe(entry, is_expanded, variant, self.content_width)
+            .content;
+        cache.insert_with_lines(
+            entry,
+            content,
+            is_expanded,
+            variant,
+            self.content_width,
+            wrapped_count,
+            Arc::new(lines),
+        );
+        cache.touch(&entry.id);
+    }
+
     /// Build content and gutter lines for all visible entries.
     #[expect(clippy::expect_used, reason = "infallible")]
-    fn render_visible_entries(&mut self) {
+    fn render_visible_entries(&mut self, cache: &mut EntryLineCache) {
         let viewport_top = self.scroll.clamped;
         let chat_log_active =
             matches!(self.state.frontend.scope(), jinn_slices::FocusScope::Normal);
         let cursor_color = self.theme.focus_accent;
 
         for &vi_idx in &self.visible_indices {
-            let (entry_start, _entry_end) = self
+            let (entry_start, entry_end) = self
                 .entry_line_ranges
                 .get(vi_idx)
                 .copied()
                 .expect("vi_idx from visible_indices");
-            let abs_entry_start = entry_start + self.scroll.blank_count as u16;
+            let abs_entry_start = entry_start + self.scroll.blank_count as u32;
 
             match self.visual_items.get(vi_idx) {
                 Some(VisualItem::Entry(hist_idx)) => {
@@ -494,20 +624,27 @@ impl<'a> HistoryRender<'a> {
                         .config
                         .tool_entry_max_lines
                         .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
+                    let variant = render_variant(
+                        self.paired_status_for_entry(entry),
+                        self.is_streaming_tool_call(entry),
+                        self.is_task_waiting(entry),
+                    );
 
                     // Get content lines - cached lines → miss lines → render fresh.
                     let entry_content_lines = if let Some(lines) = self.cached_lines.remove(&vi_idx)
                     {
+                        // Painted from the cache, so this entry counts as used.
+                        cache.touch(&entry.id);
                         Arc::unwrap_or_clone(lines)
                     } else if let Some(lines) = self.miss_lines.remove(&vi_idx) {
+                        // Freshly rendered during layout this frame; store it so
+                        // a scroll away and back can reuse it.
+                        self.cache_lines(cache, entry, vi_idx, is_expanded, variant, lines.clone());
                         lines
                     } else {
+                        // Nothing available: render, then cache for the next frame.
                         let paired_status = self.paired_status_for_entry(entry);
-                        let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                            && self
-                                .state
-                                .active_session()
-                                .is_tool_call_streaming(&entry.id);
+                        let is_streaming = self.is_streaming_tool_call(entry);
                         let is_waiting_on_subagent = self.is_task_waiting(entry);
                         let ctx = RenderContext {
                             content_width: self.content_width,
@@ -519,7 +656,9 @@ impl<'a> HistoryRender<'a> {
                             is_streaming,
                             is_waiting_on_subagent,
                         };
-                        entry_to_lines(entry, &ctx)
+                        let lines = entry_to_lines(entry, &ctx);
+                        self.cache_lines(cache, entry, vi_idx, is_expanded, variant, lines.clone());
+                        lines
                     };
 
                     // Build gutter lines for this entry.
@@ -530,6 +669,9 @@ impl<'a> HistoryRender<'a> {
                         is_selected,
                         chat_log_active,
                         content_width: self.content_width,
+                        // Pass 1 already measured how many rows this entry
+                        // wraps to at this width.
+                        wrapped_count: entry_end - entry_start,
                         theme: &self.theme,
                         cursor_color,
                         is_included_in_context,
@@ -580,7 +722,10 @@ impl<'a> HistoryRender<'a> {
 
     /// Render the final gutter and content paragraph widgets to the frame.
     fn paint(self, frame: &mut Frame<'_>) {
-        let paragraph_scroll = self.lines_before_viewport;
+        // ratatui's `Paragraph::scroll` takes u16, so the u32 line math is
+        // narrowed at this boundary. A session long enough to overflow u16 rows
+        // cannot be scrolled to in one frame anyway.
+        let paragraph_scroll = u16::try_from(self.lines_before_viewport).unwrap_or(u16::MAX);
 
         // Render gutter column.
         let gutter_widget = Paragraph::new(self.gutter_lines)
@@ -596,12 +741,148 @@ impl<'a> HistoryRender<'a> {
         frame.render_widget(chat_widget, self.content_area);
 
         // Render scroll indicator (delegates to the chat-log-view slice).
+        // The indicator is a u16 widget; clamping both values preserves the
+        // `clamped >= max_offset` "at the bottom" check it relies on.
         render_scroll_indicator(
             frame,
             self.area,
-            self.scroll.clamped,
-            self.scroll.max_offset,
+            u16::try_from(self.scroll.clamped).unwrap_or(u16::MAX),
+            u16::try_from(self.scroll.max_offset).unwrap_or(u16::MAX),
             &self.theme,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+    use super::*;
+    use jinn_testutil::{buffer_row, setup_term};
+    use ratatui::style::Color;
+
+    /// Renders the element once with a session load in flight.
+    fn render_loading_into(state: &AppState, width: u16, height: u16) -> ratatui::buffer::Buffer {
+        let mut element = ChatLogElement::new();
+        let (mut terminal, area) = setup_term(width, height);
+        {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
+            terminal
+                .draw(|frame| element.render(frame, area, &ctx))
+                .expect("draw");
+        }
+        terminal.backend().buffer().clone()
+    }
+
+    /// A session with a load in flight.
+    fn loading_state() -> AppState {
+        let mut state = AppState::default();
+        state.session.begin_load(jinn_core_types::SessionId::new());
+        assert!(state.session.is_loading(), "guard must be set");
+        state
+    }
+
+    #[rstest::rstest]
+    fn loading_line_shows_the_label() {
+        // Given a session that is loading.
+        let state = loading_state();
+
+        // When rendering the chat log.
+        let buffer = render_loading_into(&state, 30, 10);
+
+        // Then the loading label appears.
+        let rows: Vec<String> = (0..10)
+            .map(|y| {
+                (0..30)
+                    .map(|x| {
+                        buffer
+                            .cell((x, y))
+                            .map_or("?", ratatui::buffer::Cell::symbol)
+                    })
+                    .collect()
+            })
+            .collect();
+        assert!(
+            rows.iter().any(|row| row.contains("Loading session...")),
+            "expected the loading label, got: {rows:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn loading_line_sits_directly_above_the_chat_input() {
+        // Given a session that is loading in a 10-row area.
+        let state = loading_state();
+
+        // When rendering the chat log.
+        let buffer = render_loading_into(&state, 30, 10);
+
+        // Then the label sits on the chat log's last row, directly above the
+        // indicator and chat bar.
+        let label_row = buffer_row(&buffer, 10 - LOADING_ROW_FROM_BOTTOM, 30);
+        assert!(
+            label_row.contains("Loading session..."),
+            "expected the label on row {}, got: {label_row}",
+            10 - LOADING_ROW_FROM_BOTTOM
+        );
+    }
+
+    #[rstest::rstest]
+    fn loading_label_uses_the_streaming_color() {
+        // Given a session that is loading.
+        let state = loading_state();
+
+        // When rendering the chat log.
+        let buffer = render_loading_into(&state, 30, 10);
+
+        // Then the label's cells carry the streaming theme color, not the
+        // muted grey it used to use.
+        let y = 10 - LOADING_ROW_FROM_BOTTOM;
+        let label_start = buffer_row(&buffer, y, 30)
+            .find("Loading session...")
+            .expect("label present") as u16;
+        let fg = buffer.cell((label_start, y)).expect("cell").fg;
+        assert_eq!(fg, state.frontend.theme.streaming);
+        assert_ne!(fg, Color::Gray, "the loading label must not stay grey");
+    }
+
+    #[rstest::rstest]
+    fn loading_line_is_centred_across_the_log() {
+        // Given a session that is loading in a 30-column log.
+        let state = loading_state();
+
+        // When rendering the chat log.
+        let buffer = render_loading_into(&state, 30, 10);
+
+        // Then the whole line — spinner glyph and label — is centred, leaving
+        // roughly equal blank space on either side.
+        let y = 10 - LOADING_ROW_FROM_BOTTOM;
+        let row = buffer_row(&buffer, y, 30);
+        let label_start = row.find("Loading session...").expect("label present") as u16;
+        // The spinner glyph sits one column left of the label, which itself
+        // starts with a space, so the line begins two columns earlier.
+        let start = label_start.saturating_sub(2);
+        let end = label_start.saturating_add(LOADING_LABEL.trim().len() as u16);
+        let left_gap = start;
+        let right_gap = 30u16.saturating_sub(end);
+        // The glyph is followed by a space and the label by its own leading
+        // space, so the drawn line is two cells wider than the text itself;
+        // allow for that when comparing the gaps.
+        assert!(
+            left_gap.abs_diff(right_gap) <= 2,
+            "line should be centred: left gap {left_gap}, right gap {right_gap}, row: {row:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn loading_line_is_hidden_when_the_area_is_too_short() {
+        // Given a session that is loading in an area with no room for the row.
+        let state = loading_state();
+
+        // When rendering into a one-row area.
+        let buffer = render_loading_into(&state, 30, 1);
+
+        // Then nothing is drawn.
+        assert_eq!(buffer_row(&buffer, 0, 30).trim(), "");
     }
 }

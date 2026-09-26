@@ -475,7 +475,7 @@ fn jump_prev_from_persona_at_boundary_does_nothing() {
 
 #[rstest::rstest]
 fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
-    // Given 20 sessions, persona focused, sessions has cursor at index 18 with scroll_offset 4.
+    // Given 20 sessions, persona focused, sessions has cursor at index 18.
     let mut state = {
         let mut s = AppState::default_with_scope_focus();
         for i in 1..20 {
@@ -499,9 +499,6 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
     state
         .frontend
         .update_sections(|s| s.sessions.selected_index = Some(18));
-    state
-        .frontend
-        .update_sections(|s| s.sessions.scroll_offset = 4);
 
     // When jumping to sessions (skipping empty pins if any, or through pins).
     jump_to_section(
@@ -520,13 +517,6 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
                 .with_sections(|s| s.sessions.selected_index, || None),
             Some(18)
         );
-        // And scroll_to_cursor was called to adjust offset.
-        assert_eq!(
-            state
-                .frontend
-                .with_sections(|s| s.sessions.scroll_offset, || 0),
-            4
-        );
     }
 }
 
@@ -538,6 +528,13 @@ fn sidebar_with_all_sections() -> Sidebar {
 }
 
 /// Finds the first row in the buffer that contains the given needle text.
+/// The visible text of one row, trimmed of trailing blanks.
+fn row_text(buf: &ratatui::buffer::Buffer, width: u16, y: u16) -> String {
+    (0..width)
+        .map(|x| buf.cell((x, y)).map_or(" ", ratatui::buffer::Cell::symbol))
+        .collect::<String>()
+}
+
 fn find_row_containing(
     buf: &ratatui::buffer::Buffer,
     width: u16,
@@ -591,6 +588,83 @@ fn sessions_header_anchored_to_bottom() {
         sessions_row,
         Some(39),
         "Sessions footer should be at row 39 (bottom-anchored)"
+    );
+}
+
+#[rstest::rstest]
+fn leading_sections_stay_at_the_top_when_the_document_is_short() {
+    // Given a sidebar with content in more than just Persona and Sessions, in
+    // a column tall enough that the document does not fill it.
+    let mut sidebar = sidebar_with_all_sections();
+    let state = state_with_pinned(3);
+
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+
+    // Then Persona is at the very top of the column, not pushed to the bottom
+    // alongside Sessions.
+    let buf = terminal.backend().buffer();
+    let persona_row = find_row_containing(buf, width, height, "Persona");
+    assert_eq!(persona_row, Some(0), "Persona should anchor to row 0");
+}
+
+#[rstest::rstest]
+fn a_blank_gap_separates_the_sessions_block_from_the_sections_above_it() {
+    // Given a short document in a tall column, so the unused rows fall between
+    // the leading sections and the trailing sessions block.
+    let mut sidebar = sidebar_with_all_sections();
+    let state = state_with_pinned(3);
+
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+
+    // Then the Sessions footer is at the bottom of the column, with at least
+    // one blank row between it and the last row of the content above it.
+    let buf = terminal.backend().buffer();
+    let sessions_row = find_row_containing(buf, width, height, "Sessions").expect("Sessions");
+    // The gap rows carry no text at all, so find the last row above the
+    // Sessions block that has content, and assert the rows between are blank.
+    // The last non-blank row *before* the sessions entry row.
+    let sessions_entry = sessions_row.saturating_sub(1);
+    let last_content = (0..sessions_entry)
+        .rev()
+        .find(|y| !row_text(buf, width, *y).trim().is_empty())
+        .expect("some content above the Sessions block");
+    for y in (last_content + 1)..sessions_entry {
+        assert_eq!(
+            row_text(buf, width, y).trim(),
+            "",
+            "row {y} between the content and the Sessions block should be blank"
+        );
+    }
+    assert!(
+        sessions_entry > last_content + 1,
+        "expected a blank gap: last content at {last_content}, \
+         Sessions entry at {sessions_entry}"
     );
 }
 
@@ -1175,5 +1249,188 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
         state.active_session().selected_cursor_id(),
         Some(pinned_id),
         "chat log cursor should match the retained pin after jump back"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Scroll behaviour
+// ---------------------------------------------------------------------------
+
+/// Renders the sidebar into a `width` x `height` area and returns the buffer
+/// as text rows.
+fn render_sidebar_rows(
+    sidebar: &mut Sidebar,
+    state: &AppState,
+    width: u16,
+    height: u16,
+) -> Vec<String> {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..height)
+        .map(|y| {
+            (0..width)
+                .map(|x| {
+                    buffer
+                        .cell((x, y))
+                        .map_or(" ", ratatui::buffer::Cell::symbol)
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The row index of the reversed (selected) entry line, if the sidebar drew one.
+fn selected_row(terminal: &Terminal<TestBackend>, width: u16, height: u16) -> Option<u16> {
+    let buffer = terminal.backend().buffer();
+    (0..height).find(|&y| {
+        (0..width).any(|x| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.modifier.contains(ratatui::style::Modifier::REVERSED))
+        })
+    })
+}
+
+/// Renders and returns the terminal so both text rows and cell styles can be
+/// inspected.
+fn render_sidebar_terminal(
+    sidebar: &mut Sidebar,
+    state: &AppState,
+    width: u16,
+    height: u16,
+) -> Terminal<TestBackend> {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
+        })
+        .unwrap();
+    terminal
+}
+
+/// A state focused on the pins section with `count` pins and the cursor on the
+/// pin at `selected`.
+fn state_focused_on_pin(count: usize, selected: usize) -> AppState {
+    let state = state_with_pinned(count);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Pins.focus_scope());
+    let sorted_ids = state.sorted_pinned_ids();
+    let id = sorted_ids[selected].clone();
+    state.frontend.update_sections(|s| {
+        s.pins.select_by_id(id);
+    });
+    state
+}
+
+#[rstest::rstest]
+fn highlighted_row_stays_visible_with_40_pins_in_20_row_column() {
+    // Given 40 pins in a 20-row column, with the cursor on the last pin.
+    let mut sidebar = sidebar_with_all_sections();
+    let state = state_focused_on_pin(40, 39);
+
+    // When rendering.
+    let width = 30u16;
+    let height = 20u16;
+    let terminal = render_sidebar_terminal(&mut sidebar, &state, width, height);
+
+    // Then the highlighted row was drawn inside the column.
+    let row = selected_row(&terminal, width, height);
+    assert!(
+        row.is_some_and(|row| row < height),
+        "the selected pin must be drawn within the 20-row column, got {row:?}"
+    );
+}
+
+#[rstest::rstest]
+fn highlighted_row_stays_visible_with_30_phase_task_list() {
+    // Given 30 single-line phases in a 20-row column, cursor on the last phase.
+    let mut sidebar = sidebar_with_all_sections();
+    let mut state = AppState::default_with_scope_focus();
+    let inputs: Vec<jinn_tools_msg::PhaseInput> = (0..30)
+        .map(|i| jinn_tools_msg::PhaseInput {
+            description: format!("Phase {i}"),
+            tasks: vec![("task".to_owned(), jinn_tools_msg::TaskStatus::Pending)],
+        })
+        .collect();
+    state
+        .active_session_mut()
+        .task_list_mut()
+        .set_from_inputs(&inputs);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::TaskList.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.task_list.selected_phase_index = Some(29));
+
+    // When rendering.
+    let width = 60u16;
+    let height = 20u16;
+    let terminal = render_sidebar_terminal(&mut sidebar, &state, width, height);
+
+    // Then the highlighted phase row was drawn inside the column.
+    let row = selected_row(&terminal, width, height);
+    assert!(
+        row.is_some_and(|row| row < height),
+        "the selected phase must be drawn within the 20-row column, got {row:?}"
+    );
+}
+
+#[rstest::rstest]
+fn cursor_row_is_middle_of_viewport_when_the_document_has_slack() {
+    // Given 40 pins in a 40-row column with the cursor on pin 20.
+    let mut sidebar = sidebar_with_all_sections();
+    let state = state_focused_on_pin(40, 20);
+
+    // When rendering.
+    let width = 30u16;
+    let height = 40u16;
+    let terminal = render_sidebar_terminal(&mut sidebar, &state, width, height);
+
+    // Then the cursor lands on the middle row of the column.
+    let row = selected_row(&terminal, width, height).expect("a row is highlighted");
+    assert!(
+        (row as i32 - height as i32 / 2).abs() <= 1,
+        "cursor should sit near the vertical middle ({height}/2), got row {row}"
+    );
+}
+
+#[rstest::rstest]
+fn the_selected_pin_is_the_one_drawn() {
+    // Given 40 pins with the cursor on pin 30, in a column tall enough to show
+    // the whole document.
+    let selected = 30;
+    let mut sidebar = sidebar_with_all_sections();
+    let state = state_focused_on_pin(40, selected);
+
+    // When rendering into a column that fits the whole document.
+    let width = 30u16;
+    let height = 60u16;
+    let rows = render_sidebar_rows(&mut sidebar, &state, width, height);
+
+    // Then the pin under the cursor is the highlighted one.
+    // Then the pin under the cursor is the highlighted one.
+    let expected = format!("entry {selected}");
+    let highlighted: Vec<usize> = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.contains(&expected))
+        .map(|(i, _)| i)
+        .collect();
+    assert!(
+        highlighted.len() == 1,
+        "the selected pin should be drawn exactly once, got rows {highlighted:?}"
     );
 }

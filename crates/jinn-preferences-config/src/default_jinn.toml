@@ -85,7 +85,7 @@ disabled = ["phased-task-loop"]
 # >    checkouts_will_go_here_as_siblings/
 # >       .fslckout
 # >
-[[session_lifecycle.lifecycle]]
+[[session_lifecycle.script]]
 name = "fossil branch checkout"
 description = "Open a new checkout + branch"
 setup_command = "mkdir <branch> && cd <branch> && fossil open ../<repo>.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>"
@@ -99,7 +99,7 @@ teardown_command = "fossil merge trunk --force && fossil addremove && fossil com
 # >   worktrees_will_go_here_as_siblings/
 # >      .git/
 # >
-[[session_lifecycle.lifecycle]]
+[[session_lifecycle.script]]
 name = "git worktree"
 description = "Open a git worktree + branch"
 setup_command = "cd <repo> && git worktree add -b <branch> ../<branch> && cd .. && echo $(pwd)/<branch>"

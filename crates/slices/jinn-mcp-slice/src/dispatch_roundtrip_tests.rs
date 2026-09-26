@@ -1,7 +1,7 @@
 //! End-to-end dispatch roundtrip for the MCP actor.
 //!
 //! These tests exercise the *full* dispatch seam that the pure unit tests in
-//! `mcp_actor/mod.rs` cannot reach: a real [`McpActor`] spawned on the bus,
+//! `connection.rs` cannot reach: a real [`McpActor`] spawned on the bus,
 //! connected to an in-process stub MCP server, receiving an [`ExecuteTool`]
 //! command for a namespaced tool and publishing a [`ToolExecutionCompleted`]
 //! event carrying the server's response.

@@ -1,12 +1,11 @@
 //! Overlay geometry + renderer for the terminal overlay — a
 //! kernel-free slice view.
 //!
-//! Ports the renderer that lived in the TUI's `render/terminal_tab.rs`:
-//! draws the actor-mirrored screen ([`jinn_term_msg::TerminalTabState`])
-//! into the overlay rect — the styled cell grid (colors, attributes,
-//! wide characters) when available, falling back to the plain-text rows
-//! when a mirror predates the cells. The program's cursor is drawn only
-//! when the program shows it (TUIs hide it while repainting).
+//! Draws the actor-mirrored screen ([`jinn_term_msg::TerminalTabState`]) into
+//! the overlay rect — the styled cell grid (colors, attributes, wide
+//! characters) when available, falling back to the plain-text rows when a
+//! mirror predates the cells. The program's cursor is drawn only when the
+//! program shows it (TUIs hide it while repainting).
 //!
 //! The renderer reads [`RenderFacts`] instead of the kernel's app
 //! state: theme from the facts context, the mirror through the slices

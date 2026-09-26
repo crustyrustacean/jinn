@@ -10,6 +10,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use std::sync::Arc;
 
 use crate::preview_content::{PreviewCache, PreviewContent};
 use crate::{PickerItem, SelectionColors, SelectionState, compute_popup_rect};
@@ -317,7 +318,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         let lines = if let Some(item) = self.state.selected_item() {
             item.preview_lines_cached(width, cache)
         } else {
-            Vec::new()
+            Arc::new(Vec::new())
         };
 
         let visible: Vec<Line<'static>> = lines
@@ -355,7 +356,10 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use crate::SharedPreviewLines;
     use crate::{PickerItem, SelectionState};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
     use ratatui::text::Line;
 
     /// A simple test item implementing both PickerItem and PreviewContent.
@@ -381,10 +385,151 @@ mod tests {
                 .map(|l| Line::from(l.to_owned()))
                 .collect()
         }
+        fn cache_key(&self) -> Option<String> {
+            Some(self.name.clone())
+        }
     }
 
     fn make_state(items: Vec<TestItem>) -> SelectionState<TestItem> {
         SelectionState::with_items(items)
+    }
+
+    /// Renders the popup with a shared preview cache and returns the buffer rows.
+    ///
+    /// A fresh `TestBackend` per call is what makes a "cold" render cold: the
+    /// cache is the only state carried between the two calls.
+    fn render_rows(state: &SelectionState<TestItem>, cache: &dyn PreviewCache) -> Vec<String> {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal should build");
+        terminal
+            .draw(|frame| {
+                PreviewSelectionWidget::new(state)
+                    .title(Line::from(" Skills "))
+                    .colors(SelectionColors::default())
+                    .preview_cache(cache)
+                    .render(frame, Rect::new(0, 0, 80, 24));
+            })
+            .expect("draw should succeed");
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol().to_owned())
+            .collect()
+    }
+
+    /// A cache keyed by the item name, standing in for the skill cache.
+    #[derive(Default)]
+    struct NamedCache {
+        entries: std::cell::RefCell<std::collections::HashMap<(String, usize), SharedPreviewLines>>,
+    }
+
+    impl PreviewCache for NamedCache {
+        fn get(&self, key: &str, width: usize) -> Option<SharedPreviewLines> {
+            self.entries
+                .borrow()
+                .get(&(key.to_owned(), width))
+                .map(Arc::clone)
+        }
+        fn insert(&self, key: String, width: usize, lines: SharedPreviewLines) {
+            self.entries.borrow_mut().insert((key, width), lines);
+        }
+    }
+
+    fn cached_state() -> SelectionState<TestItem> {
+        make_state(vec![TestItem {
+            name: "rust".to_owned(),
+            body: "# Rust rules\n\nUse `wherror` for errors.".to_owned(),
+        }])
+    }
+
+    #[rstest::rstest]
+    fn a_warm_cache_renders_identically_to_a_cold_one() {
+        // Given a state and an empty cache.
+        let state = cached_state();
+        let cache = NamedCache::default();
+
+        // When the popup is rendered cold, then again from the warm cache.
+        let cold = render_rows(&state, &cache);
+        let warm = render_rows(&state, &cache);
+
+        // Then the drawn rows are byte-identical — sharing the line buffer
+        // through the cache must not change a single cell.
+        assert_eq!(
+            cold, warm,
+            "a warm cache must render exactly like a cold one"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_cleared_cache_renders_identically_to_a_populated_one() {
+        // Given a cache warmed by a first render.
+        let state = cached_state();
+        let cache = NamedCache::default();
+        let cold = render_rows(&state, &cache);
+
+        // When the cache is cleared (as on a theme change) and it is re-rendered.
+        cache.entries.borrow_mut().clear();
+        let after_clear = render_rows(&state, &cache);
+
+        // Then the output matches the cold render, proving a cleared cache
+        // re-renders from source rather than serving stale theme-colored lines.
+        assert_eq!(
+            cold, after_clear,
+            "a cleared cache must re-render identically"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_cache_hits_again_after_the_picker_is_reopened() {
+        // Given a cache warmed by a render, with the popup then torn down.
+        let state = cached_state();
+        let cache = NamedCache::default();
+        render_rows(&state, &cache);
+        assert_eq!(
+            cache.entries.borrow().len(),
+            1,
+            "first render populates the cache"
+        );
+
+        // When the popup is rebuilt from scratch and rendered again.
+        let reopened = SelectionState::with_items(vec![TestItem {
+            name: "rust".to_owned(),
+            body: "# Rust rules\n\nUse `wherror` for errors.".to_owned(),
+        }]);
+        let after_reopen = render_rows(&reopened, &cache);
+
+        // Then it renders the same rows, served from the surviving cache.
+        let fresh = render_rows(&reopened, &NamedCache::default());
+        assert_eq!(after_reopen, fresh, "reopening must render identically");
+    }
+
+    #[rstest::rstest]
+    fn a_resized_terminal_renders_at_the_new_width() {
+        // Given a cache warmed at the preview pane's own width.
+        let state = cached_state();
+        let cache = NamedCache::default();
+        render_rows(&state, &cache);
+        let first = cache
+            .entries
+            .borrow()
+            .keys()
+            .next()
+            .cloned()
+            .expect("the render populates the cache");
+        assert_eq!(cache.entries.borrow().len(), 1, "one width cached so far");
+
+        // When the same item is requested at a different width.
+        let item = state.selected_item().expect("should have selection");
+        item.preview_lines_cached(17, Some(&cache));
+
+        // Then the new width is a distinct entry, so the pane re-wraps instead
+        // of reusing lines laid out for the old width.
+        let keys: Vec<(String, usize)> = cache.entries.borrow().keys().cloned().collect();
+        assert_eq!(keys.len(), 2, "the new width is cached separately");
+        assert_ne!(first.1, 17);
+        assert!(keys.iter().any(|(_, w)| *w == 17));
     }
 
     #[rstest::rstest]

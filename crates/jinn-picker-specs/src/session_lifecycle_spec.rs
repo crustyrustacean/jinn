@@ -307,7 +307,7 @@ mod tests {
             "a new session was created"
         );
         // And the lifecycle name was stamped on the new session (the
-        // "blank" pseudo-entry is stamped verbatim, as legacy did).
+        // "blank" pseudo-entry is stamped verbatim).
         assert_eq!(state.active_session().lifecycle_name(), Some("blank"));
         // And the setup messages were emitted for the new session.
         assert!(

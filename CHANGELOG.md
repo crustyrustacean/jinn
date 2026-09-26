@@ -8,6 +8,7 @@
   - `todo_get_list`: returns the entire todo list
 - Task loop skills reference `todo_*` tools generically instead of by exact name.
 - The `#approve-plan` prompt should produce more detailed todo lists.
+- The `RECORD.md` template has been updated, so records should be more durable across changes. This change shipped in the `#plan` prompt.
 - Added a new `jinn-usage` skill.
   - This enables the agent to answer meta-questions about `jinn` usage and configuration. `jinn` should now be able to edit it's configuration on your behalf.
 - Remove `jinn-plugin` skill. It will need to be manually removed from your `~/.agent/skills` directory.
@@ -28,6 +29,20 @@
   - Todo list no longer longer propagates subagent sessions.
   - `max_duration_seconds` is no longer presented to the model, but will still be accepted and applied if provided. This change was made because its not always clear how long a subagent task will take, and ending it prematurely throws away all the work.
 - Active sessions are now progressively loaded and a spinner was added to the sidebar to indicate when sessions are loading.
+- Arrows keys + a few non-printable keys now work properly in interactive terms.
+  - `jinn` used codes that didn't match TERMINFO, so some applications wouldn't properly register non-printable keys.
+- Overall performance improvement on Markdown rendering.
+  - Chat log, session previews, and skill picker rendering is faster and uses significantly less memory.
+  - There is no longer UI stuttering on gigantic sessions.
+- The sidebar is now presented as one large scrollable area that keeps the cursor bounded.
+  - Removed the scrolling capability of the sessions since now the entire sidebar scrolls.
+- Add new `global_command_policy` TOML config to block commands across all projects. Recommend adding the below to your `jinn.toml` (it ships by default with a fresh config):
+
+```toml
+[[global_command_policy]]
+pattern = 'rg -rn'
+message = 'ripgrep is already recursive and `-r` takes a replacement value, so `rg -rn` rewrites every match to `n` and still exit s 0 — use `-n` alone for line numbers.'
+```
 
 - These plugins were move into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them. Please see the next section on plugin-related TOML configuration changes.
   - Deleted `persona-loader`
@@ -36,7 +51,7 @@
   - Deleted `tool-call-watchdog`
   - Deleted `url-citations`
 
-## TOML Configuration Changes
+### TOML plugin configuration changes
 
 **theme-loader** is now always active. The TOML configuration is now ignored and should be deleted:
 

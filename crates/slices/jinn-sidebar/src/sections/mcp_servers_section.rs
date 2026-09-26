@@ -167,7 +167,7 @@ impl SidebarSection for McpServersSection {
         jinn_sidebar_msg::SidebarSectionId::McpServers
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
         let state = ctx.state;
         let sidebar_focused = state.frontend.is_sidebar();
         let section_focused = sidebar_focused
@@ -238,11 +238,13 @@ impl SidebarSection for McpServersSection {
             lines
         };
 
-        let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
+        let widget = Paragraph::new(lines)
+            .block(Block::default().borders(Borders::NONE))
+            .scroll((skip_rows, 0));
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, ctx: &RenderCtx) -> u16 {
+    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
         // Collapsed to 0 when no servers are enabled for the active session,
         // matching the Pins/TaskList pattern so disabled servers waste no space.
         let enabled = ctx.state.active_session().enabled_mcp_servers();
@@ -322,7 +324,7 @@ mod tests {
             .draw(|frame| {
                 let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(state, slices, &overlay_views, config);
-                section.render(frame, area, &ctx);
+                section.render(frame, area, 0, &ctx);
             })
             .unwrap();
         let buffer = terminal.backend().buffer();
@@ -485,7 +487,7 @@ mod tests {
     fn content_height_is_zero_when_none_enabled() {
         // Given configured servers, none enabled for the active session.
         let (state, config) = state_with_servers(&[server("alpha"), server("beta")]);
-        let section = McpServersSection;
+        let mut section = McpServersSection;
 
         // When computing the content height.
         let slices = jinn_slices::Slices::new();
@@ -508,7 +510,7 @@ mod tests {
             state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
         state.active_session_mut().enable_mcp_server("alpha");
         state.active_session_mut().enable_mcp_server("gamma");
-        let section = McpServersSection;
+        let mut section = McpServersSection;
 
         // When computing the content height.
         let slices = jinn_slices::Slices::new();

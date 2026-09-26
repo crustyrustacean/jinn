@@ -51,7 +51,7 @@ impl SidebarSection for PersonaSection {
         jinn_sidebar_msg::SidebarSectionId::Persona
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
         let state = ctx.state;
         let sidebar_focused = state.frontend.is_sidebar();
         let section_focused = sidebar_focused
@@ -106,11 +106,13 @@ impl SidebarSection for PersonaSection {
             lines
         };
 
-        let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
+        let widget = Paragraph::new(lines)
+            .block(Block::default().borders(Borders::NONE))
+            .scroll((skip_rows, 0));
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, _ctx: &RenderCtx) -> u16 {
+    fn content_height(&mut self, _ctx: &RenderCtx) -> u16 {
         // Header(1) + blank(1) + entry(1) + trailing gap(1) = 4.
         4
     }
@@ -160,7 +162,7 @@ mod tests {
     #[rstest::rstest]
     fn content_height_is_four_with_active_persona() {
         // Given a PersonaSection and state with an active persona.
-        let section = PersonaSection;
+        let mut section = PersonaSection;
         let state = AppState::default_with_scope_focus();
         state
             .persona_selection()
@@ -190,7 +192,7 @@ mod tests {
     #[rstest::rstest]
     fn content_height_is_four_without_persona() {
         // Given a PersonaSection and state with no active persona.
-        let section = PersonaSection;
+        let mut section = PersonaSection;
         let state = AppState::default_with_scope_focus();
 
         // When asking for content height.
@@ -271,7 +273,7 @@ mod tests {
                 let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-                section.render(frame, area, &ctx);
+                section.render(frame, area, 0, &ctx);
             })
             .unwrap();
         let buffer = terminal.backend().buffer();

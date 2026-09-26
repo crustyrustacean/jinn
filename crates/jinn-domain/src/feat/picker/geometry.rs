@@ -47,7 +47,7 @@ pub fn measure_active_picker_results_height(
 
     // Spec-driven geometry: a spec's widget kind selects the layout math and
     // its `bottom_rows()` reserves the footer. Every kind is spec-driven; the
-    // fallback (empty registry, test seams) reserves the legacy single row.
+    // fallback (empty registry, test seams) reserves a single row.
     let height = match jinn_picker::spec_id_for_kind(&kind).and_then(|id| registry.get(id)) {
         Some(spec) => match spec.widget_kind() {
             WidgetKind::Preview => skill_results_height(inner, popup_area, spec.bottom_rows()),

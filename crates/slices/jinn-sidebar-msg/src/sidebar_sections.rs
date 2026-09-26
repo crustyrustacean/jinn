@@ -50,6 +50,16 @@ pub struct SidebarSections {
     pub mcp_servers: McpServersSectionState,
     /// In-progress text for the rename-session popup.
     pub rename_input: RenameSessionInputState,
+    /// The sidebar column's scroll offset from the last frame that had a
+    /// cursor to derive one from.
+    ///
+    /// The document's offset is normally recomputed every frame from the
+    /// focused section's cursor. That derivation is impossible while the chat
+    /// pane holds focus — the scope stack reports no sidebar section — so
+    /// without this the column would snap to the top every time focus left the
+    /// sidebar. Retaining the last derived offset keeps the sidebar where the
+    /// user left it until they move the cursor again.
+    pub scroll_offset: u16,
 }
 
 use jinn_core_types::ChatEntryId;
@@ -396,8 +406,6 @@ mod tests {
 pub struct SessionsSectionState {
     /// Index into the sorted open sessions list.
     pub selected_index: Option<usize>,
-    /// Scroll offset: the first session entry index that is visible.
-    pub scroll_offset: usize,
     /// Visual-parent index: maps a loaded session to its nearest loaded ancestor
     /// when the direct parent has been archived/removed from memory.
     /// Updated reactively in `remove_and_replace()`, invalidated on session load.

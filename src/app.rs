@@ -562,8 +562,8 @@ mod tests {
     //
     // The behavior is covered two ways instead:
     //  1. The 4 wiring sites are verified by static inspection: `run_and_shutdown`
-    //     is called at the Tui (line 250), Headless (292), Bench::Run (389), and
-    //     Bench::Tui (460) exit paths.
+    //     is called on the Tui and Headless exit paths, and from both
+    //     `Bench::Run` and `Bench::Tui`.
     //  2. The checkpoint itself is proven by `shutdown_truncates_wal_file` and
     //     `shutdown_makes_db_self_contained_for_backup` in the session store tests.
 

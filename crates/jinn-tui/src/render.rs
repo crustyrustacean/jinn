@@ -151,8 +151,14 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
             }
             jinn_sidebar::sections::task_list_section::preview::write_preview_geometry(
                 &mut wstate,
+                &app.services.config,
                 area,
                 chat.sidebar,
+            );
+            jinn_sidebar::sections::layout::write_scroll_offset(
+                &mut wstate,
+                &app.services.config,
+                chat.sidebar.height,
             );
         }
     }

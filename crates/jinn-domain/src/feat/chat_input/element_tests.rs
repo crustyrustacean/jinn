@@ -225,7 +225,7 @@ fn multiline_first_line_has_prefix() {
         })
         .unwrap();
 
-    // Then line 0 (row 0) has "> " prefix and "hello".
+    // Then the first row is prefixed with "> " and reads "hello".
     let buffer = terminal.backend().buffer().clone();
     let cell = buffer.cell((0, 0)).expect("cell should exist");
     assert_eq!(cell.symbol(), ">");
@@ -255,7 +255,7 @@ fn multiline_second_line_has_indent() {
         })
         .unwrap();
 
-    // Then line 1 (row 1) has "  " indent and "world".
+    // Then the second row is indented and reads "world".
     let buffer = terminal.backend().buffer().clone();
     let indent_cell = buffer.cell((0, 1)).expect("cell should exist");
     assert_eq!(indent_cell.symbol(), " ");

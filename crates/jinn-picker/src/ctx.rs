@@ -50,7 +50,7 @@ impl<'a> ActionCtx<'a> {
     }
 
     /// The full kernel state — the sanctioned escape hatch for spec-authored
-    /// downcasts while operations are still pilot-local.
+    /// downcasts.
     #[must_use]
     pub fn state_any(&mut self) -> &mut dyn std::any::Any {
         self.host.state_any()
