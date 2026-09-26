@@ -10,6 +10,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::sections::sessions::state::{SessionEntry, SessionEntryKind};
 use jinn_theme::Theme;
+use jinn_theme::contrast;
 
 use super::super::{ACTIVE_PREFIX, INACTIVE_PREFIX};
 use super::truncate::truncate_str;
@@ -95,17 +96,23 @@ pub(crate) fn arrow_span(is_active: bool, theme: &Theme) -> Span<'static> {
 
 /// Computes the title style based on entry state.
 ///
-/// Priority: error+selected → red+reversed, error → red, selected → reversed,
-/// active → subagent/primary text, default → subagent/muted text. Subagent
-/// sessions use [`Theme::subagent_fg`] wherever a regular session would use
-/// muted text, so machine-spawned sessions read as a different kind.
+/// Priority: in-flight+selected → tinted on the selection background,
+/// in-flight → tinted, error+selected → red+reversed, error → red,
+/// selected → reversed, active → subagent/primary text,
+/// default → subagent/muted text. Subagent sessions use
+/// [`Theme::subagent_fg`] wherever a regular session would use muted text, so
+/// machine-spawned sessions read as a different kind.
 pub(crate) fn entry_title_style(entry: &SessionEntry, is_selected: bool, theme: &Theme) -> Style {
-    // An in-flight row takes the tint in place of every other choice, and
-    // deliberately without `Modifier::REVERSED`: selection inverts fg/bg at
-    // the terminal, which would flip the tint into a light wash. A tinted row
-    // stays legible whether or not it also holds the cursor.
+    // A selected in-flight row outranks the tint: the cursor has to stay
+    // visible on a row that is being archived, or the row looks untouched
+    // while the archive runs. See `selected_in_flight_style` for why this uses
+    // a background instead of `Modifier::REVERSED`.
     if entry.is_in_flight {
-        return in_flight_style(theme);
+        return if is_selected {
+            selected_in_flight_style(theme)
+        } else {
+            in_flight_style(theme)
+        };
     }
     let base = if entry.is_subagent {
         theme.subagent_fg
@@ -139,6 +146,27 @@ fn in_flight_style(theme: &Theme) -> Style {
     Style::default()
         .fg(theme.in_flight_fg)
         .bg(theme.in_flight_bg)
+}
+
+/// The style for a row the cursor is on.
+///
+/// The cursor must stay visible on a row that is also being archived, so this
+/// deliberately sets a *background* rather than using `Modifier::REVERSED`.
+/// `REVERSED` inverts fg/bg at the terminal, which would swap the tint's
+/// dark wash for a light one and read as a normal selection rather than as
+/// "selected and in flight". A real background keeps both facts legible:
+/// `selection_bg` says the cursor is here, the spinner says it is disposing.
+///
+/// The foreground is contrast-checked against the selection background: a light
+/// theme's `selection_bg` can be lighter than the tint's foreground, and the
+/// text must not disappear into it.
+fn selected_in_flight_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(contrast::ensure_contrast(
+            theme.in_flight_fg,
+            theme.selection_bg,
+        ))
+        .bg(theme.selection_bg)
 }
 
 /// Builds the tree connector prefix for a session entry.
@@ -240,11 +268,18 @@ fn assemble_session_line(
     spans.push(Span::styled(display_title, style));
     // Re-style every span so the wash runs the full width of the row rather
     // than only behind the title, and so the indicator, arrow, tree connector
-    // and status glyphs read as part of the same tinted row.
+    // and status glyphs read as part of the same tinted row. A selected row
+    // is restyled with the selection-aware style instead, so the cursor
+    // highlight survives the whole-row wash.
     if entry.is_in_flight {
+        let row_style = if is_selected {
+            selected_in_flight_style(theme)
+        } else {
+            in_flight_style(theme)
+        };
         spans = spans
             .into_iter()
-            .map(|span| span.style(in_flight_style(theme)))
+            .map(|span| span.style(row_style))
             .collect();
     }
     Line::from(spans)

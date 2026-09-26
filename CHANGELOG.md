@@ -39,6 +39,9 @@
   - Removed the scrolling capability of the sessions since now the entire sidebar scrolls.
 - The `jinn.toml` file was restructured dramatically. Recommend moving your existing `jinn.toml` to `jinn.toml.bak` and then running `jinn install` to get a new version.
 - Initial application loading responsiveness has been improved.
+- Session archival operation is now visualized in the sidebar by a gray background and distinct spinner.
+- Added a new `--config` flag to load a specific `jinn.toml` file.
+  - Passing `--config` to `jinn config init` will initialize the template to the provided path instead of `<config dir>/jinn`
 
 - These plugins were moved into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them. Please see the next section on plugin-related TOML configuration changes.
   - Deleted `persona-loader`

@@ -796,3 +796,85 @@ fn in_flight_tint_covers_every_span() {
         .count();
     assert_eq!(untinted, 0, "the wash must cover the whole row");
 }
+
+#[rstest::rstest]
+fn selected_in_flight_row_uses_selection_background() {
+    // Given a session that is both cursor-selected and in flight.
+    let entry = entry_with_in_flight(true);
+    let theme = default_theme();
+
+    // When assembling its line as the cursor row.
+    let line = assemble_entry_line(&entry, true, 40, &idle_throbber(), &theme);
+
+    // Then every span shows the cursor's selection background.
+    let unselected = line
+        .spans
+        .iter()
+        .filter(|span| span.style.bg != Some(theme.selection_bg))
+        .count();
+    assert_eq!(
+        unselected, 0,
+        "the cursor row must stay visibly selected while archiving"
+    );
+}
+
+#[rstest::rstest]
+fn selected_in_flight_row_differs_from_unselected_in_flight_row() {
+    // Given a session that is in flight.
+    let entry = entry_with_in_flight(true);
+    let theme = default_theme();
+
+    // When assembling its line with and without the cursor.
+    let selected = assemble_entry_line(&entry, true, 40, &idle_throbber(), &theme);
+    let unselected = assemble_entry_line(&entry, false, 40, &idle_throbber(), &theme);
+
+    // Then the two rows are told apart by their background.
+    let selected_bg = selected.spans.last().expect("spans").style.bg;
+    let unselected_bg = unselected.spans.last().expect("spans").style.bg;
+    assert_eq!(selected_bg, Some(theme.selection_bg));
+    assert_eq!(unselected_bg, Some(theme.in_flight_bg));
+    assert_ne!(
+        selected_bg, unselected_bg,
+        "the cursor must be distinguishable from the tint alone"
+    );
+}
+
+#[rstest::rstest]
+fn selected_in_flight_row_keeps_the_spinner_visible() {
+    // Given a session that is both cursor-selected and in flight.
+    let entry = entry_with_in_flight(true);
+    let theme = default_theme();
+
+    // When assembling its line as the cursor row.
+    let line = assemble_entry_line(&entry, true, 40, &idle_throbber(), &theme);
+
+    // Then the first span is still a spinner block, not a blank.
+    let indicator = &line.spans[0];
+    assert_ne!(indicator.content, " ");
+    assert!(
+        throbber_widgets_tui::symbols::throbber::HORIZONTAL_BLOCK
+            .symbols
+            .contains(&indicator.content.as_ref())
+    );
+}
+
+#[rstest::rstest]
+fn selected_in_flight_row_text_contrasts_with_its_background() {
+    // Given a light theme whose selection background is lighter than the tint's text.
+    let mut theme = default_theme();
+    theme.selection_bg = ratatui::style::Color::Rgb(216, 222, 233);
+    theme.in_flight_bg = ratatui::style::Color::Rgb(76, 86, 106);
+    theme.in_flight_fg = ratatui::style::Color::Rgb(236, 239, 244);
+    let entry = entry_with_in_flight(true);
+
+    // When assembling its line as the cursor row.
+    let line = assemble_entry_line(&entry, true, 40, &idle_throbber(), &theme);
+
+    // Then the foreground is adjusted so the text does not vanish.
+    let title = line.spans.last().expect("spans");
+    assert_ne!(
+        title.style.fg,
+        Some(theme.in_flight_fg),
+        "light text on a light selection background would be invisible"
+    );
+}
