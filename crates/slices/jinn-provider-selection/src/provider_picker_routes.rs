@@ -111,7 +111,7 @@ pub fn attach_provider_picker_rows(routes: &KeyRoutes, cell: &ProviderPickerCell
         feature: "provider-selection",
         outcome: RouteOutcome::Action {
             action: "open-provider-picker",
-            display: "choose a model",
+            display: "search models",
             run: action(cell, open_provider_picker),
         },
     });

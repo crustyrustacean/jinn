@@ -97,13 +97,13 @@ pub fn attach_project_picker_rows(routes: &KeyRoutes, cell: &ProjectPickerCell) 
     routes.attach(RouteRow {
         route_id: RouteId::new("project:open"),
         scope: project_picker_scope(),
-        key: "<leader>sp",
+        key: "<leader>so",
         category: "general",
         site: BindSite::StaticScopes(&["Normal"]),
         feature: "project",
         outcome: RouteOutcome::Action {
             action: "open-project-picker",
-            display: "open the project picker",
+            display: "search projects",
             run: action(cell, open_project_picker),
         },
     });

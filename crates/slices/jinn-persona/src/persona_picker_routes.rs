@@ -117,7 +117,7 @@ pub fn attach_persona_picker_rows(routes: &KeyRoutes, cell: &PersonaPickerCell) 
         feature: "persona",
         outcome: RouteOutcome::Action {
             action: "open-persona-picker",
-            display: "open the persona picker",
+            display: "search personas",
             run: action(cell, open_persona_picker),
         },
     });

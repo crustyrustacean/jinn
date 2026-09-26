@@ -111,13 +111,13 @@ pub fn attach_endpoint_picker_rows(routes: &KeyRoutes, cell: &EndpointPickerCell
     routes.attach(RouteRow {
         route_id: RouteId::new("endpoint:open"),
         scope: endpoint_picker_scope(),
-        key: "<leader>se",
+        key: "<leader>sE",
         category: "general",
         site: BindSite::StaticScopes(&["Normal"]),
         feature: "provider-selection",
         outcome: RouteOutcome::Action {
             action: "open-endpoint-picker",
-            display: "open the endpoint picker",
+            display: "search endpoints",
             run: action(cell, open_endpoint_picker),
         },
     });

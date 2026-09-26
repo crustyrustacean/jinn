@@ -121,7 +121,7 @@ pub fn attach_skill_picker_rows(routes: &KeyRoutes, cell: &SkillPickerCell) {
         feature: "skills",
         outcome: RouteOutcome::Action {
             action: "open-skill-picker",
-            display: "open the skills picker",
+            display: "search skills",
             run: action(cell, open_skill_picker),
         },
     });

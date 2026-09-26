@@ -115,7 +115,7 @@ pub fn attach_theme_picker_rows(routes: &KeyRoutes, cell: &ThemePickerCell) {
         feature: "theme",
         outcome: RouteOutcome::Action {
             action: "open-theme-picker",
-            display: "open the theme picker",
+            display: "search themes",
             run: action(cell, open_theme_picker),
         },
     });

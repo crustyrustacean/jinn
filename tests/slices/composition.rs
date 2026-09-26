@@ -8,7 +8,7 @@
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
-use crate::common::composition_routes;
+use crate::common::{composed_keymap, composition_routes};
 use jinn_dashboard::dashboard_scope;
 use jinn_quake_bar::quake_scope;
 
@@ -156,4 +156,99 @@ fn the_central_crates_name_no_picker() {
             "{label} still names a picker ({hits:?}); pickers must be slice-owned"
         );
     }
+}
+
+/// Every picker opener key is claimed by exactly one row.
+///
+/// Dispatch is first-match-wins over an append-only list, so two rows claiming
+/// one key silently shadow each other: the losing picker simply stops opening,
+/// with no compile error and no log line. Three such collisions appeared while
+/// the pickers were being migrated — this is the guard that catches the next.
+#[rstest::rstest]
+#[tokio::test]
+async fn every_picker_opener_key_has_exactly_one_claimant() {
+    use jinn_slices::route::BindSite;
+
+    // Given the composed route table with every slice's real `activate()`
+    // run over a real SliceHost — the same call production makes.
+    let routes = all_picker_routes();
+
+    // When each trunk key is looked up among the Normal-scope rows.
+    for (label, key) in [
+        ("provider", "<leader>sm"),
+        ("session", "<leader>ss"),
+        ("persona", "<leader>se"),
+        ("tool", "<leader>st"),
+        ("skill", "<leader>sk"),
+        ("mcp", "<leader>sM"),
+        ("theme", "<leader>sh"),
+        ("reasoning", "<leader>sr"),
+        ("endpoint", "<leader>sE"),
+        ("project", "<leader>so"),
+        ("lifecycle", "<leader>sl"),
+    ] {
+        let claimants: Vec<&str> = routes
+            .rows()
+            .iter()
+            .filter(|row| {
+                row.key == key
+                    && matches!(row.site, BindSite::StaticScopes(scopes) if scopes.contains(&"Normal"))
+            })
+            .map(|row| row.route_id.as_str())
+            .collect();
+
+        // Then exactly one row claims it.
+        assert_eq!(
+            claimants.len(),
+            1,
+            "{label}: {key} is claimed by {claimants:?}; exactly one picker may bind it"
+        );
+    }
+}
+
+/// A route table carrying every picker slice's real rows.
+///
+/// Each slice's `activate` (or `activate_*_picker`) is called over a real
+/// [`SliceHost`], exactly as `actor_wiring` does, so this exercises the rows
+/// production binds rather than a hand-built imitation.
+fn all_picker_routes() -> jinn_slices::KeyRoutes {
+    let slices = jinn_slices::Slices::new();
+    let mut viewport = jinn_slices::view::Viewport::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
+    let routes = jinn_slices::KeyRoutes::new();
+    let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
+
+    let mut host =
+        jinn_slices::SliceHost::new(&slices, &mut viewport, &overlay_views, &routes, &system);
+    jinn_skills::activate(&mut host);
+    jinn_persona::activate_picker(&mut host);
+    jinn_tools::activate_picker(&mut host);
+    let session_cell = slices
+        .register(
+            jinn_session_store_msg::session_picker_slot(),
+            jinn_session_store_msg::SessionPickerState::default(),
+        )
+        .expect("fresh Slices never has this cell registered");
+    jinn_session_store::activate_session_picker(&mut host, &session_cell);
+    jinn_mcp_slice::activate_picker(&mut host);
+    jinn_project::activate(&mut host);
+    jinn_session_lifecycle::activate_picker(&mut host);
+    jinn_provider_selection::activate_picker(&mut host);
+    let provider_cell = slices
+        .register(
+            jinn_provider_selection_msg::provider_picker_slot(),
+            jinn_provider_selection_msg::ProviderPickerState::default(),
+        )
+        .expect("fresh Slices never has this cell registered");
+    jinn_provider_selection::activate_provider_picker(&mut host, &provider_cell);
+    let endpoint_cell = slices
+        .register(
+            jinn_provider_selection_msg::endpoint_picker_slot(),
+            jinn_provider_selection_msg::endpoint::EndpointPickerState::default(),
+        )
+        .expect("fresh Slices never has this cell registered");
+    jinn_provider_selection::activate_endpoint_picker(&mut host, &endpoint_cell);
+    jinn_theme_slice::activate_picker(&mut host);
+    drop(host);
+    routes
 }

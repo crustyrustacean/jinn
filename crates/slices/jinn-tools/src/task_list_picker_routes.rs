@@ -90,16 +90,21 @@ fn row(
 
 /// Attaches every row the task-list picker owns.
 pub fn attach_task_list_picker_rows(routes: &KeyRoutes, cell: &TaskListPickerCell) {
+    // Sidebar-only, matching trunk: this menu is read-only and is opened by
+    // selecting the sidebar's task-list section, not by a leader chord. It
+    // deliberately claims no `Normal` key — `<leader>sl` belongs to the
+    // session-lifecycle picker, and dispatch is first-match-wins, so a second
+    // claim would silently shadow it.
     routes.attach(RouteRow {
         route_id: RouteId::new("task-list:open"),
         scope: jinn_tools_msg::task_list_picker_scope(),
-        key: "<leader>sl",
+        key: "<leader>el",
         category: "general",
-        site: BindSite::StaticScopes(&["Normal", "Sidebar"]),
+        site: BindSite::StaticScopes(&["Sidebar"]),
         feature: "tools",
         outcome: RouteOutcome::Action {
             action: "open-task-list-picker",
-            display: "open the task list",
+            display: "search task list",
             run: action(cell, open_task_list_picker),
         },
     });

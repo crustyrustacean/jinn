@@ -118,7 +118,7 @@ pub fn attach_session_lifecycle_picker_rows(routes: &KeyRoutes, cell: &Lifecycle
         feature: "session-lifecycle",
         outcome: RouteOutcome::Action {
             action: "open-session-lifecycle-picker",
-            display: "open the session lifecycle picker",
+            display: "search session-lifecycle",
             run: action(cell, open_session_lifecycle_picker),
         },
     });

@@ -117,7 +117,7 @@ pub fn attach_reasoning_picker_rows(routes: &KeyRoutes, cell: &ReasoningPickerCe
         feature: "provider-selection",
         outcome: RouteOutcome::Action {
             action: "open-reasoning-picker",
-            display: "open the reasoning-effort picker",
+            display: "search reasoning effort",
             run: action(cell, open_reasoning_picker),
         },
     });

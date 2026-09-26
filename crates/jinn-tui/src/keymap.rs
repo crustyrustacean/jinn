@@ -51,30 +51,11 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("<c-c>", KernelIntent::Quit, KeyCategory::General)
             .bind("?", KernelIntent::ToggleWhichkey, KeyCategory::General)
             .describe_group_with_category("<leader>s", "search", KeyCategory::General)
-            // The model browser is slice-owned, so this binds the
-            // provider-selection slice's own open row.
-            .bind(
-                "<leader>sm",
-                KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
-                    jinn_provider_selection_msg::provider_picker_scope(),
-                    "open-provider-picker",
-                    "choose a model",
-                )),
-                KeyCategory::General,
-            )
-            // The session browser and the MCP inspector are slice-owned, so
-            // these bind the owning slice's own open row rather than a kernel
-            // picker intent.
-            .bind(
-                "<leader>se",
-                KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
-                    jinn_session_store_msg::session_picker_scope(),
-                    "open-session-picker",
-                    "browse sessions",
-                )),
-                KeyCategory::General,
-            )
-            // OpenRouter routing endpoint pin (Single + OpenRouter models only).
+            // Every picker is slice-owned and declares its own opener row, so
+            // no picker keybind belongs here. The rows in each slice's
+            // `*_picker_routes.rs` carry the description text that which-key
+            // shows; duplicating them here would shadow the slice's row
+            // (dispatch is first-match-wins) and freeze the footer labels.
             // Input - enter input mode
             .bind("i", KernelIntent::EnterInsertMode, KeyCategory::Input)
             .bind("<c-j>", KernelIntent::EnterInsertMode, KeyCategory::Input)

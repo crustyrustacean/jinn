@@ -94,13 +94,13 @@ pub fn attach_mcp_picker_rows(routes: &KeyRoutes, cell: &McpPickerCell) {
     routes.attach(RouteRow {
         route_id: RouteId::new("mcp-picker:open"),
         scope: mcp_picker_scope(),
-        key: "<leader>ss",
+        key: "<leader>sM",
         category: "general",
         site: BindSite::StaticScopes(&["Normal"]),
         feature: "mcp-slice",
         outcome: RouteOutcome::Action {
             action: "open-mcp-picker",
-            display: "inspect MCP servers",
+            display: "search mcp servers",
             run: action(cell, open_mcp_picker),
         },
     });

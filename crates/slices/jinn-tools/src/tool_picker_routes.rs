@@ -118,7 +118,7 @@ pub fn attach_tool_picker_rows(routes: &KeyRoutes, cell: &ToolPickerCell) {
         feature: "tools",
         outcome: RouteOutcome::Action {
             action: "open-tool-picker",
-            display: "open the tool picker",
+            display: "search tools",
             run: action(cell, open_tool_picker),
         },
     });

@@ -85,7 +85,7 @@ pub fn attach_session_picker_rows(routes: &KeyRoutes, cell: &SessionPickerCell) 
         feature: "session-store",
         outcome: RouteOutcome::Action {
             action: "open-session-picker",
-            display: "browse sessions",
+            display: "search sessions",
             run: action(cell, open_session_picker),
         },
     });
