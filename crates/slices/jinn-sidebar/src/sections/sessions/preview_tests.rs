@@ -528,8 +528,7 @@ mod loading_state {
     ) -> ratatui::buffer::Buffer {
         let theme = default_theme();
         let frame_area = Rect::new(0, 0, term_width, term_height);
-        let popup_area =
-            session_preview_popup_rect(frame_area, 30, LOADING_CONTENT_ROWS);
+        let popup_area = session_preview_popup_rect(frame_area, 30, LOADING_CONTENT_ROWS);
 
         let (mut terminal, _) = setup_term(term_width, term_height);
         terminal
@@ -568,8 +567,7 @@ mod loading_state {
         let frame_area = Rect::new(0, 0, 100, 40);
 
         // When the loading popup's rect is computed the way production does.
-        let popup_area =
-            session_preview_popup_rect(frame_area, 30, LOADING_CONTENT_ROWS);
+        let popup_area = session_preview_popup_rect(frame_area, 30, LOADING_CONTENT_ROWS);
 
         // Then rows remain for content once the borders and footer are taken.
         // At the popup's 5-row floor this would be zero, and the content guard

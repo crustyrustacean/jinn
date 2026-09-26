@@ -128,8 +128,7 @@ pub fn render_session_preview_for_state(
         // `None` is what distinguishes loading from empty — an empty session
         // renders zero lines but is still `Ready`, so it takes the branch below
         // and shows the empty state rather than spinning forever.
-        let popup_rect =
-            session_preview_popup_rect(frame_area, cursor_y, LOADING_CONTENT_ROWS);
+        let popup_rect = session_preview_popup_rect(frame_area, cursor_y, LOADING_CONTENT_ROWS);
         render_session_preview_loading(frame, popup_rect, session, theme);
         return;
     };
@@ -555,6 +554,32 @@ mod worker_tests {
 
         // Then there is nothing to show, which is complete rather than loading.
         assert!(lines.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn the_worker_renders_the_same_lines_from_a_trimmed_tail() {
+        // Given a session with more entries than the preview shows.
+        let session = session_with(50);
+        let full = preview(&session);
+        let start = session.history().len().saturating_sub(PREVIEW_ENTRY_COUNT);
+        let tail = &session.history()[start..];
+
+        // When the worker is handed only the trailing entries instead.
+        let ctx = RenderContext {
+            content_width: 40,
+            is_selected: false,
+            is_expanded: false,
+            tool_entry_max_lines: DEFAULT_TOOL_ENTRY_MAX_LINES,
+            theme: default_theme(),
+            paired_status: None,
+            is_streaming: false,
+            is_waiting_on_subagent: false,
+        };
+        let from_tail = render_preview_lines(tail, &ctx, PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES);
+
+        // Then the result is identical, so trimming at the request boundary is
+        // invisible to the worker.
+        assert_eq!(full, from_tail);
     }
 
     #[rstest::rstest]

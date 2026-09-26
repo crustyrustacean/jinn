@@ -241,7 +241,12 @@ impl MsgHandler<PreviewSessionRequested> for LayoutWorkerActor {
 /// Shaped like [`MeasureJob`] for the same reason: the history moves to a
 /// blocking thread as a shared `Arc`, never a second transcript.
 pub(crate) struct PreviewJob {
-    /// The session's history, shared with the sidebar that requested it.
+    /// The session's trailing entries, shared with the sidebar that requested
+    /// them.
+    ///
+    /// Already trimmed to the preview window by the requester, which would
+    /// otherwise copy a whole long history per keystroke for entries
+    /// [`render_preview`] slices away anyway.
     pub entries: Arc<[jinn_core_types::ChatEntry]>,
     /// Content width to wrap at.
     pub content_width: u16,

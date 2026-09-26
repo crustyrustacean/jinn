@@ -412,7 +412,7 @@ pub struct SessionsSectionState {
     /// Updated reactively in `remove_and_replace()`, invalidated on session load.
     /// Empty when no intermediate parents have been hidden.
     pub visual_parents: HashMap<SessionId, SessionId>,
-    /// Where the session preview popup is in its load.
+    /// Every session preview the sidebar holds, cached and in flight.
     pub preview: PreviewLoad,
     /// The width the preview was last rendered at, or `0` if never.
     ///

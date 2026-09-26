@@ -11,6 +11,11 @@
 //! the width it drew at and draws a spinner when nothing is cached. A terminal
 //! resize therefore re-requests on the next cursor move rather than instantly;
 //! the alternative was handing the render path a publisher for one message.
+//!
+//! Because requests come from the keyboard, they are also where duplicates are
+//! stopped: a second request for content already cached or already rendering
+//! would queue a job on a pool shared with chat-log measurement, for lines
+//! nothing would read.
 
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -44,8 +49,11 @@ pub fn preview_signature(entries: &[ChatEntry], max_entries: usize) -> u64 {
 
 /// Arms a preview render for `session_id`, returning the request to publish.
 ///
-/// Returns `None` when the preview is already current — re-requesting would
-/// rebuild the lines off-thread only for the render pass to discard them.
+/// Returns `None` when the preview is already cached at this content and width,
+/// or when an identical request is already running — re-requesting would
+/// rebuild the lines off-thread only for the render pass to discard them, and
+/// each duplicate is a job on a pool that is already busy with chat-log
+/// measurement.
 #[must_use]
 pub fn update_preview(
     state: &mut AppState,
@@ -56,34 +64,46 @@ pub fn update_preview(
         .frontend
         .with_sections(|s| s.sessions.preview_content_width, || 0);
 
-    // One borrow of the history yields both the signature and the shared slice
-    // the worker will read: taking them separately would walk the session map
-    // twice and let the two disagree if it moved underneath.
-    let (signature, entries) = {
+    // The signature is computed over the trailing entries but folded with the
+    // *whole* history's length, so it is taken from a borrow of the full
+    // history rather than the tail that is about to be shared. Skipping ahead
+    // first would make dropping an entry indistinguishable from its content
+    // changing, and a stale preview would be served after a prune.
+    let signature = {
         let session = state.session.get(session_id)?;
-        let entries: Arc<[ChatEntry]> = Arc::from(session.history());
-        (preview_signature(&entries, PREVIEW_ENTRY_COUNT), entries)
+        preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
     };
 
-    let already_current = state.frontend.with_sections(
-        |s| {
-            s.sessions
-                .preview
-                .cached(session_id, signature, width)
-                .is_some()
-        },
-        || false,
-    );
-    if already_current {
+    if preview_is_current(state, session_id, signature, width) {
+        // A hit is also a use: it says which session the user is looking at, so
+        // it refreshes that preview's recency against eviction.
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview.touch(session_id));
         return None;
     }
+
+    // Only now is a copy worth making. The worker reads only the trailing
+    // entries — `render_preview` slices to its own `max_entries` regardless —
+    // so a long history's earlier entries are copied on every keystroke for no
+    // reader. The borrow of the session has to end first, since `update_sections`
+    // below takes the sections lock and the Arc is built from what it borrowed.
+    let entries = {
+        let session = state.session.get(session_id)?;
+        let history = session.history();
+        let start = history.len().saturating_sub(PREVIEW_ENTRY_COUNT);
+        Arc::<[ChatEntry]>::from(history.get(start..).unwrap_or_default())
+    };
 
     // The generation is bumped here, at the one place a request originates, so a
     // result belonging to a superseded request can be dropped on arrival. It is
     // read out of a local because `update_sections` yields `()`.
     let mut generation = 0;
     state.frontend.update_sections(|s| {
-        generation = s.sessions.preview.request(session_id.clone());
+        generation = s
+            .sessions
+            .preview
+            .request(session_id.clone(), signature, width);
     });
 
     Some(PreviewSessionRequested {
@@ -99,6 +119,31 @@ pub fn update_preview(
     })
 }
 
+/// Whether the preview for this session, content, and width is already handled.
+///
+/// A cache hit means the render pass can draw immediately. An in-flight match
+/// means the render is already running and will land on its own. Both are read
+/// under one lock so they cannot disagree with each other.
+fn preview_is_current(
+    state: &AppState,
+    session_id: &SessionId,
+    signature: u64,
+    content_width: u16,
+) -> bool {
+    state.frontend.with_sections(
+        |s| {
+            s.sessions
+                .preview
+                .cached(session_id, signature, content_width)
+                .is_some()
+                || s.sessions
+                    .preview
+                    .in_flight_matches(session_id, signature, content_width)
+        },
+        || false,
+    )
+}
+
 #[cfg(test)]
 mod preview_load_tests {
     #![allow(
@@ -112,7 +157,6 @@ mod preview_load_tests {
     use super::*;
     use jinn_domain::protocol::ChatEntry;
     use jinn_session_state::ChatSessionState;
-    use jinn_sidebar_msg::PreviewLoad;
 
     /// App state holding one loaded session, with a recorded preview width.
     ///
@@ -132,14 +176,17 @@ mod preview_load_tests {
         (state, id)
     }
 
+    /// The signature the trigger would compute for `id` right now.
+    fn signature_of(state: &AppState, id: &SessionId) -> u64 {
+        let session = state.session.get(id).expect("session");
+        preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
+    }
+
     /// Marks the current session's preview as served, so the trigger sees a hit.
     fn mark_ready(state: &AppState, id: &SessionId, width: u16) {
-        let signature = {
-            let session = state.session.get(id).expect("session");
-            preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
-        };
+        let signature = signature_of(state, id);
         state.frontend.update_sections(|s| {
-            let generation = s.sessions.preview.request(id.clone());
+            let generation = s.sessions.preview.request(id.clone(), signature, width);
             s.sessions.preview.complete(
                 id.clone(),
                 generation,
@@ -217,6 +264,40 @@ mod preview_load_tests {
     }
 
     #[rstest::rstest]
+    fn an_identical_in_flight_request_is_not_republished() {
+        // Given a request already running for a session at this width.
+        let (mut state, id) = state_with_session(40);
+        update_preview(&mut state, &id, jinn_slices::empty_config_layer()).expect("first request");
+
+        // When the trigger runs again for the same session, content, and width.
+        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer());
+
+        // Then nothing is published — the render is already running and a
+        // second job would queue behind it for lines nothing would read.
+        assert!(
+            request.is_none(),
+            "an identical in-flight request must not be republished"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_different_width_still_yields_a_request_while_one_is_in_flight() {
+        // Given a request running for a session at 40.
+        let (mut state, id) = state_with_session(40);
+        update_preview(&mut state, &id, jinn_slices::empty_config_layer()).expect("first request");
+
+        // When the terminal is resized and the trigger runs again.
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview_content_width = 60);
+        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer());
+
+        // Then a request is published, because the running one wrapped the text
+        // at a width the popup no longer has.
+        assert_eq!(request.map(|r| r.content_width), Some(60));
+    }
+
+    #[rstest::rstest]
     fn an_unknown_session_yields_no_request() {
         // Given app state with a different session than the one asked about.
         let (mut state, _id) = state_with_session(40);
@@ -236,31 +317,32 @@ mod preview_load_tests {
     }
 
     #[rstest::rstest]
-    fn a_request_arms_the_preview_as_loading() {
+    fn a_request_arms_the_preview_as_in_flight() {
         // Given app state with a never-served session.
         let (mut state, id) = state_with_session(40);
 
         // When the trigger runs.
-        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer());
+        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer())
+            .expect("a fresh session must request");
 
-        // Then the preview is armed, so the render pass draws a spinner.
+        // Then the preview is armed at the request's own generation, so the
+        // result is recognised as the live one when it lands.
         let armed = state.frontend.with_sections(
-            |s| matches!(s.sessions.preview, PreviewLoad::Loading { .. }),
+            |s| {
+                s.sessions
+                    .preview
+                    .in_flight_matches(&id, request.signature, 40)
+            },
             || false,
         );
         assert!(
             armed,
             "the preview must be armed before the request publishes"
         );
-        // And the request carries the generation it was armed with.
-        let expected = state
-            .frontend
-            .with_sections(|s| s.sessions.preview.generation(), || 0);
-        assert_eq!(request.map(|r| r.generation), Some(expected));
     }
 
     #[rstest::rstest]
-    fn a_request_carries_the_trailing_history() {
+    fn a_request_carries_only_the_trailing_history() {
         // Given a session holding eight entries.
         let (mut state, id) = state_with_session(40);
         for i in 0..7 {
@@ -275,8 +357,68 @@ mod preview_load_tests {
         let request =
             update_preview(&mut state, &id, jinn_slices::empty_config_layer()).expect("request");
 
-        // Then only the entries a preview can show travel with it.
-        assert_eq!(request.entries.len(), 8);
+        // Then only the entries a preview can show travel with it. The worker
+        // slices to `PREVIEW_ENTRY_COUNT` regardless, so a longer slice would be
+        // copied on every keystroke with nothing reading it.
+        assert_eq!(request.entries.len(), PREVIEW_ENTRY_COUNT);
+    }
+
+    #[rstest::rstest]
+    fn a_request_carries_the_newest_entry() {
+        // Given a session whose newest entry is distinguishable.
+        let (mut state, id) = state_with_session(40);
+        for i in 0..7 {
+            state
+                .session
+                .get_mut(&id)
+                .expect("session")
+                .push_entry(ChatEntry::user(format!("m{i}")));
+        }
+
+        // When the trigger runs.
+        let request =
+            update_preview(&mut state, &id, jinn_slices::empty_config_layer()).expect("request");
+
+        // Then the entries that travelled are the newest ones, so trimming to
+        // the preview window kept the tail rather than the head. Read from
+        // `text()` rather than `content_signature()`: the signature folds only
+        // content *lengths*, so equally-sized entries are indistinguishable by it
+        // and it would compare equal here for the wrong reason.
+        assert_eq!(
+            request.entries.last().map(ChatEntry::text),
+            Some("m6".to_owned()),
+            "the newest entry must travel with the request"
+        );
+        assert_eq!(
+            request.entries.first().map(ChatEntry::text),
+            Some("m2".to_owned()),
+            "the tail must be kept, not the head of the history"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_signature_moves_when_an_earlier_entry_is_dropped() {
+        // Given a session whose history has seven entries.
+        let mut session = ChatSessionState::new();
+        for i in 0..7 {
+            session.push_entry(ChatEntry::assistant(format!("entry {i}")));
+        }
+        let before = preview_signature(session.history(), PREVIEW_ENTRY_COUNT);
+
+        // When its earliest entries are pruned, leaving the same trailing window.
+        let trimmed = ChatSessionState::new();
+        let after = {
+            let mut kept = trimmed;
+            for i in 3..7 {
+                kept.push_entry(ChatEntry::assistant(format!("entry {i}")));
+            }
+            preview_signature(kept.history(), PREVIEW_ENTRY_COUNT)
+        };
+
+        // Then the signature moved, so a preview of the longer history is not
+        // served for the shorter one — the length fold is what distinguishes a
+        // prune from the trailing entries merely being unchanged.
+        assert_ne!(before, after);
     }
 
     #[rstest::rstest]
