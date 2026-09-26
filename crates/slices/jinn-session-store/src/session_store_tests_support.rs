@@ -41,6 +41,12 @@ pub struct ControlledStartupStore {
     pub snapshots: HashMap<SessionId, SessionSnapshot>,
     pub session_gates: Mutex<HashMap<SessionId, Arc<tokio::sync::Semaphore>>>,
     pub tree_summary_gate: Mutex<Option<Arc<tokio::sync::Semaphore>>>,
+    /// Sessions returned by the *unarchived* query only.
+    ///
+    /// The full summary query backs tree resolution, so a session listed only
+    /// here is a tree member with no live history — exactly the shape the
+    /// frozen sweep exists to fill in.
+    pub archived_only_ids: Mutex<Vec<SessionId>>,
     pub failed_summaries: AtomicBool,
     pub failed_session_ids: Mutex<HashSet<SessionId>>,
     pub requested_session_ids: Mutex<Vec<SessionId>>,
@@ -78,6 +84,7 @@ impl ControlledStartupStore {
             snapshots,
             session_gates: Mutex::new(HashMap::new()),
             tree_summary_gate: Mutex::new(None),
+            archived_only_ids: Mutex::new(Vec::new()),
             failed_summaries: AtomicBool::new(false),
             failed_session_ids: Mutex::new(HashSet::new()),
             requested_session_ids: Mutex::new(Vec::new()),
@@ -235,7 +242,17 @@ impl SessionStore for ControlledStartupStore {
         if self.failed_summaries.load(Ordering::SeqCst) {
             return Err(Report::new(SessionStoreError));
         }
-        Ok(self.summaries.clone())
+        let archived_only = self
+            .archived_only_ids
+            .lock()
+            .expect("archived-only session IDs")
+            .clone();
+        Ok(self
+            .summaries
+            .iter()
+            .filter(|summary| !archived_only.contains(&summary.session_id))
+            .cloned()
+            .collect())
     }
 
     async fn dirty_session_ids(&self) -> Result<Vec<SessionId>, Report<SessionStoreError>> {

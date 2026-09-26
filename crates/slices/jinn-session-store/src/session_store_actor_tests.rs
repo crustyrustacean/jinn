@@ -14,12 +14,13 @@ use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
 use jinn_domain::common::state::State;
 use jinn_domain::feat::session::{SessionStore, SessionStoreService};
+use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_provider_config::ProvidersConfig;
 use jinn_session_msg::{SessionArchived, SessionClosed};
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::{
-    ArchiveSession, ChatLogMeasureRequested, PersistSession, SessionLoadCompleted,
-    SessionLoadRequested, SessionState,
+    ArchiveSession, ChatLogMeasureRequested, LoadSessionPickerEntries, PersistSession,
+    SessionLoadCompleted, SessionLoadRequested, SessionState,
 };
 
 use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};
@@ -80,6 +81,176 @@ fn empty_providers_config() -> ProvidersConfig {
         aliases: Vec::new(),
         default_provider: None,
     }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_picker_is_served_while_startup_session_loads_are_still_outstanding() {
+    // Given two persisted sessions whose reads are both gated shut.
+    let first_id = SessionId::new();
+    let second_id = SessionId::new();
+    let store = Arc::new(ControlledStartupStore::new(&[
+        (
+            first_id.clone(),
+            jiff::Timestamp::from_second(1).expect("valid timestamp"),
+        ),
+        (
+            second_id.clone(),
+            jiff::Timestamp::from_second(2).expect("valid timestamp"),
+        ),
+    ]));
+    store.gate_session_load(first_id.clone());
+    store.gate_session_load(second_id.clone());
+    let (harness, state) = controlled_actor_fixture(store.clone()).await;
+
+    // When startup hydration is triggered, and the picker's message is
+    // published behind it on the same mailbox.
+    harness
+        .publish(EnvironmentLoaded {
+            config: empty_providers_config(),
+        })
+        .await;
+    store.wait_for_session_load(&first_id).await;
+    store.wait_for_session_load(&second_id).await;
+    harness.publish(LoadSessionPickerEntries).await;
+    let picker_served =
+        poll_until(|| async { !state.read().frontend.session_picker().items().is_empty() }).await;
+
+    // Then the picker is served even though not one session read has finished.
+    // Under the old inline loop this message sat in the mailbox until every
+    // history had been read — which is the whole stall this pool removes.
+    assert!(
+        picker_served,
+        "the picker must not wait behind startup hydration's reads"
+    );
+    // And neither session is visible yet, because both reads are still gated.
+    assert!(!state.read().session.contains(&first_id));
+    assert!(!state.read().session.contains(&second_id));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_hydration_flag_clears_only_after_the_last_completion() {
+    // Given two persisted sessions, with the newer one's read gated shut.
+    let gated_id = SessionId::new();
+    let loaded_id = SessionId::new();
+    let store = Arc::new(ControlledStartupStore::new(&[
+        (
+            loaded_id.clone(),
+            jiff::Timestamp::from_second(1).expect("valid timestamp"),
+        ),
+        (
+            gated_id.clone(),
+            jiff::Timestamp::from_second(2).expect("valid timestamp"),
+        ),
+    ]));
+    store.gate_session_load(gated_id.clone());
+    let (harness, state) = controlled_actor_fixture(store.clone()).await;
+
+    // When the ungated session's read completes while the other is still out.
+    harness
+        .publish(EnvironmentLoaded {
+            config: empty_providers_config(),
+        })
+        .await;
+    let loaded = poll_until(|| async { state.read().session.contains(&loaded_id) }).await;
+
+    // Then hydration is still active: one completion is not all of them.
+    assert!(loaded, "the ungated session should have loaded");
+    assert!(
+        state.read().session.is_startup_hydrating(),
+        "hydration must stay active while a read is still outstanding"
+    );
+
+    // And when the last read is released, the flag clears.
+    store.release_session_load(&gated_id);
+    let cleared = poll_until(|| async { !state.read().session.is_startup_hydrating() }).await;
+    assert!(cleared, "the last completion must clear the hydration flag");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_frozen_tree_member_is_stored_without_reopening_the_hydration_flag() {
+    // Given a persisted session whose read resolves, plus a second session that
+    // the store reports as a tree member.
+    let root_id = SessionId::new();
+    let member_id = SessionId::new();
+    let store = Arc::new({
+        let mut store = ControlledStartupStore::new(&[
+            (
+                root_id.clone(),
+                jiff::Timestamp::from_second(1).expect("valid timestamp"),
+            ),
+            (
+                member_id.clone(),
+                jiff::Timestamp::from_second(2).expect("valid timestamp"),
+            ),
+        ]);
+        store.summaries[0].parent_session = None;
+        store.summaries[1].parent_session = Some(root_id.clone());
+        store
+            .archived_only_ids
+            .lock()
+            .expect("archived-only IDs")
+            .push(member_id.clone());
+        store
+    });
+    let (harness, state) = controlled_actor_fixture(store).await;
+
+    // When startup hydration runs to completion.
+    harness
+        .publish(EnvironmentLoaded {
+            config: empty_providers_config(),
+        })
+        .await;
+    let member_frozen =
+        poll_until(|| async { state.read().session.frozen_nodes().contains_key(&member_id) }).await;
+
+    // Then the tree member is stored as a frozen node, not a live session.
+    assert!(member_frozen, "the tree member should be frozen");
+    assert!(!state.read().session.contains(&member_id));
+    // And the hydration flag stays clear: the frozen wave is counted separately
+    // and must not resurrect the indicator the unarchived wave already finished.
+    assert!(!state.read().session.is_startup_hydrating());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn every_dispatched_load_produces_exactly_one_completion() {
+    // Given two persisted sessions.
+    let first_id = SessionId::new();
+    let second_id = SessionId::new();
+    let store = Arc::new(ControlledStartupStore::new(&[
+        (
+            first_id.clone(),
+            jiff::Timestamp::from_second(1).expect("valid timestamp"),
+        ),
+        (
+            second_id.clone(),
+            jiff::Timestamp::from_second(2).expect("valid timestamp"),
+        ),
+    ]));
+    let (harness, _state) = controlled_actor_fixture(store.clone()).await;
+    let completed = harness.spawn_recorder::<SessionLoadCompleted>().await;
+
+    // When startup hydration completes.
+    harness
+        .publish(EnvironmentLoaded {
+            config: empty_providers_config(),
+        })
+        .await;
+    let completed = await_recorded(&completed, 2, Duration::from_secs(2)).await;
+
+    // Then each session reports exactly one completion — no job dropped, none
+    // counted twice. A dropped job would strand the hydration flag forever.
+    let mut ids = completed
+        .iter()
+        .map(|msg| msg.session_id.clone())
+        .collect::<Vec<_>>();
+    ids.sort();
+    let mut expected = vec![first_id, second_id];
+    expected.sort();
+    assert_eq!(ids, expected);
 }
 
 #[rstest::rstest]

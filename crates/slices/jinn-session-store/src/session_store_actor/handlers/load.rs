@@ -13,7 +13,7 @@ use jinn_session_store_msg::SessionForkRequested;
 use jinn_session_store_msg::{
     ChatLogMeasureRequested, SessionLoadCompleted, SessionLoadRequested, SessionState,
 };
-use trouper::actor::ActorPath;
+use trouper::actor::{ActorPath, MsgHandler};
 use trouper::context::MsgCtx;
 use trouper::envelope::Address;
 
@@ -21,7 +21,14 @@ use trouper::envelope::Address;
 /// chat log renderer's own fallback.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 
+use crate::hydrate::{HydrateCompleted, HydrateSession};
 use crate::session_store_actor::SessionStoreActor;
+
+impl MsgHandler<HydrateCompleted> for SessionStoreActor {
+    async fn handle(&mut self, msg: &HydrateCompleted, ctx: &mut MsgCtx<'_>) {
+        self.on_hydrate_completed(msg, ctx).await;
+    }
+}
 
 impl SessionStoreActor {
     /// Inserts a loaded session and returns its ID.
@@ -32,6 +39,71 @@ impl SessionStoreActor {
             view.session.map().remove_frozen_node(&session_id);
         });
         session_id
+    }
+
+    /// Applies one finished hydration job.
+    ///
+    /// This is the body the startup handler used to run inline, one session at a
+    /// time, while holding the mailbox. It now runs once per completion, so a
+    /// session appears the moment its own read lands rather than after every
+    /// other session has been read too.
+    pub(crate) async fn on_hydrate_completed(
+        &mut self,
+        msg: &HydrateCompleted,
+        ctx: &mut MsgCtx<'_>,
+    ) {
+        if msg.frozen {
+            self.insert_hydrated_frozen_node(msg);
+            self.note_frozen_hydration_completion();
+            return;
+        }
+        if let Some(snapshot) = msg.snapshot.clone() {
+            let session_id = self.insert_loaded_session({
+                let mut session = snapshot.restore_live();
+                session.mark_interacted();
+                session
+            });
+            self.publish(SessionLoadCompleted { session_id }).await;
+        }
+        if self.note_hydration_completion() {
+            // Tree membership is resolved from the live session map, so the
+            // frozen sweep has to wait until every unarchived session has
+            // landed. The summary read is one query, not a loop of history
+            // reads, so it is safe to hold the mailbox for.
+            self.hydrate_all_tree_frozen_nodes(ctx).await;
+        }
+    }
+
+    /// Stores a tree member's frozen snapshot, unless the session is now live.
+    ///
+    /// A live session supersedes its own frozen node — `insert_loaded_session`
+    /// removes it — so re-freezing one here would resurrect a stale tree
+    /// snapshot for a session the user can already open.
+    fn insert_hydrated_frozen_node(&self, msg: &HydrateCompleted) {
+        let Some(snapshot) = msg.snapshot.as_ref() else {
+            return;
+        };
+        let already_live = self.state.read().session.contains(&msg.session_id);
+        if already_live {
+            tracing::debug!(
+                session_id = %msg.session_id,
+                "tree member already hydrated as a live session, skipping frozen node"
+            );
+            return;
+        }
+        let node = snapshot_frozen_node_from_snapshot(snapshot);
+        self.state.with_session(|view| {
+            view.session.map().insert_frozen_node(node);
+        });
+    }
+
+    /// Records one finished frozen tree node read.
+    ///
+    /// Zero-guarded for the same reason the unarchived counter is: the
+    /// load/fork path's single frozen read dispatches no batch, so its
+    /// completion arrives with nothing outstanding.
+    fn note_frozen_hydration_completion(&mut self) {
+        self.pending_frozen_hydrations = self.pending_frozen_hydrations.saturating_sub(1);
     }
 
     /// Completes initialization of an explicitly loaded session, then publishes its ID.
@@ -336,8 +408,14 @@ impl SessionStoreActor {
     }
 
     /// Hydrates frozen nodes for every live session's tree at startup.
-    pub(crate) async fn hydrate_all_tree_frozen_nodes(&self, store: &SessionStoreService) {
-        let Some(summary_map) = self.summary_parent_map(store).await else {
+    ///
+    /// Tree membership is resolved first — one summary query, then in-memory
+    /// parent-link walking — and the resulting reads are dispatched to the
+    /// worker pool rather than awaited, so the mailbox is free for the rest of
+    /// each session's history to land.
+    pub(crate) async fn hydrate_all_tree_frozen_nodes(&mut self, ctx: &mut MsgCtx<'_>) {
+        let store = self.services.session_store.clone();
+        let Some(summary_map) = self.summary_parent_map(&store).await else {
             return;
         };
         let all_tree_ids = self
@@ -348,7 +426,17 @@ impl SessionStoreActor {
             .flat_map(|(id, _)| collect_tree_ids(id, &summary_map))
             .collect::<HashSet<_>>();
         let missing = self.missing_tree_members(&all_tree_ids);
-        self.load_frozen_members(store, missing, None).await;
+        if missing.is_empty() {
+            return;
+        }
+        tracing::info!(count = missing.len(), "dispatching frozen tree node loads");
+        self.pending_frozen_hydrations = missing.len();
+        for session_id in missing {
+            ctx.send_to_any(HydrateSession {
+                session_id,
+                frozen: true,
+            });
+        }
     }
 
     /// Loads the parent-link map used to resolve session trees.

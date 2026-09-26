@@ -21,6 +21,8 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
+use crate::hydrate::{HydrateCompleted, HydrateSession};
+
 /// The session-store actor's static trouper path.
 pub const SESSION_STORE_PATH: &str = "session-store";
 
@@ -44,6 +46,18 @@ pub struct SessionStoreActorDeps {
 pub struct SessionStoreActor {
     services: Services,
     state: State,
+    /// Loads dispatched to the hydration pool that have not reported back.
+    ///
+    /// The startup handler no longer knows when hydration ends — it dispatches
+    /// and returns — so the flag that drives the sidebar's hydration indicator
+    /// is cleared by the last completion instead.
+    pending_hydrations: usize,
+    /// Frozen tree node reads dispatched by the startup sweep, still in flight.
+    ///
+    /// Counted separately from the unarchived pass: the two waves overlap in
+    /// time, and one shared counter would reach zero twice — clearing the
+    /// hydration flag during the frozen wave and re-firing the sweep.
+    pending_frozen_hydrations: usize,
 }
 
 impl BusPublish for SessionStoreActor {
@@ -86,6 +100,8 @@ impl SessionStoreActor {
                         Ok(Self {
                             services: deps.services,
                             state: deps.state,
+                            pending_hydrations: 0,
+                            pending_frozen_hydrations: 0,
                         })
                     })
                 }
@@ -98,12 +114,16 @@ impl SessionStoreActor {
             .handles::<ArchiveSession>()
             .handles::<ArchiveSessionTree>()
             .handles::<EnvironmentLoaded>()
+            .handles::<HydrateCompleted>()
             // A successful load hands the chat log to the layout workers
             // instead of clearing the load guard, so the chat log's loading
             // indication stays up until it has been measured. The flush gate
             // drops any outbound type not declared here.
             .emits::<LayoutChatSession>()
             .emits::<ArmLayoutDeadline>()
+            // Hydration jobs leave this actor; without this the flush gate
+            // drops them and the sidebar never fills in.
+            .emits::<HydrateSession>()
             .mailbox(
                 SESSION_STORE_MAILBOX_CAPACITY,
                 trouper::inbox::OverloadPolicy::Block,
@@ -173,7 +193,7 @@ impl MsgHandler<ArchiveSessionTree> for SessionStoreActor {
 }
 
 impl MsgHandler<EnvironmentLoaded> for SessionStoreActor {
-    async fn handle(&mut self, msg: &EnvironmentLoaded, _ctx: &mut MsgCtx<'_>) {
-        self.on_environment_loaded(&msg.config).await;
+    async fn handle(&mut self, msg: &EnvironmentLoaded, ctx: &mut MsgCtx<'_>) {
+        self.on_environment_loaded(&msg.config, ctx).await;
     }
 }
