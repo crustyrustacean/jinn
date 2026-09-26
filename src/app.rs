@@ -274,7 +274,7 @@ impl App {
                 resolved.path
             }
             Err(report) => {
-                eprintln!("error: failed to resolve the jinn.toml configuration path:");
+                eprintln!("error: failed to resolve the configuration path:");
                 eprintln!("  {report:?}");
                 std::process::exit(1);
             }
