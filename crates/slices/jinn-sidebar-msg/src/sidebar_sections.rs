@@ -420,8 +420,8 @@ pub struct SessionsSectionState {
 
 impl SessionsSectionState {
     /// Marks sessions as having a disposal operation dispatched and unfinished.
-    pub fn begin_in_flight(&mut self, ids: impl IntoIterator<Item = SessionId>) {
-        self.in_flight.extend(ids);
+    pub fn begin_in_flight(&mut self, ids: &[SessionId]) {
+        self.in_flight.extend(ids.iter().cloned());
     }
 
     /// Clears the in-flight mark for a session that finished or failed.

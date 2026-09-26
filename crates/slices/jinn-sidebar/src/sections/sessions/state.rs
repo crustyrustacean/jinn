@@ -156,7 +156,7 @@ pub fn sorted_open_sessions_split(
 pub fn mark_in_flight(state: &AppState, ids: &[SessionId]) {
     state
         .frontend
-        .update_sections(|sections| sections.sessions.begin_in_flight(ids.iter().cloned()));
+        .update_sections(|sections| sections.sessions.begin_in_flight(ids));
 }
 
 /// Clears the in-flight mark for a session whose disposal has concluded.
