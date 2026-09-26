@@ -59,16 +59,6 @@ impl State {
         f(&mut AppStateOps(&mut app.frontend.app_state))
     }
 
-    /// Mutate provider and endpoint picker state.
-    pub fn with_pickers<R, F>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut crate::feat::ui::picker_states::PickerStates) -> R,
-    {
-        let mut guard = self.write_lock();
-        let app = &mut *guard;
-        f(&mut app.frontend.pickers)
-    }
-
     /// Mutate file-picker state through [`FilePickerOps`].
     pub fn with_file_picker<R, F>(&self, f: F) -> R
     where

@@ -2406,7 +2406,6 @@ fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the confirm prompt is armed with the subtree size.
@@ -2438,7 +2437,6 @@ fn archive_tree_arm_sets_busy_prompt_when_subtree_busy() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the busy prompt is armed.
@@ -2460,7 +2458,6 @@ fn archive_tree_second_press_emits_archive_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // When handling a second archive-tree press (confirm).
@@ -2469,7 +2466,6 @@ fn archive_tree_second_press_emits_archive_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the ArchiveSessionTree command is emitted.
@@ -2495,7 +2491,6 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
     state
         .session
@@ -2509,7 +2504,6 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the prompt flipped to Busy instead of archiving.
@@ -2538,7 +2532,6 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // When handling a different intent.
@@ -2547,7 +2540,6 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the prompt is dismissed.
@@ -2565,7 +2557,6 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then no prompt is armed and no commands are emitted.
@@ -2585,7 +2576,6 @@ fn teardown_tree_arm_sets_confirm_prompt_with_action() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the confirm prompt is armed for teardown-and-archive.
@@ -2617,7 +2607,6 @@ fn teardown_tree_arm_sets_busy_prompt_when_subtree_busy() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the busy prompt is armed.
@@ -2639,7 +2628,6 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // When handling a second teardown-tree press (confirm).
@@ -2648,7 +2636,6 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the TeardownSessionTree command is emitted.
@@ -2683,7 +2670,6 @@ fn teardown_tree_other_intent_dismisses_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // When handling a different intent.
@@ -2692,7 +2678,6 @@ fn teardown_tree_other_intent_dismisses_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the prompt is dismissed.
@@ -2712,7 +2697,6 @@ fn busy_tree_prompt_dismisses_on_other_intent() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the busy notice is dismissed.
@@ -2732,7 +2716,6 @@ fn busy_tree_prompt_still_confirms_on_tree_key() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the re-validation passes and the teardown-tree command is emitted.
@@ -2758,7 +2741,6 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // When handling the archive-tree press (the sibling tree action).
@@ -2767,7 +2749,6 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the teardown prompt was replaced by a fresh archive prompt.
@@ -2790,7 +2771,6 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // When handling the teardown-tree press (the sibling tree action).
@@ -2799,7 +2779,6 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
-        &empty_pickers(),
     );
 
     // Then the archive prompt was replaced by a fresh teardown prompt.

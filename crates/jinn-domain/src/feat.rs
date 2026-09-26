@@ -8,7 +8,6 @@ pub mod global;
 pub mod install;
 pub mod intent;
 pub mod navigation;
-pub mod picker;
 pub mod project;
 pub mod provider;
 pub mod session;

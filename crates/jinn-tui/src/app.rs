@@ -10,7 +10,7 @@ use derive_more::Debug;
 use jinn_domain::AppCore;
 use jinn_domain::AppUiRegistry;
 use jinn_domain::IntentHandler;
-use jinn_domain::{FocusScope, KernelIntent, PickerKind};
+use jinn_domain::{FocusScope, KernelIntent};
 use jinn_sidebar::sections::Sidebar;
 use ratatui::Frame;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
@@ -225,7 +225,6 @@ impl TuiApp {
                 &mut state,
                 &self.services.slices,
                 &self.services.key_routes,
-                &self.services.picker_registry,
             );
 
             // Cancel selection when mode changes away from Picker.
@@ -306,16 +305,10 @@ impl TuiApp {
 /// Returns the keymap scope corresponding to the given focus scope.
 pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
     match focus {
-        FocusScope::Picker { kind } => match kind {
-            PickerKind::Project => Scope::PickerProject,
-            // Both survive only so persisted session files deserialize. The
-            // MCP server picker is slice-owned and pushes a dynamic scope;
-            // CompactionModel is data-only and opens no menu. Neither ever
-            // pushes this enum, so a legacy save naming one lands here, and
-            // Normal is the honest fallback — a scope it cannot reach, rather
-            // than a picker scope borrowed from a picker that no longer exists.
-            PickerKind::McpServer | PickerKind::CompactionModel => Scope::Normal,
-        },
+        // A `Picker` focus scope is a legacy name that no longer resolves:
+        // every picker pushes a dynamic slice scope instead. Normal is the
+        // honest fallback for a saved scope that predates the migration.
+        FocusScope::Picker { .. } => Scope::Normal,
         FocusScope::Input => Scope::Input,
         // Dynamic slice scopes pass their identity through unchanged.
         FocusScope::Dynamic(id) => Scope::Dynamic(id.clone()),

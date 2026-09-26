@@ -150,7 +150,7 @@ impl ActorSystemBuilder {
             key_routes: jinn_slices::route::KeyRoutes::new(),
             viewport: jinn_slices::view::Viewport::new(),
             overlay_views: jinn_slices::OverlayViews::new(),
-            picker_registry: jinn_picker_specs::build_picker_registry(),
+            project_picker: None,
         };
 
         let actor_deps = ActorDeps {
@@ -708,7 +708,7 @@ fn jinn_project_activate(services: &mut Services) {
         &services.key_routes,
         &services.trouper_system,
     );
-    jinn_project::activate(&mut host);
+    services.project_picker = Some(jinn_project::activate(&mut host).project_picker);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("project slice finalize failed: {error}");
     }
@@ -724,6 +724,7 @@ async fn jinn_preferences_activate(
     // `UpdateAppState`/`UpdatePreferences` on first boot.
     let system = services.trouper_system.clone();
     let services_handle = services.clone();
+    let project_picker = services.project_picker.clone();
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -731,7 +732,7 @@ async fn jinn_preferences_activate(
         &services.key_routes,
         &services.trouper_system,
     );
-    jinn_preferences::activate(&mut host, &system, services_handle, state);
+    jinn_preferences::activate(&mut host, &system, services_handle, state, project_picker);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("preferences slice finalize failed: {error}");
     }

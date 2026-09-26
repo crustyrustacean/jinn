@@ -451,7 +451,6 @@ fn session_new_works_when_sidebar_sessions_focused() {
         &mut state,
         &empty_slices(),
         &empty_routes(),
-        &empty_pickers(),
     );
 
     // Then a new session is created.
@@ -483,7 +482,6 @@ fn session_new_works_when_not_in_sidebar() {
         &mut state,
         &empty_slices(),
         &empty_routes(),
-        &empty_pickers(),
     );
 
     // Then a new session is created (no section restriction outside sidebar).

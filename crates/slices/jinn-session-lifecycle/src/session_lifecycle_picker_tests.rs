@@ -660,7 +660,7 @@ async fn the_filter_hook_is_registered_for_the_picker_scope() {
 #[rstest::rstest]
 fn the_picker_state_lives_only_in_its_slice_cell() {
     // Given the kernel's picker state block.
-    let kernel = include_str!("../../../jinn-domain/src/feat/ui/picker_states.rs");
+    let kernel = include_str!("../../../jinn-domain/src/feat/ui/frontend_state.rs");
 
     // When it is searched for this picker's state.
     let found = kernel.contains("session_lifecycle_picker");
@@ -677,9 +677,8 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
 fn the_kernel_names_no_session_lifecycle_picker() {
     // Given the central crates' sources.
     let sources = [
-        include_str!("../../../jinn-domain/src/feat/picker/intent.rs"),
-        include_str!("../../../jinn-domain/src/feat/picker/host_impl.rs"),
-        include_str!("../../../jinn-domain/src/feat/picker/validator.rs"),
+        include_str!("../../../jinn-domain/src/feat/intent/handler.rs"),
+        include_str!("../../../jinn-domain/src/protocol/intent.rs"),
     ];
 
     // When each is searched for a picker identity.

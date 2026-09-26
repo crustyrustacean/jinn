@@ -49,7 +49,6 @@ pub use registry::ErasedPickerSpec;
 pub use registry::PickerRegistry;
 pub use registry::SpecHandle;
 pub use registry::Tail;
-pub use registry::{PROJECT_ID, spec_id_for_kind};
 pub use render::KeybindLine;
 pub use render::RenderOutcome;
 pub use render::keybind_line;

@@ -43,7 +43,6 @@ Entries are added or amended **only with human approval**.
 
 - (context) Outgoing context assembly converts history entries to messages directly; a final tripwire validator drops any invalid tool loop with a tracing warning instead of sending invalid sequencing.
 - (arch) All actors run on the trouper runtime, and schema-id-tagged messages route through BusService on trouper topics without bridge relays.
-- (arch) Slices may import jinn-domain and foundation vocabulary; kernel code may consume kernel-adjacent vocabulary and lib-only slice behavior only where the dependency graph remains acyclic.
 - (slices) Slice integration uses each slice's activation function from composition, with activation owning the slice's actors, cells, routes, and views.
 - (slices) Slice activation crates and their paired `-msg` contract crates live under `crates/slices/`; shared and kernel-adjacent crates live under `crates/`.
 - (slices) Slices read their `jinn.toml` section through read-only typed or dynamic config-section views; defaults are supplied by the slice.
@@ -71,6 +70,10 @@ Entries are added or amended **only with human approval**.
 - (context) `@path` tokens resolve to `file://` URIs against cwd/home when the file is a readable image; otherwise the token is left as literal text.
 - (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) per wired actor.
 - (slices) Render slices live in per-slice typed cells behind the `Slices` facade; the owning actor, renderer, and intent router share typed handles to the registered cell.
+- (pickers) Each picker is owned by the slice that owns its domain; the picker's state lives in a slice cell, not in AppState.
+- (pickers) Picker scopes are dynamic slice scopes, so the kernel holds no per-picker scope variant, picker kind, spec, or registry.
+- (pickers) A picker measures its own results viewport in its render pass and publishes it into its cell; the kernel measures nothing.
+- (keybinds) Picker keybinds are route rows owned by the slice that owns the picker.
 - (keybinds) Feature keybinds are route rows carrying scope and key; keymap bindings are generated from registered rows at launch; dynamic intents and scope ids are data-carried, so an unregistered slice leaves no keymap, scope, or intent residue.
 - (keybinds) The terminal overlay's keybinds are term-slice route rows binding the dynamic scopes term:view and term:control; no static terminal scope or terminal intent variants exist in the kernel.
 - (keybinds) A slice key hook registers a per-scope catch-all returning a byte-carrying dynamic intent; key-hook and modal scopes are excluded from the GlobalToggle spread and the typing carve-out so capture mode stays hermetic.

@@ -125,7 +125,6 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
             &mut state,
             &data.services.slices,
             &data.services.key_routes,
-            &data.services.picker_registry,
         );
         for closure in result.messages {
             let _ = data.bridge.send(closure);

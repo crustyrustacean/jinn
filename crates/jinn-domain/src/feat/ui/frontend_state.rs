@@ -10,7 +10,6 @@ use jinn_sidebar_msg::SidebarSectionId;
 use jinn_slices::FocusScope;
 use jinn_slices::TuiSignals;
 
-use crate::feat::ui::picker_states::PickerStates;
 pub use jinn_sidebar_msg::McpServersSectionState;
 pub use jinn_sidebar_msg::PersonaSectionState;
 pub use jinn_sidebar_msg::PinsState;
@@ -108,8 +107,6 @@ pub struct FrontendState {
     pub archive_tree_prompt: Option<jinn_sidebar_msg::ArchiveTreePrompt>,
 
     /// All picker state - grouped for independent evolution.
-    /// Use [`PickerExt`](super::picker_states::PickerExt) to access picker fields.
-    pub pickers: PickerStates,
 
     /// Creation stash for the next session from the projects UI.
     ///
@@ -150,7 +147,6 @@ impl Default for FrontendState {
             audit_popup_visible: false,
             close_session_prompt: false,
             archive_tree_prompt: None,
-            pickers: PickerStates::default(),
             pending_creation: None,
 
             sidebar_width: 30,
@@ -398,29 +394,5 @@ impl FrontendState {
         let taken = self.signals_snapshot();
         self.update_scope(|s| s.signals = TuiSignals::new());
         taken
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        reason = "test code"
-    )]
-
-    use super::*;
-
-    #[rstest::rstest]
-    #[test]
-    fn default_includes_empty_project_picker() {
-        // Given a default FrontendState.
-        let state = FrontendState::default();
-
-        // When accessing the project picker.
-        // Then it exists and is empty (no items).
-        assert_eq!(state.pickers.project_picker.items().len(), 0);
     }
 }

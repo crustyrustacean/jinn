@@ -2,7 +2,6 @@
 
 pub mod chat_log;
 pub mod frontend_state;
-pub mod picker_states;
 pub mod vertical_minimap;
 
 #[cfg(test)]

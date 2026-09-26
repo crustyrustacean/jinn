@@ -21,7 +21,9 @@ pub use pruner_accumulation_input::intent::pruner_accumulation_scope;
 pub use pruner_accumulation_input::intent::pruner_accumulation_slot;
 
 use jinn_domain::common::state::State;
+use jinn_project_msg::ProjectPickerState;
 use jinn_slices::SliceHost;
+use jinn_slices::cell::TypedCell;
 
 /// Activates the preferences slice's pruner-accumulation popup and two
 /// persistence actors on the system's trouper runtime.
@@ -43,6 +45,7 @@ pub fn activate(
     system: &trouper::system::ActorSystem,
     services: jinn_domain::Services,
     state: State,
+    project_picker: Option<TypedCell<ProjectPickerState>>,
 ) {
     let pruner_cell = host
         .register_cell(
@@ -71,7 +74,8 @@ pub fn activate(
 
     // Spawn the persistence actors. Each spawn declares its handled command
     // via `.handles`, which registers the route.
-    let prefs_path = PreferencesActor::spawn(system, services.clone(), state.clone());
+    let prefs_path =
+        PreferencesActor::spawn(system, services.clone(), state.clone(), project_picker);
     drop(prefs_path);
     let app_state_path = AppStateActor::spawn(system, services, state);
     drop(app_state_path);

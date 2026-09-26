@@ -1942,10 +1942,10 @@ dependencies = [
  "jinn-persona",
  "jinn-persona-msg",
  "jinn-picker",
- "jinn-picker-specs",
  "jinn-preferences",
  "jinn-preferences-config",
  "jinn-project",
+ "jinn-project-msg",
  "jinn-provider",
  "jinn-provider-config",
  "jinn-provider-selection",
@@ -2639,38 +2639,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jinn-picker-specs"
-version = "0.118.0"
-dependencies = [
- "humantime",
- "jiff",
- "jinn-core-types",
- "jinn-domain",
- "jinn-mcp-msg",
- "jinn-persona-msg",
- "jinn-picker",
- "jinn-preferences-config",
- "jinn-project-msg",
- "jinn-provider-selection-msg",
- "jinn-selection-widget",
- "jinn-session-init-msg",
- "jinn-session-lifecycle-msg",
- "jinn-session-msg",
- "jinn-session-state",
- "jinn-session-store-msg",
- "jinn-skills-msg",
- "jinn-slices",
- "jinn-testutil",
- "jinn-theme",
- "jinn-tools-msg",
- "ratatui",
- "rstest",
- "serde_json",
- "unicode-segmentation",
- "wherror",
-]
-
-[[package]]
 name = "jinn-preferences"
 version = "0.118.0"
 dependencies = [
@@ -2679,8 +2647,9 @@ dependencies = [
  "jinn-core-types",
  "jinn-domain",
  "jinn-persona-msg",
- "jinn-picker-specs",
  "jinn-preferences-config",
+ "jinn-project",
+ "jinn-project-msg",
  "jinn-selection-widget",
  "jinn-skills-msg",
  "jinn-slices",
@@ -2726,8 +2695,11 @@ dependencies = [
  "jinn-core-types",
  "jinn-cwd-msg",
  "jinn-domain",
+ "jinn-picker",
  "jinn-preferences-config",
  "jinn-project-msg",
+ "jinn-selection-widget",
+ "jinn-session-lifecycle-msg",
  "jinn-slices",
  "jinn-theme",
  "ratatui",
@@ -2809,7 +2781,6 @@ dependencies = [
  "jinn-core-types",
  "jinn-domain",
  "jinn-picker",
- "jinn-picker-specs",
  "jinn-preferences-config",
  "jinn-provider",
  "jinn-provider-config",
@@ -3185,7 +3156,6 @@ dependencies = [
  "jinn-persona",
  "jinn-persona-msg",
  "jinn-picker",
- "jinn-picker-specs",
  "jinn-preferences-config",
  "jinn-session-history-msg",
  "jinn-session-lifecycle-msg",
@@ -3553,7 +3523,6 @@ dependencies = [
  "jinn-mcp-msg",
  "jinn-persona-msg",
  "jinn-picker",
- "jinn-picker-specs",
  "jinn-project-msg",
  "jinn-provider-config",
  "jinn-provider-selection-msg",

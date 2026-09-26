@@ -39,7 +39,7 @@ async fn preferences_setup() -> (TestHarness, jinn_domain::Services, State) {
     let harness = TestHarness::new().await;
     let services = harness.services().await;
     let state = State::new(AppState::default_with_scope_focus());
-    super::PreferencesActor::spawn(harness.system(), services.clone(), state.clone());
+    super::PreferencesActor::spawn(harness.system(), services.clone(), state.clone(), None);
     (harness, services, state)
 }
 

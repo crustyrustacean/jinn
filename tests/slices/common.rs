@@ -554,6 +554,7 @@ pub fn activate_preferences(services: &mut jinn_domain::Services) {
         jinn_domain::common::state::State::new(
             jinn_domain::common::app_state::AppState::default_with_scope_focus(),
         ),
+        None,
     );
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("preferences slice finalize failed: {error}");

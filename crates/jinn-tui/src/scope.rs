@@ -17,21 +17,6 @@
 pub enum Scope {
     /// Normal mode - navigation and commands.
     Normal,
-    /// Sidebar - Persona section.
-
-    /// Sidebar - Pins section.
-
-    /// Sidebar - Sessions section.
-
-    /// Sidebar - Task list section.
-
-    /// Sidebar - MCP servers section.
-    /// Picker - Session lifecycle recipe selection.
-    /// Picker - OpenRouter routing endpoint selection.
-    /// Picker - Read-only task list browser.
-    /// Picker - Curated project directory selection.
-    PickerProject,
-    /// Picker - MCP server toggle selection.
     /// Input mode - typing into the input buffer.
     Input,
     /// A dynamically-registered slice's scope.
@@ -47,7 +32,6 @@ impl std::fmt::Display for Scope {
         match self {
             Self::Normal => write!(f, "Normal"),
 
-            Self::PickerProject => write!(f, "Picker(project)"),
             Self::Input => write!(f, "Input"),
             Self::Dynamic(id) => write!(f, "dynamic:{id}"),
         }
@@ -67,7 +51,6 @@ impl std::str::FromStr for Scope {
         match s {
             "Normal" => Ok(Self::Normal),
 
-            "Picker(project)" => Ok(Self::PickerProject),
             "Input" => Ok(Self::Input),
             _ => Err(()),
         }

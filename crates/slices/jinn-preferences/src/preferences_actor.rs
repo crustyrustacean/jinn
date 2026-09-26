@@ -10,6 +10,8 @@
 use jinn_domain::common::services::Services;
 use jinn_domain::common::state::State;
 use jinn_preferences_config::protocol::command::UpdatePreferences;
+use jinn_project_msg::ProjectPickerState;
+use jinn_slices::cell::TypedCell;
 use trouper::actor::MsgHandler;
 use trouper::actor::ServiceActor;
 use trouper::builder::spawn_service_builder;
@@ -37,6 +39,9 @@ pub struct PreferencesActor {
     services: Services,
     /// Shared application state — writes `frontend.preferences` inline after persist.
     state: State,
+    /// The project picker's cell, so a persisted change to the curated project
+    /// list refreshes an open menu. `None` when that slice is not activated.
+    project_picker: Option<TypedCell<ProjectPickerState>>,
 }
 
 impl ServiceActor for PreferencesActor {
@@ -60,7 +65,12 @@ impl PreferencesActor {
     /// Spawns the actor at its static path, declaring `UpdatePreferences`
     /// as handled — the declaration registers the command's route (its
     /// sole handler), so bridge-published commands deliver here.
-    pub fn spawn(system: &ActorSystem, services: Services, state: State) -> ActorPath {
+    pub fn spawn(
+        system: &ActorSystem,
+        services: Services,
+        state: State,
+        project_picker: Option<TypedCell<ProjectPickerState>>,
+    ) -> ActorPath {
         spawn_service_builder::<Self>(system)
             .at(ActorPath::new(PREFERENCES_ACTOR_PATH))
             .start_with({
@@ -69,6 +79,7 @@ impl PreferencesActor {
                         Ok(Self {
                             services: services.clone(),
                             state: state.clone(),
+                            project_picker: project_picker.clone(),
                         })
                     })
                 }
@@ -93,14 +104,19 @@ impl PreferencesActor {
         // this actor are reflected immediately. The author of `frontend.preferences`
         // is this actor — keep the writes in one state guard.
         self.state.with_preferences(|view| {
-            let frontend = view.frontend();
-            frontend.preferences = prefs.clone();
-            if frontend.is_picker()
-                && frontend.picker_kind() == Some(jinn_slices::picker_kind::PickerKind::Project)
-            {
-                jinn_picker_specs::project_spec::load_project_entries(frontend);
-            }
+            view.frontend().preferences = prefs.clone();
         });
+        // The project picker is slice-owned and reads the curated list from
+        // preferences, so a batch that adds or removes a project has to reach
+        // its cell for the open menu to show the change. This slice names the
+        // slot, not the picker: the kernel holds nothing for it either.
+        if let Some(cell) = &self.project_picker {
+            let projects = self.state.read().frontend.preferences.projects.clone();
+            let theme = self.state.read().frontend.theme.clone();
+            cell.update(|picker| {
+                jinn_project::project_picker_actions::open(picker, &projects, &theme)
+            });
+        }
     }
 }
 

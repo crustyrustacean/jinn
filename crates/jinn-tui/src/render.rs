@@ -3,7 +3,6 @@
 pub mod app_layout;
 pub mod chat_tab;
 pub mod clipboard;
-pub mod picker;
 pub mod selection_highlight;
 pub mod status_bar;
 pub mod tab_bar;
@@ -13,7 +12,7 @@ pub mod which_key;
 
 pub use app_layout::{AppFrameLayout, AppLayout, MIN_HEIGHT, MIN_WIDTH, TabLayout};
 
-use jinn_domain::{AppUiRegistry, FocusScope, Mode, RenderCtx, feat::ui::picker_states::PickerExt};
+use jinn_domain::{AppUiRegistry, FocusScope, Mode, RenderCtx};
 use jinn_sidebar::sections::Sidebar;
 use ratatui::{Frame, layout::Rect};
 
@@ -30,8 +29,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     apply_pre_render_mutation(app, area);
 
     let state = app.core.state.read();
-    let ctx = RenderCtx::new(&state, &app.services.slices, &app.services.overlay_views)
-        .with_pickers(&app.services.picker_registry);
+    let ctx = RenderCtx::new(&state, &app.services.slices, &app.services.overlay_views);
 
     // Layout kind comes from the base scope's registration: a dynamic
     // tab scope renders full-width (no chat chrome); everything else is
@@ -85,15 +83,8 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
     let mut wstate = app.core.state.write();
 
-    // Measure the active picker's results viewport every frame so navigation
-    // intents scroll against the real on-screen height instead of a stale
-    // hardcoded constant.
-    let picker_viewport = jinn_domain::feat::picker::geometry::measure_active_picker_results_height(
-        &wstate,
-        area,
-        &app.services.picker_registry,
-    );
-    wstate.frontend.set_picker_results_viewport(picker_viewport);
+    // Every picker measures its own results viewport in its render pass and
+    // publishes it into its slice cell, so the kernel measures nothing.
     let full_width = is_full_width_tab(&app.services.slices, &wstate.frontend.scope_base());
     let pre_layout = AppFrameLayout::new(
         area,
@@ -239,10 +230,9 @@ fn render_active_overlay(
     scope: &FocusScope,
 ) -> Option<Rect> {
     match scope {
-        FocusScope::Picker { .. } => {
-            picker::render_picker(frame, area, ctx);
-            Some(jinn_selection_widget::compute_popup_rect(area))
-        }
+        // A `Picker` focus scope is a legacy name that no longer resolves —
+        // every picker pushes a dynamic slice scope rendered below.
+        FocusScope::Picker { .. } => None,
         FocusScope::Dynamic(id) => {
             // Slice overlays: consult the geometry fn + renderer the
             // scope's slice registered at activation. A dynamic scope

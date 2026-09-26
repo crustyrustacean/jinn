@@ -9,7 +9,6 @@
 
 use crate::common::app_state::AppState;
 use jinn_context_curation_msg::prune_report;
-use jinn_picker::PickerRegistry;
 use jinn_slices::AppFact;
 use jinn_slices::OverlayViewFn;
 use jinn_slices::OverlayViews;
@@ -30,17 +29,11 @@ pub struct RenderCtx<'a> {
     /// bar). Overlay slices register at activation; an unregistered
     /// scope renders nothing.
     pub overlay_views: &'a OverlayViews<SliceFacts>,
-    /// The generic picker spec registry. Empty unless the caller supplied
-    /// the app's registry — every picker kind renders through it, so an
-    /// empty registry draws no picker.
-    pub pickers: PickerRegistry,
 }
 
 impl<'a> RenderCtx<'a> {
     /// Creates a new render context wrapping the given state reference,
-    /// slices registry, and overlay-view registry. The picker registry is
-    /// empty — chain [`RenderCtx::with_pickers`] when the app registry is
-    /// at hand (the top-level render pass).
+    /// slices registry, and overlay-view registry.
     pub fn new(
         state: &'a AppState,
         slices: &'a Slices,
@@ -50,16 +43,7 @@ impl<'a> RenderCtx<'a> {
             state,
             slices,
             overlay_views,
-            pickers: PickerRegistry::default(),
         }
-    }
-
-    /// Supplies the app's picker registry, consuming and returning self
-    /// for chaining at the single composition call site.
-    #[must_use]
-    pub fn with_pickers(mut self, pickers: &PickerRegistry) -> Self {
-        self.pickers = pickers.clone_shallow();
-        self
     }
 
     /// Returns the overlay renderer registered for a dynamic scope, if

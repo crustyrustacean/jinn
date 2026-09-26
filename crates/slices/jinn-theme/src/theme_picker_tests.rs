@@ -840,7 +840,7 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
     // cell. A second copy in the kernel would let the menu show one store
     // while a different one is written — the defect that left the skills
     // menu blank.
-    let kernel_source = include_str!("../../../jinn-domain/src/feat/ui/picker_states.rs");
+    let kernel_source = include_str!("../../../jinn-domain/src/feat/ui/frontend_state.rs");
     assert!(
         !kernel_source.contains("theme_picker"),
         "the kernel must not hold theme picker state; the slice cell is the only home"
@@ -854,12 +854,12 @@ fn the_kernel_names_no_theme_picker_at_all() {
     // adding a picker a folder-local change.
     for (label, source) in [
         (
-            "jinn-domain picker state",
-            include_str!("../../../jinn-domain/src/feat/ui/picker_states.rs"),
+            "jinn-domain frontend state",
+            include_str!("../../../jinn-domain/src/feat/ui/frontend_state.rs"),
         ),
         (
-            "jinn-domain picker host",
-            include_str!("../../../jinn-domain/src/feat/picker/host_impl.rs"),
+            "jinn-domain intent handler",
+            include_str!("../../../jinn-domain/src/feat/intent/handler.rs"),
         ),
         (
             "jinn-tui scope table",

@@ -1,20 +1,22 @@
-//! Picker kind — identifies which picker is currently active
-//! (shared vocabulary; this is the canonical home — the kernel re-exports it via `jinn_domain::protocol`).
+//! Legacy picker scope names, retained only so persisted state still deserializes.
+//!
+//! Every picker is now slice-owned: it pushes a dynamic slice scope, holds its
+//! state in a slice cell, and declares its own keys as route rows. Nothing
+//! constructs these variants any more. They survive because a session file
+//! saved by an older jinn may still name one, and dropping the variants would
+//! make that file fail to load.
 
 use serde::{Deserialize, Serialize};
 
-/// Which picker is currently active.
+/// A picker scope name from before pickers became slice-owned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PickerKind {
-    /// Session lifecycle picker - select a lifecycle recipe for new session creation.
-    /// Retired: the compaction model is configured only by `[compaction] model`
-    /// in `jinn.toml`. Retained so persisted state still deserializes; it is
-    /// never pushed as a scope and has no picker state.
+    /// The compaction model picker, retired long ago: the model is configured
+    /// only by `[compaction] model` in `jinn.toml`.
     CompactionModel,
-    /// Project picker - curated project directories; create a new session rooted
-    /// at the highlighted dir with `<enter>` (or `<c-enter>` to also pick a lifecycle).
+    /// The project picker, now owned by the project slice.
     Project,
-    /// MCP server picker - toggle which MCP servers are enabled for the session.
+    /// The MCP server picker, now owned by the MCP slice.
     McpServer,
 }
 
@@ -22,7 +24,6 @@ impl std::fmt::Display for PickerKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CompactionModel => write!(f, "compaction model"),
-
             Self::Project => write!(f, "projects"),
             Self::McpServer => write!(f, "mcp servers"),
         }

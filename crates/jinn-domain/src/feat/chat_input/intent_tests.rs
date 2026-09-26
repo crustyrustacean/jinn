@@ -1985,7 +1985,6 @@ fn ctrl_clear_input_empties_chat_input_via_handler() {
         &mut state,
         &empty_slices(),
         &empty_routes(),
-        &empty_pickers(),
     );
 
     // Then the chat input is cleared and scope remains Input.
@@ -2032,7 +2031,6 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
         &mut state,
         &empty_slices(),
         &empty_routes(),
-        &empty_pickers(),
     );
 
     // Then nothing changes: no scope change, no commands, buffer still empty.

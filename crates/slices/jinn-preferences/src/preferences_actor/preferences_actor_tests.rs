@@ -17,6 +17,7 @@ async fn create_actor() -> (PreferencesActor, State) {
     let actor = PreferencesActor {
         services: services.clone(),
         state: state.clone(),
+        project_picker: None,
     };
     (actor, state)
 }
@@ -118,26 +119,32 @@ async fn persist_writes_frontend_preferences() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn persist_reloads_open_project_picker_items() {
-    use jinn_domain::feat::ui::picker_states::PickerExt;
-    use jinn_picker_specs::project_spec::load_project_entries as load_project_picker_entries;
-    use jinn_slices::FocusScope;
-    use jinn_slices::picker_kind::PickerKind;
+async fn persist_refreshes_the_open_project_picker() {
+    use jinn_project::project_picker_actions;
+    use jinn_project_msg::{ProjectPickerState, project_picker_scope, project_picker_slot};
+    use jinn_slices::Slices;
+    use jinn_slices::cell::TypedCell;
 
-    // Given a state with the project picker open and zero entries.
+    // Given a preferences actor holding the project picker's cell, and a
+    // picker opened on the default (empty) curated list.
+    let slices = Slices::new();
+    let cell: TypedCell<ProjectPickerState> = slices
+        .register(project_picker_slot(), ProjectPickerState::default())
+        .expect("the picker cell registers once");
     let (mut actor, state) = create_actor().await;
-    {
-        let mut guard = state.write();
-        load_project_picker_entries(&mut guard.frontend);
-        guard.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Project,
-        });
-        assert_eq!(
-            guard.frontend.project_picker().items().len(),
-            0,
-            "picker starts empty with default preferences"
-        );
-    }
+    actor.project_picker = Some(cell.clone());
+    cell.update(|picker| {
+        project_picker_actions::open(
+            picker,
+            &state.read().frontend.preferences.projects,
+            &state.read().frontend.theme,
+        )
+    });
+    assert_eq!(
+        cell.read().selection.items().len(),
+        0,
+        "picker starts empty"
+    );
 
     // When preferences update adds two projects.
     actor.handle_update_preferences(&UpdatePreferences {
@@ -147,11 +154,10 @@ async fn persist_reloads_open_project_picker_items() {
         ],
     });
 
-    // Then the open project picker's items are reloaded from the new prefs.
-    let guard = state.read();
+    // Then the open picker shows both, without the kernel knowing it exists.
     assert_eq!(
-        guard.frontend.project_picker().items().len(),
+        cell.read().selection.items().len(),
         2,
-        "open project picker should reload items after preferences update"
+        "the open project picker should refresh after a preferences update"
     );
 }

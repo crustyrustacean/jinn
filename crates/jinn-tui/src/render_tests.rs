@@ -7,7 +7,6 @@
 use super::render::*;
 use jinn_chat_log_view::chat_log::GUTTER_WIDTH;
 use jinn_domain::protocol::ChatEntry;
-use jinn_selection_widget::compute_popup_rect;
 use jinn_slices::FocusScope;
 use jinn_testutil::setup_term;
 use ratatui::layout::Rect;
@@ -15,14 +14,8 @@ use ratatui::style::Color;
 
 /// Creates a minimal `TuiApp` for render testing.
 ///
-/// Mirrors production composition (`actor_wiring`) by populating the
-/// picker spec registry — spec-driven pickers render (and refresh) only
-/// through specs the registry holds.
 async fn render_test_app() -> crate::TuiApp {
-    let services = jinn_domain::Services {
-        picker_registry: jinn_picker_specs::build_picker_registry(),
-        ..jinn_domain::Services::new_fake().await
-    };
+    let services = jinn_domain::Services::new_fake().await;
     services
         .slices
         .register(
@@ -71,78 +64,6 @@ async fn render_registers_content_rect_for_selectable_chat_log() {
         "chat log content rect should be selectable"
     );
     assert_eq!(found.unwrap(), expected);
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn picker_popup_rect_is_selectable() {
-    // Given a TuiApp rendered with Mode::Picker.
-
-    let mut app = render_test_app().await;
-    // Switch to Picker mode with an active provider picker.
-    app.core
-        .state
-        .write()
-        .frontend
-        .scope_push(jinn_slices::FocusScope::Picker {
-            kind: jinn_domain::PickerKind::Project,
-        });
-
-    let (mut terminal, _area) = setup_term(80, 24);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            app.render(frame);
-        })
-        .unwrap();
-
-    // Then the picker popup rect is registered as selectable.
-    let popup_rect = compute_popup_rect(Rect::new(0, 0, 80, 24));
-    // Query position inside popup but outside the content area (popup extends
-    // further right than the content column which ends at the border).
-    let outside_content_x = popup_rect.x + popup_rect.width.saturating_sub(5);
-    let found = app.selectable_rects.find_for_position(outside_content_x, 0);
-    assert!(found.is_some(), "picker popup rect should be selectable");
-    assert_eq!(found.unwrap(), popup_rect);
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn content_area_rect_is_selectable() {
-    // Given a TuiApp rendered with Mode::Picker.
-
-    let mut app = render_test_app().await;
-    // Switch to Picker mode with an active provider picker.
-    app.core
-        .state
-        .write()
-        .frontend
-        .scope_push(jinn_slices::FocusScope::Picker {
-            kind: jinn_domain::PickerKind::Project,
-        });
-
-    let (mut terminal, _area) = setup_term(80, 24);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            app.render(frame);
-        })
-        .unwrap();
-
-    // Then the content area rect is also still selectable (chat-log is selectable).
-    // Query a position inside the gutter-excluded selectable rect.
-    let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
-    let content = layout.content;
-    let select_x = content.x + GUTTER_WIDTH + 1;
-    let content_found = app
-        .selectable_rects
-        .find_for_position(select_x, content.y + 1);
-    assert!(
-        content_found.is_some(),
-        "content rect should also be selectable alongside picker"
-    );
 }
 
 /// Helper to create a Rect matching the terminal dimensions.

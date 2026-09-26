@@ -70,18 +70,9 @@ pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<KernelIn
             state.update_active_input(ChatInputBoxState::reset);
             (IntentResult::empty(), None)
         }
-        FocusScope::Picker { .. } => {
-            if let Some(picker) = crate::feat::picker::host_impl::active_picker_ops(state) {
-                if picker.is_filter_empty() {
-                    (IntentResult::empty(), Some(KernelIntent::EnterNormalMode))
-                } else {
-                    picker.clear_filter();
-                    (IntentResult::empty(), None)
-                }
-            } else {
-                (IntentResult::empty(), None)
-            }
-        }
+        // No kernel picker exists: every picker is slice-owned and binds
+        // <c-c> in its own scope, so a `Picker` focus scope here means a
+        // legacy scope name that no longer resolves. The slice-owned key wins.
         _ => (IntentResult::empty(), None),
     }
 }
@@ -347,106 +338,5 @@ mod tests {
         assert!(result.message_names.is_empty());
         assert!(maybe_intent.is_none());
         assert_eq!(state.frontend.scope(), FocusScope::Input);
-    }
-
-    #[rstest::rstest]
-    fn ctrl_clear_picker_filter_nonempty_clears_filter() {
-        // Given a state in Picker scope with a non-empty filter.
-        use crate::protocol::PickerKind;
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Project,
-        });
-        {
-            let picker = crate::feat::picker::host_impl::active_picker_ops(&mut state)
-                .expect("picker active");
-            picker.insert_char('a');
-            picker.insert_char('b');
-            assert!(!picker.is_filter_empty());
-        }
-
-        // When handling CtrlClear.
-        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
-
-        // Then the filter is cleared and no redispatch is requested.
-        let picker = crate::feat::picker::host_impl::active_picker_ops(&mut state)
-            .expect("picker still active");
-        assert!(picker.is_filter_empty());
-        assert!(result.message_names.is_empty());
-        assert!(maybe_intent.is_none());
-        assert!(state.frontend.is_picker());
-    }
-
-    #[rstest::rstest]
-    fn ctrl_clear_picker_filter_empty_closes_picker() {
-        // Given a state in Picker scope with an empty filter.
-        use crate::feat::intent::handler::IntentHandler;
-        use crate::protocol::PickerKind;
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Project,
-        });
-
-        // When handling CtrlClear via the IntentHandler (exercises redispatch).
-        let result = IntentHandler::handle(
-            &KernelIntent::CtrlClear,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-
-        // Then scope is back to Normal (picker closed).
-        assert!(!state.frontend.is_picker());
-        assert_eq!(state.frontend.scope(), FocusScope::Normal);
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    #[rstest::rstest]
-    fn ctrl_clear_picker_two_presses_clears_then_closes() {
-        // First <c-c> on a populated picker clears the filter;
-        // the second <c-c> closes the picker (equivalent to <esc>).
-        use crate::feat::intent::handler::IntentHandler;
-        use crate::protocol::PickerKind;
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Project,
-        });
-        {
-            let picker = crate::feat::picker::host_impl::active_picker_ops(&mut state)
-                .expect("picker active");
-            picker.insert_char('a');
-            picker.insert_char('b');
-            assert!(!picker.is_filter_empty());
-        }
-
-        // First press: filter is non-empty, so it should be cleared.
-        let result1 = IntentHandler::handle(
-            &KernelIntent::CtrlClear,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-        assert!(state.frontend.is_picker());
-        assert!(
-            crate::feat::picker::host_impl::active_picker_ops(&mut state)
-                .expect("picker still active")
-                .is_filter_empty()
-        );
-        assert!(result1.messages.is_empty());
-
-        // Second press: filter is now empty, so picker should close.
-        let result2 = IntentHandler::handle(
-            &KernelIntent::CtrlClear,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            &empty_pickers(),
-        );
-        assert!(!state.frontend.is_picker());
-        assert_eq!(state.frontend.scope(), FocusScope::Normal);
-        assert!(result2.messages.is_empty());
     }
 }

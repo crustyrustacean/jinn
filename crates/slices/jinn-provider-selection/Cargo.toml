@@ -26,7 +26,6 @@ jinn-core-types = { workspace = true }
 jinn-theme = { workspace = true }
 jinn-selection-widget = { workspace = true }
 jinn-picker = { workspace = true }
-jinn-picker-specs = { workspace = true }
 # The reasoning picker's confirm writes the session's effort and seeds the
 # global default through these two crossing contracts.
 jinn-preferences-config = { workspace = true }

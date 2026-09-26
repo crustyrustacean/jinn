@@ -644,22 +644,10 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
 ///
 /// Simply switches out of the current mode. Does NOT cancel streams or drain
 /// queues - the cancel confirmation prompt handles that via `NormalEscape`.
-/// Registry-less variant for internal callers that need no picker registry
-/// (the session-lifecycle chain); spec-driven
-/// close hooks need the app's registry via
-/// [`handle_enter_normal_mode_with_pickers`].
+///
+/// Slice-owned pickers bind `<esc>` in their own scope, so an escape that
+/// reaches here has already left any open picker and reverted its snapshot.
 pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
-    handle_enter_normal_mode_with_pickers(state, &jinn_picker::PickerRegistry::new())
-}
-
-/// Handles `EnterNormalMode` with the picker registry: spec-driven
-/// pickers run their `on_close` hook (snapshot revert) before the
-/// per-kind restores. The intent handler passes the app's registry so
-/// spec-driven pickers revert correctly.
-pub fn handle_enter_normal_mode_with_pickers(
-    state: &mut AppState,
-    pickers: &jinn_picker::PickerRegistry,
-) -> IntentResult {
     // If autocomplete is active, dismiss it and stay in the current scope.
     // Two-level ESC: first press closes popup, second press exits mode.
     if state.with_active_input(|i| i.autocomplete().is_some(), || false) {
@@ -667,15 +655,10 @@ pub fn handle_enter_normal_mode_with_pickers(
         return IntentResult::empty();
     }
 
-    // Spec-driven pickers own their close behavior (snapshot revert).
-    if let Some(result) = crate::feat::picker::action::try_close_active(state, pickers) {
-        return result;
-    }
-
-    // A pending session creation stash only matters between opening the
+    // A pending session creation stash only matters between opening a
     // project picker and confirming session creation. Returning to Normal
     // means that chain was abandoned, so clear any stale stash so it never
-    // leaks into a future `n`/`N`.
+    // leaks into a future `n`.
     state.frontend.pending_creation = None;
 
     // Clear all overlay scopes - always returns to Normal.
