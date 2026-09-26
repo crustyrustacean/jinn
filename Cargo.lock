@@ -2966,6 +2966,7 @@ dependencies = [
  "jinn-session-history-msg",
  "jinn-session-lifecycle-msg",
  "jinn-session-msg",
+ "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-slices",
  "jinn-testutil",

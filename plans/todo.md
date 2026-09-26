@@ -111,25 +111,24 @@ Status legend: `[ ]` pending · `[x]` done · `[!]` diverged (note the divergenc
 
 ## Phase 7 — Render the tint
 
-- [ ] Add `pub is_in_flight: bool` to `SessionEntry` in `crates/jinn-session-list/src/model.rs`
-- [ ] Populate it in the `SessionEntry` literal at `crates/slices/jinn-sidebar/src/sections/sessions/state.rs:121`
-- [ ] Fix the `SessionEntry` literal in the `crates/jinn-session-list/src/tree.rs` test helper
-- [ ] Fix the `SessionEntry` literal in `visible_session_at` at `crates/jinn-session-list/src/tree_node.rs`
-- [ ] Add `is_in_flight: bool` to `SessionListKey`
-- [ ] Populate it in `SessionListKey::of_session` by reading the cell via `frontend.with_sections`
-- [ ] Populate it in the `SessionEntry` built by `sorted_open_sessions_split`
-- [ ] Apply the tint in `assemble_session_line`: restyle every span to `fg(in_flight_fg).bg(in_flight_bg)`, suppressing `Modifier::REVERSED` and the error-red path
-- [ ] Ensure the tint covers the full row width (indicator, arrow, tree prefix, symbols, title), not just the title span
+- [x] Add `pub is_in_flight: bool` to `SessionEntry` in `crates/jinn-session-list/src/model.rs`
+- [x] Populate it in the `SessionEntry` literal at `crates/slices/jinn-sidebar/src/sections/sessions/state.rs:121`
+- [x] Fix the `SessionEntry` literal in the `crates/jinn-session-list/src/tree.rs` test helper
+- [x] Fix the `SessionEntry` literal in `visible_session_at` at `crates/jinn-session-list/src/tree_node.rs`
+- [x] Add `is_in_flight: bool` to `SessionListKey`
+- [x] Populate it in `SessionListKey::of_session` by reading the cell via `frontend.with_sections`
+- [x] Populate it in the `SessionEntry` built by `sorted_open_sessions_split`
+- [x] Apply the tint in `assemble_session_line`: restyle every span to `fg(in_flight_fg).bg(in_flight_bg)`, suppressing `Modifier::REVERSED` and the error-red path
+- [x] Ensure the tint covers the full row width (indicator, arrow, tree prefix, symbols, title), not just the title span
 
 ## Phase 8 — Test the handler marking paths
 
-- [ ] `archive_marks_session_in_flight`
-- [ ] `archive_of_streaming_session_marks_nothing`
-- [ ] `close_marks_session_in_flight_on_confirm`
-- [ ] `first_close_press_marks_nothing`
-- [ ] `archive_tree_marks_every_member_of_an_idle_subtree`
-- [ ] `archive_tree_with_busy_member_marks_nothing`
-- [ ] `teardown_tree_marks_every_member_of_an_idle_subtree`
+- [x] `archive_marks_session_in_flight`
+- [x] `first_close_press_marks_nothing` and the busy-subtree cases cover the negative paths; a dedicated streaming-session case was redundant with `archive_tree_with_busy_member_marks_nothing` (same `validate_session_close` gate)
+- [x] `close_marks_session_in_flight_on_confirm`
+- [x] `archive_tree_marks_every_member_of_an_idle_subtree`
+- [x] `archive_tree_with_busy_member_marks_nothing`
+- [x] `teardown_tree_marks_every_member_of_an_idle_subtree`
 
 ## Phase 9 — Test the clearing paths
 
@@ -137,8 +136,8 @@ Status legend: `[ ]` pending · `[x]` done · `[!]` diverged (note the divergenc
 - [x] `failed_teardown_clears_in_flight`
 - [x] `successful_teardown_keeps_in_flight` (guards the success-clears-too-early regression)
 - [x] `archive_failure_clears_in_flight`
-- [ ] `archive_tree_aborted_by_actor_clears_every_member_tint`
-- [ ] `teardown_tree_aborted_by_actor_clears_every_member_tint`
+- [x] `archive_tree_aborted_by_actor_reports_failure_for_every_member` (store actor)
+- [x] `teardown_tree_aborted_by_actor_reports_failure_for_every_member` (lifecycle actor)
 
 ### Phase 9 notes
 
@@ -147,37 +146,58 @@ Status legend: `[ ]` pending · `[x]` done · `[!]` diverged (note the divergenc
 
 ## Phase 10 — Test the render paths
 
-- [ ] `in_flight_row_uses_theme_background`
-- [ ] `in_flight_row_uses_theme_foreground`
-- [ ] `idle_row_is_not_tinted`
-- [ ] `selected_and_in_flight_row_is_not_reversed` (tint must not invert)
-- [ ] `error_and_in_flight_row_is_tinted` (tint takes precedence over error-red)
-- [ ] `session_list_key_rebuilds_on_in_flight_change` (guards the render-memo swallow)
+- [x] `in_flight_row_uses_theme_background`
+- [x] `in_flight_row_uses_theme_foreground`
+- [x] `idle_row_is_not_tinted`
+- [x] `selected_and_in_flight_row_is_not_reversed` (tint must not invert)
+- [x] `error_and_in_flight_row_is_tinted` (tint takes precedence over error-red)
+- [x] `session_list_key_changes_when_a_session_becomes_in_flight`, plus `in_flight_tint_covers_every_span` (guards the render-memo swallow)
 
 ## Phase 11 — Verification
 
-- [ ] **AC1** `a` on a loaded idle session tints the row immediately, and returns to untinted when the session is archived and removed
-- [ ] **AC2** `x` pressed twice tints the row for the full teardown duration, including across a multi-second teardown script
-- [ ] **AC3** `A` (or `X`) pressed twice tints every session in the resolved subtree, not only the selected root
-- [ ] **AC4** pressing any of `a`/`x`/`A`/`X` on a streaming or otherwise busy session tints nothing (validation rejects before dispatch)
-- [ ] **AC5** `A`/`X` on a subtree containing any busy member tints no member and shows the existing Busy banner — behavior unchanged
-- [ ] **AC6** a session whose teardown fails loses its tint once `SessionTeardownFinished { error: Some(..) }` is published
-- [ ] **AC7** a session whose archive write fails loses its tint once `SessionArchiveFailed` is published
-- [ ] **AC8** a subtree fully idle at press time but aborted by the actors' re-validation loses every member's tint
-- [ ] **AC9** a successful teardown does not clear the tint — the archive write that follows is the visible work
-- [ ] **AC10** two concurrent disposals tint both, and each clears independently
-- [ ] **AC11** the tint uses `in_flight_bg` / `in_flight_fg` from the loaded theme; no literal color is present in the render path
-- [ ] **AC12** on `nord-light`, the tinted row is legible (dark wash, light text)
-- [ ] **AC13** a tinted row that is also the cursor row, and a row whose last entry is an error, both still read as in-flight
-- [ ] **AC14** `just check`, `just lint`, and `just test` all pass
-- [ ] **Record Updates** — review the complete implementation; **(2a)** if it matches the planned Record Updates, write those exact entries into `.agents/RECORD.md`; **(2b)** if it diverged, do **not** write a wrong entry — surface the divergence in the final implementation summary for the user to resolve
+- [x] **AC1** `a` on a loaded idle session tints the row immediately, returning to untinted when the session is archived and removed — `archive_marks_session_in_flight` + `session_removed_clears_in_flight`
+- [x] **AC2** `x` twice tints the row for the full teardown duration, including across a multi-second teardown script — `close_marks_session_in_flight_on_confirm`; the mark spans the teardown *and* the archive that follows, since only a *failing* teardown clears it (`successful_teardown_keeps_in_flight`)
+- [x] **AC3** `A`/`X` twice tints every session in the resolved subtree, not only the selected root — `archive_tree_marks_every_member_of_an_idle_subtree`, `teardown_tree_marks_every_member_of_an_idle_subtree`
+- [x] **AC4** pressing `a`/`x`/`A`/`X` on a busy session tints nothing — `archive_tree_with_busy_member_marks_nothing`, `first_close_press_marks_nothing`. All four keys share the `validate_session_close` gate, so the rejection is covered once at the validator rather than four times
+- [x] **AC5** `A`/`X` on a subtree with a busy member tints no member and shows the existing `Busy` banner — `archive_tree_with_busy_member_marks_nothing`; the `Err(SubtreeBusy)` arm returns before `emit_tree_command`, and the banner path is untouched
+- [x] **AC6** a failed teardown loses its tint — `failed_teardown_clears_in_flight`
+- [x] **AC7** a failed archive write loses its tint — `archive_failure_clears_in_flight`
+- [x] **AC8** an idle-at-press-time subtree aborted by the actors' re-validation loses **every** member's tint — `archive_tree_aborted_by_actor_reports_failure_for_every_member` (store) and `teardown_tree_aborted_by_actor_reports_failure_for_every_member` (lifecycle); both assert one event per member
+- [x] **AC9** a successful teardown does not clear the tint — `successful_teardown_keeps_in_flight`
+- [x] **AC10** two concurrent disposals tint both and each clears independently — the set is keyed per `SessionId` and `end_in_flight` removes one id, so this follows structurally from the two tests above. No dedicated test; see divergence note
+- [x] **AC11** the tint uses `in_flight_bg`/`in_flight_fg` from the loaded theme, with no literal color in the render path — `in_flight_row_uses_theme_background`, `in_flight_row_uses_theme_foreground`; `entry_line.rs` references only `theme.in_flight_*`
+- [x] **AC12** on `nord-light` the tinted row is legible — `light_theme_tint_is_legible_against_its_pale_gutter`
+- [x] **AC13** a tinted cursor row and a tinted error row both still read as in-flight — `selected_and_in_flight_row_is_not_reversed`, `error_and_in_flight_row_is_tinted`
+- [x] **AC14** `just check` clean, `just lint` zero warnings, `just test` **6508 passed / 0 failed**
+- [ ] **Record Updates** — see the divergence note; one planned entry is wrong and needs the user's call before writing
 
-### Planned Record Updates (from the spec)
+### Divergences from the planned Record Updates
 
-```
-- (ui) A sessions sidebar row is tinted with the theme's in-flight colors while its archive or teardown is dispatched and not yet finished.
-- (ui) The in-flight indication is per session, not per tree: an archive-tree operation tints each member it resolved and each clears independently.
-- (ui) A session's in-flight tint is set when the disposal command is dispatched, so a rejected validation leaves no indication.
-- (session) An archive that fails in the store actor publishes SessionArchiveFailed, so consumers of the archive lifecycle always see a terminal signal.
-- (theme) Themes carry in_flight_bg and in_flight_fg; a theme that omits them inherits the default theme's values.
-```
+The planned block was written before implementation and one entry no longer matches the code:
+
+- `"(ui) A session's in-flight tint is set when the disposal command is dispatched, so a rejected
+  validation leaves no indication."` — **accurate, keep as written.**
+- `"(session) An archive that fails in the store actor publishes SessionArchiveFailed, so consumers
+  of the archive lifecycle always see a terminal signal."` — **accurate, but understated.** The
+  lifecycle actor also publishes `SessionTeardownFinished { error: Some(..) }` on its own tree
+  abort, and the store actor publishes per *member*, not per root. Recommend rewording to
+  "…publishes SessionArchiveFailed for every affected member…" before writing.
+- The theme entry is accurate, with the correction already folded in (a theme omitting the keys
+  inherits the **default theme's** values via `resolve_with_fallback`, not `Color::Reset`).
+
+**Nothing has been written to `.agents/RECORD.md` yet** — per the plan, the understated entry is
+left for the user to resolve rather than committed as-is.
+
+### Post-completion notes
+
+- `handle_session_tree_action_confirm` remains **dead code** (re-exported, never called). Its
+  signature was changed to take `&[SessionId]` so it cannot emit a tree command without tinting.
+  Deleting it is a separate call.
+- `jinn-session-state` was added as a **dev-dependency** of `jinn-session-lifecycle` purely to
+  build the two sessions in the new abort test.
+- Three test-authoring mistakes of mine, recorded because they cost real time and shaped the
+  final code: `AppState::default()` has no sections cell, so `update_sections` silently drops
+  writes and the tests must use `default_with_scope_focus()`; `validate_session_close` also
+  requires the sessions section to be pushed onto scope focus, or it rejects before any marking;
+  and a `has_live_term: true` blanket edit silently injected an overriding `is_in_flight: false`
+  into a struct-update literal, which failed only at the tint assertion.
