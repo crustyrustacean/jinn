@@ -74,6 +74,11 @@ impl SidebarStateActor {
             .handles::<SessionTeardownFinished>()
             .handles::<PreviewSessionRequested>()
             .handles::<SessionPreviewRendered>()
+            // The deadline this actor arms for every preview it handles. The
+            // layout supervisor subscribes to it; without this declaration the
+            // bus's flush gate drops the message, no deadline is ever armed, and
+            // a preview whose render never returns spins forever.
+            .emits::<ArmPreviewDeadline>()
             .start()
     }
 
@@ -164,14 +169,6 @@ impl MsgHandler<PreviewSessionRequested> for SidebarStateActor {
 
 impl MsgHandler<SessionPreviewRendered> for SidebarStateActor {
     async fn handle(&mut self, msg: &SessionPreviewRendered, _ctx: &mut MsgCtx<'_>) {
-        tracing::info!(
-            session_id = %msg.session_id,
-            generation = msg.generation,
-            signature = msg.signature,
-            width = msg.content_width,
-            lines = msg.lines.len(),
-            "preview RESULT received by sidebar actor",
-        );
         // Destructured into fields rather than handed whole: this crate does not
         // depend on the message crate, and a bus type would leak a dependency
         // the sidebar's own state has no use for.

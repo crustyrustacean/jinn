@@ -185,9 +185,11 @@ impl PreviewLoad {
 
     /// Whether a render is running for this session at all, whatever its content.
     ///
-    /// Used for diagnostics: an identical-content check says nothing when the
-    /// spinner is stuck with nothing in flight, which is the case worth telling
-    /// apart from "still rendering".
+    /// Distinct from [`Self::in_flight_matches`], which answers "is this exact
+    /// request running". This one answers "is anything running", which is the
+    /// only way to tell a stuck preview from one that is merely busy — and to
+    /// observe the deadline actually firing, since the render it is waiting on
+    /// never comes back in the test that checks for it.
     #[must_use]
     pub fn is_in_flight_for(&self, session_id: &SessionId) -> bool {
         self.in_flight.contains_key(session_id)
@@ -234,28 +236,25 @@ impl PreviewLoad {
         lines: Arc<Vec<ratatui::text::Line<'static>>>,
     ) -> bool {
         if !self.accepts(&session_id, generation) {
+            // Rare and worth a line: a rejection means rendered work was thrown
+            // away, and the generation fields say which rule refused it.
             tracing::warn!(
                 session_id = %session_id, generation, signature, content_width,
-                in_flight = self.in_flight.get(&session_id).map(|e| e.generation),
+                in_flight_generation = self.in_flight.get(&session_id).map(|e| e.generation),
                 reset_floor = self.reset_floor,
                 next_generation = self.next_generation,
-                "preview COMPLETE REJECTED",
+                "preview result rejected",
             );
             return false;
         }
         self.in_flight.remove(&session_id);
         self.insert_cached(
-            session_id.clone(),
+            session_id,
             CachedPreview {
                 signature,
                 content_width,
-                lines: Arc::clone(&lines),
+                lines,
             },
-        );
-        tracing::info!(
-            session_id = %session_id, generation, signature, content_width,
-            lines = lines.len(),
-            "preview COMPLETE cached",
         );
         true
     }
@@ -300,10 +299,6 @@ impl PreviewLoad {
         if matches_request {
             self.in_flight.remove(session_id);
         }
-        tracing::debug!(
-            session_id = %session_id, generation, matches_request,
-            "preview abandon (deadline fired)",
-        );
         matches_request
     }
 
@@ -315,12 +310,14 @@ impl PreviewLoad {
     /// that was already running from writing old-theme lines back into the
     /// cache it just cleared.
     pub fn reset(&mut self) {
+        // Rare (a theme change) and worth a line: it drops every cached preview,
+        // so a spinner appearing for many sessions at once has a cause here.
         tracing::warn!(
             reset_floor = self.reset_floor,
             next_generation = self.next_generation,
             cached = self.cache.len(),
             in_flight = self.in_flight.len(),
-            "preview RESET (all previews dropped)",
+            "preview cache reset; every preview will re-render",
         );
         self.cache.clear();
         self.order.clear();

@@ -101,6 +101,15 @@ pub fn render_session_preview_for_state(
 
     let inner_width = preview_width(frame_area).saturating_sub(2).max(1);
 
+    // The width the keyboard path requests at is the one this pass recorded, so
+    // recording happens *before* the lookup: on the very first frame the
+    // recorded width is still `0` (nothing has drawn yet), the request would go
+    // out wrapped for a zero-width popup, and it could never match the width the
+    // lines are looked up at. Seeding it here makes the first request agree.
+    state
+        .frontend
+        .update_sections(|s| s.sessions.preview_content_width = inner_width);
+
     // The cached lines are found by the same identity the keyboard path
     // requested with — session, content, width — so a hit means the worker has
     // already wrapped exactly this text at exactly this width. The `cloned` is
@@ -116,19 +125,11 @@ pub fn render_session_preview_for_state(
         || None,
     );
 
-    // The width the next frame will draw at is recorded so the keyboard path can
-    // request at the same one. Recorded only on the way to a draw: a frame that
-    // returned early above has not committed to a width.
-    state
-        .frontend
-        .update_sections(|s| s.sessions.preview_content_width = inner_width);
-
     let Some(lines) = cached else {
         // Nothing for this exact session, width, and content. `cached` returning
         // `None` is what distinguishes loading from empty — an empty session
         // renders zero lines but is still a cache hit, so it takes the branch
         // below and shows the empty state rather than spinning forever.
-        log_cache_miss(&entry.id, signature, inner_width, state, session);
         let popup_rect = session_preview_popup_rect(frame_area, cursor_y, LOADING_CONTENT_ROWS);
         render_session_preview_loading(frame, popup_rect, session, theme);
         return;
@@ -144,50 +145,6 @@ pub fn render_session_preview_for_state(
 fn preview_width(frame_area: Rect) -> u16 {
     let w = (f32::from(frame_area.width) * 0.6).ceil() as u16;
     w.max(30).min(frame_area.width)
-}
-
-/// TEMPORARY DIAGNOSTIC — remove once the stuck spinner is explained.
-///
-/// Logs one line per distinct `(session, signature, width)` miss rather than one
-/// per frame. The render pass holds only a *read* guard on the sections, so it
-/// cannot remember what it last logged; a process-global `Mutex<Option<...>>` is
-/// the only place a dedupe can live without adding state the render path
-/// mutates. Torn out with the rest of the tracing.
-fn log_cache_miss(
-    session_id: &jinn_core_types::SessionId,
-    signature: u64,
-    render_width: u16,
-    state: &jinn_domain::common::app_state::AppState,
-    session: &ChatSessionState,
-) {
-    static LAST: std::sync::Mutex<Option<(jinn_core_types::SessionId, u64, u16)>> =
-        std::sync::Mutex::new(None);
-    let key = (session_id.clone(), signature, render_width);
-    {
-        let Ok(mut last) = LAST.lock() else { return };
-        if last.as_ref() == Some(&key) {
-            return;
-        }
-        *last = Some(key);
-    }
-    let (recorded_width, in_flight) = state.frontend.with_sections(
-        |s| {
-            (
-                s.sessions.preview_content_width,
-                s.sessions.preview.is_in_flight_for(session_id),
-            )
-        },
-        || (0, false),
-    );
-    tracing::warn!(
-        session_id = %session_id,
-        signature,
-        render_width,
-        recorded_width,
-        in_flight,
-        history_entries = session.history().len(),
-        "PREVIEW CACHE MISS — spinner shown",
-    );
 }
 
 /// How far through the spin the current frame is.

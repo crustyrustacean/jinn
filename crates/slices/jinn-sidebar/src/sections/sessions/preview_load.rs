@@ -62,7 +62,13 @@ pub fn update_preview(
 ) -> Option<PreviewSessionRequested> {
     let width = state
         .frontend
-        .with_sections(|s| s.sessions.preview_content_width, || 0);
+        .with_sections(|s| s.sessions.preview_content_width, || 0)
+        // A zero would request a render wrapped for a zero-width popup, which
+        // can then never match the width the render pass looks the lines up at —
+        // a spinner that never resolves. The render pass records the real width
+        // before its lookup, so a zero here means it has not run yet; anything
+        // wide enough to read is better than rendering at nothing.
+        .max(1);
 
     // The signature is computed over the trailing entries but folded with the
     // *whole* history's length, so it is taken from a borrow of the full
@@ -80,10 +86,6 @@ pub fn update_preview(
         state
             .frontend
             .update_sections(|s| s.sessions.preview.touch(session_id));
-        tracing::debug!(
-            session_id = %session_id, signature, width,
-            "preview served from cache/in-flight; no request",
-        );
         return None;
     }
 
@@ -109,11 +111,6 @@ pub fn update_preview(
             .preview
             .request(session_id.clone(), signature, width);
     });
-    tracing::info!(
-        session_id = %session_id, generation, signature, width,
-        entries = entries.len(),
-        "preview REQUEST armed",
-    );
 
     Some(PreviewSessionRequested {
         session_id: session_id.clone(),
@@ -347,6 +344,26 @@ mod preview_load_tests {
         assert!(
             armed,
             "the preview must be armed before the request publishes"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_request_never_asks_for_a_zero_width() {
+        // Given app state where the render pass has not recorded a width yet —
+        // its first frame, before anything has been drawn.
+        let (mut state, id) = state_with_session(0);
+
+        // When the trigger runs.
+        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer())
+            .expect("a fresh session must request");
+
+        // Then it asks for a width something can actually be wrapped at. A zero
+        // here produced lines that could never match the width the render pass
+        // looks them up at, so the popup spun forever.
+        assert!(
+            request.content_width > 0,
+            "a preview must never be requested at zero width, got {}",
+            request.content_width
         );
     }
 

@@ -226,15 +226,6 @@ impl MsgHandler<PreviewSessionRequested> for LayoutWorkerActor {
         .await
         .unwrap_or_default();
 
-        tracing::info!(
-            session_id = %msg.session_id,
-            generation = msg.generation,
-            width = msg.content_width,
-            entries_in = msg.entries.len(),
-            lines_out = lines.len(),
-            "preview RENDER finished on worker",
-        );
-
         ctx.publish(SessionPreviewRendered {
             session_id: msg.session_id.clone(),
             generation: msg.generation,
